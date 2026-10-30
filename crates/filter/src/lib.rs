@@ -1,4 +1,5 @@
 //! Portable stereo filter shared by Filter and Auto-filter. No internal clock or LFO.
+pub mod crossover;
 use daw_unit_core::{
     EffectUnit, FILTER_TYPE_ID, FilterSettings, PortKind, ProcessingContext, UnitDescriptor,
 };

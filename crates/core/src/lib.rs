@@ -1,4 +1,5 @@
 pub use daw_unit_core::{DRIVE_V2_TYPE_ID, DriveV2Clip, DriveV2ColorShape, DriveV2Settings};
+pub use daw_unit_core::{EXCITER_TYPE_ID, ExciterBand, ExciterMode, ExciterSettings};
 pub use daw_unit_core::{EqBandMode, MULTIBAND_EQ_TYPE_ID, MultibandEqBand, MultibandEqSettings};
 pub use daw_unit_core::{GrainWindow, GranulizerSettings};
 pub use daw_unit_core::{SATURATOR_TYPE_ID, SaturatorClipMode, SaturatorSettings, SaturatorShape};

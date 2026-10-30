@@ -26,6 +26,8 @@ mod filter;
 pub use filter::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
 mod modulation;
 pub use modulation::*;
+mod exciter;
+pub use exciter::*;
 mod saturator;
 pub use saturator::*;
 mod bitcrusher;

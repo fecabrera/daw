@@ -314,7 +314,7 @@ fn consecutive_crossover_edits_keep_boundaries_ordered_through_the_transition() 
     for _ in 0..240 {
         ott.retarget(&s);
         ott.process_sample([0.001; 2]);
-        assert!(ott.splits[0].frequency < ott.splits[1].frequency);
+        assert!(ott.splits[0].frequency_hz() < ott.splits[1].frequency_hz());
     }
     assert_eq!(ott.parameters[0].value, s.low_frequency_hz.ln());
     assert_eq!(ott.parameters[1].value, s.high_frequency_hz.ln());

@@ -1,0 +1,11 @@
+[package]
+name = "daw-exciter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+[dependencies]
+daw-unit-core.workspace = true
+daw-saturator.workspace = true
+daw-filter.workspace = true
+[dev-dependencies]
+serde_json.workspace = true

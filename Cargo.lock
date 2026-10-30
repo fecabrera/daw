@@ -1667,6 +1667,7 @@ dependencies = [
  "daw-drive",
  "daw-envelope",
  "daw-equalizer",
+ "daw-exciter",
  "daw-filter",
  "daw-lfo",
  "daw-limiter",
@@ -1746,6 +1747,16 @@ dependencies = [
  "daw-plugin-window",
  "daw-unit-core",
  "libloading",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-exciter"
+version = "0.1.0"
+dependencies = [
+ "daw-filter",
+ "daw-saturator",
+ "daw-unit-core",
  "serde_json",
 ]
 
@@ -1971,6 +1982,7 @@ dependencies = [
 name = "daw-ott"
 version = "0.1.0"
 dependencies = [
+ "daw-filter",
  "daw-unit-core",
  "fundsp",
 ]

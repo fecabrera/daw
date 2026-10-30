@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+daw-exciter.workspace = true
 daw-chorus.workspace = true
 serde.workspace = true
 daw-saturator.workspace = true

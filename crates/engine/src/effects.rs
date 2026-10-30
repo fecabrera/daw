@@ -6,6 +6,7 @@ use daw_core::{EffectInstance, EffectSettings, Id, Track};
 use daw_direction_mixer::DirectionMixer;
 use daw_drive::{Drive, DriveV2};
 use daw_equalizer::{Equalizer, MultibandEq};
+use daw_exciter::Exciter;
 use daw_filter::Filter;
 use daw_limiter::Limiter;
 use daw_ott::Ott;
@@ -17,6 +18,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 enum RuntimeEffect {
     MultibandEq(Box<MultibandEq>),
+    Exciter(Box<Exciter>),
     Eq3(Box<Equalizer>, Vec<super::modulation::Route>),
     Drive(Box<Drive>, Vec<super::modulation::Route>),
     DriveV2(Box<DriveV2>, Vec<super::modulation::Route>),
@@ -35,6 +37,7 @@ enum RuntimeEffect {
 impl RuntimeEffect {
     fn heap_bytes(&self) -> u64 {
         match self {
+            Self::Exciter(unit) => std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes(),
             Self::MultibandEq(unit) => {
                 std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes()
             }
@@ -111,6 +114,7 @@ impl RuntimeEffect {
     fn latency_frames(&self) -> u32 {
         match self {
             Self::MultibandEq(unit) => unit.latency_frames(),
+            Self::Exciter(unit) => unit.latency_frames(),
             Self::Eq3(unit, _) => unit.latency_frames(),
             Self::Drive(unit, _) => unit.latency_frames(),
             Self::DriveV2(unit, _) => unit.latency_frames(),
@@ -138,6 +142,16 @@ impl RuntimeEffect {
         ),
     ) -> [f32; 2] {
         match self {
+            Self::Exciter(unit) => unit.process_at(
+                input,
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::MultibandEq(unit) => unit.process_at(
                 input,
                 values,
@@ -322,6 +336,7 @@ impl RuntimeEffect {
     fn reset(&mut self) {
         match self {
             Self::MultibandEq(unit) => unit.reset(),
+            Self::Exciter(unit) => unit.reset(),
             Self::Eq3(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -405,6 +420,9 @@ impl RuntimeEffect {
     }
     fn retarget(&mut self, settings: &EffectSettings) -> bool {
         match (self, settings) {
+            (Self::Exciter(unit), EffectSettings::Exciter(settings)) => {
+                return unit.retarget(settings);
+            }
             (Self::Eq3(unit, _), EffectSettings::Eq3(settings)) => unit.retarget(settings),
             (Self::Ott(unit, _), EffectSettings::Ott(settings)) => unit.retarget(settings),
             (Self::Limiter(unit, _), EffectSettings::Limiter(settings)) => unit.retarget(settings),
@@ -482,6 +500,9 @@ impl EffectChain {
                     (
                         effect.id,
                         match &effect.unit {
+                            EffectSettings::Exciter(settings) => Some(RuntimeEffect::Exciter(
+                                Box::new(Exciter::new(context, settings)),
+                            )),
                             EffectSettings::MultibandEq(settings) => {
                                 Some(RuntimeEffect::MultibandEq(Box::new(MultibandEq::new(
                                     context, settings,
@@ -624,6 +645,12 @@ impl EffectChain {
                 .and_then(|&i| previous.units.get_mut(i))
                 && let Some(next) = next
             {
+                if let (RuntimeEffect::Exciter(next), RuntimeEffect::Exciter(previous)) =
+                    (&mut *next, &mut *previous)
+                {
+                    next.inherit(previous);
+                    continue;
+                }
                 if let (RuntimeEffect::MultibandEq(next), RuntimeEffect::MultibandEq(previous)) =
                     (&mut *next, &mut *previous)
                 {
@@ -683,11 +710,27 @@ impl EffectChain {
         }
     }
     pub fn band_modulation_values(&self, id: Id, band: Id) -> Option<super::ModulationSnapshot> {
-        let (_, Some(RuntimeEffect::MultibandEq(unit))) = self.units.get(*self.index.get(&id)?)?
-        else {
-            return None;
-        };
-        unit.band_parameters(band).map(super::parameter_snapshot)
+        match self.units.get(*self.index.get(&id)?)? {
+            (_, Some(RuntimeEffect::MultibandEq(unit))) => {
+                unit.band_parameters(band).map(super::parameter_snapshot)
+            }
+            (_, Some(RuntimeEffect::Exciter(unit))) => {
+                unit.band_parameters(band).map(super::parameter_snapshot)
+            }
+            _ => None,
+        }
+    }
+    pub fn bind_exciter_solo(
+        &mut self,
+        effect: Id,
+        band: Id,
+        solo: &Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        if let Some((_, Some(RuntimeEffect::Exciter(unit)))) =
+            self.index.get(&effect).and_then(|&i| self.units.get_mut(i))
+        {
+            unit.set_band_solo(band, solo.clone());
+        }
     }
     pub fn modulation_values(&self, id: Id) -> Option<super::ModulationSnapshot> {
         match self.index.get(&id).and_then(|&i| self.units.get(i)) {
@@ -701,6 +744,9 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::DriveV2(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::Exciter(unit)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::MultibandEq(unit)))) => {
@@ -792,6 +838,9 @@ impl EffectChain {
             }
             Some((_, Some(RuntimeEffect::Bitcrusher(unit, _)))) => {
                 unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::Exciter(unit)))) => {
+                unit.set_output_peak_meter(meter.clone())
             }
             Some((_, Some(RuntimeEffect::Saturator(unit, _)))) => {
                 unit.set_output_peak_meter(meter.clone());

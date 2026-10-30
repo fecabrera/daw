@@ -1416,6 +1416,16 @@ impl MidiTrackRuntime {
             bus.chain.set_meter(id, meter);
         }
     }
+    pub fn bind_exciter_solo(
+        &mut self,
+        effect: Id,
+        band: Id,
+        solo: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        for bus in &mut self.layer_effects {
+            bus.chain.bind_exciter_solo(effect, band, solo);
+        }
+    }
     pub fn set_individual_band_meter(
         &mut self,
         effect: Id,

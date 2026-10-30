@@ -48,6 +48,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/oscillator` | FunDSP-backed oscillator sources behind the shared unit API; keep backend types private. |
 | `crates/equalizer` | Reusable stereo 3-band EQ behind the shared effect API; keep FunDSP types private. |
 | `crates/saturator` | Portable stereo saturation, fixed 4× FIR oversampling, aligned dry/bypass paths, and shared modulation; no DAW, UI, media, or device dependencies. |
+| `crates/exciter` | Portable variable-band harmonic excitation, shared LR4 crossovers/oversampling, typed modulation and live-only band audition; no DAW, UI or device dependencies. |
 | `crates/chorus` | Portable stereo modulated delays, bounded feedback, phase-continuous sine voices, width and shared modulation/monitoring; no DAW, UI, media, or device dependencies. |
 | `crates/bitcrusher` | Portable stereo quantization, whole-ratio sample holding, and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/stereo-spread` | Portable spectral stereo widening with private FunDSP filter banks and shared modulation; no DAW, UI, media, or device dependencies. |
@@ -65,7 +66,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/plugin-vst3` | Narrow VST3 binding facade, platform TUID encoding, UTF-16 text and borrowed stream helpers. No concrete unit, DAW, window, or device dependencies. |
 | `plugins/drive-vst3` | Independent Drive VST3 factory, component/audio processor, edit controller, normalized queues, and host/state boundary. Keep COM ownership here; reuse shared parameter/state, publication and DSP. |
 | `plugins/drive-clap` | Independent Drive CLAP entry, lifecycle, host/event/state bridge, and planar audio boundary. Keep unsafe SDK ownership here; reuse shared parameter/state and DSP crates. |
-| `crates/filter` | Portable stereo filtering, parameter/bypass smoothing and shared modulation; owns private FunDSP coefficients and integrators reused by Auto-filter. |
+| `crates/filter` | Portable stereo filtering, parameter/bypass smoothing and shared modulation; owns private FunDSP coefficients and integrators reused by Auto-filter, plus the shared LR4 crossover used by OTT and Exciter. |
 | `crates/auto-filter` | Shared Filter processor plus a transport-locked LFO behind the effect API. |
 | `crates/ott` | Portable three-band upward/downward dynamics, phase-matched crossovers, and signed gain monitoring; keep FunDSP types private. |
 | `crates/limiter` | Portable stereo Peak/True Peak limiter, L/R and M/S dynamics, fixed latency, and gain-reduction monitoring; no DAW/UI/device dependencies. |
@@ -86,7 +87,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `apps/desktop` | eframe startup, GPU backend selection, and native menu, window, and file-drag adapters. Windows uses Glow/OpenGL for native caption composition; macOS/Linux use wgpu. Keep OS-specific code here. |
 | `apps/cli` | clap arguments, diagnostics, and exit codes over the shared project/export APIs. Must remain usable without graphics or an audio device. |
 | `plugins/drive` | Build-time Drive plugin manifest; stable public identities, parameter declarations, and two-strip panel bindings. |
-| `crates/*-plugin`, `crates/*-editor` | Independent typed contracts and native editor bindings for all fourteen effects; reuse bounded state exchange, portable DSP, shared controls, and meters. |
+| `crates/*-plugin`, `crates/*-editor` | Independent typed contracts and native editor bindings for fourteen effect products; reuse bounded state exchange, portable DSP, shared controls, and meters. |
 | `plugins/<unit>`, `plugins/<unit>-clap`, `plugins/<unit>-vst3` | Checked product manifests and independent export targets. Shared format boundaries compile through concrete dependency aliases. |
 | `tools` | Demo generation, CLI smoke checks, CI summaries, and macOS/Windows/Linux packaging. |
 | `.github/workflows` | Native platform tests and release-package artifact uploads. |
@@ -263,7 +264,7 @@ cargo test --workspace
 - On macOS, rebuild desktop deliverables with `sh tools/package_macos.sh debug` or `release` when desktop/runtime changes need an updated app. The unsigned bundle is under `target/<profile>/DAW.app`.
 - CI calls `.github/workflows/platform.yml` independently for Windows, macOS, and Linux, with fail-fast disabled. Each invocation has separate `test` and `build` jobs; build depends only on that invocation's tests and includes release builds, packaging, and artifact uploads. Do not gate all builds on the aggregate test matrix. Both jobs use `.github/actions/setup-build` for native dependencies, the pinned Rust toolchain, Python, and Cargo caching. Tests run locked workspace checks and CLI smoke checks. Keep the portable Windows executable with its project license and dependency notices, and retain the same notices in macOS DMG and Linux ZIP artifacts. Use the native scripts in `tools` rather than duplicating packaging commands in the workflow.
 - Keep CI command output visible in the console and in log artifacts. Preserve command failures when using `tee`, upload logs on failure, and write job summaries through `tools/summarize_ci.py`. Windows setup selects the MSVC linker by absolute path to avoid Git Bash's `link.exe`. UI background-job tests use a bounded 30-second wall-clock deadline for slower hosted workers.
-- `.github/workflows/plugins.yml` builds all fourteen effect units as CLAP/VST3 previews on independent native platform workers. Reuse the shared setup/log/summary helpers and `tools/package_plugins.py`; retain native bundle layouts, executable ZIP permissions and notices. Keep plugin uploads gated on that worker's tests. Development CI does not replace SDK-validator, native editor/host or release acceptance checks.
+- `.github/workflows/plugins.yml` builds fourteen effect products as CLAP/VST3 previews on independent native platform workers. Reuse the shared setup/log/summary helpers and `tools/package_plugins.py`; retain native bundle layouts, executable ZIP permissions and notices. Keep plugin uploads gated on that worker's tests. Development CI does not replace SDK-validator, native editor/host or release acceptance checks.
 - For documentation-only changes, check content, links, commands against their definitions, and `git diff --check`; do not rebuild or run unrelated audio tests.
 - Use temporary folders for tests. Do not overwrite user projects, recordings, or exports. Review `git diff` and `git status` before completion.
 - Once relevant checks pass, repeat them only after new changes or unresolved failures. Record unavailable device/platform checks explicitly; automated egui tests do not establish native gesture behavior.

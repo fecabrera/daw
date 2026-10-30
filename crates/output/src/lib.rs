@@ -21,6 +21,7 @@ use std::sync::{
 
 type ModulationMeter = Arc<[AtomicU32; daw_engine::MODULATION_SNAPSHOT_SIZE]>;
 
+mod effect_audition;
 mod layer_meters;
 mod meters;
 mod performance;
@@ -247,6 +248,7 @@ fn band_meters(
                     | daw_core::EffectSettings::Filter(_)
                     | daw_core::EffectSettings::AutoFilter(_)
                     | daw_core::EffectSettings::MultibandEq(_)
+                    | daw_core::EffectSettings::Exciter(_)
             )
             .then_some(ModulationTarget::Effect(effect.id));
             let bands = match &effect.unit {
@@ -255,9 +257,9 @@ fn band_meters(
             };
             group
                 .into_iter()
-                .chain(bands.iter().map(move |b| ModulationTarget::EffectBand {
+                .chain(bands.iter().map(move |band| ModulationTarget::EffectBand {
                     effect: effect.id,
-                    band: b.id,
+                    band: band.id,
                 }))
         })
         .map(|key| (key, previous.get(&key).cloned().unwrap_or_default()))
@@ -286,6 +288,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::DriveV2(_)
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::MultibandEq(_)
+                    | daw_core::EffectSettings::Exciter(_)
                     | daw_core::EffectSettings::Compressor(_)
                     | daw_core::EffectSettings::Limiter(_)
                     | daw_core::EffectSettings::DirectionMixer(_)
@@ -298,14 +301,9 @@ fn modulation_meters(
         })
         .map(|e| ModulationTarget::Effect(e.id));
     let bands = plan.project.all_effects().flat_map(|e| {
-        let bands = match &e.unit {
-            daw_core::EffectSettings::MultibandEq(s) => s.bands.as_slice(),
-            _ => &[],
-        };
-        bands.iter().map(move |b| ModulationTarget::EffectBand {
-            effect: e.id,
-            band: b.id,
-        })
+        e.unit
+            .band_ids()
+            .map(move |band| ModulationTarget::EffectBand { effect: e.id, band })
     });
     let samplers = plan.project.tracks.iter().flat_map(|track| {
         track.instrument.iter().flat_map(move |i| {
@@ -447,6 +445,7 @@ pub struct AudioOutput {
     track_meters: HashMap<Id, Arc<StereoMeter>>,
     layer_meters: layer_meters::Layers,
     effect_meters: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
+    exciter_solos: effect_audition::Solos,
     output_meters: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
     band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
@@ -546,6 +545,7 @@ impl AudioOutput {
         let outputs = output_meters(&plan, &HashMap::new());
         let changes = band_meters(&plan, &HashMap::new());
         let modulation = modulation_meters(&plan, &HashMap::new());
+        let exciter_solos = effect_audition::prepare(&plan, &HashMap::new());
         let live_pitches = daw_engine::LiveMidiPitches::prepare(&plan.project, &Default::default());
         // Retried stream construction happens before playback; each attempt receives fresh queues.
         let build = |cfg: &cpal::StreamConfig| -> Result<BuiltStream, String> {
@@ -560,6 +560,7 @@ impl AudioOutput {
                 rate,
             )?;
             let audition = state.audition_sender.take().unwrap();
+            effect_audition::bind(&mut state.renderer, &exciter_solos);
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_band_meters(&mut state.renderer, &changes);
             bind_output_meters(&mut state.renderer, &outputs);
@@ -626,6 +627,7 @@ impl AudioOutput {
             track_meters: meters,
             layer_meters: layers,
             effect_meters: reductions,
+            exciter_solos,
             band_meters: changes,
             output_meters: outputs,
             modulation_meters: modulation,
@@ -638,11 +640,20 @@ impl AudioOutput {
             .push(command)
             .map_err(|_| "Audio command queue is full; try again".into())
     }
+    /// UI state only; changes never enter the project, history or export renderer.
+    pub fn set_exciter_solos(&self, selected: &std::collections::HashSet<(Id, Id)>) {
+        for (key, flag) in &self.exciter_solos {
+            if let ModulationTarget::EffectBand { effect, band } = *key {
+                flag.store(selected.contains(&(effect, band)), Ordering::Relaxed);
+            }
+        }
+    }
     fn bindings(&self) -> preparation::Bindings {
         preparation::Bindings {
             tracks: self.track_meters.clone(),
             layers: self.layer_meters.clone(),
             effects: self.effect_meters.clone(),
+            exciter_solos: self.exciter_solos.clone(),
             bands: self.band_meters.clone(),
             outputs: self.output_meters.clone(),
             modulation: self.modulation_meters.clone(),
@@ -895,6 +906,7 @@ impl AudioOutput {
                     self.track_meters = ready.bindings.tracks;
                     self.layer_meters = ready.bindings.layers;
                     self.effect_meters = ready.bindings.effects;
+                    self.exciter_solos = ready.bindings.exciter_solos;
                     self.band_meters = ready.bindings.bands;
                     self.output_meters = ready.bindings.outputs;
                     self.modulation_meters = ready.bindings.modulation;
@@ -1833,6 +1845,7 @@ mod band_meter_tests {
                 daw_core::EffectInstance::drive_v2,
                 daw_core::EffectInstance::bitcrusher,
                 daw_core::EffectInstance::saturator,
+                daw_core::EffectInstance::exciter,
                 daw_core::EffectInstance::filter,
                 daw_core::EffectInstance::auto_filter,
                 daw_core::EffectInstance::multiband_equalizer,
@@ -1883,6 +1896,7 @@ mod band_meter_tests {
                         daw_core::EffectSettings::DriveV2(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Bitcrusher(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Saturator(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Exciter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Filter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::AutoFilter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Compressor(s) => s.enabled = enabled,

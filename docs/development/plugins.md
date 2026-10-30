@@ -4,7 +4,7 @@
 
 Run commands from the repository root.
 
-All fourteen effects have separate CLAP and VST3 development builds. They reuse the portable DAW processors, shared controls, and meters. See the [plugin list and controls](../../docs/effects/plugins.md).
+Fourteen effects have separate CLAP and VST3 development builds. Multiband Exciter is built-in only; `--units all` packages the fourteen available plugin products. They reuse the portable DAW processors, shared controls, and meters. See the [plugin list and controls](../../docs/effects/plugins.md).
 
 Use the [native platform prerequisites](README.md) and Python 3.11 or later. Use a unit slug from the [plugin list](../../docs/effects/plugins.md) for `<unit>`, and select `<target>` below:
 

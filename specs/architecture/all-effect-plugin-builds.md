@@ -4,7 +4,7 @@ Status: development previews. Native host and release acceptance remain open.
 
 ## Products and ownership
 
-All fourteen registered effect units have a `plugins/<unit>/unit.toml` manifest and independent `daw-<unit>-plugin`, `daw-<unit>-editor`, `daw-<unit>-clap`, and `daw-<unit>-vst3` packages. The [user plugin table](../../docs/effects/plugins.md) defines product names, slugs, and exposed controls. The original four products retain their public identities and binary state formats.
+The fourteen standalone effect products each have a `plugins/<unit>/unit.toml` manifest and independent `daw-<unit>-plugin`, `daw-<unit>-editor`, `daw-<unit>-clap`, and `daw-<unit>-vst3` packages. The [user plugin table](../../docs/effects/plugins.md) defines product names, slugs, and exposed controls. The original four products retain their public identities and binary state formats. The later [Multiband Exciter](../effects/exciter.md) is built-in only and does not add a product to the packager or CI matrix.
 
 The ten added plugin models map explicit parameter IDs to portable settings. IDs start at 100 (Bypass), remain contiguous, and follow each checked manifest. Never regenerate class IDs or reorder IDs after publication. Identity/default-state fixtures freeze each contract. State uses an eight-byte product magic, two little-endian u32 versions, and one little-endian f64 per parameter in ID order. Reject foreign magic, future versions, invalid values, truncation, and trailing data before publication.
 

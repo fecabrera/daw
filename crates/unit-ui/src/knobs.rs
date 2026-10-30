@@ -130,6 +130,12 @@ impl KnobSpec {
         self
     }
     /// Retain a parameter-specific accessible name when reusing a scale.
+    /// Override the reset value while retaining the common parameter mapping.
+    pub fn reset_to(mut self, value: f32) -> Self {
+        assert!(value.is_finite() && (self.min..=self.max).contains(&value));
+        self.reset = value;
+        self
+    }
     pub fn named(mut self, name: &'static str) -> Self {
         self.name = name;
         self

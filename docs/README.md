@@ -42,6 +42,7 @@ Knob tooltips show only the parameter name on the left and the current value on 
 - [Drive v2 plugin development builds](effects/drive-v2-plugin.md)
 - [Bitcrusher](effects/bitcrusher.md)
 - [Saturator](effects/saturator.md)
+- [Multiband Exciter](effects/exciter.md)
 - [Filter](effects/filter.md)
 - [Auto-filter](effects/auto-filter.md)
 - [Compressor](effects/compressor.md)

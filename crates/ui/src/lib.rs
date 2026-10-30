@@ -63,6 +63,7 @@ mod effects_panel;
 mod effects_reorder;
 mod envelope_panel;
 mod equalizer_panel;
+mod exciter_panel;
 mod export_dialog;
 mod export_status;
 pub mod faders;
@@ -747,6 +748,7 @@ pub struct DawUi {
     instrument_catalog: catalog::Catalog,
     instrument_catalog_visible: bool,
     track_browser: track_browser::State,
+    exciter_audition: exciter_panel::Audition,
     component_drag: Option<instrument_component_drag::ComponentDrag>,
     strip_dragging: bool,
     #[cfg(test)]
@@ -868,6 +870,7 @@ impl Default for DawUi {
             instrument_catalog: instrument_catalog::catalog(),
             instrument_catalog_visible: false,
             track_browser: Default::default(),
+            exciter_audition: Default::default(),
             component_drag: None,
             strip_dragging: false,
             #[cfg(test)]
@@ -1597,6 +1600,7 @@ impl DawUi {
                 }
             }
         }
+        self.sync_exciter_audition();
         self.configure_audio_cache(false);
         if let Some(output) = &mut self.output
             && let Err(e) = output.play()
@@ -2048,6 +2052,7 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.sync_exciter_audition();
         self.collection_input_ready =
             ui.is_enabled() && ui.ctx().input(|i| i.focused) && !ui.ctx().text_edit_focused();
         crate::unit_power::restore_focus(ui.ctx());
@@ -5449,6 +5454,7 @@ mod tests {
     mod editor_viewport;
     mod effects;
     mod envelope_units;
+    mod exciter;
     mod filter;
     mod group_looping;
     mod group_stretch;

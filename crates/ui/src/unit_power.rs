@@ -55,6 +55,7 @@ pub(super) fn effect_enabled(settings: &mut EffectSettings) -> Option<&mut bool>
     match settings {
         EffectSettings::Eq3(s) => Some(&mut s.enabled),
         EffectSettings::MultibandEq(s) => Some(&mut s.enabled),
+        EffectSettings::Exciter(s) => Some(&mut s.enabled),
         EffectSettings::Drive(s) => Some(&mut s.enabled),
         EffectSettings::DriveV2(s) => Some(&mut s.enabled),
         EffectSettings::AutoFilter(s) => Some(&mut s.enabled),

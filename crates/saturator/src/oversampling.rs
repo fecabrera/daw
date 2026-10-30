@@ -1,15 +1,20 @@
 //! Fixed 4× polyphase interpolation/decimation. Coefficients are prepared off the callback.
 const TAPS: usize = 129;
 const HISTORY: usize = TAPS.div_ceil(4);
-pub(super) const LATENCY: usize = (TAPS - 1) / 4;
+pub const LATENCY: usize = (TAPS - 1) / 4;
 #[derive(Clone)]
-pub(super) struct Oversampling {
+pub struct Oversampling {
     kernel: [f64; TAPS],
     // Mirrored rings keep each FIR history contiguous, avoiding modulo per tap.
     input: [[f64; 2]; HISTORY * 2],
     output: [[f64; 2]; TAPS * 2],
     input_index: usize,
     output_index: usize,
+}
+impl Default for Oversampling {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 impl Oversampling {
     pub fn new() -> Self {

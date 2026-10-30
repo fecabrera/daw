@@ -14,6 +14,7 @@ pub mod rows;
 pub mod theme;
 
 pub mod bitcrusher;
+pub mod exciter;
 pub mod saturator;
 
 pub mod compressor;

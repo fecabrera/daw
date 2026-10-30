@@ -1,13 +1,10 @@
 //! Three-band upward/downward compression with private FunDSP crossovers and detectors.
+use daw_filter::crossover::LinkwitzRileySplit as Split;
 use daw_unit_core::{
     BandMeter, CompressorDetection, EffectUnit, LevelMonitor, OTT_TYPE_ID, OttBandSettings,
     OttSettings, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
 };
-use fundsp::{
-    audionode::AudioNode,
-    dynamics::{Meter, MeterState},
-    svf::{FixedSvf, HighpassMode, LowpassMode, SvfParams},
-};
+use fundsp::dynamics::{Meter, MeterState};
 use std::sync::{Arc, atomic::AtomicU32};
 
 #[cfg(test)]
@@ -56,72 +53,6 @@ fn finite(value: f64) -> f32 {
     value.clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
 }
 
-/// Two cascaded Butterworth sections on each branch: fourth-order Linkwitz–Riley.
-#[derive(Clone)]
-struct Split {
-    low: [[FixedSvf<f64, LowpassMode<f64>>; 2]; 2],
-    high: [[FixedSvf<f64, HighpassMode<f64>>; 2]; 2],
-    frequency: f32,
-}
-impl Split {
-    fn new(rate: u32, frequency: f32) -> Self {
-        let params = SvfParams {
-            sample_rate: f64::from(rate),
-            cutoff: f64::from(frequency),
-            q: std::f64::consts::FRAC_1_SQRT_2,
-            gain: 1.0,
-        };
-        Self {
-            low: std::array::from_fn(|_| {
-                std::array::from_fn(|_| FixedSvf::new(LowpassMode::new(), &params))
-            }),
-            high: std::array::from_fn(|_| {
-                std::array::from_fn(|_| FixedSvf::new(HighpassMode::new(), &params))
-            }),
-            frequency,
-        }
-    }
-    fn configure(&mut self, frequency: f32) {
-        if self.frequency != frequency {
-            self.frequency = frequency;
-            for channel in &mut self.low {
-                for node in channel {
-                    node.set_cutoff(f64::from(frequency));
-                }
-            }
-            for channel in &mut self.high {
-                for node in channel {
-                    node.set_cutoff(f64::from(frequency));
-                }
-            }
-        }
-    }
-    fn sample(&mut self, input: [f32; 2]) -> ([f32; 2], [f32; 2]) {
-        let low = std::array::from_fn(|ch| {
-            self.low[ch]
-                .iter_mut()
-                .fold(input[ch], |x, node| node.filter_mono(x))
-        });
-        let high = std::array::from_fn(|ch| {
-            self.high[ch]
-                .iter_mut()
-                .fold(input[ch], |x, node| node.filter_mono(x))
-        });
-        (low, high)
-    }
-    fn reset(&mut self) {
-        for channel in &mut self.low {
-            for node in channel {
-                node.reset();
-            }
-        }
-        for channel in &mut self.high {
-            for node in channel {
-                node.reset();
-            }
-        }
-    }
-}
 // Fixed 6 dB soft knees, upward 4:1 below −36 dBFS and downward 10:1 above −18 dBFS.
 fn soft_over(over: f32) -> f32 {
     if over <= -3.0 {

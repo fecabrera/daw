@@ -6,6 +6,7 @@ use crate::{BITCRUSHER_STATE_VERSION, BITCRUSHER_TYPE_ID, BitcrusherSettings};
 use crate::{CHORUS_STATE_VERSION, CHORUS_TYPE_ID, ChorusSettings};
 use crate::{DIRECTION_MIXER_STATE_VERSION, DIRECTION_MIXER_TYPE_ID, DirectionMixerSettings};
 use crate::{DRIVE_V2_STATE_VERSION, DRIVE_V2_TYPE_ID, DriveV2Settings};
+use crate::{EXCITER_STATE_VERSION, EXCITER_TYPE_ID, ExciterSettings};
 use crate::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
 use crate::{LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterSettings};
 use crate::{MULTIBAND_EQ_STATE_VERSION, MULTIBAND_EQ_TYPE_ID, MultibandEqSettings};
@@ -78,6 +79,7 @@ impl EqSettings {
 pub enum EffectSettings {
     Eq3(EqSettings),
     MultibandEq(MultibandEqSettings),
+    Exciter(ExciterSettings),
     Drive(DriveSettings),
     DriveV2(DriveV2Settings),
     AutoFilter(AutoFilterSettings),
@@ -103,6 +105,10 @@ struct StoredEffect {
 impl Serialize for EffectSettings {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let stored = match self {
+            Self::Exciter(settings) => StoredEffect {
+                type_id: EXCITER_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
             Self::StereoSpread(settings) => StoredEffect {
                 type_id: STEREO_SPREAD_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
@@ -170,7 +176,17 @@ impl Serialize for EffectSettings {
 impl<'de> Deserialize<'de> for EffectSettings {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let stored = StoredEffect::deserialize(deserializer)?;
-        if stored.type_id == SATURATOR_TYPE_ID
+        if stored.type_id == EXCITER_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|v| v <= u64::from(EXCITER_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::Exciter)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == SATURATOR_TYPE_ID
             && stored
                 .state
                 .get("version")
@@ -319,6 +335,15 @@ impl<'de> Deserialize<'de> for EffectSettings {
     }
 }
 impl EffectSettings {
+    /// Stable child identities for repeated-band controls and prepared telemetry.
+    pub fn band_ids(&self) -> impl Iterator<Item = uuid::Uuid> + '_ {
+        let (eq, exciter): (&[crate::MultibandEqBand], &[crate::ExciterBand]) = match self {
+            Self::MultibandEq(s) => (s.bands.as_slice(), &[]),
+            Self::Exciter(s) => (&[], s.bands.as_slice()),
+            _ => (&[], &[]),
+        };
+        eq.iter().map(|b| b.id).chain(exciter.iter().map(|b| b.id))
+    }
     /// Destination-owned routes; all current effect destinations require shared sources.
     pub fn modulations(&self) -> &[crate::Modulation] {
         match self {
@@ -327,6 +352,7 @@ impl EffectSettings {
             Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::DriveV2(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::MultibandEq(s) => &s.modulations,
+            Self::Exciter(s) => &s.modulations,
             Self::Eq3(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Compressor(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Limiter(s) => crate::ModulationDestinationSettings::modulations(s),
@@ -348,6 +374,7 @@ impl EffectSettings {
             Self::Drive(s) => &mut s.modulations,
             Self::DriveV2(s) => &mut s.modulations,
             Self::MultibandEq(s) => &mut s.modulations,
+            Self::Exciter(s) => &mut s.modulations,
             Self::Eq3(s) => &mut s.modulations,
             Self::Compressor(s) => &mut s.modulations,
             Self::Limiter(s) => &mut s.modulations,
@@ -364,6 +391,7 @@ impl EffectSettings {
     pub fn valid(&self) -> bool {
         match self {
             Self::MultibandEq(eq) => eq.valid(),
+            Self::Exciter(s) => s.valid(),
             Self::Eq3(eq) => eq.valid(),
             Self::Drive(drive) => drive.valid(),
             Self::DriveV2(s) => s.valid(),
@@ -380,6 +408,7 @@ impl EffectSettings {
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
                     MULTIBAND_EQ_TYPE_ID => Some(MULTIBAND_EQ_STATE_VERSION),
+                    EXCITER_TYPE_ID => Some(EXCITER_STATE_VERSION),
                     EQ_TYPE_ID => Some(EQ_STATE_VERSION),
                     DRIVE_TYPE_ID => Some(DRIVE_STATE_VERSION),
                     DRIVE_V2_TYPE_ID => Some(DRIVE_V2_STATE_VERSION),
@@ -429,7 +458,24 @@ impl EffectInstance {
                 }
             }
         }
+        if let EffectSettings::Exciter(s) = &mut copy.unit {
+            for band in &mut s.bands {
+                let old = band.id;
+                band.id = uuid::Uuid::new_v4();
+                for route in &mut s.modulations {
+                    if route.target == Some(old) {
+                        route.target = Some(band.id);
+                    }
+                }
+            }
+        }
         copy
+    }
+    pub fn exciter() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::Exciter(ExciterSettings::default()),
+        }
     }
     pub fn multiband_equalizer() -> Self {
         Self {

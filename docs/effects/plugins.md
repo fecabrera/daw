@@ -1,6 +1,6 @@
 # Effect plugins
 
-Every built-in effect has a separate CLAP and VST3 development preview. Each uses its portable DAW processor. Host bypass, automation, and presets work independently for each instance. Plugin editors use the same control bodies as the built-in effects, including strip layout, labels, footers and meters.
+Fourteen built-in effects have separate CLAP and VST3 development previews. [Multiband Exciter](exciter.md) is currently available inside the DAW only. Each uses its portable DAW processor. Host bypass, automation, and presets work independently for each instance. Plugin editors use the same control bodies as the built-in effects, including strip layout, labels, footers and meters.
 
 | Product | Unit slug | Controls |
 | --- | --- | --- |

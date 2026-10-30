@@ -355,225 +355,60 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
         let entries = effects_catalog::ENTRIES.map(|entry| entry.type_id);
         let point = app.effects_bounds.auto_filter_entry.center();
         click(&mut app, &ctx, point);
-        for (key, shift, expected) in [
+        // Folder rows receive focus but never become selected effect entries.
+        let visible = [
+            None,
+            Some(entries[0]),
+            Some(entries[2]),
+            Some(entries[3]),
+            Some(entries[12]),
+            None,
+            Some(entries[4]),
+            Some(entries[5]),
+            Some(entries[6]),
+            None,
+            Some(entries[1]),
+            Some(entries[9]),
+            Some(entries[10]),
+            Some(entries[11]),
+            Some(entries[14]),
+            None,
+            Some(entries[7]),
+            Some(entries[8]),
+            Some(entries[13]),
+        ];
+        let mut steps = vec![
             (egui::Key::ArrowDown, false, vec![entries[12]]),
             (egui::Key::ArrowDown, false, vec![]),
             (egui::Key::ArrowDown, false, vec![entries[4]]),
-            (egui::Key::ArrowDown, true, vec![entries[4], entries[5]]),
-            (
+        ];
+        for row in 7..visible.len() {
+            steps.push((
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[4], entries[5], entries[6]],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![entries[4], entries[5], entries[6]],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![entries[4], entries[5], entries[6], entries[1]],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![entries[4], entries[5], entries[6], entries[1], entries[9]],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                ],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                ],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                ],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                    entries[7],
-                ],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                    entries[7],
-                    entries[8],
-                ],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                    entries[7],
-                    entries[8],
-                    entries[13],
-                ],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                    entries[7],
-                    entries[8],
-                    entries[13],
-                ],
-            ),
-            (
+                visible[6..=row].iter().flatten().copied().collect(),
+            ));
+        }
+        steps.push((
+            egui::Key::ArrowDown,
+            true,
+            visible[6..].iter().flatten().copied().collect(),
+        ));
+        for row in (6..visible.len() - 1).rev() {
+            steps.push((
                 egui::Key::ArrowUp,
                 true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                    entries[7],
-                    entries[8],
-                ],
-            ),
-            (
+                visible[6..=row].iter().flatten().copied().collect(),
+            ));
+        }
+        for row in (1..6).rev() {
+            steps.push((
                 egui::Key::ArrowUp,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                    entries[7],
-                ],
-            ),
-            (
-                egui::Key::ArrowUp,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                ],
-            ),
-            (
-                egui::Key::ArrowUp,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                    entries[11],
-                ],
-            ),
-            (
-                egui::Key::ArrowUp,
-                true,
-                vec![
-                    entries[4],
-                    entries[5],
-                    entries[6],
-                    entries[1],
-                    entries[9],
-                    entries[10],
-                ],
-            ),
-            (
-                egui::Key::ArrowUp,
-                true,
-                vec![entries[4], entries[5], entries[6], entries[1], entries[9]],
-            ),
-            (
-                egui::Key::ArrowUp,
-                true,
-                vec![entries[4], entries[5], entries[6], entries[1]],
-            ),
-            (
-                egui::Key::ArrowUp,
-                true,
-                vec![entries[4], entries[5], entries[6]],
-            ),
-            (
-                egui::Key::ArrowUp,
-                true,
-                vec![entries[4], entries[5], entries[6]],
-            ),
-            (egui::Key::ArrowUp, true, vec![entries[4], entries[5]]),
-            (egui::Key::ArrowUp, true, vec![entries[4]]),
-            (egui::Key::ArrowUp, false, vec![]),
-            (egui::Key::ArrowUp, false, vec![entries[12]]),
-            (egui::Key::ArrowUp, false, vec![entries[3]]),
-            (egui::Key::ArrowUp, false, vec![entries[2]]),
-            (egui::Key::ArrowUp, false, vec![entries[0]]),
-        ] {
+                false,
+                visible[row].into_iter().collect(),
+            ));
+        }
+        for (key, shift, expected) in steps {
             library_key(&mut app, &ctx, key, shift);
             assert_eq!(
                 app.effects_catalog.selection,

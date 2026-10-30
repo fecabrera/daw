@@ -379,6 +379,9 @@ impl Renderer {
             for effect in effects {
                 effect.id.hash(&mut hash);
                 match &effect.unit {
+                    daw_core::EffectSettings::Exciter(_) => {
+                        daw_unit_core::EXCITER_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::MultibandEq(_) => {
                         daw_unit_core::MULTIBAND_EQ_TYPE_ID.hash(&mut hash)
                     }
@@ -627,6 +630,21 @@ impl Renderer {
         }
         for chain in &mut self.effects {
             chain.set_output_meter(id, &meter);
+        }
+    }
+    /// Bind live-only band audition independently of saved project state.
+    pub fn bind_exciter_solo(
+        &mut self,
+        effect: Id,
+        band: Id,
+        solo: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        self.master_effects.bind_exciter_solo(effect, band, &solo);
+        for midi in self.midi.iter_mut().flatten() {
+            midi.bind_exciter_solo(effect, band, &solo);
+        }
+        for chain in &mut self.effects {
+            chain.bind_exciter_solo(effect, band, &solo);
         }
     }
     pub fn set_ott_meter(

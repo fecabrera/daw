@@ -8,6 +8,7 @@ pub(super) struct Bindings {
     pub tracks: HashMap<Id, Arc<StereoMeter>>,
     pub layers: layer_meters::Layers,
     pub effects: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
+    pub exciter_solos: effect_audition::Solos,
     pub outputs: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
     pub bands: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     pub modulation: HashMap<ModulationTarget, ModulationMeter>,
@@ -167,6 +168,10 @@ impl Worker {
                                 tracks: track_meters(&plan, &previous.tracks),
                                 layers: layer_meters::prepare(&plan, &previous.layers),
                                 effects: effect_meters(&plan, &previous.effects),
+                                exciter_solos: effect_audition::prepare(
+                                    &plan,
+                                    &previous.exciter_solos,
+                                ),
                                 outputs: output_meters(&plan, &previous.outputs),
                                 bands: band_meters(&plan, &previous.bands),
                                 modulation: modulation_meters(&plan, &previous.modulation),
@@ -280,6 +285,7 @@ impl Worker {
                         }
                     }
                     renderer.reset_track_peaks();
+                    effect_audition::bind(&mut renderer, &bindings.exciter_solos);
                     bind_effect_meters(&mut renderer, &bindings.effects);
                     bind_band_meters(&mut renderer, &bindings.bands);
                     bind_output_meters(&mut renderer, &bindings.outputs);

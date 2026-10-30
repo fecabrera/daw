@@ -36,16 +36,7 @@ pub fn menu_shortcut_text(ctx: &egui::Context, shortcut: &egui::KeyboardShortcut
 
 /// Square single-letter toggles share the standard control height in both views.
 pub fn square_toggle(ui: &mut Ui, label: &str, selected: bool) -> egui::Response {
-    ui.scope(|ui| {
-        // Keep the single-letter label compact without widening the button.
-        ui.spacing_mut().button_padding.x = 3.0;
-        ui.add(
-            egui::Button::new(RichText::new(label).small())
-                .selected(selected)
-                .min_size(Vec2::splat(CONTROL_HEIGHT)),
-        )
-    })
-    .inner
+    daw_unit_ui::rows::square_toggle(ui, label, selected)
 }
 
 /// Shared toolbar frame and control spacing. Callers supply their controls.

@@ -695,6 +695,7 @@ fn renderer_memory_estimate_covers_clone_allocations_for_all_effects_and_modulat
         daw_core::EffectInstance::direction_mixer(),
         daw_core::EffectInstance::stereo_spread(),
         daw_core::EffectInstance::saturator(),
+        daw_core::EffectInstance::exciter(),
         daw_core::EffectInstance::bitcrusher(),
     ];
     let renderer = Renderer::new(plan);

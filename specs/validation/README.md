@@ -4,6 +4,18 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Multiband Exciter — 2026-10-30
+
+Added the built-in `daw.exciter` with variable ordered bands, Soft/Tube/Tape/Hard modes, band Drive/Mix/Level and Power, global Out Level/DryWet, standard output meter/held peak and live-only Solo. Shared OTT LR4 crossovers and Saturator oversampling/static curves are reused without changing existing DSP arithmetic. Ordered crossover changes share one ramp clock. Neutral recombination is flat in magnitude but retains crossover phase.
+
+Focused portable DSP, settings, engine, project, UI and output tests pass. Coverage includes all six project rates, harmonic distinction/DC removal, alias suppression, gain/mix order, full-headroom bypass, rapid ordered crossover edits, band/route identity, invalid atomic edits, bus transfers, save/reopen/Save As and byte-identical float export. Engine checks exercise every effect placement, live/offline/block/seek parity, active targeted modulation, callback allocation/retirement, Solo dry isolation and export/snapshot exclusion. The output clone-memory estimate and meter-bypass matrices include Exciter. The existing OTT suite passes after crossover extraction. UI checks cover Mode dropdown, Remove band, transient Solo, shared footers and output rail in Dark/Light/Mist at 1×/1.5×.
+
+`cargo fmt --all --check`, `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`, the locked offline CLI build, `python3 tools/check_cli.py` and `sh tools/package_macos.sh debug` pass. No external dependency version changes occur. Separate Exciter CLAP/VST3 products are outside this implementation; the existing fourteen preview products remain unchanged.
+
+`cargo test --offline --locked --workspace` passes: 1,913 tests passed, 11 ignored and no failures, including all 725 UI tests and documentation tests. Final focused DSP, engine, project, output and UI checks also pass. Changed Markdown local file links and `git diff HEAD --check` pass. Logs use `work/exciter-*`; the rebuilt app is `target/debug/DAW.app`.
+
+Native app inventory failed with `Sky Computer Use native pipe startup failed`; no native UI or audio-device listening is claimed. Native Windows/Linux execution, release CPU budgets for representative band counts and listening acceptance remain open. Automated checks do not replace those gates.
+
 ## Editor project track browser — 2026-10-29
 
 Editor reuses Instrument's project track browser and Timeline's track-name label. Visibility stays separate between views; Editor's Tracks, Effects and Chords panels are exclusive. Browser navigation selects the earliest clip, clears stale clip selection on empty tracks and retains project data. Header geometry and text tests cover audio/MIDI tracks, themes and display scales.

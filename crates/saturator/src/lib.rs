@@ -1,5 +1,5 @@
 //! Portable stereo waveshaping with shared modulation and fixed-latency 4× anti-aliasing.
-mod oversampling;
+pub mod oversampling;
 use daw_unit_core::{
     EffectUnit, LevelMonitor, ModulationContext, ModulationDestination,
     ModulationDestinationSettings, ModulationInputs, ModulationParameter, ModulationRamp,
@@ -22,7 +22,8 @@ fn knee(input: f64, start: f64, ceiling: f64) -> f64 {
         (start + (ceiling - start) * ((x - start) / (ceiling - start)).tanh()).copysign(input)
     }
 }
-fn shape(shape: SaturatorShape, x: f64) -> f64 {
+/// Shared static saturation transfer, with unity small-signal gain.
+pub fn shape(shape: SaturatorShape, x: f64) -> f64 {
     match shape {
         SaturatorShape::AnalogClip => knee(x, 0.75, 1.5),
         SaturatorShape::SoftSine => {

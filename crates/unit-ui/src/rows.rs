@@ -111,3 +111,17 @@ pub fn selector_row(
     )
     .inner
 }
+
+/// Shared track/layer/band single-letter toggle.
+pub fn square_toggle(ui: &mut Ui, label: &str, selected: bool) -> egui::Response {
+    ui.scope(|ui| {
+        // Keep the single-letter label compact without widening the button.
+        ui.spacing_mut().button_padding.x = 3.0;
+        ui.add(
+            egui::Button::new(egui::RichText::new(label).small())
+                .selected(selected)
+                .min_size(Vec2::splat(22.0)),
+        )
+    })
+    .inner
+}

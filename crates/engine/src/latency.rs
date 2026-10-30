@@ -47,6 +47,7 @@ pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
         .iter()
         .map(|e| match e.unit {
             EffectSettings::Limiter(_) => u64::from(daw_limiter::Limiter::latency_for_rate(rate)),
+            EffectSettings::Exciter(_) => u64::from(daw_exciter::Exciter::LATENCY_FRAMES),
             EffectSettings::Saturator(_) => u64::from(daw_saturator::Saturator::LATENCY_FRAMES),
             _ => 0,
         })
