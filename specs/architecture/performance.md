@@ -2,6 +2,8 @@
 
 Implemented after the [2026-10-18 audit](../validation/performance-audit-2026-10-18.md). See the [remediation validation](../validation/performance-remediation-2026-10-18.md) for measurements and remaining native checks.
 
+Planned extension: [saved audio caches and background preparation](background-audio-preparation.md). Persistent media caches and editor/prepared revision separation are not implemented by the baseline below.
+
 ## Prepared state
 
 `engine::Renderer` prepares the arrangement end, sorted clip ranges, source-buffer bindings, track/effect identity tables, alignment identity tables, and gain/pan/audibility coefficients. Treat its project content as immutable. Publish a new renderer after an arrangement or processing edit; changing its public project fields in place does not rebuild these caches.

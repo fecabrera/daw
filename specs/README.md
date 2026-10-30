@@ -17,6 +17,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Saturator and Bitcrusher plugin builds](architecture/saturator-bitcrusher-plugin-builds.md).
 - [Drive v2 plugin builds](architecture/drive-v2-plugin-builds.md): separate CLAP/VST3 products, shared three-strip editor, state contract and local validation.
 - [Prepared rendering and performance](architecture/performance.md).
+- [Saved audio caches and background preparation](architecture/background-audio-preparation.md): staged plan for persistent media caches, early editor loading, nonblocking MIDI edits, and bounded background work.
 - [Stem-separation native dependency audit](audio/stem-native-dependencies.md): pinned native components, advisories, licenses and platform packaging.
 - [Parallel cache preparation validation — 2026-10-19](validation/parallel-cache-preparation-2026-10-19.md).
 - [Architecture review — 2026-10-19](architecture/review-2026-10-19/README.md): current architecture, pipelines, workflow stages, cache ownership, findings and review decisions.

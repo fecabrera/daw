@@ -6,6 +6,8 @@ Implemented design, updated 2026-10-18. Sampler is an instrument component for r
 
 ## Placement and source ownership
 
+The [saved-cache and background-preparation plan](../architecture/background-audio-preparation.md) proposes persistent pitch buffers and nonblocking MIDI edits. The preparation/publication rules below describe current behavior until those stages are implemented.
+
 Register Sampler once in the Instrument components catalog. A layer can have one of Oscillator, Sampler, or [Granulizer](granulizer.md); the Oscillator component can still contain multiple oscillator strips. Empty layers remain silent. Sampler stays first in the layer and cannot enter Main. Conflicting catalog additions and installed transfers leave the project unchanged and show an unsupported-target hint. A catalog selection containing multiple source types cannot enter a regular layer.
 
 Source headers offer an explicit **Replace source** action. Replacement keeps the layer's identity, mix settings, modulators, and Amplitude stage. It discards the old source settings and oscillator pitch routes when applicable. Component selection, Delete/Backspace, header group moves/copies, focus, insertion previews, and cancellation reuse the existing component paths. Sampler copies receive a fresh sampler ID and share the immutable audio asset. Removing Sampler discards its settings; retained Envelope/LFO/Macro/Amplitude settings keep their existing restoration rules.
