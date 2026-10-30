@@ -25,6 +25,8 @@ Open the header's modulation dot to connect shared Envelope, LFO, or Macro sourc
 
 Removing a band removes its modulation connections. Other bands keep their connections when their displayed numbers change. Undo restores a removed band and its connections.
 
+In the built-in effect, drag a band's label or unused strip space to reorder bands, as with oscillator strips. The insertion line shows the new position. Release within the band bank to apply the change. Escape, loss of focus, or release outside the bank cancels it. Drag near a lane edge to scroll. Knobs and Power keep their existing controls. Reordering retains each band's settings and modulation connections, changes the serial processing order, and supports Undo/Redo. The standalone plugins retain their fixed automation-slot order.
+
 The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.
 
 This effect also has a [standalone CLAP/VST3 plugin](plugins.md).

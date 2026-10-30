@@ -83,6 +83,7 @@ pub fn band_controls(
     })
 }
 pub struct BandBounds {
+    pub response: egui::Response,
     pub section: Rect,
     pub controls: [Rect; 4],
     pub power: Rect,
@@ -99,43 +100,50 @@ pub fn band(
     level: f32,
 ) -> BandBounds {
     let (compact, height) = dimensions;
-    let mut b = BandBounds {
-        section: Rect::NOTHING,
-        controls: [Rect::NOTHING; 4],
-        power: Rect::NOTHING,
-        meter: Rect::NOTHING,
-        remove: false,
-    };
-    b.section = panels::unit_strip(ui, height, egui::UiBuilder::new(), |ui| {
-        ui.spacing_mut().item_spacing.y = CONTROL_GAP;
-        if !compact {
-            b.controls = band_controls(ui, band, markers, open, &mut b.remove);
-        }
-        rows::centered(
-            ui,
-            if compact {
-                height
-            } else {
-                crate::layout::COMPACT_BUTTON_SIZE
-            },
-            |ui| {
-                let response = rows::power_label(
-                    ui,
-                    &format!("Band {}", index + 1),
-                    &format!("Toggle EQ band {}", index + 1),
-                    band.enabled,
-                )
-                .on_hover_text("Off bypasses this band. Right-click to remove it.");
-                if response.clicked() {
-                    band.enabled = !band.enabled;
+    let mut controls = [Rect::NOTHING; 4];
+    let mut power = Rect::NOTHING;
+    let mut remove = false;
+    let strip = ui.scope_builder(
+        egui::UiBuilder::new().sense(egui::Sense::click_and_drag()),
+        |ui| {
+            panels::unit_strip(ui, height, egui::UiBuilder::new(), |ui| {
+                ui.spacing_mut().item_spacing.y = CONTROL_GAP;
+                if !compact {
+                    controls = band_controls(ui, band, markers, open, &mut remove);
                 }
-                b.power = response.rect;
-                remove_menu(&response, &mut b.remove);
-            },
-        );
-    })
-    .response
-    .rect;
+                rows::centered(
+                    ui,
+                    if compact {
+                        height
+                    } else {
+                        crate::layout::COMPACT_BUTTON_SIZE
+                    },
+                    |ui| {
+                        let response = rows::power_label(
+                            ui,
+                            &format!("Band {}", index + 1),
+                            &format!("Toggle EQ band {}", index + 1),
+                            band.enabled,
+                        )
+                        .on_hover_text("Off bypasses this band. Right-click to remove it.");
+                        if response.clicked() {
+                            band.enabled = !band.enabled;
+                        }
+                        power = response.rect;
+                        remove_menu(&response, &mut remove);
+                    },
+                );
+            })
+        },
+    );
+    let mut b = BandBounds {
+        section: strip.response.rect,
+        response: strip.response,
+        controls,
+        power,
+        meter: Rect::NOTHING,
+        remove,
+    };
     if !compact {
         b.meter = meters::unit_monitor_rail(b.section, crate::layout::PANEL_MARGIN);
         meters::band_level_rail(
@@ -217,6 +225,7 @@ pub struct Controls<'a> {
 pub struct Bounds {
     pub sections: Vec<Rect>,
     pub bands: Vec<Rect>,
+    pub band_responses: Vec<egui::Response>,
     pub knobs: Vec<[Rect; 4]>,
     pub power: Vec<Rect>,
     pub meters: Vec<Rect>,
@@ -236,6 +245,7 @@ pub fn show(
     let mut bounds = Bounds {
         sections: vec![],
         bands: vec![],
+        band_responses: vec![],
         knobs: vec![],
         power: vec![],
         meters: vec![],
@@ -273,6 +283,7 @@ pub fn show(
             }
             bounds.sections.push(b.section);
             bounds.bands.push(b.section);
+            bounds.band_responses.push(b.response);
             bounds.knobs.push(b.controls);
             bounds.power.push(b.power);
             if !dimensions.0 {

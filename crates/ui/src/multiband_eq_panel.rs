@@ -134,20 +134,38 @@ fn body(
     );
     let mut remove = None;
     let mut add = false;
+    let owner = ui.make_persistent_id("eq-band-order");
+    let reordering = crate::strip_reorder::active(ui, owner);
+    let original = settings.bands.clone();
+    let mut slots = Vec::new();
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-        let shared = daw_unit_ui::multiband_eq::show(
-            ui,
-            settings,
-            (compact, body_height),
-            daw_unit_ui::multiband_eq::Controls {
-                add_enabled: true,
-                markers: &markers,
-                levels: &band_levels,
-                output_marker: output_marker.as_ref(),
-                output_level: None,
-            },
-        );
+        let shared = ui
+            .add_enabled_ui(!reordering, |ui| {
+                daw_unit_ui::multiband_eq::show(
+                    ui,
+                    settings,
+                    (compact, body_height),
+                    daw_unit_ui::multiband_eq::Controls {
+                        add_enabled: true,
+                        markers: &markers,
+                        levels: &band_levels,
+                        output_marker: output_marker.as_ref(),
+                        output_level: None,
+                    },
+                )
+            })
+            .inner;
+        for (index, (band, response)) in original.iter().zip(&shared.band_responses).enumerate() {
+            // Click-only Power can pass drag sensing to its parent, as in Oscillator.
+            let control_press = ui.input(|i| i.pointer.press_origin()).is_some_and(|p| {
+                shared.power[index].contains(p) || shared.knobs[index].iter().any(|r| r.contains(p))
+            });
+            if !control_press {
+                crate::strip_reorder::arm_bands(ui, owner, response, band.id, &original);
+            }
+            slots.push((band.id, response.rect));
+        }
         if let Some(index) = shared.remove {
             remove = Some(settings.bands[index].id);
         }
@@ -190,6 +208,15 @@ fn body(
             );
         }
     });
+    if let (Some((_, first)), Some((_, last))) = (slots.first(), slots.last()) {
+        crate::strip_reorder::finish_bands(
+            ui,
+            owner,
+            &mut settings.bands,
+            &slots,
+            first.union(*last).intersect(ui.clip_rect()),
+        );
+    }
     if let Some(id) = remove {
         settings.remove_band(id);
     }

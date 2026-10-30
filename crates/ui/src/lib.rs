@@ -5469,6 +5469,7 @@ mod tests {
     mod midi;
     mod midi_pattern_gestures;
     mod mixer;
+    mod multiband_eq_reorder;
     mod placement_overwrite;
     mod project_settings;
     mod resize_neighbors;

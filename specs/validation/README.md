@@ -4,6 +4,16 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Multiband EQ band reordering — 2026-10-30
+
+Built-in EQ bands now reuse Oscillator's shared drag threshold, insertion geometry, preview line and edge scrolling, plus the existing strip gesture lifecycle. A valid release commits one effect-chain transaction. Band UUIDs, settings and modulation routes remain attached. Same-position and outside drops, Escape, focus loss, changed settings and host changes cancel without a reorder. Knobs and Power retain their controls. Standalone automation slots, DSP and saved formats are unchanged.
+
+All six new interaction tests and the complete 731-test UI suite pass. Coverage includes compact/expanded track, Master, regular layer and Output bands; release-only commits; Undo/Redo; serialized order; assigned source connections; fast releases; control exclusions; scrolling; and cancellation/invalidation. The shared reorder test selection also passes, including Oscillator and modulation strips. Formatting, strict locked offline workspace/all-target Clippy and `sh tools/package_macos.sh debug` pass. Logs use `work/eq-reorder-*`; the rebuilt app is `target/debug/DAW.app`.
+
+`cargo test --offline --locked --workspace` passes: 1,919 tests passed, 11 ignored and no failures, including all 731 UI tests and documentation tests. Changed Markdown local file links and `git diff HEAD --check` pass.
+
+Native app inventory failed with `Sky Computer Use native pipe startup failed`. Native pointer/device checks and Windows/Linux execution remain unverified; automated input and package checks do not establish native acceptance.
+
 ## Multiband Exciter — 2026-10-30
 
 Added the built-in `daw.exciter` with variable ordered bands, Soft/Tube/Tape/Hard modes, band Drive/Mix/Level and Power, global Out Level/DryWet, standard output meter/held peak and live-only Solo. Shared OTT LR4 crossovers and Saturator oversampling/static curves are reused without changing existing DSP arithmetic. Ordered crossover changes share one ramp clock. Neutral recombination is flat in magnitude but retains crossover phase.

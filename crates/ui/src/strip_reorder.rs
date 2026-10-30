@@ -1,6 +1,6 @@
-//! Temporary modulation-strip gesture state. Models change only after a valid release.
+//! Temporary unit-strip gesture state. Models change only after a valid release.
 use crate::drag;
-use daw_core::{Id, Modulation};
+use daw_core::{Id, Modulation, MultibandEqBand};
 use egui::{Context, Pos2, Rect, Response, Ui};
 
 #[derive(Clone)]
@@ -8,11 +8,16 @@ struct State {
     host: egui::Id,
     owner: egui::Id,
     unit: Id,
-    original: Vec<Modulation>,
+    original: Original,
     origin: Pos2,
     focus: egui::Id,
     active: bool,
     frame: u64,
+}
+#[derive(Clone)]
+enum Original {
+    Routes(Vec<Modulation>),
+    EqBands(Vec<MultibandEqBand>),
 }
 fn key() -> egui::Id {
     egui::Id::new("modulation-strip-drag")
@@ -69,10 +74,43 @@ pub(super) fn arm(
     unit: Id,
     original: &[Modulation],
 ) {
+    arm_items(
+        ui,
+        owner,
+        response,
+        unit,
+        || Original::Routes(original.to_vec()),
+        "Drag strip space to reorder modulation connections.",
+    );
+}
+pub(super) fn arm_bands(
+    ui: &Ui,
+    owner: egui::Id,
+    response: &Response,
+    unit: Id,
+    original: &[MultibandEqBand],
+) {
+    arm_items(
+        ui,
+        owner,
+        response,
+        unit,
+        || Original::EqBands(original.to_vec()),
+        "Drag strip space to reorder EQ bands.",
+    );
+}
+fn arm_items(
+    ui: &Ui,
+    owner: egui::Id,
+    response: &Response,
+    unit: Id,
+    original: impl FnOnce() -> Original,
+    tooltip: &str,
+) {
     response
         .clone()
         .on_hover_cursor(egui::CursorIcon::Grab)
-        .on_hover_text("Drag strip space to reorder modulation connections.");
+        .on_hover_text(tooltip);
     if dragging(ui.ctx()) {
         return;
     }
@@ -92,7 +130,7 @@ pub(super) fn arm(
                 host,
                 owner,
                 unit,
-                original: original.to_vec(),
+                original: original(),
                 origin,
                 focus: response.id,
                 active: false,
@@ -113,12 +151,40 @@ pub(super) fn finish(
         ui.ctx()
             .data_mut(|d| d.insert_temp(egui::Id::new((*id, "route-drag-bounds")), *rect));
     }
-    let Some(mut s) = state(ui.ctx()).filter(|s| s.owner == owner) else {
-        return;
-    };
-    if drag::cancelled(ui) || *routes != s.original {
+    let unchanged = state(ui.ctx()).is_some_and(
+        |s| matches!(s.original, Original::Routes(ref original) if routes == original),
+    );
+    if let Some((old, index)) = finish_move(ui, owner, unchanged, slots, bounds) {
+        let route = routes.remove(old);
+        routes.insert(index, route);
+    }
+}
+pub(super) fn finish_bands(
+    ui: &Ui,
+    owner: egui::Id,
+    bands: &mut Vec<MultibandEqBand>,
+    slots: &[(Id, Rect)],
+    bounds: Rect,
+) {
+    let unchanged = state(ui.ctx()).is_some_and(
+        |s| matches!(s.original, Original::EqBands(ref original) if bands == original),
+    );
+    if let Some((old, index)) = finish_move(ui, owner, unchanged, slots, bounds) {
+        let band = bands.remove(old);
+        bands.insert(index, band);
+    }
+}
+fn finish_move(
+    ui: &Ui,
+    owner: egui::Id,
+    unchanged: bool,
+    slots: &[(Id, Rect)],
+    bounds: Rect,
+) -> Option<(usize, usize)> {
+    let mut s = state(ui.ctx()).filter(|s| s.owner == owner)?;
+    if drag::cancelled(ui) || !unchanged {
         clear(ui.ctx());
-        return;
+        return None;
     }
     s.active |= drag::crossed_threshold(ui, s.origin);
     s.frame = ui.ctx().cumulative_frame_nr();
@@ -126,7 +192,7 @@ pub(super) fn finish(
         ui.input(|i| i.pointer.latest_pos())
             .filter(|p| bounds.contains(*p))
             .and_then(|p| {
-                let old = routes.iter().position(|r| r.id == s.unit)?;
+                let old = slots.iter().position(|(id, _)| *id == s.unit)?;
                 let slot = drag::insertion_slot(p, slots.iter().map(|(_, r)| *r));
                 let index = slot - usize::from(old < slot);
                 (index != old).then_some((slot, index, old))
@@ -153,15 +219,13 @@ pub(super) fn finish(
     if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
         clear(ui.ctx());
         drag::restore_focus(ui.ctx(), s.focus);
-        if let Some((_, index, old)) = target {
-            let route = routes.remove(old);
-            routes.insert(index, route);
-        }
+        return target.map(|(_, index, old)| (old, index));
     } else if !ui.input(|i| i.pointer.primary_down()) {
         clear(ui.ctx());
     } else {
         ui.ctx().data_mut(|d| d.insert_temp(key(), s));
     }
+    None
 }
 pub(super) fn scroll(ui: &Ui) {
     if state(ui.ctx()).is_some_and(|s| s.active) {
