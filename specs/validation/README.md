@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Editor project track browser — 2026-10-29
+
+Editor reuses Instrument's project track browser and Timeline's track-name label. Visibility stays separate between views; Editor's Tracks, Effects and Chords panels are exclusive. Browser navigation selects the earliest clip, clears stale clip selection on empty tracks and retains project data. Header geometry and text tests cover audio/MIDI tracks, themes and display scales.
+
+`cargo test --offline --locked -p daw-ui --lib` passes all 722 tests. The locked offline workspace run passes 1,893 tests, with 11 ignored and no failures, including all UI and documentation tests. `cargo fmt --all --check`, strict offline locked workspace Clippy and `sh tools/package_macos.sh debug` pass. Changed Markdown local links and the whitespace diff check pass. These are automated checks and a package build; no native UI, device or Windows/Linux execution is claimed.
+
 ## Windows source publication and relative paths — 2026-10-29
 
 Windows manifest publication now uses handle-based replacement that permits delete-sharing readers to retain old data. Sharing failures still retain both original files. Relative source calculation recognizes ordinary and verbatim Windows drive/UNC prefixes without changing filesystem paths. External references stay absolute when a caller folder alias would change a relative parent traversal.

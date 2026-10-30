@@ -66,7 +66,7 @@ pub(super) struct MidiEditor {
     #[cfg(test)]
     pub(crate) panel_bounds: Rect,
     #[cfg(test)]
-    pub(crate) selector_bounds: Rect,
+    pub(crate) name_bounds: Rect,
     #[cfg(test)]
     pub(crate) scale_snap_bounds: Rect,
     #[cfg(test)]
@@ -150,7 +150,7 @@ impl Default for MidiEditor {
             #[cfg(test)]
             panel_bounds: Rect::NOTHING,
             #[cfg(test)]
-            selector_bounds: Rect::NOTHING,
+            name_bounds: Rect::NOTHING,
             #[cfg(test)]
             scale_snap_bounds: Rect::NOTHING,
             #[cfg(test)]

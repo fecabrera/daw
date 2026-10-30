@@ -275,3 +275,68 @@ fn rows_reuse_catalog_insets_in_every_theme_and_display_scale() {
         }
     }
 }
+
+#[test]
+fn editor_browser_shares_groups_and_selects_audio_midi_and_empty_tracks() {
+    let (mut app, ctx, [a, m, g, b, n, _]) = fixture();
+    let first = app.session.project.add_midi_pattern(m, 0).unwrap();
+    let later = app.session.project.add_midi_pattern(n, 96_000).unwrap();
+    let earliest = app.session.project.add_midi_pattern(n, 0).unwrap();
+    app.select_clip(first, m, false);
+    app.set_view_mode(ViewMode::Edit, &ctx);
+    let original = app.session.project.clone();
+    open(&mut app, &ctx);
+    assert!(app.tracks_panel_visible());
+    assert!(
+        !app.track_browser.visible,
+        "Instrument visibility is independent"
+    );
+    let group = row(&app, g);
+    click(&mut app, &ctx, group);
+    let midi = row(&app, n);
+    click(&mut app, &ctx, midi);
+    assert_eq!(app.editor_track().unwrap().id, n);
+    assert_eq!(app.selected_clip, Some(earliest));
+    assert!(app.midi_editor.clip_bounds.contains_key(&later));
+    assert_eq!(
+        app.effects_target(),
+        Some(effects_panel::EffectTarget::Track(n))
+    );
+    let audio = row(&app, b);
+    click(&mut app, &ctx, audio);
+    assert_eq!(app.editor_track().unwrap().id, b);
+    assert!(app.selected_clip.is_none() && app.selected_clips.is_empty());
+    let top = row(&app, a);
+    click(&mut app, &ctx, top);
+    key(&mut app, &ctx, egui::Key::ArrowDown);
+    assert_eq!(app.selected_clip, Some(first));
+    assert_eq!(app.editor_track().unwrap().id, m);
+    assert_eq!(app.view_mode, ViewMode::Edit);
+    assert_eq!(app.session.project, original);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn editor_browser_catalogs_are_exclusive_and_visibility_is_per_view() {
+    let (mut app, ctx, _) = fixture();
+    app.set_view_mode(ViewMode::Edit, &ctx);
+    open(&mut app, &ctx);
+    let effects = app.effects_bounds.library_toggle.center();
+    click(&mut app, &ctx, effects);
+    assert!(app.effects_catalog_visible() && !app.tracks_panel_visible());
+    let tracks = app.track_browser.bounds.toggle.center();
+    click(&mut app, &ctx, tracks);
+    assert!(app.tracks_panel_visible() && !app.effects_catalog_visible());
+    let chords = app.chords.bounds.toggle.center();
+    click(&mut app, &ctx, chords);
+    assert!(app.chords_visible() && !app.tracks_panel_visible());
+    let tracks = app.track_browser.bounds.toggle.center();
+    click(&mut app, &ctx, tracks);
+    assert!(app.tracks_panel_visible() && !app.chords_visible());
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.tracks_panel_visible());
+    app.set_view_mode(ViewMode::Edit, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.tracks_panel_visible());
+}

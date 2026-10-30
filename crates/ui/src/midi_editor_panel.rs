@@ -127,7 +127,6 @@ impl DawUi {
     }
 
     fn editor_track_header(&mut self, ui: &mut egui::Ui) {
-        // Track selection can change inside this row. Resolve it again before mixing.
         #[cfg(test)]
         {
             self.midi_editor.track_mix_bounds = [Rect::NOTHING; 2];
@@ -147,7 +146,7 @@ impl DawUi {
                 .and_then(|t| self.output.as_ref()?.track_meter(t.id))
                 .map_or([(0.0, false); 2], |meter| meter.levels());
             let cleared = meters::stereo_panel(ui, self.track_row_height() - 14.0, levels, |ui| {
-                let mut track = self.editor_track().cloned();
+                let track = self.editor_track().cloned();
                 let mut header_rows = track_rows::HeaderRows::new(ui, self.track_rows_collapsed);
                 rows::centered(
                     &mut header_rows.name,
@@ -157,30 +156,21 @@ impl DawUi {
                         toolbars::CONTROL_HEIGHT
                     },
                     |ui| {
-                        let name_width = ui.available_width();
-                        ui.allocate_ui_with_layout(
-                            Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                let icon =
-                                    if track.as_ref().is_none_or(|t| t.kind == TrackKind::Midi) {
-                                        icons::Lucide::KeyboardMusic
-                                    } else {
-                                        icons::Lucide::AudioLines
-                                    };
-                                icons::header_icon(ui, icon, Sense::hover());
-                                let response = self.track_dropdown(ui, Some(ui.available_width()));
-                                #[cfg(test)]
-                                {
-                                    self.midi_editor.selector_bounds = response.rect;
-                                }
-                                #[cfg(not(test))]
-                                let _ = response;
-                            },
-                        );
+                        let response = rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
+                            if let Some(track) = track.as_ref() {
+                                self.track_name(ui, track);
+                            } else {
+                                ui.label("Select track");
+                            }
+                        });
+                        #[cfg(test)]
+                        {
+                            self.midi_editor.name_bounds = response.response.rect;
+                        }
+                        #[cfg(not(test))]
+                        let _ = response;
                     },
                 );
-                track = self.editor_track().cloned();
                 if let Some(mut track) = track {
                     let (controls, buttons) = header_rows
                         .mix

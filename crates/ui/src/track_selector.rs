@@ -32,6 +32,26 @@ impl DawUi {
             .map(|track| track.id)
     }
 
+    /// Editor navigation selects the earliest clip and clears a stale clip on empty tracks.
+    pub(super) fn select_editor_track(&mut self, id: Id) {
+        self.select_track(id, false);
+        let clip = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == id)
+            .and_then(|t| t.clips.iter().min_by_key(|c| c.start_frame))
+            .map(|c| c.id);
+        if let Some(clip) = clip {
+            self.select_clip(clip, id, false);
+        } else {
+            self.selected_clip = None;
+            self.selected_clips.clear();
+        }
+        self.midi_editor.cancel();
+    }
+
     pub(super) fn track_control(&mut self, ui: &mut egui::Ui) {
         self.track_dropdown(ui, None);
     }
@@ -85,23 +105,10 @@ impl DawUi {
                 if selected != current
                     && let Some(id) = selected
                 {
-                    self.select_track(id, false);
                     if self.view_mode == ViewMode::Edit {
-                        let clip = self
-                            .session
-                            .project
-                            .tracks
-                            .iter()
-                            .find(|t| t.id == id)
-                            .and_then(|t| t.clips.iter().min_by_key(|c| c.start_frame))
-                            .map(|c| c.id);
-                        if let Some(clip) = clip {
-                            self.select_clip(clip, id, false);
-                        } else {
-                            self.selected_clip = None;
-                            self.selected_clips.clear();
-                        }
-                        self.midi_editor.cancel();
+                        self.select_editor_track(id);
+                    } else {
+                        self.select_track(id, false);
                     }
                 }
                 response.response

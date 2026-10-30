@@ -6,7 +6,7 @@ An instrument creates audio from MIDI notes. Effects change audio from an instru
 
 ## Project tracks
 
-Use **Tracks** in the left toolbar to open the project track list. It shows audio and MIDI icons, with group chevrons and indented children in project order. Tracks, Instrument components and Effects share the same panel space; opening one hides the other.
+Use **Tracks** in the left toolbar to open the project track list. [Editor](editor.md) reuses this list with its own visibility toggle. It shows audio and MIDI icons, with group chevrons and indented children in project order. Tracks, Instrument components and Effects share the same panel space; opening one hides the other.
 
 Click a group row to expand or collapse it. Groups start collapsed and retain their browser choices while the project is open. These choices do not change group collapse state in Timeline or Mixer. Nested groups are supported.
 

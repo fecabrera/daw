@@ -298,7 +298,7 @@ impl DawUi {
             && self.instrument_catalog_visible
             && !clip_settings_visible;
         let chords_visible = self.chords_visible();
-        let tracks_visible = self.view_mode == ViewMode::Instrument && self.track_browser.visible;
+        let tracks_visible = self.tracks_panel_visible();
         let catalog_visible = self.effects_catalog_visible()
             || components_visible
             || chords_visible

@@ -3197,7 +3197,7 @@ fn midi_tracks_units_editor_and_clip_copy_use_shared_actions() {
     );
 }
 #[test]
-fn track_dropdown_switches_units_and_editor_header_without_changing_the_project() {
+fn track_dropdown_and_editor_browser_switch_tracks_without_changing_the_project() {
     let (mut app, first, first_clip, _) = fixture();
     let second = app.session.project.add_midi_track().unwrap();
     let second_clip = app
@@ -3248,13 +3248,18 @@ fn track_dropdown_switches_units_and_editor_header_without_changing_the_project(
             .min_by(|a, b| a.y.total_cmp(&b.y))
             .unwrap();
         if mode == ViewMode::Edit {
-            assert!(app.midi_editor.selector_bounds.contains(point));
+            assert!(app.midi_editor.name_bounds.contains(point));
             assert!(point.x < app.midi_editor.track_bounds.left());
             assert!(app.midi_editor.track_bounds.y_range().contains(point.y));
         } else {
             assert!(point.y < 130.0);
         }
-        click_note_or_lane(&mut app, &ctx, point);
+        let target = if mode == ViewMode::Edit {
+            app.track_browser.bounds.toggle.center()
+        } else {
+            point
+        };
+        click_note_or_lane(&mut app, &ctx, target);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let bass = shapes
             .iter()
@@ -3276,18 +3281,6 @@ fn track_dropdown_switches_units_and_editor_header_without_changing_the_project(
             assert!(!app.midi_editor.clip_bounds.contains_key(&first_clip));
         }
     }
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-    let point = shapes
-        .iter()
-        .filter_map(|s| match &s.shape {
-            egui::Shape::Text(t) if t.galley.text() == "Bass" => {
-                Some(t.pos + t.galley.size() * 0.5)
-            }
-            _ => None,
-        })
-        .min_by(|a, b| a.y.total_cmp(&b.y))
-        .unwrap();
-    click_note_or_lane(&mut app, &ctx, point);
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     let point = shapes
         .iter()
@@ -7347,7 +7340,7 @@ fn editor_panel_retains_full_height_and_shared_track_controls_in_both_themes() {
             panel.right() + crate::track_overview::LABEL_WIDTH,
             app.midi_editor.grid_bounds.left()
         );
-        assert!(panel.contains_rect(app.midi_editor.selector_bounds));
+        assert!(panel.contains_rect(app.midi_editor.name_bounds));
         assert!(panel.bottom() > app.midi_editor.scale_snap_bounds.bottom() + 200.0);
         let content = pattern(&app).clone();
         let [mute, solo] = app.midi_editor.mix_bounds;

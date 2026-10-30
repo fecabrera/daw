@@ -3008,8 +3008,8 @@ impl DawUi {
             ui,
             rail,
             timeline_toolbar::Catalogs {
-                tracks: (self.view_mode == ViewMode::Instrument)
-                    .then_some(self.track_browser.visible),
+                tracks: matches!(self.view_mode, ViewMode::Instrument | ViewMode::Edit)
+                    .then_some(self.tracks_panel_visible()),
                 effects: self.effects_catalog_visible(),
                 components: (self.view_mode == ViewMode::Instrument)
                     .then_some(self.instrument_catalog_visible),
@@ -3022,12 +3022,14 @@ impl DawUi {
             enabled,
         );
         if toggles.tracks.as_ref().is_some_and(|r| r.clicked()) {
-            self.track_browser.visible = !self.track_browser.visible;
-            if self.track_browser.visible {
+            self.set_tracks_panel_visible(!self.tracks_panel_visible());
+            if self.tracks_panel_visible() {
                 self.instrument_catalog_visible = false;
                 self.instrument_catalog.clear();
                 self.set_effects_catalog_visible(false);
                 self.effects_catalog.clear();
+                self.set_chords_visible(false);
+                self.chords.catalog.clear();
             }
             ui.ctx().request_repaint();
         }
@@ -3035,6 +3037,7 @@ impl DawUi {
             self.set_chords_visible(!self.chords_visible());
             self.chords.catalog.clear();
             if self.chords_visible() {
+                self.set_tracks_panel_visible(false);
                 self.set_effects_catalog_visible(false);
                 self.effects_catalog.clear();
             }
@@ -3044,9 +3047,7 @@ impl DawUi {
             self.set_effects_catalog_visible(!self.effects_catalog_visible());
             self.effects_catalog.clear();
             if self.effects_catalog_visible() {
-                if self.view_mode == ViewMode::Instrument {
-                    self.track_browser.visible = false;
-                }
+                self.set_tracks_panel_visible(false);
                 self.set_chords_visible(false);
                 self.chords.catalog.clear();
                 self.instrument_catalog_visible = false;

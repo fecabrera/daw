@@ -100,11 +100,11 @@ fn row_toggle_shares_compact_layout_between_timeline_and_editor_without_project_
                 assert_header_meter_insets(&shapes, header, &ctx);
                 let [gain, pan] = app.midi_editor.track_mix_bounds;
                 let [mute, solo] = app.midi_editor.mix_bounds;
-                assert!(app.midi_editor.selector_bounds.right() < mute.left());
+                assert!(app.midi_editor.name_bounds.right() < mute.left());
                 assert!(mute.right() < solo.left());
                 assert!(solo.right() < pan.left());
                 assert!(pan.right() < gain.left());
-                for rect in [app.midi_editor.selector_bounds, mute, solo, pan, gain] {
+                for rect in [app.midi_editor.name_bounds, mute, solo, pan, gain] {
                     assert!(header.contains_rect(rect));
                     assert!(
                         (rect.center().y - header.center().y).abs() <= 0.5 / scale,
@@ -417,11 +417,17 @@ fn editor_track_headers_have_only_compact_knobs_and_keep_their_height() {
                 let header = app.midi_editor.track_header_bounds;
                 let [gain, pan] = app.midi_editor.track_mix_bounds;
                 assert_eq!(header.height(), 68.0);
+                let name = &app.editor_track().unwrap().name;
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Text(text) if text.galley.text() == name
+                        && header.contains(text.pos)
+                        && text.galley.job.sections.iter().all(|section|
+                            section.format.font_id.size == rows::NAME_FONT_SIZE))));
                 assert_header_meter_insets(&shapes, header, &ctx);
-                let selector = app.midi_editor.selector_bounds;
+                let name_bounds = app.midi_editor.name_bounds;
                 let meter_left =
                     header.right() - 7.0 - (meters::STEREO_WIDTH - meters::SCALE_WIDTH);
-                assert!((meter_left - selector.right() - 6.0).abs() < 1.0);
+                assert!((meter_left - name_bounds.right() - 6.0).abs() < 1.0);
                 assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
                     egui::Shape::Rect(r) if r.fill == theme::palette(&ctx).input
                         && (r.rect.width() - NUMERIC_WIDTH).abs() < 1.0 && header.contains_rect(r.rect))));

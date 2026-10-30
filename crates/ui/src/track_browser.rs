@@ -1,10 +1,11 @@
-//! Instrument track navigation. Expansion and focus are UI state, never project edits.
+//! Shared Instrument and Editor track navigation. Expansion and focus are UI state, never project edits.
 use super::*;
 use daw_core::{Project, TrackKind};
 
 #[derive(Default)]
 pub(super) struct State {
     pub visible: bool,
+    editor_visible: bool,
     open: HashSet<Id>,
     cursor: Option<Id>,
     focus: Option<egui::Id>,
@@ -77,6 +78,22 @@ impl State {
     }
 }
 impl DawUi {
+    pub(super) fn tracks_panel_visible(&self) -> bool {
+        match self.view_mode {
+            ViewMode::Instrument => self.track_browser.visible,
+            ViewMode::Edit => self.track_browser.editor_visible,
+            _ => false,
+        }
+    }
+
+    pub(super) fn set_tracks_panel_visible(&mut self, visible: bool) {
+        match self.view_mode {
+            ViewMode::Instrument => self.track_browser.visible = visible,
+            ViewMode::Edit => self.track_browser.editor_visible = visible,
+            _ => {}
+        }
+    }
+
     pub(super) fn project_tracks_panel(
         &mut self,
         ui: &mut egui::Ui,
@@ -86,7 +103,11 @@ impl DawUi {
     ) {
         self.track_browser.reconcile(&self.session.project);
         let rows = self.track_browser.rows(&self.session.project);
-        let selected = self.selected_track;
+        let selected = if self.view_mode == ViewMode::Edit {
+            self.editor_track().map(|track| track.id)
+        } else {
+            self.selected_track
+        };
         let header = panel.header(ui, "Tracks", |_| {});
         panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
         let enabled = enabled && !ui.ctx().text_edit_focused();
@@ -230,7 +251,11 @@ impl DawUi {
                 self.instrument_ui.effects_layer = None;
                 self.instrument_ui.track_effects_target = true;
             }
-            self.select_track(id, false);
+            if self.view_mode == ViewMode::Edit {
+                self.select_editor_track(id);
+            } else {
+                self.select_track(id, false);
+            }
             ui.ctx().request_repaint();
         }
     }
