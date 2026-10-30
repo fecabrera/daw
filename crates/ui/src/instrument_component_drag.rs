@@ -383,8 +383,8 @@ impl DawUi {
         let components = if matches!(component, daw_core::InstrumentComponent::Oscillator(_)) {
             Vec::new()
         } else {
-            let order = if owner == instrument.main.id {
-                instrument.main.visible_components()
+            let order = if let Some(bus) = instrument.bus(owner) {
+                bus.visible_components()
             } else {
                 instrument
                     .layers

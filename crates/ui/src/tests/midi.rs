@@ -1840,21 +1840,27 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
         assert_eq!(app.session.project.tracks[0].instrument, before);
         assert!(!app.dirty);
         super::instrument_catalog::add_component(&mut app, &ctx, first, 0);
-        super::instrument_catalog::add_component(&mut app, &ctx, first, 1);
+        let owner = app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .envelope_lane
+            .id;
+        super::instrument_catalog::add_component(&mut app, &ctx, owner, 1);
         assert!(
             app.session.project.tracks[0]
                 .instrument
                 .as_ref()
                 .unwrap()
-                .layers[0]
+                .envelope_lane
                 .envelopes[0]
                 .present
         );
-        assert!(
-            app.midi_editor.layer_bounds[&first]
-                .envelope_stages
-                .iter()
-                .all(|r| r.is_positive())
+        assert_eq!(
+            app.instrument_ui.modulation_lane_bounds[&owner]
+                .envelopes
+                .len(),
+            1
         );
         assert_eq!(app.midi_editor.layer_bounds[&first].oscillators.len(), 1);
         let add = app.midi_editor.add_layer_bounds.center();
@@ -2256,7 +2262,17 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
         assert!(!layers[0].envelopes[0].present);
         assert_eq!(layers[0].envelopes[0].settings.attack.time_ms, 75.0);
         assert_eq!(layers[1], before.layers[1]);
-        super::instrument_catalog::add_component(&mut app, &ctx, first, 1);
+        app.session.project.tracks[0].collect_modulation_lanes();
+        let owner = app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .envelope_lane
+            .id;
+        frame(&mut app, &ctx, vec![]);
+        super::instrument_catalog::add_component(&mut app, &ctx, owner, 1);
+        let mut before = before;
+        before.collect_modulation_lanes();
         assert_eq!(
             app.session.project.tracks[0].instrument.as_ref(),
             Some(&before)
@@ -6954,7 +6970,17 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
         );
         let empty = layers[2].id;
         for component in [0, 1] {
-            super::instrument_catalog::add_component(&mut app, &ctx, empty, component);
+            let owner = if component == 1 {
+                app.session.project.tracks[0]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .envelope_lane
+                    .id
+            } else {
+                empty
+            };
+            super::instrument_catalog::add_component(&mut app, &ctx, owner, component);
             assert_eq!(
                 app.midi_editor.layer_bounds[&empty].row.height(),
                 ROW_HEIGHT
@@ -6966,7 +6992,15 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
             .unwrap()
             .layers[2];
         assert_eq!(added.oscillators.len(), 1);
-        assert!(added.envelopes[0].present);
+        assert!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .envelope_lane
+                .envelopes[0]
+                .present
+        );
         let saved = serde_json::to_vec(&app.session.project).unwrap();
         let mut reopened = DawUi::default();
         reopened.session.project = serde_json::from_slice(&saved).unwrap();

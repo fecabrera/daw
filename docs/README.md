@@ -27,6 +27,7 @@ Knob tooltips show only the parameter name on the left and the current value on 
 - [LFO](instruments/lfo.md)
 - [Macro](instruments/macro.md)
 - [Amplitude](instruments/amplitude.md)
+- [Instrument modulation lanes](instruments/modulation-lanes.md)
 - [Instrument Output](instruments/main.md)
 
 ## Effects

@@ -194,7 +194,17 @@ fn open(app: &mut DawUi, ctx: &egui::Context) {
 // Install through the catalog when a unit-control test needs an absent component.
 pub(super) fn add_component(app: &mut DawUi, ctx: &egui::Context, layer: Id, index: usize) {
     if app.instrument_ui.selected_layer != Some(layer) {
-        let point = app.midi_editor.layer_bounds[&layer].name.center();
+        let point = if let Some(bounds) = app.instrument_ui.modulation_lane_bounds.get(&layer) {
+            bounds.name.center()
+        } else if app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .is_some_and(|i| i.main.id == layer)
+        {
+            app.instrument_ui.main_bounds.name.center()
+        } else {
+            app.midi_editor.layer_bounds[&layer].name.center()
+        };
         click(app, ctx, point, false);
     }
     let was_open = app.instrument_catalog_visible;
@@ -285,22 +295,34 @@ fn catalog_keyboard_adds_selected_components_only_to_the_selected_layer() {
         assert_eq!(app.instrument_catalog.selection.len(), 2);
         assert!(!app.dirty);
         key(&mut app, &ctx, egui::Key::Enter, false, false);
+        assert!(!app.dirty, "regular layers reject provider additions");
         let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+        let envelope = instrument.envelope_lane.id;
+        let lfo = instrument.lfo_lane.id;
+        app.instrument_ui.select_layer(envelope);
+        let point = app.instrument_catalog_bounds.entries[1].center();
+        click(&mut app, &ctx, point, false);
+        key(&mut app, &ctx, egui::Key::Enter, false, false);
+        app.instrument_ui.select_layer(lfo);
+        let point = app.instrument_catalog_bounds.entries[2].center();
+        click(&mut app, &ctx, point, false);
+        key(&mut app, &ctx, egui::Key::Enter, false, false);
+        let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+        assert_eq!(instrument.lfo_lane.lfos.len(), 1);
+        assert_eq!(instrument.envelope_lane.envelopes.len(), 1);
         assert!(
-            instrument.layers[0].oscillators.is_empty()
-                && !instrument.layers[0].envelopes[0].present
+            instrument
+                .layers
+                .iter()
+                .all(|l| l.lfos.is_empty() && l.envelopes.iter().all(|e| !e.present))
         );
-        assert!(instrument.layers[1].oscillators.is_empty());
-        assert_eq!(instrument.layers[1].lfos.len(), 1);
-        assert!(instrument.layers[1].envelopes[0].present);
-        assert_eq!(instrument.layers[1].id, layers[1]);
-        assert!(app.session.project.tracks[0].effects.is_empty());
         assert_eq!(app.selected_track, Some(track));
         assert!(app.dirty);
         let saved = serde_json::to_value(&app.session.project).unwrap();
-        let loaded: daw_core::Project = serde_json::from_value(saved.clone()).unwrap();
+        let loaded: daw_core::Project = serde_json::from_value(saved).unwrap();
         loaded.validate().unwrap();
-        assert_eq!(serde_json::to_value(&loaded).unwrap(), saved);
+        let expected = app.session.project.clone();
+        assert_eq!(loaded, expected);
         frame(
             &mut app,
             &ctx,
@@ -600,7 +622,10 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                             && !instrument.layers[0].envelopes[1].present
                     );
                     assert_eq!(instrument.layers[1].oscillators.len(), 1);
-                    assert!(instrument.layers[1].envelopes[0].present);
+                    assert!(
+                        !instrument.layers[1].envelopes[0].present,
+                        "provider entries require their dedicated lanes"
+                    );
                     assert!(instrument.layers[1].amplitude.present);
                     assert_eq!(app.instrument_ui.selected_layer, Some(layers[1]));
                     assert_eq!(app.instrument_catalog.selection.len(), 3);
@@ -909,6 +934,13 @@ fn category_folders_group_entries_and_hide_selected_children_without_editing_the
 fn category_keyboard_navigation_uses_visible_rows_and_preserves_component_addition() {
     let (mut app, ctx, _, _) = fixture(settings::ColorTheme::Dark);
     open(&mut app, &ctx);
+    let owner = app.session.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .envelope_lane
+        .id;
+    app.instrument_ui.select_layer(owner);
     let source = app.instrument_catalog_bounds.entries[0].center();
     click(&mut app, &ctx, source, false);
     key(&mut app, &ctx, egui::Key::ArrowLeft, false, false);
@@ -941,13 +973,9 @@ fn category_keyboard_navigation_uses_visible_rows_and_preserves_component_additi
     key(&mut app, &ctx, egui::Key::ArrowRight, false, false);
     key(&mut app, &ctx, egui::Key::ArrowDown, false, false);
     key(&mut app, &ctx, egui::Key::Enter, false, false);
-    let layer = &app.session.project.tracks[0]
-        .instrument
-        .as_ref()
-        .unwrap()
-        .layers[0];
-    assert!(layer.envelopes[0].present);
-    assert!(layer.oscillators.is_empty() && layer.lfos.is_empty());
+    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+    assert!(instrument.envelope_lane.envelopes[0].present);
+    assert!(instrument.layers[0].oscillators.is_empty() && instrument.layers[0].lfos.is_empty());
     assert!(app.dirty);
 }
 

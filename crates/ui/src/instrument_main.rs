@@ -1,6 +1,12 @@
-//! Fixed instrument output row. Component bodies, mix controls and catalog gestures are shared.
+//! Shared fixed-lane rows. Only Output adds audio mix controls and a pinned separator.
 use super::*;
 use daw_core::InstrumentBusSettings;
+
+pub(super) struct LaneRow<'a> {
+    pub rect: Rect,
+    pub kind: Option<daw_core::ModulationLaneKind>,
+    pub shared_sources: &'a [daw_core::ModulationSourceId],
+}
 
 #[cfg(test)]
 pub(super) struct MainBounds {
@@ -13,6 +19,8 @@ pub(super) struct MainBounds {
     pub toolbar: Rect,
     pub envelopes: Vec<Rect>,
     pub lfos: Vec<Rect>,
+    pub powers: Vec<Rect>,
+    pub envelope_stages: Vec<[Rect; 4]>,
 }
 #[cfg(test)]
 impl Default for MainBounds {
@@ -27,6 +35,8 @@ impl Default for MainBounds {
             toolbar: Rect::NOTHING,
             envelopes: Vec::new(),
             lfos: Vec::new(),
+            powers: Vec::new(),
+            envelope_stages: Vec::new(),
         }
     }
 }
@@ -36,13 +46,23 @@ impl DawUi {
         ui: &mut egui::Ui,
         track: Id,
         bus: &mut InstrumentBusSettings,
-        rect: Rect,
+        row: LaneRow<'_>,
         sources: &[crate::modulation_panel::Source],
         provider_sources: &[(
             daw_core::ModulationSourceId,
             Vec<crate::modulation_panel::Source>,
         )],
     ) {
+        let LaneRow {
+            rect,
+            kind,
+            shared_sources,
+        } = row;
+        let title = kind.map_or(
+            InstrumentBusSettings::DISPLAY_NAME,
+            daw_core::ModulationLaneKind::name,
+        );
+        let output = kind.is_none();
         let compact = bus.collapsed;
         let height = panels::unit_height(compact);
         let mut child = ui.new_child(
@@ -97,8 +117,8 @@ impl DawUi {
                     ui, toolbar, &mut bus.collapsed,
                     !self.instrument_ui.has_layer_gesture() && !self.instrument_ui.editing_name()
                         && self.editing_enabled() && ui.input(|input| input.focused),
-                    [icons::Lucide::ArrowUpFromLine, icons::Lucide::ArrowDownFromLine],
-                    ["Expand Output", "Collapse Output"],
+                    if output {[icons::Lucide::ArrowUpFromLine, icons::Lucide::ArrowDownFromLine]} else {[icons::Lucide::ArrowDownFromLine,icons::Lucide::ArrowUpFromLine]},
+                    [if output {"Expand Output"} else {"Expand modulation lane"}, if output {"Collapse Output"} else {"Collapse modulation lane"}],
                 );
                 if collapse.clicked() { ui.ctx().request_repaint(); }
                 let (label, response) =
@@ -111,6 +131,7 @@ impl DawUi {
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
                 header.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                if output {
                 let levels = self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)).map_or([(0.0, false); 2], |m| m.levels());
                 let cleared = meters::stereo_panel(&mut header, ROW_HEIGHT - 14.0, levels, |header| {
                 rows::centered(header, toolbars::CONTROL_HEIGHT, |ui| {
@@ -127,12 +148,20 @@ impl DawUi {
                 #[cfg(not(test))] let _ = gain;
                 });
                 meters::reset_on_click(ui, self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)), cleared);
+                } else {
+                    rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
+                        let icon=icons::header_icon(ui, icons::Lucide::Activity, Sense::hover());
+                        let name=ui.label(egui::RichText::new(title).size(rows::NAME_FONT_SIZE));
+                        #[cfg(test)] { bounds.icon=icon.rect; bounds.name=name.rect; }
+                        #[cfg(not(test))] let _=(icon,name);
+                    });
+                }
                 response.widget_info(|| {
                     egui::WidgetInfo::selected(
                         egui::WidgetType::Button,
                         ui.is_enabled(),
                         self.instrument_ui.selected_layer == Some(bus.id),
-                        "Select Output instrument bus",
+                        format!("Select {title} instrument lane"),
                     )
                 });
                 #[cfg(test)]
@@ -175,10 +204,10 @@ impl DawUi {
                                         let index = bus.envelopes.iter().position(|e| e.id == id).unwrap();
                                         {
                                         let id = bus.envelopes[index].id;
-                                        crate::envelope_panel::unit(ui, &mut bus.envelopes[index], index + 1, true, height, compact, crate::envelope_panel::Controls { sources: provider_sources.iter().find(|(source, _)| source.layer == bus.id && source.unit == id).map_or(&[], |(_, sources)| sources.as_slice()), live: self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Envelope { track, layer: bus.id, unit: id })) })
+                                        crate::envelope_panel::unit(ui, &mut bus.envelopes[index], index + 1, output || shared_sources.contains(&daw_core::ModulationSourceId {layer:bus.id,unit:id}), height, compact, crate::envelope_panel::Controls { sources: provider_sources.iter().find(|(source, _)| source.layer == bus.id && source.unit == id).map_or(&[], |(_, sources)| sources.as_slice()), live: self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Envelope { track, layer: bus.id, unit: id })) })
                                         }.map(|unit| {
                                             self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track, bus.id, component);
-                                            #[cfg(test)] bounds.envelopes.push(unit.header.rect);
+                                            #[cfg(test)] {bounds.envelopes.push(unit.header.rect);bounds.powers.push(unit.power.rect);bounds.envelope_stages.push(unit.inner.unwrap_or([Rect::NOTHING;4]));}
                                             unit.response.rect
                                         })
                                     }
@@ -190,7 +219,7 @@ impl DawUi {
                                             live: self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Lfo { track, layer: bus.id, unit: id })).map(|v| [v[0], v[1]]),
                                         }).map(|unit| {
                                             self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track, bus.id, component);
-                                            #[cfg(test)] bounds.lfos.push(unit.header.rect);
+                                            #[cfg(test)] {bounds.lfos.push(unit.header.rect);bounds.powers.push(unit.power.rect);}
                                             unit.response.rect
                                         })
                                     }
@@ -218,21 +247,31 @@ impl DawUi {
                                     previous = Some(rect);
                                 }
                             }
-                            if self.effects_drag.is_some() {ui.allocate_exact_size(Vec2::new(crate::midi_editor::UNIT_STRIP_WIDTH,height),Sense::hover());}
+                            if output && self.effects_drag.is_some() {ui.allocate_exact_size(Vec2::new(crate::midi_editor::UNIT_STRIP_WIDTH,height),Sense::hover());}
 
                         });
                     });
                 let viewport = Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect());
-                self.finish_inline_layer_effects(ui, track, crate::layer_effects::InlineEffects { id: bus.id, effects: &mut bus.effects }, viewport);
+                if output {self.finish_inline_layer_effects(ui, track, crate::layer_effects::InlineEffects { id: bus.id, effects: &mut bus.effects }, viewport);}
                 self.instrument_ui.component_viewports.push((bus.id,viewport));
                 ui.advance_cursor_after_rect(toolbar);
             });
         });
-        panels::ControlPanel::pinned_row_divider(ui, rect);
+        if output {
+            panels::ControlPanel::pinned_row_divider(ui, rect);
+        } else {
+            panels::ControlPanel::row_dividers(ui, rect, true, true);
+        }
         ui.advance_cursor_after_rect(rect);
         #[cfg(test)]
         {
-            self.instrument_ui.main_bounds = bounds;
+            if output {
+                self.instrument_ui.main_bounds = bounds;
+            } else {
+                self.instrument_ui
+                    .modulation_lane_bounds
+                    .insert(bus.id, bounds);
+            }
         }
     }
 }

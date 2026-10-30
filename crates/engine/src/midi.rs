@@ -744,9 +744,7 @@ impl MidiTrackRuntime {
                 }
             }
         }
-        let lfo_notes = if instrument.main.lfos.is_empty()
-            && layers.iter().all(|layer| layer.lfos.is_empty())
-        {
+        let lfo_notes = if instrument.lfo_destinations().next().is_none() {
             super::lfo::NoteSchedule::new(Vec::new())
         } else {
             super::lfo::NoteSchedule::new(
@@ -761,22 +759,10 @@ impl MidiTrackRuntime {
                     .collect(),
             )
         };
-        let local_nodes: Vec<_> = layers
-            .iter()
-            .flat_map(|l| {
-                l.envelopes
-                    .iter()
-                    .filter(|e| e.mode == EnvelopeMode::PerNote)
-                    .map(move |e| {
-                        (
-                            ModulationSourceId {
-                                layer: l.id,
-                                unit: e.id,
-                            },
-                            e.modulations.as_slice(),
-                        )
-                    })
-            })
+        let local_nodes: Vec<_> = instrument
+            .envelope_destinations()
+            .filter(|(_, e)| e.mode == EnvelopeMode::PerNote)
+            .map(|(id, e)| (id, e.modulations.as_slice()))
             .collect();
         let local_order = daw_unit_core::modulation_dependency_order(&local_nodes)
             .expect("validated local envelope graph");
@@ -960,56 +946,37 @@ impl MidiTrackRuntime {
                         })
                         .collect(),
                     control_order: local_order.clone(),
-                    controls: layers
-                        .iter()
-                        .flat_map(|l| {
-                            l.envelopes
-                                .iter()
-                                .filter(|e| e.mode == EnvelopeMode::PerNote)
-                                .map(|e| {
-                                    Control::new(
-                                        ModulationSourceId {
-                                            layer: l.id,
-                                            unit: e.id,
-                                        },
-                                        e,
-                                        ProcessingContext {
-                                            sample_rate_hz: project.sample_rate_hz,
-                                            max_block_frames: project.buffer_size_frames,
-                                        },
-                                    )
-                                })
+                    controls: instrument
+                        .envelope_destinations()
+                        .filter(|(_, e)| e.mode == EnvelopeMode::PerNote)
+                        .map(|(id, e)| {
+                            Control::new(
+                                id,
+                                e,
+                                ProcessingContext {
+                                    sample_rate_hz: project.sample_rate_hz,
+                                    max_block_frames: project.buffer_size_frames,
+                                },
+                            )
                         })
                         .collect(),
-                    values: layers
-                        .iter()
-                        .flat_map(|l| {
-                            l.envelopes
-                                .iter()
-                                .filter(|e| e.mode == EnvelopeMode::PerNote)
-                                .map(|e| ModulationValue {
-                                    source: ModulationSourceId {
-                                        layer: l.id,
-                                        unit: e.id,
-                                    },
-                                    value: 0.0,
-                                    weight: 0.0,
-                                    range: daw_unit_core::ModulationRange::Unipolar,
-                                    behavior: daw_unit_core::ModulationBehavior::Contour,
-                                    release_age: None,
-                                })
+                    values: instrument
+                        .envelope_destinations()
+                        .filter(|(_, e)| e.mode == EnvelopeMode::PerNote)
+                        .map(|(source, _)| ModulationValue {
+                            source,
+                            value: 0.0,
+                            weight: 0.0,
+                            range: daw_unit_core::ModulationRange::Unipolar,
+                            behavior: daw_unit_core::ModulationBehavior::Contour,
+                            release_age: None,
                         })
                         .collect(),
                     local_sources: daw_unit_core::ModulationSourceIndex::new(
-                        layers.iter().flat_map(|l| {
-                            l.envelopes
-                                .iter()
-                                .filter(|e| e.mode == EnvelopeMode::PerNote)
-                                .map(|e| ModulationSourceId {
-                                    layer: l.id,
-                                    unit: e.id,
-                                })
-                        }),
+                        instrument
+                            .envelope_destinations()
+                            .filter(|(_, e)| e.mode == EnvelopeMode::PerNote)
+                            .map(|(id, _)| id),
                     ),
                     current: None,
                     pitch_index: None,
@@ -1034,66 +1001,34 @@ impl MidiTrackRuntime {
             last_source: None,
             next_event: 0,
             shared: SharedControls::new(
-                layers
-                    .iter()
-                    .flat_map(|l| {
-                        l.envelopes
-                            .iter()
-                            .filter(|e| e.mode != EnvelopeMode::PerNote)
-                            .map(|e| {
-                                Control::new(
-                                    ModulationSourceId {
-                                        layer: l.id,
-                                        unit: e.id,
-                                    },
-                                    e,
-                                    ProcessingContext {
-                                        sample_rate_hz: project.sample_rate_hz,
-                                        max_block_frames: project.buffer_size_frames,
-                                    },
-                                )
-                            })
-                    })
-                    .chain(instrument.main.envelopes.iter().map(|e| {
+                instrument
+                    .envelope_destinations()
+                    .filter(|(_, e)| e.mode != EnvelopeMode::PerNote)
+                    .map(|(id, e)| {
                         Control::new(
-                            ModulationSourceId {
-                                layer: instrument.main.id,
-                                unit: e.id,
-                            },
+                            id,
                             e,
                             ProcessingContext {
                                 sample_rate_hz: project.sample_rate_hz,
                                 max_block_frames: project.buffer_size_frames,
                             },
                         )
-                    }))
+                    })
                     .collect(),
             )
             .with_providers(
-                layers
-                    .iter()
-                    .flat_map(|layer| {
-                        layer.lfos.iter().map(|lfo| {
-                            ProviderControl::lfo(
-                                layer.id,
-                                lfo,
-                                ProcessingContext {
-                                    sample_rate_hz: project.sample_rate_hz,
-                                    max_block_frames: project.buffer_size_frames,
-                                },
-                            )
-                        })
-                    })
-                    .chain(instrument.main.lfos.iter().map(|lfo| {
+                instrument
+                    .lfo_destinations()
+                    .map(|(id, lfo)| {
                         ProviderControl::lfo(
-                            instrument.main.id,
+                            id.layer,
                             lfo,
                             ProcessingContext {
                                 sample_rate_hz: project.sample_rate_hz,
                                 max_block_frames: project.buffer_size_frames,
                             },
                         )
-                    }))
+                    })
                     .chain(instrument.macro_modules().flat_map(|(layer, module)| {
                         module.controls.iter().map(move |control| {
                             ProviderControl::macro_control(

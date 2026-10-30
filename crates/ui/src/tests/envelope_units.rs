@@ -61,12 +61,28 @@ pub(super) fn source_submenu(
         Vec2::new(1280.0, 800.0),
     )
 }
+fn add_legacy_envelope(app: &mut DawUi, ctx: &egui::Context, layer: Id) {
+    let l = app.session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers
+        .iter_mut()
+        .find(|l| l.id == layer)
+        .unwrap();
+    if let Some(e) = l.envelopes.iter_mut().find(|e| !e.present) {
+        e.present = true;
+    } else {
+        l.envelopes.push(Default::default());
+    }
+    frame(app, ctx, vec![]);
+}
 #[test]
-fn generic_envelopes_add_independent_instances_and_keep_settings_power_and_collapse() {
+fn legacy_envelope_panels_keep_independent_settings_power_and_collapse() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
-        add_component(&mut app, &ctx, layer, 1);
-        add_component(&mut app, &ctx, layer, 1);
+        add_legacy_envelope(&mut app, &ctx, layer);
+        add_legacy_envelope(&mut app, &ctx, layer);
         let bounds = &app.midi_editor.layer_bounds[&layer];
         assert_eq!(
             bounds.envelope_panel.size(),
@@ -132,7 +148,7 @@ fn generic_envelopes_add_independent_instances_and_keep_settings_power_and_colla
 fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
-        add_component(&mut app, &ctx, layer, 1);
+        add_legacy_envelope(&mut app, &ctx, layer);
         add_component(&mut app, &ctx, layer, 3);
         app.dirty = false;
         let bounds = &app.midi_editor.layer_bounds[&layer];
@@ -340,8 +356,8 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
 #[test]
 fn auto_filter_expansion_keeps_regular_controls_and_lists_only_shared_envelopes() {
     let (mut app, ctx, layer) = fixture(settings::ColorTheme::Dark);
-    add_component(&mut app, &ctx, layer, 1);
-    add_component(&mut app, &ctx, layer, 1);
+    add_legacy_envelope(&mut app, &ctx, layer);
+    add_legacy_envelope(&mut app, &ctx, layer);
     app.session.project.tracks[0]
         .instrument
         .as_mut()
@@ -473,7 +489,7 @@ fn modulation_visibility_is_saved_per_unit_and_follows_replacement_project_value
 fn parameter_markers_open_their_own_modulation_controls_without_editing_base_values() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
-        add_component(&mut app, &ctx, layer, 1);
+        add_legacy_envelope(&mut app, &ctx, layer);
         add_component(&mut app, &ctx, layer, 3);
         let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
         let l = &mut instrument.layers[0];
@@ -558,7 +574,7 @@ fn parameter_markers_open_their_own_modulation_controls_without_editing_base_val
 fn drive_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
-        add_component(&mut app, &ctx, layer, 1);
+        add_legacy_envelope(&mut app, &ctx, layer);
         let state = &mut app.session.project.tracks[0]
             .instrument
             .as_mut()
@@ -674,7 +690,7 @@ fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_sa
         let (mut app, ctx, layer) = fixture(theme);
         add_component(&mut app, &ctx, layer, 0);
         add_component(&mut app, &ctx, layer, 0);
-        add_component(&mut app, &ctx, layer, 1);
+        add_legacy_envelope(&mut app, &ctx, layer);
         let header = app.midi_editor.layer_bounds[&layer].oscillator_header;
         let regular = app.midi_editor.oscillator_strip_bounds.clone();
         app.dirty = false;
@@ -803,7 +819,7 @@ fn envelope_first_column_timing_knob_and_mode_dropdown_save_time_and_note_values
     use daw_core::{EnvelopeMode, EnvelopeTiming};
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
-        add_component(&mut app, &ctx, layer, 1);
+        add_legacy_envelope(&mut app, &ctx, layer);
         let stages = app.midi_editor.layer_bounds[&layer].envelope_stages;
         let y = stages[0].top() + 10.0 + knobs::CHOICE_SIZE * 0.5;
         let timing = Pos2::new(stages[0].left() - 0.5 * midi_editor::UNIT_STRIP_WIDTH, y);
@@ -855,7 +871,7 @@ fn envelope_first_column_timing_knob_and_mode_dropdown_save_time_and_note_values
 fn eq_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
-        add_component(&mut app, &ctx, layer, 1);
+        add_legacy_envelope(&mut app, &ctx, layer);
         let state = &mut app.session.project.tracks[0]
             .instrument
             .as_mut()
@@ -979,7 +995,7 @@ fn eq_modulation_compact_headers_keep_shared_footers_without_knobs_or_level_rail
 fn compressor_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
-        add_component(&mut app, &ctx, layer, 1);
+        add_legacy_envelope(&mut app, &ctx, layer);
         let state = &mut app.session.project.tracks[0]
             .instrument
             .as_mut()

@@ -1,6 +1,6 @@
 # LFO
 
-An LFO (low-frequency oscillator) repeats a control pattern. It does not generate audio. Add it from Modulators in the Instrument components catalog to a layer or Output, then connect it through a receiving unit's [modulation controls](../modulation/README.md).
+An LFO (low-frequency oscillator) repeats a control pattern. It does not generate audio. Add it from Modulators in the Instrument components catalog to the instrument-wide [LFO lane](modulation-lanes.md), then connect it through a receiving unit's [modulation controls](../modulation/README.md).
 
 ## Controls
 

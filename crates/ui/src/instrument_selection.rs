@@ -170,8 +170,8 @@ impl DawUi {
                 .iter()
                 .map(|(_, c)| *c)
                 .collect();
-            let removed = if owner == settings.main.id {
-                settings.main.remove_components(&units)
+            let removed = if let Some(bus) = settings.bus_mut(owner) {
+                bus.remove_components(&units)
             } else {
                 settings
                     .layers

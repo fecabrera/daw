@@ -28,6 +28,9 @@ pub(super) struct InstrumentUi {
     #[cfg(test)]
     pub(super) main_bounds: crate::instrument_main::MainBounds,
     #[cfg(test)]
+    pub(super) modulation_lane_bounds:
+        std::collections::HashMap<Id, crate::instrument_main::MainBounds>,
+    #[cfg(test)]
     pub(super) component_bounds: Vec<(Id, daw_core::InstrumentComponent, Rect)>,
 }
 struct LayerNameEdit {
@@ -50,10 +53,11 @@ impl InstrumentUi {
     }
 
     fn reconcile_layers(&mut self, settings: &daw_core::InstrumentSettings) {
-        self.selected_layers
-            .retain(|id| *id == settings.main.id || settings.layers.iter().any(|l| l.id == *id));
+        self.selected_layers.retain(|id| {
+            settings.bus(*id).is_some() || settings.layers.iter().any(|l| l.id == *id)
+        });
         let removed = self.selected_layer.is_some_and(|id| {
-            id != settings.main.id && !settings.layers.iter().any(|l| l.id == id)
+            settings.bus(id).is_none() && !settings.layers.iter().any(|l| l.id == id)
         });
         if removed {
             self.selected_layer = None;
@@ -67,10 +71,12 @@ impl InstrumentUi {
                 .map(|l| l.id);
         }
         if let Some(primary) = self.selected_layer {
-            if primary == settings.main.id || !self.selected_layers.contains(&primary) {
+            if settings.bus(primary).is_some() || !self.selected_layers.contains(&primary) {
                 self.select_layer(primary);
             } else {
                 self.selected_layers.remove(&settings.main.id);
+                self.selected_layers.remove(&settings.lfo_lane.id);
+                self.selected_layers.remove(&settings.envelope_lane.id);
             }
         }
     }
@@ -315,6 +321,7 @@ impl DawUi {
         );
         let count = settings.layers.len();
         let mut layer_rows = Vec::new();
+        let mut modulation_rows = Vec::new();
         let scroll = egui::ScrollArea::vertical()
             .max_height((ui.available_height() - main_height).max(0.0))
             .auto_shrink([false, false])
@@ -706,6 +713,8 @@ impl DawUi {
                             if crate::unit_selection::clicked(ui, header_bounds, selection_allowed && layer_click_allowed && !self.instrument_ui.dragging()) {
                                 let toggle = ui.input(|i| i.modifiers.shift);
                                 self.instrument_ui.selected_layers.remove(&settings.main.id);
+                                self.instrument_ui.selected_layers.remove(&settings.lfo_lane.id);
+                                self.instrument_ui.selected_layers.remove(&settings.envelope_lane.id);
                                 crate::unit_selection::select(&mut self.instrument_ui.selected_layers, layer.id, toggle);
                                 self.instrument_ui.selected_layer = if self.instrument_ui.selected_layers.contains(&layer.id) {
                                     Some(layer.id)
@@ -727,9 +736,15 @@ impl DawUi {
                             }
                         });
                     }
+                    for (bus,kind) in [(&mut settings.lfo_lane,daw_core::ModulationLaneKind::Lfo),(&mut settings.envelope_lane,daw_core::ModulationLaneKind::Envelope)] {
+                        let rect=Rect::from_min_size(ui.next_widget_position(),Vec2::new(ui.available_width(),panels::unit_height(bus.collapsed)));
+                        self.instrument_main(ui,track.id,bus,crate::instrument_main::LaneRow {rect,kind:Some(kind),shared_sources:&shared_sources},&modulation_sources,&provider_sources);
+                        modulation_rows.push((bus.id,rect));
+                    }
                 });
             });
         let reorder_rows = layer_rows.clone();
+        layer_rows.extend(modulation_rows);
         for (_, rect) in &mut layer_rows {
             *rect = Rect::from_min_max(rect.min, lane_toolbar::bounds(*rect).left_bottom())
                 .intersect(scroll.inner_rect);
@@ -738,7 +753,11 @@ impl DawUi {
             ui,
             track.id,
             &mut settings.main,
-            main_rect,
+            crate::instrument_main::LaneRow {
+                rect: main_rect,
+                kind: None,
+                shared_sources: &shared_sources,
+            },
             &modulation_sources,
             &provider_sources,
         );
@@ -764,7 +783,7 @@ impl DawUi {
                     ),
                     main_rect,
                 );
-            } else if let Some((_, row)) = reorder_rows.iter().find(|(id, _)| *id == selected) {
+            } else if let Some((_, row)) = layer_rows.iter().find(|(id, _)| *id == selected) {
                 panels::ControlPanel::selected_row(
                     ui,
                     Rect::from_min_max(

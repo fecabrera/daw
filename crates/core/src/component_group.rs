@@ -31,8 +31,8 @@ impl Project {
                 !matches!(c, InstrumentComponent::Oscillator(_))
                     && !components[..n].contains(c)
                     && if source == destination && !duplicate && components.len() > 1 {
-                        if source == i.main.id {
-                            i.main.has_component(*c)
+                        if let Some(bus) = i.bus(source) {
+                            bus.has_component(*c)
                         } else {
                             i.layers
                                 .iter()
@@ -60,8 +60,8 @@ impl Project {
         }
         let original = self.tracks.iter().find(|t| t.id == track).unwrap();
         let i = original.instrument.as_ref().unwrap();
-        let order = if source == i.main.id {
-            i.main.visible_components()
+        let order = if let Some(bus) = i.bus(source) {
+            bus.visible_components()
         } else {
             i.layers
                 .iter()
@@ -91,8 +91,8 @@ impl Project {
         }
         let t = next.tracks.iter_mut().find(|t| t.id == track).unwrap();
         let i = t.instrument.as_mut().unwrap();
-        let result = if destination == i.main.id {
-            i.main.place_components(&placed, index)
+        let result = if let Some(bus) = i.bus_mut(destination) {
+            bus.place_components(&placed, index)
         } else {
             i.layers
                 .iter_mut()

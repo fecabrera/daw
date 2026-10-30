@@ -28,11 +28,13 @@ Low-level `Renderer::seek`, hidden note history before a trimmed clip, and direc
 
 ## UI, telemetry, and transfers
 
+Envelope instances now belong to the fixed instrument-wide [Envelope lane](modulation-lanes.md), which supports all three modes. New additions no longer target regular layers or Output. Older projects migrate placement and receiving references without converting mode.
+
 Envelope reuses the common header toggle, connection body, Source/Destination labels, amount adapters, source filters, strip reorder, and knob markers. Base and Amount knobs share destination definitions. Mode choices reject incompatible scope changes. Saved open state follows moves, copies, and save/reopen.
 
 `ModulationTarget::Envelope { track, layer, unit }` uses the existing prepared snapshot handles. Nine pairs of native minimum/maximum readings use slots 0–17; slot 18 stays unavailable. Shared Envelopes publish one effective value per pair; local Envelopes aggregate active voices. The UI does not run another Envelope. Shape/Mode/Timing do not occupy telemetry slots.
 
-Envelope component copies get new provider and route IDs, retaining source assignments. Provider moves remap Envelope consumers, including Main, through the same transfer helper as other destinations. Source/mode incompatibility rejects the whole transaction. No source or route identity depends on display order.
+Envelope component copies get new provider and route IDs, retaining source assignments. Legacy provider moves remap Envelope consumers through the same transfer helper as other destinations. Global lane units reorder or copy only within their matching lane. Source/mode incompatibility rejects the whole transaction. No source or route identity depends on display order.
 
 ## Verification
 

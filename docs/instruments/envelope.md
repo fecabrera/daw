@@ -1,6 +1,6 @@
 # Envelope
 
-An Envelope changes a control value over a note's life. Add it from Modulators in the Instrument components catalog, then assign it in a receiving unit's [modulation controls](../modulation/README.md). Adding it alone makes no connection.
+An Envelope changes a control value over a note's life. Select the instrument-wide [Envelope lane](modulation-lanes.md) and add it from Modulators in the Instrument components catalog, then assign it in a receiving unit's [modulation controls](../modulation/README.md). Adding it alone makes no connection.
 
 ## Stages and timing
 
@@ -18,7 +18,7 @@ Hold Shift while dragging an Attack, Decay, or Release millisecond knob for fine
 | Retrigger | Each new note restarts one shared contour, including overlapping notes. |
 | Legato | The contour starts when a note arrives with no other note held. Overlapping notes keep it running. |
 
-Output offers Retrigger and Legato. Shared track effects cannot use Per note Envelopes. Note-relative Legato keeps the first held note's duration through overlapping notes.
+The Envelope lane offers all three modes. Shared track effects cannot use Per note Envelopes. Note-relative Legato keeps the first held note's duration through overlapping notes.
 
 Turning an Envelope off removes its contribution while retaining its settings. Removing it retains settings and connections for restoration from the catalog. Use the receiving connection's Amount and power controls to adjust or disable its effect on a particular parameter.
 
@@ -37,6 +37,6 @@ The time multiplier describes the effect at full positive source output. For exa
 
 Time and note-relative destinations remain separate, so switching Timing keeps both sets of connections. Attack/Decay use the active Timing setting. Release always uses milliseconds. Timing, Mode, and curve shapes remain discrete controls.
 
-Per note Envelopes can receive per-note and shared sources. Retrigger/Legato Envelopes, including Output, receive shared sources only. The picker excludes self-connections and feedback loops. Change or remove per-note inputs before selecting a shared Mode.
+Per note Envelopes can receive per-note and shared sources. Retrigger/Legato Envelopes receive shared sources only. The picker excludes self-connections and feedback loops. Change or remove per-note inputs before selecting a shared Mode.
 
 Modulation keeps the base settings and current stage progress. It does not restart a note or make an idle Envelope start again. Native seeks prepare input history on a worker; long histories can take more time and a new request cancels the old preparation. Hidden history before a trimmed clip and direct loop jumps follow the existing note-state reconstruction rules. Continuous playback and offline export use the same processing.

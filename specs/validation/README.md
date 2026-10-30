@@ -4,6 +4,18 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Instrument-wide LFO and Envelope lanes — 2026-10-30
+
+Instrument now has fixed LFO and Envelope control lanes after regular layers in the scrolling viewport, before pinned Output. Each accepts only its registered provider type. The shared bus row supplies unit bodies, horizontal scrolling, right toolbar, power, selection, removal and reorder gestures. Scrolling lanes share regular row separator pixels; fixed lanes remain separate from regular-layer selection groups. Envelope Mode retains shared-consumer guards while allowing Per note when compatible.
+
+Instrument revision 4 saves both lane owners. Older projects migrate installed and retained providers, presentation order and receiving references, including track effects. Missing lane IDs use the saved track namespace; duplicate legacy provider IDs resolve from original scoped identities rather than display order. Tests cover identical instruments on different tracks, layer reordering, repeated loads, scoped assignments, invalid types/IDs/fields, same-lane copies and release-only reorder. Both lane allocations are boxed to keep edit commands small and are included in shared memory accounting. The existing locked `serde_json` dependency becomes a direct runtime dependency of core for original-revision inspection; dependency versions and the lockfile are unchanged.
+
+`cargo test --offline --locked --workspace --no-fail-fast` passes: **1,936 tests passed, 11 ignored, no failures**, across 255 suites, including all 737 UI tests. The migration audio test loads real legacy project JSON and compares exact samples for all three Envelope modes and LFO restart modes at all six rates, through overlapping notes and release tails, with no callback allocations. UI coverage includes every catalog entry against both lanes, mixed/unknown type rejection, all themes, standard controls, shared border geometry, power, saved state, invalid cross-lane drops, unit selection/Delete/Undo, header reordering and Mode guards.
+
+`cargo fmt --all --check`, strict locked offline workspace/all-target Clippy, the locked offline CLI build, `python3 tools/check_cli.py`, local Markdown links and whitespace checks pass. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Logs use `work/modulation-lanes-*`. See the [lane specification](../instruments/modulation-lanes.md) and [user guide](../../docs/instruments/modulation-lanes.md).
+
+Native app inventory failed with `Sky Computer Use native pipe startup failed`. Native visual/device interaction, listening and Windows/Linux execution remain unverified; automated input/shape checks and package builds do not establish native acceptance.
+
 ## Complete unit Out-strip meter coverage — 2026-10-30
 
 The Out-strip audit found missing meters on Oscillator and Granulizer. Both now reuse the shared output rail, held sample peak, reset interaction, green/red palette and bypass lifecycle without changing strip geometry. All effect Out/Output strips already have the standard meter. Regular Sampler retains its Sample strip; units without an Out strip gain no new strip. The [coverage table](../../docs/effects/output-meter.md#out-strip-coverage) records the result.

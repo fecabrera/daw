@@ -208,17 +208,15 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
     }
 }
 #[test]
-fn main_accepts_shared_modulators_from_catalog_and_rejects_audio_components() {
+fn output_accepts_macros_and_rejects_sources_and_dedicated_lane_providers() {
     let (mut app, ctx, _) = setup(settings::ColorTheme::Dark);
-    let point = app.instrument_ui.main_bounds.label.min + Vec2::new(25.0, 15.0);
-    click(&mut app, &ctx, point, false);
     let main = app.session.project.tracks[0]
         .instrument
         .as_ref()
         .unwrap()
         .main
         .id;
-    assert_eq!(app.instrument_ui.selected_layer, Some(main));
+    app.instrument_ui.select_layer(main);
     let toggle = app.instrument_catalog_bounds.toggle.center();
     click(&mut app, &ctx, toggle, false);
     for index in 0..crate::instrument_catalog::ENTRIES.len() {
@@ -226,86 +224,15 @@ fn main_accepts_shared_modulators_from_catalog_and_rejects_audio_components() {
         click(&mut app, &ctx, point, false);
         key(&mut app, &ctx, egui::Key::Enter, false, false);
     }
-    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-    assert!(instrument.layers[0].oscillators.is_empty() && !instrument.layers[0].amplitude.present);
-    assert_eq!(instrument.main.envelopes.len(), 1);
-    assert_eq!(instrument.main.lfos.len(), 1);
-    assert_eq!(instrument.main.macro_module.controls.len(), 1);
-    assert_ne!(
-        instrument.main.envelopes[0].mode,
-        daw_core::EnvelopeMode::PerNote
+    let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
+    assert!(i.main.envelopes.is_empty() && i.main.lfos.is_empty());
+    assert_eq!(i.main.macro_module.controls.len(), 1);
+    assert!(i.layers[0].oscillators.is_empty() && !i.layers[0].amplitude.present);
+    assert!(
+        crate::modulation_panel::sources(Some(i))
+            .iter()
+            .any(|s| s.label == "Output · Macro 1")
     );
-    let sources = crate::modulation_panel::sources(Some(instrument));
-    assert!(sources.iter().any(|s| s.label == "Output · Envelope 1"));
-    assert!(sources.iter().any(|s| s.label == "Output · LFO 1"));
-    assert!(sources.iter().any(|s| s.label == "Output · Macro 1"));
-    let point = app.instrument_catalog_bounds.entries[2].center();
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::PointerMoved(point), button(point, true)],
-    );
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::PointerMoved(point + Vec2::new(20.0, 0.0))],
-    );
-    let end = app.instrument_ui.main_bounds.row.center();
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-    assert_eq!(app.instrument_catalog_bounds.drop_target, Some(main));
-    frame(&mut app, &ctx, vec![button(end, false)]);
-    assert_eq!(
-        app.session.project.tracks[0]
-            .instrument
-            .as_ref()
-            .unwrap()
-            .main
-            .lfos
-            .len(),
-        2
-    );
-    let layer = app.session.project.tracks[0]
-        .instrument
-        .as_ref()
-        .unwrap()
-        .layers[0]
-        .id;
-    app.instrument_ui.selected_layer = Some(layer);
-    let point = app.instrument_ui.main_bounds.lfos[0].center();
-    click(&mut app, &ctx, point, false);
-    assert_eq!(app.instrument_ui.selected_layer, Some(main));
-    // A mixed group remains eligible through its Macro entry on a populated Main.
-    let oscillator = app.instrument_catalog_bounds.entries[0].center();
-    click(&mut app, &ctx, oscillator, false);
-    let macro_entry = app.instrument_catalog_bounds.entries[4].center();
-    click(&mut app, &ctx, macro_entry, true);
-    let before = app.session.project.tracks[0].instrument.clone().unwrap();
-    frame(
-        &mut app,
-        &ctx,
-        vec![
-            egui::Event::PointerMoved(macro_entry),
-            button(macro_entry, true),
-        ],
-    );
-    let end = Pos2::new(
-        app.instrument_ui.main_bounds.toolbar.left() - 20.0,
-        app.instrument_ui.main_bounds.row.center().y,
-    );
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-    assert_eq!(app.instrument_catalog_bounds.drop_target, Some(main));
-    assert_eq!(
-        app.session.project.tracks[0].instrument.as_ref().unwrap(),
-        &before
-    );
-    frame(&mut app, &ctx, vec![button(end, false)]);
-    let mut expected = before;
-    expected.main.macro_module.add();
-    // Addition receives a fresh identity; all previous component data stays unchanged.
-    let actual = app.session.project.tracks[0].instrument.as_ref().unwrap();
-    expected.main.macro_module.controls[1].id = actual.main.macro_module.controls[1].id;
-    assert_eq!(actual, &expected);
-    app.session.project.validate().unwrap();
 }
 
 #[test]
@@ -364,8 +291,8 @@ fn empty_main_accepts_catalog_drops_across_its_label_and_body() {
                         assert!(app.component_drag.is_none());
                         assert_eq!(app.dirty, supported);
                         let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
-                        assert_eq!(i.main.envelopes.len(), usize::from(index == 1));
-                        assert_eq!(i.main.lfos.len(), usize::from(index == 2));
+                        assert_eq!(i.main.envelopes.len(), 0);
+                        assert_eq!(i.main.lfos.len(), 0);
                         assert_eq!(i.main.macro_module.controls.len(), usize::from(index == 4));
                         if let Some(e) = i.main.envelopes.first() {
                             assert_eq!(e.mode, daw_core::EnvelopeMode::Legato);
@@ -459,6 +386,9 @@ fn every_first_component_shares_one_divider_with_the_layers_column() {
             for collapsed in [false, true] {
                 for main in [false, true] {
                     for entry in crate::instrument_catalog::ENTRIES {
+                        if entry.type_id == "daw.envelope" || entry.type_id == "daw.lfo" {
+                            continue;
+                        }
                         if main && !entry.supports_main() {
                             continue;
                         }

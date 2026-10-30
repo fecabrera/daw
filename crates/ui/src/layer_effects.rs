@@ -20,6 +20,9 @@ impl DawUi {
                     .find(|t| t.id == track)?
                     .instrument
                     .as_ref()?;
+                if layer == i.lfo_lane.id || layer == i.envelope_lane.id {
+                    return None;
+                }
                 if layer == i.main.id || i.layers.iter().any(|l| l.id == layer) {
                     return Some(EffectTarget::Layer { track, layer });
                 }
@@ -32,7 +35,10 @@ impl DawUi {
         track_effects: &mut Vec<daw_core::EffectInstance>,
         added: impl IntoIterator<Item = daw_core::EffectInstance>,
     ) {
-        if let Some(EffectTarget::Layer { track, layer }) = self.effect_catalog_target() {
+        let Some(target) = self.effect_catalog_target() else {
+            return;
+        };
+        if let EffectTarget::Layer { track, layer } = target {
             if let Some((effects, compact)) =
                 self.effect_chain(EffectTarget::Layer { track, layer })
             {

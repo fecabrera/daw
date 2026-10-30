@@ -118,6 +118,8 @@ fn each_lane_keeps_its_toolbar_fixed_outside_scrolling_components() {
             for (id, viewport) in &app.instrument_ui.component_viewports {
                 let toolbar = if *id == main.id {
                     output.toolbar
+                } else if let Some(lane) = app.instrument_ui.modulation_lane_bounds.get(id) {
+                    lane.toolbar
                 } else {
                     app.midi_editor.layer_bounds[id].toolbar
                 };

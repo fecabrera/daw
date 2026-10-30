@@ -31,7 +31,7 @@ pub use daw_unit_core::{
 pub use daw_unit_core::{
     AmplitudeSettings, EnvelopeInstance, EnvelopeMode, InstrumentBusSettings, LfoInstance,
     LfoPolarity, LfoRestart, LfoSettings, MacroInstance, MacroModuleSettings, MacroSettings,
-    Modulation, ModulationParameter, ModulationSourceId, ModulationValue,
+    Modulation, ModulationLaneKind, ModulationParameter, ModulationSourceId, ModulationValue,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
 pub use midi_options::{MidiOptions, MidiScale};
@@ -45,6 +45,7 @@ mod component_group;
 mod component_transfer;
 mod effect_transfer;
 mod effects;
+mod modulation_lanes;
 pub use component_group::ComponentTransfer;
 pub use component_transfer::InstrumentComponent;
 pub use effect_transfer::{EffectChainTarget, EffectTransfer};
@@ -134,29 +135,49 @@ fn first_track_color() -> RgbColor {
 fn deserialize_tracks<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> std::result::Result<Vec<Track>, D::Error> {
-    // Capture whether color was present before flattening into the required Track fields.
+    // Capture the original revision before the portable instrument decoder upgrades it.
     #[derive(Deserialize)]
     struct StoredTrack {
         #[serde(default, deserialize_with = "deserialize_present_color")]
         color: Option<RgbColor>,
+        #[serde(default)]
+        instrument: Option<serde_json::Value>,
         #[serde(flatten)]
         track: Track,
     }
     fn deserialize_present_color<'de, D: serde::Deserializer<'de>>(
-        deserializer: D,
+        d: D,
     ) -> std::result::Result<Option<RgbColor>, D::Error> {
-        RgbColor::deserialize(deserializer).map(Some)
+        RgbColor::deserialize(d).map(Some)
     }
-    Vec::<StoredTrack>::deserialize(deserializer).map(|tracks| {
-        tracks
-            .into_iter()
-            .enumerate()
-            .map(|(index, stored)| Track {
+    Vec::<StoredTrack>::deserialize(deserializer)?
+        .into_iter()
+        .enumerate()
+        .map(|(index, stored)| {
+            let mut track = Track {
                 color: stored.color.unwrap_or_else(|| default_track_color(index)),
                 ..stored.track
-            })
-            .collect()
-    })
+            };
+            if let Some(saved) = stored.instrument {
+                let legacy = saved
+                    .get("version")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some_and(|v| v < 4);
+                let missing_lfo = saved.get("lfo_lane").is_none();
+                let missing_envelope = saved.get("envelope_lane").is_none();
+                track.instrument =
+                    Some(serde_json::from_value(saved).map_err(serde::de::Error::custom)?);
+                if legacy {
+                    if !track.instrument.as_ref().unwrap().valid() {
+                        return Err(serde::de::Error::custom("Invalid legacy instrument"));
+                    }
+                    modulation_lanes::legacy_owners(&mut track, missing_lfo, missing_envelope);
+                    track.collect_modulation_lanes();
+                }
+            }
+            Ok(track)
+        })
+        .collect()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -829,11 +850,12 @@ impl Project {
                 track_id,
                 instrument,
             } => {
-                self.tracks
+                let track = self
+                    .tracks
                     .iter_mut()
                     .find(|t| t.id == track_id)
-                    .ok_or_else(|| Error("Track not found".into()))?
-                    .instrument = instrument;
+                    .ok_or_else(|| Error("Track not found".into()))?;
+                track.instrument = instrument;
             }
             Edit::Batch(commands) => {
                 for command in commands {

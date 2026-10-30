@@ -362,12 +362,14 @@ impl DawUi {
                                 "effects",
                                 catalog::Interaction {
                                     rows_enabled: allowed
+                                        && self.effect_catalog_target().is_some()
                                         && self
                                             .effects_drag
                                             .as_ref()
                                             .is_none_or(|drag| drag.is_library() && !drag.active)
                                         && selected.is_some(),
                                     keyboard_enabled: allowed
+                                        && self.effect_catalog_target().is_some()
                                         && self.effects_drag.is_none()
                                         && selected.is_some()
                                         && !ui.input(|input| input.pointer.primary_down()),

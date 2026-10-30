@@ -15,7 +15,9 @@ mod instrument_bus;
 pub use instrument_bus::InstrumentBusSettings;
 mod instrument_components;
 mod instrument_copy;
+mod modulation_lanes;
 pub use instrument_components::InstrumentComponent;
+pub use modulation_lanes::ModulationLaneKind;
 mod macro_control;
 pub use macro_control::*;
 mod lfo;
@@ -102,7 +104,7 @@ impl Waveform {
 mod oscillator;
 pub use oscillator::OscillatorSettings;
 
-pub const INSTRUMENT_STATE_VERSION: u32 = 3;
+pub const INSTRUMENT_STATE_VERSION: u32 = 4;
 
 /// A parallel layer with per-voice sources and a shared stereo effect bus.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -370,6 +372,9 @@ pub struct InstrumentSettings {
     pub version: u32,
     pub layers: Vec<InstrumentLayerSettings>,
     pub main: InstrumentBusSettings,
+    /// Fixed control lanes are boxed to keep project edit payloads bounded.
+    pub lfo_lane: Box<InstrumentBusSettings>,
+    pub envelope_lane: Box<InstrumentBusSettings>,
 }
 /// Compatibility name for callers of the original oscillator-only instrument API.
 pub type OscillatorInstrumentSettings = InstrumentSettings;
@@ -379,6 +384,8 @@ impl Default for InstrumentSettings {
             version: INSTRUMENT_STATE_VERSION,
             layers: vec![InstrumentLayerSettings::default()],
             main: InstrumentBusSettings::default(),
+            lfo_lane: Box::default(),
+            envelope_lane: Box::default(),
         }
     }
 }
@@ -410,6 +417,20 @@ impl InstrumentSettings {
                     .chain(layer.macro_module.sources(layer.id, &layer.name))
             })
             .chain(self.main.modulation_sources())
+            .chain(
+                self.lfo_lane
+                    .lfos
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| f.modulation_source(self.lfo_lane.id, "LFO", i)),
+            )
+            .chain(
+                self.envelope_lane
+                    .envelopes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| e.modulation_source(self.envelope_lane.id, "Envelope", i)),
+            )
     }
     pub fn modulation_source(&self, id: ModulationSourceId) -> Option<ModulationSourceInfo<'_>> {
         self.modulation_sources().find(|source| source.id == id)
@@ -428,14 +449,16 @@ impl InstrumentSettings {
                     )
                 })
             })
-            .chain(self.main.lfos.iter().map(|f| {
-                (
-                    ModulationSourceId {
-                        layer: self.main.id,
-                        unit: f.id,
-                    },
-                    f,
-                )
+            .chain(self.buses().flat_map(|bus| {
+                bus.lfos.iter().map(move |f| {
+                    (
+                        ModulationSourceId {
+                            layer: bus.id,
+                            unit: f.id,
+                        },
+                        f,
+                    )
+                })
             }))
     }
     pub fn macro_modules(&self) -> impl Iterator<Item = (uuid::Uuid, &MacroModuleSettings)> {
@@ -460,14 +483,16 @@ impl InstrumentSettings {
                     )
                 })
             })
-            .chain(self.main.envelopes.iter().map(|e| {
-                (
-                    ModulationSourceId {
-                        layer: self.main.id,
-                        unit: e.id,
-                    },
-                    e,
-                )
+            .chain(self.buses().flat_map(|bus| {
+                bus.envelopes.iter().map(move |e| {
+                    (
+                        ModulationSourceId {
+                            layer: bus.id,
+                            unit: e.id,
+                        },
+                        e,
+                    )
+                })
             }))
     }
     pub fn provider_destinations(
@@ -507,6 +532,9 @@ impl InstrumentSettings {
                     })
             })
             && self.main.valid()
+            && self.valid_modulation_lanes()
+            && ids.insert(self.lfo_lane.id)
+            && ids.insert(self.envelope_lane.id)
             && ids.insert(self.main.id)
             && !self.layers.is_empty()
             && self
@@ -522,6 +550,10 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
             version: u32,
             #[serde(default, deserialize_with = "saved_main")]
             main: Option<InstrumentBusSettings>,
+            #[serde(default, deserialize_with = "saved_main")]
+            lfo_lane: Option<InstrumentBusSettings>,
+            #[serde(default, deserialize_with = "saved_main")]
+            envelope_lane: Option<InstrumentBusSettings>,
             #[serde(default, deserialize_with = "layers")]
             layers: Option<Vec<InstrumentLayerSettings>>,
             #[serde(default, deserialize_with = "sources")]
@@ -561,18 +593,29 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
             oscillator::saved_oscillators(d).map(Some)
         }
         let saved = Saved::deserialize(deserializer)?;
+        if saved.version == INSTRUMENT_STATE_VERSION
+            && (saved.lfo_lane.is_none() || saved.envelope_lane.is_none())
+        {
+            return Err(serde::de::Error::custom(
+                "Instrument modulation lanes are missing",
+            ));
+        }
         if let Some(layers) = saved.layers {
             let main = saved
                 .main
                 .unwrap_or_else(|| InstrumentBusSettings::legacy(&layers));
+            let (lfo_lane, envelope_lane) =
+                Self::saved_modulation_lanes(&layers, &main, saved.lfo_lane, saved.envelope_lane);
             return Ok(Self {
-                version: if saved.version == 2 {
+                version: if saved.version == 2 || saved.version == 3 {
                     INSTRUMENT_STATE_VERSION
                 } else {
                     saved.version
                 },
                 layers,
                 main,
+                lfo_lane: Box::new(lfo_lane),
+                envelope_lane: Box::new(envelope_lane),
             });
         }
         if saved.version != UNIT_STATE_VERSION {
@@ -608,10 +651,18 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
         let main = saved
             .main
             .unwrap_or_else(|| InstrumentBusSettings::legacy(std::slice::from_ref(&layer)));
+        let (lfo_lane, envelope_lane) = Self::saved_modulation_lanes(
+            std::slice::from_ref(&layer),
+            &main,
+            saved.lfo_lane,
+            saved.envelope_lane,
+        );
         Ok(Self {
             version: INSTRUMENT_STATE_VERSION,
             layers: vec![layer],
             main,
+            lfo_lane: Box::new(lfo_lane),
+            envelope_lane: Box::new(envelope_lane),
         })
     }
 }

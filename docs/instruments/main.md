@@ -12,9 +12,9 @@ Use the gain knob at the right of the Output header’s second row to change the
 
 ## Add shared controls
 
-Select Output, then add Envelope, LFO, or Macro from Modulators in the component catalog. You can also drag compatible installed components onto Output. Output does not accept audio sources, Amplitude, or Per note Envelopes.
+Select Output, then add Macro from Modulators in the component catalog. You can also drag compatible installed components onto Output. Output does not accept audio sources, Amplitude, LFOs, or envelopes.
 
-New Output Envelopes start in Legato mode; Retrigger is also available. Output sources appear in destination lists with the Output prefix. They can control compatible parameters throughout the same instrument, including its track effects.
+LFOs and envelopes belong to their dedicated [instrument-wide lanes](modulation-lanes.md). Output Macros appear in destination lists with the Output prefix. They can control compatible parameters throughout the same instrument, including its track effects.
 
 Adding a modulator does not create connections. Open a receiving unit's [modulation controls](../modulation/README.md) to assign it. Output settings and layout save with the project.
 

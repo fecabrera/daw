@@ -86,7 +86,8 @@ fn provider_bytes(
 }
 impl InstrumentSettings {
     pub fn heap_bytes(&self) -> u64 {
-        vec_bytes(&self.layers)
+        2 * std::mem::size_of::<crate::InstrumentBusSettings>() as u64
+            + vec_bytes(&self.layers)
             + self
                 .layers
                 .iter()
@@ -104,12 +105,13 @@ impl InstrumentSettings {
                         + provider_bytes(&l.envelopes, &l.lfos, &l.macro_module)
                 })
                 .sum::<u64>()
-            + vec_bytes(&self.main.component_order)
-            + effect_settings_bytes(&self.main.effects)
-            + provider_bytes(
-                &self.main.envelopes,
-                &self.main.lfos,
-                &self.main.macro_module,
-            )
+            + self
+                .buses()
+                .map(|b| {
+                    vec_bytes(&b.component_order)
+                        + effect_settings_bytes(&b.effects)
+                        + provider_bytes(&b.envelopes, &b.lfos, &b.macro_module)
+                })
+                .sum::<u64>()
     }
 }

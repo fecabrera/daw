@@ -1,6 +1,7 @@
 //! Catalog adapter for the components available within an instrument layer.
 use super::*;
 use crate::instrument_component_drag::{ComponentDrag, ComponentDragSource};
+use daw_core::ModulationLaneKind;
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Category {
@@ -28,7 +29,9 @@ pub(super) struct Entry {
     category: Category,
     add_layer: fn(&mut daw_core::InstrumentLayerSettings),
     add_main: Option<fn(&mut daw_core::InstrumentBusSettings)>,
+    add_provider: Option<fn(&mut daw_core::InstrumentBusSettings)>,
     source: bool,
+    provider_lane: Option<ModulationLaneKind>,
     layer_available: fn(&daw_core::InstrumentLayerSettings) -> bool,
 }
 impl Entry {
@@ -44,7 +47,9 @@ impl Entry {
             category,
             add_layer: add,
             add_main: None,
+            add_provider: None,
             source: false,
+            provider_lane: None,
             layer_available: |_| true,
         }
     }
@@ -60,8 +65,24 @@ impl Entry {
     pub(super) fn supports_main(self) -> bool {
         self.add_main.is_some()
     }
+    const fn provider(
+        type_id: &'static str,
+        name: &'static str,
+        lane: ModulationLaneKind,
+        add: fn(&mut daw_core::InstrumentBusSettings),
+    ) -> Self {
+        Self {
+            provider_lane: Some(lane),
+            add_provider: Some(add),
+            ..Self::layer(type_id, name, Category::Modulators, |_| {})
+        }
+    }
     fn can_add(self, settings: &daw_core::InstrumentSettings, owner: Id) -> bool {
-        if owner == settings.main.id {
+        if owner == settings.lfo_lane.id || owner == settings.envelope_lane.id {
+            self.provider_lane == settings.modulation_lane_kind(owner)
+        } else if self.provider_lane.is_some() {
+            false
+        } else if owner == settings.main.id {
             self.supports_main()
         } else {
             settings
@@ -71,7 +92,11 @@ impl Entry {
         }
     }
     fn add_to(self, settings: &mut daw_core::InstrumentSettings, owner: Id) {
-        if owner == settings.main.id {
+        if settings.modulation_lane_kind(owner).is_some() {
+            if let Some(add) = self.add_provider {
+                add(settings.bus_mut(owner).unwrap());
+            }
+        } else if owner == settings.main.id {
             if let Some(add) = self.add_main {
                 add(&mut settings.main);
             }
@@ -86,21 +111,15 @@ pub(super) const ENTRIES: [Entry; 7] = [
         l.oscillators.push(Default::default())
     })
     .source(|l| l.sampler.is_none()),
-    Entry::layer("daw.envelope", "Envelope", Category::Modulators, |l| {
-        add_envelope(&mut l.envelopes)
-    })
-    .with_main(|main| {
-        add_envelope(&mut main.envelopes);
-        for envelope in &mut main.envelopes {
-            if envelope.mode == daw_core::EnvelopeMode::PerNote {
-                envelope.mode = daw_core::EnvelopeMode::Legato;
-            }
-        }
+    Entry::provider(
+        "daw.envelope",
+        "Envelope",
+        ModulationLaneKind::Envelope,
+        |bus| add_envelope(&mut bus.envelopes),
+    ),
+    Entry::provider("daw.lfo", "LFO", ModulationLaneKind::Lfo, |bus| {
+        add_lfo(&mut bus.lfos)
     }),
-    Entry::layer("daw.lfo", "LFO", Category::Modulators, |l| {
-        add_lfo(&mut l.lfos)
-    })
-    .with_main(|main| add_lfo(&mut main.lfos)),
     Entry::layer("daw.amplitude", "Amplitude", Category::Processors, |l| {
         l.amplitude.present = true
     }),
@@ -166,7 +185,7 @@ fn add_registered(
         return;
     }
     for entry in entries {
-        if types.contains(&entry.type_id) {
+        if types.contains(&entry.type_id) && entry.can_add(settings, owner) {
             entry.add_to(settings, owner);
         }
     }
@@ -187,16 +206,23 @@ fn can_add_registered(
     owner: Id,
     types: &[&str],
 ) -> bool {
-    (owner == settings.main.id
-        || (entries
-            .iter()
-            .filter(|e| e.source && types.contains(&e.type_id))
-            .count()
-            <= 1
-            && entries
+    (!(owner == settings.lfo_lane.id || owner == settings.envelope_lane.id)
+        || types.iter().all(|id| {
+            entries
+                .iter()
+                .find(|e| e.type_id == *id)
+                .is_some_and(|e| e.can_add(settings, owner))
+        }))
+        && (owner == settings.main.id
+            || (entries
                 .iter()
                 .filter(|e| e.source && types.contains(&e.type_id))
-                .all(|e| e.can_add(settings, owner))))
+                .count()
+                <= 1
+                && entries
+                    .iter()
+                    .filter(|e| e.source && types.contains(&e.type_id))
+                    .all(|e| e.can_add(settings, owner))))
         && entries
             .iter()
             .any(|entry| types.contains(&entry.type_id) && entry.can_add(settings, owner))
@@ -271,7 +297,21 @@ impl DawUi {
         {
             for (index, response) in &output.rows {
                 let entry = ENTRIES[*index];
-                if entry.source && !entry.can_add(settings, owner) {
+                if let Some(lane) = settings.modulation_lane_kind(owner)
+                    && !entry.can_add(settings, owner)
+                {
+                    response.clone().on_hover_text(format!(
+                        "The {} lane accepts only {} units.",
+                        lane.name(),
+                        lane.name()
+                    ));
+                } else if !entry.can_add(settings, owner) && !entry.source {
+                    response.clone().on_hover_text(match entry.provider_lane {
+                        Some(ModulationLaneKind::Lfo) => "Add LFOs to the LFO lane.",
+                        Some(ModulationLaneKind::Envelope) => "Add envelopes to the Envelope lane.",
+                        None => "This component is not supported by the selected lane.",
+                    });
+                } else if entry.source && !entry.can_add(settings, owner) {
                     response.clone().on_hover_text("A layer can contain Oscillator, Sampler, or Granulizer. Remove its source or use Replace source in the installed source header menu.");
                 }
             }
@@ -287,7 +327,7 @@ impl DawUi {
         }) {
             for (index, response) in &output.rows {
                 let entry = ENTRIES[*index];
-                if !entry.supports_main() {
+                if !entry.supports_main() && entry.provider_lane.is_none() {
                     response.clone().on_hover_text(
                         "This component requires a regular layer. Drag it onto a regular layer.",
                     );
@@ -370,9 +410,10 @@ impl DawUi {
         })?;
         let instrument = track.instrument.as_ref()?;
         if self.instrument_ui.track == Some(track.id)
-            && self.instrument_ui.selected_layer == Some(instrument.main.id)
+            && let Some(owner) = self.instrument_ui.selected_layer
+            && instrument.bus(owner).is_some()
         {
-            return Some((track.id, instrument.main.id));
+            return Some((track.id, owner));
         }
         let layer = instrument
             .layers

@@ -51,8 +51,8 @@ impl Project {
         {
             let index = destination_index
                 .ok_or_else(|| Error("Component reorder requires an insertion index".into()))?;
-            let moved = if source == instrument.main.id {
-                instrument.main.move_component(component, index)
+            let moved = if let Some(bus) = instrument.bus_mut(source) {
+                bus.move_component(component, index)
             } else {
                 instrument
                     .layers
@@ -194,8 +194,8 @@ impl Project {
         if !placed.is_source()
             && let Some(index) = destination_index
         {
-            let moved = if destination == instrument.main.id {
-                instrument.main.move_component(placed, index)
+            let moved = if let Some(bus) = instrument.bus_mut(destination) {
+                bus.move_component(placed, index)
             } else {
                 instrument
                     .layers
@@ -219,17 +219,26 @@ pub(super) fn eligible(
     c: InstrumentComponent,
     copy: bool,
 ) -> bool {
+    if (from == i.lfo_lane.id
+        || from == i.envelope_lane.id
+        || to == i.lfo_lane.id
+        || to == i.envelope_lane.id)
+        && !i.accepts_component(to, c)
+    {
+        return false;
+    }
     if from == to && !copy && !matches!(c, InstrumentComponent::Oscillator(_)) {
         return !c.is_source()
-            && if from == i.main.id {
-                i.main.has_component(c)
+            && if let Some(bus) = i.bus(from) {
+                bus.has_component(c)
             } else {
                 i.layers.iter().any(|l| l.id == from && l.has_component(c))
             };
     }
     let source = i.layers.iter().find(|l| l.id == from);
     let destination = i.layers.iter().find(|l| l.id == to);
-    if (from != i.main.id && source.is_none()) || (to != i.main.id && destination.is_none()) {
+    if (i.bus(from).is_none() && source.is_none()) || (i.bus(to).is_none() && destination.is_none())
+    {
         return false;
     }
     match c {
@@ -247,7 +256,7 @@ pub(super) fn eligible(
                 && destination.is_some_and(|l| l.sampler.is_none())
         }
         InstrumentComponent::Macros => {
-            let m = source.map_or(&i.main.macro_module, |l| &l.macro_module);
+            let m = source.map_or_else(|| &i.bus(from).unwrap().macro_module, |l| &l.macro_module);
             m.present && m.controls.iter().any(|c| c.present)
         }
         InstrumentComponent::Amplitude => {
@@ -255,13 +264,14 @@ pub(super) fn eligible(
                 && destination.is_some_and(|l| !l.amplitude.present)
         }
         InstrumentComponent::Envelope(id) => {
-            let envelopes = source.map_or(&i.main.envelopes, |l| &l.envelopes);
+            let envelopes =
+                source.map_or_else(|| &i.bus(from).unwrap().envelopes, |l| &l.envelopes);
             envelopes.iter().any(|e| {
                 e.id == id && e.present && (to != i.main.id || e.mode != EnvelopeMode::PerNote)
             })
         }
         InstrumentComponent::Lfo(id) => source
-            .map_or(&i.main.lfos, |l| &l.lfos)
+            .map_or_else(|| &i.bus(from).unwrap().lfos, |l| &l.lfos)
             .iter()
             .any(|e| e.id == id && e.present),
     }
@@ -269,21 +279,26 @@ pub(super) fn eligible(
 fn providers(i: &InstrumentSettings, owner: Id) -> impl Iterator<Item = Id> + '_ {
     let layer = i.layers.iter().find(|l| l.id == owner);
     layer
-        .map_or(&i.main.envelopes, |l| &l.envelopes)
+        .map_or_else(|| &i.bus(owner).unwrap().envelopes, |l| &l.envelopes)
         .iter()
         .map(|e| e.id)
-        .chain(layer.map_or(&i.main.lfos, |l| &l.lfos).iter().map(|l| l.id))
         .chain(
             layer
-                .map_or(&i.main.macro_module, |l| &l.macro_module)
+                .map_or_else(|| &i.bus(owner).unwrap().lfos, |l| &l.lfos)
+                .iter()
+                .map(|l| l.id),
+        )
+        .chain(
+            layer
+                .map_or_else(|| &i.bus(owner).unwrap().macro_module, |l| &l.macro_module)
                 .controls
                 .iter()
                 .map(|c| c.id),
         )
 }
 fn envelopes_mut(i: &mut InstrumentSettings, owner: Id) -> &mut Vec<EnvelopeInstance> {
-    if i.main.id == owner {
-        &mut i.main.envelopes
+    if i.bus(owner).is_some() {
+        &mut i.bus_mut(owner).unwrap().envelopes
     } else {
         &mut i
             .layers
@@ -294,8 +309,8 @@ fn envelopes_mut(i: &mut InstrumentSettings, owner: Id) -> &mut Vec<EnvelopeInst
     }
 }
 fn lfos_mut(i: &mut InstrumentSettings, owner: Id) -> &mut Vec<LfoInstance> {
-    if i.main.id == owner {
-        &mut i.main.lfos
+    if i.bus(owner).is_some() {
+        &mut i.bus_mut(owner).unwrap().lfos
     } else {
         &mut i.layers.iter_mut().find(|l| l.id == owner).unwrap().lfos
     }
@@ -313,14 +328,23 @@ fn remap_consumers(
             }
         }
     }
-    remap_source(&mut instrument.main.macro_module.modulations, old, new);
-    for envelope in &mut instrument.main.envelopes {
-        remap_source(&mut envelope.modulations, old, new);
+    for bus in [
+        &mut instrument.main,
+        instrument.lfo_lane.as_mut(),
+        instrument.envelope_lane.as_mut(),
+    ] {
+        remap_source(&mut bus.macro_module.modulations, old, new);
+        for envelope in &mut bus.envelopes {
+            remap_source(&mut envelope.modulations, old, new);
+        }
+        for lfo in &mut bus.lfos {
+            remap_source(&mut lfo.modulations, old, new);
+        }
+        for effect in &mut bus.effects {
+            remap_source(effect.unit.modulations_mut(), old, new);
+        }
     }
-    for lfo in &mut instrument.main.lfos {
-        remap_source(&mut lfo.modulations, old, new);
-    }
-    for effect in effects.iter_mut().chain(&mut instrument.main.effects) {
+    for effect in effects {
         remap_source(effect.unit.modulations_mut(), old, new);
     }
 }

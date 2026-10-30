@@ -11,7 +11,7 @@ fn lfo_catalog_adds_independent_saved_sources_without_adding_routes_in_both_them
             .instrument
             .as_ref()
             .unwrap()
-            .layers[0]
+            .lfo_lane
             .id;
         let ctx = context();
         app.set_settings(
@@ -26,10 +26,10 @@ fn lfo_catalog_adds_independent_saved_sources_without_adding_routes_in_both_them
         add_component(&mut app, &ctx, layer, 2);
         add_component(&mut app, &ctx, layer, 2);
         let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-        assert_eq!(instrument.layers[0].lfos.len(), 2);
+        assert_eq!(instrument.lfo_lane.lfos.len(), 2);
         assert_ne!(
-            instrument.layers[0].lfos[0].id,
-            instrument.layers[0].lfos[1].id
+            instrument.lfo_lane.lfos[0].id,
+            instrument.lfo_lane.lfos[1].id
         );
         assert!(instrument.layers[0].amplitude.modulations.is_empty());
         assert!(app.session.project.tracks[0].effects.is_empty());
@@ -40,8 +40,9 @@ fn lfo_catalog_adds_independent_saved_sources_without_adding_routes_in_both_them
                 .iter()
                 .all(|s| s.scope == daw_unit_core::ModulationScope::Shared)
         );
-        assert_eq!(sources[0].label, "Layer 1 · LFO 1");
-        let old = instrument.clone();
+        assert_eq!(sources[0].label, "LFO · LFO 1");
+        let expected = app.session.project.tracks[0].clone();
+        let old = expected.instrument.unwrap();
         let saved = serde_json::to_value(&app.session.project).unwrap();
         let loaded: daw_core::Project = serde_json::from_value(saved).unwrap();
         loaded.validate().unwrap();
@@ -143,6 +144,13 @@ fn lfo_catalog_enter_and_drag_share_the_existing_component_actions() {
     let ctx = context();
     app.set_view_mode(ViewMode::Instrument, &ctx);
     frame(&mut app, &ctx, vec![]);
+    let owner = app.session.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .lfo_lane
+        .id;
+    app.instrument_ui.select_layer(owner);
     let point = app.instrument_catalog_bounds.toggle.center();
     click(&mut app, &ctx, point, false);
     let row = app.instrument_catalog_bounds.entries[2].center();
@@ -153,7 +161,7 @@ fn lfo_catalog_enter_and_drag_share_the_existing_component_actions() {
             .instrument
             .as_ref()
             .unwrap()
-            .layers[0]
+            .lfo_lane
             .lfos
             .len(),
         1
@@ -173,9 +181,11 @@ fn lfo_catalog_enter_and_drag_share_the_existing_component_actions() {
         .instrument
         .as_ref()
         .unwrap()
-        .layers[0]
+        .lfo_lane
         .id;
-    let end = app.midi_editor.layer_bounds[&layer].label.center();
+    let end = app.instrument_ui.modulation_lane_bounds[&layer]
+        .label
+        .center();
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
     frame(&mut app, &ctx, vec![button(end, false)]);
     assert_eq!(
@@ -183,7 +193,7 @@ fn lfo_catalog_enter_and_drag_share_the_existing_component_actions() {
             .instrument
             .as_ref()
             .unwrap()
-            .layers[0]
+            .lfo_lane
             .lfos
             .len(),
         2

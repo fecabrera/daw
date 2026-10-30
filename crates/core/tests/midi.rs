@@ -1030,7 +1030,7 @@ fn version_two_envelopes_migrate_to_generic_sources_and_an_explicit_amplitude_co
     }]});
     let migrated: InstrumentSettings = serde_json::from_value(legacy).unwrap();
     assert!(migrated.valid());
-    assert_eq!(migrated.version, 3);
+    assert_eq!(migrated.version, INSTRUMENT_STATE_VERSION);
     let l = &migrated.layers[0];
     assert!(l.amplitude.present && l.amplitude.enabled);
     assert!(l.envelopes[0].present && !l.envelopes[0].enabled && l.envelopes[0].collapsed);
