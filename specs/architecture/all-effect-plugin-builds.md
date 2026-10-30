@@ -38,6 +38,8 @@ The plugin prepares 64 stable band slots, each with Enabled, Mode, Frequency, Ga
 
 `MultibandEq::retarget` changes only same-ID/same-order prepared settings. Route/topology changes still require worker preparation and `inherit`. Reject mismatched topologies before changing any band. The plugin retains its settings vector through processing; automation must not reconstruct it. Editor and CLAP gesture queues scale to the fixed parameter count while remaining bounded. The editor starts with one band, the shared Add strip and Output. Add reveals and enables the next hidden slot; power bypass retains the visible strip. Remove resets and hides that slot while preserving its stable identity. Enabled or modified slots become visible after state recall. The visible-slot mask is instance UI state, separate from parameters and serialized presets. The bank scrolls horizontally as needed, and Add is disabled at 64 visible slots. These presentation rules do not change the fixed automation bank. Tests cover Add, power, Remove and identity preservation.
 
+The fixed band order is a current implementation limit under the [variable-strip reordering requirement](modular-audio-units.md#variable-strip-reordering). Standalone band reordering remains pending. Its implementation must preserve the published slot parameter IDs and bindings while saving the chosen order separately; it must not renumber automation parameters by display position.
+
 ## Packaging, CI, and checks
 
 The manifest-discovered packager requires no product allowlist. `--units all` now selects fourteen units. Test fixture libraries cover all products on each supported archive layout and retain transactional publication after later-unit/signing failures.

@@ -4,7 +4,7 @@ Implementation requirements and design records. For user instructions, see the [
 
 For a source-backed map of the current implementation and its review findings, see the [2026-10-19 architecture review](review-2026-10-19/README.md). This document retains dated design decisions; early proposals can be superseded by later entries.
 
-Status: design baseline with implemented track/Master effects and MIDI sources; graph and beat work pending. Last updated: 2026-10-28.
+Status: design baseline with implemented track/Master effects and MIDI sources; graph and beat work pending. Last updated: 2026-10-30.
 
 Users build MIDI instruments in Instrument and configure track and Master effect chains in Timeline and Mixer, with displayed-track effects in Editor and MIDI track effects also available in Instrument. These replace the earlier combined Units view. The planned track types are audio, MIDI, and beat. Audio tracks will accept effects; MIDI tracks will accept sources and effects. A future Editor view will provide an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor will provide step toggles in audio or MIDI lanes, each with its own sources and effects. Every unit will use a shared core and support independent distribution. These are confirmed requirements. The Units MVP scope below is accepted. Detailed API, layout, and packaging choices remain proposals or implementation details.
 
@@ -196,6 +196,18 @@ All source, effect, and modulator units in Instrument and Effects must use the s
 - Reuse the standard knobs, faders, numeric fields, and dropdowns. Individual units define their parameters inside the body; they retain the same panel shell in both themes.
 
 The Oscillator panel uses this base panel. Its body delegates the shared padding to individual source and add containers, with no additional outer padding or gaps. All strips have equal height; each source centers its knobs and Power button in one vertical column. Future units must reuse the base panel.
+
+### Variable-strip reordering
+
+Every unit with a variable number of strips must allow users to reorder every removable strip. This applies to source, effect and modulator units, including their modulation connection strips, in both built-in and standalone editors. Fixed strips, such as Ranges, Add and Out, retain their assigned positions. A minimum strip count does not exempt the remaining strips from reordering.
+
+Reuse Oscillator's shared drag helpers and the existing strip gesture lifecycle. Drag the label or unused strip space; exclude knobs, Power and other controls. Use the shared movement threshold, insertion line and horizontal edge scrolling in compact and expanded layouts. Preview without changing saved settings or playback. Commit only on valid release within the strip bank. Escape, focus loss, disabled editing, changed strip data, a changed host or a hidden/removed unit cancels the gesture. Outside and same-position drops make no edit.
+
+Move the complete strip with its stable identity, settings, modulation connections and monitoring keys. Displayed numbers follow the new order; they must not identify saved routes or automation parameters. Preserve fixed public parameter IDs and their strip bindings in plugins. Persist the resulting order and support Undo/Redo through the owning host's existing edit path. Keep preparation and ownership changes outside the audio callback. Units with frequency-dependent topology must define how reordered strips retain valid ranges and processing semantics in their unit specification.
+
+Tests must cover release-only commits, identity and connection preservation, persistence, Undo/Redo, cancellation, no-op drops, control exclusions, edge scrolling and applicable host contexts. Reuse the existing interaction tests and retain built-in/plugin editor parity checks.
+
+Current coverage includes Oscillator sources, modulation connections and built-in Multiband EQ bands. Macro strips, Multiband Exciter bands and standalone Multiband EQ slots still need this behavior. These are implementation gaps under this requirement, not exceptions. This requirement does not claim those interactions are already implemented.
 
 ### Shared knob base
 
