@@ -28,6 +28,7 @@ mod performance;
 mod preparation;
 #[cfg(test)]
 mod preparation_tests;
+mod source_meters;
 pub use meters::StereoMeter;
 pub use performance::{Performance, PerformanceSnapshot};
 
@@ -447,6 +448,7 @@ pub struct AudioOutput {
     effect_meters: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
     exciter_solos: effect_audition::Solos,
     output_meters: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
+    source_meters: source_meters::Sources,
     band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
     live_pitches: daw_engine::LiveMidiPitches,
@@ -541,6 +543,7 @@ impl AudioOutput {
         let status = preparation.status.clone();
         let meters = track_meters(&plan, &HashMap::new());
         let layers = layer_meters::prepare(&plan, &Default::default());
+        let sources = source_meters::prepare(&plan, &Default::default());
         let reductions = effect_meters(&plan, &HashMap::new());
         let outputs = output_meters(&plan, &HashMap::new());
         let changes = band_meters(&plan, &HashMap::new());
@@ -564,6 +567,7 @@ impl AudioOutput {
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_band_meters(&mut state.renderer, &changes);
             bind_output_meters(&mut state.renderer, &outputs);
+            source_meters::bind(&mut state.renderer, &sources);
             state.renderer.layer_meters = layers.clone();
             state.renderer.bind_modulation(&modulation);
             state.renderer.bind_live_midi_pitches(&live_pitches);
@@ -630,6 +634,7 @@ impl AudioOutput {
             exciter_solos,
             band_meters: changes,
             output_meters: outputs,
+            source_meters: sources,
             modulation_meters: modulation,
             live_pitches,
         })
@@ -656,6 +661,7 @@ impl AudioOutput {
             exciter_solos: self.exciter_solos.clone(),
             bands: self.band_meters.clone(),
             outputs: self.output_meters.clone(),
+            sources: self.source_meters.clone(),
             modulation: self.modulation_meters.clone(),
             live_pitches: self.live_pitches.clone(),
         }
@@ -773,6 +779,21 @@ impl AudioOutput {
             .map(AsRef::as_ref)
     }
     /// Held linear output sample peak, retained while paused/stopped and resettable by the UI.
+    pub fn source_output_level(&self, target: daw_engine::SourceOutputTarget) -> f32 {
+        if !self.status.playing.load(Ordering::Relaxed) {
+            return 0.0;
+        }
+        self.source_meters
+            .get(&target)
+            .map_or(0.0, |m| m.readings()[0])
+    }
+    pub fn source_output_peak(
+        &self,
+        target: daw_engine::SourceOutputTarget,
+    ) -> Option<&daw_unit_core::PeakHold> {
+        self.source_meters.get(&target).map(|m| &m.boost_peaks()[0])
+    }
+    /// Held effect output peak, retained while paused/stopped and resettable by the UI.
     pub fn effect_output_peak(&self, id: Id) -> Option<&daw_unit_core::PeakHold> {
         self.output_meters
             .get(&id)
@@ -909,6 +930,7 @@ impl AudioOutput {
                     self.exciter_solos = ready.bindings.exciter_solos;
                     self.band_meters = ready.bindings.bands;
                     self.output_meters = ready.bindings.outputs;
+                    self.source_meters = ready.bindings.sources;
                     self.modulation_meters = ready.bindings.modulation;
                     self.live_pitches = ready.bindings.live_pitches;
                 }

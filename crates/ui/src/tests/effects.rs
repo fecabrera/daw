@@ -6619,6 +6619,7 @@ fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_se
                 daw_core::EffectInstance::filter,
                 daw_core::EffectInstance::auto_filter,
                 daw_core::EffectInstance::multiband_equalizer,
+                daw_core::EffectInstance::exciter,
             ] {
                 let (mut app, _, ctx, _) = chain_fixture(compact, false);
                 app.set_settings(
@@ -6638,6 +6639,7 @@ fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_se
                     daw_core::EffectSettings::Filter(s) => s.collapsed = collapsed,
                     daw_core::EffectSettings::AutoFilter(s) => s.collapsed = collapsed,
                     daw_core::EffectSettings::MultibandEq(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::Exciter(s) => s.collapsed = collapsed,
                     daw_core::EffectSettings::Limiter(s) => s.collapsed = collapsed,
                     daw_core::EffectSettings::Compressor(s) => s.collapsed = collapsed,
                     daw_core::EffectSettings::Ott(s) => s.collapsed = collapsed,
@@ -6663,6 +6665,9 @@ fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_se
                     }
                     daw_core::EffectSettings::MultibandEq(_) => {
                         app.effects_bounds.multiband_eq_units[0].output_meter
+                    }
+                    daw_core::EffectSettings::Exciter(_) => {
+                        app.effects_bounds.exciter_units[0].body.meter
                     }
                     daw_core::EffectSettings::Limiter(_) => {
                         let b = &app.effects_bounds.limiter_units[0];

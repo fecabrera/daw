@@ -5476,6 +5476,7 @@ mod tests {
     mod sampler;
     mod saving;
     mod separation;
+    mod source_output_meters;
     mod track_groups;
     mod track_header;
     mod track_shortcuts;

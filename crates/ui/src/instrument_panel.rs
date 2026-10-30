@@ -1191,6 +1191,7 @@ impl DawUi {
             self.midi_editor.add_oscillator_strip_bounds = Rect::NOTHING;
         }
         let open = *modulation_open;
+        let mut source_strip = None;
         let result = ui.scope_builder(egui::UiBuilder::new().ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")), |ui| panels::PanelStyle { margin: 0, ..panel }.unit(
             ui,
             ("Oscillator", compact),
@@ -1368,7 +1369,9 @@ impl DawUi {
                         });
                     });
                     panels::unit_divider(ui, output_strip.response.rect.left(), output_strip.response.rect.y_range().into());
-                    self.start_installed_component_drag(ui, &output_strip.response, &[level_rect,pitch_rect], track, layer_id, daw_core::InstrumentComponent::Oscillators);
+                    source_strip = Some(output_strip.response.rect);
+                    let meter_rect = if compact { Rect::NOTHING } else { meters::unit_monitor_rail(output_strip.response.rect, panels::PanelStyle::default().margin) };
+                    self.start_installed_component_drag(ui, &output_strip.response, &[level_rect,pitch_rect,meter_rect], track, layer_id, daw_core::InstrumentComponent::Oscillators);
                     #[cfg(test)] {
                         self.midi_editor.oscillator_level_bounds = level_rect;
                         self.midi_editor.oscillator_pitch_bounds = pitch_rect;
@@ -1381,6 +1384,28 @@ impl DawUi {
                 });
             },
         )).inner;
+        if !compact && let Some(strip) = source_strip {
+            let target = daw_engine::SourceOutputTarget {
+                track,
+                layer: layer_id,
+                unit: layer_id,
+            };
+            let reading = meters::OutputLevel::new(
+                self.output
+                    .as_ref()
+                    .map_or(0.0, |o| o.source_output_level(target)),
+                self.output
+                    .as_ref()
+                    .and_then(|o| o.source_output_peak(target)),
+            );
+            meters::effect_output_level(
+                ui,
+                strip,
+                panels::PanelStyle::default().margin,
+                reading,
+                *enabled,
+            );
+        }
         crate::modulation_panel::toggle(ui, &result.header, *collapsed, modulation_open);
         self.start_installed_component_drag(
             ui,

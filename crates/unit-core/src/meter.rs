@@ -270,6 +270,28 @@ impl<const N: usize> LevelMonitor<N> {
     pub fn is_connected(&self) -> bool {
         self.peak_meter.is_connected() || self.meter.is_connected()
     }
+    /// Keep release history while taking the prepared publication handles and power state.
+    /// Old handles stay in `prepared` for retirement; this never drops their final owners.
+    pub fn retarget(&mut self, prepared: &mut Self) {
+        let enabled = prepared.is_enabled();
+        std::mem::swap(&mut self.meter.handle, &mut prepared.meter.handle);
+        std::mem::swap(&mut self.peak_meter.handle, &mut prepared.peak_meter.handle);
+        self.set_enabled(enabled);
+        if let Some(handle) = &self.meter.handle {
+            if enabled {
+                handle.initialize(self.peaks);
+            } else {
+                handle.clear();
+            }
+        }
+        if let Some(handle) = &self.peak_meter.handle {
+            if enabled {
+                handle.initialize(self.peaks);
+            } else {
+                handle.clear();
+            }
+        }
+    }
     pub fn is_enabled(&self) -> bool {
         self.meter.enabled
     }
@@ -529,5 +551,45 @@ mod output_peak_tests {
         monitor.set_enabled(true);
         monitor.sample_output([0.2, -0.4]);
         assert_eq!(fresh.boost_peaks()[0].peak(), 0.4);
+    }
+}
+
+#[cfg(test)]
+mod prepared_level_binding_tests {
+    use super::*;
+    #[test]
+    fn prepared_handles_replace_snapshot_bindings_without_losing_history_or_recapturing_peaks() {
+        let old = Arc::new(BandMeter::<3>::default());
+        let next = Arc::new(BandMeter::<3>::default());
+        let mut live = LevelMonitor::new(48000, true);
+        live.attach_peak(old.clone());
+        live.sample_output([0.8, -0.4]);
+        let mut prepared = LevelMonitor::new(48000, true);
+        prepared.attach_peak(next.clone());
+        let counts = (Arc::strong_count(&old), Arc::strong_count(&next));
+        live.retarget(&mut prepared);
+        assert_eq!((Arc::strong_count(&old), Arc::strong_count(&next)), counts);
+        assert_eq!(next.readings()[0], 0.8);
+        assert_eq!(
+            next.boost_peaks()[0].peak(),
+            0.0,
+            "history publication is not a new sample"
+        );
+        live.sample_output([0.0; 2]);
+        assert!(next.readings()[0] > 0.79);
+        assert_eq!(next.boost_peaks()[0].peak(), 0.0);
+        assert_eq!(
+            old.readings()[0],
+            0.8,
+            "retired handle receives no publication"
+        );
+        live.sample_output([0.1, -0.5]);
+        assert_eq!(next.boost_peaks()[0].peak(), 0.5);
+        prepared.set_enabled(false);
+        live.retarget(&mut prepared);
+        assert_eq!(old.readings(), [0.0; 3]);
+        assert_eq!(old.boost_peaks()[0].peak(), 0.0);
+        live.sample_output([1.0; 2]);
+        assert_eq!(old.readings(), [0.0; 3]);
     }
 }

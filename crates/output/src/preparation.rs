@@ -10,6 +10,7 @@ pub(super) struct Bindings {
     pub effects: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
     pub exciter_solos: effect_audition::Solos,
     pub outputs: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
+    pub sources: source_meters::Sources,
     pub bands: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     pub modulation: HashMap<ModulationTarget, ModulationMeter>,
     pub live_pitches: daw_engine::LiveMidiPitches,
@@ -173,6 +174,7 @@ impl Worker {
                                     &previous.exciter_solos,
                                 ),
                                 outputs: output_meters(&plan, &previous.outputs),
+                                sources: source_meters::prepare(&plan, &previous.sources),
                                 bands: band_meters(&plan, &previous.bands),
                                 modulation: modulation_meters(&plan, &previous.modulation),
                                 live_pitches: daw_engine::LiveMidiPitches::prepare(
@@ -289,6 +291,7 @@ impl Worker {
                     bind_effect_meters(&mut renderer, &bindings.effects);
                     bind_band_meters(&mut renderer, &bindings.bands);
                     bind_output_meters(&mut renderer, &bindings.outputs);
+                    source_meters::bind(&mut renderer, &bindings.sources);
                     renderer.layer_meters = bindings.layers.clone();
                     renderer.bind_modulation(&bindings.modulation);
                     renderer.bind_live_midi_pitches(&bindings.live_pitches);

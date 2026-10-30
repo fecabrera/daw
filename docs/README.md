@@ -31,7 +31,7 @@ Knob tooltips show only the parameter name on the left and the current value on 
 
 ## Effects
 
-- [Standard effect output meters and held peaks](effects/output-meter.md)
+- [Standard unit output meters and held peaks](effects/output-meter.md)
 - [Saturator and Bitcrusher CLAP/VST3 previews](effects/distortion-plugins.md)
 
 - [3-band EQ](effects/equalizer.md)

@@ -9,6 +9,8 @@ mod latency;
 mod layer_effects;
 mod lfo;
 mod midi;
+mod source_meters;
+pub use source_meters::SourceOutputTarget;
 mod modulation;
 mod parallel_tracks;
 mod schedule;
@@ -594,6 +596,20 @@ impl Renderer {
         }
     }
     /// Attach prepared meter handles before publishing a renderer to the callback.
+    pub fn set_source_output_peak_meter(
+        &mut self,
+        target: SourceOutputTarget,
+        meter: std::sync::Arc<daw_unit_core::BandMeter<3>>,
+    ) {
+        if let Some(runtime) = self
+            .track_index
+            .get(&target.track)
+            .and_then(|&i| self.midi[i].as_mut())
+        {
+            runtime.set_source_output_meter(target, meter);
+        }
+    }
+    /// Attach prepared effect meter handles before callback publication.
     pub fn set_effect_meter(
         &mut self,
         id: Id,

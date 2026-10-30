@@ -5340,3 +5340,6 @@ fn chorus_shared_modulation_reaches_track_layer_and_main_and_roundtrips() {
         }
     }
 }
+
+#[path = "support/source_output_meters.rs"]
+mod source_output_meters;

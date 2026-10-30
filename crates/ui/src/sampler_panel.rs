@@ -406,6 +406,29 @@ impl DawUi {
         )).inner;
         s.enabled = enabled;
         s.collapsed = collapsed;
+        if !compact && s.granulizer.is_some() && bounds.controls.is_positive() {
+            let target = daw_engine::SourceOutputTarget {
+                track,
+                layer: layer_id,
+                unit: s.id,
+            };
+            let reading = meters::OutputLevel::new(
+                self.output
+                    .as_ref()
+                    .map_or(0.0, |o| o.source_output_level(target)),
+                self.output
+                    .as_ref()
+                    .and_then(|o| o.source_output_peak(target)),
+            );
+            meters::effect_output_level(
+                ui,
+                bounds.controls,
+                panels::PanelStyle::default().margin,
+                reading,
+                s.enabled,
+            );
+        }
+
         let toggle =
             modulation_panel::toggle(ui, &result.header, s.collapsed, &mut s.modulation_open);
         bounds.panel = result.response.rect.intersect(ui.clip_rect());

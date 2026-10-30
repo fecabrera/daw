@@ -32,6 +32,8 @@ struct NotePitch {
 }
 #[derive(Clone)]
 struct LayerVoice {
+    // Read-only tap before Amplitude; Voice applies note velocity before bus summing.
+    source_output: [f32; 2],
     // Display-only contribution for the legacy voice-mix path, including its post-gain transition.
     mixed_output: [f32; 2],
     mixed_transition_from: [f32; 2],
@@ -183,6 +185,7 @@ impl Voice {
         for layer in &mut self.layers {
             layer.previous = [0.0; 2];
             layer.output = [0.0; 2];
+            layer.source_output = [0.0; 2];
             layer.mixed_output = [0.0; 2];
             layer.gate.reset();
             if let Some(s) = &mut layer.sampler {
@@ -255,6 +258,7 @@ impl Voice {
             self.previous = [0.0; 2];
             for layer in &mut self.layers {
                 layer.output = [0.0; 2];
+                layer.source_output = [0.0; 2];
                 layer.mixed_output = [0.0; 2];
                 layer.previous = [0.0; 2];
             }
@@ -286,6 +290,7 @@ impl Voice {
                     None
                 },
             );
+            layer.source_output = layer.source_output.map(|v| v * self.velocity);
             layer.mixed_output = std::array::from_fn(|ch| {
                 let sample = value[ch] * layer.gain[ch] * self.velocity;
                 if self.transition > 0 {
@@ -393,6 +398,7 @@ impl LayerVoice {
                 context,
             )
         });
+        self.source_output = stereo;
         let shaped = process_modulation(
             &mut self.amplitude,
             &mut self.routes,
@@ -781,14 +787,24 @@ impl MidiTrackRuntime {
             layer_effects: layers
                 .iter()
                 .map(|l| {
-                    super::layer_effects::LayerEffects::new(
+                    let mut bus = super::layer_effects::LayerEffects::new(
                         l.id,
                         &l.effects,
                         layer_gains(l, any_solo),
                         project.sample_rate_hz,
                         project.buffer_size_frames,
                         parallel_latency,
-                    )
+                    );
+                    bus.source_output = super::SourceOutputTarget::for_layer(track.id, l).map(
+                        |(target, enabled)| {
+                            super::source_meters::SourceOutput::new(
+                                target.unit,
+                                enabled,
+                                project.sample_rate_hz,
+                            )
+                        },
+                    );
+                    bus
                 })
                 .chain(std::iter::once(super::layer_effects::LayerEffects::new(
                     instrument.main.id,
@@ -839,6 +855,7 @@ impl MidiTrackRuntime {
                         .iter()
                         .zip(&banks)
                         .map(|(layer, bank)| LayerVoice {
+                            source_output: [0.0; 2],
                             mixed_output: [0.0; 2],
                             mixed_transition_from: [0.0; 2],
                             previous: [0.0; 2],
@@ -1273,6 +1290,9 @@ impl MidiTrackRuntime {
         self.layer_samples.fill([0.0; 2]);
         for bus in &mut self.layer_effects {
             bus.meter_sample = [0.0; 2];
+            if let Some(source) = &mut bus.source_output {
+                source.sample = [0.0; 2];
+            }
         }
         self.shared
             .tick(self.lfo_notes.context(frame, self.tempo_bpm));
@@ -1293,10 +1313,18 @@ impl MidiTrackRuntime {
                 for (ch, sum) in sum.iter_mut().enumerate() {
                     *sum += layer.output[ch];
                     bus.meter_sample[ch] += layer.mixed_output[ch];
+                    if let Some(source) = &mut bus.source_output {
+                        source.sample[ch] += layer.source_output[ch];
+                    }
                 }
             }
             for ch in 0..2 {
                 sum[ch] += sample[ch];
+            }
+        }
+        for bus in &mut self.layer_effects {
+            if let Some(source) = &mut bus.source_output {
+                source.level.sample_output(source.sample);
             }
         }
         if self.has_bus_effects {
@@ -1410,6 +1438,20 @@ impl MidiTrackRuntime {
     }
     pub fn effect_snapshot(&self, id: Id) -> Option<super::ModulationSnapshot> {
         super::layer_effects::find(&self.layer_effects, id)
+    }
+    pub fn set_source_output_meter(
+        &mut self,
+        target: super::SourceOutputTarget,
+        meter: std::sync::Arc<daw_unit_core::BandMeter<3>>,
+    ) {
+        if let Some(source) = self
+            .layer_index
+            .get(&target.layer)
+            .and_then(|&i| self.layer_effects[i].source_output.as_mut())
+            && source.unit == target.unit
+        {
+            source.level.attach_peak(meter);
+        }
     }
     pub fn set_effect_meter(&mut self, id: Id, meter: &std::sync::Arc<daw_unit_core::PeakMeter>) {
         for bus in &mut self.layer_effects {

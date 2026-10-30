@@ -14,6 +14,8 @@ The retained sample slot shares ID, input mapping, selection, root note, Gain, p
 
 ## DSP and timing
 
+The Out strip uses the shared [source-unit output meter](../architecture/modular-audio-units.md#source-unit-out-strip-meters), including held peak, bypass masking and the standard track-level colors. Retain its strip size and Gain geometry. Capture the source sum across notes before Amplitude and downstream buses through the existing prepared MIDI/output path.
+
 Size is 10–500 ms (80 default), overlap 0.25–8 (4), position 0–1 (0), speed −4–4 (1), pitch −48–48 semitones (0), position jitter 0–1 (0), pitch jitter 0–48 semitones (0), and random pan 0–1 (0). Loop defaults true, Window Hann, saved seed 1, Trigger Gate, root note C4, Gain 0 dB.
 
 Grain start interval is grain duration divided by overlap. Grain duration rounds to project frames, with a minimum of two. Grain read increment is `2^((MIDI − root + pitch + random pitch)/12)`. Linear interpolation shares one read clock for both channels. Signed source scan increment is independent of grain read increment. Position changes add a fractional-region displacement to that scan, rather than resetting elapsed note age. Zero speed freezes it. Loop wraps scans and individual grain reads; non-looping reads beyond the region supply silence. Scan order can reverse, but grains always read forward.

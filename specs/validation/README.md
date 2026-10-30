@@ -4,6 +4,18 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Complete unit Out-strip meter coverage — 2026-10-30
+
+The Out-strip audit found missing meters on Oscillator and Granulizer. Both now reuse the shared output rail, held sample peak, reset interaction, green/red palette and bypass lifecycle without changing strip geometry. All effect Out/Output strips already have the standard meter. Regular Sampler retains its Sample strip; units without an Out strip gain no new strip. The [coverage table](../../docs/effects/output-meter.md#out-strip-coverage) records the result.
+
+Source taps sum stereo voices after source output controls and note velocity, before Amplitude and downstream buses. Prepared scoped handles retain identity through compatible renderer updates. Shared monitor retargeting preserves release history, takes prepared bindings, masks power-off and retires old handles outside the callback. Snapshot clones detach publication. Monitoring does not change rendered samples.
+
+`cargo test --offline --locked --workspace` passes: **1,926 tests passed, 11 ignored, no failures**, across 255 suites, including all 732 UI tests. New engine cases cover both sources at all six processing rates, polyphony, source gain, downstream isolation, exact audio equality, reset, power changes, snapshot detachment, fresh bindings and callback allocation guards. Output checks cover scoped identity, replacement, retention and pruning. UI checks cover every theme, 1×/1.5× scale, expanded/compact/collapsed states, power masking, unchanged controls and meter presses that cannot start component or layer drags. The effect Out-strip inventory includes Multiband Exciter.
+
+Formatting, strict locked offline workspace/all-target Clippy, the locked offline CLI build, `python3 tools/check_cli.py`, local Markdown links and whitespace checks pass. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Logs use `work/source-output-meter-*`.
+
+Native UI, audio-device listening and Windows/Linux execution remain unverified. Automated painting/input tests do not establish native visual or device acceptance.
+
 ## Shared unit level-meter palette — 2026-10-30
 
 All unit output and EQ band level rails now use the track meter palette: green through 0 dBFS and red above 0 dBFS, independently of the accent. The two shared `unit-ui` level painters apply this to built-in units and standalone editors. Disabled bands retain secondary grey, whole-unit bypass empties the rails, and held-peak markers retain secondary grey. Gain-reduction and signed gain-change colors, measurement, reset behavior, DSP and saved state are unchanged.

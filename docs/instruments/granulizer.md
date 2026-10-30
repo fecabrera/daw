@@ -28,6 +28,8 @@ Loading and region preparation run in the background. Failed or cancelled work r
 | Random | Pan randomness | Independent random stereo balance for each grain | 0% |
 | Out | Gain | Silence to +12 dB | 0 dB |
 
+Out includes the [standard unit level meter and held-peak indicator](../effects/output-meter.md). It measures the stereo source sum across notes after Gain and note velocity, before Amplitude and layer processing. Click the rail to reset only the held peak. Compact/collapsed views hide it; unit power-off clears it.
+
 Negative Speed changes the order of grain positions. Audio inside each grain still plays forward. Window, grain size, pitch, and random pan changes apply when new grains start. Existing grains finish with their original controls. Overlap compensation limits increases in level when more grains overlap; it does not act as a limiter.
 
 Below the waveform:
