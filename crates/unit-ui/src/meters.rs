@@ -51,7 +51,7 @@ pub fn band_level_rail(ui: &mut Ui, rail: Rect, name: &str, peak: f32, enabled: 
             if peak > 1.0 {
                 palette.error
             } else {
-                theme::accent(ui.ctx())
+                palette.meter
             },
         ),
     );
@@ -165,7 +165,7 @@ pub fn effect_output_level<'a>(
         if current > 1.0 {
             palette.error
         } else {
-            theme::accent(ui.ctx())
+            palette.meter
         },
     );
     if held > 0.0 {
@@ -253,6 +253,26 @@ mod tests {
             theme::apply(&ctx, base, palette, theme::ACCENT);
             let meter = PeakMeter::default();
             meter.store(2.0);
+            for accent in [theme::ACCENT, theme::PLUGIN_ACCENT] {
+                theme::apply(&ctx, base, palette, accent);
+                for (current, expected) in [
+                    (0.5, palette.meter),
+                    (1.0, palette.meter),
+                    (1.01, palette.error),
+                ] {
+                    let shapes = frame(&ctx, &meter, current, true, vec![]);
+                    let rail = unit_monitor_rail(
+                        Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(90.0, 218.0)),
+                        10,
+                    );
+                    let fill = Rect::from_min_size(
+                        rail.min,
+                        Vec2::new(rail.width() * position_for_peak(current), rail.height()),
+                    );
+                    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == fill && r.fill == expected)));
+                    assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect.intersects(rail) && r.fill == accent)));
+                }
+            }
             let shapes = frame(&ctx, &meter, 2.0, true, vec![]);
             let rail = Rect::from_min_size(egui::pos2(10.0, 2.0), Vec2::new(70.0, 4.0));
             assert!(shapes.iter().any(
@@ -266,7 +286,47 @@ mod tests {
                     .iter()
                     .any(|s| matches!(&s.shape, egui::Shape::LineSegment { .. }))
             );
-            assert!(!shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.rect.intersects(rail) && (r.fill==palette.error || r.fill==theme::ACCENT))));
+            assert!(!shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.rect.intersects(rail) && [palette.error, palette.meter, theme::ACCENT, theme::PLUGIN_ACCENT].contains(&r.fill))));
+        }
+    }
+    #[test]
+    fn band_levels_share_track_colors_independently_of_accent_and_keep_disabled_grey() {
+        for (base, palette) in [
+            (egui::Theme::Dark, theme::DARK),
+            (egui::Theme::Light, theme::LIGHT),
+            (egui::Theme::Light, theme::MIST),
+        ] {
+            for accent in [theme::ACCENT, theme::PLUGIN_ACCENT] {
+                let ctx = egui::Context::default();
+                crate::fonts::configure(&ctx);
+                theme::configure(&ctx);
+                theme::apply(&ctx, base, palette, accent);
+                for (peak, enabled) in [
+                    (0.5, true),
+                    (1.0, true),
+                    (1.01, true),
+                    (0.5, false),
+                    (1.01, false),
+                ] {
+                    let rail = Rect::from_min_size(egui::pos2(10.0, 2.0), Vec2::new(70.0, 4.0));
+                    let mut output = ctx.run_ui(Default::default(), |ui| {
+                        band_level_rail(ui, rail, "Band", peak, enabled)
+                    });
+                    let expected = if !enabled {
+                        palette.secondary
+                    } else if peak > 1.0 {
+                        palette.error
+                    } else {
+                        palette.meter
+                    };
+                    let fill = Rect::from_min_size(
+                        rail.min,
+                        Vec2::new(rail.width() * position_for_peak(peak), rail.height()),
+                    );
+                    assert!(output.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == fill && r.fill == expected)));
+                    output.textures_delta.clear();
+                }
+            }
         }
     }
     #[test]

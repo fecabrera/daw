@@ -16,7 +16,7 @@ A band's footer power button cuts that range rather than bypassing its Gain. Low
 
 ## Output monitors
 
-Each band has a horizontal output-level monitor below the header. It shows the louder stereo channel in that range, from −60 to 0 dBFS. Enabled bands use the accent color; the overload color indicates values above 0 dBFS. Disabled bands use secondary grey. Hover for the level. The analysis ranges overlap near their boundaries. Turning the unit off clears all three monitors and stops their updates. Turning it on resumes monitoring. Stopped or paused playback shows empty rails. Compact and collapsed units hide the monitors.
+Each band has a horizontal output-level monitor below the header. It shows the louder stereo channel in that range, from −60 to 0 dBFS. Enabled bands use the same green as track level meters; red indicates values above 0 dBFS. These colors do not follow the accent color. Disabled bands use secondary grey. Hover for the level. The analysis ranges overlap near their boundaries. Turning the unit off clears all three monitors and stops their updates. Turning it on resumes monitoring. Stopped or paused playback shows empty rails. Compact and collapsed units hide the monitors.
 
 ## Modulation
 

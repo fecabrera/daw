@@ -225,7 +225,7 @@ mod tests {
                                     } else if peak > 1.0 {
                                         theme::palette(&ctx).error
                                     } else {
-                                        theme::accent(&ctx)
+                                        theme::palette(&ctx).meter
                                     };
                                     let fills: Vec<_> = output
                                         .shapes

@@ -4,6 +4,16 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Shared unit level-meter palette — 2026-10-30
+
+All unit output and EQ band level rails now use the track meter palette: green through 0 dBFS and red above 0 dBFS, independently of the accent. The two shared `unit-ui` level painters apply this to built-in units and standalone editors. Disabled bands retain secondary grey, whole-unit bypass empties the rails, and held-peak markers retain secondary grey. Gain-reduction and signed gain-change colors, measurement, reset behavior, DSP and saved state are unchanged.
+
+Shared painter tests pass in Dark/Light/Mist with standard and plugin accents, including unity/overload boundaries, disabled bands, bypass and peak reset. The EQ panel color/geometry test and all 731 UI tests pass. Formatting, strict locked offline workspace/all-target Clippy, local Markdown file links, whitespace checks and `sh tools/package_macos.sh debug` pass. Logs use `work/unit-meter-colors-*`; the rebuilt app is `target/debug/DAW.app`.
+
+`cargo test --offline --locked --workspace` passes: 1,920 tests passed, 11 ignored and no failures, including all 731 UI tests, standalone editor parity checks and documentation tests.
+
+Native UI and Windows/Linux execution remain unverified. Automated shape/input checks do not establish native visual acceptance.
+
 ## Multiband EQ band reordering — 2026-10-30
 
 Built-in EQ bands now reuse Oscillator's shared drag threshold, insertion geometry, preview line and edge scrolling, plus the existing strip gesture lifecycle. A valid release commits one effect-chain transaction. Band UUIDs, settings and modulation routes remain attached. Same-position and outside drops, Escape, focus loss, changed settings and host changes cancel without a reorder. Knobs and Power retain their controls. Standalone automation slots, DSP and saved formats are unchanged.
