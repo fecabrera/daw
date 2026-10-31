@@ -119,6 +119,28 @@ impl SessionHistory {
         self.saved = Some(saved);
         self.memory = self.calculate_memory();
     }
+    /// Refresh derived audio without changing logical history, dirty state, or grouping.
+    pub fn refresh_audio(&mut self, session: &Session) -> Result<()> {
+        let next = snapshot(session)?;
+        for entry in std::iter::once(&mut self.current)
+            .chain(self.pending.iter_mut())
+            .chain(self.undo.iter_mut())
+            .chain(self.redo.iter_mut())
+        {
+            if entry.project == next.project {
+                entry.session.refresh_prepared_audio(&next);
+                for warning in &next.warnings {
+                    if !entry.session.warnings.contains(warning) {
+                        entry.session.warnings.push(warning.clone());
+                    }
+                }
+                entry.model_bytes = snapshot_model_bytes(&entry.session);
+            }
+        }
+        self.enforce_memory_limit();
+        Ok(())
+    }
+
     pub fn project_id(&self) -> daw_core::Id {
         self.current.project.project_id
     }
@@ -325,6 +347,7 @@ fn snapshot_model_bytes(session: &Session) -> u64 {
         &session.stretched_audio,
         &session.sampler_audio,
     ) + session.temporary_stems_memory_bytes()
+        + (session.missing_audio.capacity() * std::mem::size_of::<daw_core::Id>()) as u64
         + session.folder.as_ref().map_or(0, |p| p.capacity() as u64)
         + (session.warnings.capacity() * std::mem::size_of::<String>()) as u64
         + session

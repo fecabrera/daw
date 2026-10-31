@@ -14,6 +14,7 @@ struct Revision {
 }
 struct Cached {
     revision: Revision,
+    content: crate::SourceRevision,
     samples: Weak<Vec<[f32; 2]>>,
     peaks: Weak<Vec<[[f32; 2]; 2]>>,
     metadata: daw_core::SourceMetadata,
@@ -45,12 +46,16 @@ pub fn decode_audio_cached(
         std::fs::canonicalize(path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
     let before = revision(&path)?;
     let key = (path, rate);
+    let receipt = crate::SourceRevision::read(&key.0, cancelled)?;
     {
         let mut cache = cache().lock().unwrap();
         cache.retain(|_, v| v.samples.strong_count() > 0 && v.peaks.strong_count() > 0);
-        if let Some(cached) = cache.get(&key).filter(|c| c.revision == before)
+        if let Some(cached) = cache
+            .get(&key)
+            .filter(|c| c.revision == before && c.content == receipt)
             && let Some((samples, peaks)) = cached.samples.upgrade().zip(cached.peaks.upgrade())
         {
+            crate::preparation_cache::record_live_hit();
             return Ok(AudioData {
                 sample_rate_hz: rate,
                 samples,
@@ -59,8 +64,18 @@ pub fn decode_audio_cached(
             });
         }
     }
-    let audio = crate::decode_audio_cancellable(&key.0, rate, cancelled)?;
-    if before != revision(&key.0)? {
+    let disk_key =
+        crate::preparation_cache::key(b"decoded", &[&receipt.sha256, &rate.to_le_bytes()]);
+    let audio = crate::preparation_cache::cached_audio(disk_key, cancelled, || {
+        let audio = crate::decode_audio_cancellable(&key.0, rate, cancelled)?;
+        if receipt != crate::SourceRevision::read(&key.0, cancelled)? {
+            return Err(Error(
+                "Source changed during audio preparation; try again".into(),
+            ));
+        }
+        Ok(audio)
+    })?;
+    if before != revision(&key.0)? || receipt != crate::SourceRevision::read(&key.0, cancelled)? {
         return Err(Error(
             "Source changed during audio preparation; try again".into(),
         ));
@@ -69,6 +84,7 @@ pub fn decode_audio_cached(
         key,
         Cached {
             revision: before,
+            content: receipt,
             samples: Arc::downgrade(&audio.samples),
             peaks: Arc::downgrade(&audio.peaks),
             metadata: audio.metadata.clone(),

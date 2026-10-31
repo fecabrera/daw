@@ -31,7 +31,7 @@ The first version follows these rules:
 | [`sampler.rs`](../../crates/project/src/sampler.rs) imports sample files into the asset table. | Inventory assets rather than only scanning timeline clips. |
 | [`SessionHistory`](../../crates/project/src/history.rs) retains complete sessions with absolute source paths. save snapshots and receipts retarget project-owned sources. | Retarget all collected source locations across retained snapshots without clearing Redo or replacing newer edits. Stage 3 now retargets all captured owners and enables included-source session I/O. |
 | [`regular_save.rs`](../../crates/ui/src/regular_save.rs) saves a snapshot while the live project stays editable. | Keep this behavior; ordinary Save must not silently become a blocking collection operation. |
-| [`media::cache`](../../crates/media/src/cache.rs) checks file length/mtime around decoding; [`AudioData`](../../crates/media/src/lib.rs) has no bound content receipt. | Stage 0 supplies streaming SHA-256 receipts and uncached worker revalidation; Stage 2 verifies staged bytes against prepared audio. |
+| [`media::cache`](../../crates/media/src/cache.rs) now verifies source content as well as file length/mtime; [`AudioData`](../../crates/media/src/lib.rs) has no persisted encoded-source receipt. | Stage 0 supplies streaming SHA-256 receipts and uncached worker revalidation; Stage 2 verifies staged bytes against prepared audio. |
 
 This feature extends the initial external-source-only MVP. Current requirements in [MVP storage](../architecture/mvp-scope.md#project-storage) and [iteration 1](../architecture/iteration-1.md) now describe explicit collection and included-source saves. Historical validation records retain their original scope.
 

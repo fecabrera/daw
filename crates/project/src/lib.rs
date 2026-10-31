@@ -1,3 +1,5 @@
+mod background_audio;
+pub use background_audio::BackgroundAudio;
 mod audition;
 pub use audition::NoteAudition;
 mod separation;
@@ -25,7 +27,7 @@ use daw_engine::RenderPlan;
 use daw_media::{AudioData, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec};
 pub use source_save::{SaveSnapshot, SavedSession};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     path::{Component, Path, PathBuf},
 };
@@ -84,9 +86,21 @@ pub struct Session {
     pub stretched_audio: daw_media::ClipAudioCache,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
+    // A verified missing source may render silence; an undecoded source must wait.
+    missing_audio: HashSet<Id>,
     // Clones and history share ownership until generated sources are saved or released.
     temporary_stems: Vec<std::sync::Arc<separation::TemporaryStems>>,
 }
+/// A validated document without prepared media. Do not construct a renderer from its editor state.
+pub struct ProjectDocument(Session);
+impl ProjectDocument {
+    /// The editor stores this model while BackgroundAudio builds a complete session.
+    /// Callers must guard all playback/preview paths until that completion arrives.
+    pub fn into_editor_session(self) -> Session {
+        self.0
+    }
+}
+
 impl Session {
     /// Prepare an atomic project-rate change on a worker. Source files stay untouched.
     pub fn with_audio_settings(
@@ -176,6 +190,11 @@ impl Session {
         }
     }
     pub fn open(folder: &Path) -> Result<Self> {
+        let mut session = Self::open_document(folder)?.into_editor_session();
+        session.prepare_project_audio(&|| false, &|_, _| {})?;
+        Ok(session)
+    }
+    pub fn open_document(folder: &Path) -> Result<ProjectDocument> {
         let folder = absolute(folder)?;
         let (project, previous_stretch_revision) = inspection::load_manifest(&folder)?;
         let mut session = Self {
@@ -185,6 +204,7 @@ impl Session {
             stretched_audio: HashMap::new(),
             folder: Some(folder),
             temporary_stems: Vec::new(),
+            missing_audio: HashSet::new(),
             warnings: if let Some(previous_stretch_revision) = previous_stretch_revision {
                 vec![format!(
                     "Integrated time stretch upgraded from revision {previous_stretch_revision} to {}; prepared audio rebuilt. The sound can change. Save to retain the new revision.",
@@ -220,13 +240,60 @@ impl Session {
                 }
             }
         }
+        Ok(ProjectDocument(session))
+    }
+    /// Worker-only completion of a document or edited model. Existing immutable buffers are reused.
+    pub fn prepare_project_audio(
+        &mut self,
+        cancelled: &(impl Fn() -> bool + Sync),
+        progress: &impl Fn(u64, u64),
+    ) -> Result<()> {
+        self.prepare_project_audio_observed(cancelled, progress, &|_| {})
+    }
+    pub(crate) fn prepare_project_audio_observed(
+        &mut self,
+        cancelled: &(impl Fn() -> bool + Sync),
+        progress: &impl Fn(u64, u64),
+        decoded: &impl Fn(&HashMap<Id, AudioData>),
+    ) -> Result<()> {
+        let mut next = self.clone();
+        next.prepare_project_audio_in_place(cancelled, progress, decoded)?;
+        *self = next;
+        Ok(())
+    }
+    fn prepare_project_audio_in_place(
+        &mut self,
+        cancelled: &(impl Fn() -> bool + Sync),
+        progress: &impl Fn(u64, u64),
+        decoded: &impl Fn(&HashMap<Id, AudioData>),
+    ) -> Result<()> {
+        let session = self;
+        let total = session
+            .project
+            .assets
+            .iter()
+            .filter(|asset| asset.midi_pattern.is_none())
+            .count() as u64
+            + 1;
+        let mut done = 0;
+        progress(done, total);
         for asset in &session.project.assets {
+            if cancelled() {
+                return Err(error("Audio preparation cancelled"));
+            }
             if asset.midi_pattern.is_some() {
                 continue;
             }
+            if session.audio.contains_key(&asset.id) {
+                session.missing_audio.remove(&asset.id);
+                continue;
+            }
+            done += 1;
+            progress(done, total);
             let path = session.source_path(asset)?;
             match fs::metadata(&path) {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    session.missing_audio.insert(asset.id);
                     let clips = session
                         .project
                         .tracks
@@ -246,7 +313,7 @@ impl Session {
                 _ => {}
             }
             let data =
-                daw_media::decode_audio_cached(&path, session.project.sample_rate_hz, &|| false)
+                daw_media::decode_audio_cached(&path, session.project.sample_rate_hz, cancelled)
                     .map_err(error)?;
             if (data.samples.len() as u64) < asset.decoded_frame_count {
                 session.warnings.push(format!("Source {} is shorter than saved metadata; unavailable ranges render as silence",path.display()));
@@ -261,9 +328,18 @@ impl Session {
                     .push(format!("Source {} metadata changed", path.display()));
             }
             session.audio.insert(asset.id, data);
+            session.missing_audio.remove(&asset.id);
+            if cancelled() {
+                return Err(error("Audio preparation cancelled"));
+            }
+            decoded(&session.audio);
         }
-        session.prepare_stretches()?;
-        Ok(session)
+        if cancelled() {
+            return Err(error("Audio preparation cancelled"));
+        }
+        session.prepare_stretches_parallel(cancelled)?;
+        progress(total, total);
+        Ok(())
     }
     pub fn source_path(&self, asset: &Asset) -> Result<PathBuf> {
         asset.source.validate_storage().map_err(error)?;

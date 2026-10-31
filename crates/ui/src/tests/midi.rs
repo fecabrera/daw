@@ -4114,16 +4114,15 @@ fn pressed_sampler_note_keeps_its_preview_scope_through_insertion_preparation() 
     );
     assert_eq!(app.chords.audition.note_requests.last(), Some(&(track, 65)));
     frame(&mut app, &ctx, vec![button(point, false)]);
-    assert!(app.job.is_some());
-    assert!(app.chords.audition.allow_note_commit);
-    assert!(app.chords.audition.scoped());
+    assert!(app.job.is_none() && app.background_media.running);
+    assert!(pattern(&app).notes.iter().any(|note| note.pitch == 65));
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
-    while app.job.is_some() {
+    while app.background_media.running {
         assert!(
             std::time::Instant::now() < deadline,
             "sampler preparation timed out"
         );
-        std::thread::sleep(Duration::from_millis(5));
+        std::thread::yield_now();
         frame(&mut app, &ctx, vec![]);
     }
     assert!(app.error.is_none(), "{:?}", app.error);

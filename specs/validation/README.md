@@ -4,6 +4,52 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Live pitch restoration and pending-edit selection — 2026-10-31
+
+Released live pitch overrides now return to the complete playback schedule's pitch when a MIDI edit needs background audio. The pending editor pitch remains visible and saveable. Repeated pending edits, paused preparation and failure cannot leave the old Sampler resampling at a newer editor pitch. Restoration preserves active drag generations, and complete schedule publication retains the existing acknowledgement path. Gesture cancellation during pending preparation also restores the prepared pitch. No callback allocation, lock or source lookup was added.
+
+Immediate editor publication now shares normal clip/track selection and track-name cleanup. Deleting a selected clip during another clip's preparation removes the deleted ID immediately, preserves surviving selections and does not let completion restore stale selections. The live-pitch specification now separates transient input, editor history and complete playable state, including release, Cancel, failure, Retry and Undo/Redo.
+
+Focused checks pass: `cargo test --offline --locked -p daw-engine released_` runs the mailbox regression and the six-rate Sampler playback regression. These cover repeated pending edits, active-generation preservation, complete schedule acknowledgement, Undo/Redo, unchanged normal playback rate after release, retained audible duration and allocation-free rendering. `cargo test --offline --locked -p daw-ui --lib deleting_a_selected_clip_during_preparation` covers immediate/completed cleanup, surviving selections, Shift-selection and Escape.
+
+The final `cargo test --offline --locked --workspace --no-fail-fast` run passes: **1,967 tests passed, 11 ignored, no failures**, across 257 suites, including all 748 UI tests and documentation tests. It also covers restoration during overlapping prepared schedules: an old renderer and its replacement each retain their own prepared pitch, and newer active drags still reach both.
+
+Final formatting and strict locked offline workspace/all-target Clippy pass. The locked offline CLI build, `python3 tools/check_cli.py` and `sh tools/package_macos.sh debug` pass. All 157 relative file targets in changed Markdown documents exist; the updated background-state heading link and whitespace checks pass.
+
+Native UI, physical audio-device/listening and Windows/Linux execution remain unverified. Engine tests use prepared renderers and mailbox writes; they do not automate native drag, Cancel, failure and Retry gestures. Logs use `work/review4-fixes-*`.
+
+## Modifier stretching and preparation-cache concurrency — 2026-10-30
+
+Audio and mixed-selection modifier stretch release now uses the shared pending-audio guard before starting an ordinary job. Running, paused and failed preparation leave the project, history and selection unchanged and show a reason. MIDI-only stretching retains its existing transaction; ready-state group stretching keeps the shared atomic range/trim/removal calculation and prepared publication.
+
+Active per-key cache calls share a completed immutable result even above the 128 MiB retention limit or with unavailable disk storage. The last participating call releases the extra owner outside the callback. Long-term retention, shared 2 GiB admission, source validation, DSP, cache keys and file format remain unchanged. Cancellation of one waiter does not cancel other consumers; an unsuccessful builder does not publish a partial result. Cache-test directories now use UUID names and exclusive creation, with cleanup confined to the owned directory.
+
+The affected runs pass all 17 media tests and 10 background-audio UI tests. New coverage includes 12 Timeline/Editor audio/mixed stretch cases across running/paused/failed preparation with an invalid undecoded source, normal MIDI-only stretching, oversized in-flight sharing with disk disabled and cache write failure, owner release without long-term retention, waiter/builder cancellation isolation, and 32 concurrent independent directory constructors. `cargo test --offline --locked --workspace --no-fail-fast` passes: **1,963 tests passed, 11 ignored, no failures**, across 257 suites, including all 747 UI tests and 17 media tests. Ten normal parallel media-suite repetitions pass (17 tests each). Formatting, strict locked offline workspace/all-target Clippy and whitespace checks pass. The locked offline CLI build and `python3 tools/check_cli.py` pass, and `sh tools/package_macos.sh debug` rebuilds the unsigned app. All 122 relative file targets in changed Markdown documents resolve.
+
+Native UI/device/listening, Windows/Linux execution, release timing and peak RSS remain unverified. Automated input and headless checks do not establish native acceptance. Logs use `work/review3-fixes-*`.
+
+## Background preparation review fixes — 2026-10-30
+
+Undo/Redo now requests complete preparation when a restored loading-time snapshot lacks original PCM. Sessions retain verified missing-source IDs with prepared maps, so a missing recording still follows the warning/silence policy without repeated readiness requests. This corrects the incomplete history/readiness integration in the background-preparation implementation below. Original files, logical history and manifest format are unchanged.
+
+Pending preparation no longer bypasses compatibility checks for audio transforms. Audio and mixed-selection Transpose remain guarded while preparation is running, paused or failed. The shared Timeline/Editor field shows a disabled reason; Name, Gain, MIDI edits and compatible layer-effect edits remain available. Once ready, audio Transpose uses the existing complete-session transaction.
+
+New regression checks cover loading-time gain and MIDI edits followed by completion and Undo/Redo, audible restored rendering, verified missing-source completion, guarded single/mixed Transpose in pending/paused/failed states, unchanged history on rejection, retained metadata/effect edits, successful staging after readiness, and disabled Transpose with editable Gain in both views.
+
+The full workspace command completed 257 suites with 1,956 tests passed, 11 ignored and one export-fixture assertion failed. That fixture injected real PCM into a missing-source session; source verification now correctly retains its warning. The export test now imports its generated WAV instead. A stronger Undo regression also checks readiness immediately on return, before another UI frame; history now reconciles preparation at that boundary. The final full-UI rerun passes all 745 tests, including the stronger readiness assertion. The other 256 workspace suites pass; no test failure remains unresolved. No time-stretch/DSP implementation changed.
+
+The affected project rerun, `cargo test --offline --locked -p daw-project --test background_loading`, passes 3 tests. The final `cargo test --offline --locked -p daw-ui --lib` run passes 745 tests, including all 8 background-audio tests. `cargo fmt --all --check`, strict locked offline workspace/all-target Clippy, the CLI build and `python3 tools/check_cli.py` pass. All 130 relative file targets in changed Markdown documents exist; `git diff --check` passes. `sh tools/package_macos.sh debug` rebuilt the unsigned app using the cached ONNX Runtime. An initial packaging attempt with forced network-offline mode did not link that runtime; the normal cached build succeeds. No dependency or lockfile changes were needed.
+
+Native UI, physical audio-device/listening and Windows/Linux checks remain unrun. Automated egui/headless checks and a successful package build do not establish native acceptance. Logs use `work/major-fixes-*`.
+
+## Saved audio caches and background preparation — 2026-10-30
+
+Desktop opening displays the validated editor before required audio finishes. MIDI edits remain visible, editable and saveable while the last complete revision can continue playing. A bounded latest-request worker rejects stale results and merges derived maps only. Pending-snapshot export, cancel/retry, history, source guards and decoded waveform previews share the project/media backend with CLI preparation. Exact saved PCM/peak caches use verified source/build/processing identities, bounded memory retention and disposable disk storage. No source recording or manifest cache payload is written.
+
+The workspace run passes **1,949 tests with 11 ignored and no failures** across 255 suites. Final affected-scope reruns include all **742 UI tests**, media cache checks, document failure/missing-source behavior, serial/parallel equality, and a saved-cache subprocess test; late-added tests are recorded separately in the [detailed report](background-audio-preparation-2026-10-30.md). Strict workspace Clippy, formatting, CLI build/smoke, Markdown file targets and whitespace checks pass. The unsigned macOS debug app was rebuilt. No dependency versions or lockfile entries change.
+
+An isolated three-run release probe with generated 58-second audio measures required audio at 3.029 s without reuse and 0.163 s after reopening with a saved cache. Revisiting a cached pitch takes 0.326 ms; a first-time pitch still takes about 2.1 s and runs in the background. These are headless synthetic measurements, not native UI/device latency. Native computer use failed to start; listening, device pressure and Windows/Linux execution remain open. Neighboring-pitch speculation is not enabled. See the [contracts and stage status](../architecture/background-audio-preparation.md).
+
 ## Instrument-wide LFO and Envelope lanes — 2026-10-30
 
 Instrument now has fixed LFO and Envelope control lanes after regular layers in the scrolling viewport, before pinned Output. Each accepts only its registered provider type. The shared bus row supplies unit bodies, horizontal scrolling, right toolbar, power, selection, removal and reorder gestures. Scrolling lanes share regular row separator pixels; fixed lanes remain separate from regular-layer selection groups. Envelope Mode retains shared-consumer guards while allowing Per note when compatible.

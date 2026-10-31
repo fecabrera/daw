@@ -64,6 +64,11 @@ impl AudioReservation {
             })
             .and_then(|n| n.checked_add(scratch_bytes))
             .ok_or_else(|| Error("Audio preparation exceeds supported memory bounds".into()))?;
+        // Disposable cache ownership must yield before required audio is rejected.
+        // Release it before acquiring the registry lock: dropping buffers updates ownership.
+        if bytes > AUDIO_MEMORY_BUDGET_BYTES.saturating_sub(audio_memory_bytes()) {
+            crate::release_preparation_cache_memory();
+        }
         let mut state = state().lock().unwrap();
         if bytes > AUDIO_MEMORY_BUDGET_BYTES.saturating_sub(state.used()) {
             return Err(Error("Audio preparation exceeds the 2 GiB shared audio memory budget; shorten the source or close unused projects".into()));

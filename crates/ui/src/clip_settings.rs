@@ -198,6 +198,24 @@ impl super::DawUi {
         let contains_audio = self.session.project.assets.iter().any(|asset| {
             asset.midi_pattern.is_none() && clips.iter().any(|clip| clip.asset_id == asset.id)
         });
+        let transpose_enabled = !contains_audio || self.media_ready();
+        if !transpose_enabled {
+            self.clip_transpose_drag = None;
+            if self
+                .clip_settings_change
+                .as_ref()
+                .is_some_and(|change| change.field == Field::Transpose)
+            {
+                self.clip_settings_change = None;
+            }
+            if self
+                .clip_settings_draft
+                .as_ref()
+                .is_some_and(|edit| edit.field == Field::Transpose)
+            {
+                self.clip_settings_draft = None;
+            }
+        }
         if self
             .clip_settings_draft
             .as_ref()
@@ -324,7 +342,7 @@ impl super::DawUi {
                         },
                     )
                     .inner;
-                    let transpose = panel.field_row(
+                    let transpose = ui.add_enabled_ui(transpose_enabled, |ui| panel.field_row(
                         ui,
                         label_width,
                         |ui| {
@@ -396,7 +414,7 @@ impl super::DawUi {
                             response
                         },
                     )
-                    .inner;
+                    .inner).inner.on_disabled_hover_text("Wait for project audio before transposing audio clips.");
                     let finished = if was_editing {
                         let response = match edit.as_ref().map(|current| current.field) {
                             Some(Field::Name) => Some(&name),

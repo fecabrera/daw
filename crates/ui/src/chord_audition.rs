@@ -288,6 +288,9 @@ impl DawUi {
         }
     }
     fn play_chord_audition(&mut self, rate: u32, samples: PreparedAudition) {
+        if !self.media_ready() && self.output.is_none() {
+            return;
+        }
         #[cfg(test)]
         {
             let _ = rate;

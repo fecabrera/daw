@@ -72,6 +72,7 @@ impl eframe::App for App {
     }
 }
 fn main() -> eframe::Result {
+    daw_ui::configure_preparation_cache(daw_ui::preparation_cache_directory());
     if std::env::args_os()
         .nth(1)
         .is_some_and(|arg| arg == "--font-license")

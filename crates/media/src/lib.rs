@@ -5,6 +5,11 @@ use std::{fs::File, path::Path, sync::Arc};
 pub use memory::{AudioMemoryUsage, audio_memory_bytes};
 mod aac_export;
 mod cache;
+mod preparation_cache;
+pub use preparation_cache::{
+    PreparationCache, PreparationCacheStats, configure_preparation_cache,
+    preparation_cache_directory, preparation_cache_stats, release_preparation_cache_memory,
+};
 mod source_revision;
 pub use source_revision::{
     PreparedSourceCheck, SourceRevision, check_prepared_source, source_file_extension,

@@ -14,6 +14,16 @@ If Save As fails because an included recording or generated stem is missing, res
 
 Saving fails if a directory occupies the `project.json` destination. The directory and its contents remain intact. Move that directory out of the project folder or choose another save location, then retry.
 
+## Background audio preparation
+
+Opening a project shows the editor after its saved data is checked. Audio loads and prepares in the background. Waveforms appear as original audio becomes available. Play stays unavailable until the required audio is ready; opening does not start playback automatically.
+
+The status bar shows preparation progress, Cancel, and Retry. You can browse the project and edit MIDI while preparation runs. Cancel pauses audio preparation and keeps your edits. A preparation error leaves the project visible so you can retry, save, or undo edits. Missing recordings retain their usual warnings and silent playback.
+
+MIDI edits that need new sample pitches stay visible while existing playback uses the previous prepared version. The updated version takes over when its audio is ready. Ordinary Save includes the visible MIDI edits without waiting for audio. First Save, Save As, importing, project processing settings, and source collection require completed audio preparation. Export prepares the exact state captured when you request it.
+
+The app saves disposable audio caches outside project folders. These speed up reopening and repeated pitch edits. They do not replace recordings and are not included by Collect project sources. Moving or deleting the cache causes recalculation. Keep the original or collected recordings available. A first uncached pitch can still take time, especially with a long Sampler region.
+
 ## Collect project sources
 
 For headless collection, save and close the desktop project, then use the [collect-sources CLI command](../cli/collect-sources.md). It collects saved assets without desktop Undo/Redo history.

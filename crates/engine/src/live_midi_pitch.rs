@@ -8,6 +8,9 @@ use std::{
     },
 };
 type Key = (Id, Id, Id);
+const ACTIVE: u64 = 1 << 8;
+const RESTORED: u64 = 1 << 9;
+const GENERATION_SHIFT: u32 = 10;
 #[derive(Clone)]
 struct Entry {
     base: u8,
@@ -47,8 +50,10 @@ impl LiveMidiPitches {
                             value: Arc::new(AtomicU64::new(0)),
                         });
                     let state = entry.value.load(Ordering::Acquire);
-                    if entry.base != note.pitch && (state & 256 == 0 || state as u8 == note.pitch) {
-                        entry.acknowledged = state >> 9;
+                    if entry.base != note.pitch
+                        && (state & ACTIVE == 0 || state as u8 == note.pitch)
+                    {
+                        entry.acknowledged = state >> GENERATION_SHIFT;
                     }
                     entry.base = note.pitch;
                     entries.insert(key, entry);
@@ -71,10 +76,27 @@ impl LiveMidiPitches {
             .value
             .fetch_update(Ordering::Release, Ordering::Relaxed, |v| {
                 Some(
-                    (((v >> 9).wrapping_add(1)) << 9) | u64::from(pitch) | (u64::from(active) << 8),
+                    (((v >> GENERATION_SHIFT).wrapping_add(1)) << GENERATION_SHIFT)
+                        | u64::from(pitch)
+                        | if active { ACTIVE } else { 0 },
                 )
             });
         true
+    }
+    /// Restore a released override to this complete schedule's pitch, not the
+    /// possibly newer editor pitch. An active drag always owns its newer value.
+    pub fn restore_released(&self, track: Id, clip: Id, note: Id) {
+        let Some(entry) = self.entries.get(&(track, clip, note)) else {
+            return;
+        };
+        let _ = entry
+            .value
+            .fetch_update(Ordering::Release, Ordering::Relaxed, |state| {
+                // Keep the gesture generation, but make each bound renderer use
+                // its own prepared base. Writing this entry's numeric base could
+                // leak the old pitch into a replacement already being prepared.
+                (state & (ACTIVE | RESTORED) == 0).then_some(state | RESTORED)
+            });
     }
     pub(super) fn matches_project(&self, id: Id) -> bool {
         self.project == Some(id)
@@ -101,8 +123,8 @@ impl Clone for PitchInput {
 impl PitchInput {
     pub fn read(&self, base: u8) -> (u8, bool) {
         let state = self.value.as_ref().map_or(0, |v| v.load(Ordering::Acquire));
-        if state >> 9 > self.acknowledged {
-            (state as u8, state & 256 != 0)
+        if state & RESTORED == 0 && state >> GENERATION_SHIFT > self.acknowledged {
+            (state as u8, state & ACTIVE != 0)
         } else {
             (base, false)
         }
@@ -174,5 +196,116 @@ mod tests {
         p.project_id = Id::new_v4();
         let other = LiveMidiPitches::prepare(&p, &undo);
         assert_eq!(other.bind(track, clip, note).read(60), (60, false));
+    }
+    #[test]
+    fn released_pending_pitches_restore_prepared_state_and_preserve_newer_drags() {
+        let mut project = Project::default();
+        let track = project.add_midi_track().unwrap();
+        let clip = project.add_midi_pattern(track, 0).unwrap();
+        let note = Id::new_v4();
+        let pattern = |pitch| MidiPattern {
+            length_ticks: 960,
+            notes: vec![MidiNote {
+                id: note,
+                start_tick: 0,
+                length_ticks: 960,
+                pitch,
+                velocity: 100,
+            }],
+        };
+        project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: pattern(60),
+            })
+            .unwrap();
+        let prepared = LiveMidiPitches::prepare(&project, &Default::default());
+        let old = prepared.bind(track, clip, note);
+        // Repeated pending editor edits must not become the rollback pitch.
+        for pitch in [64, 67, 72] {
+            prepared.set(track, clip, note, pitch, true);
+            prepared.restore_released(track, clip, note);
+            assert_eq!(old.read(60), (pitch, true));
+            prepared.set(track, clip, note, pitch, false);
+            project
+                .edit(Edit::ReplaceMidiPattern {
+                    clip_id: clip,
+                    pattern: pattern(pitch),
+                })
+                .unwrap();
+            prepared.restore_released(track, clip, note);
+            prepared.restore_released(track, clip, note);
+            assert_eq!(old.read(60), (60, false));
+        }
+        // Retry publishes the complete target without changing the old renderer.
+        let retried = LiveMidiPitches::prepare(&project, &prepared);
+        let current = retried.bind(track, clip, note);
+        assert_eq!(old.read(60), (60, false));
+        assert_eq!(current.read(72), (72, false));
+        retried.set(track, clip, note, 76, true);
+        retried.restore_released(track, clip, note);
+        assert_eq!(current.read(72), (76, true));
+        retried.set(track, clip, note, 76, false);
+        retried.restore_released(track, clip, note);
+        assert_eq!(current.read(72), (72, false));
+        // Undo/Redo still acknowledge complete schedules, not transient previews.
+        project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: pattern(60),
+            })
+            .unwrap();
+        let undone = LiveMidiPitches::prepare(&project, &retried);
+        assert_eq!(undone.bind(track, clip, note).read(60), (60, false));
+        project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: pattern(72),
+            })
+            .unwrap();
+        let redone = LiveMidiPitches::prepare(&project, &undone);
+        assert_eq!(redone.bind(track, clip, note).read(72), (72, false));
+    }
+    #[test]
+    fn restoration_uses_each_schedule_base_during_overlapping_preparation() {
+        let mut project = Project::default();
+        let track = project.add_midi_track().unwrap();
+        let clip = project.add_midi_pattern(track, 0).unwrap();
+        let note = Id::new_v4();
+        let edit = |pitch| Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: MidiPattern {
+                length_ticks: 960,
+                notes: vec![MidiNote {
+                    id: note,
+                    start_tick: 0,
+                    length_ticks: 960,
+                    pitch,
+                    velocity: 100,
+                }],
+            },
+        };
+        project.edit(edit(60)).unwrap();
+        let previous = LiveMidiPitches::prepare(&project, &Default::default());
+        let old = previous.bind(track, clip, note);
+        project.edit(edit(64)).unwrap();
+        previous.set(track, clip, note, 67, true);
+        // A complete replacement for 64 is prepared during a newer drag to 67.
+        let replacement = LiveMidiPitches::prepare(&project, &previous);
+        let next = replacement.bind(track, clip, note);
+        assert_eq!(next.read(64), (67, true));
+        previous.set(track, clip, note, 67, false);
+        previous.restore_released(track, clip, note);
+        assert_eq!(old.read(60), (60, false));
+        assert_eq!(next.read(64), (64, false));
+        // Newer gestures still override both schedules after restoration.
+        replacement.set(track, clip, note, 69, true);
+        previous.restore_released(track, clip, note);
+        assert_eq!(old.read(60), (69, true));
+        assert_eq!(next.read(64), (69, true));
+        replacement.set(track, clip, note, 69, false);
+        replacement.restore_released(track, clip, note);
+        assert_eq!(old.read(60), (60, false));
+        assert_eq!(next.read(64), (64, false));
     }
 }

@@ -111,6 +111,7 @@ impl DawUi {
         height: f32,
         compact: bool,
     ) -> Rect {
+        let audio_ready = self.media_ready();
         let layer_id = layer.id;
         let s = layer.sampler.as_mut().unwrap();
         let mut bounds = Bounds::new(track, layer_id);
@@ -135,7 +136,9 @@ impl DawUi {
         );
         let mut choose = false;
         let result = ui.scope_builder(egui::UiBuilder::new().ui_stack_info(
-            egui::UiStackInfo::default().with_tag("unit-modulation-button")), |ui| panels::PanelStyle {
+            egui::UiStackInfo::default().with_tag("unit-modulation-button")), |ui| {
+            if !audio_ready { ui.disable(); }
+            panels::PanelStyle {
             margin: 0,
             ..Default::default()
         }
@@ -403,7 +406,7 @@ impl DawUi {
                     }
                 });
             },
-        )).inner;
+        ) }).inner;
         s.enabled = enabled;
         s.collapsed = collapsed;
         if !compact && s.granulizer.is_some() && bounds.controls.is_positive() {
@@ -453,6 +456,9 @@ impl DawUi {
         let mut switch = false;
         let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
         crate::menus::ContextMenu::new(&result.header).show(|ui| {
+            if !audio_ready {
+                ui.disable();
+            }
             if let Some(menu) = &power_menu {
                 menu.show(ui);
             }
@@ -526,6 +532,9 @@ impl DawUi {
         result.response.rect
     }
     pub(super) fn sampler_drop_target(&self, pointer: Pos2) -> Option<(Id, Id)> {
+        if !self.media_ready() {
+            return None;
+        }
         if self.view_mode != ViewMode::Instrument {
             return None;
         }
@@ -540,6 +549,9 @@ impl DawUi {
         label: &str,
         job: impl FnOnce(&std::sync::atomic::AtomicBool) -> Result<Session, String> + Send + 'static,
     ) {
+        if !self.media_ready() {
+            return;
+        }
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag = cancel.clone();
         self.run_job(label, move || job(&flag).map(|s| Job::Loaded(s, true)));

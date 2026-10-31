@@ -215,6 +215,11 @@ impl DawUi {
             self.audio_settings = None;
             return Ok(());
         }
+        if !self.media_ready() {
+            return Err(
+                "Wait for project audio preparation before changing the output device".into(),
+            );
+        }
         let mut plan = self.session.plan();
         let frame = self
             .output

@@ -73,16 +73,22 @@ fn choose_dropdown(app: &mut DawUi, ctx: &egui::Context, menu: Rect, text: &str)
 }
 fn wait(app: &mut DawUi, ctx: &egui::Context) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while app.job.is_some() && std::time::Instant::now() < deadline {
+    while (app.job.is_some() || app.background_media.running)
+        && std::time::Instant::now() < deadline
+    {
         std::thread::yield_now();
         frame(app, ctx, vec![]);
     }
-    assert!(app.job.is_none(), "sample job timed out");
+    assert!(
+        app.job.is_none() && !app.background_media.required,
+        "sample job timed out: {:?}",
+        app.background_media.error
+    );
     assert!(app.error.is_none(), "{:?}", app.error);
 }
 
 #[test]
-fn sampler_note_and_root_edits_prepare_before_publication_and_paste_prepares_destination() {
+fn sampler_midi_edits_publish_immediately_while_root_edits_remain_transactional() {
     let (mut app, ctx, layer) = fixture(settings::ColorTheme::Dark);
     let file = TestWav::new();
     let track = app.selected_track.unwrap();
@@ -106,8 +112,9 @@ fn sampler_note_and_root_edits_prepare_before_publication_and_paste_prepares_des
         clip_id: clip,
         pattern,
     });
-    assert!(app.job.is_some());
-    assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+    assert!(app.job.is_none() && app.background_media.running);
+    assert_ne!(serde_json::to_value(&app.session.project).unwrap(), before);
+    assert!(!app.media_ready());
     wait(&mut app, &ctx);
     let id = state(&app).id;
     assert_eq!(
@@ -158,8 +165,8 @@ fn sampler_note_and_root_edits_prepare_before_publication_and_paste_prepares_des
         }],
         0,
     );
-    assert!(app.job.is_some());
-    assert!(app.session.project.tracks[1].clips.is_empty());
+    assert!(app.job.is_none() && app.background_media.running);
+    assert_eq!(app.session.project.tracks[1].clips.len(), 1);
     wait(&mut app, &ctx);
     assert_eq!(app.session.project.tracks[1].clips.len(), 1);
     assert_eq!(app.selected_track, Some(destination));

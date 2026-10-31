@@ -1,3 +1,5 @@
+pub use daw_media::{configure_preparation_cache, preparation_cache_directory};
+mod background_audio;
 use daw_unit_ui::menus;
 mod audio_edits;
 mod audio_preparation;
@@ -322,6 +324,7 @@ enum Job {
         layer_selection: Option<(Id, Id, HashSet<Id>)>,
     },
     Loaded(Session, bool),
+    Document(daw_project::ProjectDocument),
     Saved(daw_project::SavedSession),
     Exported(Vec<String>),
     Separated(daw_project::PreparedSeparation),
@@ -780,6 +783,7 @@ pub struct DawUi {
     separation_models: separation_models::State,
     project_settings: Option<project_settings::ProjectSettings>,
     pub session: Session,
+    background_media: background_audio::State,
     history: Option<daw_project::SessionHistory>,
     output: Option<AudioOutput>,
     selected_track: Option<Id>,
@@ -904,6 +908,7 @@ impl Default for DawUi {
             separation_models: Default::default(),
             project_settings: None,
             session: Session::default(),
+            background_media: Default::default(),
             history: None,
             output: None,
             selected_track: None,
@@ -1023,6 +1028,7 @@ impl DawUi {
     }
     pub fn project_settings_enabled(&self) -> bool {
         self.settings_enabled()
+            && self.media_ready()
             && self.track_name_edit.is_none()
             && !self.instrument_ui.editing_name()
             && self.tempo_edit.is_none()
@@ -1135,8 +1141,8 @@ impl DawUi {
     }
     fn open(&mut self, folder: PathBuf) {
         self.run_job("Opening project", move || {
-            Session::open(&folder)
-                .map(|s| Job::Loaded(s, false))
+            Session::open_document(&folder)
+                .map(Job::Document)
                 .map_err(|e| e.to_string())
         });
     }
@@ -1152,6 +1158,7 @@ impl DawUi {
         match self.pending.take() {
             Some(Action::New | Action::CloseProject) => {
                 self.output = None;
+                self.reset_background_media();
                 self.session = Session::default();
                 self.session.project =
                     daw_core::Project::new_with_audio_quality(self.settings.audio_quality)
@@ -1344,7 +1351,7 @@ impl DawUi {
         }
     }
     fn export(&mut self, path: PathBuf, overwrite: bool, settings: ExportSettings) {
-        let session = self.session.clone();
+        let mut session = self.session.clone();
         let status = export_status::ExportStatus::new(
             path.clone(),
             settings,
@@ -1357,6 +1364,9 @@ impl DawUi {
         self.run_job(
             &format!("Exporting stereo {}", settings.format.label()),
             move || {
+                session
+                    .prepare_project_audio(&|| false, &|_, _| {})
+                    .map_err(|e| e.to_string())?;
                 session
                     .export_with_progress(&path, overwrite, settings, |frames, _| {
                         progress.store(frames, Ordering::Relaxed);
@@ -1376,6 +1386,7 @@ impl DawUi {
         }
     }
     fn poll(&mut self) {
+        self.poll_background_media();
         self.refresh_collection();
         self.poll_regular_save();
         let message = self.job.as_ref().and_then(|rx| match rx.try_recv() {
@@ -1440,58 +1451,12 @@ impl DawUi {
                     self.prune_track_selection();
                     self.changed();
                 }
-                Ok(Job::Loaded(session, dirty)) => {
-                    self.loop_drag = None;
-                    self.track_drag = None;
-                    if !dirty {
-                        self.history = None;
-                        self.saved_navigation_revision = self.navigation_revision;
-                        self.master_selected = false;
-                        self.selected_track = None;
-                        self.selected_tracks.clear();
-                        self.project_name_dialog = None;
-                        self.project_settings = None;
-                        self.selected_clip = None;
-                        self.selected_clips.clear();
-                        self.marquee = None;
-                        self.portion = None;
-                        self.portion_drag = None;
-                        self.clip_clipboard = None;
-                        self.output = None;
-                        self.inputs.clear();
-                        self.track_name_edit = None;
-                        self.master_gain_input =
-                            faders::format_gain(session.project.master.gain_db);
-                        self.tempo_edit = None;
-                        self.musical_drag = None;
-                        self.time_drag = None;
-                        self.selection_drag = [None, None];
-                        self.scroll = 0.0;
-                        self.midi_editor.cancel();
-                        self.instrument_ui = Default::default();
-                        self.instrument_catalog.clear();
-                        self.component_drag = None;
-                        self.effects_drag = None;
-                        self.selected_effects.clear();
-                    }
-                    self.notices = session.warnings.clone();
-                    self.session = session;
-                    self.prune_clip_selection();
-                    self.selected_track = if self.master_selected {
-                        None
-                    } else {
-                        self.selected_track
-                            .filter(|id| self.session.project.tracks.iter().any(|t| t.id == *id))
-                            .or_else(|| self.session.project.tracks.first().map(|t| t.id))
-                    };
-                    self.prune_track_selection();
-                    if dirty {
-                        self.mark_dirty();
-                    } else {
-                        self.dirty = false;
-                    }
-                    self.ensure_history();
-                    self.sync_needed = true;
+                Ok(Job::Loaded(session, dirty)) => self.install_loaded_session(session, dirty),
+                Ok(Job::Document(document)) => {
+                    self.reset_background_media();
+                    self.install_loaded_session(document.into_editor_session(), false);
+                    self.background_media.loading = true;
+                    self.queue_background_media();
                 }
                 Ok(Job::Saved(saved)) => {
                     if let Err(error) = self.apply_saved_sources(&saved) {
@@ -1565,6 +1530,62 @@ impl DawUi {
         }
         self.start_next_model_validation();
     }
+    fn install_loaded_session(&mut self, session: Session, dirty: bool) {
+        if !dirty {
+            self.reset_background_media();
+        }
+
+        self.loop_drag = None;
+        self.track_drag = None;
+        if !dirty {
+            self.history = None;
+            self.saved_navigation_revision = self.navigation_revision;
+            self.master_selected = false;
+            self.selected_track = None;
+            self.selected_tracks.clear();
+            self.project_name_dialog = None;
+            self.project_settings = None;
+            self.selected_clip = None;
+            self.selected_clips.clear();
+            self.marquee = None;
+            self.portion = None;
+            self.portion_drag = None;
+            self.clip_clipboard = None;
+            self.output = None;
+            self.inputs.clear();
+            self.track_name_edit = None;
+            self.master_gain_input = faders::format_gain(session.project.master.gain_db);
+            self.tempo_edit = None;
+            self.musical_drag = None;
+            self.time_drag = None;
+            self.selection_drag = [None, None];
+            self.scroll = 0.0;
+            self.midi_editor.cancel();
+            self.instrument_ui = Default::default();
+            self.instrument_catalog.clear();
+            self.component_drag = None;
+            self.effects_drag = None;
+            self.selected_effects.clear();
+        }
+        self.notices = session.warnings.clone();
+        self.session = session;
+        self.prune_clip_selection();
+        self.selected_track = if self.master_selected {
+            None
+        } else {
+            self.selected_track
+                .filter(|id| self.session.project.tracks.iter().any(|t| t.id == *id))
+                .or_else(|| self.session.project.tracks.first().map(|t| t.id))
+        };
+        self.prune_track_selection();
+        if dirty {
+            self.mark_dirty();
+        } else {
+            self.dirty = false;
+        }
+        self.ensure_history();
+        self.sync_needed = true;
+    }
     fn seek(&mut self, frame: u64) {
         self.session.project.transport.playhead_frame = frame;
         self.navigation_revision = self.navigation_revision.wrapping_add(1);
@@ -1577,6 +1598,9 @@ impl DawUi {
         }
     }
     fn play(&mut self) {
+        if !self.media_ready() {
+            return;
+        }
         if self.session.project.end() == 0 {
             return;
         }
@@ -1670,22 +1694,25 @@ impl DawUi {
                     self.mark_dirty();
                     return;
                 }
-                if self.track_name_edit.as_ref().is_some_and(|edit| {
-                    !self
-                        .session
-                        .project
-                        .tracks
-                        .iter()
-                        .any(|t| t.id == edit.track)
-                }) {
-                    self.track_name_edit = None;
-                }
-                self.prune_clip_selection();
-                self.prune_track_selection();
+                self.prune_project_selection();
                 self.changed();
             }
             Err(e) => self.fail(e),
         }
+    }
+    fn prune_project_selection(&mut self) {
+        if self.track_name_edit.as_ref().is_some_and(|edit| {
+            !self
+                .session
+                .project
+                .tracks
+                .iter()
+                .any(|t| t.id == edit.track)
+        }) {
+            self.track_name_edit = None;
+        }
+        self.prune_clip_selection();
+        self.prune_track_selection();
     }
     fn clip_selected(&self, id: Id) -> bool {
         self.selected_clip == Some(id) || self.selected_clips.contains(&id)
@@ -2090,6 +2117,10 @@ impl DawUi {
             let wake = ctx.clone();
             output.set_waker(move || wake.request_repaint());
         }
+        if let Some(worker) = &self.background_media.worker {
+            let wake = ctx.clone();
+            worker.set_waker(move || wake.request_repaint());
+        }
         self.poll();
         self.poll_audio_devices(&ctx);
         // Publish completed jobs before a new pointer gesture starts its own undo step.
@@ -2222,6 +2253,8 @@ impl DawUi {
                             self.busy.clear();
                         }
                     }
+                } else if self.background_media.required {
+                    self.background_media_status(ui);
                 } else if self.regular_save.is_some() {
                     ui.spinner();
                     ui.label("Saving project");
@@ -2288,7 +2321,7 @@ impl DawUi {
         self.cancel_released_effect_drag(ui);
         strip_reorder::end_frame(&ctx);
         self.strip_dragging = strip_reorder::dragging(&ctx);
-        if self.sync_needed {
+        if self.sync_needed && !self.reconcile_background_media() {
             let plan = self.session.plan();
             if let Some(output) = &mut self.output {
                 if let Ok(()) = output.sync(plan) {
@@ -2297,6 +2330,9 @@ impl DawUi {
             } else {
                 self.sync_needed = false;
             }
+        }
+        if self.background_media.required {
+            self.sync_needed = false;
         }
         self.poll_chord_audition(&ctx, ui.is_enabled());
         self.prepare_idle_audio();
@@ -2418,12 +2454,17 @@ impl DawUi {
             history.finish_group();
         }
         self.history_memory_notice();
-        self.configure_audio_cache(ctx.input(|i| i.pointer.any_down()) || self.job.is_some());
+        self.configure_audio_cache(
+            ctx.input(|i| i.pointer.any_down())
+                || self.job.is_some()
+                || self.background_media.running,
+        );
         let now = std::time::Instant::now();
         if self.is_playing()
             || self.output.as_ref().is_some_and(|o| o.preparing())
             || self.job.is_some()
             || self.regular_save.is_some()
+            || self.background_media.running
             || self.sync_needed
             || self.file_hover.as_ref().is_some_and(|h| h.audio.is_none())
         {
@@ -2513,12 +2554,25 @@ impl DawUi {
     }
 
     pub fn file_action_disabled_hint(&self, action: FileAction) -> Option<&'static str> {
+        if !self.media_ready()
+            && matches!(
+                action,
+                FileAction::Import | FileAction::SaveAs | FileAction::CollectSources
+            )
+        {
+            return Some("Wait for project audio preparation");
+        }
         (action == FileAction::CollectSources && self.session.folder.is_none())
             .then_some("Save the project before collecting its sources")
     }
 
     pub fn file_action_enabled(&self, action: FileAction) -> bool {
         self.regular_save.is_none()
+            && (self.media_ready()
+                || !matches!(
+                    action,
+                    FileAction::Import | FileAction::SaveAs | FileAction::CollectSources
+                ) && (action != FileAction::Save || self.session.folder.is_some()))
             && self.editing_enabled()
             && (action != FileAction::Export || self.session.project.end() > 0)
             && (action != FileAction::CollectSources || self.collection_enabled())
@@ -2917,7 +2971,7 @@ impl DawUi {
                 playing,
                 stop_action,
                 enabled,
-                playing || self.session.project.end() > 0,
+                playing || self.media_ready() && self.session.project.end() > 0,
                 self.job.is_none(),
             );
             #[cfg(test)]
@@ -5443,6 +5497,7 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     mod audio_editor;
+    mod background_audio;
     mod chords;
     mod clip_duplication;
     mod clip_menu;
@@ -5532,6 +5587,10 @@ mod tests {
             gain_db: 0.0,
             transpose: 0,
         });
+        // This fixture represents an opened project with a verified missing source.
+        app.session
+            .prepare_project_audio(&|| false, &|_, _| {})
+            .unwrap();
         (app, track)
     }
     fn multi_clip_fixture() -> (DawUi, [Id; 3], [Id; 3]) {
@@ -9687,12 +9746,8 @@ mod tests {
                 ..Default::default()
             },
         ] {
-            let (mut app, _) = fixture();
-            let asset = app.session.project.tracks[0].clips[0].asset_id;
-            app.session.project.tracks[0].clips[0].length_frames = 48000;
-            app.session
-                .audio
-                .insert(asset, daw_media::decode_wav(&wav.0).unwrap());
+            let mut app = DawUi::default();
+            app.session.import(&wav.0, None, 0).unwrap();
             let output = folder.join(format!(
                 "export-test-{}.{}",
                 Id::new_v4(),
