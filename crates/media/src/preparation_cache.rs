@@ -52,12 +52,14 @@ struct Entry {
     audio: AudioData,
     bytes: u64,
 }
+// Only active cache calls retain this completed result. The last call drops the
+// flight's owner on a worker; returned buffers retain their normal host ownership.
+type Flight = Mutex<Option<AudioData>>;
 #[derive(Default)]
 struct State {
     entries: VecDeque<Entry>,
     bytes: u64,
-    // Weak locks coordinate misses without extending audio or request lifetimes.
-    flights: HashMap<Key, Weak<Mutex<()>>>,
+    flights: HashMap<Key, Weak<Flight>>,
 }
 /// All methods run on control workers. The callback never owns this cache.
 #[derive(Default)]
@@ -81,11 +83,11 @@ impl PreparationCache {
         })
     }
     fn remember(&self, key: Key, audio: &AudioData) {
+        crate::register_audio(audio);
         let bytes = audio.samples.capacity() as u64 * 8 + audio.peaks.capacity() as u64 * 16;
         if bytes > MEMORY_BYTES {
             return;
         }
-        crate::register_audio(audio);
         let mut state = self.state.lock().unwrap();
         while state.bytes + bytes > MEMORY_BYTES
             || crate::audio_memory_bytes() > crate::AUDIO_MEMORY_BUDGET_BYTES - MEMORY_BYTES
@@ -115,11 +117,11 @@ impl PreparationCache {
                 .flights
                 .get(&key)
                 .and_then(Weak::upgrade)
-                .unwrap_or_else(|| Arc::new(Mutex::new(())));
+                .unwrap_or_else(|| Arc::new(Mutex::new(None)));
             state.flights.insert(key, Arc::downgrade(&lock));
             lock
         };
-        let _guard = loop {
+        let mut completed = loop {
             check(cancelled)?;
             match flight.try_lock() {
                 Ok(guard) => break guard,
@@ -135,15 +137,24 @@ impl PreparationCache {
                 let entry = state.entries.remove(index).unwrap();
                 let audio = entry.audio.clone();
                 state.entries.push_back(entry);
+                *completed = Some(audio.clone());
                 self.counters.memory_hits.fetch_add(1, Ordering::Relaxed);
                 return Ok(audio);
             }
+        }
+        // Oversized entries and entries evicted under pressure still belong to
+        // callers that were already waiting for this exact preparation.
+        if let Some(audio) = completed.as_ref() {
+            check(cancelled)?;
+            self.counters.memory_hits.fetch_add(1, Ordering::Relaxed);
+            return Ok(audio.clone());
         }
         if let Some(path) = self.path(key)
             && let Ok(audio) = read(&path, key, cancelled)
         {
             check(cancelled)?;
             self.remember(key, &audio);
+            *completed = Some(audio.clone());
             self.counters.disk_hits.fetch_add(1, Ordering::Relaxed);
             return Ok(audio);
         }
@@ -158,6 +169,7 @@ impl PreparationCache {
         }
         check(cancelled)?;
         self.remember(key, &audio);
+        *completed = Some(audio.clone());
         Ok(audio)
     }
     pub fn stats(&self) -> PreparationCacheStats {
@@ -562,15 +574,8 @@ mod tests {
     struct Directory(PathBuf);
     impl Directory {
         fn new() -> Self {
-            let path = std::env::temp_dir().join(format!(
-                "daw-pcm-{}-{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
-            fs::create_dir_all(&path).unwrap();
+            let path = std::env::temp_dir().join(format!("daw-pcm-{}", daw_core::Id::new_v4()));
+            fs::create_dir(&path).unwrap();
             Self(path)
         }
     }
@@ -708,6 +713,167 @@ mod tests {
             ));
         });
         assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+    fn wait_for_callers(cache: &PreparationCache, key: Key, count: usize) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while cache
+            .state
+            .lock()
+            .unwrap()
+            .flights
+            .get(&key)
+            .map_or(0, Weak::strong_count)
+            < count
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "cache caller timed out"
+            );
+            std::thread::yield_now();
+        }
+    }
+    #[test]
+    fn oversized_inflight_results_share_pcm_without_retention_or_writable_disk() {
+        let dir = Directory::new();
+        let blocked = dir.0.join("occupied");
+        fs::write(&blocked, b"not a directory").unwrap();
+        let frames = MEMORY_BYTES / 8 + 1;
+        let reservation = AudioReservation::new(frames, 0).unwrap();
+        let original = crate::prepared_audio(&audio(), vec![[0.25, -0.25]; frames as usize]);
+        drop(reservation);
+        let weak = Arc::downgrade(&original.samples);
+        for root in [None, Some(blocked.clone())] {
+            let cache = PreparationCache::new(root);
+            let calls = AtomicUsize::new(0);
+            let key = key(b"oversized-flight", &[]);
+            let (release, gate) = std::sync::mpsc::channel();
+            let (started, ready) = std::sync::mpsc::channel();
+            std::thread::scope(|scope| {
+                let (cache, calls, original) = (&cache, &calls, &original);
+                let first = scope.spawn(move || {
+                    cache.get_or_prepare(key, &|| false, || {
+                        calls.fetch_add(1, Ordering::Relaxed);
+                        started.send(()).unwrap();
+                        gate.recv_timeout(std::time::Duration::from_secs(30))
+                            .unwrap();
+                        Ok(original.clone())
+                    })
+                });
+                ready
+                    .recv_timeout(std::time::Duration::from_secs(30))
+                    .unwrap();
+                let second = scope.spawn(move || {
+                    cache.get_or_prepare(key, &|| false, || {
+                        calls.fetch_add(1, Ordering::Relaxed);
+                        Ok(original.clone())
+                    })
+                });
+                wait_for_callers(cache, key, 2);
+                release.send(()).unwrap();
+                let first = first.join().unwrap().unwrap();
+                let second = second.join().unwrap().unwrap();
+                assert!(Arc::ptr_eq(&first.samples, &second.samples));
+                assert!(Arc::ptr_eq(&first.peaks, &second.peaks));
+            });
+            assert_eq!(calls.load(Ordering::Relaxed), 1);
+            let state = cache.state.lock().unwrap();
+            assert!(state.entries.is_empty());
+            assert_eq!(state.bytes, 0);
+            assert_eq!(state.flights[&key].strong_count(), 0);
+        }
+        drop(original);
+        assert!(weak.upgrade().is_none());
+    }
+    #[test]
+    fn cancelling_a_waiter_does_not_cancel_other_callers() {
+        let cache = PreparationCache::default();
+        let key = key(b"cancelled-waiter", &[]);
+        let cancelled = std::sync::atomic::AtomicBool::new(false);
+        let (release, gate) = std::sync::mpsc::channel();
+        let (started, ready) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let (cache, cancelled) = (&cache, &cancelled);
+            let first = scope.spawn(move || {
+                cache.get_or_prepare(key, &|| false, || {
+                    started.send(()).unwrap();
+                    gate.recv_timeout(std::time::Duration::from_secs(30))
+                        .unwrap();
+                    Ok(audio())
+                })
+            });
+            ready
+                .recv_timeout(std::time::Duration::from_secs(30))
+                .unwrap();
+            let waiter = scope.spawn(move || {
+                cache.get_or_prepare(key, &|| cancelled.load(Ordering::Acquire), || {
+                    panic!("cancelled waiter built")
+                })
+            });
+            wait_for_callers(cache, key, 2);
+            cancelled.store(true, Ordering::Release);
+            assert!(waiter.join().unwrap().is_err());
+            let other = scope.spawn(move || {
+                cache.get_or_prepare(key, &|| false, || panic!("waiting caller rebuilt"))
+            });
+            wait_for_callers(cache, key, 2);
+            release.send(()).unwrap();
+            let first = first.join().unwrap().unwrap();
+            let other = other.join().unwrap().unwrap();
+            assert!(Arc::ptr_eq(&first.samples, &other.samples));
+        });
+        assert_eq!(cache.stats().builds, 1);
+    }
+    #[test]
+    fn cancelled_preparation_leaves_waiters_free_to_rebuild() {
+        let cache = PreparationCache::default();
+        let key = key(b"cancelled-builder", &[]);
+        let cancelled = std::sync::atomic::AtomicBool::new(false);
+        let (release, gate) = std::sync::mpsc::channel();
+        let (started, ready) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let (cache, cancelled) = (&cache, &cancelled);
+            let first = scope.spawn(move || {
+                cache.get_or_prepare(key, &|| cancelled.load(Ordering::Acquire), || {
+                    started.send(()).unwrap();
+                    gate.recv_timeout(std::time::Duration::from_secs(30))
+                        .unwrap();
+                    Ok(audio())
+                })
+            });
+            ready
+                .recv_timeout(std::time::Duration::from_secs(30))
+                .unwrap();
+            let other = scope.spawn(move || cache.get_or_prepare(key, &|| false, || Ok(audio())));
+            wait_for_callers(cache, key, 2);
+            cancelled.store(true, Ordering::Release);
+            release.send(()).unwrap();
+            assert!(first.join().unwrap().is_err());
+            assert!(other.join().unwrap().is_ok());
+        });
+        assert_eq!(cache.stats().builds, 2);
+    }
+    #[test]
+    fn concurrent_directories_have_independent_ownership() {
+        let start = std::sync::Barrier::new(32);
+        let fixtures = std::thread::scope(|scope| {
+            let threads: Vec<_> = (0..32)
+                .map(|_| {
+                    scope.spawn(|| {
+                        start.wait();
+                        Directory::new()
+                    })
+                })
+                .collect();
+            threads
+                .into_iter()
+                .map(|thread| thread.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        let paths: std::collections::HashSet<_> =
+            fixtures.iter().map(|fixture| fixture.0.clone()).collect();
+        assert_eq!(paths.len(), fixtures.len());
+        drop(fixtures);
+        assert!(paths.iter().all(|path| !path.exists()));
     }
     #[test]
     fn keys_distinguish_content_rate_and_processing_settings() {

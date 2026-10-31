@@ -175,6 +175,16 @@ impl DawUi {
             return;
         }
         let clips: Vec<_> = previews.into_iter().map(|preview| preview.clip).collect();
+        let contains_audio = clips.iter().any(|clip| {
+            self.session
+                .project
+                .assets
+                .iter()
+                .any(|asset| asset.id == clip.asset_id && asset.midi_pattern.is_none())
+        });
+        if contains_audio && self.reject_pending_audio_transform() {
+            return;
+        }
         let next = match self.session.project.stretched_clips(&clips, edge) {
             Ok(next) => next,
             Err(error) => {

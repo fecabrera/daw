@@ -4,6 +4,16 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Modifier stretching and preparation-cache concurrency — 2026-10-30
+
+Audio and mixed-selection modifier stretch release now uses the shared pending-audio guard before starting an ordinary job. Running, paused and failed preparation leave the project, history and selection unchanged and show a reason. MIDI-only stretching retains its existing transaction; ready-state group stretching keeps the shared atomic range/trim/removal calculation and prepared publication.
+
+Active per-key cache calls share a completed immutable result even above the 128 MiB retention limit or with unavailable disk storage. The last participating call releases the extra owner outside the callback. Long-term retention, shared 2 GiB admission, source validation, DSP, cache keys and file format remain unchanged. Cancellation of one waiter does not cancel other consumers; an unsuccessful builder does not publish a partial result. Cache-test directories now use UUID names and exclusive creation, with cleanup confined to the owned directory.
+
+The affected runs pass all 17 media tests and 10 background-audio UI tests. New coverage includes 12 Timeline/Editor audio/mixed stretch cases across running/paused/failed preparation with an invalid undecoded source, normal MIDI-only stretching, oversized in-flight sharing with disk disabled and cache write failure, owner release without long-term retention, waiter/builder cancellation isolation, and 32 concurrent independent directory constructors. `cargo test --offline --locked --workspace --no-fail-fast` passes: **1,963 tests passed, 11 ignored, no failures**, across 257 suites, including all 747 UI tests and 17 media tests. Ten normal parallel media-suite repetitions pass (17 tests each). Formatting, strict locked offline workspace/all-target Clippy and whitespace checks pass. The locked offline CLI build and `python3 tools/check_cli.py` pass, and `sh tools/package_macos.sh debug` rebuilds the unsigned app. All 122 relative file targets in changed Markdown documents resolve.
+
+Native UI/device/listening, Windows/Linux execution, release timing and peak RSS remain unverified. Automated input and headless checks do not establish native acceptance. Logs use `work/review3-fixes-*`.
+
 ## Background preparation review fixes — 2026-10-30
 
 Undo/Redo now requests complete preparation when a restored loading-time snapshot lacks original PCM. Sessions retain verified missing-source IDs with prepared maps, so a missing recording still follows the warning/silence policy without repeated readiness requests. This corrects the incomplete history/readiness integration in the background-preparation implementation below. Original files, logical history and manifest format are unchanged.

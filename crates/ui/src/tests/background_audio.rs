@@ -376,3 +376,155 @@ fn pending_audio_transpose_control_is_disabled_but_gain_remains_editable() {
         assert!(app.background_media.required);
     }
 }
+
+#[test]
+fn pending_modifier_stretches_preserve_project_history_and_selection_in_both_views() {
+    for editor in [false, true] {
+        for mixed in [false, true] {
+            for state in 0..3 {
+                let mut app = DawUi::default();
+                let file = TestWav::new();
+                let audio_clip = app.session.import(&file.0, None, 0).unwrap();
+                let audio_track = app.session.project.tracks[0].id;
+                let midi_track = app.session.project.add_midi_track().unwrap();
+                let midi_clip = app.session.project.add_midi_pattern(midi_track, 0).unwrap();
+                let folder =
+                    std::env::temp_dir().join(format!("daw-pending-stretch-{}", Id::new_v4()));
+                app.session.save(&folder).unwrap();
+                std::fs::write(&file.0, b"invalid audio").unwrap();
+                app.session = Session::open_document(&folder)
+                    .unwrap()
+                    .into_editor_session();
+                app.ensure_history();
+                let ctx = context();
+                app.select_clip(audio_clip, audio_track, false);
+                if editor {
+                    app.open_clip_editor(audio_clip, audio_track, &ctx);
+                    app.midi_editor.zoom = 120.0;
+                    app.midi_editor.scroll = 0.0;
+                } else {
+                    app.zoom = 120.0;
+                    app.scroll = 0.0;
+                }
+                if mixed {
+                    app.select_clip(midi_clip, midi_track, false);
+                    app.select_clip(audio_clip, audio_track, true);
+                }
+                // Hold each pending state without starting a real decoder. The
+                // invalid source must never reach the ordinary stretch worker.
+                app.background_media.required = true;
+                app.background_media.loading = true;
+                app.background_media.running = state == 0;
+                app.background_media.error = (state == 2).then(|| "Injected failure".into());
+                app.sync_needed = false;
+                frame(&mut app, &ctx, vec![]);
+                let before = app.session.project.clone();
+                let revision = app.change_revision;
+                let selection = app.selected_clips.clone();
+                let clip = &app.session.project.tracks[0].clips[0];
+                let block = if editor {
+                    app.midi_editor.clip_bounds[&audio_clip]
+                } else {
+                    app.clip_block(app.lane_bounds[&audio_track], clip, clip.start_frame)
+                };
+                let origin = Pos2::new(block.right() - 1.0, block.top() + 10.0);
+                let end = origin + Vec2::new(30.0, 0.0);
+                let modifiers = egui::Modifiers {
+                    alt: cfg!(target_os = "macos"),
+                    ctrl: !cfg!(target_os = "macos"),
+                    shift: true,
+                    ..Default::default()
+                };
+                let press = |pos, pressed| egui::Event::PointerButton {
+                    pos,
+                    pressed,
+                    button: egui::PointerButton::Primary,
+                    modifiers,
+                };
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::ModifiersChanged(modifiers),
+                        egui::Event::PointerMoved(origin),
+                        press(origin, true),
+                    ],
+                );
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                assert_eq!(
+                    app.drag.as_ref().map(|drag| drag.mode),
+                    Some(ClipDragMode::StretchRight)
+                );
+                frame(&mut app, &ctx, vec![press(end, false)]);
+                assert!(app.job.is_none());
+                assert_eq!(app.session.project, before);
+                assert_eq!(app.change_revision, revision);
+                assert_eq!(app.selected_clips, selection);
+                assert!(!app.history.as_ref().unwrap().can_undo());
+                assert!(!app.dirty);
+                assert!(
+                    app.notices
+                        .iter()
+                        .any(|notice| notice.contains("Wait for project audio"))
+                );
+                assert!(
+                    app.session
+                        .prepare_project_audio(&|| false, &|_, _| {})
+                        .is_err()
+                );
+                std::fs::remove_dir_all(folder).unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn midi_only_modifier_stretch_retains_its_pending_edit_and_prepares_normally() {
+    let (mut app, _file, clip) = pending_sampler();
+    pitch_edit(&mut app, clip, 65);
+    app.background_media.worker.as_ref().unwrap().cancel();
+    app.background_media.running = false;
+    let track = app.session.project.tracks[0].id;
+    app.select_clip(clip, track, false);
+    let entry = app.selected_clip_snapshots()[0].clone();
+    let original = entry.clip.length_frames;
+    let drag = Drag {
+        clip: entry.clip,
+        track,
+        mode: ClipDragMode::StretchRight,
+        origin: Pos2::ZERO,
+        duplicate: false,
+        linked_boundary: false,
+        clips: app.selected_clip_snapshots(),
+    };
+    app.finish_clip_stretch(&drag, Pos2::new(app.zoom * 0.25, 0.0), true);
+    assert!(app.job.is_some());
+    assert_eq!(
+        app.session.project.tracks[0].clips[0].length_frames,
+        original
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while app.job.is_some() {
+        assert!(std::time::Instant::now() < deadline);
+        app.poll();
+        std::thread::yield_now();
+    }
+    assert!(app.error.is_none(), "{:?}", app.error);
+    assert_ne!(
+        app.session.project.tracks[0].clips[0].length_frames,
+        original
+    );
+    assert!(!app.session.audio_preparation_needed(&app.session.project));
+    let asset = app.session.project.tracks[0].clips[0].asset_id;
+    let pattern = app
+        .session
+        .project
+        .assets
+        .iter()
+        .find(|a| a.id == asset)
+        .unwrap()
+        .midi_pattern
+        .as_ref()
+        .unwrap();
+    assert_eq!(pattern.notes[0].pitch, 65);
+}

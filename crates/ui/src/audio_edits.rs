@@ -1,6 +1,16 @@
 //! Shared worker transaction for clip transforms and instrument sample preparation.
 use super::*;
 impl DawUi {
+    pub(super) fn reject_pending_audio_transform(&mut self) -> bool {
+        if self.media_ready() {
+            return false;
+        }
+        let message = "Wait for project audio before changing audio transforms or sources.";
+        if !self.notices.iter().any(|notice| notice == message) {
+            self.notices.push(message.into());
+        }
+        true
+    }
     /// MIDI edits enter logical history immediately; source/transform transactions
     /// retain complete-session publication and wait for pending audio first.
     pub(super) fn prepare_audio_edit(
@@ -22,11 +32,7 @@ impl DawUi {
             self.queue_background_media();
             return true;
         }
-        if self.background_media.required {
-            let message = "Wait for project audio before changing audio transforms or sources.";
-            if !self.notices.iter().any(|notice| notice == message) {
-                self.notices.push(message.into());
-            }
+        if self.reject_pending_audio_transform() {
             return true;
         }
         let mut session = self.session.clone();
