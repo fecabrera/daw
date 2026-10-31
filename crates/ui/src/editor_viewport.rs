@@ -22,6 +22,8 @@ pub(super) struct EditorViewport {
     pub zoom_bounds: Rect,
     #[cfg(test)]
     pub fit_bounds: Rect,
+    #[cfg(test)]
+    pub scrollbar_bounds: Rect,
 }
 
 impl Default for EditorViewport {
@@ -46,6 +48,8 @@ impl Default for EditorViewport {
             zoom_bounds: Rect::NOTHING,
             #[cfg(test)]
             fit_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            scrollbar_bounds: Rect::NOTHING,
         }
     }
 }
@@ -128,6 +132,10 @@ impl DawUi {
             ),
             Pos2::new(ui.max_rect().right(), bottom),
         );
+        #[cfg(test)]
+        if self.midi_editor.content_active {
+            self.midi_editor.content.scrollbar_bounds = bounds;
+        }
         self.timeline_scrollbar_at(ui, bounds, id);
     }
 

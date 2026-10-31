@@ -3950,31 +3950,18 @@ impl DawUi {
             .is_some_and(|edit| edit.track == track.id)
         {
             let mut edit = self.track_name_edit.take().unwrap();
-            let mut output = egui::TextEdit::singleline(&mut edit.text)
-                .id(ui.make_persistent_id(("track_name", track.id)))
-                .font(egui::FontId::proportional(font_size))
-                .text_color(theme::palette(ui.ctx()).text)
-                .horizontal_align(egui::Align::Min)
-                .desired_width(width)
-                .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
-                .show(ui);
-            output.response.widget_info(|| {
+            let response = rows::name_input(
+                ui,
+                &mut edit.text,
+                ui.make_persistent_id(("track_name", track.id)),
+                font_size,
+                &mut edit.focus,
+            );
+            response.widget_info(|| {
                 egui::WidgetInfo::text_edit(ui.is_enabled(), &track.name, &edit.text, "Track name")
             });
-            if edit.focus {
-                output.response.request_focus();
-                output
-                    .state
-                    .cursor
-                    .set_char_range(Some(egui::text::CCursorRange::two(
-                        egui::text::CCursor::new(0),
-                        egui::text::CCursor::new(edit.text.chars().count()),
-                    )));
-                output.state.store(ui.ctx(), output.response.id);
-                edit.focus = false;
-            }
-            if let Some(action) = inline_edit_action(ui, &output.response) {
-                output.response.surrender_focus();
+            if let Some(action) = inline_edit_action(ui, &response) {
+                response.surrender_focus();
                 if action == InlineEditAction::Commit
                     && edit.text != track.name
                     && let Some(track) = self

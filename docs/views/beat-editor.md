@@ -27,7 +27,7 @@ Pattern edits affect only the active clip and create a new source. Other clips k
 Editor and Instrument share the same names, order, selection and mix controls.
 
 - Click a name to select one subtrack; Shift-click headers to toggle group membership. In Editor, clicking any part of a subtrack header, including its controls or empty space, selects that subtrack. Press Escape to clear subtrack selection in Editor or Instrument. Escape first cancels an active rename or drag.
-- Double-click a name, or use its context menu, to rename it. Enter accepts; Escape cancels.
+- Double-click a name, or use its context menu, to rename it. The name uses the same text input as track names and starts with the whole name selected. Enter accepts; Escape or moving focus elsewhere cancels.
 - Drag a selected name to reorder the selected subtracks together. Release inside the list to apply the move. Escape, focus loss or an outside release cancels it.
 - Use the name's context menu to delete selected subtracks. Delete/Backspace also removes them while a subtrack name has keyboard focus. Text, step and unit controls retain their own keyboard behavior.
 - Use Mute, Solo, Pan and Gain in either view. Solo applies within the beat instrument; parent track and group controls still apply to the complete output.
@@ -55,6 +55,9 @@ Each header shows the name, followed by mute, solo, pan and gain pinned right. T
 zoom and scroll position as the pattern. The gutter between the left panel and
 the steps contains the same headphones audition control as the MIDI editor.
 Audition is off by default. Removing a step or clicking a disabled step is silent.
+
+Use the scrollbar below the steps to move through time without moving the
+track overview or subtrack headers. It remains available without a selected pattern.
 
 In Instrument, each subtrack has a chevron beside its name. Click it to hide or
 show its nested source layers, LFO and Envelope lanes. The subtrack Output lane is hidden while collapsed. New groups start expanded.

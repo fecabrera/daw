@@ -1592,3 +1592,69 @@ fn beat_editor_shared_audition_button_previews_only_enabled_steps() {
     click(&mut app, &ctx, disabled);
     assert_eq!(app.chords.audition.beat_requests.len(), 1);
 }
+
+#[test]
+fn beat_editor_scrollbar_pans_only_the_step_viewport_without_edits() {
+    let (mut app, ctx, track, row, clip) = setup();
+    app.dirty = false;
+    let before = app.session.project.clone();
+    let overview = (app.zoom, app.scroll);
+    let header = app.beat_ui.headers[&row];
+    let bounds = app.midi_editor.content.scrollbar_bounds;
+    assert_eq!(bounds.height(), SCROLLBAR_HEIGHT);
+    assert!((bounds.left() - app.midi_editor.content.ruler.left()).abs() < 0.1);
+    let start = Pos2::new(bounds.left() + 8.0, bounds.bottom() - 4.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start)]);
+    frame(&mut app, &ctx, vec![button(start, true)]);
+    let end = start + Vec2::new(80.0, 0.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    frame(&mut app, &ctx, vec![]);
+    assert!(
+        app.midi_editor.content.scroll > 0.0,
+        "dragging the shared thumb pans beat time"
+    );
+    assert_eq!((app.zoom, app.scroll), overview);
+    assert_eq!(app.beat_ui.headers[&row], header);
+    assert!((app.midi_editor.content.left - app.midi_editor.content.ruler.left()).abs() < 0.1);
+    assert_eq!(app.selected_track, Some(track));
+    assert_eq!(app.selected_clip, Some(clip));
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+    app.selected_clip = None;
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.midi_editor.content.scrollbar_bounds, bounds);
+    assert!(app.midi_editor.content.scroll > 0.0);
+    assert!(!app.beat_ui.disabled_steps.is_empty());
+}
+
+#[test]
+fn subtrack_name_input_selects_the_whole_name_and_matches_track_commit_and_cancel() {
+    for view in [ViewMode::Edit, ViewMode::Instrument] {
+        let (mut app, ctx, track, row, _) = setup();
+        app.view_mode = view;
+        frame(&mut app, &ctx, vec![]);
+        let name = app.beat_ui.headers[&row].center();
+        click(&mut app, &ctx, name);
+        click(&mut app, &ctx, name);
+        assert!(ctx.text_edit_focused());
+        frame(&mut app, &ctx, vec![egui::Event::Text("Bombo 🎵".into())]);
+        super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
+        assert_eq!(
+            app.session.project.beat(track).unwrap().subtracks[0].name,
+            "Bombo 🎵"
+        );
+        app.dirty = false;
+        frame(&mut app, &ctx, vec![]);
+        let name = app.beat_ui.headers[&row].center();
+        click(&mut app, &ctx, name);
+        click(&mut app, &ctx, name);
+        frame(&mut app, &ctx, vec![egui::Event::Text("Discard".into())]);
+        let before = app.session.project.clone();
+        ctx.memory_mut(|m| m.surrender_focus(m.focused().unwrap()));
+        frame(&mut app, &ctx, vec![]);
+        assert!(!ctx.text_edit_focused());
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+}

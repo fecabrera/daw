@@ -427,7 +427,10 @@ impl DawUi {
             let available = ui.available_rect_before_wrap();
             let bounds = Rect::from_min_max(
                 Pos2::new(editor_bounds.left(), available.top()),
-                available.max,
+                Pos2::new(
+                    available.right(),
+                    (available.bottom() - SCROLLBAR_HEIGHT).max(available.top()),
+                ),
             );
             let mut beat = ui.new_child(
                 egui::UiBuilder::new()
@@ -437,6 +440,7 @@ impl DawUi {
             );
             beat.set_clip_rect(bounds.intersect(editor_bounds));
             self.beat_grid(&mut beat, &track);
+            self.editor_scrollbar(ui, ui.max_rect().bottom(), "editor_content_scrollbar");
         } else if track.kind == TrackKind::Midi {
             self.piano_roll(ui, &track, &assets, previous_track);
         } else {

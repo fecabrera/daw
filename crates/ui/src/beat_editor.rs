@@ -209,24 +209,36 @@ impl DawUi {
             .is_some_and(|(id, _, _)| *id == row.id);
         let response = if editing {
             let (_, text, focus) = self.beat_ui.rename.as_mut().unwrap();
-            let response = ui.add(
-                egui::TextEdit::singleline(text)
-                    .desired_width(ui.available_width())
-                    .id_salt(("beat-name", row.id)),
+            let response = rows::name_input(
+                ui,
+                text,
+                ui.make_persistent_id(("beat-name", row.id)),
+                rows::NAME_FONT_SIZE,
+                focus,
             );
-            if *focus {
-                response.request_focus();
-                *focus = false;
-            }
-            if escape_pressed {
+            response.widget_info(|| {
+                egui::WidgetInfo::text_edit(
+                    ui.is_enabled(),
+                    &row.name,
+                    text.as_str(),
+                    "Beat subtrack name",
+                )
+            });
+            let action = if escape_pressed {
                 ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
-                self.beat_ui.rename = None;
-            } else if (ui.input(|i| i.key_pressed(egui::Key::Enter)) || response.lost_focus())
-                && let Some((id, name, _)) = self.beat_ui.rename.take()
-                && !name.trim().is_empty()
-                && name != row.name
-            {
-                self.edit_beat(track, BeatEdit::Rename { id, name });
+                Some(InlineEditAction::Cancel)
+            } else {
+                inline_edit_action(ui, &response)
+            };
+            if let Some(action) = action {
+                response.surrender_focus();
+                if let Some((id, name, _)) = self.beat_ui.rename.take()
+                    && action == InlineEditAction::Commit
+                    && !name.trim().is_empty()
+                    && name != row.name
+                {
+                    self.edit_beat(track, BeatEdit::Rename { id, name });
+                }
             }
             response
         } else {

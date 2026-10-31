@@ -4,6 +4,46 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Shared track, beat-subtrack and layer name input — 2026-10-31
+
+`rows::name_input` now owns the common track, beat-subtrack and Instrument-layer
+rename field. Callers retain stable widget IDs, accessible names, existing model
+transactions and name validation. The field shares font/color, input padding,
+width, control height and initial full-name Unicode selection. Beat renaming now
+uses the track/layer Enter-commit and Escape/focus-loss-cancel behavior, while
+retaining empty-name rejection. Existing selection and reorder gestures remain.
+
+The new regression replaces the entire beat name with Unicode text and commits
+with Enter in both Editor and Instrument, then checks that focus loss discards
+a second draft without modifying the project or dirty state. Existing track and
+layer rename, focus-loss, Escape and drag guards also remain covered by the UI suite.
+
+`cargo test --locked -p daw-ui --lib` passes **780 tests**, including 32 beat
+regressions and the existing track/layer rename tests. Strict locked
+workspace/all-target Clippy, formatting, changed Markdown targets and whitespace
+checks pass. The scrollbar workspace run passed 2,030 tests with 11 ignored
+across 258 suites; the final shared-name changes also passed the complete UI
+suite and Clippy reruns described above. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`.
+Native visual/gesture checks and Windows/Linux execution remain unverified.
+
+## Beat Editor shared horizontal scrollbar — 2026-10-31
+
+Beat Editor reuses the same `editor_scrollbar` control and lower content clock
+as MIDI and Audio. It stays at the lower canvas bottom, aligned with the ruler
+and outside the vertically scrolling header/step rows. Reserved scrollbar space
+prevents row controls from covering it. It remains usable without a selected clip.
+The pointer regression drags the shared thumb and checks lower viewport movement,
+fixed header/overview positions, ruler alignment, unchanged project/selection and
+dirty state, and retained disabled steps after deselection.
+
+`cargo test --locked -p daw-ui --lib` passes **779 tests**, including 31 beat
+regressions. `cargo test --locked --workspace` passes **2,030 tests**, with
+11 ignored across 258 suites. Strict locked workspace/all-target Clippy, formatting, changed
+Markdown file targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`. Native visual/gesture checks and Windows/Linux
+execution remain unverified.
+
 ## Beat Editor gutter and shared audition — 2026-10-31
 
 Beat Editor now uses the same 52-point panel/content gutter as MIDI and Audio.

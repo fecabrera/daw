@@ -1044,7 +1044,6 @@ impl DawUi {
     }
 
     fn layer_name(&mut self, ui: &mut egui::Ui, layer: &mut InstrumentLayerSettings) -> Rect {
-        let width = ui.available_width();
         if self
             .instrument_ui
             .name_edit
@@ -1052,37 +1051,25 @@ impl DawUi {
             .is_some_and(|edit| edit.layer == layer.id)
         {
             let mut edit = self.instrument_ui.name_edit.take().unwrap();
-            let mut output = egui::TextEdit::singleline(&mut edit.text)
-                .id(ui.make_persistent_id("layer-name"))
-                .font(egui::FontId::proportional(rows::NAME_FONT_SIZE))
-                .text_color(theme::palette(ui.ctx()).text)
-                .desired_width(width)
-                .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
-                .show(ui);
-            output.response.widget_info(|| {
+            let response = rows::name_input(
+                ui,
+                &mut edit.text,
+                ui.make_persistent_id("layer-name"),
+                rows::NAME_FONT_SIZE,
+                &mut edit.focus,
+            );
+            response.widget_info(|| {
                 egui::WidgetInfo::text_edit(ui.is_enabled(), &layer.name, &edit.text, "Layer name")
             });
-            if edit.focus {
-                output.response.request_focus();
-                output
-                    .state
-                    .cursor
-                    .set_char_range(Some(egui::text::CCursorRange::two(
-                        egui::text::CCursor::new(0),
-                        egui::text::CCursor::new(edit.text.chars().count()),
-                    )));
-                output.state.store(ui.ctx(), output.response.id);
-                edit.focus = false;
-            }
-            if let Some(action) = inline_edit_action(ui, &output.response) {
-                output.response.surrender_focus();
+            if let Some(action) = inline_edit_action(ui, &response) {
+                response.surrender_focus();
                 if action == InlineEditAction::Commit && !edit.text.trim().is_empty() {
                     layer.name = edit.text.trim().to_owned();
                 }
             } else {
                 self.instrument_ui.name_edit = Some(edit);
             }
-            output.response.rect
+            response.rect
         } else {
             let response = ui.add(
                 egui::Label::new(

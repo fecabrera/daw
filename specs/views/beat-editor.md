@@ -311,3 +311,19 @@ before or after the active pattern. Keep the existing placeholder paint bound.
 Pointer edits must stay inside the active cell's allocated time range, with its
 right edge exclusive. Egui's extended hit radius must not allow a click in the
 disabled region to toggle the nearest active step. Preserve keyboard activation.
+
+The beat lower pane reuses `editor_scrollbar` with the standard
+`editor_content_scrollbar` identity, while the content viewport is active. Pin it
+to the canvas bottom, aligned with the ruler's left gutter. Reserve
+`SCROLLBAR_HEIGHT` below the shared header/step vertical scroll area so row hit
+areas and its vertical scrollbar cannot cover the horizontal control. Horizontal
+scrolling changes only the lower content clock; retain overview zoom/scroll,
+header positions, project/track/clip state and disabled placeholders when no clip
+is selected. Use the shared scrollbar's styling and interaction guards.
+
+Beat subtrack renaming in Editor and Instrument uses `rows::name_input`, shared
+with track and Instrument layer names. Keep the same font, full available width, standard control
+height, input frame/padding and initial full-name Unicode selection. Track Mixer
+headers retain their smaller font through the helper argument. Reuse
+`inline_edit_action`: Enter commits, Escape, window/field focus loss or disabled
+UI cancels. Keep beat empty-name rejection and transactional `BeatEdit::Rename`.
