@@ -20,3 +20,5 @@ A new edit after Undo clears Redo. A cancelled edit or an edit with no change ke
 Save and Save As retain history. Undo keeps the current save folder and does not change source recordings or exported files. Returning to the saved project state clears the unsaved marker unless you also changed the saved playhead position. Opening, closing, or creating a project clears history. History is not saved in the project file.
 
 Copying generated stems during Save As does not add an undo step or clear Redo. Changing the project name during Save As adds an undo step like other name edits.
+
+MIDI edits enter history as you make them, including while sample audio is preparing. Undo or Redo can request audio preparation for the restored notes. Preparation completion adds no history step. Cancel or failure keeps the visible edit; use Undo to reverse it. Existing playback can use the previous prepared version until the restored audio is ready.

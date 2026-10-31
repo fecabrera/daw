@@ -45,6 +45,45 @@ impl Session {
             })
             || self.sampler_preparation_needed(project)
     }
+    /// Only MIDI content/placement changes can enter the first nonblocking edit path.
+    /// Source imports, audio transforms, instrument changes and rate changes retain their transactions.
+    pub fn midi_only_preparation_change(&self, project: &Project) -> bool {
+        let before = &self.project;
+        if before.sample_rate_hz != project.sample_rate_hz
+            || before.tempo_bpm != project.tempo_bpm
+            || before.stretch_engine != project.stretch_engine
+            || before.tracks.len() != project.tracks.len()
+        {
+            return false;
+        }
+        if !before
+            .assets
+            .iter()
+            .filter(|a| a.midi_pattern.is_none())
+            .eq(project.assets.iter().filter(|a| a.midi_pattern.is_none()))
+        {
+            return false;
+        }
+        before.tracks.iter().zip(&project.tracks).all(|(old, new)| {
+            old.id == new.id
+                && old.instrument == new.instrument
+                && old
+                    .clips
+                    .iter()
+                    .filter(|clip| {
+                        before
+                            .assets
+                            .iter()
+                            .any(|a| a.id == clip.asset_id && a.midi_pattern.is_none())
+                    })
+                    .eq(new.clips.iter().filter(|clip| {
+                        project
+                            .assets
+                            .iter()
+                            .any(|a| a.id == clip.asset_id && a.midi_pattern.is_none())
+                    }))
+        })
+    }
     pub fn audio_for_clip(&self, clip: &Clip) -> Option<&daw_media::AudioData> {
         daw_media::clip_audio(
             clip,
@@ -59,6 +98,21 @@ impl Session {
         self.prepare_stretches_cancellable(&|| false)
     }
     pub fn prepare_stretches_cancellable(&mut self, cancelled: &impl Fn() -> bool) -> Result<()> {
+        self.prepare_stretches_using(cancelled, |next| next.prepare_sampler_audio(cancelled))
+    }
+    pub(super) fn prepare_stretches_parallel(
+        &mut self,
+        cancelled: &(impl Fn() -> bool + Sync),
+    ) -> Result<()> {
+        self.prepare_stretches_using(cancelled, |next| {
+            next.prepare_sampler_audio_parallel(cancelled)
+        })
+    }
+    fn prepare_stretches_using(
+        &mut self,
+        cancelled: &impl Fn() -> bool,
+        samplers: impl FnOnce(&mut Self) -> Result<()>,
+    ) -> Result<()> {
         self.project.validate().map_err(error)?;
         let mut prepared = HashMap::new();
         for key in requests(&self.project) {
@@ -87,7 +141,7 @@ impl Session {
         }
         let mut next = self.clone();
         next.stretched_audio = prepared;
-        next.prepare_sampler_audio(cancelled)?;
+        samplers(&mut next)?;
         self.sampler_audio = next.sampler_audio;
         self.stretched_audio = next.stretched_audio;
         self.audio = next.audio;

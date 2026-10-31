@@ -35,7 +35,11 @@ Set Root note to the note heard in the original sample. For example, with C4 as 
 
 Every MIDI note from C−1 to G9 plays relative to the root. Pitch changes retain the selected duration in Off, Time, and Bars modes. One-shot and Gate keep their normal release behavior.
 
-Sampler uses the Time stretch engine selected in Project Settings: Rubber Band or Integrated (experimental). Adding or changing MIDI pitches can require sample preparation before the edit applies. Root-note, region, duration, tempo, and processing-setting changes can also require preparation. Cancel or a preparation error keeps the previous settings and audio. Longer samples and more distinct pitches require more time and memory; shorten the selection if preparation reports a memory limit.
+Sampler uses the Time stretch engine selected in Project Settings: Rubber Band or Integrated (experimental). Adding a chord or changing MIDI pitches applies the edit immediately. If a pitch needs preparation, the status bar shows progress while editing stays available. Existing playback uses the previous prepared version until the new audio is ready. A new Play request stays unavailable during preparation.
+
+Use Cancel to pause preparation or Retry to resume it. Pending MIDI edits stay visible and can be saved to the current project folder. Undo restores the previous edit; a preparation failure does not discard your notes. Export waits for the exact requested version. Root-note, region, duration, tempo, and processing-setting changes retain their existing preparation transactions when audio is ready.
+
+Prepared audio is cached between sessions. Reusing a pitch can avoid recalculation, including after reopening. A new pitch still processes the full selected region. Longer samples and more distinct pitches require more time and memory; shorten the selection if preparation reports a memory limit. See [background loading and audio caches](../projects/README.md#background-audio-preparation).
 
 Very large shifts can reduce sound quality and require more preparation time. Notes can become inaudible if the recording shifts below the audible range or above half the project sample rate. Pitch changes do not preserve vocal formants. Strong upward shifts can reduce high-frequency content. The sample preview stays at the root pitch and shows the common duration.
 

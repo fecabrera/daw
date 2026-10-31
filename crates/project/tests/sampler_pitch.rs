@@ -331,3 +331,32 @@ fn sampler_full_midi_endpoints_prepare_with_each_engine_without_clamping() {
         }
     }
 }
+
+#[test]
+fn parallel_project_preparation_matches_serial_banks_and_cancellation_keeps_the_source() {
+    for engine in [StretchEngine::RUBBER_BAND, StretchEngine::INTEGRATED] {
+        let fixture = Fixture::new();
+        let serial = fixture.session(engine, &[60, 64, 67]);
+        let mut parallel = serial.clone();
+        parallel.sampler_audio.clear();
+        parallel
+            .prepare_project_audio(&|| false, &|_, _| {})
+            .unwrap();
+        for (id, bank) in &serial.sampler_audio {
+            let expected: Vec<_> = bank.variants().collect();
+            let actual: Vec<_> = parallel.sampler_audio[id].variants().collect();
+            assert_eq!(expected.len(), actual.len());
+            for ((pitch, audio), (other, prepared)) in expected.into_iter().zip(actual) {
+                assert_eq!(pitch, other);
+                assert_eq!(audio.samples, prepared.samples);
+            }
+        }
+        let before = parallel.project.clone();
+        assert!(
+            parallel
+                .prepare_project_audio(&|| true, &|_, _| {})
+                .is_err()
+        );
+        assert_eq!(parallel.project, before);
+    }
+}

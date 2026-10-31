@@ -1,6 +1,6 @@
 # Saved audio caches and background preparation
 
-Status: accepted direction; implementation pending. All stages below are planned.
+Status: saved caches, background opening, nonblocking MIDI preparation, and bounded parallel transforms are implemented. Automated validation and native acceptance are recorded in the [validation report](../validation/background-audio-preparation-2026-10-30.md). Native acceptance remains open; speculative pitch warming is not enabled.
 
 Date: 2026-10-30.
 
@@ -8,7 +8,7 @@ Date: 2026-10-30.
 
 Reduce project-open and MIDI-edit delays without changing the selected pitch/stretch engine or the resulting sound. Reuse saved preparation results, open the editor before audio is ready, and prepare new MIDI pitches without blocking editing.
 
-This plan extends [prepared rendering](performance.md), [Sampler preparation](../instruments/sampler.md), and [session history](../editing/undo-redo.md). Their existing implementation remains the baseline until the relevant stage lands. In particular, persistent transformed audio and editable models without complete audio maps are new requirements, not existing capabilities.
+This plan extends [prepared rendering](performance.md), [Sampler preparation](../instruments/sampler.md), and [session history](../editing/undo-redo.md). The implementation now separates the validated editor model from complete playable audio. The stage descriptions retain the implementation requirements and exit gates; native gates are not implied by automated coverage.
 
 ## Findings and limits
 
@@ -51,7 +51,7 @@ Separate the **editor revision** (the latest validated project shown and saved) 
 
 If preparation fails after the editor opens, retain the new model with a clear failure state; do not resurrect the previous project. A malformed manifest fails before replacing the workspace. Source absence retains its established warning behavior; an unavailable pitch caused by unfinished preparation is a different state.
 
-Stage 0 must prototype this separation before changing public session/history APIs. Model history becomes independent of audio readiness for these operations. This deliberately replaces the current rule that failed MIDI audio preparation prevents the model edit from becoming visible or saved. Update the applicable repository instructions and history/Sampler specifications when implementing that change. Do not construct a partial `Session` and pass it to callers that require complete audio maps.
+Stage 0 defines this separation for the session/history APIs. Model history becomes independent of audio readiness for these operations. This replaces the previous rule that failed MIDI audio preparation prevents the model edit from becoming visible or saved. Update the applicable repository instructions and history/Sampler specifications when implementing that change. Do not construct a partial `Session` and pass it to callers that require complete audio maps.
 
 ## Ownership
 
@@ -68,12 +68,25 @@ Stage 0 must prototype this separation before changing public session/history AP
 
 | Stage | Status | Deliverable | Exit gate |
 | --- | --- | --- | --- |
-| 0 | Planned | Baseline and state/cache contracts | Reproducible release probe, state-transition fixtures, and explicit storage/resource policy. |
-| 1 | Planned | Reusable memory and disk caches | Exact reuse across edits/restarts; corruption and failure safely fall back. |
-| 2 | Planned | Background project opening | Editor ready before audio, with correct readiness and lifecycle guards. |
-| 3 | Planned | Nonblocking MIDI preparation | Rapid edits, history, save/export, and stale-result handling satisfy the revision contract. |
-| 4 | Planned | Bounded parallel and idle preparation | Required work has priority; resource pressure and cancellation remain safe. |
-| 5 | Planned | Acceptance and documentation | Automated parity plus explicit native-platform evidence and measured improvements. |
+| 0 | Implemented | Baseline and state/cache contracts | Reproducible release probe, state-transition fixtures, and explicit storage/resource policy. |
+| 1 | Implemented | Reusable memory and disk caches | Exact reuse across edits/restarts; corruption and failure safely fall back. |
+| 2 | Implemented | Background project opening | Editor ready before audio, with correct readiness and lifecycle guards. |
+| 3 | Implemented | Nonblocking MIDI preparation | Rapid edits, history, save/export, and stale-result handling satisfy the revision contract. |
+| 4 | Implemented; speculation off | Bounded parallel and idle preparation | Required work has priority; resource pressure and cancellation remain safe. |
+| 5 | Automated checks; native open | Acceptance and documentation | Automated parity plus explicit native-platform evidence and measured improvements. |
+
+## Implemented decisions
+
+- Application startup selects the platform cache directory. `DAW_AUDIO_CACHE` overrides it; an empty value selects memory-only caching. No model field or dependency version changes are needed.
+- Memory cache retention is 128 MiB. Entries retain immutable PCM/peaks and evict by recent use. Required media admission releases disposable cache owners before rejecting work. All owners still participate in the existing 2 GiB PCM/known-scratch policy.
+- Saved-cache cleanup targets 4 GiB and removes oldest-written entries first. Temporary/concurrent writes and deletion failures can exceed this target. Only recognized cache names are removed; abandoned temporary files become cleanup candidates after 24 hours.
+- The cache stores a versioned little-endian header, exact stereo float samples, peaks, and SHA-256 integrity digest. File dimensions/length are checked before allocation. Keys include source content, decoded/selected PCM content where applicable, metadata/rate, exact ratio/pitch, engine/pitch revision, dependency lock, target, compiler/profile/flags and cache domain version. Processing-option changes must update the domain/version when they are not represented elsewhere.
+- `Session::open_document` returns a typed validated document. The editor uses its model storage while readiness guards exclude all render-plan consumers. `Session::open` remains synchronous and complete for CLI/headless callers. `prepare_project_audio` stages all map changes before success; verified original PCM/peaks can separately appear as previews during preparation.
+- Each project-open generation owns one persistent latest-request coordinator, one replaceable pending snapshot, one result slot and one decoded-preview slot. Stale generations/revisions cannot publish. Progress/completion wakes the UI. Worker panics become preparation errors; dropping the coordinator cancels without joining on the UI.
+- MIDI edits enter history immediately. Completion refreshes matching audio maps without a history step or model replacement. Existing-folder Save captures the editor revision; first Save, Save As, import, source collection, sample replacement and processing settings retain readiness guards. Export completes a captured snapshot on its worker before rendering.
+- Independent Sampler pitches use one helper plus the coordinator, with available-CPU/memory checks and serial fallback. Two shared transform slots bound prepared clip/Sampler work across ordinary edits, audition and export. Existing optional DSP seek warming is suppressed during required media work.
+- Neighboring-pitch speculation is deliberately off. Full-region first-time transforms still cost seconds for long samples; the current evidence demonstrates the value of exact saved/recent reuse, but does not establish which unrequested pitches would justify extra CPU and retention. Required background preparation and retaining completed entries provide background caching without speculative jobs.
+- Initial source/root/region/duration transactions retain complete-session publication when audio is ready. While a MIDI revision is pending, the Sampler body and source-changing actions are disabled; ordinary editing, history, saving to the current folder, Stop and seek remain available.
 
 ## Stage 0 — Baseline and contracts
 

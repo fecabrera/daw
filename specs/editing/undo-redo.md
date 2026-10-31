@@ -16,11 +16,11 @@ The UI reports memory-driven removals once through the existing visible notice, 
 
 ## Publication and grouping
 
-The UI initializes a baseline before handling edits. `mark_dirty` records successful changes from both direct edits and worker publication; `changed` also requests the existing audio plan update. Failed or cancelled background work does not record a state. Explicit seeks update save revisions but bypass edit history. Live playback movement never records history.
+The UI initializes a baseline before handling edits. `mark_dirty` records validated changes; `changed` also requests the audio plan update. MIDI edits enter logical history immediately even when their audio is pending. Derived-audio completion refreshes matching snapshots without adding a history entry, replacing the saved checkpoint, or clearing Redo. Audio failure/cancellation retains those logical edits; invalid core edits and failed transactional source/settings jobs do not record a state. Explicit seeks update save revisions but bypass edit history. Live playback movement never records history.
 
 Completed worker edits publish before a new pointer press begins its own group. A pointer press in an available editing environment begins a group. Successful control updates become its pending snapshot. Release or focus loss closes the group; only its final changed state enters history. Returning to the original state preserves Redo. Release-only clip/unit/group edits retain their existing atomic transactions. Discrete commands and keyboard edits each commit a step.
 
-Undo/redo publishes the retained session, clears stale control drafts and unit selection, prunes track/clip selections, and requests the existing asynchronous renderer synchronization. A restored sample-rate or buffer-size change retires output, clears the rate-dependent clipboard, and leaves playback stopped, as the existing settings path does. Other edits retain the output and its transport intent. Prepared buffers are restored rather than rebuilt.
+Undo/redo publishes the retained session, clears stale control drafts and unit selection, prunes track/clip selections, and requests the existing asynchronous renderer synchronization. A restored sample-rate or buffer-size change retires output, clears the rate-dependent clipboard, and leaves playback stopped, as the existing settings path does. Other edits retain the output and its transport intent. Matching prepared buffers are restored where available. A restored MIDI revision whose complete bank is unavailable requests background preparation while the previous playable revision remains active. No partial bank is sent to Output.
 
 ## Saving and lifecycle
 

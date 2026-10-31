@@ -248,9 +248,10 @@ mod tests {
             original.modified().unwrap()
         );
         assert_ne!(SourceRevision::read(&path, &|| false).unwrap(), revision);
-        // Demonstrate that the ordinary cache still returns its live PCM owner.
+        // Content verification also invalidates the ordinary live cache.
         let cached = crate::decode_audio_cached(&path, 48000, &|| false).unwrap();
-        assert!(std::sync::Arc::ptr_eq(&prepared.samples, &cached.samples));
+        assert!(!std::sync::Arc::ptr_eq(&prepared.samples, &cached.samples));
+        assert_ne!(prepared.samples, cached.samples);
         assert!(
             verify_prepared_source(&path, &prepared, &|| false)
                 .unwrap_err()

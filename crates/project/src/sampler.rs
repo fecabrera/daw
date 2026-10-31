@@ -126,6 +126,37 @@ impl Session {
         self.project.validate().map_err(error)
     }
     pub(super) fn prepare_sampler_audio(&mut self, cancelled: &impl Fn() -> bool) -> Result<()> {
+        let engine = self.project.stretch_engine;
+        self.prepare_sampler_audio_using(cancelled, |source, settings, length, notes, previous| {
+            daw_media::PreparedSampler::new_cancellable(
+                source, settings, length, engine, notes, previous, cancelled,
+            )
+            .map_err(error)
+        })
+    }
+    pub(super) fn prepare_sampler_audio_parallel(
+        &mut self,
+        cancelled: &(impl Fn() -> bool + Sync),
+    ) -> Result<()> {
+        let engine = self.project.stretch_engine;
+        self.prepare_sampler_audio_using(cancelled, |source, settings, length, notes, previous| {
+            daw_media::PreparedSampler::new_parallel(
+                source, settings, length, engine, notes, previous, cancelled,
+            )
+            .map_err(error)
+        })
+    }
+    fn prepare_sampler_audio_using(
+        &mut self,
+        cancelled: &impl Fn() -> bool,
+        prepare: impl Fn(
+            &AudioData,
+            &SamplerSettings,
+            u64,
+            &[u8],
+            Option<&daw_media::PreparedSampler>,
+        ) -> Result<daw_media::PreparedSampler>,
+    ) -> Result<()> {
         let mut outputs = HashMap::new();
         for (s, notes) in sampler_requests(&self.project) {
             if cancelled() {
@@ -141,16 +172,7 @@ impl Session {
             let length = s
                 .output_frames(self.project.sample_rate_hz, self.project.tempo_bpm)
                 .ok_or_else(|| error("Unsupported sampler duration"))?;
-            let prepared = daw_media::PreparedSampler::new_cancellable(
-                source,
-                s,
-                length,
-                self.project.stretch_engine,
-                &notes,
-                self.sampler_audio.get(&s.id),
-                cancelled,
-            )
-            .map_err(error)?;
+            let prepared = prepare(source, s, length, &notes, self.sampler_audio.get(&s.id))?;
             outputs.insert(s.id, prepared);
         }
         if cancelled() {

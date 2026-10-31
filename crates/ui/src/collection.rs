@@ -77,6 +77,7 @@ impl DawUi {
     }
     pub(super) fn collection_enabled(&self) -> bool {
         self.session.folder.is_some()
+            && self.media_ready()
             && self.collection_input_ready
             && self.track_drag.is_none()
             && self.loop_drag.is_none()

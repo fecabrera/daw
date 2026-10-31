@@ -1,7 +1,8 @@
 //! Shared worker transaction for clip transforms and instrument sample preparation.
 use super::*;
 impl DawUi {
-    /// Stage clip transforms and note/root/content edits before publishing either project data or selection.
+    /// MIDI edits enter logical history immediately; source/transform transactions
+    /// retain their existing complete-session publication while audio is ready.
     pub(super) fn prepare_audio_edit(
         &mut self,
         project: &daw_core::Project,
@@ -9,6 +10,17 @@ impl DawUi {
     ) -> bool {
         if !self.session.audio_preparation_needed(project) {
             return false;
+        }
+        if self.background_media.required || self.session.midi_only_preparation_change(project) {
+            self.session.project = project.clone();
+            if let Some((track, clips)) = placement {
+                self.select_track(track, false);
+                self.selected_clip = clips.first().copied();
+                self.selected_clips = clips.into_iter().collect();
+            }
+            self.changed();
+            self.queue_background_media();
+            return true;
         }
         let mut session = self.session.clone();
         session.project = project.clone();

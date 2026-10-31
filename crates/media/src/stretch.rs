@@ -44,8 +44,42 @@ impl PreparedStretch {
         pitch: timestretch::Pitch,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Self> {
+        // Cache hits and identity transforms retain the same validation/cancellation
+        // contract as a fresh backend invocation.
+        if cancelled() {
+            return Err(Error("Time stretch cancelled".into()));
+        }
+        engine.validate().map_err(|e| Error(e.to_string()))?;
+        if !ratio.valid() {
+            return Err(Error("Unsupported clip stretch ratio".into()));
+        }
         Ok(Self {
-            audio: transform_audio(source, ratio, engine, pitch, cancelled)?,
+            audio: {
+                if !crate::preparation_cache::configured() {
+                    crate::preparation_cache::transform_slot(cancelled, || {
+                        transform_audio(source, ratio, engine, pitch, cancelled)
+                    })?
+                } else if ratio.source_frames == ratio.output_frames
+                    && pitch == timestretch::Pitch::UNISON
+                {
+                    source.clone()
+                } else {
+                    let content = crate::preparation_cache::audio_key(source, cancelled)?;
+                    let settings = format!(
+                        "{engine:?}:{ratio:?}:{pitch:?}:{}",
+                        timestretch::PITCH_REVISION
+                    );
+                    let key = crate::preparation_cache::key(
+                        b"transform",
+                        &[&content, settings.as_bytes()],
+                    );
+                    crate::preparation_cache::cached_audio(key, cancelled, || {
+                        crate::preparation_cache::transform_slot(cancelled, || {
+                            transform_audio(source, ratio, engine, pitch, cancelled)
+                        })
+                    })?
+                }
+            },
             source: source.samples.clone(),
             sample_rate_hz: source.sample_rate_hz,
             engine,

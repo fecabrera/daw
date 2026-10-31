@@ -4,6 +4,14 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Saved audio caches and background preparation — 2026-10-30
+
+Desktop opening displays the validated editor before required audio finishes. MIDI edits remain visible, editable and saveable while the last complete revision can continue playing. A bounded latest-request worker rejects stale results and merges derived maps only. Pending-snapshot export, cancel/retry, history, source guards and decoded waveform previews share the project/media backend with CLI preparation. Exact saved PCM/peak caches use verified source/build/processing identities, bounded memory retention and disposable disk storage. No source recording or manifest cache payload is written.
+
+The workspace run passes **1,949 tests with 11 ignored and no failures** across 255 suites. Final affected-scope reruns include all **742 UI tests**, media cache checks, document failure/missing-source behavior, serial/parallel equality, and a saved-cache subprocess test; late-added tests are recorded separately in the [detailed report](background-audio-preparation-2026-10-30.md). Strict workspace Clippy, formatting, CLI build/smoke, Markdown file targets and whitespace checks pass. The unsigned macOS debug app was rebuilt. No dependency versions or lockfile entries change.
+
+An isolated three-run release probe with generated 58-second audio measures required audio at 3.029 s without reuse and 0.163 s after reopening with a saved cache. Revisiting a cached pitch takes 0.326 ms; a first-time pitch still takes about 2.1 s and runs in the background. These are headless synthetic measurements, not native UI/device latency. Native computer use failed to start; listening, device pressure and Windows/Linux execution remain open. Neighboring-pitch speculation is not enabled. See the [contracts and stage status](../architecture/background-audio-preparation.md).
+
 ## Instrument-wide LFO and Envelope lanes — 2026-10-30
 
 Instrument now has fixed LFO and Envelope control lanes after regular layers in the scrolling viewport, before pinned Output. Each accepts only its registered provider type. The shared bus row supplies unit bodies, horizontal scrolling, right toolbar, power, selection, removal and reorder gestures. Scrolling lanes share regular row separator pixels; fixed lanes remain separate from regular-layer selection groups. Envelope Mode retains shared-consumer guards while allowing Per note when compatible.

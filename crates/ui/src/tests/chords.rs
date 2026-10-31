@@ -320,7 +320,7 @@ fn chord_header_drops_use_frame_zero_when_timeline_is_scrolled() {
 }
 
 #[test]
-fn chord_sampler_pitches_prepare_before_publication_and_failure_retains_original_state() {
+fn chord_sampler_edits_are_visible_and_failure_keeps_pending_edits_and_previous_audio() {
     for fail in [false, true] {
         let (mut app, ctx, midi, _) = setup();
         let layer = &mut app.session.project.tracks[0]
@@ -341,29 +341,30 @@ fn chord_sampler_pitches_prepare_before_publication_and_failure_retains_original
         let point = app.lane_bounds[&midi].center();
         begin(&mut app, &ctx, 0, point);
         frame(&mut app, &ctx, vec![button(point, false)]);
-        assert!(app.job.is_some());
-        assert_eq!(serde_json::to_string(&app.session.project).unwrap(), before);
-        assert!(app.selected_clip.is_none());
+        assert!(app.job.is_none() && app.background_media.required);
+        assert_ne!(serde_json::to_string(&app.session.project).unwrap(), before);
+        assert!(app.selected_clip.is_some() && app.dirty);
         if fail {
-            let prepared = app.job.take().unwrap();
-            app.settings_cancel
-                .take()
-                .unwrap()
-                .store(true, Ordering::Relaxed);
-            let (sender, receiver) = mpsc::channel();
-            app.job = Some(receiver);
-            sender
-                .send(Err("Injected chord preparation failure".into()))
-                .unwrap();
-            app.poll();
-            drop(prepared);
-            assert_eq!(serde_json::to_string(&app.session.project).unwrap(), before);
-            assert!(app.selected_clip.is_none());
-            assert!(!app.dirty);
-            assert!(app.error.is_some());
+            app.background_media.worker.as_ref().unwrap().cancel();
+            let pending = app.session.project.clone();
+            app.finish_background_media(Err(daw_project::Error(
+                "Injected chord preparation failure".into(),
+            )));
+            assert_eq!(app.session.project, pending);
+            assert!(app.selected_clip.is_some() && app.dirty);
+            assert!(app.background_media.error.is_some());
+            assert!(!app.media_ready());
         } else {
-            wait_for_save(&mut app);
-            assert!(app.error.is_none(), "{:?}", app.error);
+            let deadline = std::time::Instant::now() + Duration::from_secs(30);
+            while app.background_media.running {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "chord preparation timed out"
+                );
+                std::thread::yield_now();
+                app.poll();
+            }
+            assert!(app.media_ready(), "{:?}", app.background_media.error);
             let sampler = app.session.project.tracks[0]
                 .instrument
                 .as_ref()

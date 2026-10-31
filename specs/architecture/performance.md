@@ -2,7 +2,7 @@
 
 Implemented after the [2026-10-18 audit](../validation/performance-audit-2026-10-18.md). See the [remediation validation](../validation/performance-remediation-2026-10-18.md) for measurements and remaining native checks.
 
-Planned extension: [saved audio caches and background preparation](background-audio-preparation.md). Persistent media caches and editor/prepared revision separation are not implemented by the baseline below.
+[Saved audio caches and background preparation](background-audio-preparation.md) now extend this baseline. Media preparation has separate editor/playback readiness; DSP seek checkpoints retain their existing exact-history lifecycle.
 
 ## Prepared state
 
@@ -112,7 +112,9 @@ Decoded/prepared PCM, peaks, and known temporary buffers share a 2 GiB preparati
 
 This is not an operating-system memory cap. Native encoder/stretch allocations, DSP state, UI/GPU resources, allocator overhead, and unrelated process memory are outside the PCM registry. FFT setup has a conservative rational-rate scratch estimate; pathological input rates are rejected before converter construction. The Integrated stretch engine retains its own resource checks.
 
-Decoded audio uses a weak cache keyed by canonical source path, processing rate, file length, and modification time. Independent assets retain independent IDs while sharing immutable PCM/peaks. Replaced files invalidate the cache; a source changed during decoding is rejected. The cache does not detect a deliberate same-length edit with a restored timestamp. It does not retain unused PCM or provide disk-backed streaming.
+Decoded audio uses verified SHA-256 source content in addition to canonical path, processing rate, file length, and modification time. Same-length replacements with restored timestamps invalidate reuse. Independent assets retain independent IDs while sharing immutable PCM/peaks. A source changed during preparation is rejected. The application also enables the versioned persistent PCM/peak cache described in [background preparation](background-audio-preparation.md); this is complete-buffer reuse, not disk-backed streaming.
+
+Disposable memory entries have a 128 MiB retention limit and yield before required media admission fails. Saved files have a 4 GiB cleanup target, with oldest-written entries removed first after successful writes. Concurrent temporary writes and files that cannot be deleted can exceed that target. Prepared transform work uses two shared execution slots across cached clip/Sampler preparation, export and audition. Independent Sampler pitches use at most two workers with serial fallback. Optional DSP seek warming is suppressed while required media work runs. Speculative neighboring-pitch warming is not enabled.
 
 File previews use two workers and at most 64 waiting requests. Dropping a hover cancels its work; only its owner can consume the result. A full queue reports a retryable error. Decode, resampling, and peak generation check cancellation between bounded work chunks. Offline conversion reuses planar input/output buffers and writes only the exact delay-compensated output range.
 

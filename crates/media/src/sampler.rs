@@ -74,6 +74,119 @@ impl PreparedSampler {
         self.variants.iter().map(|(&offset, v)| (offset, &v.audio))
     }
 
+    /// Two independent pitch transforms at most. Root/region preparation remains shared.
+    /// Serial fallback avoids extra working storage under pressure or thread-start failure.
+    pub fn new_parallel(
+        source: &AudioData,
+        settings: &SamplerSettings,
+        output_frames: u64,
+        engine: StretchEngine,
+        notes: &[u8],
+        previous: Option<&Self>,
+        cancelled: &(impl Fn() -> bool + Sync),
+    ) -> Result<Self> {
+        let mut bank = Self::new_cancellable(
+            source,
+            settings,
+            output_frames,
+            engine,
+            &[],
+            previous,
+            cancelled,
+        )?;
+        let ratio =
+            ClipStretch::new(settings.end_frame - settings.start_frame, output_frames).unwrap();
+        let required: Vec<_> = offsets(settings, notes)
+            .filter(|&offset| offset != 0)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let prepare = |offset: i8| -> Result<PreparedStretch> {
+            if cancelled() {
+                return Err(Error("Sample preparation cancelled".into()));
+            }
+            if let Some(cached) = previous
+                .filter(|old| old.matches_region(source, settings))
+                .and_then(|old| old.variants.get(&offset))
+                .filter(|v| v.matches_pitch(&bank.selected, ratio, engine, pitch(offset)))
+            {
+                Ok(cached.clone())
+            } else {
+                PreparedStretch::with_pitch_cancellable(
+                    &bank.selected,
+                    ratio,
+                    engine,
+                    pitch(offset),
+                    cancelled,
+                )
+            }
+        };
+        let parallel = required.len() >= 2
+            && std::thread::available_parallelism().is_ok_and(|slots| slots.get() >= 2)
+            && crate::audio_memory_bytes()
+                .saturating_add(output_frames.saturating_mul(32))
+                .saturating_add(64 * 1024 * 1024)
+                < crate::AUDIO_MEMORY_BUDGET_BYTES;
+        let results = if parallel {
+            let attempted = std::thread::scope(|scope| -> Result<Vec<(i8, PreparedStretch)>> {
+                let helper = std::thread::Builder::new()
+                    .name("sampler-pitch".into())
+                    .spawn_scoped(scope, || {
+                        required
+                            .iter()
+                            .step_by(2)
+                            .map(|&offset| prepare(offset).map(|audio| (offset, audio)))
+                            .collect::<Result<Vec<_>>>()
+                    });
+                match helper {
+                    Ok(helper) => {
+                        let main = required
+                            .iter()
+                            .skip(1)
+                            .step_by(2)
+                            .map(|&offset| prepare(offset).map(|audio| (offset, audio)))
+                            .collect::<Result<Vec<_>>>();
+                        let other = helper.join().map_err(|_| {
+                            Error("Sampler pitch worker stopped unexpectedly".into())
+                        })?;
+                        let mut all = main?;
+                        all.extend(other?);
+                        Ok(all)
+                    }
+                    Err(_) => required
+                        .iter()
+                        .map(|&offset| prepare(offset).map(|audio| (offset, audio)))
+                        .collect(),
+                }
+            });
+            match attempted {
+                Ok(results) => results,
+                Err(error) if error.0.contains("shared audio memory budget") => {
+                    // Another worker can consume admission after the preflight.
+                    // Join/drop all partial results before retrying with one transform.
+                    crate::release_preparation_cache_memory();
+                    required
+                        .iter()
+                        .map(|&offset| prepare(offset).map(|audio| (offset, audio)))
+                        .collect::<Result<Vec<_>>>()?
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            required
+                .iter()
+                .map(|&offset| prepare(offset).map(|audio| (offset, audio)))
+                .collect::<Result<Vec<_>>>()?
+        };
+        for (offset, audio) in results {
+            bank.variants.insert(offset, audio);
+        }
+        if cancelled() {
+            return Err(Error("Sample preparation cancelled".into()));
+        }
+        Ok(bank)
+    }
+
     pub fn new_cancellable(
         source: &AudioData,
         settings: &SamplerSettings,

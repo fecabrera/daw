@@ -1,0 +1,181 @@
+use super::*;
+
+fn pending_sampler() -> (DawUi, TestWav, Id) {
+    let mut app = DawUi::default();
+    let track = app.session.project.add_midi_track().unwrap();
+    let layer = &mut app.session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.oscillators.clear();
+    layer.sampler = Some(Default::default());
+    let layer = layer.id;
+    let file = TestWav::new();
+    app.session = app
+        .session
+        .with_sampler_file(track, layer, &file.0)
+        .unwrap();
+    let clip = app.session.project.add_midi_pattern(track, 0).unwrap();
+    app.ensure_history();
+    (app, file, clip)
+}
+fn pitch_edit(app: &mut DawUi, clip: Id, pitch: u8) {
+    app.edit(Edit::ReplaceMidiPattern {
+        clip_id: clip,
+        pattern: daw_core::MidiPattern {
+            length_ticks: 3840,
+            notes: vec![daw_core::MidiNote {
+                id: Id::new_v4(),
+                start_tick: 0,
+                length_ticks: 960,
+                pitch,
+                velocity: 100,
+            }],
+        },
+    });
+}
+fn wait_audio(app: &mut DawUi) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while app.background_media.running {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{:?}",
+            app.background_media.error
+        );
+        app.poll();
+        std::thread::yield_now();
+    }
+    assert!(app.media_ready(), "{:?}", app.background_media.error);
+}
+#[test]
+fn rapid_midi_edits_publish_only_latest_audio_and_keep_history_and_selection() {
+    let (mut app, _file, clip) = pending_sampler();
+    pitch_edit(&mut app, clip, 64);
+    pitch_edit(&mut app, clip, 67);
+    assert!(app.job.is_none() && app.background_media.required && app.dirty);
+    app.select_clip(clip, app.session.project.tracks[0].id, false);
+    let before = app.session.project.clone();
+    let revision = app.change_revision;
+    wait_audio(&mut app);
+    assert_eq!(app.session.project, before);
+    assert_eq!(app.change_revision, revision);
+    assert_eq!(app.selected_clip, Some(clip));
+    let bank = app.session.sampler_audio.values().next().unwrap();
+    assert_eq!(
+        bank.variants().map(|(pitch, _)| pitch).collect::<Vec<_>>(),
+        [0, 7]
+    );
+    let history = app.history.as_mut().unwrap();
+    let previous = history.undo(&app.session).unwrap();
+    assert_eq!(
+        previous
+            .project
+            .assets
+            .iter()
+            .find_map(|a| a.midi_pattern.as_ref().filter(|p| !p.notes.is_empty()))
+            .unwrap()
+            .notes[0]
+            .pitch,
+        64
+    );
+}
+#[test]
+fn failed_audio_keeps_edits_dirty_and_undo_remains_available() {
+    let (mut app, _file, clip) = pending_sampler();
+    let before = app.session.project.clone();
+    pitch_edit(&mut app, clip, 65);
+    app.background_media.worker.as_ref().unwrap().cancel();
+    let edited = app.session.project.clone();
+    app.finish_background_media(Err(daw_project::Error("Injected failure".into())));
+    assert_eq!(app.session.project, edited);
+    assert!(app.dirty && app.background_media.required);
+    assert!(app.error.is_none());
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.history_action_enabled(HistoryAction::Undo, &ctx));
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project.tracks, before.tracks);
+    assert!(!app.reconcile_background_media());
+    assert!(app.media_ready());
+}
+#[test]
+fn save_records_pending_editor_revision_without_waiting_for_audio() {
+    let (mut app, _file, clip) = pending_sampler();
+    let folder = std::env::temp_dir().join(format!("daw-pending-save-{}", Id::new_v4()));
+    app.session.save(&folder).unwrap();
+    app.session.folder = Some(folder.clone());
+    pitch_edit(&mut app, clip, 69);
+    app.background_media.worker.as_ref().unwrap().cancel();
+    app.background_media.running = false;
+    app.save_snapshot(folder.clone());
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    while app.regular_save.is_some() {
+        assert!(std::time::Instant::now() < deadline);
+        app.poll_regular_save();
+        std::thread::yield_now();
+    }
+    let saved = daw_project::inspect_project(&folder).unwrap();
+    assert_eq!(saved.tracks, app.session.project.tracks);
+    assert!(
+        saved
+            .assets
+            .iter()
+            .filter(|asset| asset.midi_pattern.is_some())
+            .eq(app
+                .session
+                .project
+                .assets
+                .iter()
+                .filter(|asset| asset.midi_pattern.is_some()))
+    );
+    assert!(app.background_media.required && !app.dirty);
+    assert!(app.file_action_enabled(FileAction::Save));
+    assert!(!app.file_action_enabled(FileAction::CollectSources));
+    std::fs::remove_dir_all(folder).unwrap();
+}
+#[test]
+fn loading_editor_is_interactive_but_play_and_source_operations_are_guarded() {
+    let (mut app, _file, _) = pending_sampler();
+    app.background_media.loading = true;
+    app.background_media.required = true;
+    assert!(app.editing_enabled());
+    assert!(!app.media_ready());
+    assert!(!app.file_action_enabled(FileAction::Import));
+    assert!(!app.project_settings_enabled());
+    app.play();
+    assert!(app.output.is_none());
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.job.is_none());
+    app.reset_background_media();
+    assert!(app.media_ready());
+}
+
+#[test]
+fn export_prepares_the_pending_snapshot_instead_of_rendering_the_previous_bank() {
+    let (mut app, _file, clip) = pending_sampler();
+    pitch_edit(&mut app, clip, 69);
+    app.background_media.worker.as_ref().unwrap().cancel();
+    app.background_media.running = false;
+    let root = std::env::temp_dir().join(format!("daw-pending-export-{}", Id::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let mut reference = app.session.clone();
+    reference
+        .prepare_project_audio(&|| false, &|_, _| {})
+        .unwrap();
+    reference.export(&root.join("expected.wav"), false).unwrap();
+    app.export(root.join("actual.wav"), false, ExportSettings::default());
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while app.job.is_some() {
+        assert!(std::time::Instant::now() < deadline);
+        app.poll();
+        std::thread::yield_now();
+    }
+    assert!(app.error.is_none(), "{:?}", app.error);
+    assert_eq!(
+        std::fs::read(root.join("actual.wav")).unwrap(),
+        std::fs::read(root.join("expected.wav")).unwrap()
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}

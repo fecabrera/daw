@@ -82,6 +82,12 @@ impl DawUi {
     pub(super) fn release_optional_memory_for_job(&mut self) {
         self.audio_preparation = None;
         self.audio_preparation_attempt = None;
+        // Disposable cache ownership yields before optional undo states are removed.
+        if daw_media::audio_memory_bytes()
+            > daw_media::AUDIO_MEMORY_BUDGET_BYTES - 256 * 1024 * 1024
+        {
+            daw_media::release_preparation_cache_memory();
+        }
         // Keep 256 MiB of the shared PCM budget available for essential preparation.
         if daw_media::audio_memory_bytes()
             > daw_media::AUDIO_MEMORY_BUDGET_BYTES - 256 * 1024 * 1024
@@ -96,7 +102,7 @@ impl DawUi {
             self.audio_preparation_attempt = None;
             return;
         }
-        if self.job.is_some() {
+        if self.job.is_some() || !self.media_ready() {
             return;
         }
         let id = self.session.project.project_id;
