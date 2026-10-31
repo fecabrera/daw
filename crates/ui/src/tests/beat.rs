@@ -614,10 +614,36 @@ fn compact_beat_controls_follow_track_spacing_and_requested_order() {
     let (mut app, ctx, track, row, _) = setup();
     let [mute, solo, pan, gain] = app.beat_ui.mix_bounds[&row];
     let name = app.beat_ui.headers[&row];
-    assert!(mute.left() < solo.left() && solo.left() < name.left());
-    assert!(name.right() < pan.left() && pan.left() < gain.left());
+    assert!(name.left() < mute.left() && mute.left() < solo.left());
+    assert!(solo.right() < pan.left() && pan.left() < gain.left());
     assert!((solo.left() - mute.right() - mix_controls::GROUP_GAP).abs() < 0.1);
-    assert!((name.left() - solo.right() - mix_controls::GROUP_GAP).abs() < 0.1);
+    assert!(mute.left() - name.right() >= mix_controls::GROUP_GAP - 0.1);
+    let right = app.midi_editor.content.ruler.left() - 7.0;
+    assert!(
+        (gain.center().x - (right - knobs::SIZE * 0.5)).abs() < 0.1,
+        "mix controls stay at the row's right inset"
+    );
+    for name in [
+        "K",
+        "A long subtrack name that must truncate before the controls",
+    ] {
+        app.session
+            .project
+            .edit(Edit::Beat {
+                track_id: track,
+                edit: BeatEdit::Rename {
+                    id: row,
+                    name: name.into(),
+                },
+            })
+            .unwrap();
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.beat_ui.mix_bounds[&row],
+            [mute, solo, pan, gain],
+            "name length must not move controls"
+        );
+    }
     assert!((gain.center().x - pan.center().x - knobs::SIZE - mix_controls::KNOB_GAP).abs() < 0.1);
     assert!((mute.width() - toolbars::CONTROL_HEIGHT).abs() < 0.1);
     assert!((pan.center().y - mute.center().y).abs() < 0.1);

@@ -184,7 +184,7 @@ Related documents: [modular audio units](../architecture/modular-audio-units.md)
 
 The lower editor uses one horizontal topbar for Add beat subtrack, Bars,
 resolution, and the shared fit/zoom controls. These controls do not occupy the
-step canvas. Subtrack lanes are 32 points high. Each header uses `[M] [S] [name] [pan] [gain]` on one row, with the
+step canvas. Subtrack lanes are 32 points high. Each header uses `[name] [M] [S] [pan] [gain]` on one row, with the
 track panel's six-point control/group gaps and four-point gap between the standard pan/gain slots. A single shared musical ruler starts
 at the step grid's left edge, after the subtrack header column. Step boundaries
 use the same project-frame transform as the ruler, including zoom and scroll.
@@ -241,3 +241,8 @@ Collapsed subtracks occupy exactly the compact header row. Do not render the
 subtrack Output lane or retain any hidden child drop geometry. Output controls
 remain available in the compact header; Add layer stays hidden. The overall beat
 Output outside the groups retains its existing pinned behavior.
+
+Editor subtrack headers reuse the compact track `HeaderRows` geometry and shared
+`header_row` mix controls. Reserve the full mix region at the right inner inset;
+truncate the name in the remaining left region. Name length must not move the
+mute/solo buttons or knobs. Keep the standard track control/group/knob spacing.

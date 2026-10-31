@@ -67,32 +67,16 @@ pub(super) fn named_row<R>(
     soloed: &mut bool,
     name: impl FnOnce(&mut Ui) -> R,
 ) -> (R, GainPanResponse, [Response; 2]) {
-    rows::centered(ui, knobs::SIZE, |ui| {
-        ui.spacing_mut().item_spacing.x = GROUP_GAP;
-        let toggles = mute_solo(
-            ui,
-            muted,
-            soloed,
-            ["Mute subtrack", "Solo within this beat instrument"],
-        );
-        let width = (ui.available_width() - 2.0 * knobs::SIZE - KNOB_GAP - GROUP_GAP).max(1.0);
-        let name = ui
-            .allocate_ui_with_layout(
-                egui::vec2(width, knobs::SIZE),
-                egui::Layout::left_to_right(egui::Align::Center),
-                name,
-            )
-            .inner;
-        ui.spacing_mut().item_spacing.x = KNOB_GAP;
-        let pan = knobs::header_pan(ui, &mut bus.pan);
-        let gain = knobs::header_gain(ui, &mut bus.gain_db);
-        (
-            name,
-            GainPanResponse {
-                bounds: [gain.rect, pan.rect],
-            },
-            toggles,
-        )
-    })
-    .inner
+    let mut header = crate::track_rows::HeaderRows::new(ui, true);
+    let name = rows::centered(&mut header.name, knobs::SIZE, name).inner;
+    header.mix.spacing_mut().item_spacing.x = GROUP_GAP;
+    let (knobs, toggles) = header_row(
+        &mut header.mix,
+        &mut bus.gain_db,
+        &mut bus.pan,
+        muted,
+        soloed,
+        ["Mute subtrack", "Solo within this beat instrument"],
+    );
+    (name, knobs, toggles)
 }

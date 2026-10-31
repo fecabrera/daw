@@ -4,6 +4,20 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat editor names and right-pinned mix controls — 2026-10-31
+
+Editor subtrack rows now use Name, Mute, Solo, Pan, Gain order. They reuse compact
+track `HeaderRows` and `mix_controls::header_row`, replacing the separate inline
+arrangement. The full mix region is reserved at the right inset; the name takes
+the remaining left region and truncates without moving controls. The geometry
+regression checks ordering, the right anchor, standard gaps, stable control bounds
+for short/long names and working mute/solo controls.
+
+`cargo test --locked -p daw-ui --lib` passes **765 tests**, including 17 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. The macOS debug app was rebuilt.
+Native UI/device checks and Windows/Linux execution remain unverified for this change.
+
 ## Collapsed subtracks hide their Output lane — 2026-10-31
 
 Collapsed Instrument subtracks now show only the compact header with output mix

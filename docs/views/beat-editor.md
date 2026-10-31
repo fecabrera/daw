@@ -49,7 +49,7 @@ Stops use a 5 ms fade, including for one-shot samples. If both subtracks have a 
 Beat settings and embedded patterns save with the project. Sampler recordings follow the normal external/included source rules; use **Collect project sources** before moving a project that references external recordings. The CLI can inspect beat tracks, validate, collect sources and render them through the same engine.
 
 Use the lower editor's topbar to add subtracks, set the pattern's bar count,
-and choose its step resolution. Each compact lane starts with mute, solo, the subtrack name, pan, and gain,
+and choose its step resolution. Each compact lane starts with the subtrack name, followed by mute, solo, pan and gain pinned to the right,
 followed by its steps. The ruler above the steps follows the same
 zoom and scroll position as the pattern.
 
