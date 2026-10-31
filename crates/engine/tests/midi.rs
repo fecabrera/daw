@@ -5278,6 +5278,66 @@ fn live_sampler_pitch_commit_keeps_cursor_and_is_allocation_free() {
 }
 
 #[test]
+fn released_uncached_sampler_pitch_returns_to_prepared_playback_without_shortening() {
+    for rate in SAMPLE_RATES {
+        let mut p = sampler_plan(rate, SamplerTrigger::OneShot);
+        p.project.stretch_engine = StretchEngine::INTEGRATED;
+        let track = p.project.tracks[0].id;
+        let clip = p.project.tracks[0].clips[0].id;
+        let note = Id::from_u128(1);
+        let layer = p.project.tracks[0].instrument.as_ref().unwrap().layers[0].id;
+        let target = daw_engine::ModulationTarget::Sampler { track, layer };
+        let length = u64::from(rate) / 5;
+        let sampler = p.project.samplers().next().unwrap();
+        let bank = daw_media::PreparedSampler::new_cancellable(
+            &p.audio[&sampler.input.as_ref().unwrap().asset_id],
+            sampler,
+            length,
+            p.project.stretch_engine,
+            &[20],
+            None,
+            &|| false,
+        )
+        .unwrap();
+        p.sampler_audio.insert(sampler.id, bank);
+        let inputs = daw_engine::LiveMidiPitches::prepare(&p.project, &Default::default());
+        let mut live = Renderer::new(p);
+        live.bind_live_midi_pitches(&inputs);
+        live.play();
+        // Two released uncached drags against the same old bank model pause,
+        // failure and subsequent editing without a replacement renderer.
+        for pitch in [32, 36] {
+            inputs.set(track, clip, note, pitch, true);
+            for _ in 0..rate / 100 {
+                live.next_sample();
+            }
+            inputs.set(track, clip, note, pitch, false);
+            inputs.restore_released(track, clip, note);
+            for _ in 0..rate / 100 {
+                live.next_sample();
+            }
+        }
+        let before = live.modulation_snapshot(target).unwrap()[0];
+        ALLOCATIONS.with(|value| value.set(0));
+        TRACK_ALLOCATIONS.with(|value| value.set(true));
+        for _ in 0..rate / 100 {
+            assert!(live.next_sample()[0] > 0.1);
+        }
+        let after = live.modulation_snapshot(target).unwrap()[0];
+        TRACK_ALLOCATIONS.with(|value| value.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert!((after - before - rate as f32 / 100.0).abs() < 1.0);
+        for _ in rate / 20..rate / 8 {
+            live.next_sample();
+        }
+        assert!(
+            live.next_sample()[0] > 0.1,
+            "{rate}: previous bank ended early"
+        );
+    }
+}
+
+#[test]
 fn chorus_shared_modulation_reaches_track_layer_and_main_and_roundtrips() {
     for rate in SAMPLE_RATES {
         for owner in ["track", "layer", "main"] {

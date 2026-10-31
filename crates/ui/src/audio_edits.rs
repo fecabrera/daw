@@ -28,6 +28,7 @@ impl DawUi {
                 self.selected_clip = clips.first().copied();
                 self.selected_clips = clips.into_iter().collect();
             }
+            self.prune_project_selection();
             self.changed();
             self.queue_background_media();
             return true;

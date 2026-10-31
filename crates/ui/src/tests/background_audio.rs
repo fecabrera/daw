@@ -80,6 +80,65 @@ fn rapid_midi_edits_publish_only_latest_audio_and_keep_history_and_selection() {
         64
     );
 }
+
+#[test]
+fn deleting_a_selected_clip_during_preparation_prunes_selection_before_and_after_completion() {
+    for keep_survivor in [false, true] {
+        let (mut app, _file, first) = pending_sampler();
+        let track = app.session.project.tracks[0].id;
+        let second = app
+            .session
+            .project
+            .add_midi_pattern(track, 100_000)
+            .unwrap();
+        app.history = None;
+        app.ensure_history();
+        pitch_edit(&mut app, first, 64);
+        app.background_media.worker.as_ref().unwrap().cancel();
+        app.background_media.running = false;
+        app.select_clip(second, track, false);
+        if keep_survivor {
+            app.select_clip(first, track, true);
+        }
+        app.edit(Edit::DeleteClip(second));
+        assert!(
+            app.session.project.tracks[0]
+                .clips
+                .iter()
+                .all(|clip| clip.id != second)
+        );
+        let expected = keep_survivor.then_some(first);
+        assert_eq!(app.selected_clip, expected);
+        assert_eq!(app.selected_clips, expected.into_iter().collect());
+        wait_audio(&mut app);
+        assert_eq!(app.selected_clip, expected);
+        assert_eq!(app.selected_clips, expected.into_iter().collect());
+        if !keep_survivor {
+            // Shift-selection cannot carry the deleted primary into the group.
+            app.select_clip(first, track, true);
+            assert_eq!(app.selected_clip, Some(first));
+            assert_eq!(app.selected_clips, HashSet::from([first]));
+            app.selected_clip = None;
+            app.selected_clips.clear();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            // Escape now clears the track in one step, with no invisible clip.
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert!(app.selected_track.is_none());
+            assert!(app.selected_tracks.is_empty());
+        }
+    }
+}
 #[test]
 fn failed_audio_keeps_edits_dirty_and_undo_remains_available() {
     let (mut app, _file, clip) = pending_sampler();

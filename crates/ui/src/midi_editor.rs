@@ -618,16 +618,12 @@ impl DawUi {
                     .and_then(|a| a.midi_pattern.as_ref())
                     .and_then(|p| p.notes.iter().find(|n| n.id == pending.note))
                     .map(|n| n.pitch);
-                if written != Some(pending.pitch)
+                // The editor can already contain this pitch while playback still
+                // owns the previous complete bank. Release must end the preview.
+                if (!self.media_ready() || written != Some(pending.pitch))
                     && let Some(output) = &self.output
                 {
-                    output.set_live_midi_pitch(
-                        pending.track,
-                        pending.clip,
-                        pending.note,
-                        written.unwrap_or(pending.original),
-                        false,
-                    );
+                    output.restore_released_midi_pitch(pending.track, pending.clip, pending.note);
                 }
             }
         }
@@ -668,6 +664,9 @@ impl DawUi {
                     .any(|n| (n.track, n.clip, n.note) == (old.track, old.clip, old.note))
                 {
                     output.set_live_midi_pitch(old.track, old.clip, old.note, old.original, false);
+                    if !self.media_ready() {
+                        output.restore_released_midi_pitch(old.track, old.clip, old.note);
+                    }
                 }
             }
             for pitch in &next {
@@ -694,6 +693,9 @@ impl DawUi {
                     if commit { pitch.pitch } else { pitch.original },
                     false,
                 );
+                if !commit && !self.media_ready() {
+                    output.restore_released_midi_pitch(pitch.track, pitch.clip, pitch.note);
+                }
             }
         }
         if commit {

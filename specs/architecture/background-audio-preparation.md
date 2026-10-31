@@ -49,6 +49,10 @@ Separate the **editor revision** (the latest validated project shown and saved) 
 | Export | Capture a specific editor revision, prepare its exact audio, then render it. Failure or cancellation cannot publish a partial export. Never export the older playable revision in place of the requested one. |
 | Close, New, or another Open | Retain normal unsaved-change guards, cancel obsolete requests, invalidate their generations, and retire owned data outside the callback. |
 
+Live note drags can temporarily retune the current renderer. Once a drag is released and its edit requires audio, restore the transient mailbox to that renderer's complete prepared pitch. Keep the new editor pitch visible and pending. Repeated pending edits, pause and failure cannot make a newer editor pitch the playback rollback value. Restoration must preserve a newer active drag; complete schedule publication acknowledges only the corresponding generation. See [live note pitch editing](../instruments/midi-patterns.md#live-note-pitch-editing).
+
+Immediate editor publication uses the normal post-edit clip/track selection cleanup. Remove deleted identities, preserve surviving selections, and keep audio completion independent of selection.
+
 If preparation fails after the editor opens, retain the new model with a clear failure state; do not resurrect the previous project. A malformed manifest fails before replacing the workspace. Source absence retains its established warning behavior; an unavailable pitch caused by unfinished preparation is a different state.
 
 Stage 0 defines this separation for the session/history APIs. Model history becomes independent of audio readiness for these operations. This replaces the previous rule that failed MIDI audio preparation prevents the model edit from becoming visible or saved. Update the applicable repository instructions and history/Sampler specifications when implementing that change. Do not construct a partial `Session` and pass it to callers that require complete audio maps.

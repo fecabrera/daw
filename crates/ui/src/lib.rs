@@ -1694,22 +1694,25 @@ impl DawUi {
                     self.mark_dirty();
                     return;
                 }
-                if self.track_name_edit.as_ref().is_some_and(|edit| {
-                    !self
-                        .session
-                        .project
-                        .tracks
-                        .iter()
-                        .any(|t| t.id == edit.track)
-                }) {
-                    self.track_name_edit = None;
-                }
-                self.prune_clip_selection();
-                self.prune_track_selection();
+                self.prune_project_selection();
                 self.changed();
             }
             Err(e) => self.fail(e),
         }
+    }
+    fn prune_project_selection(&mut self) {
+        if self.track_name_edit.as_ref().is_some_and(|edit| {
+            !self
+                .session
+                .project
+                .tracks
+                .iter()
+                .any(|t| t.id == edit.track)
+        }) {
+            self.track_name_edit = None;
+        }
+        self.prune_clip_selection();
+        self.prune_track_selection();
     }
     fn clip_selected(&self, id: Id) -> bool {
         self.selected_clip == Some(id) || self.selected_clips.contains(&id)

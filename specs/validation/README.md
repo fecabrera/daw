@@ -4,6 +4,20 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Live pitch restoration and pending-edit selection — 2026-10-31
+
+Released live pitch overrides now return to the complete playback schedule's pitch when a MIDI edit needs background audio. The pending editor pitch remains visible and saveable. Repeated pending edits, paused preparation and failure cannot leave the old Sampler resampling at a newer editor pitch. Restoration preserves active drag generations, and complete schedule publication retains the existing acknowledgement path. Gesture cancellation during pending preparation also restores the prepared pitch. No callback allocation, lock or source lookup was added.
+
+Immediate editor publication now shares normal clip/track selection and track-name cleanup. Deleting a selected clip during another clip's preparation removes the deleted ID immediately, preserves surviving selections and does not let completion restore stale selections. The live-pitch specification now separates transient input, editor history and complete playable state, including release, Cancel, failure, Retry and Undo/Redo.
+
+Focused checks pass: `cargo test --offline --locked -p daw-engine released_` runs the mailbox regression and the six-rate Sampler playback regression. These cover repeated pending edits, active-generation preservation, complete schedule acknowledgement, Undo/Redo, unchanged normal playback rate after release, retained audible duration and allocation-free rendering. `cargo test --offline --locked -p daw-ui --lib deleting_a_selected_clip_during_preparation` covers immediate/completed cleanup, surviving selections, Shift-selection and Escape.
+
+The final `cargo test --offline --locked --workspace --no-fail-fast` run passes: **1,967 tests passed, 11 ignored, no failures**, across 257 suites, including all 748 UI tests and documentation tests. It also covers restoration during overlapping prepared schedules: an old renderer and its replacement each retain their own prepared pitch, and newer active drags still reach both.
+
+Final formatting and strict locked offline workspace/all-target Clippy pass. The locked offline CLI build, `python3 tools/check_cli.py` and `sh tools/package_macos.sh debug` pass. All 157 relative file targets in changed Markdown documents exist; the updated background-state heading link and whitespace checks pass.
+
+Native UI, physical audio-device/listening and Windows/Linux execution remain unverified. Engine tests use prepared renderers and mailbox writes; they do not automate native drag, Cancel, failure and Retry gestures. Logs use `work/review4-fixes-*`.
+
 ## Modifier stretching and preparation-cache concurrency — 2026-10-30
 
 Audio and mixed-selection modifier stretch release now uses the shared pending-audio guard before starting an ordinary job. Running, paused and failed preparation leave the project, history and selection unchanged and show a reason. MIDI-only stretching retains its existing transaction; ready-state group stretching keeps the shared atomic range/trim/removal calculation and prepared publication.

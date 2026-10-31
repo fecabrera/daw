@@ -39,6 +39,8 @@ Sampler uses the Time stretch engine selected in Project Settings: Rubber Band o
 
 Use Cancel to pause preparation or Retry to resume it. Pending MIDI edits stay visible and can be saved to the current project folder. Undo restores the previous edit; a preparation failure does not discard your notes. Export waits for the exact requested version. Root-note, region, duration, tempo, and processing-setting changes retain their existing preparation transactions when audio is ready.
 
+Dragging a note during playback previews its pitch. If the released pitch needs preparation, playback returns to the previous prepared pitch until the new audio is ready. Cancel or a preparation failure keeps that playback and leaves your edited note visible.
+
 Prepared audio is cached between sessions. Reusing a pitch can avoid recalculation, including after reopening. A new pitch still processes the full selected region. Longer samples and more distinct pitches require more time and memory; shorten the selection if preparation reports a memory limit. See [background loading and audio caches](../projects/README.md#background-audio-preparation).
 
 Very large shifts can reduce sound quality and require more preparation time. Notes can become inaudible if the recording shifts below the audible range or above half the project sample rate. Pitch changes do not preserve vocal formants. Strong upward shifts can reduce high-frequency content. The sample preview stays at the root pitch and shows the common duration.

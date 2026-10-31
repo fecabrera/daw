@@ -677,6 +677,11 @@ impl AudioOutput {
     ) -> bool {
         self.live_pitches.set(track, clip, note, pitch, active)
     }
+    /// Roll back a released preview against the complete playback schedule.
+    /// Newer active drags remain in control of their mailboxes.
+    pub fn restore_released_midi_pitch(&self, track: Id, clip: Id, note: Id) {
+        self.live_pitches.restore_released(track, clip, note);
+    }
     pub fn configure_cache(&self, profile: daw_engine::CacheProfile, editing: bool) {
         self.preparation.configure_cache(profile, editing);
     }
