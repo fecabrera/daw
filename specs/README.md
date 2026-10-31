@@ -52,6 +52,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).
 - [Instrument and Editor project track browser](views/instrument-tracks.md).
 - [Beat editor design](views/beat-editor.md), pending implementation.
+- [Beat tracks and editor plan](views/beat-tracks-plan.md): shared subtrack controls, step rows, independent Instrument groups with LFO/Envelope sublanes, creation menus and staged delivery.
 
 ## Effects
 

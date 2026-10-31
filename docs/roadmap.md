@@ -19,4 +19,4 @@ Normal imports reference external audio recordings. Save does not automatically 
 
 ## Planned work
 
-Planned capabilities include direct waveform editing, beat tracks and a step editor, effects for individual beat lanes, more effects, and custom instrument routing. These features are not available yet.
+Planned capabilities include direct waveform editing, beat tracks and a [step editor](views/beat-editor.md) with shared subtrack controls and independent Instrument groups, effects for individual beat lanes, more effects, and custom instrument routing. These features are not available yet.
