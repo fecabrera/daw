@@ -10,7 +10,7 @@ Use beat tracks to build rhythms from independently configured instruments. Mixe
 4. Switch to Instrument and add Oscillator, Sampler or Granulizer to that subtrack's layer through the shared component catalog. Each subtrack is an instrument; there is no audio/MIDI type choice.
 5. Return to Editor and click steps to enable or disable them. Press Play to hear the pattern.
 
-Editor keeps the selected track's clip overview above the step rows. Without an active clip, subtrack controls remain available; select a clip, or double-click empty space in the track overview to create a pattern.
+Editor keeps the selected track's clip overview above the step rows. Without an active clip, empty steps stay visible but disabled, and subtrack controls remain available; select a clip, or double-click empty space in the track overview to create a pattern.
 
 ## Grid and hit controls
 
@@ -36,9 +36,9 @@ Deleting a subtrack removes its stop links. Its old pattern steps remain dormant
 
 ## Instrument groups and Output
 
-The Instrument page uses the same header, Plus button, left column, dividers, lane toolbars and pinned Output layout as a MIDI instrument. Each named subtrack row is that instrument's output layer. Expand it with its right lane toolbar to show its source layers, LFO lane and Envelope lane. Add layers and components with the normal Instrument controls. LFO and Envelope lanes accept only their matching provider units. Each subtrack's modulation sources stay local to that instrument.
+The Instrument page uses the same header, Plus button, left column, dividers, lane toolbars and pinned Output layout as a MIDI instrument. Each expanded subtrack has a compact header with its name, chevron and **Add layer** button. Its source layers, LFO, Envelope and Output appear below, without a separate Layers header. Use the Output panel for mute, solo, pan, gain and its level meter. LFO and Envelope lanes accept only their matching provider units. Each subtrack's modulation sources stay local to that instrument.
 
-Collapsing a group hides its children and retains audio processing. There is no second Output child inside the group. One fixed **Output** follows all groups and combines them before the parent track's effects and mix controls. It supports the shared output body, effects and local Macros. It cannot be renamed, deleted or reordered as a subtrack.
+Collapsing a group hides all its child lanes, including Output, and retains audio processing. The compact header also shows the output controls while collapsed, and hides Add layer. Each nested Output lane contains that subtrack's output units and controls. Its Gain and the group-header Gain control the same level. One fixed **Output** follows all groups and combines them before the parent track's effects and mix controls. It supports the shared output body, effects and local Macros. It cannot be renamed, deleted or reordered as a subtrack.
 
 ## Stop another subtrack
 
@@ -54,6 +54,6 @@ followed by its steps. The ruler above the steps follows the same
 zoom and scroll position as the pattern.
 
 In Instrument, each subtrack has a chevron beside its name. Click it to hide or
-show its nested layers, LFO and Envelope lanes. New groups start expanded.
+show its nested source layers, LFO and Envelope lanes. The subtrack Output lane is hidden while collapsed. New groups start expanded.
 Collapsing a group keeps its instruments playing. The output strip's toolbar
 button controls that strip separately.

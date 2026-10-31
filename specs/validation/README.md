@@ -4,6 +4,114 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Collapsed subtracks hide their Output lane — 2026-10-31
+
+Collapsed Instrument subtracks now show only the compact header with output mix
+controls and meter. All child lanes, including that subtrack's Output, are hidden;
+Add layer stays hidden. The overall beat Output remains pinned outside groups.
+Hidden child hit/drop geometry is cleared, and release of an owned component drag
+still cancels safely. The ordinary MIDI instrument body renders only for expanded
+groups, removing the temporary source-only collapse path.
+
+Regressions assert that only the overall Output is painted while the subtrack is
+collapsed, compact header mute remains functional, Add layer is absent, hidden
+child viewports are empty, group borders close correctly, and expansion restores
+the same child settings without changing the project. This supersedes the earlier
+always-visible subtrack Output behavior recorded below.
+
+`cargo test --locked -p daw-ui --lib` passes all **765 tests**, including the
+17 beat regressions. Strict locked workspace/all-target Clippy, formatting,
+relative documentation targets and whitespace checks pass. The macOS debug app
+was rebuilt. Native UI/device checks and Windows/Linux execution remain unverified.
+
+## Subtrack Add layer anchoring and group borders — 2026-10-31
+
+Expanded Add layer uses right-to-left placement so its right edge stays at the
+compact header's inner inset, independent of name width. Group sizing now includes
+the shared border pixel for both modulation lanes. Envelope's bottom divider
+coincides with Output's pinned top divider. The shared group row painter supplies
+a full-width bottom border after child rendering, in expanded and collapsed states.
+Regressions verify the button edge, coincident separator coordinates, absence of
+adjacent separator strokes, and full bottom borders in both states.
+
+`cargo test --locked -p daw-ui --lib` passes all **765 tests**. Strict locked
+workspace/all-target Clippy, formatting, relative documentation targets and
+whitespace checks pass. `sh tools/package_macos.sh debug` rebuilt the app. Native
+UI/device verification and Windows/Linux execution remain unverified for this fix.
+
+## Subtrack output controls and layer creation — 2026-10-31
+
+Expanded Instrument subtrack headers contain name/disclosure and Add layer, with
+no mix controls or meter. The nested Layers title row is removed. Its layer
+creation logic is shared with MIDI. Output owns the shared mute/solo, pan/gain
+controls and meter. Collapse hides source/provider rows, retains the Output lane,
+shows output controls in the compact header and hides Add layer. Both control
+locations edit the same bus without adding a DSP stage.
+
+Regression coverage checks header/Output control placement, layer creation through
+the header, stable surviving layer IDs, missing Layers title, collapsed Add-layer
+visibility, retained Output, mute changes and the existing source/selection/drag
+contracts. This supersedes the preceding header-control and full-hide layout.
+
+`cargo test --locked -p daw-ui --lib` passes **765 tests**, including **17 beat
+regressions**. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. The macOS debug app was rebuilt
+with `sh tools/package_macos.sh debug`. Native UI/device checks and Windows/Linux
+execution remain unverified for this change.
+
+## Compact subtrack headers and nested Output — 2026-10-31
+
+Instrument now gives each subtrack a one-row track-style group header and a
+separate nested Output lane after its source and modulation lanes. The header
+reuses `track_rows::HeaderRows`, the track frame, shared mix controls, meter
+reservation and disclosure button. The child body uses the ordinary MIDI
+instrument composition and Output renderer; the earlier beat-specific Output
+header binding and top-of-group output path were removed. Header and Output
+controls share the existing canonical bus; no DSP stage or saved schema changed.
+
+Regression coverage checks compact header height, one Output per subtrack plus
+the fixed final Output, child ordering/alignment, independent group/strip collapse,
+cleared hidden drop geometry, catalog release-only placement and shared editing
+controls. The current B32 supersedes the preceding named-output-header design.
+
+`cargo test --locked -p daw-ui --lib` passes **764 tests**, including all 16 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass.
+`sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Native UI/device
+verification and Windows/Linux execution remain unverified for this layout change.
+
+## Shared group panels and disabled beat steps — 2026-10-31
+
+Timeline track groups and Instrument beat groups share `panels::GroupPanel`
+indentation, aligned column bounds and row-divider painting. Beat nested edges
+reuse the existing track-group left-divider painter. Data ownership and editing
+commands remain in their existing modules.
+
+Without a selected pattern, Editor paints an empty disabled 1/16 grid across the
+current ruler viewport. It does not load another clip's content or create assets.
+Regressions cover disabled clicks with an existing unselected pattern, an empty
+track after scrolling, retained subtrack mix controls, and the expanded/collapsed
+group border geometry from the preceding correction.
+
+`cargo test --locked -p daw-ui --lib` passes **764 tests**; the final focused
+beat suite passes **16 tests**. Strict locked workspace/all-target Clippy,
+formatting, relative documentation targets and whitespace checks pass. The
+macOS debug app was rebuilt. Native UI/device checks and Windows/Linux execution
+remain unverified for this change.
+
+## Expanded beat subtrack bottom divider — 2026-10-31
+
+The named subtrack header's bottom divider now starts at its child-panel inset
+when the group is expanded. The gutter remains open, matching Timeline track
+groups. Collapsed subtracks retain a full-width bottom divider. Automated egui
+coverage checks both states and retains the divider across the child panel and
+unit area. This corrects the header boundary omitted by the earlier gutter tests.
+
+`cargo test --locked -p daw-ui --lib` passes all **763 tests**. Strict locked
+workspace/all-target Clippy, formatting and whitespace checks pass.
+`sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Native UI
+verification and Windows/Linux execution were not performed for this correction.
+
 ## Beat track integration and compact editor — 2026-10-31
 
 Beat tracks now integrate the versioned container and immutable pattern sources with

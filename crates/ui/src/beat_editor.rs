@@ -1,6 +1,6 @@
 //! Shared beat subtrack selection, headers and release-only ordering for both views.
 use super::*;
-use daw_core::{BeatEdit, BeatResolution, BeatSubtrack, InstrumentBusSettings};
+use daw_core::{BeatEdit, BeatResolution, BeatSubtrack};
 
 #[derive(Default)]
 pub(super) struct BeatUi {
@@ -27,6 +27,10 @@ pub(super) struct BeatUi {
     pub grid_options: Option<Rect>,
     #[cfg(test)]
     pub mix_bounds: std::collections::HashMap<Id, [Rect; 4]>,
+    #[cfg(test)]
+    pub groups: std::collections::HashMap<Id, (Rect, Rect)>,
+    #[cfg(test)]
+    pub add_layers: std::collections::HashMap<Id, Rect>,
 }
 struct BeatDrag {
     revision: u64,
@@ -300,40 +304,6 @@ impl DawUi {
         });
         response
     }
-    pub(super) fn beat_mix(
-        &mut self,
-        ui: &mut egui::Ui,
-        track: Id,
-        row: &BeatSubtrack,
-        bus: &mut InstrumentBusSettings,
-    ) {
-        let (mut muted, mut soloed) = (row.muted, row.soloed);
-        ui.add_enabled_ui(
-            !self.beat_dragging() && self.edit_environment_available(),
-            |ui| {
-                mix_controls::header_row(
-                    ui,
-                    &mut bus.gain_db,
-                    &mut bus.pan,
-                    &mut muted,
-                    &mut soloed,
-                    ["Mute subtrack", "Solo within this beat instrument"],
-                );
-            },
-        );
-        if muted != row.muted || soloed != row.soloed {
-            self.edit_beat(
-                track,
-                BeatEdit::SetMix {
-                    id: row.id,
-                    gain_db: bus.gain_db,
-                    pan: bus.pan,
-                    muted,
-                    soloed,
-                },
-            );
-        }
-    }
     fn finish_beat_rows(&mut self, ui: &mut egui::Ui, track: Id, rows: &[(Id, Rect)]) {
         if crate::drag::cancelled(ui)
             || !self.edit_environment_available()
@@ -483,18 +453,16 @@ impl DawUi {
             })
             .and_then(|a| a.beat_pattern.as_ref())
             .map(|s| s.pattern.clone());
+        let editable = pattern.is_some();
+        if !editable {
+            pattern = Some(daw_core::BeatPattern::default());
+        }
         let original = pattern.clone();
         #[cfg(test)]
         self.beat_ui.steps.clear();
-        if pattern.is_none() {
-            rows::advice(
-                ui,
-                "Select a beat pattern, or double-click empty space in the track overview.",
-            );
-        }
         // Use the clip's saved source mapping for trims, repeats and stretches.
         let mut cells = Vec::new();
-        if let (Some(clip), Some(pattern)) = (&active, &pattern) {
+        if editable && let (Some(clip), Some(pattern)) = (&active, &pattern) {
             let clock = self.musical_timeline();
             let visible = clock.frame_at_pixel(0.0).max(0) as u64;
             let base = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
@@ -537,6 +505,26 @@ impl DawUi {
                         clip.start_frame + finish.min(i128::from(clip.length_frames)) as u64,
                     ));
                 }
+            }
+        }
+        if !editable {
+            // Paint an empty, disabled 1/16 grid across the current ruler viewport.
+            // Do not borrow another clip's source or create a project asset.
+            let clock = self.musical_timeline();
+            let first_frame = clock.frame_at_pixel(0.0).max(0) as u64;
+            let last_frame = clock.frame_at_pixel(f64::from(ui.available_width())).max(0) as u64;
+            let first = (clock.beats(first_frame) * 4.0).floor() as u64;
+            let last = ((clock.beats(last_frame) * 4.0).ceil() as u64).saturating_add(1);
+            let stride = (last.saturating_sub(first).div_ceil(2048)).max(1) as usize;
+            let seconds_per_step = 60.0 / f64::from(self.session.project.tempo_bpm) / 4.0;
+            for index in (first..last).step_by(stride) {
+                cells.push((
+                    (index % 16) as u32 * daw_core::MIDI_TICKS_PER_BEAT / 4,
+                    self.session.project.frames(index as f64 * seconds_per_step),
+                    self.session
+                        .project
+                        .frames((index + 1) as f64 * seconds_per_step),
+                ));
             }
         }
         egui::ScrollArea::vertical()
@@ -611,95 +599,103 @@ impl DawUi {
                             Pos2::new(ui.clip_rect().right(), top.y + height),
                         );
                         ui.set_clip_rect(grid_clip.intersect(ui.clip_rect()));
-                        if let Some(pattern) = &mut pattern {
-                            for &(tick, frame, end) in &cells {
-                                let step = pattern
-                                    .steps
-                                    .iter()
-                                    .find(|s| s.subtrack_id == row.id && s.start_tick == tick)
-                                    .cloned();
-                                let timeline = self.musical_timeline();
-                                let left = self.midi_editor.content.left
-                                    + timeline.pixel_at_frame(frame) as f32;
-                                let right = self.midi_editor.content.left
-                                    + timeline.pixel_at_frame(end) as f32;
-                                let cell = Rect::from_min_max(
-                                    Pos2::new(left, top.y),
-                                    Pos2::new(right, top.y + height),
-                                );
-                                let response = ui.put(
-                                    cell.shrink2(Vec2::new(1.0, 3.0)),
-                                    egui::Button::new(
-                                        if tick.is_multiple_of(daw_core::MIDI_TICKS_PER_BEAT) {
-                                            "·"
-                                        } else {
-                                            ""
-                                        },
-                                    )
-                                    .selected(step.is_some()),
-                                );
-                                if let Some(clip) = &active {
-                                    let frame = self.session.project.transport.playhead_frame;
-                                    if frame >= clip.start_frame && frame < clip.end() {
-                                        let position = clip.source_frame(frame - clip.start_frame);
-                                        let source = clip
-                                            .stretch
-                                            .map_or(position, |s| s.original_frame(position));
-                                        if source >= self.session.project.midi_frame(tick)
-                                            && source
-                                                < self.session.project.midi_frame(
-                                                    tick + pattern.resolution.step_ticks(),
-                                                )
-                                        {
-                                            ui.painter().rect_stroke(
-                                                response.rect,
-                                                2.0,
-                                                Stroke::new(1.0, ui.visuals().selection.bg_fill),
-                                                egui::StrokeKind::Inside,
-                                            );
+                        ui.add_enabled_ui(editable, |ui| {
+                            if let Some(pattern) = &mut pattern {
+                                for &(tick, frame, end) in &cells {
+                                    let step = pattern
+                                        .steps
+                                        .iter()
+                                        .find(|s| s.subtrack_id == row.id && s.start_tick == tick)
+                                        .cloned();
+                                    let timeline = self.musical_timeline();
+                                    let left = self.midi_editor.content.left
+                                        + timeline.pixel_at_frame(frame) as f32;
+                                    let right = self.midi_editor.content.left
+                                        + timeline.pixel_at_frame(end) as f32;
+                                    let cell = Rect::from_min_max(
+                                        Pos2::new(left, top.y),
+                                        Pos2::new(right, top.y + height),
+                                    );
+                                    let response = ui.put(
+                                        cell.shrink2(Vec2::new(1.0, 3.0)),
+                                        egui::Button::new(
+                                            if tick.is_multiple_of(daw_core::MIDI_TICKS_PER_BEAT) {
+                                                "·"
+                                            } else {
+                                                ""
+                                            },
+                                        )
+                                        .selected(step.is_some()),
+                                    );
+                                    if let Some(clip) = &active {
+                                        let frame = self.session.project.transport.playhead_frame;
+                                        if frame >= clip.start_frame && frame < clip.end() {
+                                            let position =
+                                                clip.source_frame(frame - clip.start_frame);
+                                            let source = clip
+                                                .stretch
+                                                .map_or(position, |s| s.original_frame(position));
+                                            if source >= self.session.project.midi_frame(tick)
+                                                && source
+                                                    < self.session.project.midi_frame(
+                                                        tick + pattern.resolution.step_ticks(),
+                                                    )
+                                            {
+                                                ui.painter().rect_stroke(
+                                                    response.rect,
+                                                    2.0,
+                                                    Stroke::new(
+                                                        1.0,
+                                                        ui.visuals().selection.bg_fill,
+                                                    ),
+                                                    egui::StrokeKind::Inside,
+                                                );
+                                            }
                                         }
                                     }
-                                }
-                                response.widget_info(|| {
-                                    egui::WidgetInfo::selected(
-                                        egui::WidgetType::Button,
-                                        ui.is_enabled(),
-                                        step.is_some(),
-                                        format!(
-                                            "{} step {}",
-                                            row.name,
-                                            tick / pattern.resolution.step_ticks() + 1
-                                        ),
-                                    )
-                                });
-                                #[cfg(test)]
-                                {
-                                    self.beat_ui.steps.insert((row.id, tick), response.rect);
-                                }
-                                if response.clicked()
-                                    && let Ok(next) = pattern.with_step(
-                                        row.id,
-                                        tick,
-                                        if step.is_some() { None } else { Some(100) },
-                                    )
-                                {
-                                    *pattern = next;
-                                }
-                                if let Some(step) = step {
-                                    menus::ContextMenu::new(&response).show(|ui| {
-                                        let mut velocity = step.velocity;
-                                        ui.label("Velocity");
-                                        ui.add(egui::DragValue::new(&mut velocity).range(1..=127));
-                                        if velocity != step.velocity
-                                            && let Ok(next) =
-                                                pattern.with_step(row.id, tick, Some(velocity))
-                                        {
-                                            *pattern = next;
-                                        }
+                                    response.widget_info(|| {
+                                        egui::WidgetInfo::selected(
+                                            egui::WidgetType::Button,
+                                            ui.is_enabled(),
+                                            step.is_some(),
+                                            format!(
+                                                "{} step {}",
+                                                row.name,
+                                                tick / pattern.resolution.step_ticks() + 1
+                                            ),
+                                        )
                                     });
+                                    #[cfg(test)]
+                                    {
+                                        self.beat_ui.steps.insert((row.id, tick), response.rect);
+                                    }
+                                    if response.clicked()
+                                        && let Ok(next) = pattern.with_step(
+                                            row.id,
+                                            tick,
+                                            if step.is_some() { None } else { Some(100) },
+                                        )
+                                    {
+                                        *pattern = next;
+                                    }
+                                    if let Some(step) = step {
+                                        menus::ContextMenu::new(&response).show(|ui| {
+                                            let mut velocity = step.velocity;
+                                            ui.label("Velocity");
+                                            ui.add(
+                                                egui::DragValue::new(&mut velocity).range(1..=127),
+                                            );
+                                            if velocity != step.velocity
+                                                && let Ok(next) =
+                                                    pattern.with_step(row.id, tick, Some(velocity))
+                                            {
+                                                *pattern = next;
+                                            }
+                                        });
+                                    }
                                 }
                             }
-                        }
+                        });
                     });
                     let rect = Rect::from_min_size(top, Vec2::new(ui.available_width(), height));
                     row_bounds.push((row.id, rect));
@@ -714,6 +710,181 @@ impl DawUi {
                 pattern,
             });
         }
+    }
+    pub(super) fn beat_output_mix(
+        &mut self,
+        ui: &mut egui::Ui,
+        owner: Id,
+        bus: &mut daw_core::InstrumentBusSettings,
+    ) -> mix_controls::GainPanResponse {
+        let Some((parent, row)) = self
+            .session
+            .project
+            .beat_subtrack(owner)
+            .map(|(p, r)| (p, r.clone()))
+        else {
+            return mix_controls::GainPanResponse {
+                bounds: [Rect::NOTHING; 2],
+            };
+        };
+        let (mut muted, mut soloed) = (row.muted, row.soloed);
+        let (knobs, toggles) = mix_controls::header_row(
+            ui,
+            &mut bus.gain_db,
+            &mut bus.pan,
+            &mut muted,
+            &mut soloed,
+            ["Mute subtrack", "Solo within this beat instrument"],
+        );
+        #[cfg(test)]
+        {
+            self.beat_ui.mix_bounds.insert(
+                owner,
+                [
+                    toggles[0].rect,
+                    toggles[1].rect,
+                    knobs.bounds[1],
+                    knobs.bounds[0],
+                ],
+            );
+        }
+        #[cfg(not(test))]
+        let _ = toggles;
+        if muted != row.muted || soloed != row.soloed {
+            self.edit(Edit::Beat {
+                track_id: parent,
+                edit: BeatEdit::SetMix {
+                    id: owner,
+                    gain_db: bus.gain_db,
+                    pan: bus.pan,
+                    muted,
+                    soloed,
+                },
+            });
+        }
+        knobs
+    }
+    fn beat_group_header(&mut self, ui: &mut egui::Ui, parent: Id, row: &BeatSubtrack, rect: Rect) {
+        let label = Rect::from_min_size(rect.min, Vec2::new(TRACK_WIDTH, MASTER_HEIGHT));
+        let mut header = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt((row.id, "group-header"))
+                .max_rect(label)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        let mut bus = row.instrument.main.clone();
+        panels::PanelStyle {
+            margin: 6,
+            ..Default::default()
+        }
+        .track_frame(ui.ctx())
+        .show(&mut header, |ui| {
+            ui.set_min_width(TRACK_WIDTH - 14.0);
+            ui.set_min_height(MASTER_HEIGHT - 14.0);
+            ui.spacing_mut().item_spacing = Vec2::new(mix_controls::GROUP_GAP, 4.0);
+            if self.beat_group_collapsed(row.id) {
+                let levels = self
+                    .output
+                    .as_ref()
+                    .and_then(|o| o.layer_meter(row.id, row.instrument.main.id))
+                    .map_or([(0.0, false); 2], |m| m.levels());
+                let cleared = meters::stereo_panel(ui, MASTER_HEIGHT - 14.0, levels, |ui| {
+                    let mut rows = track_rows::HeaderRows::new(ui, true);
+                    rows::centered(&mut rows.name, knobs::SIZE, |ui| {
+                        let collapsed = self.beat_group_collapsed(row.id);
+                        let response = icons::disclosure_button(
+                            ui,
+                            !collapsed,
+                            if collapsed {
+                                "Expand subtrack"
+                            } else {
+                                "Collapse subtrack"
+                            },
+                            self.editing_enabled(),
+                            None,
+                            icons::HEADER_ICON_WIDTH,
+                        );
+                        #[cfg(test)]
+                        {
+                            self.beat_ui.groups.insert(row.id, (label, response.rect));
+                        }
+                        if response.clicked() {
+                            self.toggle_beat_group(row.id);
+                        }
+                        self.beat_name(ui, parent, row);
+                    });
+                    self.beat_output_mix(&mut rows.mix, row.id, &mut bus);
+                });
+                meters::reset_on_click(
+                    ui,
+                    self.output
+                        .as_ref()
+                        .and_then(|o| o.layer_meter(row.id, row.instrument.main.id)),
+                    cleared,
+                );
+            } else {
+                rows::centered(ui, knobs::SIZE, |ui| {
+                    let response = icons::disclosure_button(
+                        ui,
+                        true,
+                        "Collapse subtrack",
+                        self.editing_enabled(),
+                        None,
+                        icons::HEADER_ICON_WIDTH,
+                    );
+                    #[cfg(test)]
+                    {
+                        self.beat_ui.groups.insert(row.id, (label, response.rect));
+                    }
+                    if response.clicked() {
+                        self.toggle_beat_group(row.id);
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let add = icons::button(
+                            ui,
+                            icons::Lucide::Plus,
+                            "Add layer",
+                            self.editing_enabled() && self.component_drag.is_none(),
+                            theme::palette(ui.ctx()).text,
+                        );
+                        #[cfg(test)]
+                        {
+                            self.beat_ui.add_layers.insert(row.id, add.rect);
+                        }
+                        if add.clicked()
+                            && let Some(mut settings) =
+                                self.session.project.instrument_settings(row.id).cloned()
+                        {
+                            self.append_instrument_layer(&mut settings);
+                            self.edit(Edit::SetInstrument {
+                                track_id: row.id,
+                                instrument: Some(settings),
+                            });
+                        }
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            self.beat_name(ui, parent, row)
+                        });
+                    });
+                });
+            }
+        });
+        if bus.gain_db != row.instrument.main.gain_db || bus.pan != row.instrument.main.pan {
+            self.edit_beat(
+                parent,
+                BeatEdit::SetMix {
+                    id: row.id,
+                    gain_db: bus.gain_db,
+                    pan: bus.pan,
+                    muted: row.muted,
+                    soloed: row.soloed,
+                },
+            );
+        }
+        panels::GroupPanel::row_dividers(ui, rect, 0, true, false);
+        if !self.beat_group_collapsed(row.id) {
+            panels::GroupPanel::row_dividers(ui, rect, 1, false, true);
+        }
+        ui.advance_cursor_after_rect(rect);
     }
     pub(super) fn beat_instrument_view(&mut self, ui: &mut egui::Ui) {
         let Some(track) = self.selected_track else {
@@ -756,24 +927,25 @@ impl DawUi {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let mut row_bounds = Vec::new();
+                #[cfg(test)]
+                self.beat_ui.add_layers.clear();
                 for row in &beat.subtracks {
                     self.instrument_ui = self.beat_ui.states.remove(&row.id).unwrap_or_default();
                     self.beat_ui.owner_override = Some(row.id);
+                    // Source/provider rows share one border pixel; Output retains its full height.
                     let children = if self.beat_group_collapsed(row.id) {
                         0.0
                     } else {
-                        toolbars::CONTROL_HEIGHT
-                            + 12.0
-                            + row
-                                .instrument
-                                .layers
-                                .iter()
-                                .map(|l| panels::unit_height(l.collapsed) - 1.0)
-                                .sum::<f32>()
-                            + panels::unit_height(row.instrument.lfo_lane.collapsed)
-                            + panels::unit_height(row.instrument.envelope_lane.collapsed)
+                        row.instrument
+                            .layers
+                            .iter()
+                            .map(|l| panels::unit_height(l.collapsed) - 1.0)
+                            .sum::<f32>()
+                            + (panels::unit_height(row.instrument.lfo_lane.collapsed) - 1.0)
+                            + (panels::unit_height(row.instrument.envelope_lane.collapsed) - 1.0)
+                            + panels::unit_height(row.instrument.main.collapsed)
                     };
-                    let height = panels::unit_height(row.instrument.main.collapsed) + children;
+                    let height = MASTER_HEIGHT + children;
                     let rect = Rect::from_min_size(
                         ui.next_widget_position(),
                         Vec2::new(ui.available_width(), height),
@@ -793,9 +965,27 @@ impl DawUi {
                             .max_rect(rect)
                             .layout(egui::Layout::top_down(egui::Align::Min)),
                     );
-                    if let Some(snapshot) = self.session.project.instrument_track(row.id) {
+                    let header_rect =
+                        Rect::from_min_size(rect.min, Vec2::new(rect.width(), MASTER_HEIGHT));
+                    self.beat_group_header(&mut group, track, row, header_rect);
+                    if !self.beat_group_collapsed(row.id)
+                        && let Some(snapshot) = self.session.project.instrument_track(row.id)
+                    {
                         self.instrument_body(&mut group, snapshot, true);
+                    } else {
+                        self.instrument_ui.clear_layout();
+                        if let Some(mut settings) = self.session.project.instrument_snapshot(row.id)
+                        {
+                            self.finish_component_drag(
+                                &group,
+                                row.id,
+                                &mut settings,
+                                &[],
+                                header_rect,
+                            );
+                        }
                     }
+                    panels::GroupPanel::row_dividers(ui, rect, 0, false, true);
                     if self.beat_subtrack_selected(row.id) {
                         panels::selection_border(
                             ui,

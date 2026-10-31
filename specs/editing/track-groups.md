@@ -50,6 +50,16 @@ Shared move previews use core `TrackKind::accepts_asset` to reject group buses a
 
 External audio-file drags reuse `file_target` for both hover feedback and release eligibility. A rejected target sets the forbidden cursor and leaves `file_drop_target` empty, so MIDI-track and group-bus drops never enter the import path or change selection/history. This applies to MIDI-track and group headers and lanes, including grouped MIDI tracks and expanded/collapsed buses, before and after preview decoding and when a drop arrives without an earlier hover. A rejected hover clears an earlier valid target. Returning to an audio track reuses the same prepared preview audio and existing snapping/import behavior. Other unsupported file destinations use the same rejection feedback; Sampler drops retain their separate target path.
 
+## Shared group-panel presentation
+
+Timeline track groups and Instrument beat subtrack groups use `panels::GroupPanel`
+for depth indentation, control-column bounds and row separators. Its bounds inset
+the left edge while keeping the right edge fixed. Expanded group headers use the
+child depth for their bottom separator, leaving the gutter open. Both reuse
+`ControlPanel::row_left_divider` for nested edges, the shared disclosure button,
+and the shared selection-border painter. Keep project hierarchy/edit commands
+with their respective owners; presentation helpers do not change project data.
+
 ## Regression coverage
 
 - Core: legacy defaults, hierarchy validation, nested/nonadjacent grouping, cross-parent extraction, invalid/cyclic drops and atomic rollback, ungroup/delete/duplicate identities, collapsed visibility, solo path rules.

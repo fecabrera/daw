@@ -1,10 +1,6 @@
 //! Group actions and pure drop geometry over the shared track hierarchy transactions.
 use super::*;
 use daw_core::TrackKind;
-/// Use the shared padding scale; retain usable controls in deeply nested groups.
-pub(super) fn panel_indent(depth: usize) -> f32 {
-    (depth.min(3) as f32) * 2.0 * f32::from(theme::TOOLBAR_PADDING)
-}
 impl DawUi {
     /// Extend only group panels to the last visible descendant. Row and lane hit
     /// bounds remain separate, including placeholders above/below the viewport.

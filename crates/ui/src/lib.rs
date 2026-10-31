@@ -4170,8 +4170,13 @@ impl DawUi {
                     ui.next_widget_position(),
                     Vec2::new(ui.available_width(), row_height),
                 );
-                let inset = track_groups::panel_indent(self.session.project.track_depth(id));
-                let panel_width = TRACK_WIDTH - inset;
+                let panel = panels::GroupPanel::bounds(
+                    row,
+                    TRACK_WIDTH,
+                    self.session.project.track_depth(id),
+                );
+                let inset = panel.left() - row.left();
+                let panel_width = panel.width();
                 let interacting = self.drag.is_some()
                     || self.track_drag.is_some()
                     || self.marquee.is_some()
@@ -5310,12 +5315,17 @@ impl DawUi {
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
         self.paint_grid(&painter, rect);
         // Keep row separators below clip shells and their selection outlines.
-        panels::ControlPanel::row_dividers(ui, panel.union(rect), index > 0, false);
+        let row = Rect::from_min_max(Pos2::new(rect.left() - TRACK_WIDTH, rect.top()), rect.max);
+        panels::GroupPanel::row_dividers(
+            ui,
+            row,
+            self.session.project.track_depth(track_id),
+            index > 0,
+            false,
+        );
         if index + 1 == count {
             // The final child and all enclosing groups share one bottom edge.
-            let row =
-                Rect::from_min_max(Pos2::new(rect.left() - TRACK_WIDTH, rect.top()), rect.max);
-            panels::ControlPanel::row_dividers(ui, row, false, true);
+            panels::GroupPanel::row_dividers(ui, row, 0, false, true);
         }
         for clip in &track.clips {
             let block = self.clip_block(rect, clip, clip.start_frame);

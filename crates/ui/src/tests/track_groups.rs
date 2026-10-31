@@ -327,7 +327,7 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                             let lane = app.lane_bounds[&id];
                             (
                                 lane.left() - TRACK_WIDTH
-                                    + crate::track_groups::panel_indent(
+                                    + crate::panels::GroupPanel::indent(
                                         app.session.project.track_depth(id),
                                     ),
                                 lane.top(),

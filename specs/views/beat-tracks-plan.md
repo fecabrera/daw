@@ -12,8 +12,8 @@ This plan extends the [Beat MVP](beat-editor.md), [source-container architecture
 - A beat track owns beat subtracks. A subtrack is a child of its beat instrument, not a project track, track group, or ordinary MIDI instrument layer. Earlier specifications call these children beat lanes.
 - Editor keeps the selected beat track's clip overview above its lower beat editor. The lower editor shows one step row per subtrack and an action to add a subtrack.
 - Editor and Instrument both support adding, selecting one or several subtracks, deleting, renaming, and reordering them. Both expose the same subtrack gain and pan values. Retain the previously accepted Mute/Solo controls.
-- In Instrument, each subtrack is an expandable group whose named row acts as that subtrack's output layer. It contains one or more source layers plus its own LFO and Envelope sublanes. Kick and Snare have separate outputs, settings and modulators.
-- One fixed Output lane follows all subtrack groups and sums the whole beat instrument. Do not add another Output child beneath each group: its named group row already serves that role.
+- In Instrument, each subtrack is an expandable group with a compact one-row header. It contains source layers, its own LFO and Envelope sublanes, and a separate Output sublane. Kick and Snare have separate outputs, settings and modulators.
+- One fixed Output lane follows all subtrack groups and sums the whole beat instrument. Each group has its own Output child backed by the existing subtrack main bus.
 - Mixer controls the parent beat track. Beat subtracks do not become extra Mixer strips or ordinary children in the project track browser.
 - Every beat subtrack is an instrument, with source units chosen inside its layers. There are no audio/MIDI subtrack types or type chooser. Sampler, Oscillator and other supported sources use the existing instrument model.
 - Preserve step/velocity controls, one fixed trigger pitch per subtrack, one active voice per subtrack, the shared pattern grid, lane-stop links, immutable pattern sources and serial routing.
@@ -27,22 +27,24 @@ The attached images establish creation placement and step-sequencer interaction.
 | --- | --- | --- |
 | Timeline | Normal track header, beat clips, existing track effects lane and arrangement gestures. | Pattern content appears inside beat clips; no extra project-track rows. |
 | Editor | Existing selected-track overview and clip selection. | One lower-editor row per subtrack, with shared headers/mix controls and step toggles across time. |
-| Instrument | Beat track is selectable through the shared track browser and compatible instrument selector. Parent effects retain their existing target. | One expandable group per subtrack. Its named row is its output layer; its children are source layers, LFO and Envelope. One fixed overall Output follows all groups. |
+| Instrument | Beat track is selectable through the shared track browser and compatible instrument selector. Parent effects retain their existing target. | One expandable group per subtrack. Its compact header has no units; its children are source layers, LFO, Envelope and Output. One fixed overall Output follows all groups. |
 | Mixer | Existing gain, pan, Mute/Solo, meter and track effects behavior. | No separate Mixer strips. |
 
 Instrument group structure:
 
 ```text
 Beat 1
-  ▾ Kick       [M] [S] [Pan] [Gain]   [Kick output controls/units]
+  ▾ Kick                            [+ Add layer]
       Layer 1
       LFO
       Envelope
-  ▾ Snare      [M] [S] [Pan] [Gain]   [Snare output controls/units]
+      Output                        [subtrack output controls/units]
+  ▾ Snare                           [+ Add layer]
       Layer 1
       Layer 2
       LFO
       Envelope
+      Output                        [subtrack output controls/units]
   [+ Add beat subtrack]
   Output                            [whole beat-instrument output]
 ```
@@ -64,7 +66,7 @@ Use one subtrack command/selection model for both views. Store a primary subtrac
 - Reordering retains subtrack, provider, unit and event identities, assigned sources, steps, routes, settings and compatible runtime state. It changes no step timing. Never address a source or step row by its display index.
 - Gain and pan in both views bind to one canonical subtrack bus control. Reuse the track/layer knob definitions, units, bounds, reset, sensitivity, smoothing and keyboard handling. These are the named group's output-layer controls. Do not apply another equivalent gain/pan stage beneath that group.
 - Deleting a group is one atomic edit. Remove its processing configuration and affected owned routes/stop links, preserve survivors, and choose a deterministic neighboring primary selection. Deleting the final subtrack leaves an empty beat instrument with an enabled Add action.
-- View switching preserves the selected subtracks and active clip. A deleted subtrack is pruned from selection immediately; a worker cannot restore it. If no clip is active, show the subtrack controls with an unavailable step grid and advice to select a clip or double-click empty track-overview space. Do not silently edit a different clip.
+- View switching preserves the selected subtracks and active clip. A deleted subtrack is pruned from selection immediately; a worker cannot restore it. If no clip is active, show the subtrack controls with a visible, disabled empty step grid; pattern creation uses double-click in empty track-overview space. Do not silently edit a different clip.
 
 Add beat subtrack appears in both views and creates a normal empty instrument group with its initial source layer, local LFO/Envelope lanes and named output. It does not ask for an audio/MIDI type. Choose source units through the shared component catalog or source-replacement action. New subtracks append with the first available `Subtrack N` name. Keep the ordinary project-track Add menu separate from this command.
 
@@ -92,7 +94,7 @@ Every subtrack is an instrument with source layers. Those layers remain inside i
 
 ## Content and processing contracts
 
-The parent beat track owns one beat instrument. That container owns the ordered subtrack configurations and one overall Output bus. Each subtrack owns its named output layer, source layers, local LFO/Envelope providers and serial effects. Its name and shared mix controls belong to that named output row. Beat pattern assets own immutable grid/step content, addressed by stable row/subtrack identities. Clips own placement and source mappings.
+The parent beat track owns one beat instrument. That container owns the ordered subtrack configurations and one overall Output bus. Each subtrack owns a compact group header and nested source, provider and Output lanes. Its header and nested Output share one main bus and serial effects. Beat pattern assets own immutable grid/step content, addressed by stable row/subtrack identities. Clips own placement and source mappings.
 
 Pattern/step or grid edits create a new asset for the edited clip. Other clips retain their original pattern. Subtrack rename, mix, processing and visual order edits change track-owned configuration and therefore apply to that track's clips; they do not clone or rewrite every pattern. Group expansion and selection are UI/presentation state, not step content.
 
@@ -122,7 +124,7 @@ Stages 3–5 may be developed separately, but do not advertise beat tracks as av
 
 Specify the stored content discriminator and version/default rules before extending the current `TrackKind`, track instrument fields and `Asset::midi_pattern` model. Audit callers that currently classify every non-MIDI asset as an audio file. Define required/forbidden payload combinations and clear errors for unsupported versions.
 
-Freeze subtrack add/delete/reorder transactions, empty-track defaults, selection fallback, child-lane/group presentation, and exact row styling. Retain a single source container per track and a single canonical subtrack bus gain/pan. Reuse the subtrack instrument's existing Output settings on its named group row, and define the overall beat Output's separate settings/identity. Do not retain an extra per-group Output child. Reuse normal instrument source controls and nested source-layer ownership within that hierarchy; do not add a separate audio-subtrack schema.
+Freeze subtrack add/delete/reorder transactions, empty-track defaults, selection fallback, child-lane/group presentation, and exact row styling. Retain a single source container per track and a single canonical subtrack bus gain/pan. Reuse the subtrack instrument's existing Output settings in its Output child and bind header mix controls to that same bus. Define the overall beat Output's separate settings/identity. Reuse normal instrument source controls and nested source-layer ownership within that hierarchy; do not add a separate audio-subtrack schema.
 
 Freeze pattern-to-subtrack bindings before coding. Shared sources, missing/deleted subtrack rows, parent-track duplication, and moving/pasting beat clips to another beat track need explicit identity mappings. Do not match rows by name or position, mutate shared pattern assets in place, or silently lose steps on transfer. Decide whether deleted bindings remain dormant immutable content or require new per-clip assets; record the tradeoff.
 
@@ -146,7 +148,7 @@ Compose the lower step grid beside shared subtrack headers with aligned vertical
 
 ### Stage 5 — Instrument
 
-Render each subtrack's named output row as its expandable group header, with source layers and local LFO/Envelope sublanes beneath it. Render one shared final Output outside the groups, using the existing pinned-lane component. Reuse the current lane toolbar, compact controls, borders, source/effect bodies, meters and catalog metadata. Group headers expose the same mix values and selected IDs as Editor. Restrict provider additions to the matching child lane, filter source menus by subtrack scope, and reject invalid drops before constructing instances. Reuse saved source preparation, local route duplication/remapping and unit-selection behavior. Never substitute a single kit-wide modulator lane for the independent child lanes.
+Render each subtrack as a compact one-row group header, with source layers, local LFO/Envelope lanes and a separate Output child beneath it. Render one shared final Output outside the groups, using the existing pinned-lane component. Reuse the current lane toolbar, compact controls, borders, source/effect bodies, meters and catalog metadata. Output panels expose the same mix values and selected IDs as Editor. Expanded headers show Add layer; collapsed headers show output controls and hide Add layer. All child lanes, including Output, are hidden when the group is collapsed. Do not add a nested Layers title row. Restrict provider additions to the matching child lane, filter source menus by subtrack scope, and reject invalid drops before constructing instances. Reuse saved source preparation, local route duplication/remapping and unit-selection behavior. Never substitute a single kit-wide modulator lane for the independent child lanes.
 
 ### Stage 6 — Acceptance and documentation
 

@@ -53,6 +53,31 @@ pub(super) fn unit_add_strip(
 /// Shared muted full-height separator for internally padded unit strips.
 pub(super) use daw_unit_ui::layout::unit_divider;
 
+/// Shared geometry and separators for track groups and beat subtrack groups.
+pub(super) struct GroupPanel;
+
+impl GroupPanel {
+    /// Retain usable controls in deeply nested groups.
+    pub(super) fn indent(depth: usize) -> f32 {
+        depth.min(3) as f32 * 2.0 * f32::from(crate::theme::TOOLBAR_PADDING)
+    }
+
+    /// Inset the left edge while keeping every control column's right edge aligned.
+    pub(super) fn bounds(row: Rect, width: f32, depth: usize) -> Rect {
+        Rect::from_min_max(
+            row.min + Vec2::new(Self::indent(depth), 0.0),
+            egui::pos2(row.left() + width, row.bottom()),
+        )
+    }
+
+    /// Group boundaries start at the row's depth; a header with visible children uses their
+    /// depth for the bottom edge so the hierarchy gutter remains open.
+    pub(super) fn row_dividers(ui: &Ui, row: Rect, depth: usize, top: bool, bottom: bool) {
+        let row = Rect::from_min_max(row.min + Vec2::new(Self::indent(depth), 0.0), row.max);
+        ControlPanel::row_dividers(ui, row, top, bottom);
+    }
+}
+
 /// Base control column shared by Tracks, Layers, and the Effects catalog. Row content stays with each view.
 /// Paint the border last so selected rows, lanes, and scrolling cannot cover it.
 pub(super) struct ControlPanel {

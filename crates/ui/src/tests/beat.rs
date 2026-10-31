@@ -112,7 +112,7 @@ fn instrument_groups_reuse_bodies_and_show_one_final_output() {
     assert!(names.contains(&"Layer 1"), "{names:?}");
     assert!(names.contains(&"LFO"));
     assert!(names.contains(&"Envelope"));
-    assert_eq!(names.iter().filter(|name| **name == "Output").count(), 1);
+    assert_eq!(names.iter().filter(|name| **name == "Output").count(), 2);
     assert_eq!(app.session.project.beat(track).unwrap().subtracks.len(), 1);
     assert!(app.error.is_none());
 }
@@ -124,8 +124,22 @@ fn editor_without_active_clip_keeps_subtracks_and_does_not_edit_another_pattern(
     let before = app.session.project.clone();
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Create beat pattern")));
-    assert!(app.beat_ui.steps.is_empty());
+    assert!(!app.beat_ui.steps.is_empty());
     assert!(app.beat_ui.headers.contains_key(&row));
+    let step = app
+        .beat_ui
+        .steps
+        .values()
+        .find(|rect| {
+            rect.left() >= app.midi_editor.content.ruler.left()
+                && rect.right() <= app.midi_editor.content.ruler.right()
+        })
+        .unwrap()
+        .center();
+    app.dirty = false;
+    click(&mut app, &ctx, step);
+    assert_eq!(app.selected_clip, None);
+    assert!(!app.dirty);
     assert_eq!(app.session.project, before);
 }
 #[test]
@@ -420,6 +434,9 @@ fn component_catalog_targets_local_provider_lanes_and_fixed_output_across_frames
 #[test]
 fn catalog_drag_into_expanded_subtrack_reuses_release_only_component_placement() {
     let (mut app, ctx, _, row, _) = setup();
+    let frame = |app: &mut DawUi, ctx: &egui::Context, events| {
+        frame_shapes(app, ctx, events, Vec2::new(1600.0, 1600.0));
+    };
     app.view_mode = ViewMode::Instrument;
     app.instrument_catalog_visible = true;
     app.instrument_catalog.expand_folders();
@@ -636,25 +653,89 @@ fn instrument_subtrack_disclosure_groups_indented_children_without_editing_audio
     let parent = text_left("Kick");
     for child in ["Layer 1", "LFO", "Envelope"] {
         assert!(
-            text_left(child) >= parent + crate::track_groups::panel_indent(1) - 1.0,
+            text_left(child) >= parent + crate::panels::GroupPanel::indent(1) - 1.0,
             "{child} must be nested under its subtrack"
         );
     }
     let main = &app.instrument_ui.main_bounds;
+    let (group, disclosure_bounds) = app.beat_ui.groups[&row];
+    assert_eq!(
+        group.height(),
+        MASTER_HEIGHT,
+        "subtrack headers use one compact track row"
+    );
     let settings = app.session.project.instrument_settings(row).unwrap();
     let layer = &app.midi_editor.layer_bounds[&settings.layers[0].id];
     let lfo = &app.instrument_ui.modulation_lane_bounds[&settings.lfo_lane.id];
     let envelope = &app.instrument_ui.modulation_lane_bounds[&settings.envelope_lane.id];
-    for child in [layer.label, lfo.label, envelope.label] {
+    for child in [layer.label, lfo.label, envelope.label, main.label] {
+        assert!((child.left() - group.left() - crate::panels::GroupPanel::indent(1)).abs() < 0.1);
         assert!(
-            (child.left() - main.label.left() - crate::track_groups::panel_indent(1)).abs() < 0.1
-        );
-        assert!(
-            (child.right() - main.label.right()).abs() < 0.1,
+            (child.right() - group.right()).abs() < 0.1,
             "child dividers must align with the subtrack"
         );
     }
-    let gutter_x = main.label.left() + crate::track_groups::panel_indent(1) * 0.5;
+    assert!(
+        main.row.top() >= envelope.row.bottom() - 1.0,
+        "subtrack Output follows its provider lanes"
+    );
+    assert!(
+        (main.row.top() - envelope.row.bottom()).abs() < 0.1,
+        "Envelope and Output must share a single separator: envelope={:?}, output={:?}",
+        envelope.row,
+        main.row
+    );
+    let boundary = envelope.row.bottom() - 0.5;
+    let boundary_lines: Vec<_> = shapes
+        .iter()
+        .filter_map(|s| match &s.shape {
+            egui::Shape::LineSegment { points, .. }
+                if (points[0].y - points[1].y).abs() < 0.1
+                    && (points[0].y - boundary).abs() < 2.0
+                    && points[0].x.min(points[1].x) <= main.label.left()
+                    && points[0].x.max(points[1].x) >= main.label.right() =>
+            {
+                Some(points[0].y)
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(!boundary_lines.is_empty());
+    assert!(
+        boundary_lines.iter().all(|y| (*y - boundary).abs() < 0.1),
+        "no adjacent separator strokes: {boundary_lines:?}"
+    );
+    let group_bottom = main.row.bottom() - 0.5;
+    assert!(
+        shapes.iter().any(|s| matches!(&s.shape,
+            egui::Shape::LineSegment { points, .. } if (points[0].y - group_bottom).abs() < 0.1
+                && (points[1].y - group_bottom).abs() < 0.1
+                && points[0].x.min(points[1].x) <= group.left()
+                && points[0].x.max(points[1].x) >= group.right()
+        )),
+        "the whole group must have a bottom border"
+    );
+    let gutter_x = group.left() + crate::panels::GroupPanel::indent(1) * 0.5;
+    let parent_bottom = group.bottom() - 0.5;
+    assert!(
+        !shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::LineSegment { points, .. }
+            if (points[0].y - parent_bottom).abs() < 0.1
+                && (points[1].y - parent_bottom).abs() < 0.1
+                && points[0].x.min(points[1].x) < gutter_x
+                && points[0].x.max(points[1].x) > gutter_x
+        )),
+        "an expanded subtrack must not close its child gutter with a bottom divider"
+    );
+    assert!(
+        shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::LineSegment { points, .. }
+            if (points[0].y - parent_bottom).abs() < 0.1
+                && (points[1].y - parent_bottom).abs() < 0.1
+                && (points[0].x.min(points[1].x) - layer.label.left()).abs() < 0.1
+        )),
+        "retain the separator from the child panel edge onward"
+    );
     assert!(
         !shapes.iter().any(|shape| matches!(&shape.shape,
             egui::Shape::LineSegment { points, .. }
@@ -669,9 +750,11 @@ fn instrument_subtrack_disclosure_groups_indented_children_without_editing_audio
     let output = app.beat_ui.final_output;
     let before = app.session.project.clone();
     app.dirty = false;
-    let disclosure = app.instrument_ui.main_bounds.icon.center();
+    let disclosure = disclosure_bounds.center();
     click_group(&mut app, disclosure);
     assert!(app.beat_group_collapsed(row));
+    assert!(app.instrument_ui.component_viewports.is_empty());
+    assert!(app.instrument_ui.samplers.is_empty());
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
     assert_eq!(app.beat_ui.final_output, output);
@@ -679,7 +762,134 @@ fn instrument_subtrack_disclosure_groups_indented_children_without_editing_audio
     assert!(!shapes.iter().any(
         |shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Layer 1")
     ));
+    let collapsed_bottom = app.beat_ui.groups[&row].0.bottom() - 0.5;
+    assert!(
+        shapes.iter().any(|s| matches!(&s.shape,
+            egui::Shape::LineSegment { points, .. } if (points[0].y - collapsed_bottom).abs() < 0.1
+                && (points[1].y - collapsed_bottom).abs() < 0.1
+                && points[0].x.min(points[1].x) <= group.left()
+                && points[0].x.max(points[1].x) >= group.right()
+        )),
+        "collapsed groups also retain a full bottom border"
+    );
+    assert!(
+        shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::LineSegment { points, .. }
+            if (points[0].y - parent_bottom).abs() < 0.1
+                && (points[1].y - parent_bottom).abs() < 0.1
+                && points[0].x.min(points[1].x) < gutter_x
+                && points[0].x.max(points[1].x) > gutter_x
+        )),
+        "collapsed headers have a complete bottom border"
+    );
     click_group(&mut app, disclosure);
     assert!(!app.beat_group_collapsed(row));
     assert_eq!(app.session.project, before);
+    let strip_collapse = app.instrument_ui.main_bounds.collapse.center();
+    click_group(&mut app, strip_collapse);
+    assert!(!app.beat_group_collapsed(row));
+    assert_eq!(app.beat_ui.groups[&row].0.height(), MASTER_HEIGHT);
+    assert_ne!(
+        app.session
+            .project
+            .instrument_settings(row)
+            .unwrap()
+            .main
+            .collapsed,
+        before.instrument_settings(row).unwrap().main.collapsed
+    );
+}
+
+#[test]
+fn empty_beat_track_keeps_disabled_steps_visible_after_scrolling() {
+    let (mut app, ctx, track, row, _) = setup();
+    app.session.project.tracks[0].clips.clear();
+    app.selected_clip = None;
+    app.selected_clips.clear();
+    app.midi_editor.content.fitted = false;
+    app.midi_editor.content.scroll = 10.0;
+    let before = app.session.project.clone();
+    frame(&mut app, &ctx, vec![]);
+    let ruler = app.midi_editor.content.ruler;
+    let point = app
+        .beat_ui
+        .steps
+        .values()
+        .find(|rect| rect.left() >= ruler.left() && rect.right() <= ruler.right())
+        .unwrap()
+        .center();
+    click(&mut app, &ctx, point);
+    assert!(!app.beat_ui.steps.is_empty());
+    assert_eq!(app.session.project, before);
+    assert_eq!(app.selected_clip, None);
+    let mute = app.beat_ui.mix_bounds[&row][0].center();
+    click(&mut app, &ctx, mute);
+    assert!(app.session.project.beat(track).unwrap().subtracks[0].muted);
+}
+
+#[test]
+fn subtrack_header_adds_layers_and_moves_mix_controls_with_group_collapse() {
+    let (mut app, ctx, track, row, _) = setup();
+    app.view_mode = ViewMode::Instrument;
+    let size = Vec2::new(1600.0, 1800.0);
+    let click = |app: &mut DawUi, point: Pos2| {
+        for events in [
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+            vec![button(point, false)],
+            vec![],
+        ] {
+            frame_shapes(app, &ctx, events, size);
+        }
+    };
+    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+    let group = app.beat_ui.groups[&row].0;
+    assert!(
+        !shapes
+            .iter()
+            .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Layers"))
+    );
+    assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "M" && group.contains(t.pos))));
+    let output = app.instrument_ui.main_bounds.label;
+    assert!(
+        app.beat_ui.mix_bounds[&row]
+            .iter()
+            .all(|r| output.contains_rect(*r))
+    );
+    let first = app.session.project.instrument_settings(row).unwrap().layers[0].id;
+    let add = app.beat_ui.add_layers[&row];
+    assert!(group.contains_rect(add));
+    assert!(
+        (add.right() - (group.right() - 7.0)).abs() < 0.1,
+        "Add layer must stay at the compact header's right inset"
+    );
+    click(&mut app, add.center());
+    let settings = app.session.project.instrument_settings(row).unwrap();
+    assert_eq!(settings.layers.len(), 2);
+    assert_eq!(settings.layers[0].id, first);
+    assert_eq!(settings.layers[1].name, "Layer 2");
+    let disclosure = app.beat_ui.groups[&row].1.center();
+    click(&mut app, disclosure);
+    assert!(app.beat_group_collapsed(row));
+    assert!(!app.beat_ui.add_layers.contains_key(&row));
+    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+    let group = app.beat_ui.groups[&row].0;
+    assert_eq!(
+        shapes
+            .iter()
+            .filter(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Output"))
+            .count(),
+        1
+    );
+    assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if matches!(t.galley.text(), "Layer 1" | "Layer 2" | "LFO" | "Envelope"))));
+    let mute = shapes
+        .iter()
+        .find_map(|s| match &s.shape {
+            egui::Shape::Text(t) if t.galley.text() == "M" && group.contains(t.pos) => {
+                Some(t.pos + Vec2::splat(3.0))
+            }
+            _ => None,
+        })
+        .expect("collapsed header retains its mix controls");
+    click(&mut app, mute);
+    assert!(app.session.project.beat(track).unwrap().subtracks[0].muted);
 }
