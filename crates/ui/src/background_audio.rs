@@ -95,9 +95,7 @@ impl DawUi {
             Ok(session) => {
                 // Merge derived data only. Save relocation, selection, playhead and
                 // editor history belong to the current workspace, never this worker.
-                self.session.audio = session.audio;
-                self.session.stretched_audio = session.stretched_audio;
-                self.session.sampler_audio = session.sampler_audio;
+                self.session.refresh_prepared_audio(&session);
                 for warning in session.warnings {
                     if !self.session.warnings.contains(&warning) {
                         self.session.warnings.push(warning.clone());

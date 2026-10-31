@@ -5584,6 +5584,10 @@ mod tests {
             gain_db: 0.0,
             transpose: 0,
         });
+        // This fixture represents an opened project with a verified missing source.
+        app.session
+            .prepare_project_audio(&|| false, &|_, _| {})
+            .unwrap();
         (app, track)
     }
     fn multi_clip_fixture() -> (DawUi, [Id; 3], [Id; 3]) {
@@ -9739,12 +9743,8 @@ mod tests {
                 ..Default::default()
             },
         ] {
-            let (mut app, _) = fixture();
-            let asset = app.session.project.tracks[0].clips[0].asset_id;
-            app.session.project.tracks[0].clips[0].length_frames = 48000;
-            app.session
-                .audio
-                .insert(asset, daw_media::decode_wav(&wav.0).unwrap());
+            let mut app = DawUi::default();
+            app.session.import(&wav.0, None, 0).unwrap();
             let output = folder.join(format!(
                 "export-test-{}.{}",
                 Id::new_v4(),

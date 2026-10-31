@@ -125,6 +125,8 @@ impl DawUi {
         self.prune_clip_selection();
         self.prune_track_selection();
         self.notices = self.session.warnings.clone();
+        // Guard Play and audio-dependent controls before another action in this frame.
+        self.reconcile_background_media();
         ctx.request_repaint();
     }
     pub(super) fn history_shortcuts(&mut self, ctx: &egui::Context) {

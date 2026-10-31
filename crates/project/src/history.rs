@@ -128,9 +128,12 @@ impl SessionHistory {
             .chain(self.redo.iter_mut())
         {
             if entry.project == next.project {
-                entry.session.audio = next.audio.clone();
-                entry.session.sampler_audio = next.sampler_audio.clone();
-                entry.session.stretched_audio = next.stretched_audio.clone();
+                entry.session.refresh_prepared_audio(&next);
+                for warning in &next.warnings {
+                    if !entry.session.warnings.contains(warning) {
+                        entry.session.warnings.push(warning.clone());
+                    }
+                }
                 entry.model_bytes = snapshot_model_bytes(&entry.session);
             }
         }
@@ -344,6 +347,7 @@ fn snapshot_model_bytes(session: &Session) -> u64 {
         &session.stretched_audio,
         &session.sampler_audio,
     ) + session.temporary_stems_memory_bytes()
+        + (session.missing_audio.capacity() * std::mem::size_of::<daw_core::Id>()) as u64
         + session.folder.as_ref().map_or(0, |p| p.capacity() as u64)
         + (session.warnings.capacity() * std::mem::size_of::<String>()) as u64
         + session

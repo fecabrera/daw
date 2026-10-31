@@ -2,7 +2,7 @@
 use super::*;
 impl DawUi {
     /// MIDI edits enter logical history immediately; source/transform transactions
-    /// retain their existing complete-session publication while audio is ready.
+    /// retain complete-session publication and wait for pending audio first.
     pub(super) fn prepare_audio_edit(
         &mut self,
         project: &daw_core::Project,
@@ -11,7 +11,7 @@ impl DawUi {
         if !self.session.audio_preparation_needed(project) {
             return false;
         }
-        if self.background_media.required || self.session.midi_only_preparation_change(project) {
+        if self.session.background_preparation_compatible(project) {
             self.session.project = project.clone();
             if let Some((track, clips)) = placement {
                 self.select_track(track, false);
@@ -20,6 +20,13 @@ impl DawUi {
             }
             self.changed();
             self.queue_background_media();
+            return true;
+        }
+        if self.background_media.required {
+            let message = "Wait for project audio before changing audio transforms or sources.";
+            if !self.notices.iter().any(|notice| notice == message) {
+                self.notices.push(message.into());
+            }
             return true;
         }
         let mut session = self.session.clone();

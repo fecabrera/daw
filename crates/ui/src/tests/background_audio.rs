@@ -179,3 +179,200 @@ fn export_prepares_the_pending_snapshot_instead_of_rendering_the_previous_bank()
     );
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn undo_and_redo_after_loading_time_midi_edit_restore_audible_audio() {
+    let (mut app, _file, clip) = pending_sampler();
+    pitch_edit(&mut app, clip, 60);
+    wait_audio(&mut app);
+    let folder = std::env::temp_dir().join(format!("daw-loading-history-{}", Id::new_v4()));
+    app.session.save(&folder).unwrap();
+    app.reset_background_media();
+    app.session = Session::open_document(&folder)
+        .unwrap()
+        .into_editor_session();
+    app.history = None;
+    app.ensure_history();
+    app.background_media.loading = true;
+    app.background_media.required = true;
+    pitch_edit(&mut app, clip, 64);
+    wait_audio(&mut app);
+
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    for (action, expected_pitch) in [(HistoryAction::Undo, 60), (HistoryAction::Redo, 64)] {
+        assert!(app.history_action_enabled(action, &ctx));
+        app.perform_history_action(action, &ctx);
+        assert!(!app.media_ready() || !app.session.audio.is_empty());
+        frame(&mut app, &ctx, vec![]);
+        assert!(!app.media_ready() || !app.session.audio.is_empty());
+        let revision = app.change_revision;
+        wait_audio(&mut app);
+        assert_eq!(app.change_revision, revision);
+        let asset_id = app.session.project.tracks[0].clips[0].asset_id;
+        let pattern = app
+            .session
+            .project
+            .assets
+            .iter()
+            .find(|asset| asset.id == asset_id)
+            .unwrap()
+            .midi_pattern
+            .as_ref()
+            .unwrap();
+        assert_eq!(pattern.notes[0].pitch, expected_pitch);
+        let mut output = [[0.0; 2]; 4096];
+        daw_engine::Renderer::new(app.session.plan()).render_offline(&mut output);
+        assert!(output.iter().flatten().any(|sample| *sample != 0.0));
+    }
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
+fn pending_midi_guards_audio_and_mixed_transpose_without_changing_history() {
+    let (mut app, file, midi_clip) = pending_sampler();
+    let audio_clip = app.session.import(&file.0, None, 0).unwrap();
+    app.history = None;
+    app.ensure_history();
+    pitch_edit(&mut app, midi_clip, 65);
+
+    // Running, paused and failed preparation all retain the same audio edit guard.
+    for state in 0..3 {
+        if state == 1 {
+            app.background_media.worker.as_ref().unwrap().cancel();
+            app.background_media.running = false;
+        } else if state == 2 {
+            app.finish_background_media(Err(daw_project::Error("Injected failure".into())));
+        }
+        for selection in [vec![audio_clip], vec![audio_clip, midi_clip]] {
+            let before = app.session.project.clone();
+            let revision = app.change_revision;
+            app.edit(Edit::Batch(
+                selection
+                    .into_iter()
+                    .map(|clip_id| Edit::SetClipTranspose {
+                        clip_id,
+                        transpose: 7,
+                    })
+                    .collect(),
+            ));
+            assert_eq!(app.session.project, before);
+            assert_eq!(app.change_revision, revision);
+            assert!(app.job.is_none());
+            assert!(app.background_media.required);
+        }
+    }
+
+    // Metadata edits stay available and retain the pending MIDI revision.
+    let track = &app.session.project.tracks[0];
+    let layer = track.instrument.as_ref().unwrap().layers[0].id;
+    app.edit(Edit::SetLayerEffects {
+        track_id: track.id,
+        layer_id: layer,
+        effects: vec![daw_core::EffectInstance::drive()],
+        compact: false,
+    });
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .effects
+            .len(),
+        1
+    );
+    app.edit(Edit::SetClipGain {
+        clip_id: audio_clip,
+        gain_db: -6.0,
+    });
+    app.edit(Edit::SetClipName {
+        clip_id: audio_clip,
+        name: "Renamed".into(),
+    });
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_ne!(
+        app.session.project.tracks.last().unwrap().clips[0].name,
+        "Renamed"
+    );
+    app.perform_history_action(HistoryAction::Redo, &ctx);
+    assert_eq!(
+        app.session.project.tracks.last().unwrap().clips[0].name,
+        "Renamed"
+    );
+    wait_audio(&mut app);
+
+    // Once ready, the entire audio/MIDI selection follows the staged transaction.
+    let before = app.session.project.clone();
+    app.edit(Edit::Batch(
+        [audio_clip, midi_clip]
+            .into_iter()
+            .map(|clip_id| Edit::SetClipTranspose {
+                clip_id,
+                transpose: 7,
+            })
+            .collect(),
+    ));
+    assert!(app.job.is_some());
+    assert_eq!(app.session.project, before);
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while app.job.is_some() {
+        assert!(std::time::Instant::now() < deadline);
+        app.poll();
+        std::thread::yield_now();
+    }
+    assert!(app.error.is_none(), "{:?}", app.error);
+    for clip_id in [audio_clip, midi_clip] {
+        assert_eq!(
+            app.session
+                .project
+                .tracks
+                .iter()
+                .flat_map(|track| &track.clips)
+                .find(|clip| clip.id == clip_id)
+                .unwrap()
+                .transpose,
+            7
+        );
+    }
+}
+
+#[test]
+fn pending_audio_transpose_control_is_disabled_but_gain_remains_editable() {
+    for editor in [false, true] {
+        let (mut app, file, midi_clip) = pending_sampler();
+        let audio_clip = app.session.import(&file.0, None, 0).unwrap();
+        let track = app.session.project.tracks.last().unwrap().id;
+        let ctx = context();
+        app.select_clip(audio_clip, track, false);
+        if editor {
+            app.open_clip_editor(audio_clip, track, &ctx);
+        } else {
+            app.clip_settings_visible = true;
+        }
+        pitch_edit(&mut app, midi_clip, 65);
+        app.background_media.worker.as_ref().unwrap().cancel();
+        app.background_media.running = false;
+        frame(&mut app, &ctx, vec![]);
+        for (bounds, editable) in [
+            (app.effects_bounds.clip_transpose, false),
+            (app.effects_bounds.clip_gain, true),
+        ] {
+            assert!(bounds.is_positive());
+            let point = bounds.center();
+            for _ in 0..2 {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                );
+                frame(&mut app, &ctx, vec![button(point, false)]);
+            }
+            assert_eq!(app.clip_settings_draft.is_some(), editable);
+        }
+        assert!(app.job.is_none());
+        assert!(app.background_media.required);
+    }
+}

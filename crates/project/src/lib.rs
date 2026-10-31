@@ -27,7 +27,7 @@ use daw_engine::RenderPlan;
 use daw_media::{AudioData, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec};
 pub use source_save::{SaveSnapshot, SavedSession};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     path::{Component, Path, PathBuf},
 };
@@ -86,6 +86,8 @@ pub struct Session {
     pub stretched_audio: daw_media::ClipAudioCache,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
+    // A verified missing source may render silence; an undecoded source must wait.
+    missing_audio: HashSet<Id>,
     // Clones and history share ownership until generated sources are saved or released.
     temporary_stems: Vec<std::sync::Arc<separation::TemporaryStems>>,
 }
@@ -202,6 +204,7 @@ impl Session {
             stretched_audio: HashMap::new(),
             folder: Some(folder),
             temporary_stems: Vec::new(),
+            missing_audio: HashSet::new(),
             warnings: if let Some(previous_stretch_revision) = previous_stretch_revision {
                 vec![format!(
                     "Integrated time stretch upgraded from revision {previous_stretch_revision} to {}; prepared audio rebuilt. The sound can change. Save to retain the new revision.",
@@ -282,6 +285,7 @@ impl Session {
                 continue;
             }
             if session.audio.contains_key(&asset.id) {
+                session.missing_audio.remove(&asset.id);
                 continue;
             }
             done += 1;
@@ -289,6 +293,7 @@ impl Session {
             let path = session.source_path(asset)?;
             match fs::metadata(&path) {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    session.missing_audio.insert(asset.id);
                     let clips = session
                         .project
                         .tracks
@@ -323,6 +328,7 @@ impl Session {
                     .push(format!("Source {} metadata changed", path.display()));
             }
             session.audio.insert(asset.id, data);
+            session.missing_audio.remove(&asset.id);
             if cancelled() {
                 return Err(error("Audio preparation cancelled"));
             }

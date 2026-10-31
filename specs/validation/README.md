@@ -4,6 +4,20 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Background preparation review fixes — 2026-10-30
+
+Undo/Redo now requests complete preparation when a restored loading-time snapshot lacks original PCM. Sessions retain verified missing-source IDs with prepared maps, so a missing recording still follows the warning/silence policy without repeated readiness requests. This corrects the incomplete history/readiness integration in the background-preparation implementation below. Original files, logical history and manifest format are unchanged.
+
+Pending preparation no longer bypasses compatibility checks for audio transforms. Audio and mixed-selection Transpose remain guarded while preparation is running, paused or failed. The shared Timeline/Editor field shows a disabled reason; Name, Gain, MIDI edits and compatible layer-effect edits remain available. Once ready, audio Transpose uses the existing complete-session transaction.
+
+New regression checks cover loading-time gain and MIDI edits followed by completion and Undo/Redo, audible restored rendering, verified missing-source completion, guarded single/mixed Transpose in pending/paused/failed states, unchanged history on rejection, retained metadata/effect edits, successful staging after readiness, and disabled Transpose with editable Gain in both views.
+
+The full workspace command completed 257 suites with 1,956 tests passed, 11 ignored and one export-fixture assertion failed. That fixture injected real PCM into a missing-source session; source verification now correctly retains its warning. The export test now imports its generated WAV instead. A stronger Undo regression also checks readiness immediately on return, before another UI frame; history now reconciles preparation at that boundary. The final full-UI rerun passes all 745 tests, including the stronger readiness assertion. The other 256 workspace suites pass; no test failure remains unresolved. No time-stretch/DSP implementation changed.
+
+The affected project rerun, `cargo test --offline --locked -p daw-project --test background_loading`, passes 3 tests. The final `cargo test --offline --locked -p daw-ui --lib` run passes 745 tests, including all 8 background-audio tests. `cargo fmt --all --check`, strict locked offline workspace/all-target Clippy, the CLI build and `python3 tools/check_cli.py` pass. All 130 relative file targets in changed Markdown documents exist; `git diff --check` passes. `sh tools/package_macos.sh debug` rebuilt the unsigned app using the cached ONNX Runtime. An initial packaging attempt with forced network-offline mode did not link that runtime; the normal cached build succeeds. No dependency or lockfile changes were needed.
+
+Native UI, physical audio-device/listening and Windows/Linux checks remain unrun. Automated egui/headless checks and a successful package build do not establish native acceptance. Logs use `work/major-fixes-*`.
+
 ## Saved audio caches and background preparation — 2026-10-30
 
 Desktop opening displays the validated editor before required audio finishes. MIDI edits remain visible, editable and saveable while the last complete revision can continue playing. A bounded latest-request worker rejects stale results and merges derived maps only. Pending-snapshot export, cancel/retry, history, source guards and decoded waveform previews share the project/media backend with CLI preparation. Exact saved PCM/peak caches use verified source/build/processing identities, bounded memory retention and disposable disk storage. No source recording or manifest cache payload is written.
