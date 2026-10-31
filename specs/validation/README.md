@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Silent history memory eviction — 2026-10-31
+
+Memory-driven Undo/Redo eviction no longer adds the “Removed older undo/redo entries” notice to the status area. History count/byte limits and pressure handling still apply. Unrelated source warnings remain visible. The user guide and current history/performance specifications now describe silent eviction; earlier validation entries retain their historical behavior.
+
+`cargo test --offline --locked -p daw-ui --lib` passes all **748 UI tests**, including visible frames after optional-history release, preserved unrelated notices and unchanged project data. `cargo test --offline --locked -p daw-project --lib history` passes **14 history-related regressions**. Strict workspace/all-target Clippy, formatting, changed-document file links and whitespace checks pass. The macOS debug app was rebuilt. Native UI interaction and a full workspace test rerun are not part of this display-only change.
+
 ## Live pitch restoration and pending-edit selection — 2026-10-31
 
 Released live pitch overrides now return to the complete playback schedule's pitch when a MIDI edit needs background audio. The pending editor pitch remains visible and saveable. Repeated pending edits, paused preparation and failure cannot leave the old Sampler resampling at a newer editor pitch. Restoration preserves active drag generations, and complete schedule publication retains the existing acknowledgement path. Gesture cancellation during pending preparation also restores the prepared pitch. No callback allocation, lock or source lookup was added.

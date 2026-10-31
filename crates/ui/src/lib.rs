@@ -2453,7 +2453,6 @@ impl DawUi {
         {
             history.finish_group();
         }
-        self.history_memory_notice();
         self.configure_audio_cache(
             ctx.input(|i| i.pointer.any_down())
                 || self.job.is_some()

@@ -135,7 +135,7 @@ Accounting stays on the control/worker threads. `unit-core::memory` supplies cap
 | Shared PCM, peaks and known media scratch | Existing 2 GiB `AudioReservation` admission | Shared allocations count once; cancellation/final owner release returns reservations |
 | Transport checkpoints | Profile limits: 32–128 entries and estimated 32–256 MiB; working-state allowance described above | Old entries evict first; zero slots disables optional coverage; worker shutdown releases base/cursor/checkpoints |
 | Output renderers | Estimated 512 MiB across active, candidate, queued and retired `PreparedRenderer` owners | Atomic leases follow owners until retirement. Failed admission releases the candidate/cache and reports an error; current playback continues |
-| Undo/redo | 100 undo entries and estimated 128 MiB of retained models plus audio exclusive to history | Remove oldest undo entries, then farthest redo states if required; show a visible notice. Current/pending/saved states remain intact |
+| Undo/redo | 100 undo entries and estimated 128 MiB of retained models plus audio exclusive to history | Remove oldest undo entries, then farthest redo states if required, without a UI notice. Current/pending/saved states remain intact |
 
 Before a blocking job starts, UI releases device-independent idle preparation. If shared audio usage is within 256 MiB of its limit, it also releases optional undo/redo states. This is a pressure trigger, not a guaranteed 256 MiB reservation: essential/current/audio-output owners can still retain samples. History stores per-snapshot model estimates and refreshes deduplicated audio totals on edits, not every paint. See [history policy](../editing/undo-redo.md).
 

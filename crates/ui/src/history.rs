@@ -28,18 +28,6 @@ impl HistoryAction {
 }
 
 impl DawUi {
-    pub(super) fn history_memory_notice(&mut self) {
-        if self.job.is_some() {
-            return;
-        }
-        if let Some(history) = &mut self.history {
-            let removed = history.take_memory_notice();
-            if removed > 0 {
-                self.notices.push(format!("Removed {removed} older undo/redo entries to limit memory use. The current project is unchanged."));
-                self.repaint_until = Some(std::time::Instant::now() + Duration::from_millis(250));
-            }
-        }
-    }
     pub(super) fn ensure_history(&mut self) {
         if self
             .history
@@ -182,18 +170,24 @@ impl DawUi {
 mod memory_tests {
     use super::*;
     #[test]
-    fn history_memory_notice_is_visible_once_and_does_not_change_the_project() {
+    fn history_memory_eviction_stays_silent_and_preserves_other_notices_and_the_project() {
         let mut app = DawUi::new(None);
         app.ensure_history();
         app.session.project.name = "Edit".into();
         app.record_history();
         let before = app.session.project.clone();
+        app.notices.push("Existing source warning".into());
         app.history.as_mut().unwrap().release_optional_memory();
-        app.history_memory_notice();
-        assert_eq!(app.notices.len(), 1);
-        assert!(app.notices[0].contains("undo/redo"));
-        app.history_memory_notice();
-        assert_eq!(app.notices.len(), 1);
+        assert!(!app.history.as_ref().unwrap().can_undo());
+        let ctx = egui::Context::default();
+        theme::configure(&ctx);
+        fonts::configure(&ctx);
+        icons::configure(&ctx);
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.show(ui));
+            output.textures_delta.clear();
+            assert_eq!(app.notices, ["Existing source warning"]);
+        }
         assert_eq!(app.session.project, before);
     }
 }

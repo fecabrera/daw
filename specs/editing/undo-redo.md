@@ -14,7 +14,7 @@ History retains at most 100 undo entries. Undo and Redo together also have an es
 
 After record, group completion, Undo or Redo, enforce the byte limit by removing oldest Undo entries, then the farthest Redo entries if necessary. Retain the nearest redo sequence. Cache each snapshot's metadata estimate; refresh deduplicated audio ownership on changes rather than painting. Dropping entries releases their shared owners outside the callback. Before a blocking job, shared media usage within 256 MiB of its 2 GiB limit can release all optional Undo/Redo entries. Current, pending and saved state remain intact. This does not guarantee admission when essential owners still retain the audio.
 
-The UI reports memory-driven removals once through the existing visible notice, after any blocking job closes. Count-only expiry at 100 entries retains its ordinary behavior. See [memory accounting and limits](../architecture/performance.md#estimated-memory-policy).
+Memory-driven removals do not add a UI notice. Keep unrelated warnings visible. Count-only expiry at 100 entries retains its ordinary behavior. See [memory accounting and limits](../architecture/performance.md#estimated-memory-policy).
 
 ## Publication and grouping
 
