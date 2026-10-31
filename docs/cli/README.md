@@ -18,3 +18,5 @@ Successful commands return exit code **0**. Project, media, processing or output
 The separate [time-stretch and pitch tool](timestretch.md) processes WAV files without a DAW project.
 
 Audio validation and rendering reuse the application's saved audio cache. The CLI still waits for complete preparation and uses the saved project state. Missing or invalid cache entries are rebuilt from the source recordings. See [background audio preparation](../projects/README.md#background-audio-preparation) and [cache configuration](../development/README.md#audio-cache-and-preparation-benchmark).
+
+Beat tracks are listed as **Beat**. `tracks <track-name>` also shows their subtrack instruments, trigger pitches and output mix settings. Validation, rendering and source collection support embedded beat patterns and their Sampler recordings.

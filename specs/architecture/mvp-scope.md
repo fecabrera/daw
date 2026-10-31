@@ -492,3 +492,8 @@ Instrument supports a [Sampler source](../instruments/sampler.md) in regular MID
 ## Limiter modulation — 2026-10-17
 
 Limiter Input, Release, Lookahead, and Ceiling accept shared Envelope/LFO/Macro modulation from the same MIDI instrument through the [shared API](../modulation/contract.md#limiter-destination). Reuse existing modulation controls and retain fixed latency, stereo protection, and transport behavior. See [Limiter](../effects/limiter.md#modulation--2026-10-17) and the [acceptance requirements](iteration-1.md#limiter-modulation--2026-10-17).
+
+
+## Beat MVP implementation — 2026-10-31
+
+Beat tracks, immutable embedded beat patterns, the lower Editor step grid and independently scoped Instrument subtrack groups are implemented. Both views share subtrack management and canonical output mix controls. The fixed final Output precedes parent-track processing; Mixer retains the parent only. Playback/export reuse the existing instrument and bus engine, including worker sample preparation and 5 ms lane stops. The CLI validates, inspects, collects and renders beat projects. Cross-track clip transfers are rejected and hidden grid steps are retained. These delivered behaviors supersede earlier pending beat-work statements above. See the [beat specification](../views/beat-editor.md), [model contract](../views/beat-model.md) and validation record for acceptance limits.

@@ -303,7 +303,12 @@ impl DawUi {
         if !self.view_mode.has_clip_lanes() || !self.clip_actions_available(ctx) {
             return;
         }
-        match self.session.project.add_midi_pattern(track, start) {
+        let result = if self.session.project.beat(track).is_some() {
+            self.session.project.add_beat_pattern(track, start)
+        } else {
+            self.session.project.add_midi_pattern(track, start)
+        };
+        match result {
             Ok(id) => {
                 self.select_clip(id, track, false);
                 self.changed();
@@ -317,7 +322,7 @@ impl DawUi {
         track: &daw_core::Track,
         lane: Rect,
     ) {
-        if track.kind != TrackKind::Midi
+        if !matches!(track.kind, TrackKind::Midi | TrackKind::Beat)
             || !ui.is_enabled()
             || !self.clip_actions_available(ui.ctx())
             || !ui.rect_contains_pointer(lane)
@@ -417,7 +422,9 @@ impl DawUi {
         };
         self.midi_editor.content_active = true;
         self.editor_content_header(ui, &track);
-        if track.kind == TrackKind::Midi {
+        if track.kind == TrackKind::Beat {
+            self.beat_grid(ui, &track);
+        } else if track.kind == TrackKind::Midi {
             self.piano_roll(ui, &track, &assets, previous_track);
         } else {
             self.audio_editor(ui);

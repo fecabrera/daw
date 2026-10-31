@@ -77,6 +77,7 @@ impl Session {
             id,
             name: name.clone(),
             midi_pattern: None,
+            beat_pattern: None,
             source: Source {
                 kind: "external".into(),
                 path: path.to_string_lossy().into_owned(),
@@ -103,12 +104,11 @@ impl Session {
         Ok(next)
     }
     fn assign_sampler_input(&mut self, track: Id, layer: Id, input: SamplerInput) -> Result<()> {
+        let rate = self.project.sample_rate_hz;
+        let tempo = self.project.tempo_bpm;
         let sampler = self
             .project
-            .tracks
-            .iter_mut()
-            .find(|t| t.id == track)
-            .and_then(|t| t.instrument.as_mut())
+            .instrument_settings_mut(track)
             .and_then(|i| i.layers.iter_mut().find(|l| l.id == layer))
             .and_then(|l| l.sampler.as_mut())
             .ok_or_else(|| error("Sampler no longer exists"))?;
@@ -116,11 +116,7 @@ impl Session {
         sampler.start_frame = 0;
         sampler.end_frame = input.length_frames;
         if first {
-            sampler.set_duration_from_frames(
-                input.length_frames,
-                self.project.sample_rate_hz,
-                self.project.tempo_bpm,
-            );
+            sampler.set_duration_from_frames(input.length_frames, rate, tempo);
         }
         sampler.input = Some(input);
         self.project.validate().map_err(error)
@@ -219,6 +215,31 @@ fn sampler_requests(project: &Project) -> Vec<(&SamplerSettings, Vec<u8>)> {
         notes.dedup();
         for sampler in instrument.layers.iter().filter_map(|l| l.sampler.as_ref()) {
             requests.push((sampler, notes.clone()));
+        }
+    }
+    for track in &project.tracks {
+        if let Some(beat) = &track.beat {
+            for row in &beat.subtracks {
+                let mut notes: Vec<_> = track
+                    .clips
+                    .iter()
+                    .map(|clip| {
+                        (i16::from(row.trigger_pitch) + i16::from(clip.transpose)).clamp(0, 127)
+                            as u8
+                    })
+                    .chain(std::iter::once(row.trigger_pitch))
+                    .collect();
+                notes.sort_unstable();
+                notes.dedup();
+                for sampler in row
+                    .instrument
+                    .layers
+                    .iter()
+                    .filter_map(|l| l.sampler.as_ref())
+                {
+                    requests.push((sampler, notes.clone()));
+                }
+            }
         }
     }
     requests

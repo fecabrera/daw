@@ -32,7 +32,14 @@ impl DawUi {
                     .find(|a| a.id == clip.asset_id)
                     .and_then(|a| a.midi_pattern.as_ref())
             });
-        let missing = audio.is_none() && pattern.is_none();
+        let beat = self
+            .session
+            .project
+            .assets
+            .iter()
+            .find(|a| a.id == clip.asset_id)
+            .and_then(|a| a.beat_pattern.as_ref());
+        let missing = audio.is_none() && pattern.is_none() && beat.is_none();
         let lane = painter.clip_rect();
         let colors = if missing {
             theme::ClipColors::default()
@@ -63,6 +70,35 @@ impl DawUi {
                 egui::FontId::proportional(13.0),
                 theme::palette(painter.ctx()).warning,
             );
+        } else if let Some(beat) = beat {
+            // Reuse exact trim, repeat, stretch and visible-repetition mapping from MIDI painting.
+            let rows: Vec<_> = self
+                .session
+                .project
+                .tracks
+                .iter()
+                .filter_map(|t| t.beat.as_ref())
+                .find(|b| b.id == beat.instrument_id)
+                .map(|b| b.subtracks.iter().map(|r| r.id).collect())
+                .unwrap_or_default();
+            let pattern = MidiPattern {
+                length_ticks: beat.pattern.length_ticks(),
+                notes: beat
+                    .pattern
+                    .visible_steps()
+                    .filter_map(|s| {
+                        let row = rows.iter().position(|id| *id == s.subtrack_id)?;
+                        Some(daw_core::MidiNote {
+                            id: s.id,
+                            start_tick: s.start_tick,
+                            length_ticks: beat.pattern.resolution.step_ticks(),
+                            pitch: 60 + (row % 60) as u8,
+                            velocity: s.velocity,
+                        })
+                    })
+                    .collect(),
+            };
+            self.paint_midi_notes(&clip_painter, block, clip, &pattern, colors.waveform);
         } else if let Some(pattern) = pattern {
             self.paint_midi_notes(&clip_painter, block, clip, pattern, colors.waveform);
         } else if let Some(audio) = audio {

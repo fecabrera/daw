@@ -51,7 +51,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Chord catalog](editing/chords.md).
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).
 - [Instrument and Editor project track browser](views/instrument-tracks.md).
-- [Beat editor design](views/beat-editor.md), pending implementation.
+- [Beat editor design](views/beat-editor.md): implemented MVP and native acceptance criteria.
+- [Beat model and rendering](views/beat-model.md): versioned embedded patterns, scoped instruments, retained hidden hits, rejected cross-track destinations and shared rendering.
 - [Beat tracks and editor plan](views/beat-tracks-plan.md): shared subtrack controls, step rows, independent Instrument groups with LFO/Envelope sublanes, creation menus and staged delivery.
 
 ## Effects

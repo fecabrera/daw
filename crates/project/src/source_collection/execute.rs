@@ -595,12 +595,7 @@ fn saved_reference_paths(plan: &SourceCollectionPlan, root: &Path) -> Result<BTr
     original.project = project;
     original.folder = Some(root.to_owned());
     let mut paths = BTreeSet::new();
-    for asset in original
-        .project
-        .assets
-        .iter()
-        .filter(|a| a.midi_pattern.is_none())
-    {
+    for asset in original.project.assets.iter().filter(|a| a.is_audio()) {
         let path = original.source_path(asset)?;
         let mut existing = path.as_path();
         let mut missing = Vec::new();

@@ -20,6 +20,7 @@ struct NoteEvent {
 struct PatternClip {
     clip: Clip,
     events: Vec<NoteEvent>,
+    stops: Vec<u64>,
     note_states: Vec<super::modulation::NoteState>,
     slot_starts: Vec<Vec<usize>>,
     pitches: Vec<NotePitch>,
@@ -451,6 +452,7 @@ fn clip_pitch(pitch: u8, transpose: i8) -> u8 {
 
 #[derive(Clone)]
 pub(crate) struct MidiTrackRuntime {
+    beat_stopped: bool,
     // Regular buses follow canonical layer order; Main is always the final bus.
     layer_effects: Vec<super::layer_effects::LayerEffects>,
     layer_samples: Vec<[f32; 2]>,
@@ -487,6 +489,7 @@ impl MidiTrackRuntime {
                     c.clip.name.capacity() as u64
                         + vec_bytes(&c.pitches)
                         + vec_bytes(&c.events)
+                        + vec_bytes(&c.stops)
                         + vec_bytes(&c.note_states)
                         + vec_bytes(&c.slot_starts)
                         + c.slot_starts.iter().map(vec_bytes).sum::<u64>()
@@ -544,13 +547,25 @@ impl MidiTrackRuntime {
             &std::collections::HashMap::new(),
         )
     }
+    #[cfg(test)]
     pub fn with_audio(
         project: &Project,
         track: &Track,
         audio: &std::collections::HashMap<Id, daw_media::AudioData>,
         sampler_audio: &std::collections::HashMap<Id, daw_media::PreparedSampler>,
     ) -> Option<Self> {
-        if track.kind != TrackKind::Midi {
+        Self::with_beat_audio(project, track, audio, sampler_audio, None)
+    }
+    pub fn with_beat_audio(
+        project: &Project,
+        track: &Track,
+        audio: &std::collections::HashMap<Id, daw_media::AudioData>,
+        sampler_audio: &std::collections::HashMap<Id, daw_media::PreparedSampler>,
+        beat: Option<&super::BeatVoicePlan>,
+    ) -> Option<Self> {
+        if track.kind != TrackKind::Midi
+            && !(track.kind == TrackKind::Group && track.instrument.is_some())
+        {
             return None;
         }
         let instrument = track.instrument.as_ref()?;
@@ -609,10 +624,14 @@ impl MidiTrackRuntime {
                     let end = project
                         .midi_frame(note.start_tick + note.length_ticks)
                         .max(start + 1);
-                    let slot = free_at
-                        .iter()
-                        .position(|until| *until <= start)
-                        .unwrap_or(free_at.len());
+                    let slot = if beat.is_some() {
+                        0
+                    } else {
+                        free_at
+                            .iter()
+                            .position(|until| *until <= start)
+                            .unwrap_or(free_at.len())
+                    };
                     // Reserve the supported release range so live release edits never
                     // change slot assignments, steal tails, or allocate in the callback.
                     let release_frames = (f64::from(daw_core::MAX_ENVELOPE_TIME_MS)
@@ -689,6 +708,12 @@ impl MidiTrackRuntime {
                     .collect();
                 Some(PatternClip {
                     clip: clip.clone(),
+                    stops: beat
+                        .and_then(|b| b.stops.get(&clip.asset_id))
+                        .into_iter()
+                        .flatten()
+                        .map(|tick| project.midi_frame(*tick))
+                        .collect(),
                     pitches,
                     events,
                     note_states,
@@ -736,6 +761,10 @@ impl MidiTrackRuntime {
             if let Some(asset) = project.assets.iter().find(|a| a.id == clip.asset_id)
                 && let Some(pattern) = &asset.midi_pattern
             {
+                if let Some(stops) = beat.and_then(|b| b.stops.get(&clip.asset_id)) {
+                    stops.hash(&mut hash);
+                }
+                beat.is_some().hash(&mut hash);
                 pattern.length_ticks.hash(&mut hash);
                 let mut notes: Vec<_> = pattern.notes.iter().collect();
                 notes.sort_by_key(|n| (n.start_tick, n.id));
@@ -770,6 +799,7 @@ impl MidiTrackRuntime {
         let parallel_latency =
             super::layer_effects::parallel_latency(instrument, project.sample_rate_hz);
         Some(Self {
+            beat_stopped: false,
             layer_effects: layers
                 .iter()
                 .map(|l| {
@@ -1445,6 +1475,7 @@ impl MidiTrackRuntime {
     }
     pub fn reset(&mut self) {
         self.shared.reset();
+        self.beat_stopped = false;
         for bus in &mut self.layer_effects {
             bus.reset();
         }
@@ -1619,6 +1650,7 @@ impl MidiTrackRuntime {
             let restarted = self.last_clip != Some(clip.id)
                 || self.last_source.is_none_or(|last| source < last);
             if restarted {
+                self.beat_stopped = false;
                 self.next_event = prepared.events.partition_point(|e| e.frame <= source);
                 let state = self
                     .next_event
@@ -1659,6 +1691,7 @@ impl MidiTrackRuntime {
                         .event(event.on.is_some(), event.on.map(|_| event.duration_frames));
                     let voice = &mut self.voices[event.slot];
                     if let Some((pitch, velocity)) = event.on {
+                        self.beat_stopped = false;
                         voice.note_on(
                             event.note,
                             clip_pitch(pitch, clip.transpose),
@@ -1682,12 +1715,39 @@ impl MidiTrackRuntime {
             }
             self.last_clip = Some(clip.id);
             self.last_source = Some(source);
-            let fade = super::sample_fade(
-                clip,
-                frame - clip.start_frame,
-                position,
-                self.sample_rate_hz,
-            );
+            let mut stop_gain = 1.0;
+            if let Some(stop) = prepared
+                .stops
+                .partition_point(|f| *f <= source)
+                .checked_sub(1)
+                .map(|i| prepared.stops[i])
+            {
+                let latest_note = prepared.slot_starts.first().and_then(|starts| {
+                    starts
+                        .partition_point(|i| prepared.events[*i].frame <= source)
+                        .checked_sub(1)
+                        .map(|i| prepared.events[starts[i]].frame)
+                });
+                if latest_note.is_none_or(|note| stop >= note) {
+                    let age = position.saturating_sub(output_frame(clip, stop));
+                    let fade_frames = u64::from((self.sample_rate_hz / 200).max(1));
+                    stop_gain = 1.0 - (age.min(fade_frames) as f32 / fade_frames as f32);
+                    if age >= fade_frames && !self.beat_stopped {
+                        for voice in &mut self.voices {
+                            voice.reset();
+                        }
+                        self.shared.end();
+                        self.beat_stopped = true;
+                    }
+                }
+            }
+            let fade = stop_gain
+                * super::sample_fade(
+                    clip,
+                    frame - clip.start_frame,
+                    position,
+                    self.sample_rate_hz,
+                );
             self.voice_sample(frame, loop_region, fade)
         } else {
             if self.last_clip.take().is_some() {

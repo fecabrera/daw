@@ -143,6 +143,16 @@ impl Worker {
                     };
                     let (mut renderer, bindings, transport, anchor) = match plan {
                         Request::Warm(plan) => {
+                            let plan = if plan
+                                .project
+                                .tracks
+                                .iter()
+                                .any(|t| t.kind == daw_core::TrackKind::Beat)
+                            {
+                                Arc::new((*plan).clone().prepare_beats())
+                            } else {
+                                plan
+                            };
                             if cached_plan
                                 .as_ref()
                                 .is_none_or(|p| !p.same_processing_plan(&plan))
@@ -158,6 +168,16 @@ impl Worker {
                             continue;
                         }
                         Request::Plan(plan, transport, requested_at) => {
+                            let plan = if plan
+                                .project
+                                .tracks
+                                .iter()
+                                .any(|t| t.kind == daw_core::TrackKind::Beat)
+                            {
+                                Arc::new((*plan).clone().prepare_beats())
+                            } else {
+                                plan
+                            };
                             if cached_plan.as_ref().is_none_or(|p| {
                                 !Arc::ptr_eq(p, &plan) && !p.same_processing_plan(&plan)
                             }) {
@@ -448,6 +468,7 @@ mod tests {
             project.master.gain_db = -(gain as f32);
             revision = worker.submit(
                 RenderPlan {
+                    beat_tracks: Default::default(),
                     project: project.clone(),
                     audio: Default::default(),
                     sampler_audio: Default::default(),

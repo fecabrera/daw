@@ -52,12 +52,18 @@ impl Project {
                 .find(|t| t.id == id)
                 .map(|t| (t.effects.as_slice(), t.effects_compact)),
             EffectChainTarget::Layer { track, layer } => {
-                let i = self
+                if let Some(beat) = self.beat(track).filter(|b| b.output.id == layer) {
+                    return Some((&beat.output.effects, beat.output.collapsed));
+                }
+                if let Some(beat) = self
                     .tracks
                     .iter()
-                    .find(|t| t.id == track)?
-                    .instrument
-                    .as_ref()?;
+                    .filter_map(|t| t.beat.as_ref())
+                    .find(|b| b.output.id == track && layer == track)
+                {
+                    return Some((&beat.output.effects, beat.output.collapsed));
+                }
+                let i = self.instrument_settings(track)?;
                 if i.main.id == layer {
                     Some((&i.main.effects, i.main.collapsed))
                 } else {
@@ -80,11 +86,33 @@ impl Project {
         let EffectChainTarget::Layer { track, layer } = destination else {
             return Ok(transfer);
         };
+        if self.instrument_settings(track).is_none()
+            && let Some(mut settings) = self.instrument_snapshot(track)
+        {
+            let mut next = self.edited(transfer.edit.clone())?;
+            settings.main = next.instrument_snapshot(track).unwrap().main;
+            let selected:Vec<_>=settings.main.visible_units().into_iter().filter(|u|matches!(u,InstrumentComponent::Effect(id) if transfer.selected.contains(id))).collect();
+            settings
+                .main
+                .component_order
+                .retain(|u| !selected.contains(u));
+            let at = before
+                .and_then(|u| settings.main.component_order.iter().position(|v| *v == u))
+                .unwrap_or(settings.main.component_order.len());
+            settings.main.component_order.splice(at..at, selected);
+            next.set_instrument_settings(track, Some(settings.clone()))?;
+            next.validate()?;
+            transfer.edit = Edit::Batch(vec![
+                transfer.edit,
+                Edit::SetInstrument {
+                    track_id: track,
+                    instrument: Some(settings),
+                },
+            ]);
+            return Ok(transfer);
+        }
         let original = self
-            .tracks
-            .iter()
-            .find(|t| t.id == track)
-            .and_then(|t| t.instrument.as_ref())
+            .instrument_settings(track)
             .ok_or_else(|| Error("Instrument not found".into()))?;
         let (mut order, visible) = if layer == original.main.id {
             (
@@ -118,10 +146,7 @@ impl Project {
         let mut next = self.clone();
         next.edit(transfer.edit.clone())?;
         let instrument = next
-            .tracks
-            .iter_mut()
-            .find(|t| t.id == track)
-            .and_then(|t| t.instrument.as_mut())
+            .instrument_settings_mut(track)
             .ok_or_else(|| Error("Inline effect destination was removed".into()))?;
         if layer == instrument.main.id {
             order.retain(|u| !matches!(u,InstrumentComponent::Effect(id) if !instrument.main.effects.iter().any(|e|e.id==*id)));
@@ -176,13 +201,16 @@ impl Project {
             return false;
         }
         let instrument = match destination {
-            EffectChainTarget::Track(track) | EffectChainTarget::Layer { track, .. } => self
-                .tracks
-                .iter()
-                .find(|t| t.id == track)
-                .and_then(|t| t.instrument.as_ref()),
+            EffectChainTarget::Track(track) | EffectChainTarget::Layer { track, .. } => {
+                self.instrument_settings(track)
+            }
             EffectChainTarget::Master => None,
         };
+        let output_settings = match destination {
+            EffectChainTarget::Layer { track, .. } => self.instrument_snapshot(track),
+            _ => None,
+        };
+        let instrument = instrument.or(output_settings.as_ref());
         units.iter().enumerate().all(|(index, id)| {
             !units[..index].contains(id)
                 && original.iter().find(|e| e.id == *id).is_some_and(|effect| {

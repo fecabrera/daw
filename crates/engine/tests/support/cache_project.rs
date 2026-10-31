@@ -53,6 +53,7 @@ pub fn midi_project(rate: u32, tracks: usize, saturators: usize) -> RenderPlan {
             .unwrap();
     }
     RenderPlan {
+        beat_tracks: Default::default(),
         project,
         audio: Default::default(),
         sampler_audio: Default::default(),
@@ -81,6 +82,7 @@ pub fn add_audio(plan: &mut RenderPlan, count: usize, fx: usize, mono: bool) -> 
         id: asset,
         name: "synthetic".into(),
         midi_pattern: None,
+        beat_pattern: None,
         source: Source {
             kind: "external".into(),
             path: "synthetic.wav".into(),

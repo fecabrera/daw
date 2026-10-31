@@ -192,7 +192,9 @@ impl DawUi {
                         ui.label("No tracks");
                     }
                     for row in rows {
-                        let icon = if row.kind == TrackKind::Midi {
+                        let icon = if row.kind == TrackKind::Beat {
+                            icons::Lucide::ListMusic
+                        } else if row.kind == TrackKind::Midi {
                             icons::Lucide::KeyboardMusic
                         } else {
                             icons::Lucide::AudioLines

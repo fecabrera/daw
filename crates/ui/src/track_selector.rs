@@ -72,7 +72,10 @@ impl DawUi {
                     .project
                     .tracks
                     .iter()
-                    .filter(|t| self.view_mode != ViewMode::Instrument || t.kind == TrackKind::Midi)
+                    .filter(|t| {
+                        self.view_mode != ViewMode::Instrument
+                            || matches!(t.kind, TrackKind::Midi | TrackKind::Beat)
+                    })
                     .filter(|t| self.view_mode != ViewMode::Edit || t.kind != TrackKind::Group)
                     .map(|t| (t.id, t.name.clone()))
                     .collect();
@@ -84,7 +87,7 @@ impl DawUi {
                 }
                 .filter(|id| tracks.iter().any(|t| t.0 == *id));
                 let prompt = if self.view_mode == ViewMode::Instrument {
-                    "Select MIDI track"
+                    "Select instrument track"
                 } else {
                     "Select track"
                 };

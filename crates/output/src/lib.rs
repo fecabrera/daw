@@ -517,6 +517,7 @@ impl AudioOutput {
         preparation: Option<AudioPreparation>,
         settings: &AudioSettings,
     ) -> Result<Self, String> {
+        let plan = plan.prepare_beats();
         let project_rate_hz = plan.project.sample_rate_hz;
         let buffer_size_frames = plan.project.buffer_size_frames;
         let device = devices::output_device(settings.output_device.as_ref())?;
@@ -1310,6 +1311,7 @@ mod tests {
         };
         project.assets.push(Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id,
             name: "Test".into(),
             source: Source {
@@ -1336,6 +1338,7 @@ mod tests {
             transpose: 0,
         });
         RenderPlan {
+            beat_tracks: Default::default(),
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             project,
@@ -1601,6 +1604,7 @@ mod tests {
     #[test]
     fn track_meter_latches_stereo_and_follows_track_identity() {
         let mut plan = RenderPlan {
+            beat_tracks: Default::default(),
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             project: daw_core::Project::default(),
@@ -1634,6 +1638,7 @@ mod tests {
     fn callback_resamples_without_device_and_retires_plans() {
         for rate in [44_100, 48_000, 96_000] {
             let plan = RenderPlan {
+                beat_tracks: Default::default(),
                 sampler_audio: Default::default(),
                 stretched_audio: HashMap::new(),
                 project: daw_core::Project::default(),

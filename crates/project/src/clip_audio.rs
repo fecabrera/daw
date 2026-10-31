@@ -35,7 +35,7 @@ impl Session {
     /// Decide on the control thread; all missing DSP is built by the existing job.
     pub fn audio_preparation_needed(&self, project: &Project) -> bool {
         if project.assets.iter().any(|asset| {
-            asset.midi_pattern.is_none()
+            asset.is_audio()
                 && !self.audio.contains_key(&asset.id)
                 && !self.missing_audio.contains(&asset.id)
         }) {
@@ -75,8 +75,8 @@ impl Session {
         if !before
             .assets
             .iter()
-            .filter(|a| a.midi_pattern.is_none())
-            .eq(project.assets.iter().filter(|a| a.midi_pattern.is_none()))
+            .filter(|a| a.is_audio())
+            .eq(project.assets.iter().filter(|a| a.is_audio()))
         {
             return false;
         }
@@ -90,7 +90,7 @@ impl Session {
                         before
                             .assets
                             .iter()
-                            .any(|a| a.id == clip.asset_id && a.midi_pattern.is_none())
+                            .any(|a| a.id == clip.asset_id && a.is_audio())
                     })
                     .map(audio_mapping)
                     .eq(new
@@ -100,7 +100,7 @@ impl Session {
                             project
                                 .assets
                                 .iter()
-                                .any(|a| a.id == clip.asset_id && a.midi_pattern.is_none())
+                                .any(|a| a.id == clip.asset_id && a.is_audio())
                         })
                         .map(audio_mapping))
         })
@@ -188,6 +188,12 @@ fn track_samplers(track: &daw_core::Track) -> impl Iterator<Item = &daw_core::Sa
     track
         .instrument
         .iter()
+        .chain(
+            track
+                .beat
+                .iter()
+                .flat_map(|b| b.subtracks.iter().map(|r| &r.instrument)),
+        )
         .flat_map(|instrument| &instrument.layers)
         .filter_map(|layer| layer.sampler.as_ref())
 }

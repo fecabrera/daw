@@ -1,10 +1,11 @@
 # Features and roadmap
 
-DAW provides audio and MIDI arrangement, layered instruments, effects, mixing, and stereo export. The project format is experimental. See the [user guide](README.md) for instructions and the main [README](../README.md) for platform setup.
+DAW provides audio, MIDI and beat arrangement, layered instruments, effects, mixing, and stereo export. The project format is experimental. See the [user guide](README.md) for instructions and the main [README](../README.md) for platform setup.
 
 ## Available features
 
 - Arrange audio and MIDI clips in Timeline. Move, copy, trim, loop, and stretch clips with grid snapping.
+- Build [beat patterns](views/beat-editor.md) with independently configured subtrack instruments and shared mix controls.
 - Create MIDI patterns and edit notes in Editor's piano roll.
 - Build MIDI instruments from Oscillator, Sampler, Envelope, LFO, Amplitude, and Macro components.
 - Process tracks and Master with 3-band EQ, Drive, Bitcrusher, Saturator, Auto-filter, Compressor, OTT, Limiter, Direction Mixer, and Stereo Spread.
@@ -19,4 +20,4 @@ Normal imports reference external audio recordings. Save does not automatically 
 
 ## Planned work
 
-Planned capabilities include direct waveform editing, beat tracks and a [step editor](views/beat-editor.md) with shared subtrack controls and independent Instrument groups, effects for individual beat lanes, more effects, and custom instrument routing. These features are not available yet.
+Planned capabilities include direct waveform editing, advanced beat controls, more effects, and custom instrument routing. These features are not available yet.

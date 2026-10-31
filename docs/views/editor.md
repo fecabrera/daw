@@ -1,8 +1,10 @@
 # Editor
 
-The left toolbar provides **Tracks**, **Effects**, **Chords**, and the bottom **Effects lane** toggle. Editor has no Clip settings toolbar button; its existing track and options column stays visible. Panels start closed and remember their visibility separately from other views. Tracks, Effects and Chords share the catalog space; opening one closes the others. Use Tracks to browse audio and MIDI tracks in project order, with expandable groups and the same keyboard navigation as the [Instrument track list](instrument.md#project-tracks). Selecting a track opens its earliest clip; an empty track clears clip selection.
+The left toolbar provides **Tracks**, **Effects**, **Chords**, and the bottom **Effects lane** toggle. Editor has no Clip settings toolbar button; its existing track and options column stays visible. Panels start closed and remember their visibility separately from other views. Tracks, Effects and Chords share the catalog space; opening one closes the others. Use Tracks to browse audio, MIDI and beat tracks in project order, with expandable groups and the same keyboard navigation as the [Instrument track list](instrument.md#project-tracks). Selecting a track opens its earliest clip; an empty track clears clip selection.
 
 Select the displayed track to work with its effects. The Effects catalog and lane use the same controls as Timeline. Open Chords to browse, audition or add MIDI chords; drag them onto the track overview using its zoom and scroll.
+
+For beat tracks, the lower editor shows the [beat step grid](beat-editor.md) and shared subtrack headers.
 
 MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
 

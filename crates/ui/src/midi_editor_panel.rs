@@ -42,13 +42,18 @@ impl DawUi {
         let midi = track_id.is_some();
         let original = self.editor_midi_options();
         let mut options = original;
+        let beat = self
+            .editor_track()
+            .is_some_and(|t| t.kind == TrackKind::Beat);
         let audio = self
             .editor_track()
             .is_some_and(|t| t.kind == TrackKind::Audio);
         let title = rows::fixed(&mut child, toolbars::HEIGHT, |ui| {
             panel.header(
                 ui,
-                if audio {
+                if beat {
+                    "Beat subtracks"
+                } else if audio {
                     "Clip options"
                 } else {
                     "MIDI options"
@@ -63,7 +68,12 @@ impl DawUi {
             self.midi_editor.scale_mode_bounds = Rect::NOTHING;
             self.midi_editor.scale_snap_bounds = Rect::NOTHING;
         }
-        if audio {
+        if beat {
+            rows::advice(
+                &mut child,
+                "Edit steps and subtracks below. Configure each subtrack's sources in Instrument.",
+            );
+        } else if audio {
             let allowed = ui.is_enabled() && self.editing_enabled();
             let options_bounds = Rect::from_min_max(title.response.rect.min, rect.max);
             egui::ScrollArea::vertical()

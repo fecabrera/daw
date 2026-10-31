@@ -4,11 +4,8 @@ use super::*;
 impl DawUi {
     pub(super) fn instrument_mix_action(&mut self, action: TrackAction) {
         let Some(track) = self
-            .session
-            .project
-            .tracks
-            .iter()
-            .find(|track| Some(track.id) == self.selected_track)
+            .selected_instrument_owner()
+            .and_then(|id| self.session.project.instrument_track(id))
         else {
             return;
         };
@@ -36,6 +33,39 @@ impl DawUi {
                 return;
             }
         }
+        if let Some((parent, row)) = self
+            .session
+            .project
+            .beat_subtrack(track_id)
+            .map(|(parent, row)| (parent, row.clone()))
+        {
+            self.edit(Edit::Beat {
+                track_id: parent,
+                edit: daw_core::BeatEdit::SetMix {
+                    id: row.id,
+                    gain_db: row.instrument.main.gain_db,
+                    pan: row.instrument.main.pan,
+                    muted: if action == TrackAction::Mute {
+                        !row.muted
+                    } else {
+                        row.muted
+                    },
+                    soloed: if action == TrackAction::Solo {
+                        !row.soloed
+                    } else {
+                        row.soloed
+                    },
+                },
+            });
+            return;
+        }
+        let track_id = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.beat.as_ref().is_some_and(|b| b.output.id == track_id))
+            .map_or(track_id, |t| t.id);
         // Output and an empty layer selection address only the displayed track.
         self.edit(if action == TrackAction::Mute {
             Edit::SetTrackMuted {

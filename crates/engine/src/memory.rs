@@ -31,6 +31,7 @@ impl RenderPlan {
             track.group_collapsed = false;
         }
         a == b
+            && self.beat_tracks == other.beat_tracks
             && self.audio.len() == other.audio.len()
             && self.audio.iter().all(|(id, a)| {
                 other.audio.get(id).is_some_and(|b| {
@@ -59,12 +60,22 @@ impl RenderPlan {
     }
 
     pub fn model_bytes(&self) -> u64 {
-        prepared_model_bytes(
-            &self.project,
-            &self.audio,
-            &self.stretched_audio,
-            &self.sampler_audio,
-        )
+        map_bytes(&self.beat_tracks)
+            + self
+                .beat_tracks
+                .values()
+                .map(|b| {
+                    vec_bytes(&b.clip_gains)
+                        + map_bytes(&b.stops)
+                        + b.stops.values().map(vec_bytes).sum::<u64>()
+                })
+                .sum::<u64>()
+            + prepared_model_bytes(
+                &self.project,
+                &self.audio,
+                &self.stretched_audio,
+                &self.sampler_audio,
+            )
     }
 
     pub fn visit_audio_memory(&self, usage: &mut daw_media::AudioMemoryUsage) {
@@ -139,6 +150,7 @@ mod tests {
     #[test]
     fn checkpoint_reuse_requires_equal_processing_and_media_identity() {
         let mut a = RenderPlan {
+            beat_tracks: Default::default(),
             project: Project::default(),
             audio: Default::default(),
             stretched_audio: Default::default(),

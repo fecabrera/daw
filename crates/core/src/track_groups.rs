@@ -241,6 +241,7 @@ impl Project {
             effects: vec![],
             effects_compact: false,
             instrument: None,
+            beat: None,
             color: default_track_color(insert),
             gain_db: 0.0,
             pan: 0.0,
@@ -352,6 +353,26 @@ pub(crate) fn duplicate_track_settings(track: &Track, id: Id) -> Track {
         .filter_map(|l| l.sampler.as_mut())
     {
         s.id = Id::new_v4();
+    }
+    if let Some(beat) = &mut copy.beat {
+        beat.id = Id::new_v4();
+        let mut remap = HashMap::new();
+        for row in &mut beat.subtracks {
+            let old = row.id;
+            row.id = Id::new_v4();
+            remap.insert(old, row.id);
+            row.instrument = row.instrument.duplicate();
+        }
+        for row in &mut beat.subtracks {
+            for stop in &mut row.stops {
+                *stop = remap[stop];
+            }
+        }
+        let temporary = InstrumentSettings {
+            main: beat.output.clone(),
+            ..Default::default()
+        };
+        beat.output = temporary.duplicate().main;
     }
     let mut effect_ids = HashMap::new();
     for effect in copy

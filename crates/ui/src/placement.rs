@@ -31,6 +31,16 @@ impl DawUi {
         clip: &Clip,
         duplicate: bool,
     ) -> daw_core::Result<Id> {
+        if project
+            .assets
+            .iter()
+            .find(|a| a.id == clip.asset_id)
+            .is_some_and(|a| a.beat_pattern.is_some())
+        {
+            return Err(daw_core::Error(
+                "Beat clips cannot be transferred to another track".into(),
+            ));
+        }
         let midi = project
             .assets
             .iter()

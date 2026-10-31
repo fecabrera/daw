@@ -70,9 +70,13 @@ impl ControlPanel {
     pub(super) const WIDTH: f32 = 250.0;
 
     pub(super) fn begin(ui: &Ui, bounds: Rect) -> Self {
+        Self::with_width(ui, bounds, Self::WIDTH)
+    }
+
+    pub(super) fn with_width(ui: &Ui, bounds: Rect, width: f32) -> Self {
         let rect = Rect::from_min_max(
             bounds.min,
-            egui::pos2(bounds.left() + Self::WIDTH, bounds.bottom()),
+            egui::pos2(bounds.left() + width, bounds.bottom()),
         );
         ui.painter()
             .rect_filled(rect, 0.0, crate::theme::palette(ui.ctx()).panel);

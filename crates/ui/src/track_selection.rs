@@ -95,9 +95,10 @@ impl DawUi {
                     && ctx.dragged_id().is_none()
                     && !self.instrument_ui.has_layer_gesture()
             }
-            TrackAction::Add | TrackAction::AddMidi | TrackAction::Duplicate => {
-                !ctx.text_edit_focused() && ctx.dragged_id().is_none()
-            }
+            TrackAction::Add
+            | TrackAction::AddMidi
+            | TrackAction::AddBeat
+            | TrackAction::Duplicate => !ctx.text_edit_focused() && ctx.dragged_id().is_none(),
             TrackAction::Mute | TrackAction::Solo
                 if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument) =>
             {
@@ -125,13 +126,15 @@ impl DawUi {
                     .filter(|track| self.track_selected(track.id))
                     .count()
                     == 1)
-            && (matches!(action, TrackAction::Add | TrackAction::AddMidi)
-                || self
-                    .session
-                    .project
-                    .tracks
-                    .iter()
-                    .any(|track| self.track_selected(track.id)))
+            && (matches!(
+                action,
+                TrackAction::Add | TrackAction::AddMidi | TrackAction::AddBeat
+            ) || self
+                .session
+                .project
+                .tracks
+                .iter()
+                .any(|track| self.track_selected(track.id)))
     }
 
     pub fn perform_track_action(&mut self, action: TrackAction, ctx: &egui::Context) {
@@ -181,8 +184,13 @@ impl DawUi {
             self.duplicate_selected_tracks();
             return;
         }
-        if matches!(action, TrackAction::Add | TrackAction::AddMidi) {
-            let result = if action == TrackAction::AddMidi {
+        if matches!(
+            action,
+            TrackAction::Add | TrackAction::AddMidi | TrackAction::AddBeat
+        ) {
+            let result = if action == TrackAction::AddBeat {
+                self.session.project.add_beat_track()
+            } else if action == TrackAction::AddMidi {
                 self.session.project.add_midi_track()
             } else {
                 self.session.project.add_track()
@@ -341,7 +349,7 @@ impl DawUi {
     }
 
     fn add_track_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
-        for action in [TrackAction::Add, TrackAction::AddMidi] {
+        for action in [TrackAction::Add, TrackAction::AddMidi, TrackAction::AddBeat] {
             if ui
                 .add_enabled(
                     self.track_action_enabled(action, ui.ctx()),

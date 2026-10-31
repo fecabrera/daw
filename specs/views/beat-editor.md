@@ -2,7 +2,7 @@
 
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/views/beat-editor.md).
 
-Status: confirmed design, implementation pending. Last updated: 2026-10-31.
+Status: Beat MVP implemented across the project model, storage, renderer, CLI and both views; native platform acceptance remains open. Last updated: 2026-10-31.
 
 The beat editor is the lower editor for beat clips in Editor. It shows one step row per beat subtrack. Instrument shows each subtrack as an expandable group whose named row acts as its output layer. Its children are source layers, LFO and Envelope. One overall Output lane follows all groups. Both views share subtrack creation, single/group selection, deletion, rename, reorder, gain and pan. Mixer controls the parent beat track.
 
@@ -45,6 +45,9 @@ The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, sh
 | B31 | Each Instrument subtrack group owns independent LFO and Envelope sublanes. | Restrict additions to the matching child lane and isolate provider ownership/routes between subtracks. |
 | B32 | A subtrack's named group row is its output layer; one overall Output follows all groups. | Kick and Snare each sum/process their own source layers. Reuse their Output settings on the group rows, with no duplicate Output child; sum groups through the fixed final Output before track processing. |
 | B33 | Beat subtracks are instruments, not audio tracks or separate audio/MIDI lane types. | Add one instrument subtrack directly. Choose Sampler/Oscillator/other supported sources inside its layers; preserve the same subtrack identity when sources change. |
+| B34 | Reject beat clip moves, copies and paste between different beat tracks for now. | Preserve stable subtrack bindings; do not match rows by name or position or silently copy instruments. Same-track operations remain allowed. |
+| B35 | Retain steps hidden by a shorter or coarser grid. | Hidden steps are silent and return at their original tick and velocity when the grid includes them again. |
+| B36 | Beat and MIDI Instrument pages use the same layout shell. | Share header/Plus geometry, the left control-column fill and divider, lane toolbars and pinned Output position. Beat uses a Subtracks header; each subtrack retains its own instrument group. |
 
 Audio tracks accept effects only. MIDI tracks accept sources and effects. These shared rules and the unit architecture are defined in [Modular audio units design and decisions](../architecture/modular-audio-units.md). Beat tracks support effects on each lane and on the parent track.
 
@@ -68,7 +71,7 @@ An instrument can contain multiple reusable source units, effects, and modulator
 
 ## Accepted Beat MVP scope
 
-Accepted on 2026-10-11 through B19–B24, with navigation revised by B25. This is the initial beat pattern editor scope within Editor; implementation is pending.
+Accepted on 2026-10-11 through B19–B24, with navigation revised by B25. This is the implemented initial beat pattern editor scope within Editor.
 
 | Area | Initial behavior | Deferred work |
 | --- | --- | --- |
@@ -93,7 +96,7 @@ The provided reference shows the lane-and-step interaction. Its exact colors, co
 
 BQ02's length and resolution policy was resolved on 2026-10-11 through B14–B16. Pattern length defines the shared grid's extent; resolution defines the time between steps. Trigger duration defines how long an enabled step keeps a note or hit active. Different trigger durations do not give lanes different grid lengths or resolutions.
 
-Customizable step trigger-duration modes remain future work. The MVP sends note-off after one step; source behavior follows normal instrument settings, including Sampler One-shot/Gate, with retrigger replacement and simple lane stops. The until-next-trigger mode and user-selectable duration modes follow later. Rules for changing an existing grid and exact fade/release details remain to be specified.
+Customizable step trigger-duration modes remain future work. The MVP sends note-off after one step; source behavior follows normal instrument settings, including Sampler One-shot/Gate, with retrigger replacement and simple lane stops. The until-next-trigger mode and user-selectable duration modes follow later. Grid edits retain hidden steps under B35; stop fades use the shared 5 ms duration.
 
 Lane stops use trigger events. Audio sidechains and shared-effect sends are deferred beyond the Beat MVP.
 
@@ -101,7 +104,7 @@ Lane stops use trigger events. Audio sidechains and shared-effect sends are defe
 
 Users can connect a triggering lane to a lane that it stops. For example, connect the closed hi-hat lane to the open hi-hat lane: when a closed hi-hat step triggers, it stops the open hi-hat and plays the closed hi-hat. B17 defines the lane stop feature; B21 includes simple stop connections in the MVP.
 
-This connection uses trigger events rather than sending one lane's audio through another. Initially the target lane has at most one active voice. Stop it with a short fade. If both connected lanes trigger at the same time, the stopping lane wins: its hit plays and the target hit is suppressed. Use the shared 5 ms stop fade. Conflicting stop-link handling remains a Stage 0 decision. Selecting affected voices becomes a later question when subtrack polyphony is added.
+This connection uses trigger events rather than sending one lane's audio through another. Initially the target lane has at most one active voice. Stop it with a short fade. If both connected lanes trigger at the same time, the stopping lane wins: its hit plays and the target hit is suppressed. Use the shared 5 ms stop fade. Reject self-links, duplicate targets, missing targets and cycles. Apply mute/solo before compiling trigger intents. All remaining intents issue their stops before simultaneous hits are admitted, including intents whose hits another lane suppresses. This keeps chained stops independent of display order. Selecting affected voices becomes a later question when subtrack polyphony is added.
 
 ## Pattern sources and clip editing
 
@@ -145,11 +148,11 @@ The Beat MVP scope was accepted on 2026-10-11. Preserve the question IDs as deci
 | BQ06 | Resolved for MVP. | Editor chooses the editor by clip type; clip/subtrack context is retained between views; source replacement keeps instrument identity: B22 and B25. |
 | BQ07 | Resolved for MVP. | Lane controls, both effect levels, and serial routing: B12–B13 and B23. Advanced audio routing is deferred. |
 
-Remaining implementation details are the velocity range/default and default trigger pitch; event handling when an existing grid shrinks or changes resolution; conflicting or cyclic stop links with the shared 5 ms fade; the interaction of lane/track mute and solo; and selection fallback when the active clip or lane is removed. Shared Editor navigation, including opening gestures and no-clip/multiple-clip behavior, remains to be specified in the [clip editor model](../architecture/modular-audio-units.md#clip-editors). General MIDI-track voice behavior and gain/pan placement are resolved in the [Units MVP scope](../architecture/modular-audio-units.md#accepted-units-mvp-scope); polyphonic beat subtracks remain deferred. These details must preserve the accepted MVP behavior.
+The [shared model contract](beat-model.md) fixes velocity at 1–127, a default enabled-hit velocity of 100, trigger pitch 60, retained hidden steps, local mute/solo and acyclic stop links. Parent-track mute/solo remains in the existing track bus path. Selection fallback and exact Editor navigation remain integration work under the [clip editor model](../architecture/modular-audio-units.md#clip-editors). General MIDI-track voice behavior and gain/pan placement are resolved in the [Units MVP scope](../architecture/modular-audio-units.md#accepted-units-mvp-scope); polyphonic beat subtracks remain deferred.
 
 ## Implementation sequence
 
-Use the [beat tracks and editor plan](beat-tracks-plan.md) for Stages 0–6: contracts, shared models/storage, preparation/rendering, creation/navigation, Editor, grouped Instrument, and integrated acceptance. All stages are pending. Do not expose an incomplete public creation workflow or claim beat support in current-feature documentation.
+Use the [beat tracks and editor plan](beat-tracks-plan.md) for Stages 0–6: contracts, shared models/storage, preparation/rendering, creation/navigation, Editor, grouped Instrument, and integrated acceptance. Versioned containers and immutable embedded patterns now use Project/Asset, transactional edits, history, source collection and worker audio preparation. The engine compiles beat instruments into its existing instrument/bus runtime. Creation, Editor rows and grouped Instrument lanes are connected. Automated checks are recorded in validation; native platform acceptance remains open.
 
 ## Placement decision history
 
@@ -173,6 +176,33 @@ For both MIDI and beat pattern sources, verify that two clips can share one sour
 
 ## Decision record maintenance
 
-Keep B01–B33 as confirmed requirements and accepted choices. Add accepted design choices with a decision date and rationale. Keep proposals and open questions separate from implementation and validation results.
+Keep B01–B36 as confirmed requirements and accepted choices. B34–B35 were confirmed on 2026-10-31. Add accepted design choices with a decision date and rationale. Keep proposals and open questions separate from implementation and validation results.
 
 Related documents: [modular audio units](../architecture/modular-audio-units.md), [scope and roadmap](../architecture/mvp-scope.md), [repository guidelines](../../AGENTS.md), and [validation history](../validation/README.md).
+
+### Compact lower editor layout
+
+The lower editor uses one horizontal topbar for Add beat subtrack, Bars,
+resolution, and the shared fit/zoom controls. These controls do not occupy the
+step canvas. Subtrack lanes are 32 points high. Each header uses `[M] [S] [name] [pan] [gain]` on one row, with the
+track panel's six-point control/group gaps and four-point gap between the standard pan/gain slots. A single shared musical ruler starts
+at the step grid's left edge, after the subtrack header column. Step boundaries
+use the same project-frame transform as the ruler, including zoom and scroll.
+There is no second pattern ruler.
+
+### Subtrack group hierarchy
+
+Instrument subtracks use the shared track-group disclosure button. Groups start
+expanded. Their Layers header, source layers, LFO and Envelope lanes are nested
+with the shared one-level track-panel indent and a vertical hierarchy guide.
+Keep the control-column divider, unit bodies and lane toolbars aligned with the
+parent. Reduce the child control-column width by the indent; do not shift its
+right edge. Child row separators stop at the inset edge and do not cross the
+group gutter.
+Group expansion is UI state, separate from each output strip's collapse setting;
+it does not change project data, audio, history or dirty state. The final Output
+remains outside the groups and pinned in place.
+
+Beat patterns use the shared Timeline/Editor overview double-click creation
+gesture. Do not add a separate Create beat pattern button to the lower topbar.
+Without an active clip, retain subtrack controls and explain the existing gesture.

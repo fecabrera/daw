@@ -313,6 +313,7 @@ fn modulated_note_plan() -> RenderPlan {
         end_frame: 2400,
     };
     RenderPlan {
+        beat_tracks: Default::default(),
         project,
         audio: Default::default(),
         sampler_audio: Default::default(),

@@ -101,7 +101,7 @@ impl Session {
             }
             root.session.project.validate().map_err(error)?;
             for (asset_index, asset) in root.session.project.assets.iter().enumerate() {
-                if asset.midi_pattern.is_some() {
+                if !asset.is_audio() {
                     embedded_references = embedded_references
                         .checked_add(1)
                         .ok_or_else(|| error("Source reference count overflow"))?;
@@ -196,7 +196,7 @@ impl SourceCollectionSnapshot {
                 .project
                 .assets
                 .iter()
-                .filter(|a| a.midi_pattern.is_none())
+                .filter(|a| a.is_audio())
             {
                 match (
                     expected.session.audio.get(&asset.id),

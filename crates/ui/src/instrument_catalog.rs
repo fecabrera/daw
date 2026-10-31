@@ -287,31 +287,25 @@ impl DawUi {
             },
         );
         if let Some((track, owner)) = target
-            && let Some(settings) = self
-                .session
-                .project
-                .tracks
-                .iter()
-                .find(|t| t.id == track)
-                .and_then(|t| t.instrument.as_ref())
+            && let Some(settings) = self.session.project.instrument_snapshot(track)
         {
             for (index, response) in &output.rows {
                 let entry = ENTRIES[*index];
                 if let Some(lane) = settings.modulation_lane_kind(owner)
-                    && !entry.can_add(settings, owner)
+                    && !entry.can_add(&settings, owner)
                 {
                     response.clone().on_hover_text(format!(
                         "The {} lane accepts only {} units.",
                         lane.name(),
                         lane.name()
                     ));
-                } else if !entry.can_add(settings, owner) && !entry.source {
+                } else if !entry.can_add(&settings, owner) && !entry.source {
                     response.clone().on_hover_text(match entry.provider_lane {
                         Some(ModulationLaneKind::Lfo) => "Add LFOs to the LFO lane.",
                         Some(ModulationLaneKind::Envelope) => "Add envelopes to the Envelope lane.",
                         None => "This component is not supported by the selected lane.",
                     });
-                } else if entry.source && !entry.can_add(settings, owner) {
+                } else if entry.source && !entry.can_add(&settings, owner) {
                     response.clone().on_hover_text("A layer can contain Oscillator, Sampler, or Granulizer. Remove its source or use Replace source in the installed source header menu.");
                 }
             }
@@ -319,10 +313,7 @@ impl DawUi {
         if target.is_some_and(|(track_id, owner)| {
             self.session
                 .project
-                .tracks
-                .iter()
-                .find(|t| t.id == track_id)
-                .and_then(|t| t.instrument.as_ref())
+                .instrument_settings(track_id)
                 .is_some_and(|i| i.main.id == owner)
         }) {
             for (index, response) in &output.rows {
@@ -340,13 +331,7 @@ impl DawUi {
         {
             for (index, response) in &output.rows {
                 if let Some(start) = self.instrument_catalog.start_drag(ui, response, *index)
-                    && let Some(instrument) = self
-                        .session
-                        .project
-                        .tracks
-                        .iter()
-                        .find(|candidate| candidate.id == track)
-                        .and_then(|track| track.instrument.clone())
+                    && let Some(instrument) = self.session.project.instrument_snapshot(track)
                 {
                     self.component_drag = Some(ComponentDrag {
                         project: self.session.project.project_id,
@@ -384,14 +369,7 @@ impl DawUi {
             && (output.add_selected || output.double_clicked.is_some())
             && let Some((track_id, layer_id)) = target
         {
-            let mut settings = self
-                .session
-                .project
-                .tracks
-                .iter()
-                .find(|track| track.id == track_id)
-                .and_then(|track| track.instrument.clone())
-                .unwrap();
+            let mut settings = self.session.project.instrument_snapshot(track_id).unwrap();
             let original = settings.clone();
             let types: Vec<_> = self.instrument_catalog.selected_types();
             add_components(&mut settings, layer_id, &types);
@@ -405,9 +383,10 @@ impl DawUi {
     }
 
     fn instrument_catalog_target(&self) -> Option<(Id, Id)> {
-        let track = self.session.project.tracks.iter().find(|track| {
-            Some(track.id) == self.selected_track && track.kind == daw_core::TrackKind::Midi
-        })?;
+        let track = self
+            .session
+            .project
+            .instrument_track(self.selected_instrument_owner()?)?;
         let instrument = track.instrument.as_ref()?;
         if self.instrument_ui.track == Some(track.id)
             && let Some(owner) = self.instrument_ui.selected_layer

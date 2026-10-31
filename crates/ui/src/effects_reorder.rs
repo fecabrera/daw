@@ -61,7 +61,8 @@ impl DawUi {
                 || self.view_mode != drag.view
                 || match drag.target {
                     EffectTarget::Layer { track, .. } => {
-                        self.view_mode != ViewMode::Instrument || self.selected_track != Some(track)
+                        self.view_mode != ViewMode::Instrument
+                            || self.selected_instrument_owner() != Some(track)
                     }
                     _ => self.effects_target() != Some(drag.target),
                 }

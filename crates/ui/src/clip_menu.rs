@@ -74,6 +74,15 @@ impl DawUi {
     }
 
     fn clip_menu_label_for(&self, action: ClipMenuAction, target: Option<Id>) -> &'static str {
+        if action == ClipMenuAction::AddMidi
+            && self
+                .selected_track
+                .and_then(|id| self.session.project.beat(id))
+                .is_some()
+        {
+            return "Add beat pattern";
+        }
+
         if let Some((_, clip)) = self.menu_clip(target) {
             if action == ClipMenuAction::ToggleMuted && clip.muted {
                 return "Enable clip";
@@ -106,7 +115,11 @@ impl DawUi {
         }
         if action == ClipMenuAction::AddMidi {
             return self.session.project.tracks.iter().any(|track| {
-                Some(track.id) == self.selected_track && track.kind == daw_core::TrackKind::Midi
+                Some(track.id) == self.selected_track
+                    && matches!(
+                        track.kind,
+                        daw_core::TrackKind::Midi | daw_core::TrackKind::Beat
+                    )
             });
         }
         let Some((_, clip)) = self.menu_clip(target) else {
@@ -124,7 +137,7 @@ impl DawUi {
                         .project
                         .assets
                         .iter()
-                        .any(|asset| asset.id == clip.asset_id && asset.midi_pattern.is_none())
+                        .any(|asset| asset.id == clip.asset_id && asset.is_audio())
             }
             ClipMenuAction::Edit | ClipMenuAction::ToggleMuted | ClipMenuAction::Delete => true,
             ClipMenuAction::Import | ClipMenuAction::AddMidi => false,
@@ -206,9 +219,11 @@ impl DawUi {
                 let response = if action == ClipMenuAction::Separate {
                     let audio_in_timeline = self.view_mode == ViewMode::Timeline
                         && self.menu_clip(target).is_some_and(|(_, clip)| {
-                            self.session.project.assets.iter().any(|asset| {
-                                asset.id == clip.asset_id && asset.midi_pattern.is_none()
-                            })
+                            self.session
+                                .project
+                                .assets
+                                .iter()
+                                .any(|asset| asset.id == clip.asset_id && asset.is_audio())
                         });
                     response.on_disabled_hover_text(if audio_in_timeline {
                         self.separation_disabled_hint()

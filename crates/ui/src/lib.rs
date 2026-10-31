@@ -48,6 +48,7 @@ mod amplitude_panel;
 #[cfg(any(target_os = "windows", target_os = "linux", test))]
 mod application_menu;
 mod auto_filter_panel;
+mod beat_editor;
 mod bitcrusher_panel;
 mod catalog;
 mod chord_audition;
@@ -438,6 +439,7 @@ pub enum TrackAction {
     Ungroup,
     Add,
     AddMidi,
+    AddBeat,
     Mute,
     Solo,
     Rename,
@@ -445,9 +447,10 @@ pub enum TrackAction {
     Delete,
 }
 impl TrackAction {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Add,
         Self::AddMidi,
+        Self::AddBeat,
         Self::Rename,
         Self::Duplicate,
         Self::Group,
@@ -467,6 +470,7 @@ impl TrackAction {
             Self::Ungroup => "Ungroup tracks",
             Self::Add => "Add audio track",
             Self::AddMidi => "Add MIDI track",
+            Self::AddBeat => "Add beat track",
             Self::Mute => "Mute",
             Self::Solo => "Solo",
             Self::Rename => "Rename track",
@@ -477,7 +481,9 @@ impl TrackAction {
 
     pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
         let (modifiers, key) = match self {
-            Self::Add | Self::AddMidi | Self::Duplicate | Self::Delete => return None,
+            Self::Add | Self::AddMidi | Self::AddBeat | Self::Duplicate | Self::Delete => {
+                return None;
+            }
             Self::Group => (egui::Modifiers::COMMAND, egui::Key::G),
             Self::Ungroup => (
                 egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -746,6 +752,7 @@ pub struct DawUi {
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
     instrument_ui: instrument_panel::InstrumentUi,
+    beat_ui: beat_editor::BeatUi,
     effects_catalog: catalog::Catalog,
     chords: chords_catalog::Chords,
     instrument_catalog: catalog::Catalog,
@@ -893,6 +900,7 @@ impl Default for DawUi {
             selected_effects: HashSet::new(),
             midi_editor: Default::default(),
             instrument_ui: Default::default(),
+            beat_ui: Default::default(),
             #[cfg(test)]
             effects_bounds: Default::default(),
             #[cfg(test)]
@@ -1167,6 +1175,7 @@ impl DawUi {
                 self.saved_navigation_revision = self.navigation_revision;
                 self.midi_editor.cancel();
                 self.instrument_ui = Default::default();
+                self.beat_ui = Default::default();
                 self.instrument_catalog.clear();
                 self.component_drag = None;
                 self.effects_drag = None;
@@ -1442,7 +1451,7 @@ impl DawUi {
                     }
                     if let Some((track, layer, layers)) = layer_selection
                         && self.instrument_ui.track == Some(track)
-                        && self.selected_track == Some(track)
+                        && self.selected_instrument_owner() == Some(track)
                     {
                         self.instrument_ui.selected_layer = Some(layer);
                         self.instrument_ui.selected_layers = layers;
@@ -1562,6 +1571,7 @@ impl DawUi {
             self.scroll = 0.0;
             self.midi_editor.cancel();
             self.instrument_ui = Default::default();
+            self.beat_ui = Default::default();
             self.instrument_catalog.clear();
             self.component_drag = None;
             self.effects_drag = None;
@@ -2108,7 +2118,7 @@ impl DawUi {
                 || !self.edit_environment_available()
                 || !ui.is_enabled()
                 || ui.input(|input| !input.focused)
-                || self.instrument_ui.track != self.selected_track)
+                || self.instrument_ui.track != self.selected_instrument_owner())
         {
             self.instrument_ui.cancel();
         }
@@ -2131,19 +2141,14 @@ impl DawUi {
         {
             history.begin_group();
         }
-        if self.instrument_ui.track != self.selected_track {
+        if self.instrument_ui.track != self.selected_instrument_owner() {
             self.instrument_ui.cancel();
-            self.instrument_ui.track = self.selected_track;
+            self.instrument_ui.track = self.selected_instrument_owner();
             self.instrument_ui.selected_layers.clear();
             self.instrument_ui.selected_layer = self
-                .session
-                .project
-                .tracks
-                .iter()
-                .find(|t| Some(t.id) == self.selected_track)
-                .and_then(|t| t.instrument.as_ref())
-                .and_then(|i| i.layers.first())
-                .map(|l| l.id);
+                .selected_instrument_owner()
+                .and_then(|id| self.session.project.instrument_snapshot(id))
+                .and_then(|i| i.layers.first().map(|l| l.id).or(Some(i.main.id)));
             self.instrument_catalog.clear();
         }
         if let Some(drag) = &mut self.drag {
@@ -2578,7 +2583,8 @@ impl DawUi {
     }
 
     fn editing_enabled(&self) -> bool {
-        !self.strip_dragging
+        !self.beat_dragging()
+            && !self.strip_dragging
             && self.chords.drag.is_none()
             && self.effects_drag.is_none()
             && self.component_drag.is_none()
@@ -3899,6 +3905,7 @@ impl DawUi {
                 let (icon, label) = match track.kind {
                     daw_core::TrackKind::Audio => (icons::Lucide::AudioLines, "Audio track"),
                     daw_core::TrackKind::Midi => (icons::Lucide::KeyboardMusic, "MIDI track"),
+                    daw_core::TrackKind::Beat => (icons::Lucide::ListMusic, "Beat track"),
                     daw_core::TrackKind::Group => unreachable!(),
                 };
                 let timeline = self.view_mode == mixer::ViewMode::Timeline;
@@ -5497,6 +5504,7 @@ impl DawUi {
 mod tests {
     mod audio_editor;
     mod background_audio;
+    mod beat;
     mod chords;
     mod clip_duplication;
     mod clip_menu;
@@ -5553,6 +5561,7 @@ mod tests {
         let asset = Id::new_v4();
         app.session.project.assets.push(daw_core::Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id: asset,
             name: "Missing".into(),
             source: daw_core::Source {

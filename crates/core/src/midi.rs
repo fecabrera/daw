@@ -43,6 +43,7 @@ pub enum TrackKind {
     #[default]
     Audio,
     Midi,
+    Beat,
     Group,
 }
 
@@ -365,7 +366,7 @@ impl Project {
         for clip in self
             .tracks
             .iter_mut()
-            .filter(|t| t.kind == TrackKind::Midi)
+            .filter(|t| matches!(t.kind, TrackKind::Midi | TrackKind::Beat))
             .flat_map(|t| &mut t.clips)
         {
             let asset = self
@@ -468,6 +469,7 @@ impl Project {
                 bits_per_sample: 0,
             },
             midi_pattern: Some(pattern),
+            beat_pattern: None,
         })
     }
     pub(crate) fn replace_midi_pattern(&mut self, clip_id: Id, pattern: MidiPattern) -> Result<()> {

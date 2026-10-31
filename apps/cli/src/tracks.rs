@@ -6,6 +6,7 @@ fn kind(track: &Track) -> &'static str {
     match track.kind {
         TrackKind::Audio => "Audio",
         TrackKind::Midi => "MIDI",
+        TrackKind::Beat => "Beat",
         TrackKind::Group => "Group",
     }
 }
@@ -99,6 +100,22 @@ fn detail(text: &mut String, project: &Project, track: &Track) {
         project.sample_rate_hz
     )
     .unwrap();
+    if let Some(beat) = &track.beat {
+        writeln!(text, "Beat subtracks: {}", beat.subtracks.len()).unwrap();
+        for row in &beat.subtracks {
+            writeln!(
+                text,
+                "  {:?} ({}) · {} layers · pitch {} · {:.2} dB · pan {:.3}",
+                row.name,
+                row.id,
+                row.instrument.layers.len(),
+                row.trigger_pitch,
+                row.instrument.main.gain_db,
+                row.instrument.main.pan
+            )
+            .unwrap();
+        }
+    }
     if let Some(instrument) = &track.instrument {
         writeln!(text, "Instrument layers: {}", instrument.layers.len()).unwrap();
     }

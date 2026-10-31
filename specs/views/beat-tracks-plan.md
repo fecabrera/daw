@@ -1,10 +1,10 @@
 # Beat tracks and editor implementation plan
 
-Status: planning only; no beat-track implementation is available yet.
+Status: Stages 0–5 implemented. Stage 6 automated acceptance and guides are implemented; native platform acceptance remains open.
 
 Date: 2026-10-31.
 
-This plan extends the [Beat MVP](beat-editor.md), [source-container architecture](../architecture/modular-audio-units.md#one-source-container-per-track), and [shared modulation contract](../modulation/contract.md). The current four views remain Timeline, Instrument, Editor, and Mixer. The placement decisions below supersede the older Units-view plan and the historical MIDI-only restriction for Instrument.
+This plan extends the [Beat MVP](beat-editor.md), [source-container architecture](../architecture/modular-audio-units.md#one-source-container-per-track), and [shared modulation contract](../modulation/contract.md). The [shared model contract](beat-model.md) records implemented foundations and remaining integration. The current four views remain Timeline, Instrument, Editor, and Mixer. The placement decisions below supersede the older Units-view plan and the historical MIDI-only restriction for Instrument.
 
 ## Confirmed behavior
 
@@ -17,8 +17,9 @@ This plan extends the [Beat MVP](beat-editor.md), [source-container architecture
 - Mixer controls the parent beat track. Beat subtracks do not become extra Mixer strips or ordinary children in the project track browser.
 - Every beat subtrack is an instrument, with source units chosen inside its layers. There are no audio/MIDI subtrack types or type chooser. Sampler, Oscillator and other supported sources use the existing instrument model.
 - Preserve step/velocity controls, one fixed trigger pitch per subtrack, one active voice per subtrack, the shared pattern grid, lane-stop links, immutable pattern sources and serial routing.
+- Reject cross-beat-track clip transfers for now. Retain hidden steps when pattern length shrinks or resolution becomes coarser; hidden steps remain silent and return unchanged when visible again.
 
-The attached menu images establish where the new track action belongs. The first attachment shows step-sequencer rows; the fourth shows an Add track dropdown. Exact lower-editor row styling remains to be confirmed because the request names the fourth image as its row reference. This does not block the model, commands, group structure, or shared-control plan.
+The attached images establish creation placement and step-sequencer interaction. Rows reuse the current track/layer name and mix controls, shared selection borders and lane toolbars.
 
 ## View composition
 
@@ -63,9 +64,9 @@ Use one subtrack command/selection model for both views. Store a primary subtrac
 - Reordering retains subtrack, provider, unit and event identities, assigned sources, steps, routes, settings and compatible runtime state. It changes no step timing. Never address a source or step row by its display index.
 - Gain and pan in both views bind to one canonical subtrack bus control. Reuse the track/layer knob definitions, units, bounds, reset, sensitivity, smoothing and keyboard handling. These are the named group's output-layer controls. Do not apply another equivalent gain/pan stage beneath that group.
 - Deleting a group is one atomic edit. Remove its processing configuration and affected owned routes/stop links, preserve survivors, and choose a deterministic neighboring primary selection. Deleting the final subtrack leaves an empty beat instrument with an enabled Add action.
-- View switching preserves the selected subtracks and active clip. A deleted subtrack is pruned from selection immediately; a worker cannot restore it. If no clip is active, show the subtrack controls with an unavailable step grid and a create/select-pattern action. Do not silently edit a different clip.
+- View switching preserves the selected subtracks and active clip. A deleted subtrack is pruned from selection immediately; a worker cannot restore it. If no clip is active, show the subtrack controls with an unavailable step grid and advice to select a clip or double-click empty track-overview space. Do not silently edit a different clip.
 
-Add beat subtrack appears in both views and creates a normal empty instrument group with its initial source layer, local LFO/Envelope lanes and named output. It does not ask for an audio/MIDI type. Choose source units through the shared component catalog or source-replacement action. Freeze naming and insertion defaults in Stage 0. Keep the ordinary project-track Add menu separate from this command.
+Add beat subtrack appears in both views and creates a normal empty instrument group with its initial source layer, local LFO/Envelope lanes and named output. It does not ask for an audio/MIDI type. Choose source units through the shared component catalog or source-replacement action. New subtracks append with the first available `Subtrack N` name. Keep the ordinary project-track Add menu separate from this command.
 
 ## Ownership and reusable code
 
@@ -95,13 +96,15 @@ The parent beat track owns one beat instrument. That container owns the ordered 
 
 Pattern/step or grid edits create a new asset for the edited clip. Other clips retain their original pattern. Subtrack rename, mix, processing and visual order edits change track-owned configuration and therefore apply to that track's clips; they do not clone or rewrite every pattern. Group expansion and selection are UI/presentation state, not step content.
 
-Provider discovery and route validation must include the containing subtrack scope. A Kick LFO must not appear as the Snare LFO merely because both are named LFO 1. Per-note envelopes follow the subtrack's own triggers; shared envelopes/LFOs advance once for that subtrack's context. Move/rename/reorder must not reconnect routes by index. Duplication creates fresh owned identities and remaps local routes and stop links atomically.
+Provider discovery and route validation must include the containing subtrack scope. A Kick LFO must not appear as the Snare LFO merely because both are named LFO 1. Per-note envelopes follow the subtrack's own triggers; shared envelopes/LFOs advance once for that subtrack's context. Move/rename/reorder must not reconnect routes by index. Track duplication creates fresh owned identities and remaps local routes and stop links atomically. As with other track types, it copies processing settings without clips; it does not transfer existing pattern bindings to the new track.
 
 Each subtrack initially has one active voice. Each enabled step sends note-on and note-off one step later. Retrigger replaces the active voice. Source trigger modes, envelopes and Amplitude determine audible duration, including Sampler One-shot/Gate; do not add duration rules based on a subtrack type. Reuse the shared 5 ms ramps/fades and unit lifecycle at every supported rate. Within each subtrack, reuse the existing source-layer mixing and alignment, then process that group's output effects and canonical gain/pan. Align group output latency before summing into the overall Output, then use the parent track's existing effects and gain/pan. Group output, overall Output and track controls each apply at their own level exactly once. Parent/group/Master routing, mute/solo precedence and live/export/seek behavior remain shared.
 
 Required source/pitch preparation runs on workers and uses saved caches. No source decoding, bank construction, allocation, locks or file access belongs on a step trigger or the callback. Reuse editor/prepared revisions for pattern edits where safe; source/configuration transactions retain their existing atomic failure behavior. Optional warming must yield to required work.
 
 ## Stages and exit gates
+
+The checklist below records the delivery sequence. The current saved schema, frozen decisions and implemented behavior are in the [model contract](beat-model.md). Native acceptance remains open; no additional feature stage is pending.
 
 | Stage | Deliverable | Exit gate |
 | --- | --- | --- |

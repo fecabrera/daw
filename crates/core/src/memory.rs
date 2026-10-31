@@ -17,6 +17,9 @@ impl Project {
                         + a.source.path_kind.capacity() as u64
                         + a.source_metadata.sample_format.capacity() as u64
                         + a.midi_pattern.as_ref().map_or(0, |p| vec_bytes(&p.notes))
+                        + a.beat_pattern
+                            .as_ref()
+                            .map_or(0, |s| s.pattern.heap_bytes())
                 })
                 .sum::<u64>()
             + vec_bytes(&self.tracks)
@@ -32,6 +35,9 @@ impl Project {
                             .sum::<u64>()
                         + effect_settings_bytes(&t.effects)
                         + t.instrument.as_ref().map_or(0, |i| i.heap_bytes())
+                        + t.beat.as_ref().map_or(0, |b| {
+                            std::mem::size_of::<crate::BeatInstrument>() as u64 + b.heap_bytes()
+                        })
                 })
                 .sum::<u64>()
     }

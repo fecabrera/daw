@@ -31,15 +31,16 @@ impl DawUi {
                 || (!self.instrument_catalog_visible
                     && matches!(drag.source, ComponentDragSource::Catalog { .. }))
                 || self.session.project.project_id != drag.project
-                || self.selected_track != Some(drag.track)
+                || self.selected_instrument_owner() != Some(drag.track)
                 || !self.effects_editing_enabled(ui)
                 || self.effects_drag.is_some()
                 || drag::cancelled(ui)
-                || !self.session.project.tracks.iter().any(|track| {
-                    track.id == drag.track
-                        && track.kind == daw_core::TrackKind::Midi
-                        && track.instrument.as_ref() == Some(&drag.instrument)
-                })
+                || self
+                    .session
+                    .project
+                    .instrument_snapshot(drag.track)
+                    .as_ref()
+                    != Some(&drag.instrument)
         });
         if invalid {
             if self.view_mode == ViewMode::Instrument
@@ -370,14 +371,7 @@ impl DawUi {
         else {
             return;
         };
-        let Some(instrument) = self
-            .session
-            .project
-            .tracks
-            .iter()
-            .find(|t| t.id == track)
-            .and_then(|t| t.instrument.clone())
-        else {
+        let Some(instrument) = self.session.project.instrument_snapshot(track) else {
             return;
         };
         let components = if matches!(component, daw_core::InstrumentComponent::Oscillator(_)) {

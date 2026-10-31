@@ -73,7 +73,7 @@ impl DawUi {
                         .project
                         .assets
                         .iter()
-                        .any(|asset| asset.id == *id && asset.midi_pattern.is_none())
+                        .any(|asset| asset.id == *id && asset.is_audio())
                 }));
         }
         let result = self

@@ -438,6 +438,7 @@ mod tests {
         let asset = Id::new_v4();
         project.assets.push(Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id: asset,
             name: "source.wav".into(),
             source: Source {

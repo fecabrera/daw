@@ -58,11 +58,24 @@ impl DawUi {
             kind,
             shared_sources,
         } = row;
+        let beat_row = if kind.is_none() {
+            self.session
+                .project
+                .beat_subtrack(track)
+                .map(|(parent, row)| (parent, row.clone()))
+        } else {
+            None
+        };
         let title = kind.map_or(
             InstrumentBusSettings::DISPLAY_NAME,
             daw_core::ModulationLaneKind::name,
         );
         let output = kind.is_none();
+        let beat_output = self.session.project.tracks.iter().any(|t| {
+            t.beat
+                .as_ref()
+                .is_some_and(|b| b.output.id == track && b.output.id == bus.id)
+        });
         let compact = bus.collapsed;
         let height = panels::unit_height(compact);
         let mut child = ui.new_child(
@@ -78,7 +91,8 @@ impl DawUi {
         );
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         // Main must keep its own Macro editor enabled while it has keyboard focus.
-        let enabled = self.component_drag.as_ref().is_none_or(|d| !d.active)
+        let enabled = !self.beat_dragging()
+            && self.component_drag.as_ref().is_none_or(|d| !d.active)
             && !self.instrument_ui.dragging()
             && (!self.instrument_ui.editing_name()
                 || self
@@ -117,37 +131,53 @@ impl DawUi {
                     ui, toolbar, &mut bus.collapsed,
                     !self.instrument_ui.has_layer_gesture() && !self.instrument_ui.editing_name()
                         && self.editing_enabled() && ui.input(|input| input.focused),
-                    if output {[icons::Lucide::ArrowUpFromLine, icons::Lucide::ArrowDownFromLine]} else {[icons::Lucide::ArrowDownFromLine,icons::Lucide::ArrowUpFromLine]},
+                    if output && beat_row.is_none() {[icons::Lucide::ArrowUpFromLine, icons::Lucide::ArrowDownFromLine]} else {[icons::Lucide::ArrowDownFromLine,icons::Lucide::ArrowUpFromLine]},
                     [if output {"Expand Output"} else {"Expand modulation lane"}, if output {"Collapse Output"} else {"Collapse modulation lane"}],
                 );
                 if collapse.clicked() { ui.ctx().request_repaint(); }
+                let child_indent = if kind.is_some() && self.session.project.beat_subtrack(track).is_some() { track_groups::panel_indent(1) } else { 0.0 };
                 let (label, response) =
-                    ui.allocate_exact_size(Vec2::new(TRACK_WIDTH, height), Sense::click());
+                    ui.allocate_exact_size(Vec2::new(TRACK_WIDTH - child_indent, height), Sense::click());
                 ui.painter()
                     .rect_filled(label, 0.0, theme::palette(ui.ctx()).panel);
+                let header_rect = label.shrink(7.0);
                 let mut header = ui.new_child(
                     egui::UiBuilder::new()
-                        .max_rect(label.shrink(7.0))
+                        .max_rect(header_rect)
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
                 header.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                 if output {
-                let levels = self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)).map_or([(0.0, false); 2], |m| m.levels());
+                let levels = self.output.as_ref().and_then(|o| if beat_output {o.track_meter(bus.id)} else {o.layer_meter(track, bus.id)}).map_or([(0.0, false); 2], |m| m.levels());
                 let cleared = meters::stereo_panel(&mut header, ROW_HEIGHT - 14.0, levels, |header| {
                 rows::centered(header, toolbars::CONTROL_HEIGHT, |ui| {
-                    let icon = icons::header_icon_with_rotation(ui, icons::Lucide::Merge, Sense::hover(), std::f32::consts::FRAC_PI_2).on_hover_text("Instrument output");
-                    icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));
-                    let name = ui.label(egui::RichText::new(InstrumentBusSettings::DISPLAY_NAME).size(rows::NAME_FONT_SIZE));
+                    let icon = if beat_row.is_some() {
+                        let collapsed = self.beat_group_collapsed(track);
+                        let response = icons::disclosure_button(ui, !collapsed,
+                            if collapsed { "Expand subtrack" } else { "Collapse subtrack" },
+                            enabled, None, icons::HEADER_ICON_WIDTH);
+                        if response.clicked() { self.toggle_beat_group(track); ui.ctx().request_repaint(); }
+                        response
+                    } else {
+                        let icon = icons::header_icon_with_rotation(ui, icons::Lucide::Merge, Sense::hover(), std::f32::consts::FRAC_PI_2).on_hover_text("Instrument output");
+                        icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));
+                        icon
+                    };
+                    let name = if let Some((parent,row)) = &beat_row { self.beat_name(ui,*parent,row) } else { ui.label(egui::RichText::new(InstrumentBusSettings::DISPLAY_NAME).size(rows::NAME_FONT_SIZE)) };
                     #[cfg(test)] { bounds.icon = icon.rect; bounds.name = name.rect; }
-                    #[cfg(not(test))] let _ = name;
+                    #[cfg(not(test))] let _ = (icon, name);
                 });
+                if let Some((parent,row)) = &beat_row {
+                    self.beat_mix(header,*parent,row,bus);
+                } else {
                 let gain = rows::centered(header, knobs::SIZE, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| knobs::header_gain(ui, &mut bus.gain_db)).inner
                 }).inner;
                 #[cfg(test)] { bounds.mix = [gain.rect]; }
                 #[cfg(not(test))] let _ = gain;
+                }
                 });
-                meters::reset_on_click(ui, self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)), cleared);
+                meters::reset_on_click(ui, self.output.as_ref().and_then(|o| if beat_output {o.track_meter(bus.id)} else {o.layer_meter(track, bus.id)}), cleared);
                 } else {
                     rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
                         let icon=icons::header_icon(ui, icons::Lucide::Activity, Sense::hover());
@@ -156,6 +186,7 @@ impl DawUi {
                         #[cfg(not(test))] let _=(icon,name);
                     });
                 }
+                if response.clicked() && let Some((_,row))=&beat_row {self.beat_select(ui,row.id,label,response.id);}
                 response.widget_info(|| {
                     egui::WidgetInfo::selected(
                         egui::WidgetType::Button,
@@ -257,7 +288,7 @@ impl DawUi {
                 ui.advance_cursor_after_rect(toolbar);
             });
         });
-        if output {
+        if output && beat_row.is_none() {
             panels::ControlPanel::pinned_row_divider(ui, rect);
         } else {
             panels::ControlPanel::row_dividers(ui, rect, true, true);

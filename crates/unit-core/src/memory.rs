@@ -107,11 +107,15 @@ impl InstrumentSettings {
                 .sum::<u64>()
             + self
                 .buses()
-                .map(|b| {
-                    vec_bytes(&b.component_order)
-                        + effect_settings_bytes(&b.effects)
-                        + provider_bytes(&b.envelopes, &b.lfos, &b.macro_module)
-                })
+                .map(InstrumentBusSettings::heap_bytes)
                 .sum::<u64>()
+    }
+}
+
+impl InstrumentBusSettings {
+    pub fn heap_bytes(&self) -> u64 {
+        vec_bytes(&self.component_order)
+            + effect_settings_bytes(&self.effects)
+            + provider_bytes(&self.envelopes, &self.lfos, &self.macro_module)
     }
 }

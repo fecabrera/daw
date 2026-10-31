@@ -50,6 +50,7 @@ impl TransportCache {
         Self::with_mode(plan, profile, PreparationMode::Auto)
     }
     pub fn with_mode(plan: RenderPlan, profile: CacheProfile, mode: PreparationMode) -> Self {
+        let plan = plan.prepare_beats();
         let complex_tracks = plan
             .project
             .tracks
@@ -388,6 +389,7 @@ mod tests {
                 .unwrap();
         }
         let plan = RenderPlan {
+            beat_tracks: Default::default(),
             project,
             audio: Default::default(),
             sampler_audio: Default::default(),
@@ -422,6 +424,7 @@ mod tests {
     #[test]
     fn profile_changes_keep_valid_snapshots_and_trim_to_the_new_budget() {
         let plan = RenderPlan {
+            beat_tracks: Default::default(),
             project: Default::default(),
             audio: Default::default(),
             sampler_audio: Default::default(),
@@ -463,6 +466,7 @@ mod tests {
             };
             let cache = TransportCache::with_profile(
                 RenderPlan {
+                    beat_tracks: Default::default(),
                     project,
                     audio: Default::default(),
                     sampler_audio: Default::default(),
@@ -484,6 +488,7 @@ mod tests {
         let track = project.add_midi_track().unwrap();
         project.add_midi_pattern(track, 0).unwrap();
         let plan = RenderPlan {
+            beat_tracks: Default::default(),
             project,
             audio: Default::default(),
             sampler_audio: Default::default(),
@@ -508,6 +513,7 @@ mod tests {
     #[test]
     fn idle_warming_cancels_at_a_block_and_resumes_from_complete_history() {
         let plan = RenderPlan {
+            beat_tracks: Default::default(),
             project: Default::default(),
             audio: Default::default(),
             sampler_audio: Default::default(),
@@ -534,6 +540,7 @@ mod tests {
     #[test]
     fn checkpoints_are_bounded_and_cancelled_warming_keeps_completed_states() {
         let plan = RenderPlan {
+            beat_tracks: Default::default(),
             project: Default::default(),
             audio: Default::default(),
             sampler_audio: Default::default(),

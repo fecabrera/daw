@@ -4,6 +4,36 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat track integration and compact editor — 2026-10-31
+
+Beat tracks now integrate the versioned container and immutable pattern sources with
+project validation, history, save/open, source collection, preparation, playback,
+export and CLI inspection. Editor and Instrument share stable subtrack selection,
+name/mix controls and release-only ordering. Instrument uses the MIDI page shell,
+local source/LFO/Envelope lanes and one pinned final Output. The lower editor uses
+32-point rows, topbar pattern options and one shared ruler/time transform for
+steps, zoom and scrolling; trim, repeat and stretch mappings remain clip-owned.
+
+Completed automated checks on macOS arm64:
+
+- `cargo test --locked -p daw-ui --lib`: **763 passed**, including **15 beat regressions** for compact row geometry, topbar placement, ruler alignment across zoom changes and trimmed/stretched clips, source isolation, both view structures, shared selection/reorder/delete/cancellation, requested M/S/name/pan/gain ordering and track spacing, mute/solo actions, nested group indentation/disclosure without project edits, overview double-click pattern creation without a redundant button, catalog drops and local modulation ownership.
+- `cargo test --locked -p daw-engine --test midi beat_`: **7 passed**, covering six processing rates, allocation-free callbacks, one-shot stop fades, live/export/seek parity, bounded voices, unchanged audio after row reordering/collapse, empty container duration, final Output controls/Macro routing and clip gain after final Output effects.
+- Project source-collection/Save As/reopen and CLI beat validation/inspection/rendering integration regressions pass. Core and unit-core coverage is included in the workspace run below.
+- Strict locked workspace/all-target Clippy passes with warnings denied.
+
+`cargo test --locked --workspace` passes: **2010 tests passed, 11 ignored, no failures**, across 258 suites including documentation tests. That run compiled before the final UI refinements; the final code passed the complete UI suite and strict all-target workspace Clippy afterward. The separate seven-test beat engine run covers the final clip-gain regression. The locked CLI build and `python3 tools/check_cli.py` pass. `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`. Formatting, whitespace and all 482 relative file targets in changed Markdown pass. Native UI verification could not start because the native
+computer-use connection failed. Physical audio-device/listening, Windows and Linux
+execution remain unverified. Synthetic egui checks do not establish native rendering
+or pointer behavior. Logs are under `work/beat-*`.
+
+## Beat model foundation — 2026-10-31 (historical standalone stage)
+
+Standalone versioned beat container, subtrack and immutable pattern-source types now exist in `daw-core`. Atomic container edits reuse ordinary instrument settings and modulation ownership checks. Grid changes retain hidden hits, cross-container destinations are rejected, and tick trigger compilation covers local mute/solo and acyclic stop links. The shared bus heap estimate replaces the equivalent inline calculation in ordinary instruments.
+
+The latest focused run passes 111 core and 55 unit-core tests, including 19 beat tests. Locked workspace/all-target Clippy passes with warnings denied; affected-crate Clippy also passes after the final validation additions. Formatting, local documentation links, whitespace and CLI smoke checks pass. Workspace tests are in progress; logs are under `work/beat-*`.
+
+At this historical stage this was not beat-track feature acceptance. Project/Asset integration, save/open/history, sample preparation, playback/export/seek, public creation, Editor rows and grouped Instrument lanes remain pending. No native UI, audio-device, Windows or Linux acceptance was performed for this foundation. See the [model contract](../views/beat-model.md) for integration gates.
+
 ## Silent history memory eviction — 2026-10-31
 
 Memory-driven Undo/Redo eviction no longer adds the “Removed older undo/redo entries” notice to the status area. History count/byte limits and pressure handling still apply. Unrelated source warnings remain visible. The user guide and current history/performance specifications now describe silent eviction; earlier validation entries retain their historical behavior.

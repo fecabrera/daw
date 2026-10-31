@@ -647,21 +647,16 @@ impl DawUi {
             allowed,
             request_focus,
         } = interaction;
-        let modulation_sources = crate::modulation_panel::sources(target.and_then(|target| {
-            match target {
-                EffectTarget::Track(id) | EffectTarget::Layer { track: id, .. } => self
-                    .session
-                    .project
-                    .tracks
-                    .iter()
-                    .find(|t| t.id == id)
-                    .and_then(|t| t.instrument.as_ref()),
+        let modulation_sources =
+            crate::modulation_panel::sources(target.and_then(|target| match target {
+                EffectTarget::Track(id) | EffectTarget::Layer { track: id, .. } => {
+                    self.session.project.instrument_settings(id)
+                }
                 EffectTarget::Master => None,
-            }
-        }))
-        .into_iter()
-        .filter(|s| daw_unit_core::ModulationScope::Shared.accepts(s.scope))
-        .collect::<Vec<_>>();
+            }))
+            .into_iter()
+            .filter(|s| daw_unit_core::ModulationScope::Shared.accepts(s.scope))
+            .collect::<Vec<_>>();
         let mut remove = None;
         let mut slots = Vec::with_capacity(effects.len());
         let content = Rect::from_min_max(strip.min, lane_toolbar::bounds(strip).left_bottom());

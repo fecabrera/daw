@@ -75,7 +75,7 @@ impl DawUi {
                         .project
                         .assets
                         .iter()
-                        .any(|a| a.id == d.clip.asset_id && a.midi_pattern.is_none())
+                        .any(|a| a.id == d.clip.asset_id && a.is_audio())
             })
         {
             return;
@@ -538,10 +538,19 @@ impl DawUi {
         if self.view_mode != ViewMode::Instrument {
             return None;
         }
+        if self
+            .selected_track
+            .and_then(|id| self.session.project.beat(id))
+            .is_some()
+        {
+            return self.beat_sampler_target(pointer);
+        }
         self.instrument_ui
             .samplers
             .iter()
-            .find(|b| Some(b.track) == self.selected_track && b.panel.contains(pointer))
+            .find(|b| {
+                Some(b.track) == self.selected_instrument_owner() && b.panel.contains(pointer)
+            })
             .map(|b| (b.track, b.layer))
     }
     pub(super) fn run_sampler_job(

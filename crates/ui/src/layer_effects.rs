@@ -7,25 +7,17 @@ pub(super) struct InlineEffects<'a> {
 }
 impl DawUi {
     pub(super) fn effect_catalog_target(&self) -> Option<EffectTarget> {
-        if self.view_mode == ViewMode::Instrument {
-            let track = self.selected_track?;
-            if !self.instrument_ui.track_effects_target
-                && let Some(layer) = self.instrument_ui.selected_layer
-            {
-                let i = self
-                    .session
-                    .project
-                    .tracks
-                    .iter()
-                    .find(|t| t.id == track)?
-                    .instrument
-                    .as_ref()?;
-                if layer == i.lfo_lane.id || layer == i.envelope_lane.id {
-                    return None;
-                }
-                if layer == i.main.id || i.layers.iter().any(|l| l.id == layer) {
-                    return Some(EffectTarget::Layer { track, layer });
-                }
+        if self.view_mode == ViewMode::Instrument
+            && let Some(track) = self.selected_instrument_owner()
+            && !self.instrument_ui.track_effects_target
+            && let Some(layer) = self.instrument_ui.selected_layer
+        {
+            let i = self.session.project.instrument_snapshot(track)?;
+            if layer == i.lfo_lane.id || layer == i.envelope_lane.id {
+                return None;
+            }
+            if layer == i.main.id || i.layers.iter().any(|l| l.id == layer) {
+                return Some(EffectTarget::Layer { track, layer });
             }
         }
         self.effects_target()
