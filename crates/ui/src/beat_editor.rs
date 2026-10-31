@@ -165,6 +165,19 @@ impl DawUi {
             Err(error) => self.fail(error),
         }
     }
+    pub(super) fn clear_layer_selections_except(&mut self, owner: Option<Id>) {
+        if owner.is_none() || self.instrument_ui.track != owner {
+            self.instrument_ui.clear_layer_selection();
+        }
+        for (id, state) in &mut self.beat_ui.states {
+            if Some(*id) != owner {
+                state.clear_layer_selection();
+            }
+        }
+    }
+    pub(super) fn deselect_beat_subtracks(&mut self) {
+        self.beat_ui.selected.clear();
+    }
     pub(super) fn beat_subtrack_selected(&self, id: Id) -> bool {
         self.beat_ui.selected.contains(&id)
     }
@@ -186,6 +199,7 @@ impl DawUi {
         track: Id,
         row: &BeatSubtrack,
     ) -> egui::Response {
+        let escape_pressed = ui.input(|i| i.key_pressed(egui::Key::Escape));
         let editing = self
             .beat_ui
             .rename
@@ -202,7 +216,8 @@ impl DawUi {
                 response.request_focus();
                 *focus = false;
             }
-            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if escape_pressed {
+                ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
                 self.beat_ui.rename = None;
             } else if (ui.input(|i| i.key_pressed(egui::Key::Enter)) || response.lost_focus())
                 && let Some((id, name, _)) = self.beat_ui.rename.take()
@@ -540,6 +555,13 @@ impl DawUi {
                             ui.next_widget_position(),
                             Vec2::new(TRACK_WIDTH, height),
                         );
+                        // The background claims empty header space; child controls keep their
+                        // own pointer and keyboard interactions above it.
+                        let panel = ui.interact(
+                            rect,
+                            ui.id().with(("beat-header", row.id)),
+                            Sense::click(),
+                        );
                         let mut header = ui.new_child(
                             egui::UiBuilder::new()
                                 .id_salt(row.id)
@@ -575,6 +597,36 @@ impl DawUi {
                                 ],
                             );
                         }
+                        let press = ui.input(|i| {
+                            i.pointer
+                                .primary_pressed()
+                                .then(|| i.pointer.press_origin())
+                                .flatten()
+                        });
+                        if ui.is_enabled()
+                            && !self.beat_dragging()
+                            && self.edit_environment_available()
+                            && let Some(pointer) =
+                                press.filter(|p| rect.intersect(ui.clip_rect()).contains(*p))
+                            && !response.rect.contains(pointer)
+                        {
+                            let on_control = toggles.iter().any(|r| r.rect.contains(pointer))
+                                || knobs.bounds.iter().any(|r| r.contains(pointer));
+                            self.beat_ui.primary = Some(row.id);
+                            crate::unit_selection::select(
+                                &mut self.beat_ui.selected,
+                                row.id,
+                                ui.input(|i| i.modifiers.shift),
+                            );
+                            self.beat_ui.focus.set(ui, rect, false);
+                            if on_control {
+                                // Keep knob/button keyboard focus and guard header-only Delete.
+                                self.beat_ui.focused_header = None;
+                            } else {
+                                self.beat_ui.focused_header = Some(panel.id);
+                                panel.request_focus();
+                            }
+                        }
                         #[cfg(not(test))]
                         let _ = (response, knobs, toggles);
                         if bus != row.instrument.main || muted != row.muted || soloed != row.soloed
@@ -589,9 +641,6 @@ impl DawUi {
                                     soloed,
                                 },
                             );
-                        }
-                        if self.beat_ui.selected.contains(&row.id) {
-                            panels::selection_border(ui, rect);
                         }
                         ui.advance_cursor_after_rect(rect);
                         let grid_clip = Rect::from_min_max(
@@ -701,6 +750,15 @@ impl DawUi {
                     row_bounds.push((row.id, rect));
                 }
                 self.finish_beat_rows(ui, track.id, &row_bounds);
+                for (id, row) in &row_bounds {
+                    if self.beat_subtrack_selected(*id) {
+                        panels::ControlPanel::selected_row(
+                            ui,
+                            Rect::from_min_size(row.min, Vec2::new(TRACK_WIDTH, row.height())),
+                            ui.clip_rect(),
+                        );
+                    }
+                }
             });
         if pattern != original
             && let (Some(clip), Some(pattern)) = (active, pattern)
@@ -921,6 +979,22 @@ impl DawUi {
             Pos2::new(available.left(), available.bottom() - final_height),
             available.max,
         );
+        if self.editing_enabled()
+            && ui.is_enabled()
+            && ui.rect_contains_pointer(final_rect)
+            && ui.input(|i| {
+                i.focused
+                    && i.pointer.primary_pressed()
+                    && i.pointer
+                        .press_origin()
+                        .is_some_and(|p| final_rect.intersect(ui.clip_rect()).contains(p))
+            })
+        {
+            self.beat_ui.output_selected = true;
+            if !ui.input(|i| i.modifiers.shift) {
+                self.clear_layer_selections_except(Some(beat.output.id));
+            }
+        }
         let groups = egui::ScrollArea::vertical()
             .id_salt(("beat-instruments", track))
             .max_height((available.height() - final_height).max(0.0))
@@ -929,36 +1003,55 @@ impl DawUi {
                 let mut row_bounds = Vec::new();
                 #[cfg(test)]
                 self.beat_ui.add_layers.clear();
-                for row in &beat.subtracks {
+                // Resolve the clicked owner before painting any group, so stale
+                // cached selections cannot flash in groups rendered earlier.
+                let mut position = ui.next_widget_position();
+                let rows: Vec<_> = beat
+                    .subtracks
+                    .iter()
+                    .map(|row| {
+                        // Source/provider rows share one border pixel; Output retains its full height.
+                        let children = if self.beat_group_collapsed(row.id) {
+                            0.0
+                        } else {
+                            row.instrument
+                                .layers
+                                .iter()
+                                .map(|l| panels::unit_height(l.collapsed) - 1.0)
+                                .sum::<f32>()
+                                + (panels::unit_height(row.instrument.lfo_lane.collapsed) - 1.0)
+                                + (panels::unit_height(row.instrument.envelope_lane.collapsed)
+                                    - 1.0)
+                                + panels::unit_height(row.instrument.main.collapsed)
+                        };
+                        let height = MASTER_HEIGHT + children;
+                        let rect =
+                            Rect::from_min_size(position, Vec2::new(ui.available_width(), height));
+                        position.y = rect.bottom() + ui.spacing().item_spacing.y;
+                        (row, rect)
+                    })
+                    .collect();
+                if self.editing_enabled()
+                    && ui.is_enabled()
+                    && let Some(pointer) = ui.input(|i| {
+                        (i.focused && i.pointer.primary_pressed())
+                            .then(|| i.pointer.press_origin())
+                            .flatten()
+                    })
+                    && let Some((row, _)) = rows.iter().find(|(_, rect)| {
+                        rect.intersect(ui.clip_rect()).contains(pointer)
+                            && ui.rect_contains_pointer(*rect)
+                    })
+                {
+                    self.beat_ui.primary = Some(row.id);
+                    self.beat_ui.output_selected = false;
+                    if !ui.input(|i| i.modifiers.shift) {
+                        self.clear_layer_selections_except(Some(row.id));
+                    }
+                }
+                for (row, rect) in rows {
                     self.instrument_ui = self.beat_ui.states.remove(&row.id).unwrap_or_default();
                     self.beat_ui.owner_override = Some(row.id);
-                    // Source/provider rows share one border pixel; Output retains its full height.
-                    let children = if self.beat_group_collapsed(row.id) {
-                        0.0
-                    } else {
-                        row.instrument
-                            .layers
-                            .iter()
-                            .map(|l| panels::unit_height(l.collapsed) - 1.0)
-                            .sum::<f32>()
-                            + (panels::unit_height(row.instrument.lfo_lane.collapsed) - 1.0)
-                            + (panels::unit_height(row.instrument.envelope_lane.collapsed) - 1.0)
-                            + panels::unit_height(row.instrument.main.collapsed)
-                    };
-                    let height = MASTER_HEIGHT + children;
-                    let rect = Rect::from_min_size(
-                        ui.next_widget_position(),
-                        Vec2::new(ui.available_width(), height),
-                    );
-                    if ui.input(|i| {
-                        i.pointer.primary_pressed()
-                            && i.pointer
-                                .press_origin()
-                                .is_some_and(|p| rect.intersect(ui.clip_rect()).contains(p))
-                    }) {
-                        self.beat_ui.primary = Some(row.id);
-                        self.beat_ui.output_selected = false;
-                    }
                     let mut group = ui.new_child(
                         egui::UiBuilder::new()
                             .id_salt(row.id)
@@ -986,12 +1079,6 @@ impl DawUi {
                         }
                     }
                     panels::GroupPanel::row_dividers(ui, rect, 0, false, true);
-                    if self.beat_subtrack_selected(row.id) {
-                        panels::selection_border(
-                            ui,
-                            Rect::from_min_size(rect.min, Vec2::new(TRACK_WIDTH, rect.height())),
-                        );
-                    }
                     row_bounds.push((row.id, rect));
                     ui.advance_cursor_after_rect(rect);
                     self.beat_ui
@@ -999,6 +1086,7 @@ impl DawUi {
                         .insert(row.id, std::mem::take(&mut self.instrument_ui));
                 }
                 self.finish_beat_rows(ui, track, &row_bounds);
+                row_bounds
             });
         self.beat_ui.group_viewport = Some(groups.inner_rect);
         self.beat_ui.owner_override = None;
@@ -1067,6 +1155,16 @@ impl DawUi {
             header.response.rect.bottom() - 0.5,
             Stroke::new(1.0, theme::palette(ui.ctx()).border),
         );
+        // Match Tracks: restore selection strokes after the neutral column/header borders.
+        for (id, row) in &groups.inner {
+            if self.beat_subtrack_selected(*id) {
+                panels::ControlPanel::selected_row(
+                    ui,
+                    Rect::from_min_size(row.min, Vec2::new(TRACK_WIDTH, row.height())),
+                    groups.inner_rect,
+                );
+            }
+        }
         ui.advance_cursor_after_rect(available);
     }
 }

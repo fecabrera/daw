@@ -50,6 +50,11 @@ impl InstrumentUi {
         crate::unit_selection::select(&mut self.selected_layers, layer, false);
     }
 
+    pub(super) fn clear_layer_selection(&mut self) {
+        self.selected_layer = None;
+        self.selected_layers.clear();
+    }
+
     fn reconcile_layers(&mut self, settings: &daw_core::InstrumentSettings) {
         self.selected_layers.retain(|id| {
             settings.bus(*id).is_some() || settings.layers.iter().any(|l| l.id == *id)
@@ -300,7 +305,13 @@ impl DawUi {
             self.instrument_ui.effects_layer = None;
             self.instrument_ui.track_effects_target = false;
             self.instrument_ui.selected_layers.clear();
-            self.instrument_ui.selected_layer = settings.layers.first().map(|l| l.id);
+            self.instrument_ui.selected_layer = if group
+                && (self.beat_ui.primary != Some(track.id) || self.beat_ui.output_selected)
+            {
+                None
+            } else {
+                settings.layers.first().map(|l| l.id)
+            };
             self.instrument_catalog.clear();
         }
         self.instrument_ui.reconcile_layers(&settings);

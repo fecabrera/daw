@@ -4,6 +4,82 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Layer selection across beat subtrack owners — 2026-10-31
+
+Per-subtrack UI caches previously retained old layer highlights when another
+subtrack was selected. Instrument now resolves the clicked owner before painting
+groups, clears the other owners' layer selections on plain interaction, and keeps
+them for Shift selection. Inactive groups no longer initialize an automatic layer
+selection. The overall beat Output uses the same policy. Shared Escape handling
+clears current and cached layer selections through `clear_layer_selection`.
+
+The regression reproduces LFO selection in one subtrack followed by Layer 1 in
+another. It checks replacement, Shift retention, inactive defaults, Escape,
+overall Output interaction, and unchanged project/dirty state.
+
+`cargo test --locked -p daw-ui --lib` passes **773 tests**, including 25 beat
+regressions. The final focused cross-subtrack selection regression also passes.
+Strict locked workspace/all-target Clippy, formatting, relative documentation
+targets and whitespace checks pass. The macOS debug app was rebuilt. Native UI/device
+verification and Windows/Linux execution remain unverified for this change.
+
+## Editor subtrack panel selection and Escape — 2026-10-31
+
+Editor header padding and mix-control presses now select the subtrack, while name
+clicks retain their existing once-only selection path. A background click target
+keeps padding clicks out of neighboring steps. Child controls retain their own
+focus and actions; blank header space receives header focus. Control presses do
+not enable header-only deletion. Beat Editor now shares Instrument's view-level
+Escape path, with remembered Editor text focus to retain rename cancellation.
+
+Regressions cover plain/Shift background selection, padding beside the step grid,
+all four control actions and selection on press, Escape after each control,
+unchanged clip selection/project data on deselection, and existing text/drag guards.
+
+`cargo test --locked -p daw-ui --lib` passes **772 tests**, including 24 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt the app. Native UI/device verification and Windows/Linux execution remain
+unverified for this change.
+
+## Instrument Escape after disclosure and child controls — 2026-10-31
+
+The previous name-focus handler missed Instrument Escape after a disclosure or
+child-control interaction. Instrument now clears beat subtrack selection through
+the existing view-level `selection_escape` path, alongside instrument layers and
+before widgets process keys. Editor keeps its header-focus behavior. The shared
+handler preserves text/gesture, popup, job/dialog and window-focus guards and leaves
+Escape available for catalog deselection.
+
+Regressions reproduce expanding/collapsing through the chevron, clearing selection
+from a child mix control, shared catalog Escape handling, and rename/drag priority
+in both Editor and Instrument. Project data remains unchanged by deselection.
+
+`cargo test --locked -p daw-ui --lib` passes **770 tests**, including 22 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt the app. Native UI/device verification and Windows/Linux execution remain
+unverified for this change.
+
+## Subtrack Escape deselection and shared outlines — 2026-10-31
+
+Escape clears focused subtrack-header selection in Editor and Instrument without
+project edits or track/clip selection changes. The key uses the existing catalog
+focus-release fallback. Rename consumes Escape, and active drag cancellation takes
+priority over deselection. Subtrack outlines now use the same
+`ControlPanel::selected_row` painter and after-divider paint order as Tracks.
+This keeps the right edge and rounded corners visible above neutral column borders.
+
+Regressions exercise grouped deselection in both views, retained project/dirty and
+track/clip state, rename/drag cancellation, and complete rounded inside outlines
+above neutral dividers in dark/light themes.
+
+`cargo test --locked -p daw-ui --lib` passes **768 tests**, including 20 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`. Native UI/device verification and Windows/Linux
+execution remain unverified for these changes.
+
 ## Beat editor names and right-pinned mix controls — 2026-10-31
 
 Editor subtrack rows now use Name, Mute, Solo, Pan, Gain order. They reuse compact

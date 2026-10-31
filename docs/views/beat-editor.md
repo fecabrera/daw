@@ -26,7 +26,7 @@ Pattern edits affect only the active clip and create a new source. Other clips k
 
 Editor and Instrument share the same names, order, selection and mix controls.
 
-- Click a name to select one subtrack; Shift-click names to select a group.
+- Click a name to select one subtrack; Shift-click headers to toggle group membership. In Editor, clicking any part of a subtrack header, including its controls or empty space, selects that subtrack. Press Escape to clear subtrack selection in Editor or Instrument. Escape first cancels an active rename or drag.
 - Double-click a name, or use its context menu, to rename it. Enter accepts; Escape cancels.
 - Drag a selected name to reorder the selected subtracks together. Release inside the list to apply the move. Escape, focus loss or an outside release cancels it.
 - Use the name's context menu to delete selected subtracks. Delete/Backspace also removes them while a subtrack name has keyboard focus. Text, step and unit controls retain their own keyboard behavior.
@@ -36,7 +36,7 @@ Deleting a subtrack removes its stop links. Its old pattern steps remain dormant
 
 ## Instrument groups and Output
 
-The Instrument page uses the same header, Plus button, left column, dividers, lane toolbars and pinned Output layout as a MIDI instrument. Each expanded subtrack has a compact header with its name, chevron and **Add layer** button. Its source layers, LFO, Envelope and Output appear below, without a separate Layers header. Use the Output panel for mute, solo, pan, gain and its level meter. LFO and Envelope lanes accept only their matching provider units. Each subtrack's modulation sources stay local to that instrument.
+The Instrument page uses the same header, Plus button, left column, dividers, lane toolbars and pinned Output layout as a MIDI instrument. Each expanded subtrack has a compact header with its name, chevron and **Add layer** button. Its source layers, LFO, Envelope and Output appear below, without a separate Layers header. Use the Output panel for mute, solo, pan, gain and its level meter. LFO and Envelope lanes accept only their matching provider units. Each subtrack's modulation sources stay local to that instrument. A plain click on a layer or provider lane replaces the previous layer selection across subtracks. Shift-click retains multi-selection. Escape clears selected lanes across the instrument.
 
 Collapsing a group hides all its child lanes, including Output, and retains audio processing. The compact header also shows the output controls while collapsed, and hides Add layer. Each nested Output lane contains that subtrack's output units and controls. Its Gain and the group-header Gain control the same level. One fixed **Output** follows all groups and combines them before the parent track's effects and mix controls. It supports the shared output body, effects and local Macros. It cannot be renamed, deleted or reordered as a subtrack.
 

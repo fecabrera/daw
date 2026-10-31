@@ -246,3 +246,36 @@ Editor subtrack headers reuse the compact track `HeaderRows` geometry and shared
 `header_row` mix controls. Reserve the full mix region at the right inner inset;
 truncate the name in the remaining left region. Name length must not move the
 mute/solo buttons or knobs. Keep the standard track control/group/knob spacing.
+
+Instrument clears selected subtrack IDs through the shared view-level
+`selection_escape` handler before child widgets process Escape. This includes
+disclosure buttons, child controls and catalog focus; leave the event available
+for catalog deselection, matching instrument-layer behavior. Beat Editor uses that same shared view-level Escape path, including after
+header control interactions. Remember Editor text focus so Escape cancels text
+drafts before deselection. Keep the primary inspection target, track/clip
+selection, project, history and dirty state unchanged. Text editing and active
+gestures take priority; Escape cancels those without clearing subtrack selection.
+Respect disabled UI, focus and existing job/dialog guards.
+
+Use `ControlPanel::selected_row` for subtrack selection outlines, exactly as Tracks
+does. Paint outlines after all row and control-column dividers, with the original
+row/container bounds and pane clipping. Retain the shared two-point inside stroke
+and corner radius; a neutral divider must not overwrite the right edge.
+
+Editor subtrack selection covers the whole header panel. A primary press in empty
+space or on a control selects that row using shared plain/Shift selection. Name
+clicks use their existing handler once; do not toggle Shift membership twice.
+The background senses clicks below child widgets so padding cannot activate an
+adjacent step. Controls retain pointer and keyboard actions; only blank panel
+clicks claim header keyboard focus. Control presses do not grant header-only Delete.
+Selection alone must not edit the project, dirty state or clip/track selection.
+
+Layer selection belongs to the Instrument view, even though per-subtrack UI state
+is cached separately. A plain primary interaction within a subtrack clears
+layer/provider/Output selections in the other cached owners before painting their
+outlines. Keep selection within the clicked owner for existing same-owner drag
+and Shift rules. Shift preserves other owners' selected layers. The overall beat
+Output participates in the same replacement policy. Inactive groups must not
+create automatic default layer selections during initialization. View-level Escape
+clears both current and cached layer selections. Preserve IDs, settings, project
+data, history and dirty state; do not treat popup clicks as background ownership.

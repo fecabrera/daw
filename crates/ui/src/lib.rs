@@ -2485,8 +2485,10 @@ impl DawUi {
         }
         // egui may release text focus at frame start when Escape is pressed.
         self.selection_text_focus = ctx.memory(|memory| memory.focused()).filter(|_| {
-            matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
-                && ctx.text_edit_focused()
+            matches!(
+                self.view_mode,
+                ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit
+            ) && ctx.text_edit_focused()
         });
     }
     fn file_menu(&mut self, ui: &mut egui::Ui) {
