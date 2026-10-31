@@ -10,6 +10,7 @@ use std::sync::{
 enum Sound {
     Chord(daw_core::Chord),
     Note(u8),
+    Beat(Id, i8, daw_core::BeatResolution),
 }
 
 enum PreparedAudition {
@@ -43,6 +44,8 @@ pub(super) struct State {
     pub(super) allow_note_commit: bool,
     #[cfg(test)]
     pub note_requests: Vec<(Id, u8)>,
+    #[cfg(test)]
+    pub beat_requests: Vec<(Id, Id)>,
     #[cfg(test)]
     pub requests: Vec<(Id, daw_core::Chord)>,
     #[cfg(test)]
@@ -103,6 +106,13 @@ impl State {
         std::thread::spawn(move || {
             let cancelled = || flag.load(Ordering::Relaxed);
             match sound {
+                Sound::Beat(row, transpose, resolution) => {
+                    let result = session
+                        .audition_beat_step(track, row, transpose, resolution, &cancelled)
+                        .map(PreparedAudition::Samples)
+                        .map_err(|e| e.to_string());
+                    let _ = sender.send(result);
+                }
                 Sound::Chord(chord) => {
                     let result = session
                         .audition_chord(track, chord, &cancelled)
@@ -174,8 +184,48 @@ impl DawUi {
         }
     }
 
+    pub(super) fn audition_beat_step(&mut self, track: Id, row: Id) {
+        if !self.midi_editor.audition_enabled {
+            return;
+        }
+        let Some(clip) = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == track)
+            .and_then(|t| t.clips.iter().find(|c| Some(c.id) == self.selected_clip))
+        else {
+            return;
+        };
+        let Some(pattern) = self
+            .session
+            .project
+            .assets
+            .iter()
+            .find(|a| a.id == clip.asset_id)
+            .and_then(|a| a.beat_pattern.as_ref())
+        else {
+            return;
+        };
+        self.request_midi_audition(Sound::Beat(row, clip.transpose, pattern.pattern.resolution));
+    }
+
+    fn active_audition_track(&self) -> Option<Id> {
+        self.active_midi_track().or_else(|| {
+            (self.view_mode == ViewMode::Edit)
+                .then(|| self.editor_track())
+                .flatten()
+                .filter(|t| t.kind == daw_core::TrackKind::Beat)
+                .map(|t| t.id)
+        })
+    }
+
     fn request_midi_audition(&mut self, sound: Sound) {
-        let Some(track) = self.active_midi_track() else {
+        let Some(track) = (match sound {
+            Sound::Beat(..) => self.active_audition_track(),
+            _ => self.active_midi_track(),
+        }) else {
             return;
         };
         if let Some(output) = &self.output {
@@ -191,11 +241,12 @@ impl DawUi {
             pending.cancel.store(true, Ordering::Relaxed);
         }
         state.scope = Some((self.session.project.project_id, track, self.change_revision));
-        state.editor = matches!(sound, Sound::Note(_));
+        state.editor = !matches!(sound, Sound::Chord(_));
         #[cfg(test)]
         match sound {
             Sound::Chord(chord) => state.requests.push((track, chord)),
             Sound::Note(pitch) => state.note_requests.push((track, pitch)),
+            Sound::Beat(row, _, _) => state.beat_requests.push((track, row)),
         }
         let request = Request {
             session: self.session.clone(),
@@ -221,7 +272,7 @@ impl DawUi {
             && self.job.is_none()
             && let Some((project, track, _)) = self.chords.audition.scope
             && project == self.session.project.project_id
-            && Some(track) == self.active_midi_track()
+            && Some(track) == self.active_audition_track()
         {
             self.chords.audition.scope = Some((project, track, self.change_revision));
             if let Some(pending) = &mut self.chords.audition.pending {
@@ -248,7 +299,7 @@ impl DawUi {
                 .scope
                 .is_none_or(|(project, track, revision)| {
                     project == self.session.project.project_id
-                        && Some(track) == self.active_midi_track()
+                        && Some(track) == self.active_audition_track()
                         && revision == self.change_revision
                 });
         if !valid {

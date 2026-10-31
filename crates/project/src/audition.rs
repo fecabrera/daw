@@ -56,6 +56,92 @@ impl Session {
     ) -> Result<Vec<[f32; 2]>> {
         let (mut renderer, length) =
             self.audition_renderer(track, pattern, maximum_gate, cancelled)?;
+        self.render_audition(&mut renderer, length, cancelled)
+    }
+
+    /// Preview one beat hit through its subtrack, Output and ancestor buses on a worker.
+    pub fn audition_beat_step(
+        &self,
+        track: Id,
+        subtrack: Id,
+        transpose: i8,
+        resolution: daw_core::BeatResolution,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Vec<[f32; 2]>> {
+        if cancelled() {
+            return Err(error("Beat audition cancelled"));
+        }
+        self.project
+            .beat(track)
+            .filter(|beat| beat.subtracks.iter().any(|row| row.id == subtrack))
+            .ok_or_else(|| error("Beat subtrack not found"))?;
+        let mut session = self.clone();
+        session
+            .project
+            .tracks
+            .retain(|t| t.id == track || self.project.track_is_descendant(track, t.id));
+        for t in &mut session.project.tracks {
+            t.clips.clear();
+            t.soloed = false;
+        }
+        session.project.transport.playhead_frame = 0;
+        session.project.transport.r#loop.enabled = false;
+        // Keep local solo eligibility, but prevent other continuous sources from sounding.
+        for row in &mut session
+            .project
+            .tracks
+            .iter_mut()
+            .find(|t| t.id == track)
+            .unwrap()
+            .beat
+            .as_mut()
+            .unwrap()
+            .subtracks
+        {
+            if row.id != subtrack {
+                row.muted = true;
+            }
+        }
+        let clip_id = session.project.add_beat_pattern(track, 0).map_err(error)?;
+        let pattern = daw_core::BeatPattern::default()
+            .with_grid(1, resolution)
+            .map_err(error)?
+            .with_step(subtrack, 0, Some(100))
+            .map_err(error)?;
+        session
+            .project
+            .edit(daw_core::Edit::ReplaceBeatPattern { clip_id, pattern })
+            .map_err(error)?;
+        let gate = session
+            .project
+            .midi_frame(resolution.step_ticks())
+            .clamp(1, 8 * u64::from(session.project.sample_rate_hz));
+        let clip = session
+            .project
+            .tracks
+            .iter_mut()
+            .find(|t| t.id == track)
+            .unwrap()
+            .clips
+            .first_mut()
+            .unwrap();
+        clip.length_frames = gate;
+        clip.transpose = transpose;
+        session.prepare_stretches_cancellable(cancelled)?;
+        let mut renderer = daw_engine::Renderer::new(session.plan());
+        self.render_audition(
+            &mut renderer,
+            gate + u64::from(self.project.sample_rate_hz),
+            cancelled,
+        )
+    }
+
+    fn render_audition(
+        &self,
+        renderer: &mut daw_engine::Renderer,
+        length: u64,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Vec<[f32; 2]>> {
         let rate = u64::from(self.project.sample_rate_hz);
         let mut samples = vec![[0.0; 2]; length as usize];
         for block in samples.chunks_mut(512) {
@@ -231,6 +317,69 @@ mod tests {
         session.project.transport.playhead_frame = 12345;
         (session, track)
     }
+    #[test]
+    fn beat_step_preview_is_isolated_bounded_and_retains_the_project() {
+        let mut session = Session::default();
+        let track = session.project.add_beat_track().unwrap();
+        let mut row = daw_core::BeatSubtrack::new("Kick".into());
+        row.instrument = OscillatorSettings::default().into();
+        let row_id = row.id;
+        session
+            .project
+            .edit(Edit::Beat {
+                track_id: track,
+                edit: daw_core::BeatEdit::Add {
+                    subtrack: Box::new(row),
+                    index: 0,
+                },
+            })
+            .unwrap();
+        session.project.add_beat_pattern(track, 0).unwrap();
+        session.project.transport.playhead_frame = 12345;
+        let before = session.project.clone();
+        let resolution = daw_core::BeatResolution::Sixteenth;
+        let samples = session
+            .audition_beat_step(track, row_id, 0, resolution, &|| false)
+            .unwrap();
+        assert_eq!(
+            samples.len() as u64,
+            session.project.midi_frame(resolution.step_ticks())
+                + u64::from(session.project.sample_rate_hz)
+        );
+        assert!(samples.iter().flatten().any(|s| s.abs() > 0.01));
+        assert_eq!(samples.first(), Some(&[0.0; 2]));
+        assert_eq!(samples.last(), Some(&[0.0; 2]));
+        let transposed = session
+            .audition_beat_step(track, row_id, 12, resolution, &|| false)
+            .unwrap();
+        assert_ne!(samples, transposed);
+        session.project.tracks[0].gain_db = -6.0;
+        let quieter = session
+            .audition_beat_step(track, row_id, 0, resolution, &|| false)
+            .unwrap();
+        let energy = |data: &[[f32; 2]]| data.iter().flatten().map(|s| s * s).sum::<f32>();
+        assert!(energy(&quieter) < energy(&samples) * 0.3);
+        session.project = before.clone();
+        assert!(
+            session
+                .audition_beat_step(track, Id::new_v4(), 0, resolution, &|| false)
+                .is_err()
+        );
+        assert!(
+            session
+                .audition_beat_step(track, row_id, 0, resolution, &|| true)
+                .is_err()
+        );
+        assert_eq!(session.project, before);
+        session.project.edit(Edit::SetTempo { bpm: 1.0 }).unwrap();
+        let bounded = session
+            .audition_beat_step(track, row_id, 0, daw_core::BeatResolution::Quarter, &|| {
+                false
+            })
+            .unwrap();
+        assert_eq!(bounded.len(), 9 * session.project.sample_rate_hz as usize);
+    }
+
     #[test]
     fn held_notes_keep_rendering_until_release_and_quick_clicks_keep_the_minimum() {
         for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {

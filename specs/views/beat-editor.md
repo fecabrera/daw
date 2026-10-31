@@ -182,8 +182,9 @@ Related documents: [modular audio units](../architecture/modular-audio-units.md)
 
 ### Compact lower editor layout
 
-The lower editor uses one horizontal topbar for Add beat subtrack, Bars,
-resolution, and the shared fit/zoom controls. These controls do not occupy the
+The lower editor uses one horizontal topbar for Bars, resolution and shared
+fit/zoom controls. Add beat subtrack is the shared right-pinned Plus button in the
+left Beat subtracks header. These controls do not occupy the
 step canvas. Subtrack lanes are 32 points high. Each header uses `[name] [M] [S] [pan] [gain]` on one row, with the
 track panel's six-point control/group gaps and four-point gap between the standard pan/gain slots. A single shared musical ruler starts
 at the step grid's left edge, after the subtrack header column. Step boundaries
@@ -279,3 +280,34 @@ Output participates in the same replacement policy. Inactive groups must not
 create automatic default layer selections during initialization. View-level Escape
 clears both current and cached layer selections. Preserve IDs, settings, project
 data, history and dirty state; do not treat popup clicks as background ownership.
+
+Editor places subtrack header rows inside its existing left control panel, beneath
+the Beat subtracks header and aligned with their step rows. One lower-pane
+vertical ScrollArea spans that column and the right step canvas; do not maintain
+separate scroll positions. Remove the old advice block. Retain the shared
+`track_overview::LABEL_WIDTH` gutter (52 points) between the panel and steps,
+matching MIDI and Audio. Offset both ruler and cells by that width and exclude
+it from fit/zoom and placeholder viewport calculations. Reuse the MIDI ruler
+headphones button and session audition toggle in this gutter. Enabling a step
+previews its subtrack at velocity 100, saved trigger pitch plus clip transpose,
+and saved resolution; removing or clicking disabled steps remains silent.
+Prepare one isolated beat hit on the existing latest-request audition worker
+through the normal subtrack, beat Output and ancestor bus renderer. Keep mute,
+local solo, gain/pan, source preparation and one-step note-off behavior. Bound the
+preview to one step (at most eight seconds) plus one second of tail and reuse audition boundary fades.
+Never change live project data or transport for previews. Toggle-off, view/track
+changes, edits, Escape and existing job/dialog/focus guards cancel stale previews.
+Reuse `instrument_lanes_header` for the Beat subtracks title and Plus action so
+button artwork, size, right inset, enablement and tooltip match Instrument.
+
+Keep disabled placeholder cells visible outside the selected clip's timeline range
+as well as when no pattern is selected. Use the selected grid resolution, or 1/16
+without a selected pattern. Clip placeholders at selected-range boundaries so they
+do not overlap active cells. They show no saved hits, playhead highlights or edit
+actions. Other clips never supply their pattern content to the placeholder grid.
+Changing the viewport or selecting/deselecting clips must not leave blank regions
+before or after the active pattern. Keep the existing placeholder paint bound.
+
+Pointer edits must stay inside the active cell's allocated time range, with its
+right edge exclusive. Egui's extended hit radius must not allow a click in the
+disabled region to toggle the nearest active step. Preserve keyboard activation.

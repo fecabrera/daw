@@ -368,11 +368,11 @@ impl DawUi {
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
         child.set_clip_rect(canvas.intersect(ui.clip_rect()));
-        self.edit_canvas(&mut child);
+        self.edit_canvas(&mut child, bounds);
         ui.advance_cursor_after_rect(bounds);
     }
 
-    fn edit_canvas(&mut self, ui: &mut egui::Ui) {
+    fn edit_canvas(&mut self, ui: &mut egui::Ui, editor_bounds: Rect) {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         if !ui.is_enabled()
             || !ui.input(|i| i.focused)
@@ -423,7 +423,20 @@ impl DawUi {
         self.midi_editor.content_active = true;
         self.editor_content_header(ui, &track);
         if track.kind == TrackKind::Beat {
-            self.beat_grid(ui, &track);
+            // One lower-pane scroll area owns the left headers and right steps.
+            let available = ui.available_rect_before_wrap();
+            let bounds = Rect::from_min_max(
+                Pos2::new(editor_bounds.left(), available.top()),
+                available.max,
+            );
+            let mut beat = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("beat-editor-lanes")
+                    .max_rect(bounds)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            beat.set_clip_rect(bounds.intersect(editor_bounds));
+            self.beat_grid(&mut beat, &track);
         } else if track.kind == TrackKind::Midi {
             self.piano_roll(ui, &track, &assets, previous_track);
         } else {

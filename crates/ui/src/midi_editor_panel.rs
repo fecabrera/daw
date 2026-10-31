@@ -42,24 +42,40 @@ impl DawUi {
         let midi = track_id.is_some();
         let original = self.editor_midi_options();
         let mut options = original;
-        let beat = self
+        let beat_track = self
             .editor_track()
-            .is_some_and(|t| t.kind == TrackKind::Beat);
+            .filter(|t| t.kind == TrackKind::Beat)
+            .map(|t| t.id);
+        let beat = beat_track.is_some();
         let audio = self
             .editor_track()
             .is_some_and(|t| t.kind == TrackKind::Audio);
         let title = rows::fixed(&mut child, toolbars::HEIGHT, |ui| {
-            panel.header(
-                ui,
-                if beat {
-                    "Beat subtracks"
-                } else if audio {
-                    "Clip options"
-                } else {
-                    "MIDI options"
-                },
-                |_| {},
-            )
+            if let Some(track) = beat_track {
+                let header = self.instrument_lanes_header(
+                    ui,
+                    &panel,
+                    "Beat subtracks",
+                    "Add beat subtrack",
+                    self.editing_enabled(),
+                );
+                if header.inner.clicked() {
+                    self.add_beat_subtrack(track);
+                }
+                header.response
+            } else {
+                panel
+                    .header(
+                        ui,
+                        if audio {
+                            "Clip options"
+                        } else {
+                            "MIDI options"
+                        },
+                        |_| {},
+                    )
+                    .response
+            }
         });
         panels::ControlPanel::row_dividers(&child, title.response.rect, false, true);
         #[cfg(test)]
@@ -68,12 +84,7 @@ impl DawUi {
             self.midi_editor.scale_mode_bounds = Rect::NOTHING;
             self.midi_editor.scale_snap_bounds = Rect::NOTHING;
         }
-        if beat {
-            rows::advice(
-                &mut child,
-                "Edit steps and subtracks below. Configure each subtrack's sources in Instrument.",
-            );
-        } else if audio {
+        if audio {
             let allowed = ui.is_enabled() && self.editing_enabled();
             let options_bounds = Rect::from_min_max(title.response.rect.min, rect.max);
             egui::ScrollArea::vertical()
@@ -82,7 +93,7 @@ impl DawUi {
                 .show(&mut child, |ui| {
                     self.clip_settings_body(ui, &panel, options_bounds, allowed)
                 });
-        } else {
+        } else if !beat {
             self.clear_clip_settings_edits();
             egui::ScrollArea::vertical()
             .id_salt("editor-options-scroll")

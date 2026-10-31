@@ -630,7 +630,7 @@ fn compact_beat_controls_follow_track_spacing_and_requested_order() {
     assert!(solo.right() < pan.left() && pan.left() < gain.left());
     assert!((solo.left() - mute.right() - mix_controls::GROUP_GAP).abs() < 0.1);
     assert!(mute.left() - name.right() >= mix_controls::GROUP_GAP - 0.1);
-    let right = app.midi_editor.content.ruler.left() - 7.0;
+    let right = app.midi_editor.panel_bounds.right() - 7.0;
     assert!(
         (gain.center().x - (right - knobs::SIZE * 0.5)).abs() < 0.1,
         "mix controls stay at the row's right inset"
@@ -1019,10 +1019,7 @@ fn subtrack_outlines_match_track_style_and_paint_above_column_dividers() {
             } else {
                 let step = app.beat_ui.steps[&(row, 0)];
                 Rect::from_min_size(
-                    Pos2::new(
-                        app.midi_editor.content.ruler.left() - TRACK_WIDTH,
-                        step.top() - 3.0,
-                    ),
+                    Pos2::new(app.midi_editor.panel_bounds.left(), step.top() - 3.0),
                     Vec2::new(TRACK_WIDTH, 32.0),
                 )
             };
@@ -1333,4 +1330,265 @@ fn plain_layer_selection_replaces_selection_in_other_subtracks() {
     );
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
+}
+
+#[test]
+fn editor_subtrack_headers_live_in_the_left_panel_and_share_the_instrument_plus() {
+    let (mut app, ctx, track, row, clip) = setup();
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let panel = app.midi_editor.panel_bounds;
+    let ruler = app.midi_editor.content.ruler;
+    assert!(
+        (ruler.left() - panel.right() - track_overview::LABEL_WIDTH).abs() < 0.1,
+        "the step ruler retains the shared editor gutter"
+    );
+    assert!(panel.contains_rect(app.beat_ui.headers[&row]));
+    assert!(
+        app.beat_ui.mix_bounds[&row]
+            .iter()
+            .all(|r| panel.contains_rect(*r))
+    );
+    assert!((app.beat_ui.steps[&(row, 0)].left() - ruler.left() - 1.0).abs() < 0.1);
+    assert!(!shapes.iter().any(
+        |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Add beat subtrack")
+    ));
+    let header = app.midi_editor.instrument_header_bounds;
+    let plus = app.midi_editor.add_layer_bounds;
+    assert!(header.contains_rect(plus));
+    assert!(panel.contains_rect(plus));
+    let inset = header.right() - plus.right();
+    assert!(inset <= 8.0, "Plus is pinned at the header's right inset");
+    click(&mut app, &ctx, plus.center());
+    assert_eq!(app.session.project.beat(track).unwrap().subtracks.len(), 2);
+    let added = app.session.project.beat(track).unwrap().subtracks[1].id;
+    assert!(
+        app.midi_editor
+            .panel_bounds
+            .contains_rect(app.beat_ui.headers[&added])
+    );
+    assert_eq!(app.selected_clip, Some(clip));
+    app.view_mode = ViewMode::Instrument;
+    frame(&mut app, &ctx, vec![]);
+    let instrument_plus = app.midi_editor.add_layer_bounds;
+    assert_eq!(instrument_plus.size(), plus.size());
+    assert!(
+        (app.midi_editor.instrument_header_bounds.right() - instrument_plus.right() - inset).abs()
+            < 0.1
+    );
+}
+
+#[test]
+fn editor_left_headers_and_steps_scroll_together_without_project_changes() {
+    let (mut app, ctx, track, first, _) = setup();
+    for index in 0..18 {
+        app.session
+            .project
+            .edit(Edit::Beat {
+                track_id: track,
+                edit: BeatEdit::Add {
+                    subtrack: Box::new(BeatSubtrack::new(format!("Row {index}"))),
+                    index: index + 1,
+                },
+            })
+            .unwrap();
+    }
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    app.dirty = false;
+    let top = app.beat_ui.headers[&first].top();
+    let pointer = Pos2::new(
+        app.midi_editor.panel_bounds.left() + 2.0,
+        app.midi_editor.content.ruler.bottom() + 20.0,
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            egui::Event::PointerMoved(pointer),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                phase: egui::TouchPhase::Move,
+                delta: Vec2::new(0.0, -150.0),
+                modifiers: Default::default(),
+            },
+        ],
+    );
+    for _ in 0..6 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    assert!(
+        app.beat_ui.headers[&first].top() < top,
+        "scrolling over the left panel scrolls the shared rows"
+    );
+    let mut visible = 0;
+    for (row, header) in &app.beat_ui.headers {
+        if let Some(step) = app.beat_ui.steps.get(&(*row, 0))
+            && step.bottom() > app.midi_editor.content.ruler.bottom()
+            && step.top() < app.midi_editor.panel_bounds.bottom()
+        {
+            visible += 1;
+            assert!((header.center().y - step.center().y).abs() < 0.1);
+            assert!(header.left() < app.midi_editor.panel_bounds.right());
+            assert!(step.left() >= app.midi_editor.panel_bounds.right());
+        }
+    }
+    assert!(visible > 0);
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn selected_beat_patterns_keep_disabled_steps_beyond_their_end() {
+    let (mut app, ctx, _, row, clip) = setup();
+    app.midi_editor.content.fitted = false;
+    app.midi_editor.content.zoom *= 0.5;
+    frame(&mut app, &ctx, vec![]);
+    let ruler = app.midi_editor.content.ruler;
+    let disabled = app
+        .beat_ui
+        .disabled_steps
+        .iter()
+        .find(|(id, rect)| {
+            *id == row && rect.left() >= ruler.left() && rect.right() <= ruler.right()
+        })
+        .expect("disabled cells beyond the one-bar pattern")
+        .1
+        .center();
+    let before = app.session.project.clone();
+    app.dirty = false;
+    click(&mut app, &ctx, disabled);
+    assert_eq!(app.session.project, before);
+    assert_eq!(app.selected_clip, Some(clip));
+    assert!(!app.dirty);
+    let end_frame = app.session.project.tracks[0].clips[0].end();
+    let edge = app.midi_editor.content.ruler.left()
+        + app
+            .midi_editor
+            .content
+            .timeline(&app.session.project)
+            .pixel_at_frame(end_frame) as f32;
+    let boundary = Pos2::new(edge + 0.5, app.beat_ui.steps[&(row, 0)].center().y);
+    click(&mut app, &ctx, boundary);
+    assert_eq!(
+        app.session.project, before,
+        "disabled space must not activate the nearest active step through its hit radius"
+    );
+    let active = app.beat_ui.steps[&(row, 0)].center();
+    click(&mut app, &ctx, active);
+    let asset = app.session.project.tracks[0].clips[0].asset_id;
+    assert_eq!(
+        app.session
+            .project
+            .assets
+            .iter()
+            .find(|a| a.id == asset)
+            .unwrap()
+            .beat_pattern
+            .as_ref()
+            .unwrap()
+            .pattern
+            .steps
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn disabled_beat_steps_fill_before_and_after_the_selected_clip_and_ignore_other_patterns() {
+    let (mut app, ctx, track, row, clip) = setup();
+    let duration = app.session.project.tracks[0].clips[0].length_frames;
+    app.session.project.tracks[0].clips[0].start_frame = duration;
+    let other = app
+        .session
+        .project
+        .add_beat_pattern(track, duration * 3)
+        .unwrap();
+    app.session.project.validate().unwrap();
+    app.midi_editor.content.fitted = false;
+    app.midi_editor.content.zoom *= 0.25;
+    app.midi_editor.content.scroll = 0.0;
+    frame(&mut app, &ctx, vec![]);
+    let clock = app.midi_editor.content.timeline(&app.session.project);
+    let ruler = app.midi_editor.content.ruler;
+    let disabled: Vec<_> = app
+        .beat_ui
+        .disabled_steps
+        .iter()
+        .filter(|(id, rect)| {
+            *id == row && rect.left() >= ruler.left() && rect.right() <= ruler.right()
+        })
+        .map(|(_, rect)| {
+            (
+                clock.frame_at_pixel(f64::from(rect.center().x - ruler.left())) as u64,
+                rect.center(),
+            )
+        })
+        .collect();
+    assert!(disabled.iter().any(|(frame, _)| *frame < duration));
+    assert!(disabled.iter().any(|(frame, _)| *frame >= duration * 2));
+    assert!(
+        disabled
+            .iter()
+            .all(|(frame, _)| *frame < duration || *frame >= duration * 2)
+    );
+    let over_other = disabled
+        .iter()
+        .find(|(frame, _)| *frame >= duration * 3 && *frame < duration * 4)
+        .expect("unselected patterns remain disabled in the lower editor")
+        .1;
+    let before = app.session.project.clone();
+    click(&mut app, &ctx, over_other);
+    assert_eq!(app.selected_clip, Some(clip));
+    assert_ne!(app.selected_clip, Some(other));
+    assert_eq!(app.session.project, before);
+    app.selected_clip = None;
+    app.selected_clips.clear();
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.beat_ui.disabled_steps.is_empty());
+    let point = app
+        .beat_ui
+        .disabled_steps
+        .iter()
+        .find(|(_, rect)| rect.left() >= ruler.left() && rect.right() <= ruler.right())
+        .unwrap()
+        .1
+        .center();
+    click(&mut app, &ctx, point);
+    assert_eq!(app.selected_clip, None);
+    assert_eq!(app.session.project, before);
+}
+
+#[test]
+fn beat_editor_shared_audition_button_previews_only_enabled_steps() {
+    let (mut app, ctx, track, row, _) = setup();
+    let before = app.session.project.clone();
+    let audition = app.midi_editor.audition_bounds;
+    let panel = app.midi_editor.panel_bounds;
+    let ruler = app.midi_editor.content.ruler;
+    assert!(audition.left() >= panel.right());
+    assert!(audition.right() <= ruler.left());
+    assert_eq!(audition.size(), Vec2::splat(16.0));
+    click(&mut app, &ctx, audition.center());
+    assert!(app.midi_editor.audition_enabled);
+    assert_eq!(app.session.project, before);
+    let step = app.beat_ui.steps[&(row, 0)].center();
+    click(&mut app, &ctx, step);
+    assert_eq!(app.chords.audition.beat_requests, vec![(track, row)]);
+    click(&mut app, &ctx, step);
+    assert_eq!(
+        app.chords.audition.beat_requests.len(),
+        1,
+        "removing a step is silent"
+    );
+    click(&mut app, &ctx, audition.center());
+    assert!(!app.midi_editor.audition_enabled);
+    assert!(!app.chords.audition.scoped());
+    click(&mut app, &ctx, step);
+    assert_eq!(app.chords.audition.beat_requests.len(), 1);
+    app.selected_clip = None;
+    frame(&mut app, &ctx, vec![]);
+    click(&mut app, &ctx, audition.center());
+    let disabled = app.beat_ui.disabled_steps[0].1.center();
+    click(&mut app, &ctx, disabled);
+    assert_eq!(app.chords.audition.beat_requests.len(), 1);
 }

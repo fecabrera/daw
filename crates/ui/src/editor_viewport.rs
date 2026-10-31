@@ -142,11 +142,7 @@ impl DawUi {
         } else {
             0.0
         };
-        let label_width = if track.kind == daw_core::TrackKind::Beat {
-            TRACK_WIDTH
-        } else {
-            track_overview::LABEL_WIDTH
-        };
+        let label_width = track_overview::LABEL_WIDTH;
         let width = (ui.available_width() - label_width - scrollbar).max(1.0);
         self.midi_editor.content.prepare(
             clip,
@@ -204,7 +200,12 @@ impl DawUi {
         );
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
-        self.editor_content_ruler(ui, scrollbar, midi, label_width);
+        self.editor_content_ruler(
+            ui,
+            scrollbar,
+            midi || track.kind == daw_core::TrackKind::Beat,
+            label_width,
+        );
     }
 
     fn editor_content_ruler(

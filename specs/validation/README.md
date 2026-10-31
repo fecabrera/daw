@@ -4,6 +4,76 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat Editor gutter and shared audition — 2026-10-31
+
+Beat Editor now uses the same 52-point panel/content gutter as MIDI and Audio.
+The lower ruler and steps share that offset; headers keep their fixed left-panel
+bounds and synchronized vertical scrolling. The gutter reuses the MIDI headphones
+control and audition toggle. Enabling a step requests an isolated beat preview
+through the existing cancellable worker and normal rendering graph. Removing steps
+and clicking disabled cells are silent. Previews preserve the live project and
+transport, apply trigger pitch/clip transpose and bus controls, and retain the
+shared boundary fades. The gate is limited to one step or eight seconds, followed
+by one second of tail.
+
+Checks completed:
+
+- `cargo test --locked --workspace`: **2,029 passed, 11 ignored** across 258 suites.
+  Focused project/audition and full UI reruns also pass after the final preview
+  duration and target-scope guards.
+- `cargo test --locked -p daw-ui --lib`: **778 passed**, including 30 beat regressions.
+- `cargo test --locked -p daw-project --lib audition::tests`: **5 passed**, covering
+  beat audio, transpose, gain, duration bounds, invalid targets, cancellation and
+  live-project preservation, plus existing MIDI/chord behavior.
+- Strict locked workspace/all-target Clippy, formatting, changed documentation
+  file targets and whitespace checks pass.
+- Locked CLI build and `python3 tools/check_cli.py` pass.
+- `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+
+Native audition/device and visual verification, plus Windows/Linux execution,
+remain unverified for this change.
+
+## Disabled steps outside selected beat patterns — 2026-10-31
+
+The disabled placeholder grid previously rendered only with no selected pattern,
+leaving the canvas blank beyond a selected pattern's end. It now fills visible time
+before and after the selected clip too, using the saved resolution or the default
+1/16 when unselected. Placeholders are clipped outside the selected range, disabled,
+and empty; active source mapping and step editing remain unchanged.
+
+Regressions cover a selected one-bar pattern in a wider viewport, disabled clicks,
+active editing, hit-radius rejection immediately outside the clip end, ranges before
+and after a moved clip, another unselected pattern
+within the viewport, and deselection with existing patterns. Disabled interaction
+retains project data and the selected clip.
+
+`cargo test --locked -p daw-ui --lib` passes **777 tests**, including 29 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt the app. Native UI/device verification and Windows/Linux execution remain
+unverified for this change.
+
+## Beat Editor left-panel headers and shared Plus — 2026-10-31
+
+Editor subtrack headers now occupy the existing left control panel, while the
+steps and lower ruler start at the canvas left edge without a second header
+column. One lower-pane ScrollArea covers headers and steps for synchronized
+vertical scrolling. The old left advice block and topbar Add beat subtrack button
+are removed. Beat subtracks uses Instrument's shared header/Plus component, with
+the same artwork, dimensions and right inset. Pattern Bars/resolution remain in
+the lower canvas topbar.
+
+Regressions check header/control bounds inside the left panel, step/ruler alignment
+at its right edge, Plus placement and parity with Instrument, creation through the
+Plus action, synchronized scrolling over the left panel and unchanged project data
+while scrolling. Existing header selection/control/Escape tests remain applicable.
+
+`cargo test --locked -p daw-ui --lib` passes **775 tests**, including 27 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`. Native UI/device verification and Windows/Linux
+execution remain unverified for this change.
+
 ## Layer selection across beat subtrack owners — 2026-10-31
 
 Per-subtrack UI caches previously retained old layer highlights when another

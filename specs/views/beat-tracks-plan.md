@@ -10,7 +10,7 @@ This plan extends the [Beat MVP](beat-editor.md), [source-container architecture
 
 - Add **Add beat track** after Add audio track and Add MIDI track in the menubar/application Track menu, the Tracks panel Plus dropdown, and the Tracks panel context menus that offer track creation.
 - A beat track owns beat subtracks. A subtrack is a child of its beat instrument, not a project track, track group, or ordinary MIDI instrument layer. Earlier specifications call these children beat lanes.
-- Editor keeps the selected beat track's clip overview above its lower beat editor. The lower editor shows one step row per subtrack and an action to add a subtrack.
+- Editor keeps the selected beat track's clip overview above its lower beat editor. The lower editor shows aligned subtrack headers in the left panel and steps in the right canvas, with one shared vertical scroll position. Its Beat subtracks header owns the right-pinned Plus action.
 - Editor and Instrument both support adding, selecting one or several subtracks, deleting, renaming, and reordering them. Both expose the same subtrack gain and pan values. Retain the previously accepted Mute/Solo controls.
 - In Instrument, each subtrack is an expandable group with a compact one-row header. It contains source layers, its own LFO and Envelope sublanes, and a separate Output sublane. Kick and Snare have separate outputs, settings and modulators.
 - One fixed Output lane follows all subtrack groups and sums the whole beat instrument. Each group has its own Output child backed by the existing subtrack main bus.

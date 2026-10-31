@@ -6,11 +6,11 @@ Use beat tracks to build rhythms from independently configured instruments. Mixe
 
 1. Choose **Add beat track** from the Track menu, the Tracks panel Plus menu, or its empty-space context menu.
 2. Double-click empty space on that track to create a pattern. Double-click the clip to open Editor.
-3. Click **Add beat subtrack** in Editor, or the Plus button in Instrument’s **Subtracks** header. New subtracks start with an empty source layer.
+3. Click the **Plus** button in Editor’s **Beat subtracks** header, or in Instrument’s **Subtracks** header. New subtracks start with an empty source layer.
 4. Switch to Instrument and add Oscillator, Sampler or Granulizer to that subtrack's layer through the shared component catalog. Each subtrack is an instrument; there is no audio/MIDI type choice.
-5. Return to Editor and click steps to enable or disable them. Press Play to hear the pattern.
+5. Return to Editor and click steps to enable or disable them. Turn on the headphones button above the step rows to hear each step you enable. Press Play to hear the pattern.
 
-Editor keeps the selected track's clip overview above the step rows. Without an active clip, empty steps stay visible but disabled, and subtrack controls remain available; select a clip, or double-click empty space in the track overview to create a pattern.
+Editor keeps the selected track's clip overview above the step rows. Empty disabled steps fill the visible area outside the selected pattern. Without an active clip, all steps stay visible but disabled, and subtrack controls remain available; select a clip, or double-click empty space in the track overview to create a pattern.
 
 ## Grid and hit controls
 
@@ -48,10 +48,13 @@ Stops use a 5 ms fade, including for one-shot samples. If both subtracks have a 
 
 Beat settings and embedded patterns save with the project. Sampler recordings follow the normal external/included source rules; use **Collect project sources** before moving a project that references external recordings. The CLI can inspect beat tracks, validate, collect sources and render them through the same engine.
 
-Use the lower editor's topbar to add subtracks, set the pattern's bar count,
-and choose its step resolution. Each compact lane starts with the subtrack name, followed by mute, solo, pan and gain pinned to the right,
-followed by its steps. The ruler above the steps follows the same
-zoom and scroll position as the pattern.
+Use the lower editor's topbar to set the pattern's bar count and step resolution.
+Subtrack names and mix controls appear in the left panel, with a right-pinned
+Plus button in the **Beat subtracks** header. Headers and steps scroll together.
+Each header shows the name, followed by mute, solo, pan and gain pinned right. The ruler above the steps follows the same
+zoom and scroll position as the pattern. The gutter between the left panel and
+the steps contains the same headphones audition control as the MIDI editor.
+Audition is off by default. Removing a step or clicking a disabled step is silent.
 
 In Instrument, each subtrack has a chevron beside its name. Click it to hide or
 show its nested source layers, LFO and Envelope lanes. The subtrack Output lane is hidden while collapsed. New groups start expanded.
