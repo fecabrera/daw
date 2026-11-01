@@ -630,10 +630,13 @@ fn compact_beat_controls_follow_track_spacing_and_requested_order() {
     assert!(solo.right() < pan.left() && pan.left() < gain.left());
     assert!((solo.left() - mute.right() - mix_controls::GROUP_GAP).abs() < 0.1);
     assert!(mute.left() - name.right() >= mix_controls::GROUP_GAP - 0.1);
-    let right = app.midi_editor.panel_bounds.right() - 7.0;
+    let right = app.midi_editor.panel_bounds.right()
+        - 7.0
+        - (meters::STEREO_WIDTH - meters::SCALE_WIDTH)
+        - mix_controls::GROUP_GAP;
     assert!(
         (gain.center().x - (right - knobs::SIZE * 0.5)).abs() < 0.1,
-        "mix controls stay at the row's right inset"
+        "mix controls stay pinned immediately before the shared stereo meter"
     );
     for name in [
         "K",
@@ -663,6 +666,77 @@ fn compact_beat_controls_follow_track_spacing_and_requested_order() {
     assert!(app.session.project.beat(track).unwrap().subtracks[0].muted);
     click(&mut app, &ctx, solo.center());
     assert!(app.session.project.beat(track).unwrap().subtracks[0].soloed);
+}
+
+#[test]
+fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_controls_intact() {
+    for color_theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
+        for scale in [1.0, 1.5] {
+            let (mut app, ctx, _, row, _) = setup();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            ctx.set_pixels_per_point(scale);
+            let size = Vec2::new(1600.0, 1400.0);
+            frame_shapes(&mut app, &ctx, vec![], size);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+            let name = app.beat_ui.headers[&row];
+            let header = Rect::from_min_size(
+                Pos2::new(app.midi_editor.panel_bounds.left(), name.center().y - 16.0),
+                Vec2::new(TRACK_WIDTH, 32.0),
+            );
+            let mut rails: Vec<_> = shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect)
+                        if rect.fill == theme::palette(&ctx).input
+                            && rect.rect.width() == 8.0
+                            && header.contains_rect(rect.rect) =>
+                    {
+                        Some(rect.rect)
+                    }
+                    _ => None,
+                })
+                .collect();
+            rails.sort_by(|a, b| a.left().total_cmp(&b.left()));
+            assert_eq!(rails.len(), 2);
+            for rail in &rails {
+                assert!((rail.top() - header.top() - 2.0).abs() < 0.1);
+                assert!((header.bottom() - rail.bottom() - 2.0).abs() < 0.1);
+            }
+            assert_eq!(header.right() - rails[1].right(), 7.0);
+            assert_eq!(rails[1].left() - rails[0].right(), 4.0);
+            let gain = app.beat_ui.mix_bounds[&row][3];
+            assert!(rails[0].left() - gain.right() >= mix_controls::GROUP_GAP);
+            assert!((gain.center().x - (header.right() - 47.0)).abs() < 0.75);
+            let before = app.session.project.clone();
+            app.dirty = false;
+            click(&mut app, &ctx, rails[0].center());
+            assert!(!app.beat_dragging());
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+
+            app.view_mode = ViewMode::Instrument;
+            frame_shapes(&mut app, &ctx, vec![], size);
+            app.toggle_beat_group(row);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+            super::track_header::assert_header_meter_insets(
+                &shapes,
+                app.beat_ui.groups[&row].0,
+                &ctx,
+            );
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+        }
+    }
 }
 
 #[test]

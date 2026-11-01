@@ -4,6 +4,22 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Shared beat subtrack level meters — 2026-10-31
+
+Editor subtrack headers now reuse the track stereo panel and existing subtrack
+Main output handles. Gain stays immediately before the rails. The shared helper
+can return child responses so selection and mix controls retain their behavior.
+No audio processing or additional meter publication was added. Instrument keeps
+the same handle in its expanded Output and collapsed subtrack header.
+
+Regression coverage checks three themes and two display scales, rail geometry,
+thin-row alignment, right-pinned gain, unchanged project data after meter clicks,
+and existing Instrument collapsed-header geometry. The UI suite passes **791 tests**.
+Locked workspace tests pass **2,048 tests**, with 11 ignored across 258 suites.
+Strict locked workspace/all-target Clippy, formatting, Markdown targets and
+whitespace checks pass. The debug macOS app was rebuilt.
+Native listening/UI and Windows/Linux execution remain unverified.
+
 ## Beat audition buttons retain instrument endings — 2026-10-31
 
 Explicit subtrack audition buttons now stream bounded chunks through the existing

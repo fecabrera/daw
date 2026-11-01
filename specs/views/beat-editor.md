@@ -185,11 +185,22 @@ Related documents: [modular audio units](../architecture/modular-audio-units.md)
 The lower editor uses one horizontal topbar for Bars, resolution and shared
 fit/zoom controls. Add beat subtrack is the shared right-pinned Plus button in the
 left Beat subtracks header. These controls do not occupy the
-step canvas. Subtrack lanes are 32 points high. Each header uses `[name] [M] [S] [pan] [gain]` on one row, with the
+step canvas. Subtrack lanes are 32 points high. Each header uses `[name] [M] [S] [pan] [gain] [meter]` on one row, with the
 track panel's six-point control/group gaps and four-point gap between the standard pan/gain slots. A single shared musical ruler starts
 at the step grid's left edge, after the subtrack header column. Step boundaries
 use the same project-frame transform as the ruler, including zoom and scroll.
 There is no second pattern ruler.
+
+Reuse `meters::stereo_panel_with_content` and `meters::reset_on_click` for the
+Editor subtrack meter. Read the existing `(subtrack ID, instrument Main ID)`
+layer-meter handle, also used by its Instrument Output and collapsed group header.
+Do not create another monitor or analyze audio in the UI. Keep the shared two
+eight-point rails, four-point channel gap, green/red track palette, dBFS mapping,
+tooltips and stereo clipping reset. Reserve the meter at the right seven-point
+inset after Gain. The thin Editor row retains two-point vertical insets and its
+existing control/step alignment; Instrument retains its normal header geometry.
+Unavailable or stopped output displays empty rails. Meter clicks must not change
+project data, add hits, or start subtrack reordering.
 
 ### Subtrack group hierarchy
 

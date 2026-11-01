@@ -741,24 +741,46 @@ impl DawUi {
                             egui::UiBuilder::new()
                                 .id_salt(row.id)
                                 .max_rect(rect.shrink2(Vec2::new(7.0, 2.0)))
-                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                                .layout(egui::Layout::top_down(egui::Align::Min)),
                         );
+                        header.spacing_mut().item_spacing = Vec2::new(mix_controls::GROUP_GAP, 4.0);
                         let mut bus = row.instrument.main.clone();
                         let (mut muted, mut soloed) = (row.muted, row.soloed);
-                        let (response, knobs, toggles) = header
-                            .add_enabled_ui(
-                                !self.beat_dragging() && self.edit_environment_available(),
-                                |ui| {
-                                    mix_controls::named_row(
-                                        ui,
-                                        &mut bus,
-                                        &mut muted,
-                                        &mut soloed,
-                                        |ui| self.beat_name(ui, track.id, row),
-                                    )
+                        let levels = self
+                            .output
+                            .as_ref()
+                            .and_then(|o| o.layer_meter(row.id, row.instrument.main.id))
+                            .map_or([(0.0, false); 2], |meter| meter.levels());
+                        let ((response, knobs, toggles), cleared) =
+                            meters::stereo_panel_with_content(
+                                &mut header,
+                                height - 4.0,
+                                levels,
+                                |header| {
+                                    header
+                                        .add_enabled_ui(
+                                            !self.beat_dragging()
+                                                && self.edit_environment_available(),
+                                            |ui| {
+                                                mix_controls::named_row(
+                                                    ui,
+                                                    &mut bus,
+                                                    &mut muted,
+                                                    &mut soloed,
+                                                    |ui| self.beat_name(ui, track.id, row),
+                                                )
+                                            },
+                                        )
+                                        .inner
                                 },
-                            )
-                            .inner;
+                            );
+                        meters::reset_on_click(
+                            ui,
+                            self.output
+                                .as_ref()
+                                .and_then(|o| o.layer_meter(row.id, row.instrument.main.id)),
+                            cleared,
+                        );
                         #[cfg(test)]
                         {
                             self.beat_ui.headers.insert(row.id, response.rect);

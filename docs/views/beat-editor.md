@@ -73,7 +73,10 @@ Beat settings and embedded patterns save with the project. Sampler recordings fo
 Use the lower editor's topbar to adjust the clip length and step resolution.
 Subtrack names and mix controls appear in the left panel, with a right-pinned
 Plus button in the **Beat subtracks** header. Headers and steps scroll together.
-Each header shows the name, followed by mute, solo, pan and gain pinned right. The ruler above the steps follows the same
+Each header shows the name, followed by mute, solo, pan, gain and the shared
+stereo level meter pinned right. The meter reads that subtrack's output and shares
+its clipping indication with Instrument. Click either bar to reset its held peak
+and clipping warning. The ruler above the steps follows the same
 zoom and scroll position as the pattern. The gutter between the left panel and
 the steps contains the same headphones audition control as the MIDI editor.
 Audition is off by default. Removing a step or clicking a disabled step is silent.
