@@ -4,9 +4,9 @@ Implementation requirements and design records. For user instructions, see the [
 
 For a source-backed map of the current implementation and its review findings, see the [2026-10-19 architecture review](review-2026-10-19/README.md). This document retains dated design decisions; early proposals can be superseded by later entries.
 
-Status: design baseline with implemented track/Master effects and MIDI sources; graph and beat work pending. Last updated: 2026-10-30.
+Status: design baseline with implemented track/Master effects, MIDI sources and the [Beat MVP](../views/beat-model.md). Graph tools remain pending; Beat native platform acceptance remains open. Last updated: 2026-11-01.
 
-Users build MIDI instruments in Instrument and configure track and Master effect chains in Timeline and Mixer, with displayed-track effects in Editor and MIDI track effects also available in Instrument. These replace the earlier combined Units view. The planned track types are audio, MIDI, and beat. Audio tracks will accept effects; MIDI tracks will accept sources and effects. A future Editor view will provide an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor will provide step toggles for subtrack instruments, each with its own source layers, modulators and effects. Every unit will use a shared core and support independent distribution. These are confirmed requirements. The Units MVP scope below is accepted. Detailed API, layout, and packaging choices remain proposals or implementation details.
+Users build MIDI instruments and beat subtrack instruments in Instrument. Track and Master effect chains are available in Timeline and Mixer, with displayed-track effects in Editor and MIDI track effects also available in Instrument. These replace the earlier combined Units view. Audio tracks accept effects; MIDI tracks accept sources and effects. Editor provides waveform, MIDI pattern and beat pattern editors. Beat steps trigger independent subtrack instruments, each with source layers, modulators and effects. Units share a reusable core and support independent distribution. The Units MVP scope below is accepted; detailed graph API and layout choices remain proposals or implementation details.
 
 ## Terms
 
@@ -31,7 +31,7 @@ Users build MIDI instruments in Instrument and configure track and Master effect
 | --- | --- | --- |
 | D01 | Units must be modular so users can build synths and effect chains. | Avoid monolithic instruments or effects that cannot expose reusable components. |
 | D02 | Add the Units view for audio sources and processing. | Users can add oscillators, effects, and other units through this view. Its layout remains open. |
-| D03 | Audio tracks accept effects only. MIDI tracks accept sources and effects. | Track capabilities must constrain unit placement. Basic MIDI tracks and oscillator instruments are implemented; serial track EQ chains are implemented; Master effects are implemented; beat-lane effects remain pending. |
+| D03 | Audio tracks accept effects only. MIDI tracks accept sources and effects. | Track capabilities must constrain unit placement. Basic MIDI tracks and oscillator instruments are implemented; serial track EQ chains are implemented; Master effects are implemented; beat subtrack layer and Output effects and final beat Output effects are implemented; see the [Beat model](../views/beat-model.md). |
 | D04 | All units share a base core and can ship independently. | Separate common contracts from individual implementations and DAW integration. Distribution targets are defined in D10. |
 | D05 | Add a beat pattern editor in the Editor view with lanes and step toggles for easy beat creation. | Keep step editing distinct from unit/source/effect configuration. |
 | D06 | Support three track types: audio, MIDI, and beat. | Keep track identity separate from editor view mode. |
@@ -62,7 +62,7 @@ D29 (2026-10-11) updates the MIDI voice scope: MIDI patterns support simultaneou
 
 D30 (2026-10-12) defines one source container per track: clip playback for Audio, one instrument for MIDI, and one beat instrument containing lanes for Beat. Reusable oscillator units belong inside an instrument. Each container exposes one audio output bus to track effects and gain/pan. This is the accepted target architecture; the MIDI source container now holds parallel layers with summed oscillator lists and optional amplitude envelopes under D32. Full graph containers remain pending.
 
-These decisions define the full target scope. Basic MIDI tracks, patterns, oscillator units, and the MIDI Editor view are implemented; beat tracks, graph tools, other clip editors, and plugin loading remain pending. The delivery schedule remains on the [MVP roadmap](mvp-scope.md#future-features).
+These decisions define the full target scope. Audio, MIDI and Beat tracks and their clip editors are implemented, including the [Beat MVP](../views/beat-model.md). Graph tools and plugin loading remain pending; Beat native platform acceptance remains open. The delivery schedule remains on the [MVP roadmap](mvp-scope.md#future-features).
 
 D31 (2026-10-12) adds a per-note ADSR Envelope unit immediately to the right of Oscillator. Use equal-height shared unit panels, a single full-height divider in the panel-border color, and four 90-point stage strips with matching padding, separators, three control rows, and bottom labels. Attack/Decay/Release expose time, curve shape, and curve amount; Sustain exposes level only. Curve choices are Linear, Exponential, Logarithmic, and S-curve, with retained amount disabled for Linear. Use one shared instrument configuration and independent envelope state per note. See [Envelope unit](../instruments/midi-patterns.md#envelope-unit) for implemented ranges, defaults, migration, and lifecycle.
 
