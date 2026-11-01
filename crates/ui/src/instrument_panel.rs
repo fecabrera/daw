@@ -1110,12 +1110,9 @@ impl DawUi {
         {
             response.request_focus();
             let order: Vec<_> = self
-                .session
-                .project
-                .tracks
-                .iter()
-                .find(|t| Some(t.id) == self.instrument_ui.track)
-                .and_then(|t| t.instrument.as_ref())
+                .instrument_ui
+                .track
+                .and_then(|owner| self.session.project.instrument_settings(owner))
                 .map_or_else(Vec::new, |i| i.layers.iter().map(|l| l.id).collect());
             let layers = crate::unit_selection::drag_group(
                 &order,

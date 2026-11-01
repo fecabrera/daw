@@ -1491,7 +1491,10 @@ fn editor_left_headers_and_steps_scroll_together_without_project_changes() {
         frame(&mut app, &ctx, vec![]);
     }
     assert!(
-        app.beat_ui.headers[&first].top() < top,
+        app.beat_ui
+            .headers
+            .get(&first)
+            .is_none_or(|header| header.top() < top),
         "scrolling over the left panel scrolls the shared rows"
     );
     let mut visible = 0;
@@ -2249,6 +2252,285 @@ fn preview_steps_share_row_geometry_and_four_point_insets_with_a_fixed_grid_sepa
         assert_eq!(
             app.beat_ui.audition_steps[&row], preview,
             "audition stays in the fixed gutter"
+        );
+    }
+}
+
+#[test]
+fn editor_subtrack_selection_replaces_final_output_target() {
+    for target in ["name", "control", "blank"] {
+        let (mut app, ctx, track, row, _) = setup();
+        app.view_mode = ViewMode::Instrument;
+        frame(&mut app, &ctx, vec![]);
+        let output = app.session.project.beat(track).unwrap().output.id;
+        let point = app.beat_ui.final_output.unwrap().left_top() + egui::vec2(100.0, 25.0);
+        click(&mut app, &ctx, point);
+        assert_eq!(app.selected_instrument_owner(), Some(output));
+        app.view_mode = ViewMode::Edit;
+        frame(&mut app, &ctx, vec![]);
+        let header = app.beat_ui.headers[&row];
+        let point = match target {
+            "control" => app.beat_ui.mix_bounds[&row][2].center(),
+            "blank" => Pos2::new(app.midi_editor.panel_bounds.left() + 2.0, header.center().y),
+            _ => header.center(),
+        };
+        let original = app.session.project.clone();
+        app.dirty = false;
+        click(&mut app, &ctx, point);
+        assert_eq!(app.beat_ui.primary, Some(row), "{target}");
+        app.view_mode = ViewMode::Instrument;
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.selected_instrument_owner(), Some(row), "{target}");
+        assert_eq!(app.session.project, original, "{target}");
+        assert!(!app.dirty, "{target}");
+    }
+}
+
+#[test]
+fn nested_layer_group_drag_moves_copies_and_cancels_without_early_edits() {
+    for action in ["move", "copy", "escape", "focus", "outside"] {
+        let (mut app, ctx, _, row, _) = setup();
+        let instrument = app.session.project.instrument_settings_mut(row).unwrap();
+        instrument.layers.extend([
+            daw_core::InstrumentLayerSettings::default(),
+            daw_core::InstrumentLayerSettings::default(),
+        ]);
+        for layer in &mut instrument.layers {
+            layer.collapsed = true;
+        }
+        instrument.lfo_lane.collapsed = true;
+        instrument.envelope_lane.collapsed = true;
+        instrument.main.collapsed = true;
+        let ids: Vec<_> = instrument.layers.iter().map(|l| l.id).collect();
+        app.view_mode = ViewMode::Instrument;
+        frame(&mut app, &ctx, vec![]);
+        for (index, shift) in [(1, false), (0, true)] {
+            let point = app.midi_editor.layer_bounds[&ids[index]].icon.center();
+            super::instrument_catalog::click(&mut app, &ctx, point, shift);
+        }
+        let before = app.session.project.clone();
+        app.dirty = false;
+        let start = app.midi_editor.layer_bounds[&ids[0]].name.center();
+        let last = app.midi_editor.layer_bounds[&ids[2]].row;
+        let end = Pos2::new(start.x, last.bottom() - 8.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert_eq!(
+            app.session.project, before,
+            "{action}: preview changed the project"
+        );
+        assert!(!app.dirty);
+        if action == "escape" {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+        }
+        if action == "focus" {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused: false,
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            output.textures_delta.clear();
+        }
+        let end = if action == "outside" {
+            Pos2::new(5.0, 5.0)
+        } else {
+            end
+        };
+        let modifiers = egui::Modifiers {
+            alt: action == "copy" && cfg!(target_os = "macos"),
+            ctrl: action == "copy" && !cfg!(target_os = "macos"),
+            ..Default::default()
+        };
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(end),
+                egui::Event::ModifiersChanged(modifiers),
+                egui::Event::PointerButton {
+                    pos: end,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers,
+                },
+            ],
+        );
+        let actual = &app.session.project.instrument_settings(row).unwrap().layers;
+        let original = &before.instrument_settings(row).unwrap().layers;
+        match action {
+            "move" => assert_eq!(
+                actual,
+                &vec![
+                    original[2].clone(),
+                    original[0].clone(),
+                    original[1].clone()
+                ]
+            ),
+            "copy" => {
+                assert_eq!(actual.len(), 5);
+                assert_eq!(&actual[..3], original);
+                for (copy, source) in actual[3..].iter().zip(&original[..2]) {
+                    assert_ne!(copy.id, source.id);
+                    assert_eq!(copy.name, source.name);
+                }
+            }
+            _ => {
+                assert_eq!(app.session.project, before, "{action}");
+                assert!(!app.dirty, "{action}");
+            }
+        }
+        assert!(app.error.is_none(), "{action}: {:?}", app.error);
+    }
+}
+
+#[test]
+fn dense_beat_grid_paints_visible_content_and_reuses_its_source_index() {
+    let (mut app, ctx, track, first, clip) = setup();
+    let beat = app.session.project.tracks[0].beat.as_mut().unwrap();
+    beat.subtracks
+        .extend((1..64).map(|i| BeatSubtrack::new(format!("Row {i}"))));
+    let mut pattern = BeatPattern::default()
+        .with_grid(16, daw_core::BeatResolution::ThirtySecond)
+        .unwrap();
+    for row in &beat.subtracks {
+        for start_tick in (0..pattern.length_ticks()).step_by(120) {
+            pattern.steps.push(daw_core::BeatStep {
+                id: Id::new_v4(),
+                subtrack_id: row.id,
+                start_tick,
+                velocity: 100,
+            });
+        }
+    }
+    app.session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: clip,
+            pattern,
+        })
+        .unwrap();
+    frame(&mut app, &ctx, vec![]);
+    app.midi_editor.content.zoom = 480.0;
+    app.midi_editor.content.scroll = 2.0;
+    app.midi_editor.content.fitted = false;
+    let original = app.session.project.clone();
+    frame(&mut app, &ctx, vec![]);
+    let builds = app.beat_ui.step_index.builds;
+    assert!(
+        app.beat_ui.headers.len() < 32,
+        "offscreen rows must not construct widgets"
+    );
+    assert!(
+        app.beat_ui.steps.len() < app.beat_ui.headers.len() * 64,
+        "offscreen time cells must not construct widgets: {} cells, {} rows, zoom {}, scroll {}",
+        app.beat_ui.steps.len(),
+        app.beat_ui.headers.len(),
+        app.midi_editor.content.zoom,
+        app.midi_editor.content.scroll,
+    );
+    assert!(!app.beat_ui.steps.contains_key(&(first, 0)));
+    let (&(_, tick), bounds) = app
+        .beat_ui
+        .steps
+        .iter()
+        .find(|((id, _), bounds)| {
+            *id == first
+                && bounds.center().x > app.midi_editor.content.left
+                && bounds.center().x < app.midi_editor.content.ruler.right()
+        })
+        .unwrap();
+    let point = bounds.center();
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(
+        app.beat_ui.step_index.builds, builds,
+        "unchanged source must reuse its index"
+    );
+    assert_eq!(app.session.project, original);
+    click(&mut app, &ctx, point);
+    let source = app.session.project.beat(track).unwrap().id;
+    let asset = app.session.project.tracks[0].clips[0].asset_id;
+    let pattern = app
+        .session
+        .project
+        .assets
+        .iter()
+        .find(|a| a.id == asset)
+        .unwrap()
+        .beat_pattern
+        .as_ref()
+        .unwrap();
+    assert_eq!(pattern.instrument_id, source);
+    assert!(
+        !pattern
+            .pattern
+            .steps
+            .iter()
+            .any(|s| s.subtrack_id == first && s.start_tick == tick)
+    );
+    assert!(app.beat_ui.step_index.builds > builds);
+}
+
+#[test]
+#[ignore = "manual optimized beat-grid scaling probe"]
+fn beat_editor_dense_grid_scaling() {
+    for rows in [1, 8, 32, 64] {
+        let mut app = DawUi::default();
+        let track = app.session.project.add_beat_track().unwrap();
+        let beat = app.session.project.tracks[0].beat.as_mut().unwrap();
+        beat.subtracks = (0..rows)
+            .map(|i| BeatSubtrack::new(format!("Row {i}")))
+            .collect();
+        let mut pattern = BeatPattern::default()
+            .with_grid(16, daw_core::BeatResolution::ThirtySecond)
+            .unwrap();
+        for row in &beat.subtracks {
+            for start_tick in (0..pattern.length_ticks()).step_by(120) {
+                pattern.steps.push(daw_core::BeatStep {
+                    id: Id::new_v4(),
+                    subtrack_id: row.id,
+                    start_tick,
+                    velocity: 100,
+                });
+            }
+        }
+        let clip = app.session.project.add_beat_pattern(track, 0).unwrap();
+        app.session
+            .project
+            .edit(Edit::ReplaceBeatPattern {
+                clip_id: clip,
+                pattern,
+            })
+            .unwrap();
+        app.select_clip(clip, track, false);
+        app.view_mode = ViewMode::Edit;
+        let ctx = context();
+        for _ in 0..2 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        let started = std::time::Instant::now();
+        for _ in 0..3 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        eprintln!(
+            "rows={rows} average_frame_ms={:.3}",
+            started.elapsed().as_secs_f64() * 1000.0 / 3.0
         );
     }
 }

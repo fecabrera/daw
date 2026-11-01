@@ -49,6 +49,7 @@ mod amplitude_panel;
 mod application_menu;
 mod auto_filter_panel;
 mod beat_editor;
+mod beat_grid;
 mod bitcrusher_panel;
 mod catalog;
 mod chord_audition;

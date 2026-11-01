@@ -73,39 +73,47 @@ impl Project {
             if track.id == owner {
                 return Some(track.clone());
             }
-            if let Some(beat) = track.beat.as_ref().filter(|b| b.output.id == owner) {
-                let mut result = track.clone();
-                result.id = owner;
-                result.name = "Output".into();
-                result.kind = TrackKind::Midi;
-                result.beat = None;
-                result.instrument = Some(beat.output_settings());
-                result.effects.clear();
-                result.clips.clear();
-                result.group_id = None;
-                result.group_collapsed = false;
-                return Some(result);
-            }
-            if let Some(row) = track
-                .beat
-                .as_ref()
-                .and_then(|b| b.subtracks.iter().find(|s| s.id == owner))
-            {
-                let mut result = track.clone();
-                result.id = row.id;
-                result.name = row.name.clone();
-                result.kind = TrackKind::Midi;
-                result.beat = None;
-                result.instrument = Some(row.instrument.clone());
-                result.effects.clear();
-                result.clips.clear();
-                result.group_id = None;
-                result.group_collapsed = false;
-                result.muted = row.muted;
-                result.soloed = row.soloed;
-                result.gain_db = 0.0;
-                result.pan = 0.0;
-                return Some(result);
+            if let Some(beat) = &track.beat {
+                let (name, instrument, gain_db, pan, muted, soloed) = if beat.output.id == owner {
+                    (
+                        "Output".into(),
+                        beat.output_settings(),
+                        track.gain_db,
+                        track.pan,
+                        track.muted,
+                        track.soloed,
+                    )
+                } else if let Some(row) = beat.subtracks.iter().find(|s| s.id == owner) {
+                    (
+                        row.name.clone(),
+                        row.instrument.clone(),
+                        0.0,
+                        0.0,
+                        row.muted,
+                        row.soloed,
+                    )
+                } else {
+                    continue;
+                };
+                // Copy only this owner's presentation data, not sibling instruments or clips.
+                return Some(Track {
+                    id: owner,
+                    name,
+                    kind: TrackKind::Midi,
+                    instrument: Some(instrument),
+                    beat: None,
+                    group_id: None,
+                    group_collapsed: false,
+                    color: track.color,
+                    midi_options: track.midi_options,
+                    effects: Vec::new(),
+                    effects_compact: track.effects_compact,
+                    clips: Vec::new(),
+                    gain_db,
+                    pan,
+                    muted,
+                    soloed,
+                });
             }
         }
         None
@@ -500,5 +508,73 @@ mod tests {
             assert!(p.can_transfer_component(owner, bus, bus, InstrumentComponent::Macros, false));
         }
         p.validate().unwrap();
+    }
+
+    #[test]
+    fn nested_presentation_snapshots_keep_local_settings_and_parent_metadata() {
+        let (mut p, track, row, _) = fixture();
+        p.tracks[0].gain_db = -9.0;
+        p.tracks[0].pan = 0.25;
+        p.tracks[0].effects.push(EffectInstance::limiter());
+        let beat = p.tracks[0].beat.as_mut().unwrap();
+        beat.add_subtrack().unwrap();
+        beat.subtracks[0].muted = true;
+        beat.subtracks[0].instrument.main.gain_db = -3.0;
+        let output = beat.output.id;
+        let before = p.clone();
+        let mut snapshot = p.instrument_track(row).unwrap();
+        assert_eq!(snapshot.id, row);
+        assert_eq!(snapshot.instrument.as_ref(), p.instrument_settings(row));
+        assert_eq!(snapshot.color, p.tracks[0].color);
+        assert_eq!(snapshot.midi_options, p.tracks[0].midi_options);
+        assert!(snapshot.muted);
+        assert_eq!((snapshot.gain_db, snapshot.pan), (0.0, 0.0));
+        assert!(
+            snapshot.beat.is_none() && snapshot.clips.is_empty() && snapshot.effects.is_empty()
+        );
+        snapshot.instrument.as_mut().unwrap().main.gain_db = 6.0;
+        assert_eq!(p, before, "presentation edits must not mutate saved owners");
+        let final_output = p.instrument_track(output).unwrap();
+        assert_eq!(final_output.id, output);
+        assert_eq!((final_output.gain_db, final_output.pan), (-9.0, 0.25));
+        assert_eq!(
+            final_output.instrument,
+            Some(p.beat(track).unwrap().output_settings())
+        );
+        assert!(
+            final_output.beat.is_none()
+                && final_output.clips.is_empty()
+                && final_output.effects.is_empty()
+        );
+        assert_eq!(p.instrument_track(track), Some(p.tracks[0].clone()));
+    }
+
+    #[test]
+    #[ignore = "manual optimized nested-instrument snapshot scaling probe"]
+    fn beat_instrument_snapshot_scaling() {
+        for count in [16, 64, 128, 256] {
+            let mut project = Project::default();
+            let track = project.add_beat_track().unwrap();
+            project.beat_mut(track).unwrap().subtracks = (0..count)
+                .map(|index| BeatSubtrack::new(format!("Row {index}")))
+                .collect();
+            let owners: Vec<_> = project
+                .beat(track)
+                .unwrap()
+                .subtracks
+                .iter()
+                .map(|r| r.id)
+                .collect();
+            let started = std::time::Instant::now();
+            for _ in 0..10 {
+                for &owner in &owners {
+                    std::hint::black_box(project.instrument_track(std::hint::black_box(owner)));
+                }
+            }
+            eprintln!(
+                "rows={count} average_snapshot_sweep_ms={:.3}",
+                started.elapsed().as_secs_f64() * 100.0
+            );
+        }
     }
 }

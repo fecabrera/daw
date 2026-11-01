@@ -267,3 +267,69 @@ fn beat_clip_gain_follows_the_final_output_effects() {
         assert!((after[1] - before[1] * gain).abs() < 1e-6);
     }
 }
+
+#[test]
+fn beat_clip_gain_retains_timing_through_nested_latency_and_loops() {
+    for rate in [44_100, 48_000, 96_000] {
+        for placement in ["layer", "subtrack", "output", "sibling", "parent"] {
+            let mut dry = beat_plan(rate, false, false);
+            let first = &mut dry.project.tracks[0].clips[0];
+            first.start_frame = 100;
+            first.length_frames = 1000;
+            first.gain_db = -12.0;
+            let mut next = first.clone();
+            next.id = Id::new_v4();
+            next.start_frame = first.end();
+            next.gain_db = -6.0;
+            dry.project.tracks[0].clips.push(next);
+            let mut wet = dry.clone();
+            let mut limiter = EffectInstance::limiter();
+            let EffectSettings::Limiter(settings) = &mut limiter.unit else {
+                unreachable!()
+            };
+            settings.enabled = false;
+            let beat = wet.project.tracks[0].beat.as_mut().unwrap();
+            match placement {
+                "layer" => beat.subtracks[0].instrument.layers[0].effects.push(limiter),
+                "subtrack" => beat.subtracks[0].instrument.main.effects.push(limiter),
+                "output" => beat.output.effects.push(limiter),
+                "sibling" => beat.subtracks[1].instrument.main.effects.push(limiter),
+                _ => wet.project.tracks[0].effects.push(limiter),
+            }
+            wet.project.validate().unwrap();
+            let mut expected = vec![[0.0; 2]; 2400];
+            let mut actual = expected.clone();
+            Renderer::new(dry.clone()).render_offline(&mut expected);
+            Renderer::new(wet.clone()).render_offline(&mut actual);
+            assert!(expected.iter().any(|s| s[0].abs() > 0.001));
+            for (frame, (a, b)) in expected.iter().zip(&actual).enumerate() {
+                assert!(
+                    (a[0] - b[0]).abs() < 1e-6,
+                    "{rate} {placement} offline {frame}"
+                );
+            }
+            let mut seek = [[0.0; 2]; 80];
+            Renderer::new(wet.clone()).render_offline_at(1050, &mut seek);
+            assert_eq!(seek.as_slice(), &actual[1050..1130]);
+            for plan in [&mut dry, &mut wet] {
+                plan.project.transport.r#loop.enabled = true;
+                plan.project.transport.r#loop.start_frame = 100;
+                plan.project.transport.r#loop.end_frame = 1700;
+            }
+            let mut dry = Renderer::new(dry);
+            let mut wet = Renderer::new(wet);
+            dry.play();
+            wet.play();
+            dry.ramp = 1.0;
+            wet.ramp = 1.0;
+            for frame in 0..4000 {
+                let a = dry.next_sample();
+                let b = wet.next_sample();
+                assert!(
+                    (a[0] - b[0]).abs() < 1e-6,
+                    "{rate} {placement} loop {frame}: {a:?} != {b:?}"
+                );
+            }
+        }
+    }
+}

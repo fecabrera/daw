@@ -138,8 +138,10 @@ impl Renderer {
                 controls,
             );
             let (sample, _) = self.alignment.tracks[index].tick((sample, false));
+            let content_frame =
+                latency::delayed_frame(frame, self.alignment.output_frames[index], region);
             let gain = self.buses.clip_gains[index]
-                .at(frame)
+                .at(content_frame)
                 .and_then(|clip| {
                     self.plan
                         .beat_tracks

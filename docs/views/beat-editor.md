@@ -47,6 +47,8 @@ will be trimmed or removed. Undo restores the complete change.
 ## Manage subtracks
 
 Editor and Instrument share the same names, order, selection and mix controls.
+Selecting a subtrack in Editor also selects its instrument when you return to
+Instrument, including after selecting the final Output.
 
 - Click a name to select one subtrack; Shift-click headers to toggle group membership. In Editor, clicking any part of a subtrack header, including its controls or empty space, selects that subtrack. Press Escape to clear subtrack selection in Editor or Instrument. Escape first cancels an active rename or drag.
 - Double-click a name, or use its context menu, to rename it. The name uses the same text input as track names and starts with the whole name selected. Enter accepts; Escape or moving focus elsewhere cancels.
@@ -59,6 +61,10 @@ Deleting a subtrack removes its stop links. Its old pattern steps remain dormant
 ## Instrument groups and Output
 
 The Instrument page uses the same header, Plus button, left column, dividers, lane toolbars and pinned Output layout as a MIDI instrument. Each expanded subtrack has a compact header with its name, chevron and **Add layer** button. Its source layers, LFO, Envelope and Output appear below, without a separate Layers header. Use the Output panel for mute, solo, pan, gain and its level meter. LFO and Envelope lanes accept only their matching provider units. Each subtrack's modulation sources stay local to that instrument. A plain click on a layer or provider lane replaces the previous layer selection across subtracks. Shift-click retains multi-selection. Escape clears selected lanes across the instrument.
+
+Drag selected source-layer headers to reorder them within a subtrack. Hold Option
+on macOS or Ctrl on Windows/Linux to copy them. Release inside the layer list to
+apply; Escape, focus loss or an outside release cancels the drag.
 
 Collapsing a group hides all its child lanes, including Output, and retains audio processing. The compact header also shows the output controls while collapsed, and hides Add layer. Each nested Output lane contains that subtrack's output units and controls. Its Gain and the group-header Gain control the same level. One fixed **Output** follows all groups and combines them before the parent track's effects and mix controls. It supports the shared output body, effects and local Macros. It cannot be renamed, deleted or reordered as a subtrack.
 

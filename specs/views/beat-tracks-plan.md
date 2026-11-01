@@ -49,9 +49,9 @@ Beat 1
   Output                            [whole beat-instrument output]
 ```
 
-Each LFO sublane accepts only LFOs. Each Envelope sublane accepts only Envelopes. They are fixed children of their subtrack and cannot be renamed, deleted, moved to a sibling group, or selected as whole subtracks. Their units retain the normal add, select, delete, power, reorder, modulation and compact/expanded behavior. Collapsing a group hides its child rows while retaining its named output row. Group collapse is presentation state; it does not mute audio, disable modulation, change selection identity, or mark a pattern edit.
+Each LFO sublane accepts only LFOs. Each Envelope sublane accepts only Envelopes. They are fixed children of their subtrack and cannot be renamed, deleted, moved to a sibling group, or selected as whole subtracks. Their units retain the normal add, select, delete, power, reorder, modulation and compact/expanded behavior. Collapsing a group hides all child rows, including Output, and retains its compact named header with the same output mix controls. Group collapse is presentation state; it does not mute audio, disable modulation, change selection identity, or mark a pattern edit.
 
-Each group output processes the sum of its own source layers. Reuse the normal instrument Output body and controls on the named Kick/Snare row; do not create duplicate output settings or another output child. The final Output processes the sum of all subtrack outputs. It stays outside group scrolling in the shared pinned-Output position, cannot be renamed, deleted or reordered as a subtrack, and uses its own selection target.
+Each group output processes the sum of its own source layers. Reuse the normal instrument Output body in a separate Output child beneath the compact Kick/Snare header. This child and the collapsed header edit the same subtrack main bus; do not create duplicate output settings. The final Output processes the sum of all subtrack outputs. It stays outside group scrolling in the shared pinned-Output position, cannot be renamed, deleted or reordered as a subtrack, and uses its own selection target.
 
 This does not add a parent-wide LFO/Envelope pair shared by all subtracks. Cross-subtrack modulation is outside the initial scope. Lane-stop connections remain a distinct accepted trigger feature, not a modulation shortcut.
 

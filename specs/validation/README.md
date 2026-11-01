@@ -4,6 +4,68 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat PR review corrections — 2026-11-01
+
+Corrected all six findings from the [five-reviewer PR #5 review](https://github.com/fecabrera/daw/pull/5#issuecomment-6552566634),
+which examined head `38e00640505838dbb1557923df04d563b93be67a`.
+The original review artifacts remain pinned to that head.
+
+- Beat clip gain uses a prepared bus output clock after child, effect and sibling
+  alignment delays. Shared loop-aware mapping retains gain timing in playback,
+  seek and export. Renderer memory accounting includes the prepared clocks.
+- Editor caches hit lookup by immutable asset ID, subtrack ID and source tick.
+  Source-cell generation uses visible frame bounds. Offscreen row widgets are
+  omitted while full-list drag geometry and active controls/renames remain.
+  Hidden hits, repeat/trim/stretch mapping and source publication stay shared.
+- Source-layer drag capture resolves nested instrument owner IDs. Group move,
+  modifier-copy and Escape/focus/outside cancellation retain release-only edits.
+- Editor name, mix-control and blank-header selection clear final Output
+  targeting through one subtrack-selection transition.
+- Nested presentation snapshots copy only required parent metadata and the
+  requested instrument. They do not clone sibling instruments, effects or clips.
+- The beat delivery plan now consistently specifies a compact group header and
+  a separate Output child backed by the same canonical subtrack bus.
+
+Regressions cover different adjacent gains and nonzero starts at 44.1/48/96 kHz,
+latency on source layers, subtrack Output, final Output, sibling and parent paths,
+looping and seek parity. UI checks cover nested group move/copy/cancellation,
+cross-view target selection from names/controls/blank headers, visible-cell edits,
+bounded offscreen widget work and index reuse. Core checks retain snapshot
+identity, settings, parent metadata and independence from project mutation.
+
+Completed checks:
+
+- `cargo fmt --all --check` and `git diff --check`: pass.
+- Changed Markdown file targets: all 120 local targets exist. Fragment anchors
+  and external URLs were not exhaustively checked.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: pass.
+- `cargo test --offline --locked --workspace`: 2,054 passed, 0 failed and
+  13 ignored across 258 completed suites.
+- `cargo test --offline --locked --release -p daw-ui -p daw-core --lib scaling -- --ignored --nocapture`: both optimized diagnostic probes pass.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: pass.
+  The smoke checks cover collection, inspection, WAV/MP3/AAC encoding,
+  repeatability, missing sources, group buses, overwrite handling and exit codes.
+- `sh tools/package_macos.sh debug`: rebuilt `target/debug/DAW.app`.
+
+Generated optimized probes on the available macOS arm64 host measured:
+
+| Probe | Rows | Reviewed head (ms) | Corrections (ms) |
+| --- | ---: | ---: | ---: |
+| Dense 16-bar, 1/32 Editor repaint | 32 | 69.152 | 22.015 |
+| Dense 16-bar, 1/32 Editor repaint | 64 | 229.072 | 20.936 |
+| Nested instrument snapshot sweep | 128 | 3.132 | 0.051 |
+| Nested instrument snapshot sweep | 256 | 12.229 | 0.064 |
+
+Editor results average three frames after two warm-up frames at 1280×800.
+Snapshot results average ten sweeps of default empty instruments. The probes
+remain ignored in normal test runs and require the explicit optimized command
+above. Timing includes the test harness and shared-host load; it is not a native
+GPU frame-rate or device-performance guarantee. Deterministic widget-work and
+source-index checks run in the normal UI suite.
+
+Native UI/menu/gesture, listening/device and Windows/Linux acceptance remain
+unverified. Automated tests and a rebuilt bundle do not establish those results.
+
 ## Shared beat subtrack level meters — 2026-10-31
 
 Editor subtrack headers now reuse the track stereo panel and existing subtrack

@@ -57,6 +57,8 @@ pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
 pub(super) struct Alignment {
     pub tracks: Vec<Delay>,
     pub input_frames: Vec<u64>,
+    /// Feed-to-content delay after each track's effects and sibling alignment.
+    pub output_frames: Vec<u64>,
     parents: Vec<(Id, Option<Id>, bool)>,
     index: std::collections::HashMap<Id, usize>,
     pub track_max: u64,
@@ -67,6 +69,7 @@ pub(super) struct Alignment {
 impl Alignment {
     pub fn heap_bytes(&self) -> u64 {
         daw_unit_core::memory::vec_bytes(&self.input_frames)
+            + daw_unit_core::memory::vec_bytes(&self.output_frames)
             + daw_unit_core::memory::vec_bytes(&self.parents)
             + daw_unit_core::memory::vec_bytes(&self.tracks)
             + daw_unit_core::memory::map_bytes(&self.index)
@@ -97,20 +100,24 @@ impl Alignment {
             }
         }
         let total = track_max + chain_frames(&project.master.effects, rate);
+        let output_frames: Vec<_> = project
+            .tracks
+            .iter()
+            .map(|t| {
+                t.group_id
+                    .and_then(|id| index.get(&id))
+                    .map_or(track_max, |p| input_frames[*p])
+            })
+            .collect();
         let tracks: Vec<_> = project
             .tracks
             .iter()
             .enumerate()
-            .map(|(i, t)| {
-                let sibling_max = t
-                    .group_id
-                    .and_then(|id| index.get(&id))
-                    .map_or(track_max, |p| input_frames[*p]);
-                Delay::new(t.id, sibling_max - subtree[i])
-            })
+            .map(|(i, t)| Delay::new(t.id, output_frames[i] - subtree[i]))
             .collect();
         Self {
             input_frames,
+            output_frames,
             parents: project
                 .tracks
                 .iter()
