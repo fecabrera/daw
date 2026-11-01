@@ -2,6 +2,9 @@
 use super::*;
 use daw_core::{BeatEdit, BeatResolution, BeatSubtrack};
 
+const STEP_INSETS: Vec2 = Vec2::new(4.0, 3.0);
+const SUBTRACK_AUDITION_WIDTH: f32 = 16.0;
+
 #[derive(Default)]
 pub(super) struct BeatUi {
     track: Option<Id>,
@@ -26,6 +29,8 @@ pub(super) struct BeatUi {
     pub steps: std::collections::HashMap<(Id, u32), Rect>,
     #[cfg(test)]
     pub disabled_steps: Vec<(Id, Rect)>,
+    #[cfg(test)]
+    pub audition_steps: std::collections::HashMap<Id, Rect>,
     #[cfg(test)]
     pub final_output: Option<Rect>,
     #[cfg(test)]
@@ -606,10 +611,12 @@ impl DawUi {
         }
         let original = pattern.clone();
         let mut audition = None;
+        let mut direct_audition = None;
         #[cfg(test)]
         {
             self.beat_ui.steps.clear();
             self.beat_ui.disabled_steps.clear();
+            self.beat_ui.audition_steps.clear();
         }
         // Use the clip's saved source mapping for trims, repeats and stretches.
         let mut cells = Vec::new();
@@ -709,6 +716,7 @@ impl DawUi {
                 cells.push((tick, start, end, false));
             }
         }
+        let viewport = ui.available_rect_before_wrap();
         egui::ScrollArea::vertical()
             .id_salt(("beat-rows", track.id))
             .auto_shrink([false, false])
@@ -810,6 +818,33 @@ impl DawUi {
                             );
                         }
                         ui.advance_cursor_after_rect(rect);
+                        let preview_cell = Rect::from_center_size(
+                            Pos2::new(
+                                rect.right() + track_overview::LABEL_WIDTH * 0.5,
+                                top.y + height * 0.5,
+                            ),
+                            Vec2::new(SUBTRACK_AUDITION_WIDTH + 2.0 * STEP_INSETS.x, height),
+                        );
+                        let preview = ui
+                            .add_enabled_ui(self.editing_enabled(), |ui| {
+                                beat_step_button(ui, preview_cell, "", false)
+                            })
+                            .inner
+                            .on_hover_text(format!("Audition {}", row.name));
+                        preview.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::Button,
+                                preview.enabled(),
+                                format!("Audition {}", row.name),
+                            )
+                        });
+                        #[cfg(test)]
+                        {
+                            self.beat_ui.audition_steps.insert(row.id, preview.rect);
+                        }
+                        if preview.clicked() {
+                            direct_audition = Some(row.id);
+                        }
                         let grid_clip = Rect::from_min_max(
                             Pos2::new(rect.right() + track_overview::LABEL_WIDTH, top.y),
                             Pos2::new(ui.clip_rect().right(), top.y + height),
@@ -843,18 +878,15 @@ impl DawUi {
                                             Pos2::new(left, top.y),
                                             Pos2::new(right, top.y + height),
                                         );
-                                        let response = ui.put(
-                                            cell.shrink2(Vec2::new(1.0, 3.0)),
-                                            egui::Button::new(
-                                                if tick
-                                                    .is_multiple_of(daw_core::MIDI_TICKS_PER_BEAT)
-                                                {
-                                                    "·"
-                                                } else {
-                                                    ""
-                                                },
-                                            )
-                                            .selected(step.is_some()),
+                                        let response = beat_step_button(
+                                            ui,
+                                            cell,
+                                            if tick.is_multiple_of(daw_core::MIDI_TICKS_PER_BEAT) {
+                                                "·"
+                                            } else {
+                                                ""
+                                            },
+                                            step.is_some(),
                                         );
                                         if cell_editable && let Some(clip) = &active {
                                             let frame =
@@ -967,6 +999,11 @@ impl DawUi {
                     }
                 }
             });
+        let grid = Rect::from_min_max(
+            viewport.min + Vec2::new(TRACK_WIDTH + track_overview::LABEL_WIDTH, 0.0),
+            viewport.max,
+        );
+        panels::ControlPanel::row_left_divider(ui, grid, viewport);
         if pattern != original
             && let (Some(clip), Some(pattern)) = (active, pattern)
         {
@@ -977,6 +1014,9 @@ impl DawUi {
         }
         if let Some(row) = audition {
             self.audition_beat_step(track.id, row);
+        }
+        if let Some(row) = direct_audition {
+            self.audition_beat_subtrack(track.id, row);
         }
     }
     pub(super) fn beat_output_mix(
@@ -1414,4 +1454,12 @@ fn resolution_name(resolution: BeatResolution, stretch: Option<daw_core::ClipStr
         .trim_end_matches('0')
         .trim_end_matches('.')
         .to_owned()
+}
+
+/// Share cell appearance and outer insets between pattern steps and row audition.
+fn beat_step_button(ui: &mut egui::Ui, cell: Rect, label: &str, selected: bool) -> egui::Response {
+    ui.put(
+        cell.shrink2(STEP_INSETS),
+        egui::Button::new(label).selected(selected),
+    )
 }

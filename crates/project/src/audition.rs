@@ -68,6 +68,46 @@ impl Session {
         resolution: daw_core::BeatResolution,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Vec<[f32; 2]>> {
+        let (mut renderer, gate) =
+            self.beat_audition_renderer(track, subtrack, transpose, resolution, cancelled)?;
+        self.render_audition(
+            &mut renderer,
+            gate + u64::from(self.project.sample_rate_hz),
+            cancelled,
+        )
+    }
+
+    /// Stream a beat preview through its complete instrument release and one-shot duration.
+    pub fn beat_subtrack_audition(
+        &self,
+        track: Id,
+        subtrack: Id,
+        transpose: i8,
+        resolution: daw_core::BeatResolution,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<NoteAudition> {
+        let (mut renderer, gate) =
+            self.beat_audition_renderer(track, subtrack, transpose, resolution, cancelled)?;
+        renderer.begin_beat_audition(subtrack);
+        Ok(NoteAudition {
+            renderer,
+            rate: self.project.sample_rate_hz,
+            minimum: gate,
+            frame: 0,
+            release_frame: None,
+            block: self.project.buffer_size_frames as usize,
+            natural_silence: Some(0),
+        })
+    }
+
+    fn beat_audition_renderer(
+        &self,
+        track: Id,
+        subtrack: Id,
+        transpose: i8,
+        resolution: daw_core::BeatResolution,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<(daw_engine::Renderer, u64)> {
         if cancelled() {
             return Err(error("Beat audition cancelled"));
         }
@@ -128,12 +168,7 @@ impl Session {
         clip.length_frames = gate;
         clip.transpose = transpose;
         session.prepare_stretches_cancellable(cancelled)?;
-        let mut renderer = daw_engine::Renderer::new(session.plan());
-        self.render_audition(
-            &mut renderer,
-            gate + u64::from(self.project.sample_rate_hz),
-            cancelled,
-        )
+        Ok((daw_engine::Renderer::new(session.plan()), gate))
     }
 
     fn render_audition(
@@ -254,6 +289,7 @@ impl Session {
             frame: 0,
             release_frame: None,
             block: self.project.buffer_size_frames as usize,
+            natural_silence: None,
         })
     }
 }
@@ -266,6 +302,9 @@ pub struct NoteAudition {
     frame: u64,
     release_frame: Option<u64>,
     block: usize,
+    // Natural previews end after voices finish and one second of output silence.
+    // This is a silence window, not a limit on release or sample duration.
+    natural_silence: Option<u64>,
 }
 impl NoteAudition {
     /// Adapt worker batches to the device callback, with a fixed memory bound.
@@ -274,12 +313,19 @@ impl NoteAudition {
     }
     /// Render the next bounded block. An early release waits for the previous preview gate.
     pub fn next_chunk(&mut self, released: bool) -> Option<Vec<[f32; 2]>> {
+        if self
+            .natural_silence
+            .is_some_and(|frames| frames >= u64::from(self.rate))
+        {
+            return None;
+        }
         if released && self.release_frame.is_none() && self.frame >= self.minimum {
             self.renderer.release_note_audition();
             self.release_frame = Some(self.frame);
         }
         let end = self
             .release_frame
+            .filter(|_| self.natural_silence.is_none())
             .map(|frame| frame.saturating_add(u64::from(self.rate)));
         if end.is_some_and(|end| self.frame >= end) {
             return None;
@@ -293,6 +339,19 @@ impl NoteAudition {
         }
         let mut samples = vec![[0.0; 2]; count];
         self.renderer.render_offline(&mut samples);
+        if let Some(silence) = &mut self.natural_silence {
+            if self.renderer.audition_active() || self.release_frame.is_none() {
+                *silence = 0;
+            } else {
+                for sample in &samples {
+                    if sample.iter().any(|value| value.abs() > 0.000001) {
+                        *silence = 0;
+                    } else {
+                        *silence = silence.saturating_add(1);
+                    }
+                }
+            }
+        }
         let fade = u64::from((self.rate / 200).max(1));
         for (i, sample) in samples.iter_mut().enumerate() {
             let frame = self.frame + i as u64;
@@ -316,6 +375,166 @@ mod tests {
         session.project.tracks[0].instrument = Some(OscillatorSettings::default().into());
         session.project.transport.playhead_frame = 12345;
         (session, track)
+    }
+
+    fn beat_session() -> (Session, Id, Id) {
+        let mut session = Session::default();
+        let track = session.project.add_beat_track().unwrap();
+        let mut row = daw_core::BeatSubtrack::new("Preview".into());
+        row.instrument = OscillatorSettings::default().into();
+        let id = row.id;
+        session
+            .project
+            .edit(Edit::Beat {
+                track_id: track,
+                edit: daw_core::BeatEdit::Add {
+                    subtrack: Box::new(row),
+                    index: 0,
+                },
+            })
+            .unwrap();
+        (session, track, id)
+    }
+
+    fn natural_preview(session: &Session, track: Id, row: Id) -> Vec<[f32; 2]> {
+        let mut preview = session
+            .beat_subtrack_audition(track, row, 0, daw_core::BeatResolution::Sixteenth, &|| {
+                false
+            })
+            .unwrap();
+        preview.set_chunk_frames(509);
+        let mut samples = Vec::new();
+        while let Some(chunk) = preview.next_chunk(true) {
+            assert!(chunk.len() <= 509);
+            samples.extend(chunk);
+            assert!(
+                samples.len() < session.project.sample_rate_hz as usize * 10,
+                "a finite instrument must finish naturally"
+            );
+        }
+        samples
+    }
+
+    #[test]
+    fn beat_button_preserves_long_release_and_uses_the_compiled_mix_eligibility() {
+        let (mut session, track, row) = beat_session();
+        let instrument =
+            &mut session.project.tracks[0].beat.as_mut().unwrap().subtracks[0].instrument;
+        instrument.layers[0].envelopes[0].settings.release.time_ms = 2500.0;
+        let before = session.project.clone();
+        let samples = natural_preview(&session, track, row);
+        let rate = session.project.sample_rate_hz as usize;
+        assert!(
+            samples[rate * 3 / 2..rate * 2]
+                .iter()
+                .flatten()
+                .any(|v| v.abs() > 0.00001),
+            "the release must survive the former step boundary and one-second cutoff"
+        );
+        assert!(samples.len() > rate * 3);
+        assert!(
+            samples[samples.len() - rate / 2..]
+                .iter()
+                .flatten()
+                .all(|v| v.abs() <= 0.000001)
+        );
+        assert_eq!(session.project, before);
+        assert!(
+            session
+                .beat_subtrack_audition(track, row, 0, daw_core::BeatResolution::Sixteenth, &|| {
+                    true
+                })
+                .is_err()
+        );
+        assert!(
+            session
+                .beat_subtrack_audition(
+                    track,
+                    Id::new_v4(),
+                    0,
+                    daw_core::BeatResolution::Sixteenth,
+                    &|| false
+                )
+                .is_err()
+        );
+        session.project.tracks[0].beat.as_mut().unwrap().subtracks[0].muted = true;
+        assert!(
+            natural_preview(&session, track, row)
+                .iter()
+                .flatten()
+                .all(|v| *v == 0.0)
+        );
+        let beat = session.project.tracks[0].beat.as_mut().unwrap();
+        beat.subtracks[0].muted = false;
+        let mut other = daw_core::BeatSubtrack::new("Solo".into());
+        other.soloed = true;
+        beat.subtracks.push(other);
+        assert!(
+            natural_preview(&session, track, row)
+                .iter()
+                .flatten()
+                .all(|v| *v == 0.0)
+        );
+    }
+
+    #[test]
+    fn beat_button_lets_a_long_one_shot_reach_its_source_end() {
+        let (mut session, track, row) = beat_session();
+        let layer = &mut session.project.tracks[0].beat.as_mut().unwrap().subtracks[0]
+            .instrument
+            .layers[0];
+        layer.oscillators.clear();
+        layer.oscillator_enabled = false;
+        // Isolate the sampler's One-shot lifecycle from an intentional ADSR cut.
+        layer.amplitude.enabled = false;
+        layer.sampler = Some(daw_core::SamplerSettings::default());
+        let layer_id = layer.id;
+        let path = std::env::temp_dir().join(format!("daw-preview-{}.wav", Id::new_v4()));
+        let rate = session.project.sample_rate_hz;
+        let mut wav = hound::WavWriter::create(
+            &path,
+            hound::WavSpec {
+                channels: 2,
+                sample_rate: rate,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        for frame in 0..rate * 3 {
+            let value = (frame as f32 * 440.0 * std::f32::consts::TAU / rate as f32).sin() * 0.25;
+            wav.write_sample(value).unwrap();
+            wav.write_sample(value).unwrap();
+        }
+        wav.finalize().unwrap();
+        let prepared = session.with_sampler_file(row, layer_id, &path);
+        std::fs::remove_file(path).unwrap();
+        session = prepared.unwrap();
+        let before = session.project.clone();
+        let samples = natural_preview(&session, track, row);
+        let rate = rate as usize;
+        assert!(
+            samples[rate * 2..rate * 3 - rate / 100]
+                .iter()
+                .flatten()
+                .any(|v| v.abs() > 0.01),
+            "one-shot playback must outlive the step gate"
+        );
+        assert!(samples.len() >= rate * 4);
+        assert_eq!(session.project, before);
+        session.project.tracks[0].beat.as_mut().unwrap().subtracks[0]
+            .instrument
+            .layers[0]
+            .sampler
+            .as_mut()
+            .unwrap()
+            .trigger = daw_core::SamplerTrigger::Gate;
+        let gated = natural_preview(&session, track, row);
+        assert!(gated.iter().flatten().any(|v| v.abs() > 0.01));
+        assert!(
+            gated.len() < rate * 2,
+            "Gate must retain the instrument's note-off policy"
+        );
     }
     #[test]
     fn beat_step_preview_is_isolated_bounded_and_retains_the_project() {
@@ -349,6 +568,15 @@ mod tests {
         assert!(samples.iter().flatten().any(|s| s.abs() > 0.01));
         assert_eq!(samples.first(), Some(&[0.0; 2]));
         assert_eq!(samples.last(), Some(&[0.0; 2]));
+        let mut empty_arrangement = session.clone();
+        empty_arrangement.project.tracks[0].clips.clear();
+        let preview = empty_arrangement
+            .audition_beat_step(track, row_id, 0, resolution, &|| false)
+            .unwrap();
+        assert_eq!(
+            preview, samples,
+            "explicit preview does not need any arranged pattern"
+        );
         let transposed = session
             .audition_beat_step(track, row_id, 12, resolution, &|| false)
             .unwrap();

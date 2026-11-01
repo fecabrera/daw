@@ -1500,6 +1500,36 @@ impl MidiTrackRuntime {
         }
     }
 
+    pub fn begin_beat_audition(&mut self) {
+        // Reuse the compiled trigger (including mute/solo, pitch and duration).
+        // Remove its clip boundary so normal note-off can leave a release/one-shot alive.
+        let trigger = self.clips.first().and_then(|clip| {
+            clip.events.iter().find_map(|event| {
+                event.on.map(|(pitch, velocity)| {
+                    (
+                        clip_pitch(pitch, clip.clip.transpose),
+                        velocity,
+                        event.duration_frames,
+                    )
+                })
+            })
+        });
+        self.clips.clear();
+        self.clip_ranges = super::schedule::Ranges::new(std::iter::empty());
+        self.last_clip = None;
+        self.last_source = None;
+        if let Some((pitch, velocity, duration)) = trigger {
+            self.shared.event(true, Some(duration));
+            if let Some(voice) = self.voices.first_mut() {
+                voice.note_on(Id::new_v4(), pitch, velocity, duration);
+            }
+        }
+    }
+
+    pub fn audition_active(&self) -> bool {
+        self.voices.iter().any(|voice| !voice.sleeping)
+    }
+
     pub fn end_notes(&mut self) {
         self.shared.end();
         for voice in &mut self.voices {

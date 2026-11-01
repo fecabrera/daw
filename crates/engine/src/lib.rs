@@ -921,6 +921,26 @@ impl Renderer {
         }
     }
 
+    /// Start the prepared beat trigger without resetting it at its clip boundary.
+    /// Worker-only, like `begin_note_audition`.
+    pub fn begin_beat_audition(&mut self, subtrack: Id) {
+        self.reset_processing();
+        if let Some(&index) = self.track_index.get(&subtrack)
+            && let Some(runtime) = &mut self.midi[index]
+        {
+            runtime.begin_beat_audition();
+        }
+        self.prime_latency(false);
+    }
+
+    /// Includes silent attacks and normal per-note/shared release ownership.
+    pub fn audition_active(&self) -> bool {
+        self.midi
+            .iter()
+            .flatten()
+            .any(|runtime| runtime.audition_active())
+    }
+
     pub fn latency_frames(&self) -> u64 {
         self.alignment.total
     }

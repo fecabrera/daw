@@ -363,3 +363,34 @@ the underlying source grid once; choosing a grid does not apply another stretch.
 The disabled placeholder grid uses the same exact stretched step interval.
 Active cells retain the existing source trim/repeat/stretch mapping. Trimming and
 source bar-count changes leave subdivision captions unchanged.
+
+## Subtrack audition column and step spacing
+
+Editor places one standalone audition cell per subtrack inside the existing
+52-point gutter, before the time-mapped pattern cells. Its painted button is
+16 points wide, empty (no dot), and centered in that gutter. Reuse `beat_step_button`
+for its normal button appearance, cell height and external insets. All audition,
+active and disabled cells use four-point horizontal and three-point vertical
+insets; adjacent pattern cells therefore have an eight-point horizontal gap.
+Audition cells scroll vertically with their headers and remain fixed during
+horizontal pan/zoom. Reuse `ControlPanel::row_left_divider` for one full-height
+separator at the pattern grid's left edge, below the ruler and above the scrollbar.
+
+A release click requests the existing bounded beat audition worker for that row;
+never mutate source steps, clip/track/subtrack selection, project history or dirty
+state. Explicit previews bypass the automatic headphones toggle and work with no
+selected or existing pattern. Use selected-clip transpose/source resolution when
+available, otherwise zero transpose and the default grid. Reuse the normal beat
+instrument/bus renderer and gain/mute/solo behavior. Explicit buttons stream
+bounded chunks through the existing held-note audition transport. Reuse the
+compiled trigger's pitch, velocity, eligibility and duration, but remove its clip
+boundary before starting it. Send normal note-off after the step gate; let the
+instrument's envelopes and One-shot/Gate sources own the end. Do not reset voices
+at the step edge or impose the old one-second total release limit. Finish only
+after voices are idle and output stays below −120 dBFS for one second. This silence
+window retains effect tails without buffering the full preview. Instrument controls
+can still shorten playback intentionally. Automatic step-edit previews and held
+MIDI previews retain their existing duration policies. Keep
+all decoding/preparation/rendering on the shared worker path. New requests replace
+older previews through the existing latest-request queue. The Editor view,
+project/track/revision, focus, enabled UI and job/dialog guards still apply.

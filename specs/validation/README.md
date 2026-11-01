@@ -4,6 +4,55 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat audition buttons retain instrument endings — 2026-10-31
+
+Explicit subtrack audition buttons now stream bounded chunks through the existing
+held-note output path. The engine reuses the compiled beat trigger but removes
+its clip boundary, then sends normal note-off after the step gate. Envelopes and
+One-shot/Gate sources determine the audible end. Completion requires idle voices
+and one second of output below −120 dBFS, rather than a fixed release cutoff.
+Cancellation and stale-preview guards remain shared.
+
+Project regressions verify a 2.5-second envelope release, a three-second one-shot,
+natural completion, bounded chunks, Gate behavior, mute/solo eligibility,
+cancellation, invalid identities and unchanged live project data. The seven
+project audition tests pass. The UI suite passes 790 tests; the three audition
+state tests also pass after switching the direct-result fixture to a stream.
+Strict locked workspace/all-target Clippy, formatting and whitespace checks pass.
+Locked workspace tests pass **2,047 tests**, with 11 ignored across 258 suites.
+CLI build/smoke checks pass. The debug macOS app was rebuilt.
+Native listening/device/gesture checks and Windows/Linux execution remain
+unverified.
+
+## Beat subtrack audition cells and step gaps — 2026-10-31
+
+Each Editor subtrack has an empty 16-point-wide audition button centered in the fixed
+gutter, with the shared step button appearance. Explicit preview requests reuse the existing beat worker/render/output
+path, bypass the automatic headphones toggle and fall back to default note/grid
+settings without a selected pattern. Existing editor/context/cancellation guards
+remain. Preview clicks retain pattern content, selection, revision and dirty state.
+All step cells now have four-point horizontal external insets. A shared-style
+vertical divider separates the audition gutter from the pattern grid across the
+lower viewport.
+
+Regressions cover a different subtrack's preview without selection or pattern
+edits, automatic audition off, no selected or existing pattern, dialog guards,
+three-theme geometry, the absence of a dot, eight-point gaps, the full-height separator, horizontal
+anchoring and synchronized vertical scrolling. Audition state tests inject results
+to verify direct playback with the toggle off and cancellation for invalid view,
+revision, focus, disabled UI and dialogs. The shared project audio test also
+renders an identical preview with no arranged pattern.
+
+Completed checks: `cargo test --locked --workspace` passes **2,045 tests**,
+with 11 ignored across 258 suites. After the final empty-button sizing and margin
+refinements, `cargo test --locked -p daw-ui --lib` passes **790 tests**,
+including 40 beat-editor tests and the direct-preview scope test. The five shared
+project audition tests pass, including preview audio without arranged clips.
+Strict locked workspace/all-target Clippy, formatting, changed Markdown targets
+and whitespace checks pass. `sh tools/package_macos.sh debug` rebuilt
+`target/debug/DAW.app`. Native audio-device/gesture checks and Windows/Linux
+execution remain unverified.
+
 ## Beat subdivision uses one bar as its reference — 2026-10-31
 
 The user's correction supersedes the preceding beat-relative captions. Subdivision

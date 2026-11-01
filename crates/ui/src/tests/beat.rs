@@ -577,7 +577,7 @@ fn compact_beat_steps_share_the_lower_rulers_time_mapping() {
         assert!(options.height() <= toolbars::CONTROL_HEIGHT);
         let first = app.beat_ui.steps[&(row, 0)];
         let next = app.beat_ui.steps[&(row, daw_core::MIDI_TICKS_PER_BEAT / 4)];
-        assert!((first.left() - ruler.left() - 1.0).abs() < 0.1);
+        assert!((first.left() - ruler.left() - 4.0).abs() < 0.1);
         assert!((first.top() - ruler.bottom() - 3.0).abs() < 0.1);
         assert!(first.height() <= 26.0, "step lanes must remain thin");
         let clock = app.midi_editor.content.timeline(&app.session.project);
@@ -601,7 +601,7 @@ fn beat_ruler_and_steps_retain_trimmed_and_stretched_clip_mapping() {
     frame(&mut app, &ctx, vec![]);
     assert!(!app.beat_ui.steps.contains_key(&(row, 0)));
     let first = app.beat_ui.steps[&(row, step_ticks)];
-    assert!((first.left() - app.midi_editor.content.ruler.left() - 1.0).abs() < 0.1);
+    assert!((first.left() - app.midi_editor.content.ruler.left() - 4.0).abs() < 0.1);
     let clip = &mut app.session.project.tracks[0].clips[0];
     clip.source_offset_frame *= 2;
     clip.length_frames *= 2;
@@ -612,7 +612,7 @@ fn beat_ruler_and_steps_retain_trimmed_and_stretched_clip_mapping() {
     frame(&mut app, &ctx, vec![]);
     let first = app.beat_ui.steps[&(row, step_ticks)];
     let next = app.beat_ui.steps[&(row, step_ticks * 2)];
-    assert!((first.left() - app.midi_editor.content.ruler.left() - 1.0).abs() < 0.1);
+    assert!((first.left() - app.midi_editor.content.ruler.left() - 4.0).abs() < 0.1);
     let expected = app
         .midi_editor
         .content
@@ -1348,7 +1348,7 @@ fn editor_subtrack_headers_live_in_the_left_panel_and_share_the_instrument_plus(
             .iter()
             .all(|r| panel.contains_rect(*r))
     );
-    assert!((app.beat_ui.steps[&(row, 0)].left() - ruler.left() - 1.0).abs() < 0.1);
+    assert!((app.beat_ui.steps[&(row, 0)].left() - ruler.left() - 4.0).abs() < 0.1);
     assert!(!shapes.iter().any(
         |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Add beat subtrack")
     ));
@@ -1428,6 +1428,7 @@ fn editor_left_headers_and_steps_scroll_together_without_project_changes() {
         {
             visible += 1;
             assert!((header.center().y - step.center().y).abs() < 0.1);
+            assert!((header.center().y - app.beat_ui.audition_steps[row].center().y).abs() < 0.1);
             assert!(header.left() < app.midi_editor.panel_bounds.right());
             assert!(step.left() >= app.midi_editor.panel_bounds.right());
         }
@@ -2054,4 +2055,126 @@ fn subdivision_choices_show_audible_bar_fractions_and_edit_the_source_grid_once(
     assert_eq!(source.pattern.steps, steps);
     assert_eq!(clip.stretch, daw_core::ClipStretch::new(1, 2));
     assert!(app.beat_ui.steps.contains_key(&(row, 120)));
+}
+
+#[test]
+fn subtrack_preview_step_plays_the_clicked_instrument_without_editing_or_selecting_it() {
+    let (mut app, ctx, track, first, clip) = setup();
+    let mut other = BeatSubtrack::new("Snare".into());
+    other.instrument = OscillatorSettings::default().into();
+    let second = other.id;
+    app.session
+        .project
+        .edit(Edit::Beat {
+            track_id: track,
+            edit: BeatEdit::Add {
+                subtrack: Box::new(other),
+                index: 1,
+            },
+        })
+        .unwrap();
+    frame(&mut app, &ctx, vec![]);
+    let name = app.beat_ui.headers[&first].center();
+    click(&mut app, &ctx, name);
+    app.dirty = false;
+    let before = app.session.project.clone();
+    let revision = app.change_revision;
+    let primary = app.beat_ui.primary;
+    let preview = app.beat_ui.audition_steps[&second];
+    click(&mut app, &ctx, preview.center());
+    assert!(!app.midi_editor.audition_enabled);
+    assert_eq!(app.chords.audition.beat_requests, vec![(track, second)]);
+    assert!(
+        app.chords.audition.scoped(),
+        "direct preview survives the disabled automatic toggle"
+    );
+    assert_eq!(app.session.project, before);
+    assert_eq!(app.change_revision, revision);
+    assert_eq!(app.beat_ui.primary, primary);
+    assert!(app.beat_subtrack_selected(first));
+    assert!(!app.beat_subtrack_selected(second));
+    assert_eq!(app.selected_clip, Some(clip));
+    assert_eq!(app.selected_track, Some(track));
+    assert!(!app.dirty);
+}
+
+#[test]
+fn subtrack_preview_step_works_without_selected_or_existing_patterns_and_respects_dialogs() {
+    for keep_patterns in [false, true] {
+        let (mut app, ctx, track, row, _) = setup();
+        app.selected_clip = None;
+        if !keep_patterns {
+            app.session.project.tracks[0].clips.clear();
+        }
+        frame(&mut app, &ctx, vec![]);
+        app.dirty = false;
+        let before = app.session.project.clone();
+        let preview = app.beat_ui.audition_steps[&row];
+        click(&mut app, &ctx, preview.center());
+        assert_eq!(app.chords.audition.beat_requests, vec![(track, row)]);
+        assert!(app.chords.audition.scoped());
+        assert_eq!(app.selected_clip, None);
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+        assert!(!app.beat_ui.disabled_steps.is_empty());
+        app.settings_open = true;
+        frame(&mut app, &ctx, vec![]);
+        click(&mut app, &ctx, preview.center());
+        assert_eq!(app.chords.audition.beat_requests.len(), 1);
+        assert_eq!(app.session.project, before);
+    }
+}
+
+#[test]
+fn preview_steps_share_row_geometry_and_four_point_insets_with_a_fixed_grid_separator() {
+    for color in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
+        let (mut app, ctx, _, row, _) = setup();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color,
+                ..Default::default()
+            },
+        );
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let preview = app.beat_ui.audition_steps[&row];
+        let ruler = app.midi_editor.content.ruler;
+        let first = app.beat_ui.steps[&(row, 0)];
+        let next = app.beat_ui.steps[&(row, 240)];
+        assert!((preview.left() - app.midi_editor.panel_bounds.right() - 18.0).abs() < 0.1);
+        assert!((ruler.left() - preview.right() - 18.0).abs() < 0.1);
+        assert_eq!(preview.width(), 16.0);
+        assert_eq!(preview.height(), first.height());
+        assert!(
+            !shapes.iter().any(|s| matches!(&s.shape,
+            egui::Shape::Text(t) if preview.contains(t.pos) && t.galley.text() == "·")),
+            "audition button has no visible dot"
+        );
+        assert!((preview.center().y - app.beat_ui.headers[&row].center().y).abs() < 0.1);
+        assert!((first.left() - ruler.left() - 4.0).abs() < 0.1);
+        assert!((next.left() - first.right() - 8.0).abs() < 0.1);
+        assert!(
+            shapes.iter().any(|s| matches!(&s.shape,
+                egui::Shape::LineSegment { points, stroke }
+                if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                    && (points[0].x - ruler.left() - 0.5).abs() < 0.1
+                    && (points[1].x - points[0].x).abs() < 0.1
+                    && (points[0].y - ruler.bottom()).abs() < 0.1
+                    && (points[1].y - app.midi_editor.content.scrollbar_bounds.top()).abs() < 0.1
+            )),
+            "one shared-style divider spans the grid viewport"
+        );
+        app.midi_editor.content.fitted = false;
+        app.midi_editor.content.scroll = 0.5;
+        app.midi_editor.content.zoom *= 2.0;
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.beat_ui.audition_steps[&row], preview,
+            "audition stays in the fixed gutter"
+        );
+    }
 }

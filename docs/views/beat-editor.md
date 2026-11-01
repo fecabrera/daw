@@ -12,6 +12,12 @@ Use beat tracks to build rhythms from independently configured instruments. Mixe
 
 Editor keeps the selected track's clip overview above the step rows. Empty disabled steps fill the visible area outside the selected pattern. Without an active clip, all steps stay visible but disabled, and subtrack controls remain available; select a clip, or double-click empty space in the track overview to create a pattern.
 
+Click the standalone step in the gutter before a subtrack’s pattern steps to
+preview that instrument. It works with automatic audition off and without a
+selected pattern. It does not add hits, change the pattern, or select the subtrack.
+The preview lets the instrument finish its release or one-shot playback. It does
+not cut the sound at the step boundary. A new preview or Escape stops it.
+
 ## Grid and hit controls
 
 Patterns share one grid across all subtracks. **Length** uses the transport’s musical-position display, with duration counts starting at zero: `0001.00` means one bar and `0000.02` means two beats. It follows trimming, stretching and repetitions. Drag the bar or beat section up or down to adjust it; hold Shift for slower adjustment. Release to apply, or press Escape to cancel. The tooltip shows the exact duration in seconds and samples, including fractions smaller than one beat.

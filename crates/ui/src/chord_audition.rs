@@ -10,7 +10,12 @@ use std::sync::{
 enum Sound {
     Chord(daw_core::Chord),
     Note(u8),
-    Beat(Id, i8, daw_core::BeatResolution),
+    Beat {
+        row: Id,
+        transpose: i8,
+        resolution: daw_core::BeatResolution,
+        direct: bool,
+    },
 }
 
 enum PreparedAudition {
@@ -39,6 +44,7 @@ pub(super) struct State {
     queued: Option<Request>,
     scope: Option<(Id, Id, u64)>,
     editor: bool,
+    direct: bool,
     release: Option<Arc<AtomicBool>>,
     render_cancel: Option<Arc<AtomicBool>>,
     pub(super) allow_note_commit: bool,
@@ -106,7 +112,12 @@ impl State {
         std::thread::spawn(move || {
             let cancelled = || flag.load(Ordering::Relaxed);
             match sound {
-                Sound::Beat(row, transpose, resolution) => {
+                Sound::Beat {
+                    row,
+                    transpose,
+                    resolution,
+                    direct: false,
+                } => {
                     let result = session
                         .audition_beat_step(track, row, transpose, resolution, &cancelled)
                         .map(PreparedAudition::Samples)
@@ -120,7 +131,17 @@ impl State {
                         .map_err(|e| e.to_string());
                     let _ = sender.send(result);
                 }
-                Sound::Note(pitch) => match session.held_note_audition(track, pitch, &cancelled) {
+                sound => match match sound {
+                    Sound::Note(pitch) => session.held_note_audition(track, pitch, &cancelled),
+                    Sound::Beat {
+                        row,
+                        transpose,
+                        resolution,
+                        ..
+                    } => session
+                        .beat_subtrack_audition(track, row, transpose, resolution, &cancelled),
+                    Sound::Chord(_) => unreachable!(),
+                } {
                     Ok(mut note) => {
                         let (mut writer, stream) = daw_output::audition_stream();
                         if sender.send(Ok(PreparedAudition::Stream(stream))).is_err() {
@@ -185,30 +206,53 @@ impl DawUi {
     }
 
     pub(super) fn audition_beat_step(&mut self, track: Id, row: Id) {
-        if !self.midi_editor.audition_enabled {
+        if self.midi_editor.audition_enabled {
+            self.request_beat_audition(track, row, false);
+        }
+    }
+
+    /// An explicit row preview works without a selected pattern or automatic audition.
+    pub(super) fn audition_beat_subtrack(&mut self, track: Id, row: Id) {
+        if self.editing_enabled() {
+            self.request_beat_audition(track, row, true);
+        }
+    }
+
+    fn request_beat_audition(&mut self, track: Id, row: Id, direct: bool) {
+        if self
+            .session
+            .project
+            .beat_subtrack(row)
+            .is_none_or(|(owner, _)| owner != track)
+        {
             return;
         }
-        let Some(clip) = self
+        let settings = self
             .session
             .project
             .tracks
             .iter()
             .find(|t| t.id == track)
             .and_then(|t| t.clips.iter().find(|c| Some(c.id) == self.selected_clip))
-        else {
+            .and_then(|clip| {
+                self.session
+                    .project
+                    .assets
+                    .iter()
+                    .find(|a| a.id == clip.asset_id)
+                    .and_then(|a| a.beat_pattern.as_ref())
+                    .map(|source| (clip.transpose, source.pattern.resolution))
+            });
+        if !direct && settings.is_none() {
             return;
-        };
-        let Some(pattern) = self
-            .session
-            .project
-            .assets
-            .iter()
-            .find(|a| a.id == clip.asset_id)
-            .and_then(|a| a.beat_pattern.as_ref())
-        else {
-            return;
-        };
-        self.request_midi_audition(Sound::Beat(row, clip.transpose, pattern.pattern.resolution));
+        }
+        let (transpose, resolution) = settings.unwrap_or((0, daw_core::BeatResolution::Sixteenth));
+        self.request_midi_audition(Sound::Beat {
+            row,
+            transpose,
+            resolution,
+            direct,
+        });
     }
 
     fn active_audition_track(&self) -> Option<Id> {
@@ -223,7 +267,7 @@ impl DawUi {
 
     fn request_midi_audition(&mut self, sound: Sound) {
         let Some(track) = (match sound {
-            Sound::Beat(..) => self.active_audition_track(),
+            Sound::Beat { .. } => self.active_audition_track(),
             _ => self.active_midi_track(),
         }) else {
             return;
@@ -242,11 +286,12 @@ impl DawUi {
         }
         state.scope = Some((self.session.project.project_id, track, self.change_revision));
         state.editor = !matches!(sound, Sound::Chord(_));
+        state.direct = matches!(sound, Sound::Beat { direct: true, .. });
         #[cfg(test)]
         match sound {
             Sound::Chord(chord) => state.requests.push((track, chord)),
             Sound::Note(pitch) => state.note_requests.push((track, pitch)),
-            Sound::Beat(row, _, _) => state.beat_requests.push((track, row)),
+            Sound::Beat { row, .. } => state.beat_requests.push((track, row)),
         }
         let request = Request {
             session: self.session.clone(),
@@ -287,7 +332,8 @@ impl DawUi {
         }
         let valid = enabled
             && if self.chords.audition.editor {
-                self.view_mode == ViewMode::Edit && self.midi_editor.audition_enabled
+                self.view_mode == ViewMode::Edit
+                    && (self.midi_editor.audition_enabled || self.chords.audition.direct)
             } else {
                 self.chords_visible()
             }
@@ -390,6 +436,57 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn direct_beat_results_ignore_the_toggle_but_require_a_valid_editor_scope() {
+        for invalid in ["none", "view", "revision", "focus", "disabled", "dialog"] {
+            let mut app = DawUi::default();
+            let track = app.session.project.add_beat_track().unwrap();
+            app.selected_track = Some(track);
+            app.view_mode = if invalid == "view" {
+                ViewMode::Timeline
+            } else {
+                ViewMode::Edit
+            };
+            app.settings_open = invalid == "dialog";
+            let project = app.session.project.clone();
+            let (sender, receiver) = mpsc::channel();
+            let flag = Arc::new(AtomicBool::new(false));
+            app.chords.audition.editor = true;
+            app.chords.audition.direct = true;
+            app.chords.audition.scope = Some((project.project_id, track, app.change_revision));
+            app.chords.audition.pending = Some(Pending {
+                receiver,
+                cancel: flag.clone(),
+                project: project.project_id,
+                track,
+                revision: app.change_revision,
+                rate: 48_000,
+            });
+            if invalid == "revision" {
+                app.change_revision += 1;
+            }
+            let (_writer, stream) = daw_output::audition_stream();
+            sender.send(Ok(PreparedAudition::Stream(stream))).unwrap();
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    focused: invalid != "focus",
+                    ..Default::default()
+                },
+                |_| app.poll_chord_audition(&ctx, invalid != "disabled"),
+            );
+            output.textures_delta.clear();
+            assert!(!app.midi_editor.audition_enabled);
+            assert_eq!(
+                app.chords.audition.delivered,
+                usize::from(invalid == "none"),
+                "{invalid}"
+            );
+            assert_eq!(flag.load(Ordering::Relaxed), invalid != "none", "{invalid}");
+            assert_eq!(app.session.project, project);
+        }
+    }
+
     #[test]
     fn editor_results_require_the_enabled_current_scope() {
         for invalid in [false, true] {
