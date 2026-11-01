@@ -32,6 +32,95 @@ fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
     frame(app, ctx, vec![button(point, false)]);
     frame(app, ctx, vec![]);
 }
+
+#[test]
+fn editor_subtrack_reorder_owns_its_release_with_tracks_open_or_closed() {
+    for tracks_open in [false, true] {
+        for cancel in ["none", "escape", "focus", "outside", "view"] {
+            let (mut app, ctx, parent, first, _) = setup();
+            let second = BeatSubtrack::new("Second".into());
+            let second_id = second.id;
+            app.session
+                .project
+                .edit(Edit::Beat {
+                    track_id: parent,
+                    edit: BeatEdit::Add {
+                        subtrack: Box::new(second),
+                        index: 1,
+                    },
+                })
+                .unwrap();
+            app.set_tracks_panel_visible(tracks_open);
+            frame(&mut app, &ctx, vec![]);
+            let original = app.session.project.clone();
+            let press = app.beat_ui.headers[&first].center();
+            let mut release = Pos2::new(press.x, app.beat_ui.headers[&second_id].bottom() - 4.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(press), button(press, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(release)]);
+            assert!(app.beat_dragging());
+            assert_eq!(app.session.project, original, "preview must not commit");
+            match cancel {
+                "escape" => {
+                    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false)
+                }
+                "focus" => {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(1280.0, 800.0),
+                            )),
+                            focused: false,
+                            events: vec![egui::Event::WindowFocused(false)],
+                            ..Default::default()
+                        },
+                        |ui| app.show(ui),
+                    );
+                    output.textures_delta.clear();
+                }
+                "outside" => release = Pos2::new(1270.0, 790.0),
+                "view" => {
+                    app.set_view_mode(ViewMode::Instrument, &ctx);
+                    assert_eq!(
+                        app.view_mode,
+                        ViewMode::Edit,
+                        "active drags guard view switching"
+                    );
+                    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+                    app.set_view_mode(ViewMode::Instrument, &ctx);
+                    assert_eq!(app.view_mode, ViewMode::Instrument);
+                    release = Pos2::new(1270.0, 790.0);
+                }
+                _ => {}
+            }
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(release), button(release, false)],
+            );
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.beat_dragging());
+            if cancel == "none" {
+                let actual: Vec<_> = app
+                    .session
+                    .project
+                    .beat(parent)
+                    .unwrap()
+                    .subtracks
+                    .iter()
+                    .map(|s| s.id)
+                    .collect();
+                assert_eq!(actual, vec![second_id, first], "Tracks open={tracks_open}");
+            } else {
+                assert_eq!(app.session.project, original, "{tracks_open} {cancel}");
+            }
+        }
+    }
+}
 #[test]
 fn beat_grid_click_edits_only_active_source_and_survives_view_switch() {
     let (mut app, ctx, track, row, clip) = setup();

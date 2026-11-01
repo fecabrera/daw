@@ -170,6 +170,7 @@ impl DawUi {
         });
     }
     pub(super) fn cancel_browser_interactions(&mut self) {
+        self.cancel_beat_reorder(Some(crate::beat_editor::BeatDragPane::Tracks));
         if let Some(id) = self.track_browser.rename.take()
             && self
                 .track_name_edit
@@ -729,7 +730,13 @@ impl DawUi {
                     .map_or(Rect::NOTHING, |(first, last)| {
                         Rect::from_min_max(first.1.min, last.1.max).intersect(scroll.inner_rect)
                     });
-            self.finish_beat_rows(ui, parent, &subrows, allowed);
+            self.finish_beat_rows(
+                ui,
+                parent,
+                &subrows,
+                allowed,
+                crate::beat_editor::BeatDragPane::Tracks,
+            );
         }
     }
 }

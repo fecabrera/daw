@@ -70,11 +70,23 @@ pub(super) struct BeatUi {
     pub mix_bounds: std::collections::HashMap<Id, [Rect; 4]>,
 }
 struct BeatDrag {
+    pane: BeatDragPane,
+    view: ViewMode,
     revision: u64,
     order: Vec<Id>,
     moving: Vec<Id>,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum BeatDragPane {
+    Editor,
+    Tracks,
+}
 impl DawUi {
+    pub(super) fn cancel_beat_reorder(&mut self, pane: Option<BeatDragPane>) {
+        if pane.is_none_or(|pane| self.beat_ui.drag.as_ref().is_some_and(|d| d.pane == pane)) {
+            self.beat_ui.drag = None;
+        }
+    }
     #[cfg(test)]
     pub(super) fn beat_sampler_waveform(&self, owner: Id, layer: Id) -> Option<Rect> {
         self.instrument_ui
@@ -356,7 +368,14 @@ impl DawUi {
             self.beat_ui.rename = Some((row.id, row.name.clone(), true));
         }
         if !editing && response.drag_started() && self.edit_environment_available() {
-            self.begin_beat_reorder(ui, track, row.id, response.id, response.rect);
+            self.begin_beat_reorder(
+                ui,
+                track,
+                row.id,
+                response.id,
+                response.rect,
+                BeatDragPane::Editor,
+            );
         }
 
         response
@@ -368,6 +387,7 @@ impl DawUi {
         id: Id,
         focus: egui::Id,
         rect: Rect,
+        pane: BeatDragPane,
     ) {
         let selected = self.beat_ui.selected.clone();
         self.navigate_beat_owner(track, Some(id), false);
@@ -385,6 +405,8 @@ impl DawUi {
                 .filter(|id| self.beat_ui.selected.contains(id))
                 .collect();
             self.beat_ui.drag = Some(BeatDrag {
+                pane,
+                view: self.view_mode,
                 revision: self.change_revision,
                 order,
                 moving,
@@ -488,6 +510,7 @@ impl DawUi {
         track: Id,
         rows: &[(Id, Rect)],
         allowed: Rect,
+        pane: BeatDragPane,
     ) {
         if crate::drag::cancelled(ui)
             || !self.edit_environment_available()
@@ -495,11 +518,13 @@ impl DawUi {
                 .beat_ui
                 .drag
                 .as_ref()
-                .is_some_and(|d| d.revision != self.change_revision)
+                .is_some_and(|d| d.revision != self.change_revision || d.view != self.view_mode)
         {
             self.beat_ui.drag = None;
         }
-        if let Some(drag) = &self.beat_ui.drag {
+        // Both panes can display the same beat. Only the gesture's origin owns
+        // preview scrolling and release cleanup, including invalid outside drops.
+        if let Some(drag) = self.beat_ui.drag.as_ref().filter(|drag| drag.pane == pane) {
             crate::drag::scroll_drag(ui, crate::drag::Axis::Vertical, 360.0, true, ui.clip_rect());
             let pointer = ui
                 .input(|i| i.pointer.interact_pos())
@@ -1203,7 +1228,13 @@ impl DawUi {
                     });
                     ui.advance_cursor_after_rect(rect);
                 }
-                self.finish_beat_rows(ui, track.id, &row_bounds, ui.clip_rect());
+                self.finish_beat_rows(
+                    ui,
+                    track.id,
+                    &row_bounds,
+                    ui.clip_rect(),
+                    BeatDragPane::Editor,
+                );
                 for (id, row) in &row_bounds {
                     if self.beat_subtrack_selected(*id) {
                         panels::ControlPanel::selected_row(

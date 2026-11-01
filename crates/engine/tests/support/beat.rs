@@ -49,6 +49,80 @@ fn beat_plan(rate: u32, sample: bool, stop: bool) -> RenderPlan {
     plan.project.validate().unwrap();
     plan
 }
+
+#[test]
+fn beat_retrigger_during_stop_fade_preserves_continuity_and_bus_processing() {
+    for rate in SAMPLE_RATES {
+        for compression in [4, 8] {
+            for layer_effect in [false, true] {
+                let mut plan = beat_plan(rate, true, true);
+                plan.project.edit(Edit::SetTempo { bpm: 300.0 }).unwrap();
+                let beat = plan.project.tracks[0].beat.as_mut().unwrap();
+                let (first, second) = (beat.subtracks[0].id, beat.subtracks[1].id);
+                if layer_effect {
+                    // Drive exercises the per-layer input path without latency.
+                    beat.subtracks[0].instrument.layers[0]
+                        .effects
+                        .push(EffectInstance::drive());
+                }
+                let id = plan.project.tracks[0].clips[0].id;
+                let content = BeatPattern::default()
+                    .with_grid(1, BeatResolution::ThirtySecond)
+                    .unwrap()
+                    .with_step(first, 0, Some(127))
+                    .unwrap()
+                    .with_step(second, 960, Some(127))
+                    .unwrap()
+                    .with_step(first, 1080, Some(127))
+                    .unwrap();
+                plan.project
+                    .edit(Edit::ReplaceBeatPattern {
+                        clip_id: id,
+                        pattern: content,
+                    })
+                    .unwrap();
+                let source_frame = plan.project.midi_frame(1080);
+                let clip = &mut plan.project.tracks[0].clips[0];
+                clip.stretch = Some(ClipStretch::new(compression, 1).unwrap());
+                clip.length_frames /= compression;
+                plan.project.validate().unwrap();
+                // Scheduling uses ceil when source-frame events map to stretched output.
+                let retrigger = source_frame.div_ceil(compression) as usize;
+                let mut data = vec![[0.0; 2]; retrigger + (rate / 100) as usize];
+                Renderer::new(plan.clone()).render_offline(&mut data);
+                if compression == 8 {
+                    assert!(data[retrigger - 1][0].abs() > 0.01);
+                } else {
+                    assert!(data[retrigger - 1][0].abs() < 1e-7);
+                }
+                for (before, after) in data[retrigger - 1].into_iter().zip(data[retrigger]) {
+                    let jump = (after - before).abs();
+                    assert!(
+                        jump < 0.01,
+                        "rate={rate}, compression={compression}, effects={layer_effect}, jump={jump}"
+                    );
+                }
+                let mut seek = Renderer::new(plan.clone());
+                let mut slice = vec![[0.0; 2]; 64];
+                seek.render_offline_at((retrigger - 4) as u64, &mut slice);
+                assert_eq!(slice, data[retrigger - 4..retrigger + 60]);
+                let mut live = Renderer::new(plan);
+                live.play();
+                ALLOCATIONS.with(|c| c.set(0));
+                TRACK_ALLOCATIONS.with(|c| c.set(true));
+                for (frame, expected) in data.iter().enumerate() {
+                    let actual = live.next_sample();
+                    if frame > (rate / 200) as usize {
+                        assert!((actual[0] - expected[0]).abs() < 1e-6);
+                        assert!((actual[1] - expected[1]).abs() < 1e-6);
+                    }
+                }
+                TRACK_ALLOCATIONS.with(|c| c.set(false));
+                assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            }
+        }
+    }
+}
 #[test]
 fn beat_stops_one_shots_with_five_ms_fade_at_every_rate_and_matches_live_seek() {
     for rate in SAMPLE_RATES {

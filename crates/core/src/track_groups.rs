@@ -4,6 +4,50 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 impl Project {
+    /// Append an empty root bus without changing existing group membership.
+    pub fn add_group_track(&mut self) -> Result<Id> {
+        let mut next = self.clone();
+        let number = next
+            .tracks
+            .iter()
+            .filter(|track| track.kind == TrackKind::Group)
+            .count()
+            + 1;
+        let id = next.add_track()?;
+        let track = next.tracks.last_mut().unwrap();
+        track.kind = TrackKind::Group;
+        track.name = format!("Group {number}");
+        next.validate()?;
+        *self = next;
+        Ok(id)
+    }
+
+    /// Create a child at the end of a group's subtree as one validated change.
+    pub fn add_track_in_group(&mut self, group_id: Id, kind: TrackKind) -> Result<Id> {
+        if !self
+            .tracks
+            .iter()
+            .any(|track| track.id == group_id && track.kind == TrackKind::Group)
+        {
+            return Err(Error("Group not found".into()));
+        }
+        let mut next = self.clone();
+        let index = next.track_subtree(group_id)?.end;
+        let id = match kind {
+            TrackKind::Audio => next.add_track()?,
+            TrackKind::Midi => next.add_midi_track()?,
+            TrackKind::Beat => next.add_beat_track()?,
+            TrackKind::Group => next.add_group_track()?,
+        };
+        next.edit(Edit::MoveTrack {
+            track_id: id,
+            group_id: Some(group_id),
+            index,
+        })?;
+        *self = next;
+        Ok(id)
+    }
+
     pub(crate) fn validate_track_groups(&self) -> Result<()> {
         let mut path = Vec::new();
         for track in &self.tracks {

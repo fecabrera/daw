@@ -4,6 +4,52 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat review corrections — 2026-11-01
+
+The fixes address the six validated findings against `5f3a3e3`. Core group
+constructors, shared menu helpers and the migrated context-menu test caller are
+included together, so the desktop/UI build no longer relies on omitted files.
+
+Beat reorder state records its originating pane and view. Only that pane owns
+preview scrolling and release cleanup. Tracks and the step editor cannot consume
+each other's drops. Panel closure cancels a Tracks drag; view changes cancel
+either origin. Invalid releases, Escape and focus loss retain project data.
+
+Retrigger transitions retain the previous stop-faded voice and layer contribution
+before removing the choke multiplier. Clip fades stay separate, layer/Output
+effect histories remain alive, and the callback adds no allocation. Output effect
+eligibility resolves the canonical owner for local providers. Transfers also
+normalize both aliases before comparing same-chain identity, including mixed
+parent/Output alias moves and copies.
+
+Completed focused checks:
+
+- `cargo check --offline --locked -p daw-ui` passes on the repaired sources.
+- `cargo test --offline --locked -p daw-core --test beat_output_effects` passes
+  both tests, including every source/destination alias pair, local Macro binding,
+  move/copy identity and storage round trips.
+- `cargo test --offline --locked -p daw-ui subtrack_` passes all 24 matching
+  tests. Pointer regressions cover Editor reordering with Tracks open/closed,
+  browser-origin moves, outside drops, Escape, focus loss, view guards and
+  originating-panel closure.
+- `cargo test --offline --locked -p daw-engine --test midi beat_retrigger_during_stop_fade`
+  passes the six-rate, two-compression, with/without-layer-effect matrix. It checks
+  continuity during/after the stop fade, live/offline/seek parity and zero guarded
+  callback allocations.
+- `cargo test --offline --locked --workspace` passes: 2,099 tests, 13 ignored,
+  across 260 suites, including 822 UI tests. The final view-guard assertions also
+  pass the 24-test focused UI rerun.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`
+  passes on the final sources. Formatting, diff and changed Markdown file-target
+  checks pass.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`
+  pass. The CLI smoke test covers collection, inspection, WAV/MP3/AAC output,
+  repeatability, missing sources, group buses, overwrite protection and exit codes.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+
+Native UI/device listening and Windows/Linux checks remain separate acceptance
+work; automated input/rendering checks do not establish those results.
+
 ## Tracks creation menus — 2026-11-01
 
 Tracks Plus and blank-panel context menus share one creation body for audio,

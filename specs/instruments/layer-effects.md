@@ -59,3 +59,8 @@ Core checks cover migration defaults, round-trip settings, transactional validat
 Regular layers and Output paint effects individually through `effects_panel::effect_units`, retaining full-chain group capture, shared unit shells and selection controls. Component and effect drags use the complete ordered row geometry for insertion. Effect drops exclude the source area; component moves clamp after the source. Catalog construction, copies and edits occur on valid release only. Cross-bus transfers retain existing source-scope checks. End-of-frame release cleanup cancels outside drops after every destination has had a chance to consume the gesture. Pane focus distinguishes control selection from effect selection in the same row. Saved order and effect-chain changes remain one history entry; no-op and cancelled drops stay clean.
 
 The renderer keeps its existing source, Amplitude, bus effect and gain/pan stages. Presentation changes alone retain compatible histories and do not change output or allocate on the callback.
+
+Final beat Output parent and owner aliases resolve to the same canonical owner
+for modulation discovery and same-chain transfer identity. Local Macro routes
+remain available through either alias. Moves preserve effect and route IDs;
+copies receive new effect/route IDs while retaining the provider binding.

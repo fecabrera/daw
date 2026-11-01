@@ -144,7 +144,14 @@ impl DawUi {
                     self.select_track(parent, false);
                 }
                 self.track_drag = None;
-                self.begin_beat_reorder(ui, parent, gesture.row.id, gesture.focus, gesture.rect);
+                self.begin_beat_reorder(
+                    ui,
+                    parent,
+                    gesture.row.id,
+                    gesture.focus,
+                    gesture.rect,
+                    crate::beat_editor::BeatDragPane::Tracks,
+                );
                 return;
             }
             self.browser_select(&gesture.row, false);

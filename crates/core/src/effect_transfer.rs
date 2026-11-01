@@ -43,6 +43,21 @@ pub(crate) fn source_available(
     })
 }
 impl Project {
+    /// Final Output chains accept the parent ID, but providers belong to Output.
+    fn effect_instrument_owner(&self, track: Id, layer: Id) -> Id {
+        self.beat(track)
+            .filter(|beat| beat.output.id == layer)
+            .map_or(track, |beat| beat.output.id)
+    }
+    fn canonical_effect_target(&self, target: EffectChainTarget) -> EffectChainTarget {
+        match target {
+            EffectChainTarget::Layer { track, layer } => EffectChainTarget::Layer {
+                track: self.effect_instrument_owner(track, layer),
+                layer,
+            },
+            target => target,
+        }
+    }
     pub fn effect_chain(&self, target: EffectChainTarget) -> Option<(&[EffectInstance], bool)> {
         match target {
             EffectChainTarget::Master => Some((&self.master.effects, self.master.effects_compact)),
@@ -86,10 +101,7 @@ impl Project {
         let EffectChainTarget::Layer { track, layer } = destination else {
             return Ok(transfer);
         };
-        let track = self
-            .beat(track)
-            .filter(|beat| beat.output.id == layer)
-            .map_or(track, |beat| beat.output.id);
+        let track = self.effect_instrument_owner(track, layer);
         let original = match self.instrument_settings(track) {
             Some(settings) => std::borrow::Cow::Borrowed(settings),
             None => std::borrow::Cow::Owned(
@@ -194,14 +206,18 @@ impl Project {
         if self.effect_chain(destination).is_none() || units.is_empty() {
             return false;
         }
-        let instrument = match destination {
-            EffectChainTarget::Track(track) | EffectChainTarget::Layer { track, .. } => {
-                self.instrument_settings(track)
+        let owner = match destination {
+            EffectChainTarget::Track(track) => Some(track),
+            EffectChainTarget::Layer { track, layer } => {
+                Some(self.effect_instrument_owner(track, layer))
             }
             EffectChainTarget::Master => None,
         };
+        let instrument = owner.and_then(|owner| self.instrument_settings(owner));
         let output_settings = match destination {
-            EffectChainTarget::Layer { track, .. } => self.instrument_snapshot(track),
+            EffectChainTarget::Layer { .. } if instrument.is_none() => {
+                owner.and_then(|owner| self.instrument_snapshot(owner))
+            }
             _ => None,
         };
         let instrument = instrument.or(output_settings.as_ref());
@@ -226,6 +242,9 @@ impl Project {
         index: usize,
         duplicate: bool,
     ) -> Result<EffectTransfer> {
+        // Equivalent Output aliases must also compare equal for same-chain moves.
+        let source = self.canonical_effect_target(source);
+        let destination = self.canonical_effect_target(destination);
         if !self.can_transfer_effects(source, destination, units) {
             return Err(Error(
                 "Effects are not compatible with the destination chain".into(),

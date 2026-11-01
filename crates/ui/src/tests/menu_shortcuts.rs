@@ -39,7 +39,7 @@ fn all_menus_show_command_symbol_on_mac_and_ctrl_on_windows_and_linux() {
                             "Track" => app.track_menu(ui),
                             "View" => app.view_menu(ui),
                             _ => {
-                                app.track_context_menu(ui);
+                                app.track_context_menu(ui, None);
                             }
                         },
                     );

@@ -58,7 +58,7 @@ Instrument, including after selecting the final Output.
 - Click a name to select one subtrack; Shift-click headers to toggle group membership. In Editor, clicking any part of a subtrack header, including its controls or empty space, selects that subtrack. Press Escape to clear subtrack selection in Editor or Instrument. Escape first cancels an active rename or drag.
 - Right-click anywhere in a subtrack header, including its controls, meters or empty space, to open its context menu. Opening or dismissing the menu does not change controls or pattern content.
 - Double-click a name, or use its context menu, to rename it. In Editor, double-clicking the empty header area beside the name also starts renaming. Mix controls retain their own double-click actions. The name uses the same text input as track names and starts with the whole name selected. Enter accepts; Escape or moving focus elsewhere cancels.
-- Drag a selected name to reorder the selected subtracks together. Release over a subtrack in the same beat track to apply the move. Moving a subtrack to a different beat track, a project group or Master is rejected. Escape, focus loss or an outside release cancels it.
+- Drag a selected name to reorder the selected subtracks together. Release over a subtrack in the same beat track and panel to apply the move. Editor reordering works with Tracks open or closed. Moving a subtrack to a different panel, beat track, project group or Master is rejected. Escape, focus loss, closing the originating panel or an outside release cancels it.
 - Use the name's context menu to delete selected subtracks. Delete/Backspace also removes them while a subtrack name has keyboard focus. Text, step and unit controls retain their own keyboard behavior.
 - Use Mute, Solo, Pan and Gain in either view. Solo applies within the beat instrument; parent track and group controls still apply to the complete output.
 
@@ -75,6 +75,9 @@ Select the beat parent in **Tracks** to show only its final **Output**. This com
 ## Stop another subtrack
 
 Right-click a subtrack name and open **Stops**. Select the subtracks that its hits must stop. For example, make Closed hat stop Open hat.
+
+A new hit during a stop fade starts from the current faded level. It does not
+restore the previous full level. Layer and Output effect tails continue.
 
 Stops use a 5 ms fade, including for one-shot samples. If both subtracks have a step at the same time, the stopping subtrack wins. Self-links and cycles are rejected. Muted or excluded non-solo subtracks issue no trigger or stop. With simultaneous A→B→C hits, B and C are suppressed; all enabled stop intents apply before hits are admitted.
 

@@ -125,6 +125,7 @@ impl DawUi {
             return;
         }
         self.cancel_browser_interactions();
+        self.cancel_beat_reorder(None);
         self.view_mode = mode;
         if mode != ViewMode::Timeline {
             self.clip_settings_visible = false;

@@ -91,6 +91,14 @@ struct OscillatorVoice {
     frequency_remaining: u32,
 }
 impl Voice {
+    /// Retrigger starts from the contribution actually fed into the layer buses.
+    fn attenuate_previous(&mut self, gain: f32) {
+        self.previous = self.previous.map(|value| value * gain);
+        for layer in &mut self.layers {
+            layer.previous = layer.previous.map(|value| value * gain);
+            layer.mixed_output = layer.mixed_output.map(|value| value * gain);
+        }
+    }
     fn note_on(&mut self, id: Id, pitch: u8, velocity: u8, duration_frames: u64) {
         self.note_on_with_duration(id, pitch, velocity, Some(duration_frames.max(1)));
     }
@@ -453,6 +461,7 @@ fn clip_pitch(pitch: u8, transpose: i8) -> u8 {
 #[derive(Clone)]
 pub(crate) struct MidiTrackRuntime {
     beat_stopped: bool,
+    previous_stop_gain: f32,
     // Regular buses follow canonical layer order; Main is always the final bus.
     layer_effects: Vec<super::layer_effects::LayerEffects>,
     layer_samples: Vec<[f32; 2]>,
@@ -800,6 +809,7 @@ impl MidiTrackRuntime {
             super::layer_effects::parallel_latency(instrument, project.sample_rate_hz);
         Some(Self {
             beat_stopped: false,
+            previous_stop_gain: 1.0,
             layer_effects: layers
                 .iter()
                 .map(|l| {
@@ -1476,6 +1486,7 @@ impl MidiTrackRuntime {
     pub fn reset(&mut self) {
         self.shared.reset();
         self.beat_stopped = false;
+        self.previous_stop_gain = 1.0;
         for bus in &mut self.layer_effects {
             bus.reset();
         }
@@ -1681,6 +1692,7 @@ impl MidiTrackRuntime {
                 || self.last_source.is_none_or(|last| source < last);
             if restarted {
                 self.beat_stopped = false;
+                self.previous_stop_gain = 1.0;
                 self.next_event = prepared.events.partition_point(|e| e.frame <= source);
                 let state = self
                     .next_event
@@ -1722,6 +1734,14 @@ impl MidiTrackRuntime {
                     let voice = &mut self.voices[event.slot];
                     if let Some((pitch, velocity)) = event.on {
                         self.beat_stopped = false;
+                        // Choke gain is outside the voice so effect tails survive.
+                        // Capture it once before a new hit removes that multiplier.
+                        if self.previous_stop_gain != 1.0 {
+                            voice.attenuate_previous(std::mem::replace(
+                                &mut self.previous_stop_gain,
+                                1.0,
+                            ));
+                        }
                         voice.note_on(
                             event.note,
                             clip_pitch(pitch, clip.transpose),
@@ -1771,6 +1791,7 @@ impl MidiTrackRuntime {
                     }
                 }
             }
+            self.previous_stop_gain = stop_gain;
             let fade = stop_gain
                 * super::sample_fade(
                     clip,
@@ -1788,6 +1809,7 @@ impl MidiTrackRuntime {
                 }
             }
             self.last_source = None;
+            self.previous_stop_gain = 1.0;
             self.voice_sample(frame, loop_region, 1.0)
         };
         if self.main_remaining > 0 {

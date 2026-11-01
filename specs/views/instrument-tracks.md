@@ -28,6 +28,13 @@ Arm name/icon/background drags at the initial primary press; preserve control an
 
 Subtrack gestures reuse beat multi-selection, group insertion and `BeatEdit::Reorder`. Limit the allowed release area to the original parent's visible subtrack rows, intersected with the viewport. Reject another beat parent, project group, Master or outside drop. Cancel on Escape, focus loss, disabled editing, revision changes or lost gesture ownership. Same-position releases and selection/disclosure stay clean. Do not construct or publish project edits before release.
 
+Record the originating pane and view for each beat reorder. When Tracks and the
+step editor display the same parent, only the originating pane paints the preview,
+scrolls and completes or cancels its release. Another pane's outside bounds cannot
+clear that drag. Shared Escape, focus and revision guards still cancel it.
+Closing Tracks cancels its own drag. View switching retains the active-gesture
+guard and clears beat reorder state when a view change is accepted.
+
 ## Acceptance
 
 [`track_browser/tests.rs`](../../crates/ui/src/track_browser/tests.rs) covers saved order, all track kinds, nested groups, independent saved collapse state, toolbar/panel switching, same-frame MIDI/audio effects targets, unchanged project/clip state, bounded keyboard navigation, rename/removal, disabled input and shared row geometry in Dark/Light/Mist at 1×/1.5× scale. Editor cases cover first-clip selection, empty audio tracks, keyboard switching, catalog exclusivity and per-view visibility. Additional cases cover canonical output controls, fixed row size/right alignment and unclipped knob paint in every theme at 1×/1.5×/2×, selected-subtrack Layers parity, parent-only Output, release-only project/group moves and subtrack reorder, rejected cross-beat drops, and cancellation. Existing catalog paint/focus and workspace suites remain required. Native app/device and Windows/Linux checks are separate from automated egui tests; executed results belong in [validation history](../validation/README.md).

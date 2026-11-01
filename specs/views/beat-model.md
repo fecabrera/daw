@@ -36,6 +36,12 @@ The existing MIDI scheduler maps grid hits into the clip's source, stretch, trim
 
 Directed stop links require distinct existing siblings and cannot form cycles. Local mute/solo filters intents before stop compilation. A muted solo subtrack remains silent and excludes non-solo siblings. All remaining intents issue stops before simultaneous hits are admitted, even if another intent suppresses their own hit. A→B→C therefore suppresses B and C when all hit together. The target fades over 5 ms and clears its active voice, including a one-shot Sampler; bus effects retain their tails. Seeking and looping use the same prepared source-clock stop schedule.
 
+A retrigger during a stop fade starts its shared voice transition from the last
+effective faded contribution. Retain the previous stop multiplier separately
+from clip boundary fades, apply it to the saved voice/layer transition inputs
+once at note-on, then remove the stop multiplier for the new hit. Keep layer and
+Output effect histories alive. No callback allocation or new audio path is added.
+
 Sampler requests include every subtrack's trigger pitch and clip transposes. Banks, decoding, peaks and pitch/stretch variants use existing workers and saved caches. Source/configuration edits publish complete prepared sessions; compatible pitch/content edits use existing background preparation. No beat event, stop or callback path allocates, locks, reads files or constructs units.
 
 Clip gain is applied once after the final Output effects and before the parent track effects. The prepared gain envelope retains the preceding unmuted clip gain through gaps and retained bus tails, rather than reverting to unity at the clip end. At a following clip, its gain takes over the complete shared Output bus over up to 5 ms, shortened at a following clip or loop boundary; a silent target is exact at the clip start. A leading loop gap uses the preceding iteration's gain, and a clip crossing the loop start transitions from that gain. The prepared envelope is periodic and stateless; lookup allocates nothing on the callback. Virtual child clips retain timing and transpose with unity gain. Prepared bus range indexes select clip gain without scanning clips or allocating on the callback. Each lookup uses the content clock after child processing, final Output effects and sibling alignment delays. Prepare that accumulated delay with the renderer and use the shared loop-aware clock mapping for playback, seek and export.

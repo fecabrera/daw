@@ -698,6 +698,57 @@ fn browser_drag_cancellation_and_no_op_release_do_not_edit_the_project() {
 }
 
 #[test]
+fn browser_subtrack_drag_cancels_on_panel_close_view_change_and_invalid_release() {
+    for view in [ViewMode::Instrument, ViewMode::Edit] {
+        for cancel in ["escape", "focus", "outside", "view", "panel"] {
+            let (mut app, ctx, _, ids, _, _) = beat_fixture();
+            app.set_view_mode(view, &ctx);
+            app.set_tracks_panel_visible(true);
+            frame(&mut app, &ctx, vec![]);
+            let original = app.session.project.clone();
+            let start = row(&app, ids[2]);
+            let mut end = rect(&app, ids[0]).left_top() + Vec2::new(60.0, 1.0);
+            pointer(&mut app, &ctx, start, true);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert!(app.beat_dragging());
+            match cancel {
+                "escape" => key(&mut app, &ctx, egui::Key::Escape),
+                "focus" => {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(1280.0, 800.0),
+                            )),
+                            focused: false,
+                            events: vec![egui::Event::WindowFocused(false)],
+                            ..Default::default()
+                        },
+                        |ui| app.show(ui),
+                    );
+                    output.textures_delta.clear();
+                }
+                "outside" => end = Pos2::new(1270.0, 790.0),
+                "view" => {
+                    app.set_view_mode(ViewMode::Timeline, &ctx);
+                    assert_eq!(app.view_mode, view, "active drags guard view switching");
+                    key(&mut app, &ctx, egui::Key::Escape);
+                    app.set_view_mode(ViewMode::Timeline, &ctx);
+                    assert_eq!(app.view_mode, ViewMode::Timeline);
+                    end = Pos2::new(1270.0, 790.0);
+                }
+                "panel" => app.set_tracks_panel_visible(false),
+                _ => unreachable!(),
+            }
+            pointer(&mut app, &ctx, end, false);
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.beat_dragging(), "{view:?} {cancel}");
+            assert_eq!(app.session.project, original, "{view:?} {cancel}");
+        }
+    }
+}
+
+#[test]
 fn browser_moves_complete_group_subtrees_and_rejects_cycles() {
     for view in [ViewMode::Instrument, ViewMode::Edit] {
         let (mut app, ctx, [a, _, group, b, n, _]) = fixture();
