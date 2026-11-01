@@ -162,8 +162,9 @@ impl ControlPanel {
         selected: bool,
         depth: usize,
         leading: (crate::icons::Lucide, Option<bool>),
+        trailing_width: f32,
     ) -> Response {
-        self.catalog_row(
+        self.catalog_row_with_trailing(
             ui,
             name,
             selected,
@@ -171,6 +172,7 @@ impl ControlPanel {
             leading
                 .1
                 .map_or(CatalogIcon::Track(leading.0), CatalogIcon::Group),
+            trailing_width,
         )
     }
 
@@ -253,6 +255,18 @@ impl ControlPanel {
         depth: usize,
         leading: CatalogIcon,
     ) -> Response {
+        self.catalog_row_with_trailing(ui, name, selected, depth, leading, 0.0)
+    }
+
+    fn catalog_row_with_trailing(
+        &self,
+        ui: &mut Ui,
+        name: &str,
+        selected: bool,
+        depth: usize,
+        leading: CatalogIcon,
+        trailing_width: f32,
+    ) -> Response {
         let folder = match leading {
             CatalogIcon::Folder(open) | CatalogIcon::Group(open) => Some(open),
             _ => None,
@@ -264,17 +278,28 @@ impl ControlPanel {
             egui::TextStyle::Small.resolve(ui.style()),
             palette.text,
         );
-        let (rect, response) = ui.allocate_exact_size(
-            Vec2::new(
-                ui.available_width(),
-                galley.size().y.max(crate::icons::TOOLBAR_ICON_SIZE) + 2.0 * padding,
+        let (id, rect) = ui.allocate_space(Vec2::new(
+            ui.available_width(),
+            galley.size().y.max(crate::icons::TOOLBAR_ICON_SIZE) + 2.0 * padding,
+        ));
+        let hit = Rect::from_min_max(
+            rect.min,
+            egui::pos2(
+                (rect.right() - trailing_width).max(rect.left()),
+                rect.bottom(),
             ),
-            if !matches!(leading, CatalogIcon::None) {
-                egui::Sense::click()
-            } else {
+        );
+        let mut response = ui.interact(
+            hit,
+            id,
+            if trailing_width > 0.0 || matches!(leading, CatalogIcon::None) {
                 egui::Sense::click_and_drag()
+            } else {
+                egui::Sense::click()
             },
         );
+        // Layout/selection covers the full row; controls own the reserved hit area.
+        response.rect = rect;
         response.widget_info(|| {
             egui::WidgetInfo::selected(
                 if folder.is_some() {
@@ -299,6 +324,8 @@ impl ControlPanel {
                 crate::theme::toggle_colors(ui.ctx(), true).0,
             );
         }
+        let content_clip = ui.clip_rect();
+        ui.set_clip_rect(hit.intersect(content_clip));
         let icon_size = crate::icons::TOOLBAR_ICON_SIZE;
         let step = icon_size + padding;
         let indent = depth as f32 * step;
@@ -339,14 +366,20 @@ impl ControlPanel {
             }
         };
         let text_offset = indent + slots * step;
-        ui.painter().galley_with_override_text_color(
-            egui::pos2(
-                rect.left() + padding + text_offset,
-                rect.center().y - galley.size().y * 0.5,
-            ),
-            galley,
-            color,
-        );
+        ui.painter()
+            .with_clip_rect(
+                hit.shrink2(Vec2::new(padding, 0.0))
+                    .intersect(ui.clip_rect()),
+            )
+            .galley_with_override_text_color(
+                egui::pos2(
+                    rect.left() + padding + text_offset,
+                    rect.center().y - galley.size().y * 0.5,
+                ),
+                galley,
+                color,
+            );
+        ui.set_clip_rect(content_clip);
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
     }
 

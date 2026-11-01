@@ -80,7 +80,7 @@ impl DawUi {
         {
             return;
         }
-        let Some(track) = self
+        let Some((track, owner)) = self
             .session
             .project
             .instrument_owners()
@@ -90,7 +90,7 @@ impl DawUi {
                     .iter()
                     .any(|layer| layer.sampler.is_some())
             })
-            .map(|(parent, _, _)| parent)
+            .map(|(parent, owner, _)| (parent, owner))
         else {
             return;
         };
@@ -99,6 +99,9 @@ impl DawUi {
         if self.view_mode == ViewMode::Instrument {
             self.selected_track = Some(track);
             self.master_selected = false;
+            if track != owner {
+                self.navigate_beat_owner(track, Some(owner), false);
+            }
         }
         self.drag = drag;
     }

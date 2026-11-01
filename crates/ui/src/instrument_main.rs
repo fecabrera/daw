@@ -127,9 +127,8 @@ impl DawUi {
                     [if output {"Expand Output"} else {"Expand modulation lane"}, if output {"Collapse Output"} else {"Collapse modulation lane"}],
                 );
                 if collapse.clicked() { ui.ctx().request_repaint(); }
-                let child_indent = if self.session.project.beat_subtrack(track).is_some() { panels::GroupPanel::indent(1) } else { 0.0 };
                 let (label, response) =
-                    ui.allocate_exact_size(Vec2::new(TRACK_WIDTH - child_indent, height), Sense::click());
+                    ui.allocate_exact_size(Vec2::new(TRACK_WIDTH, height), Sense::click());
                 ui.painter()
                     .rect_filled(label, 0.0, theme::palette(ui.ctx()).panel);
                 let header_rect = label.shrink(7.0);

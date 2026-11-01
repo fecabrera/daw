@@ -4,6 +4,106 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Tracks creation menus — 2026-11-01
+
+Tracks Plus and blank-panel context menus share one creation body for audio,
+MIDI, beat and empty group tracks. Only Plus adds Add subtrack for the selected
+beat (or displayed Editor beat); blank contexts omit that item. Group contexts
+create all four kinds inside the clicked group as one staged change. Native and egui Track menubars expose Add group and
+Add subtrack through the same action list and guards. Beat context actions retain
+the clicked parent independently of other or multiple selection. Creation occurs
+on release; menu opening and dismissal retain the original project.
+
+Empty groups are validated root buses with default mix settings and no sources,
+clips or effects. Existing rows and memberships remain unchanged. Core coverage
+checks empty-group defaults, child creation for all four track kinds, later
+membership moves, storage round trips and rollback on an invalid project. UI coverage checks both panel menus in both
+views, every creation choice, collapsed/nonselected beat targets, empty projects,
+menubar guards, Editor owner resolution, and release-only dispatch.
+
+Completed checks:
+
+- `cargo test --offline --locked -p daw-core --test track_groups` passes all eight tests.
+- `cargo test --offline --locked -p daw-core -p daw-ui` passes on the final group-child implementation, including all 817 UI tests with one ignored probe. Pointer cases verify four choices in blank contexts, an extra Add subtrack in Plus, child creation for every track kind inside the clicked group, and one-step Undo/Redo. All 27 Tracks tests and the menu-shortcut tests also pass after the separator adjustment.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`, formatting and diff checks pass on the final group-child and blank-context changes.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+- An isolated native macOS test instance verifies native Add group creation, disabled/enabled menubar Add subtrack, native subtrack creation, the beat-row Add subtrack action, and the initial shared blank-panel choices. The final blank-panel omission and group-child actions are covered by automated pointer tests.
+
+The menus separate Add beat track from Add group through the shared popup and
+native menu boundary. `cargo test --offline --locked --workspace` passes: 2,089
+tests, 13 ignored, across 260 suites. That run compiled before the final
+group-child, blank-context and beat-header/pitch adjustments. The final affected
+core, UI and shared-control reruns recorded here cover those later changes.
+Native device/audio and Windows/Linux UI checks were not run for this menu change.
+
+### Beat header rename and Trigger pitch follow-up
+
+Double-clicking blank space beside an Editor subtrack name now opens the shared
+rename input. Mix controls retain their own double-click actions. Trigger pitch
+uses canonical menu row geometry with a right-pinned note field, C4 by default.
+Sharp notes display as D3#; input also accepts D#3. The popup remains open while
+editing. Invalid text and Escape preserve the saved pitch.
+
+- `cargo test --offline --locked -p daw-ui -p daw-unit-ui` passes on these final
+  sources: 820 UI tests with one ignored probe and 33 shared-control tests.
+  Pointer tests verify blank-header rename/commit, mix-control ownership, both
+  views' menu padding/height/gaps/right alignment, typed note commit and invalid
+  input/Escape cancellation. Note-name tests round-trip all 128 MIDI pitches.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`
+  passes. Formatting, diff and changed Markdown link checks pass.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`. An isolated
+  native macOS instance verifies blank-header double-click rename and Enter
+  commit, matching menu spacing/right-pinned C4, and typed D3# commit with the
+  popup retained. The test instance was closed without saving its scratch
+  project. Native audio/device and Windows/Linux checks remain untested.
+
+## Shared Tracks controls, beat navigation and reordering — 2026-11-01
+
+Instrument and Editor now share a compact Tracks hierarchy with project rows and
+beat subtracks. Mute/Solo buttons and Pan/Gain faces are 16 points, pinned right
+with unchanged catalog row heights. M/S labels use 9-point text. Scaled knob paint retains the caller’s clip
+rectangle instead of scaling the viewport into the knob. This applies to the
+shared knob implementation used by built-in units and standalone editors.
+
+Selecting a subtrack opens the normal MIDI Layers body with local providers and
+Output. Selecting a beat parent shows only final Output. This supersedes the
+simultaneous expandable Instrument groups in the 2026-10-31 records below.
+Editor retains its active beat pattern when selecting another child of the open
+parent. Source navigation selects the corresponding subtrack owner.
+
+Track moves reuse the core subtree/group transaction and commit on release.
+Subtrack group moves reuse the beat transaction and remain inside the original
+beat parent. Controls, inline rename, keyboard navigation, full-row context menus,
+view/panel state and editing guards retain their shared interactions. Cancelled
+or same-position drops do not edit the project.
+
+Completed checks:
+
+- `cargo fmt --all --check`, `git diff --check` and changed Markdown link targets pass.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings` passes on the final sources, including browser renaming.
+- `cargo test --offline --locked -p daw-ui` passes all 811 UI tests, with one ignored probe. Shared-control coverage passes all 33 tests. Cases cover all themes at 1×/1.5×/2×, canonical mix edits, owner navigation, rename/context menus, release-only moves, complete group subtrees, rejected cycles/cross-beat moves, and cancellation.
+- Native macOS Dark-theme checks cover compact button/knob visibility in Tracks,
+  beat creation, subtrack creation, selected-owner Layers, subtrack pointer
+  reordering, context-menu opening over Mute, and shared Editor panel alignment.
+  A rebuilt app separately verifies the final 16-point Pan/Gain faces.
+- `sh tools/package_macos.sh debug` builds `target/debug/DAW.app`.
+
+The final regressions cover MIDI creation through the actual Plus menu in both
+views, Editor creation with an existing selected clip, normal presses retaining
+enabled workspace controls, drag-threshold activation and armed-gesture
+cancellation on Escape, view changes and panel closure. MIDI creation remains
+guarded by the common focus, text, gesture and job/dialog checks. Additional
+regressions cover audio/MIDI/beat/group renaming in both browser views, Unicode
+replacement, commit on Enter, Escape/panel-close cancellation, and context
+menus over mix controls without mix edits. The original shared track-name and
+subtrack-name input tests also pass.
+
+`cargo test --offline --locked --workspace` passes: 2,076 tests, 13 ignored,
+across 260 suites. That run compiled before the final UI creation/press/rename
+additions; the final 811-test UI rerun and strict workspace Clippy cover those
+changes. Native audio and Windows/Linux UI checks were not run for this
+presentation change.
+
 ## Beat Output ordering, source navigation and worker startup — 2026-11-01
 
 Corrected the three findings in the [five-reviewer fd0edf8 review](https://github.com/fecabrera/daw/pull/5#issuecomment-6560148478).

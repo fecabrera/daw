@@ -441,6 +441,8 @@ pub enum TrackAction {
     Add,
     AddMidi,
     AddBeat,
+    AddGroup,
+    AddSubtrack,
     Mute,
     Solo,
     Rename,
@@ -448,10 +450,12 @@ pub enum TrackAction {
     Delete,
 }
 impl TrackAction {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::Add,
         Self::AddMidi,
         Self::AddBeat,
+        Self::AddGroup,
+        Self::AddSubtrack,
         Self::Rename,
         Self::Duplicate,
         Self::Group,
@@ -462,7 +466,10 @@ impl TrackAction {
     ];
 
     pub fn starts_menu_group(self) -> bool {
-        matches!(self, Self::Mute | Self::Rename | Self::Group | Self::Delete)
+        matches!(
+            self,
+            Self::AddGroup | Self::Mute | Self::Rename | Self::Group | Self::Delete
+        )
     }
 
     pub fn label(self) -> &'static str {
@@ -472,6 +479,8 @@ impl TrackAction {
             Self::Add => "Add audio track",
             Self::AddMidi => "Add MIDI track",
             Self::AddBeat => "Add beat track",
+            Self::AddGroup => "Add group",
+            Self::AddSubtrack => "Add subtrack",
             Self::Mute => "Mute",
             Self::Solo => "Solo",
             Self::Rename => "Rename track",
@@ -482,7 +491,13 @@ impl TrackAction {
 
     pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
         let (modifiers, key) = match self {
-            Self::Add | Self::AddMidi | Self::AddBeat | Self::Duplicate | Self::Delete => {
+            Self::Add
+            | Self::AddMidi
+            | Self::AddBeat
+            | Self::AddGroup
+            | Self::AddSubtrack
+            | Self::Duplicate
+            | Self::Delete => {
                 return None;
             }
             Self::Group => (egui::Modifiers::COMMAND, egui::Key::G),
@@ -1177,6 +1192,7 @@ impl DawUi {
                 self.midi_editor.cancel();
                 self.instrument_ui = Default::default();
                 self.beat_ui = Default::default();
+                self.cancel_browser_interactions();
                 self.instrument_catalog.clear();
                 self.component_drag = None;
                 self.effects_drag = None;
@@ -1573,6 +1589,7 @@ impl DawUi {
             self.midi_editor.cancel();
             self.instrument_ui = Default::default();
             self.beat_ui = Default::default();
+            self.cancel_browser_interactions();
             self.instrument_catalog.clear();
             self.component_drag = None;
             self.effects_drag = None;
@@ -1914,6 +1931,7 @@ impl DawUi {
 
     fn edit_shortcuts_available(&self, ctx: &egui::Context) -> bool {
         self.editing_enabled()
+            && !self.track_browser.has_gesture()
             && !self.instrument_ui.editing_name()
             && ctx.input(|input| input.focused)
             && self.drag.is_none()
@@ -3938,6 +3956,49 @@ impl DawUi {
             self.track_name_label(ui, track);
         });
     }
+    fn track_name_input(
+        &mut self,
+        ui: &mut egui::Ui,
+        track: &daw_core::Track,
+        font_size: f32,
+    ) -> Option<egui::Response> {
+        if !self
+            .track_name_edit
+            .as_ref()
+            .is_some_and(|edit| edit.track == track.id)
+        {
+            return None;
+        }
+        let mut edit = self.track_name_edit.take().unwrap();
+        let response = rows::name_input(
+            ui,
+            &mut edit.text,
+            ui.make_persistent_id(("track_name", track.id)),
+            font_size,
+            &mut edit.focus,
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::text_edit(ui.is_enabled(), &track.name, &edit.text, "Track name")
+        });
+        if let Some(action) = inline_edit_action(ui, &response) {
+            response.surrender_focus();
+            if action == InlineEditAction::Commit
+                && edit.text != track.name
+                && let Some(track) = self
+                    .session
+                    .project
+                    .tracks
+                    .iter_mut()
+                    .find(|t| t.id == edit.track)
+            {
+                track.name = edit.text;
+                self.changed();
+            }
+        } else {
+            self.track_name_edit = Some(edit);
+        }
+        Some(response)
+    }
     fn track_name_label(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
         let width = ui.available_width();
         let font_size = if self.view_mode == mixer::ViewMode::Mixer {
@@ -3945,40 +4006,12 @@ impl DawUi {
         } else {
             rows::NAME_FONT_SIZE
         };
-        if self
-            .track_name_edit
-            .as_ref()
-            .is_some_and(|edit| edit.track == track.id)
+        if !self.browser_track_renaming(track.id)
+            && self.track_name_input(ui, track, font_size).is_some()
         {
-            let mut edit = self.track_name_edit.take().unwrap();
-            let response = rows::name_input(
-                ui,
-                &mut edit.text,
-                ui.make_persistent_id(("track_name", track.id)),
-                font_size,
-                &mut edit.focus,
-            );
-            response.widget_info(|| {
-                egui::WidgetInfo::text_edit(ui.is_enabled(), &track.name, &edit.text, "Track name")
-            });
-            if let Some(action) = inline_edit_action(ui, &response) {
-                response.surrender_focus();
-                if action == InlineEditAction::Commit
-                    && edit.text != track.name
-                    && let Some(track) = self
-                        .session
-                        .project
-                        .tracks
-                        .iter_mut()
-                        .find(|t| t.id == edit.track)
-                {
-                    track.name = edit.text;
-                    self.changed();
-                }
-            } else {
-                self.track_name_edit = Some(edit);
-            }
-        } else {
+            return;
+        }
+        {
             use egui::AtomExt as _;
             let mixer_colors = (self.view_mode == mixer::ViewMode::Mixer)
                 .then(|| theme::clip_colors(track.color, None));
@@ -4323,17 +4356,29 @@ impl DawUi {
                         });
                     if let Some(action) = menus::ContextMenu::new(&inner.response)
                         .open_memory(context_click.then_some(egui::SetOpenCommand::Bool(true)))
-                        .show(|ui| self.track_context_menu(ui))
+                        .show(|ui| self.track_context_menu(ui, Some(track.id)))
                         .and_then(|response| response.inner)
                     {
-                        context_action = Some(action);
+                        context_action = Some((track.id, action));
                     }
                     self.lane(ui, &track, inner.response.rect, row_index, count);
                 });
             }
-            if let Some(action) = context_action {
+            if let Some((track, action)) = context_action {
                 // Finish painting before changing the tracks and their control state.
-                self.perform_track_action(action, ui.ctx());
+                if matches!(
+                    action,
+                    TrackAction::Add
+                        | TrackAction::AddMidi
+                        | TrackAction::AddBeat
+                        | TrackAction::AddGroup
+                ) {
+                    self.add_track_to_group_from_menu(track, action, ui.ctx());
+                } else if action == TrackAction::AddSubtrack {
+                    self.add_subtrack_from_menu(track, ui.ctx());
+                } else {
+                    self.perform_track_action(action, ui.ctx());
+                }
             }
             outlines
         })

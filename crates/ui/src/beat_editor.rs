@@ -5,6 +5,30 @@ use daw_core::{BeatEdit, BeatResolution, BeatSubtrack};
 const STEP_INSETS: Vec2 = Vec2::new(4.0, 3.0);
 const SUBTRACK_AUDITION_WIDTH: f32 = 16.0;
 
+pub(super) fn trigger_note_name(pitch: u8) -> String {
+    let name = daw_unit_core::note_name(pitch);
+    if name.contains('#') {
+        format!("{}#", name.replace('#', ""))
+    } else {
+        name
+    }
+}
+
+pub(super) fn parse_trigger_note(text: &str) -> Option<f64> {
+    let text = text.trim();
+    let sharp = text.contains('#');
+    let natural = if sharp {
+        if let Some(natural) = text.strip_suffix('#') {
+            natural.to_owned()
+        } else {
+            format!("{}{}", text.get(..1)?, text.get(1..)?.strip_prefix('#')?)
+        }
+    } else {
+        text.to_owned()
+    };
+    daw_unit_core::natural_note(&natural, sharp).map(f64::from)
+}
+
 #[derive(Default)]
 pub(super) struct BeatUi {
     track: Option<Id>,
@@ -12,10 +36,8 @@ pub(super) struct BeatUi {
     primary_index: usize,
     pub output_selected: bool,
     selected: HashSet<Id>,
-    pub owner_override: Option<Id>,
     states: std::collections::HashMap<Id, instrument_panel::InstrumentUi>,
     pub step_index: crate::beat_grid::StepIndex,
-    collapsed_groups: HashSet<Id>,
     rename: Option<(Id, String, bool)>,
     drag: Option<BeatDrag>,
     length_drag: Option<MonitorDrag>,
@@ -28,6 +50,8 @@ pub(super) struct BeatUi {
     pub headers: std::collections::HashMap<Id, Rect>,
     #[cfg(test)]
     pub header_panels: std::collections::HashMap<Id, Rect>,
+    #[cfg(test)]
+    pub trigger_pitch_bounds: Option<[Rect; 2]>,
     #[cfg(test)]
     pub steps: std::collections::HashMap<(Id, u32), Rect>,
     #[cfg(test)]
@@ -44,10 +68,6 @@ pub(super) struct BeatUi {
     pub subdivision_items: Vec<(BeatResolution, Rect)>,
     #[cfg(test)]
     pub mix_bounds: std::collections::HashMap<Id, [Rect; 4]>,
-    #[cfg(test)]
-    pub groups: std::collections::HashMap<Id, (Rect, Rect)>,
-    #[cfg(test)]
-    pub add_layers: std::collections::HashMap<Id, Rect>,
 }
 struct BeatDrag {
     revision: u64,
@@ -76,14 +96,6 @@ impl DawUi {
             .get(&owner)
             .is_some_and(|state| state.selected_layers.contains(&layer))
     }
-    pub(super) fn beat_group_collapsed(&self, id: Id) -> bool {
-        self.beat_ui.collapsed_groups.contains(&id)
-    }
-    pub(super) fn toggle_beat_group(&mut self, id: Id) {
-        if !self.beat_ui.collapsed_groups.remove(&id) {
-            self.beat_ui.collapsed_groups.insert(id);
-        }
-    }
     pub(super) fn beat_dragging(&self) -> bool {
         self.beat_ui.drag.is_some() || self.beat_ui.length_drag.is_some()
     }
@@ -98,42 +110,39 @@ impl DawUi {
         self.instrument_ui
             .samplers
             .iter()
-            .chain(self.beat_ui.states.values().flat_map(|s| &s.samplers))
-            .find(|b| b.panel.contains(pointer))
+            .find(|b| {
+                Some(b.track) == self.selected_instrument_owner() && b.panel.contains(pointer)
+            })
             .map(|b| (b.track, b.layer))
     }
     pub(super) fn selected_instrument_owner(&self) -> Option<Id> {
-        if let Some(owner) = self.beat_ui.owner_override {
-            return Some(owner);
-        }
         let parent = self.selected_track?;
         if let Some(beat) = self.session.project.beat(parent) {
-            if self.beat_ui.output_selected {
+            if self.beat_ui.track != Some(parent) || self.beat_ui.output_selected {
                 return Some(beat.output.id);
             }
             return self
                 .beat_ui
                 .primary
                 .filter(|id| beat.subtracks.iter().any(|r| r.id == *id))
-                .or_else(|| beat.subtracks.first().map(|r| r.id));
+                .or_else(|| beat.subtracks.first().map(|r| r.id))
+                .or(Some(beat.output.id));
         }
         Some(parent)
     }
-    fn reconcile_beat(&mut self, track: Id) {
+    pub(super) fn reconcile_beat(&mut self, track: Id) {
         let Some(beat) = self.session.project.beat(track) else {
             return;
         };
         if self.beat_ui.track != Some(track) {
             self.beat_ui = BeatUi {
                 track: Some(track),
+                output_selected: true,
                 ..Default::default()
             };
         }
         self.beat_ui
             .selected
-            .retain(|id| beat.subtracks.iter().any(|r| r.id == *id));
-        self.beat_ui
-            .collapsed_groups
             .retain(|id| beat.subtracks.iter().any(|r| r.id == *id));
         self.beat_ui
             .states
@@ -156,6 +165,9 @@ impl DawUi {
                 })
                 .map(|r| r.id);
         }
+        if beat.subtracks.is_empty() {
+            self.beat_ui.output_selected = true;
+        }
         if let Some(index) = beat
             .subtracks
             .iter()
@@ -172,7 +184,7 @@ impl DawUi {
             self.beat_ui.rename = None;
         }
     }
-    fn edit_beat(&mut self, track: Id, edit: BeatEdit) {
+    pub(super) fn edit_beat(&mut self, track: Id, edit: BeatEdit) {
         self.edit(Edit::Beat {
             track_id: track,
             edit,
@@ -219,6 +231,11 @@ impl DawUi {
     pub(super) fn beat_subtrack_selected(&self, id: Id) -> bool {
         self.beat_ui.selected.contains(&id)
     }
+    pub(super) fn focus_beat_header(&mut self, ui: &egui::Ui, rect: Rect, focus: egui::Id) {
+        self.beat_ui.focused_header = Some(focus);
+        ui.ctx().memory_mut(|memory| memory.request_focus(focus));
+        self.beat_ui.focus.set(ui, rect, false);
+    }
     pub(super) fn beat_select(&mut self, ui: &egui::Ui, id: Id, rect: Rect, focus: egui::Id) {
         self.beat_ui.focused_header = Some(focus);
         ui.ctx().memory_mut(|m| m.request_focus(focus));
@@ -231,59 +248,102 @@ impl DawUi {
         crate::unit_selection::select(&mut self.beat_ui.selected, id, shift);
     }
     /// Shared name and drag handle. The full header owns its context menu.
+    pub(super) fn begin_beat_rename(&mut self, id: Id, name: String) {
+        self.beat_ui.rename = Some((id, name, true));
+    }
+    pub(super) fn beat_renaming(&self, id: Id) -> bool {
+        self.beat_ui
+            .rename
+            .as_ref()
+            .is_some_and(|(owner, _, _)| *owner == id)
+    }
+    pub(super) fn beat_rename_input(
+        &mut self,
+        ui: &mut egui::Ui,
+        track: Id,
+        row: &BeatSubtrack,
+        font_size: f32,
+    ) -> Option<egui::Response> {
+        if !self.beat_renaming(row.id) {
+            return None;
+        }
+        let escape_pressed = ui.input(|i| i.key_pressed(egui::Key::Escape));
+        let (_, text, focus) = self.beat_ui.rename.as_mut().unwrap();
+        let response = rows::name_input(
+            ui,
+            text,
+            ui.make_persistent_id(("beat-name", row.id)),
+            font_size,
+            focus,
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::text_edit(
+                ui.is_enabled(),
+                &row.name,
+                text.as_str(),
+                "Beat subtrack name",
+            )
+        });
+        let action = if escape_pressed {
+            ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+            Some(InlineEditAction::Cancel)
+        } else {
+            inline_edit_action(ui, &response)
+        };
+        if let Some(action) = action {
+            response.surrender_focus();
+            if let Some((id, name, _)) = self.beat_ui.rename.take()
+                && action == InlineEditAction::Commit
+                && !name.trim().is_empty()
+                && name != row.name
+            {
+                self.edit_beat(track, BeatEdit::Rename { id, name });
+            }
+        }
+        Some(response)
+    }
+    /// Select an owner without substituting a virtual row for the real project track.
+    pub(super) fn navigate_beat_owner(&mut self, track: Id, owner: Option<Id>, shift: bool) {
+        self.reconcile_beat(track);
+        let Some(beat) = self.session.project.beat(track) else {
+            return;
+        };
+        let destination = owner.unwrap_or(beat.output.id);
+        if self.instrument_ui.track != Some(destination) {
+            if let Some(previous) = self.instrument_ui.track
+                && (previous == beat.output.id
+                    || beat.subtracks.iter().any(|row| row.id == previous))
+            {
+                self.beat_ui
+                    .states
+                    .insert(previous, std::mem::take(&mut self.instrument_ui));
+            }
+            self.instrument_ui = self.beat_ui.states.remove(&destination).unwrap_or_default();
+        }
+        if let Some(owner) = owner {
+            self.select_beat_subtrack(owner, shift);
+        } else {
+            self.beat_ui.output_selected = true;
+            self.beat_ui.selected.clear();
+        }
+        self.clear_layer_selections_except(Some(destination));
+    }
     pub(super) fn beat_name(
         &mut self,
         ui: &mut egui::Ui,
         track: Id,
         row: &BeatSubtrack,
     ) -> egui::Response {
-        let escape_pressed = ui.input(|i| i.key_pressed(egui::Key::Escape));
-        let editing = self
-            .beat_ui
-            .rename
-            .as_ref()
-            .is_some_and(|(id, _, _)| *id == row.id);
-        let response = if editing {
-            let (_, text, focus) = self.beat_ui.rename.as_mut().unwrap();
-            let response = rows::name_input(
-                ui,
-                text,
-                ui.make_persistent_id(("beat-name", row.id)),
-                rows::NAME_FONT_SIZE,
-                focus,
-            );
-            response.widget_info(|| {
-                egui::WidgetInfo::text_edit(
-                    ui.is_enabled(),
-                    &row.name,
-                    text.as_str(),
-                    "Beat subtrack name",
+        let editing = self.beat_renaming(row.id);
+        let response = self
+            .beat_rename_input(ui, track, row, rows::NAME_FONT_SIZE)
+            .unwrap_or_else(|| {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&row.name).size(rows::NAME_FONT_SIZE))
+                        .truncate()
+                        .sense(Sense::click_and_drag()),
                 )
             });
-            let action = if escape_pressed {
-                ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
-                Some(InlineEditAction::Cancel)
-            } else {
-                inline_edit_action(ui, &response)
-            };
-            if let Some(action) = action {
-                response.surrender_focus();
-                if let Some((id, name, _)) = self.beat_ui.rename.take()
-                    && action == InlineEditAction::Commit
-                    && !name.trim().is_empty()
-                    && name != row.name
-                {
-                    self.edit_beat(track, BeatEdit::Rename { id, name });
-                }
-            }
-            response
-        } else {
-            ui.add(
-                egui::Label::new(egui::RichText::new(&row.name).size(rows::NAME_FONT_SIZE))
-                    .truncate()
-                    .sense(Sense::click_and_drag()),
-            )
-        };
         #[cfg(test)]
         {
             self.beat_ui.headers.insert(row.id, response.rect);
@@ -296,27 +356,42 @@ impl DawUi {
             self.beat_ui.rename = Some((row.id, row.name.clone(), true));
         }
         if !editing && response.drag_started() && self.edit_environment_available() {
-            response.request_focus();
-            if !self.beat_ui.selected.contains(&row.id) {
-                self.beat_select(ui, row.id, response.rect, response.id);
-            }
-            if let Some(beat) = self.session.project.beat(track) {
-                let order: Vec<_> = beat.subtracks.iter().map(|r| r.id).collect();
-                let moving = order
-                    .iter()
-                    .copied()
-                    .filter(|id| self.beat_ui.selected.contains(id))
-                    .collect();
-                self.beat_ui.drag = Some(BeatDrag {
-                    revision: self.change_revision,
-                    order,
-                    moving,
-                });
-            }
+            self.begin_beat_reorder(ui, track, row.id, response.id, response.rect);
         }
+
         response
     }
-    fn beat_header_menu(
+    pub(super) fn begin_beat_reorder(
+        &mut self,
+        ui: &egui::Ui,
+        track: Id,
+        id: Id,
+        focus: egui::Id,
+        rect: Rect,
+    ) {
+        let selected = self.beat_ui.selected.clone();
+        self.navigate_beat_owner(track, Some(id), false);
+        if selected.contains(&id) {
+            self.beat_ui.selected = selected;
+        }
+        self.beat_ui.focused_header = Some(focus);
+        ui.memory_mut(|memory| memory.request_focus(focus));
+        self.beat_ui.focus.set(ui, rect, false);
+        if let Some(beat) = self.session.project.beat(track) {
+            let order: Vec<_> = beat.subtracks.iter().map(|row| row.id).collect();
+            let moving = order
+                .iter()
+                .copied()
+                .filter(|id| self.beat_ui.selected.contains(id))
+                .collect();
+            self.beat_ui.drag = Some(BeatDrag {
+                revision: self.change_revision,
+                order,
+                moving,
+            });
+        }
+    }
+    pub(super) fn beat_header_menu(
         &mut self,
         ui: &mut egui::Ui,
         track: Id,
@@ -331,6 +406,7 @@ impl DawUi {
             && ui.rect_contains_pointer(rect)
             && ui.input(|i| i.focused && i.pointer.secondary_clicked());
         menus::ContextMenu::new(response)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .open_memory(if !enabled {
                 Some(egui::SetOpenCommand::Bool(false))
             } else {
@@ -355,10 +431,26 @@ impl DawUi {
                 }
                 menus::separator(ui);
                 let mut pitch = row.trigger_pitch;
-                ui.horizontal(|ui| {
-                    ui.label("Trigger pitch");
-                    ui.add(egui::DragValue::new(&mut pitch).range(0..=127));
+                let pitch_row = menus::value_row(ui, "Trigger pitch", 40.0, |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut pitch)
+                            .speed(0.1)
+                            .range(0..=127)
+                            .custom_formatter(|value, _| trigger_note_name(value as u8))
+                            .custom_parser(parse_trigger_note)
+                            .update_while_editing(false),
+                    )
+                    .on_hover_text(
+                        "Trigger pitch: drag in semitones or type a note, such as C4 or D3#",
+                    )
                 });
+                #[cfg(test)]
+                {
+                    self.beat_ui.trigger_pitch_bounds =
+                        Some([pitch_row.response.rect, pitch_row.inner.rect]);
+                }
+                #[cfg(not(test))]
+                let _ = pitch_row;
                 if pitch != row.trigger_pitch {
                     self.edit_beat(track, BeatEdit::SetPitch { id: row.id, pitch });
                 }
@@ -390,7 +482,13 @@ impl DawUi {
                 });
             });
     }
-    fn finish_beat_rows(&mut self, ui: &mut egui::Ui, track: Id, rows: &[(Id, Rect)]) {
+    pub(super) fn finish_beat_rows(
+        &mut self,
+        ui: &mut egui::Ui,
+        track: Id,
+        rows: &[(Id, Rect)],
+        allowed: Rect,
+    ) {
         if crate::drag::cancelled(ui)
             || !self.edit_environment_available()
             || self
@@ -403,7 +501,15 @@ impl DawUi {
         }
         if let Some(drag) = &self.beat_ui.drag {
             crate::drag::scroll_drag(ui, crate::drag::Axis::Vertical, 360.0, true, ui.clip_rect());
-            if let Some(pointer) = ui.input(|i| i.pointer.interact_pos()) {
+            let pointer = ui
+                .input(|i| i.pointer.interact_pos())
+                .filter(|p| allowed.contains(*p));
+            ui.ctx().set_cursor_icon(if pointer.is_some() {
+                egui::CursorIcon::Grabbing
+            } else {
+                egui::CursorIcon::NotAllowed
+            });
+            if let Some(pointer) = pointer {
                 let slot = rows.partition_point(|(_, r)| pointer.y > r.center().y);
                 let y = rows.get(slot).map_or_else(
                     || rows.last().map_or(ui.min_rect().top(), |(_, r)| r.bottom()),
@@ -436,7 +542,7 @@ impl DawUi {
                     }
                 }
             }
-            if ui.input(|i| i.pointer.any_released()) {
+            if ui.input(|i| i.pointer.any_released() || !i.pointer.primary_down()) {
                 self.beat_ui.drag = None;
             }
         }
@@ -906,6 +1012,13 @@ impl DawUi {
                                 panel.request_focus();
                             }
                         }
+                        if panel.double_clicked()
+                            && self.edit_environment_available()
+                            && !self.beat_dragging()
+                            && !self.beat_renaming(row.id)
+                        {
+                            self.begin_beat_rename(row.id, row.name.clone());
+                        }
                         self.beat_header_menu(ui, track.id, row, &panel, rect);
                         #[cfg(not(test))]
                         let _ = (response, knobs, toggles);
@@ -1090,7 +1203,7 @@ impl DawUi {
                     });
                     ui.advance_cursor_after_rect(rect);
                 }
-                self.finish_beat_rows(ui, track.id, &row_bounds);
+                self.finish_beat_rows(ui, track.id, &row_bounds, ui.clip_rect());
                 for (id, row) in &row_bounds {
                     if self.beat_subtrack_selected(*id) {
                         panels::ControlPanel::selected_row(
@@ -1174,128 +1287,6 @@ impl DawUi {
         }
         knobs
     }
-    fn beat_group_header(&mut self, ui: &mut egui::Ui, parent: Id, row: &BeatSubtrack, rect: Rect) {
-        let label = Rect::from_min_size(rect.min, Vec2::new(TRACK_WIDTH, MASTER_HEIGHT));
-        let mut header = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt((row.id, "group-header"))
-                .max_rect(label)
-                .layout(egui::Layout::top_down(egui::Align::Min)),
-        );
-        let mut bus = row.instrument.main.clone();
-        panels::PanelStyle {
-            margin: 6,
-            ..Default::default()
-        }
-        .track_frame(ui.ctx())
-        .show(&mut header, |ui| {
-            ui.set_min_width(TRACK_WIDTH - 14.0);
-            ui.set_min_height(MASTER_HEIGHT - 14.0);
-            ui.spacing_mut().item_spacing = Vec2::new(mix_controls::GROUP_GAP, 4.0);
-            if self.beat_group_collapsed(row.id) {
-                let levels = self
-                    .output
-                    .as_ref()
-                    .and_then(|o| o.layer_meter(row.id, row.instrument.main.id))
-                    .map_or([(0.0, false); 2], |m| m.levels());
-                let cleared = meters::stereo_panel(ui, MASTER_HEIGHT - 14.0, levels, |ui| {
-                    let mut rows = track_rows::HeaderRows::new(ui, true);
-                    rows::centered(&mut rows.name, knobs::SIZE, |ui| {
-                        let collapsed = self.beat_group_collapsed(row.id);
-                        let response = icons::disclosure_button(
-                            ui,
-                            !collapsed,
-                            if collapsed {
-                                "Expand subtrack"
-                            } else {
-                                "Collapse subtrack"
-                            },
-                            self.editing_enabled(),
-                            None,
-                            icons::HEADER_ICON_WIDTH,
-                        );
-                        #[cfg(test)]
-                        {
-                            self.beat_ui.groups.insert(row.id, (label, response.rect));
-                        }
-                        if response.clicked() {
-                            self.toggle_beat_group(row.id);
-                        }
-                        self.beat_name(ui, parent, row);
-                    });
-                    self.beat_output_mix(&mut rows.mix, row.id, &mut bus);
-                });
-                meters::reset_on_click(
-                    ui,
-                    self.output
-                        .as_ref()
-                        .and_then(|o| o.layer_meter(row.id, row.instrument.main.id)),
-                    cleared,
-                );
-            } else {
-                rows::centered(ui, knobs::SIZE, |ui| {
-                    let response = icons::disclosure_button(
-                        ui,
-                        true,
-                        "Collapse subtrack",
-                        self.editing_enabled(),
-                        None,
-                        icons::HEADER_ICON_WIDTH,
-                    );
-                    #[cfg(test)]
-                    {
-                        self.beat_ui.groups.insert(row.id, (label, response.rect));
-                    }
-                    if response.clicked() {
-                        self.toggle_beat_group(row.id);
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let add = icons::button(
-                            ui,
-                            icons::Lucide::Plus,
-                            "Add layer",
-                            self.editing_enabled() && self.component_drag.is_none(),
-                            theme::palette(ui.ctx()).text,
-                        );
-                        #[cfg(test)]
-                        {
-                            self.beat_ui.add_layers.insert(row.id, add.rect);
-                        }
-                        if add.clicked()
-                            && let Some(mut settings) =
-                                self.session.project.instrument_settings(row.id).cloned()
-                        {
-                            self.append_instrument_layer(&mut settings);
-                            self.edit(Edit::SetInstrument {
-                                track_id: row.id,
-                                instrument: Some(settings),
-                            });
-                        }
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            self.beat_name(ui, parent, row)
-                        });
-                    });
-                });
-            }
-        });
-        if bus.gain_db != row.instrument.main.gain_db || bus.pan != row.instrument.main.pan {
-            self.edit_beat(
-                parent,
-                BeatEdit::SetMix {
-                    id: row.id,
-                    gain_db: bus.gain_db,
-                    pan: bus.pan,
-                    muted: row.muted,
-                    soloed: row.soloed,
-                },
-            );
-        }
-        panels::GroupPanel::row_dividers(ui, rect, 0, true, false);
-        if !self.beat_group_collapsed(row.id) {
-            panels::GroupPanel::row_dividers(ui, rect, 1, false, true);
-        }
-        ui.advance_cursor_after_rect(rect);
-    }
     pub(super) fn beat_instrument_view(&mut self, ui: &mut egui::Ui) {
         let Some(track) = self.selected_track else {
             return;
@@ -1304,229 +1295,57 @@ impl DawUi {
         let Some(beat) = self.session.project.beat(track).cloned() else {
             return;
         };
-
-        if let Some(owner) = self.instrument_ui.track
-            && self.session.project.instrument_snapshot(owner).is_some()
-        {
-            self.beat_ui
-                .states
-                .insert(owner, std::mem::take(&mut self.instrument_ui));
+        let owner = self.selected_instrument_owner().unwrap_or(beat.output.id);
+        self.beat_ui.group_viewport = Some(ui.max_rect());
+        if owner != beat.output.id {
+            if let Some(snapshot) = self.session.project.instrument_track(owner) {
+                self.instrument_body(ui, snapshot, false);
+            }
+            return;
         }
-        let column_bounds = ui.max_rect();
-        let panel = panels::ControlPanel::begin(ui, column_bounds);
-        ui.spacing_mut().item_spacing.y = -1.0;
-        let header = self.instrument_lanes_header(
-            ui,
-            &panel,
-            "Subtracks",
-            "Add beat subtrack",
-            self.editing_enabled(),
-        );
-        if header.inner.clicked() {
-            self.add_beat_subtrack(track);
-        }
-        let final_height = panels::unit_height(beat.output.collapsed).min(ui.available_height());
+        self.activate_component_drag(ui);
+        let panel = panels::ControlPanel::begin(ui, ui.max_rect());
+        let header = panel.header(ui, "Output", |_| {});
+        panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
         let available = ui.available_rect_before_wrap();
-        let final_rect = Rect::from_min_max(
-            Pos2::new(available.left(), available.bottom() - final_height),
+        let height = panels::unit_height(beat.output.collapsed).min(available.height());
+        let rect = Rect::from_min_max(
+            Pos2::new(available.left(), available.bottom() - height),
             available.max,
         );
-        if self.editing_enabled()
-            && ui.is_enabled()
-            && ui.rect_contains_pointer(final_rect)
-            && ui.input(|i| {
-                i.focused
-                    && i.pointer.primary_pressed()
-                    && i.pointer
-                        .press_origin()
-                        .is_some_and(|p| final_rect.intersect(ui.clip_rect()).contains(p))
-            })
+        self.instrument_ui.clear_layout();
+        self.instrument_ui.track = Some(owner);
+        #[cfg(test)]
         {
-            self.beat_ui.output_selected = true;
-            if !ui.input(|i| i.modifiers.shift) {
-                self.clear_layer_selections_except(Some(beat.output.id));
-            }
+            self.midi_editor.layer_bounds.clear();
+            self.midi_editor.add_layer_bounds = Rect::NOTHING;
         }
-        let groups = egui::ScrollArea::vertical()
-            .id_salt(("beat-instruments", track))
-            .max_height((available.height() - final_height).max(0.0))
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                let mut row_bounds = Vec::new();
-                #[cfg(test)]
-                self.beat_ui.add_layers.clear();
-                // Resolve the clicked owner before painting any group, so stale
-                // cached selections cannot flash in groups rendered earlier.
-                let mut position = ui.next_widget_position();
-                let rows: Vec<_> = beat
-                    .subtracks
-                    .iter()
-                    .map(|row| {
-                        // Source/provider rows share one border pixel; Output retains its full height.
-                        let children = if self.beat_group_collapsed(row.id) {
-                            0.0
-                        } else {
-                            row.instrument
-                                .layers
-                                .iter()
-                                .map(|l| panels::unit_height(l.collapsed) - 1.0)
-                                .sum::<f32>()
-                                + (panels::unit_height(row.instrument.lfo_lane.collapsed) - 1.0)
-                                + (panels::unit_height(row.instrument.envelope_lane.collapsed)
-                                    - 1.0)
-                                + panels::unit_height(row.instrument.main.collapsed)
-                        };
-                        let height = MASTER_HEIGHT + children;
-                        let rect =
-                            Rect::from_min_size(position, Vec2::new(ui.available_width(), height));
-                        position.y = rect.bottom() + ui.spacing().item_spacing.y;
-                        (row, rect)
-                    })
-                    .collect();
-                if self.editing_enabled()
-                    && ui.is_enabled()
-                    && let Some(pointer) = ui.input(|i| {
-                        (i.focused && i.pointer.primary_pressed())
-                            .then(|| i.pointer.press_origin())
-                            .flatten()
-                    })
-                    && let Some((row, _)) = rows.iter().find(|(_, rect)| {
-                        rect.intersect(ui.clip_rect()).contains(pointer)
-                            && ui.rect_contains_pointer(*rect)
-                    })
-                {
-                    self.beat_ui.primary = Some(row.id);
-                    self.beat_ui.output_selected = false;
-                    if !ui.input(|i| i.modifiers.shift) {
-                        self.clear_layer_selections_except(Some(row.id));
-                    }
-                }
-                for (row, rect) in rows {
-                    self.instrument_ui = self.beat_ui.states.remove(&row.id).unwrap_or_default();
-                    self.beat_ui.owner_override = Some(row.id);
-                    let mut group = ui.new_child(
-                        egui::UiBuilder::new()
-                            .id_salt(row.id)
-                            .max_rect(rect)
-                            .layout(egui::Layout::top_down(egui::Align::Min)),
-                    );
-                    let header_rect =
-                        Rect::from_min_size(rect.min, Vec2::new(rect.width(), MASTER_HEIGHT));
-                    self.beat_group_header(&mut group, track, row, header_rect);
-                    if !self.beat_group_collapsed(row.id)
-                        && let Some(snapshot) = self.session.project.instrument_track(row.id)
-                    {
-                        self.instrument_body(&mut group, snapshot, true);
-                    } else {
-                        self.instrument_ui.clear_layout();
-                        if let Some(mut settings) = self.session.project.instrument_snapshot(row.id)
-                        {
-                            self.finish_component_drag(
-                                &group,
-                                row.id,
-                                &mut settings,
-                                &[],
-                                header_rect,
-                            );
-                        }
-                    }
-                    // Resolve the parent header after child menus: egui's hit radius can
-                    // extend a child response across the shared header border.
-                    let label =
-                        Rect::from_min_size(header_rect.min, Vec2::new(TRACK_WIDTH, MASTER_HEIGHT));
-                    let response = group.interact(
-                        label,
-                        group.id().with(("beat-group-menu", row.id)),
-                        Sense::hover(),
-                    );
-                    self.beat_header_menu(&mut group, track, row, &response, label);
-                    panels::GroupPanel::row_dividers(ui, rect, 0, false, true);
-                    row_bounds.push((row.id, rect));
-                    ui.advance_cursor_after_rect(rect);
-                    self.beat_ui
-                        .states
-                        .insert(row.id, std::mem::take(&mut self.instrument_ui));
-                }
-                self.finish_beat_rows(ui, track, &row_bounds);
-                row_bounds
-            });
-        self.beat_ui.group_viewport = Some(groups.inner_rect);
-        self.beat_ui.owner_override = None;
-        let active = self.beat_ui.primary;
-        let active_state = active
-            .and_then(|id| self.beat_ui.states.remove(&id))
-            .unwrap_or_default();
-        self.instrument_ui = self
-            .beat_ui
-            .states
-            .remove(&beat.output.id)
-            .unwrap_or_default();
-        self.instrument_ui.track = Some(beat.output.id);
-        self.beat_ui.owner_override = Some(beat.output.id);
-        if ui.input(|i| {
-            i.pointer.primary_pressed()
-                && i.pointer
-                    .press_origin()
-                    .is_some_and(|p| final_rect.contains(p))
-        }) {
-            self.beat_ui.output_selected = true;
-        }
+        self.instrument_ui.component_viewports.push((owner, rect));
         let mut settings = beat.output_settings();
         let sources = modulation_panel::sources(Some(&settings));
         let providers = modulation_panel::provider_sources(&settings);
         self.instrument_main(
             ui,
-            beat.output.id,
+            owner,
             &mut settings.main,
             crate::instrument_main::LaneRow {
-                rect: final_rect,
+                rect,
                 kind: None,
                 shared_sources: &[],
             },
             &sources,
             &providers,
         );
-        let handled = self.finish_instrument_components(
-            ui,
-            beat.output.id,
-            &mut settings,
-            &[(beat.output.id, final_rect)],
-            final_rect,
-        );
+        let handled =
+            self.finish_instrument_components(ui, owner, &mut settings, &[(owner, rect)], rect);
         if !handled && settings.main != beat.output {
             self.edit_beat(track, BeatEdit::SetOutput(Box::new(settings.main)));
         }
-        self.beat_ui.owner_override = None;
-        if self.beat_ui.output_selected {
-            if let Some(id) = active {
-                self.beat_ui.states.insert(id, active_state);
-            }
-        } else {
-            self.beat_ui.states.insert(
-                beat.output.id,
-                std::mem::replace(&mut self.instrument_ui, active_state),
-            );
-        }
         #[cfg(test)]
         {
-            self.beat_ui.final_output = Some(final_rect);
+            self.beat_ui.final_output = Some(rect);
         }
         panel.finish(ui);
-        ui.painter().hline(
-            column_bounds.x_range(),
-            header.response.rect.bottom() - 0.5,
-            Stroke::new(1.0, theme::palette(ui.ctx()).border),
-        );
-        // Match Tracks: restore selection strokes after the neutral column/header borders.
-        for (id, row) in &groups.inner {
-            if self.beat_subtrack_selected(*id) {
-                panels::ControlPanel::selected_row(
-                    ui,
-                    Rect::from_min_size(row.min, Vec2::new(TRACK_WIDTH, row.height())),
-                    groups.inner_rect,
-                );
-            }
-        }
         ui.advance_cursor_after_rect(available);
     }
 }

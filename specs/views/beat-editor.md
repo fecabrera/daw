@@ -4,7 +4,7 @@ Implementation requirements and design records. For user instructions, see the [
 
 Status: Beat MVP implemented across the project model, storage, renderer, CLI and both views; native platform acceptance remains open. Last updated: 2026-10-31.
 
-The beat editor is the lower editor for beat clips in Editor. It shows one step row per beat subtrack. Instrument shows each subtrack as an expandable group with a one-row header. Its children are source layers, LFO, Envelope and Output. One overall Output lane follows all groups. Both views share subtrack creation, single/group selection, deletion, rename, reorder, gain and pan. Mixer controls the parent beat track.
+The beat editor is the lower editor for beat clips in Editor. It shows one step row per beat subtrack. Instrument opens the selected subtrack’s Layers page with source layers, local LFO, Envelope and Output. Selecting the beat parent opens only final Output. The shared Tracks panel lists subtracks as children of their parent. Both views share subtrack creation, single/group selection, deletion, rename, reorder, gain and pan. Mixer controls the parent beat track.
 
 The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, shared-code boundaries and remaining data/UI decisions. It supersedes the older Units-view placement and D33's historical exclusion of beat processing from Instrument. Current views are Timeline, Instrument, Editor and Mixer. A beat subtrack is the child previously called a beat lane; it is not a project track group or a MIDI instrument layer.
 
@@ -39,15 +39,15 @@ The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, sh
 | B25 | Place the beat pattern editor inside the shared Editor view, alongside audio and MIDI pattern editors chosen by clip type. | Replace the earlier standalone Beat view; preserve the accepted beat-editing and processing rules. |
 | B26 | Give each beat track one beat instrument containing all its lanes. | Each subtrack instrument retains its own source layers, controls, effects, and voice state. Combine lanes into one output bus before parent-track effects and gain/pan. |
 | B27 | Add beat track appears in the menubar/application Track menu, Tracks Plus dropdown and creation context menus. | Share one command, label and guard path with the existing Add actions. |
-| B28 | Editor shows one lower-editor row per subtrack; Instrument shows one expandable group per subtrack. | Retain one parent beat track and one beat instrument. |
+| B28 | Editor shows one lower-editor row per subtrack; Instrument opens the selected subtrack’s standard Layers page. | Retain one parent beat track and one beat instrument. |
 | B29 | Both views add, select one/several, delete, rename and reorder subtracks. | Share stable IDs, selection, transactions and release-only reorder behavior. |
 | B30 | Both views expose the same subtrack gain and pan. | Bind shared controls to one canonical bus stage. |
-| B31 | Each Instrument subtrack group owns independent LFO and Envelope sublanes. | Restrict additions to the matching child lane and isolate provider ownership/routes between subtracks. |
-| B32 | A subtrack has a compact one-row group header and a separate Output child; one overall Output follows all groups. | Reuse the track-group header layout and normal instrument Output body. Header and Output controls bind to one canonical bus, with no additional processing stage. This supersedes the earlier named-output-header layout on 2026-10-31. |
+| B31 | Each subtrack instrument owns independent LFO and Envelope lanes. | Restrict additions to the matching child lane and isolate provider ownership/routes between subtracks. |
+| B32 | A subtrack has a compact Tracks row and its own Output on its Layers page; selecting the beat parent shows only final Output. | Reuse the shared Tracks row and normal instrument Output body. Browser and Output controls bind to one canonical bus. The selected-owner presentation supersedes simultaneous nested groups on 2026-11-01. |
 | B33 | Beat subtracks are instruments, not audio tracks or separate audio/MIDI lane types. | Add one instrument subtrack directly. Choose Sampler/Oscillator/other supported sources inside its layers; preserve the same subtrack identity when sources change. |
 | B34 | Reject beat clip moves, copies and paste between different beat tracks for now. | Preserve stable subtrack bindings; do not match rows by name or position or silently copy instruments. Same-track operations remain allowed. |
 | B35 | Retain steps hidden by a shorter or coarser grid. | Hidden steps are silent and return at their original tick and velocity when the grid includes them again. |
-| B36 | Beat and MIDI Instrument pages use the same layout shell. | Share header/Plus geometry, the left control-column fill and divider, lane toolbars and pinned Output position. Beat uses a Subtracks header; each subtrack retains its own instrument group. |
+| B36 | Beat and MIDI Instrument pages use the same layout shell. | Share header/Plus geometry, the left control-column fill and divider, lane toolbars and pinned Output position. A selected subtrack uses the MIDI Layers header and Plus. The beat parent shows only final Output. This supersedes the earlier Subtracks header on 2026-11-01. |
 
 Audio tracks accept effects only. MIDI tracks accept sources and effects. These shared rules and the unit architecture are defined in [Modular audio units design and decisions](../architecture/modular-audio-units.md). Beat tracks support effects on each lane and on the parent track.
 
@@ -124,7 +124,7 @@ Enabled steps produce note events for their subtrack instruments. Each instrumen
 
 ### Routing
 
-The accepted MVP signal path is steps → lane source/instrument → serial lane effects → lane gain/pan → summed subtrack outputs → overall beat Output → serial beat-track effects → track gain/pan → track mix. The beat track has one mixer strip that controls the beat as a whole. Editor and Instrument share subtrack mix controls. Instrument provides subtrack groups, local modulators and serial effects; parent effects use the shared track-effects lane. D23 in the [Units MVP scope](../architecture/modular-audio-units.md#accepted-units-mvp-scope) fixes gain/pan placement and Master effects before Master gain and output meters.
+The accepted MVP signal path is steps → lane source/instrument → serial lane effects → lane gain/pan → summed subtrack outputs → overall beat Output → serial beat-track effects → track gain/pan → track mix. The beat track has one mixer strip that controls the beat as a whole. Editor and Instrument share subtrack mix controls. Instrument provides subtrack layers, local modulators and serial effects; parent effects use the shared track-effects lane. D23 in the [Units MVP scope](../architecture/modular-audio-units.md#accepted-units-mvp-scope) fixes gain/pan placement and Master effects before Master gain and output meters.
 
 The MVP uses serial lane/track effect paths and lane stop events. Instrument and modulation graphs may branch internally under the accepted Units scope. Parallel lane/track effect paths, shared-effect sends, and audio sidechains are deferred. Their design remains separate from the accepted lane stop connections.
 
@@ -144,7 +144,7 @@ The Beat MVP scope was accepted on 2026-10-11. Preserve the question IDs as deci
 | BQ02 | Resolved for MVP. | Shared user-set grid, defaults, and choices: B14–B15 and B24. |
 | BQ03 | Resolved for MVP. | On/off, velocity, and lane pitch: B19. Other step controls are deferred. |
 | BQ04 | Resolved for MVP. | One voice, fixed duration rules, retrigger replacement, fading lane stops, and stopping-lane priority: B18 and B20–B21. |
-| BQ05 | Resolved. | The beat pattern editor in Editor creates patterns; Instrument configures independent subtrack groups; Mixer controls tracks: B05–B07 and B25. |
+| BQ05 | Resolved. | The beat pattern editor in Editor creates patterns; Instrument configures independent subtrack instruments; Mixer controls tracks: B05–B07 and B25. |
 | BQ06 | Resolved for MVP. | Editor chooses the editor by clip type; clip/subtrack context is retained between views; source replacement keeps instrument identity: B22 and B25. |
 | BQ07 | Resolved for MVP. | Lane controls, both effect levels, and serial routing: B12–B13 and B23. Advanced audio routing is deferred. |
 
@@ -193,7 +193,7 @@ There is no second pattern ruler.
 
 Reuse `meters::stereo_panel_with_content` and `meters::reset_on_click` for the
 Editor subtrack meter. Read the existing `(subtrack ID, instrument Main ID)`
-layer-meter handle, also used by its Instrument Output and collapsed group header.
+layer-meter handle, also used by its Instrument Output.
 Do not create another monitor or analyze audio in the UI. Keep the shared two
 eight-point rails, four-point channel gap, green/red track palette, dBFS mapping,
 tooltips and stereo clipping reset. Reserve the meter at the right seven-point
@@ -202,57 +202,13 @@ existing control/step alignment; Instrument retains its normal header geometry.
 Unavailable or stopped output displays empty rails. Meter clicks must not change
 project data, add hits, or start subtrack reordering.
 
-### Subtrack group hierarchy
+### Selected subtrack and final Output
 
-Instrument subtracks use the shared track-group disclosure button. Groups start
-expanded. Their source layers, LFO, Envelope and Output lanes are nested
-with the shared one-level track-panel indent and a vertical hierarchy guide.
-Keep the control-column divider, unit bodies and lane toolbars aligned with the
-parent. Reduce the child control-column width by the indent; do not shift its
-right edge. Child row separators stop at the inset edge and do not cross the
-group gutter. The expanded subtrack header's bottom divider also starts at the
-child edge, leaving the gutter open like a track group. A collapsed subtrack has a complete header bottom boundary and no child rows.
-Group collapse hides all child lanes, including Output. It is UI state, separate from each output strip's collapse setting;
-it does not change project data, audio, history or dirty state. The final Output
-remains outside the groups and pinned in place.
+Instrument and Editor share the [Tracks hierarchy](instrument-tracks.md). Beat parents disclose compact subtrack rows. A selected subtrack uses the standard MIDI instrument body without group indentation or a surrounding group header: Layers title and Plus, source layers, local LFO/Envelope lanes, and pinned Output. Cache presentation state by owner, but expose drop geometry only for the visible owner. Selecting another owner clears hidden layer selection. Keep all processing state in the shared project.
 
-Beat patterns use the shared Timeline/Editor overview double-click creation
-gesture. Do not add a separate Create beat pattern button to the lower topbar.
-Without an active clip, retain subtrack controls and explain the existing gesture.
+Selecting the beat parent shows only its final Output and targets that bus for compatible catalog units. There are no kit-wide source, LFO or Envelope rows or Add layer action. The parent remains the selected real project track for effects and arrangement. Source/sample navigation must select the matching subtrack owner when opening a nested instrument. Parent disclosure is independent of Output collapse and does not change audio/history.
 
-The Instrument hierarchy reuses `panels::GroupPanel` with Timeline track groups
-for indentation, fixed-right-edge columns and depth-aware row dividers. Nested
-left edges reuse `ControlPanel::row_left_divider`; do not add beat-specific border
-geometry or painters.
-
-When no pattern is selected, keep an empty quarter-beat step grid visible across the
-lower ruler viewport. Disable the step widgets, including keyboard activation;
-clicks do not select another clip, create assets or change project/history state.
-The display uses no other clip's steps. Retain subtrack controls and the current
-ruler transform, including scrolling. Bound placeholder painting to 2048 cells
-per row at extreme zoom-out. Selecting a pattern restores its saved grid and steps.
-
-Subtrack group headers use `MASTER_HEIGHT` and the shared compact track frame.
-Expanded headers contain the disclosure, name and standard Add layer button.
-They contain no units or mix controls. Remove the nested Layers title row.
-Collapsed headers hide Add layer and use `track_rows::HeaderRows`, shared mix
-controls and stereo meter reservation to expose output controls. The Output child is hidden while the group is collapsed. The nested instrument body uses source lanes,
-LFO, Envelope, then Output; all child rows are hidden on group collapse. Output holds the existing main bus and
-its units; header gain/pan and output gain edit that same bus. Group disclosure
-is independent of Output strip collapse. Overall beat Output stays pinned outside
-the group scroll region.
-
-Pin the expanded header's Add layer button at its right inner inset regardless
-of name length. Source/provider row heights account for their shared border
-pixels so Envelope's bottom and Output's pinned top occupy the same pixel.
-After painting the children, paint the full group bottom through the shared
-`GroupPanel::row_dividers`, including the gutter and unit canvas. Retain it in
-both source-expanded and source-collapsed states and beneath selection outlines.
-
-Collapsed subtracks occupy exactly the compact header row. Do not render the
-subtrack Output lane or retain any hidden child drop geometry. Output controls
-remain available in the compact header; Add layer stays hidden. The overall beat
-Output outside the groups retains its existing pinned behavior.
+Beat patterns use the shared Timeline/Editor overview double-click creation gesture. Without an active pattern, retain subtrack controls and a disabled quarter-beat grid across the lower ruler viewport. Use no other clip's steps, preserve scrolling, and bound placeholder painting to 2048 cells per row. Selecting a pattern restores its saved grid and steps.
 
 Editor subtrack headers reuse the compact track `HeaderRows` geometry and shared
 `header_row` mix controls. Reserve the full mix region at the right inner inset;
@@ -286,9 +242,7 @@ Layer selection belongs to the Instrument view, even though per-subtrack UI stat
 is cached separately. A plain primary interaction within a subtrack clears
 layer/provider/Output selections in the other cached owners before painting their
 outlines. Keep selection within the clicked owner for existing same-owner drag
-and Shift rules. Shift preserves other owners' selected layers. The overall beat
-Output participates in the same replacement policy. Inactive groups must not
-create automatic default layer selections during initialization. View-level Escape
+and Shift rules. Changing owners clears hidden owners’ layer selections, including final beat Output. Only the active subtrack can initialize a default layer selection. View-level Escape
 clears both current and cached layer selections. Preserve IDs, settings, project
 data, history and dirty state; do not treat popup clicks as background ownership.
 
@@ -338,6 +292,17 @@ height, input frame/padding and initial full-name Unicode selection. Track Mixer
 headers retain their smaller font through the helper argument. Reuse
 `inline_edit_action`: Enter commits, Escape, window/field focus loss or disabled
 UI cancels. Keep beat empty-name rejection and transactional `BeatEdit::Rename`.
+In Editor, the header background also starts renaming on double-click. Child
+mix controls and meters retain their own input ownership; do not intercept their
+double-clicks for rename. Opening a name input does not edit the project.
+
+The Trigger pitch context item uses the shared `menus::value_row` action geometry:
+standard item padding, height, gaps and outer popup margin, with the note field
+pinned to the right inner edge. Reuse the shared note-name mapping and parser,
+displaying sharps after the octave (C4, D3#). Accept both D3# and D#3 input.
+Retain the MIDI 0–127 range and default 60 (C4), whole-semitone dragging and
+transactional `BeatEdit::SetPitch`. Typed input publishes on Enter or field focus
+loss; Escape and invalid text preserve the saved pitch.
 
 Body-edge drags extend unlooped beat clips through the shared pattern resize
 path. Keep frame-based trims and the existing header-edge looping behavior.

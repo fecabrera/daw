@@ -8,9 +8,17 @@ An instrument creates audio from MIDI notes. Effects change audio from an instru
 
 Use **Tracks** in the left toolbar to open the project track list. [Editor](editor.md) reuses this list with its own visibility toggle. It shows audio, MIDI and beat icons, with group chevrons and indented children in project order. Tracks, Instrument components and Effects share the same panel space; opening one hides the other.
 
-Click a group row to expand or collapse it. Groups start collapsed and retain their browser choices while the project is open. These choices do not change group collapse state in Timeline or Mixer. Nested groups are supported.
+Click a group chevron to expand or collapse it; click its name to select the group. Groups start collapsed and retain their browser choices while the project is open. These choices do not change group collapse state in Timeline or Mixer. Nested groups are supported.
 
-Click an audio, MIDI or beat track to select it without leaving Instrument. MIDI tracks show their instrument layers; audio tracks have no MIDI instrument, but their track effects remain available in the bottom lane. Existing clip selection stays unchanged. The top track dropdown supports MIDI and beat tracks. Beat tracks show independent [subtrack groups](beat-editor.md#instrument-groups-and-output), each with its own source layers, LFO and Envelope lanes.
+Click an audio, MIDI or beat track to select it without leaving Instrument. MIDI tracks show their instrument layers; audio tracks have no MIDI instrument, but their track effects remain available in the bottom lane. Existing clip selection stays unchanged. The top track dropdown supports MIDI and beat tracks. Beat parents show only their final Output. Expand a beat parent in Tracks and select a subtrack to open its [Layers page](beat-editor.md#instrument-layers-and-output), with its own source layers, LFO, Envelope and Output. Beat parents start expanded.
+
+Each row has compact **M**, **S**, **Pan** and **Gain** controls at the right. They edit that row's output without changing selection. Hover or drag a knob to read its value. Use the header Plus menu, or right-click blank space in Tracks, to add audio, MIDI or beat tracks or an empty group without changing view. With a beat selected, the Plus menu also offers **Add subtrack**. Right-click a beat parent and choose **Add subtrack** to add directly to that beat. The Track menubar also includes **Add group** and **Add subtrack**; Add subtrack requires a selected beat.
+
+Right-click a group to add an audio, MIDI or beat track or a nested empty group inside it.
+
+Double-click a track or group name, or right-click its row and choose **Rename**. The whole name starts selected. Press Enter to save; Escape or moving focus elsewhere cancels.
+
+Drag a track's name or icon to reorder it. Drop in the middle of a group to add it; drop near a row edge to reorder. Drop at the left edge to move to an outer group, or below the last row to return to Master. A group moves with its children. Subtracks can move only within their original beat track. Release to apply; Escape, focus loss or an outside drop cancels. Controls keep their own gestures.
 
 With focus in the list, use Up/Down to move through visible rows without wrapping. Left/Right collapse or expand groups; Left on a child moves focus to its group. Enter toggles a group or selects a track. Scroll when the list does not fit. Browsing and expanding groups do not change project data.
 

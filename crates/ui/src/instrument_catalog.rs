@@ -388,6 +388,9 @@ impl DawUi {
             .project
             .instrument_track(self.selected_instrument_owner()?)?;
         let instrument = track.instrument.as_ref()?;
+        if instrument.layers.is_empty() {
+            return Some((track.id, instrument.main.id));
+        }
         if self.instrument_ui.track == Some(track.id)
             && let Some(owner) = self.instrument_ui.selected_layer
             && instrument.bus(owner).is_some()

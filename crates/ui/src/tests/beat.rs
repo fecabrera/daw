@@ -73,49 +73,63 @@ fn beat_grid_click_edits_only_active_source_and_survives_view_switch() {
     app.view_mode = ViewMode::Instrument;
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.selected_track, Some(track));
-    assert_eq!(app.selected_instrument_owner(), Some(row));
+    assert_eq!(
+        app.selected_instrument_owner(),
+        Some(app.session.project.beat(track).unwrap().output.id)
+    );
     assert!(app.error.is_none(), "{:?}", app.error);
     app.view_mode = ViewMode::Edit;
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.beat_ui.primary, Some(row));
 }
 #[test]
-fn instrument_groups_reuse_bodies_and_show_one_final_output() {
+fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_output() {
     let (mut app, ctx, track, row, _) = setup();
+    app.navigate_beat_owner(track, Some(row), false);
     app.view_mode = ViewMode::Instrument;
-    let mut settings = app
+    let size = Vec2::new(1600.0, 1400.0);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+    let text: Vec<_> = shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) => Some(text.galley.text()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        text.contains(&"Layers")
+            && text.contains(&"Layer 1")
+            && text.contains(&"LFO")
+            && text.contains(&"Envelope")
+    );
+    assert_eq!(text.iter().filter(|text| **text == "Output").count(), 1);
+    let settings = app
         .session
         .project
         .instrument_settings(row)
         .unwrap()
         .clone();
-    settings.main.collapsed = false;
-    app.session
-        .project
-        .edit(Edit::SetInstrument {
-            track_id: row,
-            instrument: Some(settings),
-        })
-        .unwrap();
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 1400.0));
-    let names: Vec<_> = shapes
-        .iter()
-        .filter_map(|s| {
-            if let egui::Shape::Text(t) = &s.shape {
-                Some(t.galley.text())
-            } else {
-                None
-            }
-        })
-        .collect();
-    assert!(names.contains(&"Kick"), "{names:?}");
-    assert!(names.contains(&"Layer 1"), "{names:?}");
-    assert!(names.contains(&"LFO"));
-    assert!(names.contains(&"Envelope"));
-    assert_eq!(names.iter().filter(|name| **name == "Output").count(), 2);
-    assert_eq!(app.session.project.beat(track).unwrap().subtracks.len(), 1);
-    assert!(app.error.is_none());
+    let layer = settings.layers[0].id;
+    let bounds = app.midi_editor.layer_bounds[&layer].row;
+    let output_bounds = app.instrument_ui.main_bounds.row;
+    let mut midi = DawUi::default();
+    let midi_track = midi.session.project.add_midi_track().unwrap();
+    midi.session.project.tracks[0].instrument = Some(settings);
+    midi.select_track(midi_track, false);
+    midi.view_mode = ViewMode::Instrument;
+    frame_shapes(&mut midi, &ctx, vec![], size);
+    assert_eq!(midi.midi_editor.layer_bounds[&layer].row, bounds);
+    assert_eq!(midi.instrument_ui.main_bounds.row, output_bounds);
+    app.navigate_beat_owner(track, None, false);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+    assert!(app.midi_editor.layer_bounds.is_empty());
+    assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if matches!(text.galley.text(), "Layers" | "Layer 1" | "LFO" | "Envelope" | "Subtracks"))));
+    assert_eq!(
+        app.selected_instrument_owner(),
+        Some(app.session.project.beat(track).unwrap().output.id)
+    );
 }
+
 #[test]
 fn editor_without_active_clip_keeps_subtracks_and_does_not_edit_another_pattern() {
     let (mut app, ctx, _, row, _) = setup();
@@ -228,10 +242,7 @@ fn shared_header_selection_delete_and_group_drag_work_in_both_views() {
         }
         app.view_mode = view;
         if view == ViewMode::Instrument {
-            // Keep all three group headers visible during this ordering gesture.
-            for id in &ids {
-                app.toggle_beat_group(*id);
-            }
+            app.track_browser.visible = true;
         }
         frame(&mut app, &ctx, vec![]);
         app.dirty = false;
@@ -241,7 +252,15 @@ fn shared_header_selection_delete_and_group_drag_work_in_both_views() {
         super::instrument_catalog::click(&mut app, &ctx, b, true);
         assert!(!app.dirty, "selection must not edit the project");
         // Move the selected first pair after the unselected last row.
-        let destination = Pos2::new(a.x, app.beat_ui.headers[&ids[2]].bottom() + 50.0);
+        let destination = Pos2::new(
+            a.x,
+            app.beat_ui.headers[&ids[2]].bottom()
+                + if view == ViewMode::Instrument {
+                    -1.0
+                } else {
+                    50.0
+                },
+        );
         frame(
             &mut app,
             &ctx,
@@ -289,8 +308,7 @@ fn header_drag_escape_and_outside_release_preserve_identity_order_and_history() 
             .unwrap();
         app.view_mode = view;
         if view == ViewMode::Instrument {
-            app.toggle_beat_group(first);
-            app.toggle_beat_group(second);
+            app.track_browser.visible = true;
         }
         frame(&mut app, &ctx, vec![]);
         app.dirty = false;
@@ -339,6 +357,7 @@ fn step_and_unit_focus_do_not_delete_selected_subtracks() {
 #[test]
 fn component_catalog_targets_local_provider_lanes_and_fixed_output_across_frames() {
     let (mut app, ctx, track, row, _) = setup();
+    app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
     app.instrument_catalog_visible = true;
     app.instrument_catalog.expand_folders();
@@ -407,18 +426,8 @@ fn component_catalog_targets_local_provider_lanes_and_fixed_output_across_frames
             .lfos
             .is_empty()
     );
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-    let output = shapes
-        .iter()
-        .find_map(|s| {
-            if let egui::Shape::Text(t) = &s.shape {
-                (t.galley.text() == "Output").then(|| t.pos + t.galley.size() * 0.5)
-            } else {
-                None
-            }
-        })
-        .unwrap();
-    click(&mut app, &ctx, output);
+    app.navigate_beat_owner(track, None, false);
+    frame(&mut app, &ctx, vec![]);
     let root = app.session.project.beat(track).unwrap().output.id;
     assert_eq!(app.selected_instrument_owner(), Some(root));
     let entry = crate::instrument_catalog::ENTRIES
@@ -449,6 +458,7 @@ fn catalog_drag_into_expanded_subtrack_reuses_release_only_component_placement()
     let frame = |app: &mut DawUi, ctx: &egui::Context, events| {
         frame_shapes(app, ctx, events, Vec2::new(1600.0, 1600.0));
     };
+    app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
     app.instrument_catalog_visible = true;
     app.instrument_catalog.expand_folders();
@@ -508,54 +518,35 @@ fn catalog_drag_into_expanded_subtrack_reuses_release_only_component_placement()
 }
 
 #[test]
-fn empty_beat_page_reuses_midi_header_column_and_pinned_output_geometry() {
-    for theme in [
+fn empty_beat_parent_has_a_fixed_output_without_source_or_group_rows() {
+    for color in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
         settings::ColorTheme::Mist,
     ] {
-        let mut midi = DawUi::default();
-        let midi_track = midi.session.project.add_midi_track().unwrap();
-        midi.select_track(midi_track, false);
-        midi.view_mode = ViewMode::Instrument;
+        let mut app = DawUi::default();
         let ctx = context();
-        midi.set_settings(
+        let track = app.session.project.add_beat_track().unwrap();
+        app.select_track(track, false);
+        app.view_mode = ViewMode::Instrument;
+        app.set_settings(
             &ctx,
             settings::AppSettings {
-                theme,
+                theme: color,
                 ..Default::default()
             },
         );
-        frame(&mut midi, &ctx, vec![]);
-        let header = midi.midi_editor.instrument_header_bounds;
-        let plus = midi.midi_editor.add_layer_bounds;
-        let output = midi.instrument_ui.main_bounds.row;
-        let mut beat = DawUi::default();
-        let track = beat.session.project.add_beat_track().unwrap();
-        beat.select_track(track, false);
-        beat.view_mode = ViewMode::Instrument;
-        let ctx = context();
-        beat.set_settings(
-            &ctx,
-            settings::AppSettings {
-                theme,
-                ..Default::default()
-            },
+        let original = app.session.project.clone();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert_eq!(
+            app.selected_instrument_owner(),
+            Some(app.session.project.beat(track).unwrap().output.id)
         );
-        let shapes = frame_shapes(&mut beat, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        assert_eq!(beat.midi_editor.instrument_header_bounds, header);
-        assert_eq!(beat.midi_editor.add_layer_bounds, plus);
-        assert_eq!(beat.beat_ui.final_output.unwrap(), output);
-        assert!(
-            shapes
-                .iter()
-                .any(|s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="Subtracks"))
-        );
-        assert!(!shapes.iter().any(
-            |s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="Add beat subtrack")
-        ));
-        click(&mut beat, &ctx, plus.center());
-        assert_eq!(beat.session.project.beat(track).unwrap().subtracks.len(), 1);
+        assert!(app.midi_editor.layer_bounds.is_empty());
+        assert!(app.beat_ui.final_output.unwrap().is_positive());
+        assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if matches!(text.galley.text(), "Layers" | "Subtracks" | "LFO" | "Envelope"))));
+        assert_eq!(app.session.project, original);
+        assert!(!app.dirty);
     }
 }
 
@@ -724,13 +715,14 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
             assert_eq!(app.session.project, before);
             assert!(!app.dirty);
 
+            app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
             app.view_mode = ViewMode::Instrument;
             frame_shapes(&mut app, &ctx, vec![], size);
-            app.toggle_beat_group(row);
+
             let shapes = frame_shapes(&mut app, &ctx, vec![], size);
             super::track_header::assert_header_meter_insets(
                 &shapes,
-                app.beat_ui.groups[&row].0,
+                app.instrument_ui.main_bounds.label,
                 &ctx,
             );
             assert_eq!(app.session.project, before);
@@ -740,176 +732,38 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
 }
 
 #[test]
-fn instrument_subtrack_disclosure_groups_indented_children_without_editing_audio() {
-    let (mut app, ctx, _, row, _) = setup();
-    app.view_mode = ViewMode::Instrument;
-    let click_group = |app: &mut DawUi, point: Pos2| {
-        for events in [
-            vec![egui::Event::PointerMoved(point), button(point, true)],
-            vec![button(point, false)],
-            vec![],
-        ] {
-            frame_shapes(app, &ctx, events, Vec2::new(1600.0, 1400.0));
-        }
-    };
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 1400.0));
-    let text_left = |label: &str| {
-        shapes
-            .iter()
-            .find_map(|shape| match &shape.shape {
-                egui::Shape::Text(text) if text.galley.text() == label => Some(text.pos.x),
-                _ => None,
-            })
-            .unwrap()
-    };
-    let parent = text_left("Kick");
-    for child in ["Layer 1", "LFO", "Envelope"] {
-        assert!(
-            text_left(child) >= parent + crate::panels::GroupPanel::indent(1) - 1.0,
-            "{child} must be nested under its subtrack"
-        );
-    }
-    let main = &app.instrument_ui.main_bounds;
-    let (group, disclosure_bounds) = app.beat_ui.groups[&row];
-    assert_eq!(
-        group.height(),
-        MASTER_HEIGHT,
-        "subtrack headers use one compact track row"
-    );
-    let settings = app.session.project.instrument_settings(row).unwrap();
-    let layer = &app.midi_editor.layer_bounds[&settings.layers[0].id];
-    let lfo = &app.instrument_ui.modulation_lane_bounds[&settings.lfo_lane.id];
-    let envelope = &app.instrument_ui.modulation_lane_bounds[&settings.envelope_lane.id];
-    for child in [layer.label, lfo.label, envelope.label, main.label] {
-        assert!((child.left() - group.left() - crate::panels::GroupPanel::indent(1)).abs() < 0.1);
-        assert!(
-            (child.right() - group.right()).abs() < 0.1,
-            "child dividers must align with the subtrack"
-        );
-    }
-    assert!(
-        main.row.top() >= envelope.row.bottom() - 1.0,
-        "subtrack Output follows its provider lanes"
-    );
-    assert!(
-        (main.row.top() - envelope.row.bottom()).abs() < 0.1,
-        "Envelope and Output must share a single separator: envelope={:?}, output={:?}",
-        envelope.row,
-        main.row
-    );
-    let boundary = envelope.row.bottom() - 0.5;
-    let boundary_lines: Vec<_> = shapes
-        .iter()
-        .filter_map(|s| match &s.shape {
-            egui::Shape::LineSegment { points, .. }
-                if (points[0].y - points[1].y).abs() < 0.1
-                    && (points[0].y - boundary).abs() < 2.0
-                    && points[0].x.min(points[1].x) <= main.label.left()
-                    && points[0].x.max(points[1].x) >= main.label.right() =>
-            {
-                Some(points[0].y)
-            }
-            _ => None,
+fn subtrack_layer_view_keeps_the_real_parent_track_and_local_source_scope() {
+    let (mut app, ctx, track, row, _) = setup();
+    let other = BeatSubtrack::new("Other".into());
+    let other_id = other.id;
+    app.session
+        .project
+        .edit(Edit::Beat {
+            track_id: track,
+            edit: BeatEdit::Add {
+                subtrack: Box::new(other),
+                index: 1,
+            },
         })
-        .collect();
-    assert!(!boundary_lines.is_empty());
-    assert!(
-        boundary_lines.iter().all(|y| (*y - boundary).abs() < 0.1),
-        "no adjacent separator strokes: {boundary_lines:?}"
-    );
-    let group_bottom = main.row.bottom() - 0.5;
-    assert!(
-        shapes.iter().any(|s| matches!(&s.shape,
-            egui::Shape::LineSegment { points, .. } if (points[0].y - group_bottom).abs() < 0.1
-                && (points[1].y - group_bottom).abs() < 0.1
-                && points[0].x.min(points[1].x) <= group.left()
-                && points[0].x.max(points[1].x) >= group.right()
-        )),
-        "the whole group must have a bottom border"
-    );
-    let gutter_x = group.left() + crate::panels::GroupPanel::indent(1) * 0.5;
-    let parent_bottom = group.bottom() - 0.5;
-    assert!(
-        !shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::LineSegment { points, .. }
-            if (points[0].y - parent_bottom).abs() < 0.1
-                && (points[1].y - parent_bottom).abs() < 0.1
-                && points[0].x.min(points[1].x) < gutter_x
-                && points[0].x.max(points[1].x) > gutter_x
-        )),
-        "an expanded subtrack must not close its child gutter with a bottom divider"
-    );
-    assert!(
-        shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::LineSegment { points, .. }
-            if (points[0].y - parent_bottom).abs() < 0.1
-                && (points[1].y - parent_bottom).abs() < 0.1
-                && (points[0].x.min(points[1].x) - layer.label.left()).abs() < 0.1
-        )),
-        "retain the separator from the child panel edge onward"
-    );
-    assert!(
-        !shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::LineSegment { points, .. }
-            if (points[0].y - points[1].y).abs() < 0.1
-                && points[0].y > layer.label.top() + 0.1
-                && points[0].y < envelope.label.bottom() - 0.1
-                && points[0].x.min(points[1].x) < gutter_x
-                && points[0].x.max(points[1].x) > gutter_x
-        )),
-        "child separators must not cross the group gutter"
-    );
-    let output = app.beat_ui.final_output;
-    let before = app.session.project.clone();
-    app.dirty = false;
-    let disclosure = disclosure_bounds.center();
-    click_group(&mut app, disclosure);
-    assert!(app.beat_group_collapsed(row));
-    assert!(app.instrument_ui.component_viewports.is_empty());
-    assert!(app.instrument_ui.samplers.is_empty());
-    assert_eq!(app.session.project, before);
-    assert!(!app.dirty);
-    assert_eq!(app.beat_ui.final_output, output);
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 1400.0));
-    assert!(!shapes.iter().any(
-        |shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Layer 1")
-    ));
-    let collapsed_bottom = app.beat_ui.groups[&row].0.bottom() - 0.5;
-    assert!(
-        shapes.iter().any(|s| matches!(&s.shape,
-            egui::Shape::LineSegment { points, .. } if (points[0].y - collapsed_bottom).abs() < 0.1
-                && (points[1].y - collapsed_bottom).abs() < 0.1
-                && points[0].x.min(points[1].x) <= group.left()
-                && points[0].x.max(points[1].x) >= group.right()
-        )),
-        "collapsed groups also retain a full bottom border"
-    );
-    assert!(
-        shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::LineSegment { points, .. }
-            if (points[0].y - parent_bottom).abs() < 0.1
-                && (points[1].y - parent_bottom).abs() < 0.1
-                && points[0].x.min(points[1].x) < gutter_x
-                && points[0].x.max(points[1].x) > gutter_x
-        )),
-        "collapsed headers have a complete bottom border"
-    );
-    click_group(&mut app, disclosure);
-    assert!(!app.beat_group_collapsed(row));
-    assert_eq!(app.session.project, before);
-    let strip_collapse = app.instrument_ui.main_bounds.collapse.center();
-    click_group(&mut app, strip_collapse);
-    assert!(!app.beat_group_collapsed(row));
-    assert_eq!(app.beat_ui.groups[&row].0.height(), MASTER_HEIGHT);
-    assert_ne!(
-        app.session
+        .unwrap();
+    let original = app.session.project.clone();
+    app.view_mode = ViewMode::Instrument;
+    for owner in [row, other_id, row] {
+        app.navigate_beat_owner(track, Some(owner), false);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.selected_track, Some(track));
+        assert_eq!(app.instrument_ui.track, Some(owner));
+        let layer = app
+            .session
             .project
-            .instrument_settings(row)
+            .instrument_settings(owner)
             .unwrap()
-            .main
-            .collapsed,
-        before.instrument_settings(row).unwrap().main.collapsed
-    );
+            .layers[0]
+            .id;
+        assert_eq!(app.midi_editor.layer_bounds.len(), 1);
+        assert!(app.midi_editor.layer_bounds.contains_key(&layer));
+        assert_eq!(app.session.project, original);
+    }
 }
 
 #[test]
@@ -940,70 +794,27 @@ fn empty_beat_track_keeps_disabled_steps_visible_after_scrolling() {
 }
 
 #[test]
-fn subtrack_header_adds_layers_and_moves_mix_controls_with_group_collapse() {
+fn selected_subtrack_adds_layers_through_the_standard_layers_plus() {
     let (mut app, ctx, track, row, _) = setup();
+    app.navigate_beat_owner(track, Some(row), false);
     app.view_mode = ViewMode::Instrument;
-    let size = Vec2::new(1600.0, 1800.0);
-    let click = |app: &mut DawUi, point: Pos2| {
-        for events in [
-            vec![egui::Event::PointerMoved(point), button(point, true)],
-            vec![button(point, false)],
-            vec![],
-        ] {
-            frame_shapes(app, &ctx, events, size);
-        }
-    };
-    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
-    let group = app.beat_ui.groups[&row].0;
-    assert!(
-        !shapes
-            .iter()
-            .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Layers"))
-    );
-    assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "M" && group.contains(t.pos))));
-    let output = app.instrument_ui.main_bounds.label;
-    assert!(
-        app.beat_ui.mix_bounds[&row]
-            .iter()
-            .all(|r| output.contains_rect(*r))
-    );
-    let first = app.session.project.instrument_settings(row).unwrap().layers[0].id;
-    let add = app.beat_ui.add_layers[&row];
-    assert!(group.contains_rect(add));
-    assert!(
-        (add.right() - (group.right() - 7.0)).abs() < 0.1,
-        "Add layer must stay at the compact header's right inset"
-    );
-    click(&mut app, add.center());
-    let settings = app.session.project.instrument_settings(row).unwrap();
-    assert_eq!(settings.layers.len(), 2);
-    assert_eq!(settings.layers[0].id, first);
-    assert_eq!(settings.layers[1].name, "Layer 2");
-    let disclosure = app.beat_ui.groups[&row].1.center();
-    click(&mut app, disclosure);
-    assert!(app.beat_group_collapsed(row));
-    assert!(!app.beat_ui.add_layers.contains_key(&row));
-    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
-    let group = app.beat_ui.groups[&row].0;
+    frame(&mut app, &ctx, vec![]);
+    let plus = app.midi_editor.add_layer_bounds;
+    assert!(app.midi_editor.instrument_header_bounds.contains_rect(plus));
+    click(&mut app, &ctx, plus.center());
     assert_eq!(
-        shapes
-            .iter()
-            .filter(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Output"))
-            .count(),
-        1
+        app.session
+            .project
+            .instrument_settings(row)
+            .unwrap()
+            .layers
+            .len(),
+        2
     );
-    assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if matches!(t.galley.text(), "Layer 1" | "Layer 2" | "LFO" | "Envelope"))));
-    let mute = shapes
-        .iter()
-        .find_map(|s| match &s.shape {
-            egui::Shape::Text(t) if t.galley.text() == "M" && group.contains(t.pos) => {
-                Some(t.pos + Vec2::splat(3.0))
-            }
-            _ => None,
-        })
-        .expect("collapsed header retains its mix controls");
-    click(&mut app, mute);
-    assert!(app.session.project.beat(track).unwrap().subtracks[0].muted);
+    assert_eq!(app.session.project.beat(track).unwrap().subtracks.len(), 1);
+    assert_eq!(app.selected_track, Some(track));
+    assert_eq!(app.selected_instrument_owner(), Some(row));
+    assert!(app.error.is_none());
 }
 
 #[test]
@@ -1024,8 +835,7 @@ fn escape_deselects_subtracks_in_both_views_without_editing_the_project() {
             .unwrap();
         app.view_mode = view;
         if view == ViewMode::Instrument {
-            app.toggle_beat_group(first);
-            app.toggle_beat_group(second_id);
+            app.track_browser.visible = true;
         }
         frame(&mut app, &ctx, vec![]);
         let a = app.beat_ui.headers[&first].center();
@@ -1055,11 +865,20 @@ fn escape_cancels_a_subtrack_rename_without_clearing_its_selection() {
     for view in [ViewMode::Edit, ViewMode::Instrument] {
         let (mut app, ctx, _, row, _) = setup();
         app.view_mode = view;
+        if view == ViewMode::Instrument {
+            app.track_browser.visible = true;
+        }
         frame(&mut app, &ctx, vec![]);
         let name = app.beat_ui.headers[&row].center();
         click(&mut app, &ctx, name);
         click(&mut app, &ctx, name);
-        assert!(ctx.text_edit_focused());
+        assert!(
+            ctx.text_edit_focused(),
+            "{view:?}: focus {:?}, rename {}, drag {:?}",
+            ctx.memory(|m| m.focused()),
+            app.beat_renaming(row),
+            app.track_drag
+        );
         let before = app.session.project.clone();
         frame(&mut app, &ctx, vec![egui::Event::Text("draft".into())]);
         super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
@@ -1069,99 +888,92 @@ fn escape_cancels_a_subtrack_rename_without_clearing_its_selection() {
 }
 
 #[test]
-fn subtrack_outlines_match_track_style_and_paint_above_column_dividers() {
-    for color in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for view in [ViewMode::Edit, ViewMode::Instrument] {
-            let (mut app, ctx, _, row, _) = setup();
-            app.set_settings(
-                &ctx,
-                settings::AppSettings {
-                    theme: color,
-                    ..Default::default()
-                },
-            );
-            app.view_mode = view;
-            if view == ViewMode::Instrument {
-                app.toggle_beat_group(row);
-            }
-            frame(&mut app, &ctx, vec![]);
-            let name = app.beat_ui.headers[&row].center();
-            click(&mut app, &ctx, name);
-            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let rect = if view == ViewMode::Instrument {
-                app.beat_ui.groups[&row].0
-            } else {
-                let step = app.beat_ui.steps[&(row, 0)];
-                Rect::from_min_size(
-                    Pos2::new(app.midi_editor.panel_bounds.left(), step.top() - 3.0),
-                    Vec2::new(TRACK_WIDTH, 32.0),
-                )
-            };
-            let index = shapes
-                .iter()
-                .position(|s| {
-                    matches!(&s.shape, egui::Shape::Rect(r)
-                if r.rect == rect && r.stroke == theme::selection_outline(&ctx))
-                })
-                .expect("full subtrack selection outline");
-            let egui::Shape::Rect(outline) = &shapes[index].shape else {
-                unreachable!()
-            };
-            assert_eq!(outline.corner_radius, egui::CornerRadius::same(2));
-            assert_eq!(outline.stroke_kind, egui::StrokeKind::Inside);
-            assert!(shapes[index].clip_rect.contains_rect(rect));
-            if view == ViewMode::Instrument {
-                for (border_index, shape) in shapes.iter().enumerate() {
-                    if matches!(&shape.shape, egui::Shape::LineSegment { points, stroke }
-                        if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
-                        && (points[0].x - (rect.right() - 0.5)).abs() < 0.1
-                        && (points[1].x - points[0].x).abs() < 0.1
-                        && points[0].y.min(points[1].y) <= rect.center().y
-                        && points[0].y.max(points[1].y) >= rect.center().y)
-                    {
-                        assert!(
-                            border_index < index,
-                            "track-style outline must paint after the neutral divider"
-                        );
-                    }
-                }
-            }
-        }
+fn editor_blank_subtrack_header_double_click_renames_without_changing_mix() {
+    let (mut app, ctx, _, row, _) = setup();
+    let before = app.session.project.clone();
+    let name = app.beat_ui.headers[&row];
+    let mute = app.beat_ui.mix_bounds[&row][0];
+    let blank = egui::pos2((name.right() + mute.left()) / 2.0, name.center().y);
+    assert!(blank.x > name.right() && blank.x < mute.left());
+    click(&mut app, &ctx, blank);
+    assert!(!app.beat_renaming(row));
+    click(&mut app, &ctx, blank);
+    assert!(ctx.text_edit_focused());
+    assert!(app.beat_renaming(row));
+    assert_eq!(app.session.project, before);
+    frame(&mut app, &ctx, vec![egui::Event::Text("Snare".into())]);
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
+    let mut expected = before;
+    expected
+        .edit(Edit::Beat {
+            track_id: app.selected_track.unwrap(),
+            edit: BeatEdit::Rename {
+                id: row,
+                name: "Snare".into(),
+            },
+        })
+        .unwrap();
+    assert_eq!(app.session.project, expected);
+    for control in app.beat_ui.mix_bounds[&row] {
+        click(&mut app, &ctx, control.center());
+        click(&mut app, &ctx, control.center());
+        assert!(!app.beat_renaming(row));
     }
 }
 
 #[test]
-fn escape_deselects_an_expanded_instrument_subtrack() {
+fn editor_subtrack_outlines_match_track_style() {
+    for color in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _, row, _) = setup();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color,
+                ..Default::default()
+            },
+        );
+        let name = app.beat_ui.headers[&row].center();
+        click(&mut app, &ctx, name);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let step = app.beat_ui.steps[&(row, 0)];
+        let rect = Rect::from_min_size(
+            Pos2::new(app.midi_editor.panel_bounds.left(), step.top() - 3.0),
+            Vec2::new(TRACK_WIDTH, 32.0),
+        );
+        let shape = shapes.iter().find(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))).expect("full subtrack selection outline");
+        let egui::Shape::Rect(outline) = &shape.shape else {
+            unreachable!()
+        };
+        assert_eq!(outline.corner_radius, egui::CornerRadius::same(2));
+        assert_eq!(outline.stroke_kind, egui::StrokeKind::Inside);
+        assert!(shape.clip_rect.contains_rect(rect));
+    }
+}
+
+#[test]
+fn escape_deselects_an_instrument_subtrack_in_the_tracks_tree() {
     let (mut app, ctx, _, row, _) = setup();
     app.view_mode = ViewMode::Instrument;
+    app.track_browser.visible = true;
     frame(&mut app, &ctx, vec![]);
     let name = app.beat_ui.headers[&row].center();
     click(&mut app, &ctx, name);
     assert!(app.beat_subtrack_selected(row));
-    let disclosure = app.beat_ui.groups[&row].1.center();
-    click(&mut app, &ctx, disclosure);
-    click(&mut app, &ctx, disclosure);
-    assert!(!app.beat_group_collapsed(row));
     let before = app.session.project.clone();
     super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
-    assert!(
-        !app.beat_subtrack_selected(row),
-        "expanded group selection must clear with Escape; focused={:?}, editing={}",
-        ctx.memory(|m| m.focused()),
-        app.editing_enabled()
-    );
+    assert!(!app.beat_subtrack_selected(row));
     assert_eq!(app.session.project, before);
 }
 
 #[test]
 fn instrument_escape_deselects_from_child_controls_and_shares_catalog_handling() {
     let (mut app, ctx, _, row, _) = setup();
+    app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
     app.instrument_catalog_visible = true;
     app.instrument_catalog.expand_folders();
     frame(&mut app, &ctx, vec![]);
-    let name = app.beat_ui.headers[&row].center();
-    click(&mut app, &ctx, name);
+    app.navigate_beat_owner(app.selected_track.unwrap(), Some(row), false);
     let layer = app.session.project.instrument_settings(row).unwrap().layers[0].id;
     let mute = app.midi_editor.layer_bounds[&layer].mix_controls[0].center();
     click(&mut app, &ctx, mute);
@@ -1173,8 +985,7 @@ fn instrument_escape_deselects_from_child_controls_and_shares_catalog_handling()
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
 
-    let name = app.beat_ui.headers[&row].center();
-    click(&mut app, &ctx, name);
+    app.navigate_beat_owner(app.selected_track.unwrap(), Some(row), false);
     let entry = app.instrument_catalog_bounds.entries[0].center();
     click(&mut app, &ctx, entry);
     assert!(app.beat_subtrack_selected(row));
@@ -1295,11 +1106,10 @@ fn editor_header_controls_select_the_subtrack_and_keep_their_actions() {
 }
 
 #[test]
-fn plain_layer_selection_replaces_selection_in_other_subtracks() {
+fn changing_subtracks_replaces_hidden_layer_selection_without_editing_the_project() {
     let (mut app, ctx, track, first, _) = setup();
-    let second = BeatSubtrack::new("Snare".into());
+    let second = BeatSubtrack::new("Other".into());
     let second_id = second.id;
-    let second_layer = second.instrument.layers[0].id;
     app.session
         .project
         .edit(Edit::Beat {
@@ -1310,99 +1120,24 @@ fn plain_layer_selection_replaces_selection_in_other_subtracks() {
             },
         })
         .unwrap();
+    let original = app.session.project.clone();
     app.view_mode = ViewMode::Instrument;
-    let size = Vec2::new(1600.0, 2000.0);
-    let click = |app: &mut DawUi, point: Pos2, shift| {
-        let modifiers = egui::Modifiers {
-            shift,
-            ..Default::default()
-        };
-        frame_shapes(
-            app,
-            &ctx,
-            vec![
-                egui::Event::ModifiersChanged(modifiers),
-                egui::Event::PointerMoved(point),
-                egui::Event::PointerButton {
-                    pos: point,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    modifiers,
-                },
-            ],
-            size,
-        );
-        frame_shapes(
-            app,
-            &ctx,
-            vec![egui::Event::PointerButton {
-                pos: point,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers,
-            }],
-            size,
-        );
-        frame_shapes(
-            app,
-            &ctx,
-            vec![egui::Event::ModifiersChanged(Default::default())],
-            size,
-        )
-    };
-    let initial_shapes = frame_shapes(&mut app, &ctx, vec![], size);
-    let initial_second = app.midi_editor.layer_bounds[&second_layer].label;
-    let lfo_id = app
+    app.navigate_beat_owner(track, Some(first), false);
+    frame(&mut app, &ctx, vec![]);
+    let first_layer = app
         .session
         .project
         .instrument_settings(first)
         .unwrap()
-        .lfo_lane
+        .layers[0]
         .id;
-    let lfo = &app.instrument_ui.modulation_lane_bounds[&lfo_id];
-    let lfo_rect = lfo.label;
-    let lfo_name = lfo.name.center();
-    let before = app.session.project.clone();
-    app.dirty = false;
-    let shapes = click(&mut app, lfo_name, false);
-    let selected = |shapes: &[egui::epaint::ClippedShape], rect| {
-        shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx)))
-    };
-    assert!(
-        !selected(&initial_shapes, initial_second),
-        "inactive groups must not create a default layer selection"
-    );
-    assert!(selected(&shapes, lfo_rect));
-    let second_name = app.midi_editor.layer_bounds[&second_layer].name.center();
-    let shapes = click(&mut app, second_name, false);
-    assert_eq!(app.beat_ui.primary, Some(second_id));
-    assert!(
-        !selected(&shapes, lfo_rect),
-        "plain layer click must clear the previous subtrack's provider selection"
-    );
-    let second_rect = app.midi_editor.layer_bounds[&second_layer].label;
-    assert!(selected(&shapes, second_rect));
-    let shapes = click(&mut app, lfo_name, true);
-    assert!(
-        selected(&shapes, lfo_rect) && selected(&shapes, second_rect),
-        "Shift preserves the existing layer selection"
-    );
-    let shapes = click(&mut app, second_name, false);
-    assert!(!selected(&shapes, lfo_rect) && selected(&shapes, second_rect));
-    // Escape clears both the active state and the other subtrack's cached selection.
-    click(&mut app, lfo_name, true);
-    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
-    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
-    assert!(!selected(&shapes, lfo_rect) && !selected(&shapes, second_rect));
-    let shapes = click(&mut app, lfo_name, false);
-    assert!(selected(&shapes, lfo_rect));
-    let output = app.beat_ui.final_output.unwrap();
-    let shapes = click(&mut app, output.min + Vec2::new(45.0, 15.0), false);
-    assert!(
-        !selected(&shapes, lfo_rect),
-        "the overall Output also replaces old layer selections"
-    );
-    assert_eq!(app.session.project, before);
+    let point = app.midi_editor.layer_bounds[&first_layer].name.center();
+    click(&mut app, &ctx, point);
+    app.navigate_beat_owner(track, Some(second_id), false);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.cached_beat_layer_selected(first, first_layer));
+    assert!(!app.midi_editor.layer_bounds.contains_key(&first_layer));
+    assert_eq!(app.session.project, original);
     assert!(!app.dirty);
 }
 
@@ -1441,6 +1176,7 @@ fn editor_subtrack_headers_live_in_the_left_panel_and_share_the_instrument_plus(
             .contains_rect(app.beat_ui.headers[&added])
     );
     assert_eq!(app.selected_clip, Some(clip));
+    app.navigate_beat_owner(track, Some(added), false);
     app.view_mode = ViewMode::Instrument;
     frame(&mut app, &ctx, vec![]);
     let instrument_plus = app.midi_editor.add_layer_bounds;
@@ -1711,11 +1447,20 @@ fn subtrack_name_input_selects_the_whole_name_and_matches_track_commit_and_cance
     for view in [ViewMode::Edit, ViewMode::Instrument] {
         let (mut app, ctx, track, row, _) = setup();
         app.view_mode = view;
+        if view == ViewMode::Instrument {
+            app.track_browser.visible = true;
+        }
         frame(&mut app, &ctx, vec![]);
         let name = app.beat_ui.headers[&row].center();
         click(&mut app, &ctx, name);
         click(&mut app, &ctx, name);
-        assert!(ctx.text_edit_focused());
+        assert!(
+            ctx.text_edit_focused(),
+            "{view:?}: focus {:?}, rename {}, drag {:?}",
+            ctx.memory(|m| m.focused()),
+            app.beat_renaming(row),
+            app.track_drag
+        );
         frame(&mut app, &ctx, vec![egui::Event::Text("Bombo 🎵".into())]);
         super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
         assert_eq!(
@@ -2302,6 +2047,7 @@ fn nested_layer_group_drag_moves_copies_and_cancels_without_early_edits() {
         instrument.envelope_lane.collapsed = true;
         instrument.main.collapsed = true;
         let ids: Vec<_> = instrument.layers.iter().map(|l| l.id).collect();
+        app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
         app.view_mode = ViewMode::Instrument;
         frame(&mut app, &ctx, vec![]);
         for (index, shift) in [(1, false), (0, true)] {
@@ -2536,19 +2282,133 @@ fn beat_editor_dense_grid_scaling() {
 }
 
 #[test]
+fn trigger_pitch_names_round_trip_all_midi_notes_and_reject_invalid_input() {
+    use crate::beat_editor::{parse_trigger_note, trigger_note_name};
+    for pitch in 0..=127 {
+        assert_eq!(
+            parse_trigger_note(&trigger_note_name(pitch)),
+            Some(f64::from(pitch))
+        );
+        assert_eq!(
+            parse_trigger_note(&daw_unit_core::note_name(pitch)),
+            Some(f64::from(pitch))
+        );
+    }
+    assert_eq!(trigger_note_name(60), "C4");
+    assert_eq!(trigger_note_name(51), "D3#");
+    for invalid in [
+        "", "60", "C", "C-2", "G9#", "E4#", "B3#", "D3##", "D#3#", "🎵4",
+    ] {
+        assert_eq!(parse_trigger_note(invalid), None, "{invalid}");
+    }
+}
+
+#[test]
+fn trigger_pitch_menu_aligns_note_value_and_commits_only_valid_notes() {
+    for view in [ViewMode::Edit, ViewMode::Instrument] {
+        let (mut app, ctx, track, row, _) = setup();
+        app.view_mode = view;
+        app.track_browser.visible = true;
+        frame(&mut app, &ctx, vec![]);
+        let header = app.beat_ui.header_panels[&row];
+        let before = app.session.project.clone();
+        for pressed in [true, false] {
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(header.center()),
+                    egui::Event::PointerButton {
+                        pos: header.center(),
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+        }
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let text = |label: &str| {
+            shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        Some(Rect::from_min_size(text.pos, text.galley.size()))
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("Missing menu text: {label}"))
+        };
+        let rename = text("Rename");
+        let delete = text("Delete selected subtracks");
+        let label = text("Trigger pitch");
+        let note = text("C4");
+        let stops = text("Stops");
+        let [pitch_row, input] = app.beat_ui.trigger_pitch_bounds.unwrap();
+        assert!((label.left() - rename.left()).abs() < 0.1);
+        assert!((label.left() - delete.left()).abs() < 0.1);
+        assert!((label.left() - stops.left()).abs() < 0.1);
+        assert!((label.left() - pitch_row.left() - f32::from(menus::ITEM_PADDING)).abs() < 0.1);
+        assert!(
+            (pitch_row.height() - label.height() - 2.0 * f32::from(menus::ITEM_PADDING)).abs()
+                < 0.1
+        );
+        assert!((input.right() - pitch_row.right() + f32::from(menus::ITEM_PADDING)).abs() < 1.1);
+        assert!((note.right() - input.right()).abs() < 0.1);
+        assert!(note.left() - label.right() >= menus::ITEM_SPACING);
+        assert!(
+            (stops.top()
+                - label.bottom()
+                - 2.0 * f32::from(menus::ITEM_PADDING)
+                - menus::ITEM_SPACING)
+                .abs()
+                < 0.1
+        );
+        assert_eq!(app.session.project, before);
+        click(&mut app, &ctx, input.center());
+        assert!(ctx.text_edit_focused());
+        frame(&mut app, &ctx, vec![egui::Event::Text("D3#".into())]);
+        assert_eq!(app.session.project, before);
+        super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
+        assert_eq!(
+            app.session.project.beat(track).unwrap().subtracks[0].trigger_pitch,
+            51
+        );
+        frame(&mut app, &ctx, vec![]);
+        let input = app.beat_ui.trigger_pitch_bounds.unwrap()[1];
+        for (draft, key) in [("invalid", egui::Key::Enter), ("G9", egui::Key::Escape)] {
+            click(&mut app, &ctx, input.center());
+            frame(&mut app, &ctx, vec![egui::Event::Text(draft.into())]);
+            super::instrument_catalog::key(&mut app, &ctx, key, false, false);
+            assert_eq!(
+                app.session.project.beat(track).unwrap().subtracks[0].trigger_pitch,
+                51
+            );
+        }
+    }
+}
+
+#[test]
 fn subtrack_context_menu_opens_across_headers_without_changing_controls() {
     for view in [ViewMode::Edit, ViewMode::Instrument] {
-        for collapsed in [false, true] {
+        {
             let (mut app, ctx, _, row, _) = setup();
             app.view_mode = view;
-            if collapsed {
-                app.toggle_beat_group(row);
+            if view == ViewMode::Instrument {
+                app.track_browser.visible = true;
             }
             frame(&mut app, &ctx, vec![]);
             let rect = app.beat_ui.header_panels[&row];
             let original = app.session.project.clone();
             app.dirty = false;
-            for x in [1.0, 30.0, 100.0, 145.0, 180.0, 215.0, 245.0] {
+            for x in [
+                1.0,
+                rect.width() * 0.2,
+                rect.width() * 0.4,
+                rect.width() * 0.6,
+                rect.width() * 0.8,
+                rect.width() - 1.0,
+            ] {
                 for y in [1.0, rect.height() * 0.5, rect.height() - 1.0] {
                     let point = rect.min + Vec2::new(x, y);
                     for pressed in [true, false] {
@@ -2566,16 +2426,13 @@ fn subtrack_context_menu_opens_across_headers_without_changing_controls() {
                             ],
                         );
                     }
-                    assert!(
-                        egui::Popup::is_any_open(&ctx),
-                        "{view:?} {collapsed} {point:?}"
-                    );
+                    assert!(egui::Popup::is_any_open(&ctx), "{view:?} {point:?}");
                     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                     assert!(
                         shapes.iter().any(|shape| matches!(&shape.shape,
                             egui::Shape::Text(text) if text.galley.text() == "Trigger pitch"
                         )),
-                        "the shared subtrack menu must own the popup: {view:?} {collapsed} {point:?} {:?}",
+                        "the shared subtrack menu must own the popup: {view:?} {point:?} {:?}",
                         shapes
                             .iter()
                             .filter_map(|shape| match &shape.shape {
@@ -2595,32 +2452,20 @@ fn subtrack_context_menu_opens_across_headers_without_changing_controls() {
 }
 
 #[test]
-fn final_output_selection_survives_shift_layer_click() {
+fn output_and_subtrack_pages_keep_owner_local_layer_selection() {
     let (mut app, ctx, track, row, _) = setup();
     app.view_mode = ViewMode::Instrument;
+    app.navigate_beat_owner(track, None, false);
     frame(&mut app, &ctx, vec![]);
     let output = app.session.project.beat(track).unwrap().output.id;
-    let rect = app.beat_ui.final_output.unwrap();
-    click(&mut app, &ctx, rect.min + Vec2::new(45.0, 15.0));
+    app.instrument_ui.select_layer(output);
+    app.navigate_beat_owner(track, Some(row), false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.instrument_ui.track, Some(row));
+    assert!(!app.instrument_ui.selected_layers.contains(&output));
+    app.navigate_beat_owner(track, None, false);
+    frame(&mut app, &ctx, vec![]);
     assert_eq!(app.instrument_ui.track, Some(output));
-    assert!(app.instrument_ui.selected_layers.contains(&output));
-    let layer = app.session.project.instrument_settings(row).unwrap().layers[0].id;
-    let point = app.midi_editor.layer_bounds[&layer].name.center();
-    super::instrument_catalog::click(&mut app, &ctx, point, true);
-    frame(&mut app, &ctx, vec![]);
-    assert!(
-        app.cached_beat_layer_selected(output, output),
-        "cached final Output lost its selection"
-    );
-    click(&mut app, &ctx, point);
-    frame(&mut app, &ctx, vec![]);
-    assert!(!app.cached_beat_layer_selected(output, output));
-    let rect = app.beat_ui.final_output.unwrap();
-    click(&mut app, &ctx, rect.min + Vec2::new(45.0, 15.0));
-    super::instrument_catalog::click(&mut app, &ctx, point, true);
-    frame(&mut app, &ctx, vec![]);
-    assert!(app.cached_beat_layer_selected(output, output));
-    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
-    frame(&mut app, &ctx, vec![]);
-    assert!(!app.cached_beat_layer_selected(output, output));
+    assert!(app.midi_editor.layer_bounds.is_empty());
+    assert!(!app.dirty);
 }

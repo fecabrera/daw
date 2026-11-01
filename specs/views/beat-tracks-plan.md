@@ -1,5 +1,7 @@
 # Beat tracks and editor implementation plan
 
+The selected-owner Instrument presentation confirmed on 2026-11-01 supersedes this plan’s simultaneous expandable group layout. Use the current [beat view](beat-editor.md#selected-subtrack-and-final-output) and [Tracks browser](instrument-tracks.md) contracts: one selected subtrack uses the MIDI Layers page; the beat parent shows only final Output. The processing, ownership and transaction plan below remains applicable. Group-layout sketches and acceptance wording are retained as historical design evidence.
+
 Status: Stages 0–5 implemented. Stage 6 automated acceptance and guides are implemented; native platform acceptance remains open.
 
 Date: 2026-10-31.

@@ -12,13 +12,35 @@ pub(super) fn mute_solo(
     soloed: &mut bool,
     tooltips: [&str; 2],
 ) -> [Response; 2] {
+    mute_solo_with_size(ui, muted, soloed, tooltips, toolbars::CONTROL_HEIGHT)
+}
+fn mute_solo_with_size(
+    ui: &mut Ui,
+    muted: &mut bool,
+    soloed: &mut bool,
+    tooltips: [&str; 2],
+    size: f32,
+) -> [Response; 2] {
     std::array::from_fn(|index| {
         let (label, name, selected) = if index == 0 {
             ("M", "Mute", &mut *muted)
         } else {
             ("S", "Solo", &mut *soloed)
         };
-        let response = toolbars::square_toggle(ui, label, *selected).on_hover_text(tooltips[index]);
+        let response = if size == toolbars::CONTROL_HEIGHT {
+            toolbars::square_toggle(ui, label, *selected)
+        } else {
+            ui.scope(|ui| {
+                ui.spacing_mut().button_padding = egui::Vec2::new(2.0, 0.0);
+                ui.spacing_mut().interact_size = egui::Vec2::splat(size);
+                ui.add_sized(
+                    egui::Vec2::splat(size),
+                    egui::Button::new(egui::RichText::new(label).size(9.0)).selected(*selected),
+                )
+            })
+            .inner
+        }
+        .on_hover_text(tooltips[index]);
         response.widget_info(|| {
             egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), *selected, name)
         });
@@ -79,4 +101,24 @@ pub(super) fn named_row<R>(
         ["Mute subtrack", "Solo within this beat instrument"],
     );
     (name, knobs, toggles)
+}
+
+/// Fixed-width controls for the catalog-height Tracks row. No extra knob slots.
+pub(super) const BROWSER_BUTTON_SIZE: f32 = 16.0;
+pub(super) const BROWSER_KNOB_SIZE: f32 = 16.0;
+pub(super) const BROWSER_WIDTH: f32 =
+    2.0 * BROWSER_BUTTON_SIZE + 2.0 * BROWSER_KNOB_SIZE + 3.0 * KNOB_GAP;
+pub(super) fn browser_row(
+    ui: &mut Ui,
+    gain: &mut f32,
+    pan: &mut f32,
+    muted: &mut bool,
+    soloed: &mut bool,
+) -> [Response; 4] {
+    ui.spacing_mut().item_spacing.x = KNOB_GAP;
+    let [mute, solo] =
+        mute_solo_with_size(ui, muted, soloed, ["Mute", "Solo"], BROWSER_BUTTON_SIZE);
+    let pan = knobs::pan_scaled(ui, pan, BROWSER_KNOB_SIZE / knobs::SIZE);
+    let gain = knobs::gain_scaled(ui, gain, BROWSER_KNOB_SIZE / knobs::SIZE);
+    [mute, solo, pan, gain]
 }

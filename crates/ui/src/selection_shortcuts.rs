@@ -14,6 +14,7 @@ impl DawUi {
 
     pub(super) fn selection_escape_available(&self, ctx: &egui::Context) -> bool {
         self.selection_shortcut_environment_available(ctx)
+            && !self.track_browser.has_gesture()
             && !self.instrument_ui.has_layer_gesture()
             && !strip_reorder::dragging(ctx)
     }
