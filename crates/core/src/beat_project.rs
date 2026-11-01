@@ -14,14 +14,23 @@ impl Asset {
     }
 }
 impl Project {
-    pub fn instruments(&self) -> impl Iterator<Item = &InstrumentSettings> {
-        self.tracks.iter().flat_map(|t| {
-            t.instrument.iter().chain(
-                t.beat
-                    .iter()
-                    .flat_map(|b| b.subtracks.iter().map(|s| &s.instrument)),
-            )
+    /// Project parent and stable instrument owner for ordinary and nested sources.
+    pub fn instrument_owners(&self) -> impl Iterator<Item = (Id, Id, &InstrumentSettings)> {
+        self.tracks.iter().flat_map(|track| {
+            track
+                .instrument
+                .iter()
+                .map(|instrument| (track.id, track.id, instrument))
+                .chain(track.beat.iter().flat_map(|beat| {
+                    beat.subtracks
+                        .iter()
+                        .map(|row| (track.id, row.id, &row.instrument))
+                }))
         })
+    }
+    pub fn instruments(&self) -> impl Iterator<Item = &InstrumentSettings> {
+        self.instrument_owners()
+            .map(|(_, _, instrument)| instrument)
     }
     pub fn instruments_mut(&mut self) -> impl Iterator<Item = &mut InstrumentSettings> {
         self.tracks.iter_mut().flat_map(|t| {

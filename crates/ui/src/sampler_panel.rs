@@ -83,14 +83,14 @@ impl DawUi {
         let Some(track) = self
             .session
             .project
-            .tracks
-            .iter()
-            .find(|t| {
-                t.instrument
-                    .as_ref()
-                    .is_some_and(|i| i.layers.iter().any(|l| l.sampler.is_some()))
+            .instrument_owners()
+            .find(|(_, _, instrument)| {
+                instrument
+                    .layers
+                    .iter()
+                    .any(|layer| layer.sampler.is_some())
             })
-            .map(|t| t.id)
+            .map(|(parent, _, _)| parent)
         else {
             return;
         };

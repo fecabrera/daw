@@ -541,6 +541,107 @@ fn sampler_audio_clip_drag_opens_instrument_and_assigns_on_drop_without_moving_t
 }
 
 #[test]
+fn beat_sampler_audio_clip_drag_opens_parent_and_assigns_without_moving_the_clip() {
+    for granular in [false, true] {
+        let mut app = DawUi::default();
+        let ctx = context();
+        let parent = app.session.project.add_beat_track().unwrap();
+        let mut row = daw_core::BeatSubtrack::new("Sample".into());
+        let owner = row.id;
+        let layer = row.instrument.layers[0].id;
+        row.instrument.layers[0].sampler = Some(if granular {
+            daw_core::SamplerSettings::granular()
+        } else {
+            Default::default()
+        });
+        app.session
+            .project
+            .edit(Edit::Beat {
+                track_id: parent,
+                edit: daw_core::BeatEdit::Add {
+                    subtrack: Box::new(row),
+                    index: 0,
+                },
+            })
+            .unwrap();
+        let file = TestWav::new();
+        let audio_track = app.session.project.add_track().unwrap();
+        app.session.import(&file.0, Some(audio_track), 0).unwrap();
+        let source = app.session.project.tracks[1].clips[0].clone();
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        app.select_track(audio_track, false);
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let instrument = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == "Instrument" => {
+                    Some(t.pos + t.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .expect("Instrument view button");
+        let start = app
+            .clip_block(app.lane_bounds[&audio_track], &source, 0)
+            .min
+            + Vec2::new(20.0, 12.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start + Vec2::new(10.0, 0.0))],
+        );
+        assert!(app.drag.is_some());
+        app.dirty = false;
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(instrument)]);
+        assert_eq!(app.view_mode, ViewMode::Instrument);
+        assert_eq!(app.selected_track, Some(parent));
+        frame(&mut app, &ctx, vec![]);
+        let target = app.beat_sampler_waveform(owner, layer).unwrap().center();
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);
+        assert!(
+            app.session
+                .project
+                .instrument_settings(owner)
+                .unwrap()
+                .layers[0]
+                .sampler
+                .as_ref()
+                .unwrap()
+                .input
+                .is_none()
+                && !app.dirty
+        );
+        frame(&mut app, &ctx, vec![button(target, false)]);
+        wait(&mut app, &ctx);
+        assert_eq!(
+            app.session
+                .project
+                .instrument_settings(owner)
+                .unwrap()
+                .layers[0]
+                .sampler
+                .as_ref()
+                .unwrap()
+                .input
+                .as_ref()
+                .unwrap()
+                .asset_id,
+            source.asset_id
+        );
+        assert!(app.dirty && app.session.project.tracks[0].clips.is_empty());
+        assert_eq!(
+            serde_json::to_value(&app.session.project.tracks[1].clips[0]).unwrap(),
+            serde_json::to_value(source).unwrap()
+        );
+        assert_eq!(app.sampler_drop_target(target), Some((owner, layer)));
+    }
+}
+#[test]
 fn sampler_cancelled_preparation_cannot_publish_a_late_result() {
     let (mut app, ctx, _) = fixture(settings::ColorTheme::Light);
     app.dirty = false;

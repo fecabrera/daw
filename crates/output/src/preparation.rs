@@ -3,6 +3,60 @@ use super::cache_schedule::{CacheControls, WarmSchedule};
 use super::*;
 use std::sync::{Condvar, Mutex};
 
+/// Device startup owns only a silent clock. Logical content is compiled by Worker.
+pub(super) fn initial_plan(plan: &RenderPlan) -> RenderPlan {
+    let project = daw_core::Project {
+        project_id: plan.project.project_id,
+        sample_rate_hz: plan.project.sample_rate_hz,
+        output_sample_format: plan.project.output_sample_format,
+        buffer_size_frames: plan.project.buffer_size_frames,
+        tempo_bpm: plan.project.tempo_bpm,
+        stretch_engine: plan.project.stretch_engine,
+        transport: plan.project.transport.clone(),
+        ..Default::default()
+    };
+    RenderPlan {
+        project,
+        beat_tracks: Default::default(),
+        audio: Default::default(),
+        sampler_audio: Default::default(),
+        stretched_audio: Default::default(),
+    }
+}
+
+/// The logical and compiled plans share prepared PCM. Compare before lowering so
+/// Warm followed by first Play does not rebuild schedules or derived identities.
+#[derive(Default)]
+struct BeatPlans {
+    logical: Option<Arc<RenderPlan>>,
+    compiled: Option<Arc<RenderPlan>>,
+}
+impl BeatPlans {
+    fn resolve(&mut self, plan: Arc<RenderPlan>) -> Arc<RenderPlan> {
+        if !plan
+            .project
+            .tracks
+            .iter()
+            .any(|t| t.kind == daw_core::TrackKind::Beat)
+        {
+            self.logical = None;
+            self.compiled = None;
+            return plan;
+        }
+        if let Some(previous) = &self.logical
+            && (Arc::ptr_eq(previous, &plan) || previous.same_processing_plan(&plan))
+        {
+            let compiled = self.compiled.as_ref().unwrap().clone();
+            self.logical = Some(plan);
+            return compiled;
+        }
+        let compiled = Arc::new((*plan).clone().prepare_beats());
+        self.logical = Some(plan);
+        self.compiled = Some(compiled.clone());
+        compiled
+    }
+}
+
 #[derive(Clone, Default)]
 pub(super) struct Bindings {
     pub tracks: HashMap<Id, Arc<StereoMeter>>,
@@ -14,6 +68,24 @@ pub(super) struct Bindings {
     pub bands: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     pub modulation: HashMap<ModulationTarget, ModulationMeter>,
     pub live_pitches: daw_engine::LiveMidiPitches,
+}
+impl Bindings {
+    pub fn prepare(plan: &RenderPlan, previous: &Self) -> Self {
+        Self {
+            tracks: track_meters(plan, &previous.tracks),
+            layers: layer_meters::prepare(plan, &previous.layers),
+            effects: effect_meters(plan, &previous.effects),
+            exciter_solos: effect_audition::prepare(plan, &previous.exciter_solos),
+            outputs: output_meters(plan, &previous.outputs),
+            sources: source_meters::prepare(plan, &previous.sources),
+            bands: band_meters(plan, &previous.bands),
+            modulation: modulation_meters(plan, &previous.modulation),
+            live_pitches: daw_engine::LiveMidiPitches::prepare(
+                &plan.project,
+                &previous.live_pitches,
+            ),
+        }
+    }
 }
 pub(super) struct Ready {
     pub revision: u64,
@@ -53,6 +125,7 @@ impl Worker {
             .name("audio-preparation".into())
             .spawn(move || {
                 let mut cached_plan: Option<Arc<RenderPlan>> = None;
+                let mut beat_plans = BeatPlans::default();
                 let mut cache: Option<daw_engine::TransportCache> = None;
                 let mut needs_cache = false;
                 let mut applied_controls = 0;
@@ -143,16 +216,7 @@ impl Worker {
                     };
                     let (mut renderer, bindings, transport, anchor) = match plan {
                         Request::Warm(plan) => {
-                            let plan = if plan
-                                .project
-                                .tracks
-                                .iter()
-                                .any(|t| t.kind == daw_core::TrackKind::Beat)
-                            {
-                                Arc::new((*plan).clone().prepare_beats())
-                            } else {
-                                plan
-                            };
+                            let plan = beat_plans.resolve(plan);
                             if cached_plan
                                 .as_ref()
                                 .is_none_or(|p| !p.same_processing_plan(&plan))
@@ -168,16 +232,7 @@ impl Worker {
                             continue;
                         }
                         Request::Plan(plan, transport, requested_at) => {
-                            let plan = if plan
-                                .project
-                                .tracks
-                                .iter()
-                                .any(|t| t.kind == daw_core::TrackKind::Beat)
-                            {
-                                Arc::new((*plan).clone().prepare_beats())
-                            } else {
-                                plan
-                            };
+                            let plan = beat_plans.resolve(plan);
                             if cached_plan.as_ref().is_none_or(|p| {
                                 !Arc::ptr_eq(p, &plan) && !p.same_processing_plan(&plan)
                             }) {
@@ -185,23 +240,7 @@ impl Worker {
                                 status.performance.cache(Default::default());
                                 cached_plan = Some(plan.clone());
                             }
-                            let bindings = Bindings {
-                                tracks: track_meters(&plan, &previous.tracks),
-                                layers: layer_meters::prepare(&plan, &previous.layers),
-                                effects: effect_meters(&plan, &previous.effects),
-                                exciter_solos: effect_audition::prepare(
-                                    &plan,
-                                    &previous.exciter_solos,
-                                ),
-                                outputs: output_meters(&plan, &previous.outputs),
-                                sources: source_meters::prepare(&plan, &previous.sources),
-                                bands: band_meters(&plan, &previous.bands),
-                                modulation: modulation_meters(&plan, &previous.modulation),
-                                live_pitches: daw_engine::LiveMidiPitches::prepare(
-                                    &plan.project,
-                                    &previous.live_pitches,
-                                ),
-                            };
+                            let bindings = Bindings::prepare(&plan, &previous);
                             let renderer = match PreparedRenderer::try_new(
                                 (*plan).clone(),
                                 &bindings.tracks,
@@ -490,3 +529,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "startup_tests.rs"]
+mod startup_tests;

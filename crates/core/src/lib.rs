@@ -750,74 +750,27 @@ impl Project {
                 effects,
                 compact,
             } => {
-                if let Some(beat) = self
-                    .tracks
-                    .iter_mut()
-                    .filter_map(|t| t.beat.as_mut())
-                    .find(|b| b.output.id == layer_id && (b.output.id == track_id))
-                {
-                    beat.output.effects = effects;
-                    beat.output.collapsed = compact;
-                    beat.output.prune_component_order();
+                if let Some(beat) = self.tracks.iter_mut().find_map(|track| {
+                    let beat = track.beat.as_mut()?;
+                    (beat.output.id == layer_id
+                        && (track.id == track_id || beat.output.id == track_id))
+                        .then_some(beat)
+                }) {
+                    beat.output.set_effects(effects, compact);
                     return Ok(());
                 }
-                if self.beat(track_id).is_some_and(|b| b.output.id == layer_id) {
-                    let beat = self.beat_mut(track_id)?;
-                    beat.output.effects = effects;
-                    beat.output.collapsed = compact;
-                    beat.output.prune_component_order();
-                    return Ok(());
-                }
-                // A Batch may temporarily contain invalid layout entries. Keep duplicate
-                // references for final validation rather than normalizing them away.
                 let instrument = self
                     .instrument_settings_mut(track_id)
                     .ok_or_else(|| Error("Instrument not found".into()))?;
                 if layer_id == instrument.main.id {
-                    instrument.main.effects = effects;
-                    instrument.main.prune_component_order();
-                    if !instrument
-                        .main
-                        .component_order
-                        .iter()
-                        .enumerate()
-                        .any(|(n, u)| {
-                            matches!(u, InstrumentComponent::Effect(_))
-                                && instrument.main.component_order[..n].contains(u)
-                        })
-                    {
-                        let mut ids = instrument.main.effects.iter().map(|e| e.id);
-                        for unit in &mut instrument.main.component_order {
-                            if let InstrumentComponent::Effect(id) = unit
-                                && let Some(next) = ids.next()
-                            {
-                                *id = next;
-                            }
-                        }
-                    }
-                    instrument.main.collapsed = compact;
+                    instrument.main.set_effects(effects, compact);
                 } else {
-                    let layer = instrument
+                    instrument
                         .layers
                         .iter_mut()
-                        .find(|l| l.id == layer_id)
-                        .ok_or_else(|| Error("Instrument layer not found".into()))?;
-                    layer.effects = effects;
-                    layer.prune_component_order();
-                    if !layer.component_order.iter().enumerate().any(|(n, u)| {
-                        matches!(u, InstrumentComponent::Effect(_))
-                            && layer.component_order[..n].contains(u)
-                    }) {
-                        let mut ids = layer.effects.iter().map(|e| e.id);
-                        for unit in &mut layer.component_order {
-                            if let InstrumentComponent::Effect(id) = unit
-                                && let Some(next) = ids.next()
-                            {
-                                *id = next;
-                            }
-                        }
-                    }
-                    layer.collapsed = compact;
+                        .find(|layer| layer.id == layer_id)
+                        .ok_or_else(|| Error("Instrument layer not found".into()))?
+                        .set_effects(effects, compact);
                 }
             }
             Edit::SetEffects {

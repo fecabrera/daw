@@ -4,6 +4,55 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat Output ordering, source navigation and worker startup — 2026-11-01
+
+Corrected the three findings in the [five-reviewer fd0edf8 review](https://github.com/fecabrera/daw/pull/5#issuecomment-6560148478).
+The report remains pinned to that reviewed commit.
+
+- Final beat Output uses complete retained inline order and the shared layer/bus
+  effect-slot retargeting. Empty and explicit layouts preserve hidden controls;
+  invalid duplicates still fail final transaction validation. Both parent and
+  Output owner IDs resolve to the same bus.
+- Shared instrument-owner discovery includes ordinary instruments and nested beat
+  subtracks. Timeline audio-clip drags open the real beat parent and load Sampler
+  or Granulizer without moving the source clip.
+- Device startup creates a silent, track-free renderer with the saved project
+  clock. The existing worker compiles logical content and publishes complete
+  renderers/bindings. First Play, device recreation and first audition share that
+  constructor. Warm/Plan requests reuse compiled beat content until processing
+  inputs change. Initial monitor handles and audition flags survive publication.
+
+Focused generated checks cover empty/explicit and hidden-control layouts,
+reorders, library copies, identity/round-trip persistence, beat Sampler and
+Granulizer pointer drags, warm/fresh startup, stopped/playing handoff, reference
+renderer parity, stale Play cancellation, independent audition and monitor-handle
+retention. A mismatched 48 kHz project / 44.1 kHz device-rate check verifies exact
+audition continuity through stopped startup publication, including already
+converted samples. Callback handoff and sampling use the existing zero-allocation
+guard.
+
+Completed checks:
+
+- `cargo fmt --all --check`, `git diff --check` and changed guide/specification
+  link checks pass.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`
+  passes after the final resampling correction.
+- `cargo test --offline --locked -p daw-core -p daw-unit-core -p daw-output -p daw-ui`
+  passes: 1,050 tests, two ignored probes across 12 suites.
+- `cargo test --offline --locked --workspace` passes: 2,068 tests, 13 ignored,
+  across 260 suites.
+- The final `cargo test --offline --locked -p daw-output --lib` rerun passes all
+  51 tests, including the additional device-rate audition continuity regression
+  and the final callback correction.
+- `cargo build --offline --locked -p daw-cli` passes.
+- `python3 tools/check_cli.py` passes: source collection, inspection, WAV/MP3/AAC,
+  repeatability, missing sources, group buses, overwrite and exit codes.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app` successfully.
+
+Native visual/display-scale, physical pointer/menu/keyboard, listening/device and
+Windows/Linux acceptance remain open. These fixes do not close Stage 6 or change
+the pinned review's verdict.
+
 ## Beat tail gain, retained selection and load diagnostics — 2026-11-01
 
 Corrected the four findings in the [local ac7f4ac review](https://github.com/fecabrera/daw/pull/5#issuecomment-6559056746).

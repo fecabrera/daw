@@ -1,12 +1,12 @@
 # Sampler
 
-Sampler plays a selected audio region for each MIDI note. It is a source component for regular MIDI instrument layers. MIDI notes play relative to the sample's root note, across the full piano-roll range.
+Sampler plays a selected audio region for each MIDI note. It is a source component for regular MIDI instrument layers and beat subtracks. MIDI notes play relative to the sample's root note, across the full piano-roll range.
 
 ## Load a sample
 
 1. In Instrument, select an empty layer and add Sampler from Sources in the component catalog. A layer can contain one of Sampler, Oscillator, or Granulizer. Use Replace source in an existing source's header menu to switch types.
 2. Drop one WAV, MP3, or AAC-LC file onto Sampler, or select **Choose sample…** in its header menu. Supported formats and limits match [clip import](../views/timeline.md#supported-imports).
-3. To use a Timeline audio clip, drag it over the Instrument view button, then drop it onto a Sampler. The Timeline clip stays in place. Its visible trim, repeats, and stretch are retained; track gain, pan, and effects are not captured.
+3. To use a Timeline audio clip, drag it over the Instrument view button, then drop it onto a Sampler or Granulizer. This also works inside a beat subtrack. The Timeline clip stays in place. Its visible trim, repeats, and stretch are retained; track gain, pan, and effects are not captured.
 4. Play MIDI notes to audition the sample.
 
 The sample name appears in the preview's clip header. Drag the selection-bar edges to resize the playback region, its body to move it, or outside it to select another region. Shift bypasses snapping. Release applies the selection; Escape or focus loss cancels. This does not edit the recording or project loop selection.

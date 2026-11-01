@@ -56,6 +56,20 @@ struct BeatDrag {
 }
 impl DawUi {
     #[cfg(test)]
+    pub(super) fn beat_sampler_waveform(&self, owner: Id, layer: Id) -> Option<Rect> {
+        self.instrument_ui
+            .samplers
+            .iter()
+            .chain(
+                self.beat_ui
+                    .states
+                    .values()
+                    .flat_map(|state| &state.samplers),
+            )
+            .find(|bounds| bounds.track == owner && bounds.layer == layer)
+            .map(|bounds| bounds.waveform)
+    }
+    #[cfg(test)]
     pub(super) fn cached_beat_layer_selected(&self, owner: Id, layer: Id) -> bool {
         self.beat_ui
             .states

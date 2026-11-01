@@ -54,7 +54,7 @@ pub(super) fn realtime<T>(operation: impl FnOnce() -> T) -> T {
     );
     result
 }
-fn ready(worker: &preparation::Worker) -> preparation::Ready {
+pub(super) fn ready(worker: &preparation::Worker) -> preparation::Ready {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         if let Some(ready) = worker.take() {

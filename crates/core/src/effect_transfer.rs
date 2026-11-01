@@ -86,34 +86,17 @@ impl Project {
         let EffectChainTarget::Layer { track, layer } = destination else {
             return Ok(transfer);
         };
-        if self.instrument_settings(track).is_none()
-            && let Some(mut settings) = self.instrument_snapshot(track)
-        {
-            let mut next = self.edited(transfer.edit.clone())?;
-            settings.main = next.instrument_snapshot(track).unwrap().main;
-            let selected:Vec<_>=settings.main.visible_units().into_iter().filter(|u|matches!(u,InstrumentComponent::Effect(id) if transfer.selected.contains(id))).collect();
-            settings
-                .main
-                .component_order
-                .retain(|u| !selected.contains(u));
-            let at = before
-                .and_then(|u| settings.main.component_order.iter().position(|v| *v == u))
-                .unwrap_or(settings.main.component_order.len());
-            settings.main.component_order.splice(at..at, selected);
-            next.set_instrument_settings(track, Some(settings.clone()))?;
-            next.validate()?;
-            transfer.edit = Edit::Batch(vec![
-                transfer.edit,
-                Edit::SetInstrument {
-                    track_id: track,
-                    instrument: Some(settings),
-                },
-            ]);
-            return Ok(transfer);
-        }
-        let original = self
-            .instrument_settings(track)
-            .ok_or_else(|| Error("Instrument not found".into()))?;
+        let track = self
+            .beat(track)
+            .filter(|beat| beat.output.id == layer)
+            .map_or(track, |beat| beat.output.id);
+        let original = match self.instrument_settings(track) {
+            Some(settings) => std::borrow::Cow::Borrowed(settings),
+            None => std::borrow::Cow::Owned(
+                self.instrument_snapshot(track)
+                    .ok_or_else(|| Error("Instrument not found".into()))?,
+            ),
+        };
         let (mut order, visible) = if layer == original.main.id {
             (
                 original.main.retained_units(),
@@ -145,9 +128,17 @@ impl Project {
         order.splice(at..at, selected);
         let mut next = self.clone();
         next.edit(transfer.edit.clone())?;
-        let instrument = next
-            .instrument_settings_mut(track)
-            .ok_or_else(|| Error("Inline effect destination was removed".into()))?;
+        let final_output = next.instrument_settings(track).is_none();
+        let mut snapshot;
+        let instrument = if final_output {
+            snapshot = next
+                .instrument_snapshot(track)
+                .ok_or_else(|| Error("Inline effect destination was removed".into()))?;
+            &mut snapshot
+        } else {
+            next.instrument_settings_mut(track)
+                .ok_or_else(|| Error("Inline effect destination was removed".into()))?
+        };
         if layer == instrument.main.id {
             order.retain(|u| !matches!(u,InstrumentComponent::Effect(id) if !instrument.main.effects.iter().any(|e|e.id==*id)));
             let desired: Vec<_> = order
@@ -177,6 +168,9 @@ impl Project {
             }
         }
         let instrument = instrument.clone();
+        if final_output {
+            next.set_instrument_settings(track, Some(instrument.clone()))?;
+        }
         next.validate()?;
         transfer.edit = Edit::Batch(vec![
             transfer.edit,

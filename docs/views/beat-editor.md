@@ -72,7 +72,7 @@ Drag selected source-layer headers to reorder them within a subtrack. Hold Optio
 on macOS or Ctrl on Windows/Linux to copy them. Release inside the layer list to
 apply; Escape, focus loss or an outside release cancels the drag.
 
-Collapsing a group hides all its child lanes, including Output, and retains audio processing. The compact header also shows the output controls while collapsed, and hides Add layer. Each nested Output lane contains that subtrack's output units and controls. Its Gain and the group-header Gain control the same level. One fixed **Output** follows all groups and combines them before the parent track's effects and mix controls. It supports the shared output body, effects and local Macros. It cannot be renamed, deleted or reordered as a subtrack.
+Collapsing a group hides all its child lanes, including Output, and retains audio processing. The compact header also shows the output controls while collapsed, and hides Add layer. Each nested Output lane contains that subtrack's output units and controls. Its Gain and the group-header Gain control the same level. One fixed **Output** follows all groups and combines them before the parent track's effects and mix controls. It supports the shared output body, effects and local Macros. Add, reorder and copy its effects as on a subtrack Output. It cannot be renamed, deleted or reordered as a subtrack.
 
 ## Stop another subtrack
 
