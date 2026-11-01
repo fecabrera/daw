@@ -326,7 +326,7 @@ impl DawUi {
                 .session
                 .project
                 .beat_subtrack(row.id)
-                .map(|(_, row)| row.clone())
+                .map(|(_, row)| crate::beat_editor::BeatRow::from(row))
             {
                 self.beat_rename_input(&mut input, parent, &source, font);
             }
@@ -626,7 +626,7 @@ impl DawUi {
                                 .session
                                 .project
                                 .beat_subtrack(row.id)
-                                .map(|(_, row)| row.clone())
+                                .map(|(_, row)| crate::beat_editor::BeatRow::from(row))
                             {
                                 self.beat_header_menu(ui, parent, &source, &menu, rect);
                             }

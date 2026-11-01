@@ -24,7 +24,11 @@ impl DawUi {
                     .iter()
                     .find(|track| Some(track.id) == self.selected_track)
             })
-            .cloned();
+            .map(|track| {
+                let mut snapshot = track_rows::header_snapshot(track);
+                snapshot.clips = track.clips.clone();
+                snapshot
+            });
         let assets = project
             .assets
             .iter()

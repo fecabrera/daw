@@ -2698,3 +2698,258 @@ fn selected_beat_owner_paint_ignores_sibling_processing_size() {
         assert_eq!(app.instrument_ui.track, Some(row));
     }
 }
+
+#[test]
+#[ignore = "manual selected-owner paint scaling probe"]
+fn editor_paint_ignores_sibling_processing_size() {
+    let (mut app, ctx, parent, row, _) = setup();
+    app.view_mode = ViewMode::Edit;
+    app.navigate_beat_owner(parent, Some(row), false);
+    app.set_tracks_panel_visible(false);
+    let sibling = BeatSubtrack::new("Hidden".into());
+    app.session
+        .project
+        .edit(Edit::Beat {
+            track_id: parent,
+            edit: BeatEdit::Add {
+                subtrack: Box::new(sibling),
+                index: 1,
+            },
+        })
+        .unwrap();
+    for heavy in [false, true] {
+        if heavy {
+            app.session.project.tracks[0]
+                .beat
+                .as_mut()
+                .unwrap()
+                .subtracks[1]
+                .instrument
+                .layers[0]
+                .effects = (0..4096)
+                .map(|_| daw_core::EffectInstance::drive())
+                .collect();
+        }
+        for _ in 0..5 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        let start = std::time::Instant::now();
+        for _ in 0..100 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        eprintln!(
+            "hidden sibling heavy={heavy}: {:?} per 100 paints",
+            start.elapsed()
+        );
+        assert_eq!(app.instrument_ui.track, Some(row));
+    }
+}
+
+#[test]
+fn dense_shared_beat_thumbnails_have_bounded_shapes_and_reuse_conversion() {
+    let (mut app, ctx, parent, _, clip_id) = setup();
+    let mut rows = Vec::new();
+    for i in 0..64 {
+        rows.push(BeatSubtrack::new(format!("Row {i}")));
+    }
+    let ids: Vec<_> = rows.iter().map(|r| r.id).collect();
+    app.session.project.tracks[0]
+        .beat
+        .as_mut()
+        .unwrap()
+        .subtracks = rows;
+    let asset_id = app.session.project.tracks[0].clips[0].asset_id;
+    let source = app
+        .session
+        .project
+        .assets
+        .iter_mut()
+        .find(|a| a.id == asset_id)
+        .unwrap()
+        .beat_pattern
+        .as_mut()
+        .unwrap();
+    source.pattern.bars = 16;
+    source.pattern.resolution = daw_core::BeatResolution::ThirtySecond;
+    source.pattern.steps = ids
+        .iter()
+        .flat_map(|row| {
+            (0..512).map(move |slot| daw_core::BeatStep {
+                id: Id::new_v4(),
+                subtrack_id: *row,
+                start_tick: slot * 120,
+                velocity: 100,
+            })
+        })
+        .collect();
+    source.pattern.validate().unwrap();
+    let frames = app.session.project.midi_frame(16 * 4 * 960);
+    app.session.project.tracks[0].clips[0].length_frames = frames;
+    app.session
+        .project
+        .assets
+        .iter_mut()
+        .find(|a| a.id == asset_id)
+        .unwrap()
+        .decoded_frame_count = frames;
+    let clip = app.session.project.tracks[0]
+        .clips
+        .iter()
+        .find(|c| c.id == clip_id)
+        .unwrap()
+        .clone();
+    app.session.project.validate().unwrap();
+    app.set_view_zoom(25.0 / app.session.project.seconds(frames) as f32);
+    for paint in 0..2 {
+        let start = std::time::Instant::now();
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 800.0))),
+                ..Default::default()
+            },
+            |ui| {
+                for i in 0..20 {
+                    let rect = Rect::from_min_size(
+                        Pos2::new(30.0 + i as f32 * 30.0, 50.0),
+                        Vec2::new(25.0, 64.0),
+                    );
+                    app.paint_clip(
+                        ui.painter(),
+                        daw_core::LEGACY_CLIP_COLOR,
+                        rect,
+                        &clip,
+                        false,
+                        None,
+                    );
+                }
+            },
+        );
+        out.textures_delta.clear();
+        eprintln!(
+            "thumbnail paint={paint}: {:?}; shapes={}",
+            start.elapsed(),
+            out.shapes.len()
+        );
+        assert!(
+            out.shapes.len() < 40_000,
+            "zoomed-out markers must scale with pixels"
+        );
+        assert_eq!(
+            app.beat_ui.thumbnails.borrow().builds,
+            1,
+            "shared immutable source converts once"
+        );
+    }
+    assert_eq!(app.session.project.tracks[0].id, parent);
+}
+
+#[test]
+fn detailed_beat_thumbnails_share_trim_repeat_stretch_mapping_with_midi() {
+    let (mut app, ctx, _, row, clip_id) = setup();
+    let pattern = BeatPattern::default()
+        .with_step(row, 0, Some(100))
+        .unwrap()
+        .with_step(row, 960, Some(100))
+        .unwrap();
+    app.session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id,
+            pattern: pattern.clone(),
+        })
+        .unwrap();
+    let original = app.session.project.tracks[0].clips[0].clone();
+    let midi = daw_core::MidiPattern {
+        length_ticks: pattern.length_ticks(),
+        notes: pattern
+            .visible_steps()
+            .map(|step| daw_core::MidiNote {
+                id: step.id,
+                start_tick: step.start_tick,
+                length_ticks: pattern.resolution.step_ticks(),
+                pitch: 60,
+                velocity: step.velocity,
+            })
+            .collect(),
+    };
+    app.set_view_zoom(400.0);
+    let color = theme::clip_colors(app.session.project.tracks[0].color, None).waveform;
+    for trimmed in [false, true] {
+        for stretched in [false, true] {
+            for repeated in [false, true] {
+                let mut clip = original.clone();
+                if stretched {
+                    clip.stretch = daw_core::ClipStretch::new(1, 2);
+                }
+                if trimmed {
+                    clip.source_offset_frame = 6000;
+                    clip.length_frames /= 2;
+                }
+                if repeated {
+                    clip.repeat = Some(daw_core::ClipLoop {
+                        length_frames: 24000,
+                        phase_frame: 3000,
+                    });
+                    clip.length_frames *= 3;
+                }
+                let block = Rect::from_min_size(
+                    Pos2::new(-100.0, 40.0),
+                    Vec2::new(
+                        app.session.project.seconds(clip.length_frames) as f32 * app.view_zoom(),
+                        64.0,
+                    ),
+                );
+                let mut markers = Vec::new();
+                for beat in [true, false] {
+                    let mut out = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(300.0, 200.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            let painter = ui.painter().with_clip_rect(Rect::from_min_max(
+                                Pos2::new(30.0, 0.0),
+                                Pos2::new(280.0, 200.0),
+                            ));
+                            if beat {
+                                app.paint_clip(
+                                    &painter,
+                                    app.session.project.tracks[0].color,
+                                    block,
+                                    &clip,
+                                    false,
+                                    None,
+                                );
+                            } else {
+                                app.paint_midi_notes(&painter, block, &clip, &midi, color);
+                            }
+                        },
+                    );
+                    let mut rects: Vec<_> = out
+                        .shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect) if rect.fill == color => Some(rect.rect),
+                            _ => None,
+                        })
+                        .collect();
+                    rects.sort_by(|a, b| {
+                        a.min
+                            .x
+                            .total_cmp(&b.min.x)
+                            .then(a.min.y.total_cmp(&b.min.y))
+                    });
+                    markers.push(rects);
+                    out.textures_delta.clear();
+                }
+                assert_eq!(
+                    markers[0], markers[1],
+                    "trim={trimmed} stretch={stretched} repeat={repeated}"
+                );
+            }
+        }
+    }
+}

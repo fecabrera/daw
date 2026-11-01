@@ -84,7 +84,7 @@ pub(super) struct GainPanResponse {
 /// Compact instrument row, using the same control sizes and gaps as track headers.
 pub(super) fn named_row<R>(
     ui: &mut Ui,
-    bus: &mut daw_core::InstrumentBusSettings,
+    mix: (&mut f32, &mut f32),
     muted: &mut bool,
     soloed: &mut bool,
     name: impl FnOnce(&mut Ui) -> R,
@@ -94,8 +94,8 @@ pub(super) fn named_row<R>(
     header.mix.spacing_mut().item_spacing.x = GROUP_GAP;
     let (knobs, toggles) = header_row(
         &mut header.mix,
-        &mut bus.gain_db,
-        &mut bus.pan,
+        mix.0,
+        mix.1,
         muted,
         soloed,
         ["Mute subtrack", "Solo within this beat instrument"],

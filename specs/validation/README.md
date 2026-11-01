@@ -4,6 +4,30 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat Editor and thumbnail paint corrections — 2026-11-01
+
+The three minor findings against `e2de9ec` are corrected. Current requirements
+link delivered selection/navigation behavior instead of marking it pending.
+Editor rows, headers and overview tracks copy metadata and required clip content
+without processing graphs. Shared beat thumbnail conversion uses immutable
+source/revision and ordered-row keys, a direct row index and cached zoom levels.
+Sorted time bounds and pixel detail limit marker work. Existing MIDI mapping
+continues to handle trim, repeat, phase and stretch.
+
+Focused checks pass: 71 beat tests, cache reuse/invalidation, dense shared-source
+thumbnail shape bounds, and exact detailed marker geometry against MIDI for
+trim/repeat/stretch combinations. A manual debug Editor probe measured 226 ms
+for 100 paints with an empty sibling and 227 ms with 4,096 hidden effects. This
+is a synthetic local observation, not a native frame-rate or release guarantee.
+Twenty 25-point thumbnails sharing a 32,768-hit source emit 19,280 shapes and
+convert once; the debug probe took 61 ms cold and 7 ms warm.
+
+`cargo test --offline --locked --workspace` passes: 2,108 tests, 15 ignored,
+across 260 suites, including all 830 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for this correction.
+
 ## Nested sample preview color correction — 2026-11-01
 
 The minor finding against `e86bb6d` is corrected. The shared Sampler/Granulizer

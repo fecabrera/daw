@@ -71,34 +71,38 @@ impl DawUi {
                 theme::palette(painter.ctx()).warning,
             );
         } else if let Some(beat) = beat {
-            // Reuse exact trim, repeat, stretch and visible-repetition mapping from MIDI painting.
             let rows: Vec<_> = self
                 .session
                 .project
                 .tracks
                 .iter()
-                .filter_map(|t| t.beat.as_ref())
-                .find(|b| b.id == beat.instrument_id)
-                .map(|b| b.subtracks.iter().map(|r| r.id).collect())
+                .filter_map(|track| track.beat.as_ref())
+                .find(|container| container.id == beat.instrument_id)
+                .map(|container| container.subtracks.iter().map(|row| row.id).collect())
                 .unwrap_or_default();
-            let pattern = MidiPattern {
-                length_ticks: beat.pattern.length_ticks(),
-                notes: beat
-                    .pattern
-                    .visible_steps()
-                    .filter_map(|s| {
-                        let row = rows.iter().position(|id| *id == s.subtrack_id)?;
-                        Some(daw_core::MidiNote {
-                            id: s.id,
-                            start_tick: s.start_tick,
-                            length_ticks: beat.pattern.resolution.step_ticks(),
-                            pitch: 60 + (row % 60) as u8,
-                            velocity: s.velocity,
-                        })
-                    })
-                    .collect(),
-            };
-            self.paint_midi_notes(&clip_painter, block, clip, &pattern, colors.waveform);
+            let step_frames = self
+                .session
+                .project
+                .midi_frame(beat.pattern.resolution.step_ticks());
+            let step_frames = clip.stretch.map_or(step_frames, |stretch| {
+                stretch.scale(step_frames).unwrap_or(0)
+            });
+            let pixels = self.session.project.seconds(step_frames) as f32 * self.view_zoom();
+            let level = self.beat_ui.thumbnails.borrow_mut().level(
+                (self.session.project.project_id, self.change_revision),
+                clip.asset_id,
+                &rows,
+                &beat.pattern,
+                pixels,
+            );
+            self.paint_pattern_notes(
+                &clip_painter,
+                block,
+                clip,
+                &level.pattern,
+                colors.waveform,
+                Some((level.max_length, level.min_pitch, level.max_pitch)),
+            );
         } else if let Some(pattern) = pattern {
             self.paint_midi_notes(&clip_painter, block, clip, pattern, colors.waveform);
         } else if let Some(audio) = audio {
@@ -161,15 +165,30 @@ impl DawUi {
         pattern: &MidiPattern,
         color: egui::Color32,
     ) {
+        self.paint_pattern_notes(painter, block, clip, pattern, color, None);
+    }
+
+    fn paint_pattern_notes(
+        &self,
+        painter: &egui::Painter,
+        block: Rect,
+        clip: &Clip,
+        pattern: &MidiPattern,
+        color: egui::Color32,
+        ordered: Option<(u32, u8, u8)>,
+    ) {
         let body = Rect::from_min_max(Pos2::new(block.left(), block.top() + 22.0), block.max);
-        let min_pitch = pattern.notes.iter().map(|n| n.pitch).min().unwrap_or(60);
-        let max_pitch = pattern
-            .notes
-            .iter()
-            .map(|n| n.pitch)
-            .max()
-            .unwrap_or(72)
-            .max(min_pitch.saturating_add(12));
+        let (min_pitch, max_pitch) = ordered.map(|(_, min, max)| (min, max)).unwrap_or_else(|| {
+            let min = pattern.notes.iter().map(|n| n.pitch).min().unwrap_or(60);
+            let max = pattern
+                .notes
+                .iter()
+                .map(|n| n.pitch)
+                .max()
+                .unwrap_or(72)
+                .max(min.saturating_add(12));
+            (min, max)
+        });
         let count = clip.repeat.map_or(1, |repeat| {
             (clip.length_frames / repeat.length_frames).saturating_add(2)
         });
@@ -185,7 +204,34 @@ impl DawUi {
         let pixels_per_repeat = self.session.project.seconds(base) as f32 * self.view_zoom();
         let stride = (0.5 / pixels_per_repeat).ceil().max(1.0) as usize;
         for repetition in (first..count.min(first.saturating_add(visible_count))).step_by(stride) {
-            for note in &pattern.notes {
+            let notes = if let Some((max_ticks, _, _)) = ordered {
+                // Cached beat levels are sorted by start. Restrict traversal to notes
+                // that can overlap this visible source interval, including boundary hits.
+                let mapped = |ticks| {
+                    let frames = self.session.project.midi_frame(ticks);
+                    clip.stretch
+                        .map_or(frames, |s| s.scale(frames).unwrap_or(0))
+                };
+                let origin = i128::from(clip.source_offset_frame)
+                    + i128::from(clip.repeat.map_or(0, |r| r.phase_frame))
+                    - i128::from(repetition) * i128::from(base);
+                let left = origin + i128::from(visible_start);
+                let right = origin
+                    + ((painter.clip_rect().right() - body.left()).max(0.0) / self.view_zoom()
+                        * self.session.project.sample_rate_hz as f32)
+                        .ceil() as i128;
+                let longest = i128::from(mapped(max_ticks).saturating_add(2));
+                let first = pattern
+                    .notes
+                    .partition_point(|note| i128::from(mapped(note.start_tick)) + longest < left);
+                let last = pattern
+                    .notes
+                    .partition_point(|note| i128::from(mapped(note.start_tick)) <= right);
+                &pattern.notes[first..last.max(first)]
+            } else {
+                &pattern.notes[..]
+            };
+            for note in notes {
                 let original_start = self.session.project.midi_frame(note.start_tick);
                 let original_end = self
                     .session
@@ -219,6 +265,9 @@ impl DawUi {
                     + finish.min(i128::from(clip.length_frames)) as f32
                         / self.session.project.sample_rate_hz as f32
                         * self.view_zoom();
+                if right < painter.clip_rect().left() || x > painter.clip_rect().right() {
+                    continue;
+                }
                 // Keep the fixed two-point note marker inside compact track bodies.
                 let y = (body.bottom()
                     - (f32::from(note.pitch.saturating_sub(min_pitch)) + 1.0)

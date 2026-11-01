@@ -50,6 +50,12 @@ Output meters and parameter snapshots use the same stable subtrack/unit IDs as n
 
 ## UI and acceptance
 
+Editor headers and step rows copy presentation metadata without processing
+graphs. Beat thumbnails cache overview levels by immutable source, project
+revision and ordered subtrack IDs. Coarser levels combine subpixel hits; sorted
+start ticks limit traversal and drawing to the visible source interval. Detailed
+thumbnails retain the shared MIDI trim, repeat, phase and stretch mapping.
+
 Editor and Instrument share subtrack selection, name/context controls, mix widgets and release-only group reorder. One shared context menu owns the full subtrack header rectangle, including controls, meters and padding, in the Editor and Tracks browser. Reuse the canonical compound-control popup opening guard; secondary clicks do not trigger primary control actions or project edits. Selecting a subtrack name, control or header background clears final Output targeting through one selection transition. Drag cancellation covers Escape, focus loss, outside release and model revision changes. Delete requires subtrack-header focus and does not act on text, steps or units. Removing the primary row selects a deterministic neighboring primary; removed IDs are pruned. Selection and source identity survive view changes.
 
 Editor indexes hits by stable subtrack ID and source tick for each immutable asset revision, including hidden hits. Update the index after an edit within the same paint so repeated cells remain consistent. Generate source cells only for the visible time interval; construct row widgets only where they intersect the viewport. Retain complete row rectangles for group insertion and edge scrolling, and keep active controls and rename widgets until normal gesture/focus cleanup completes. Presentation culling does not remove content or alter clip mapping, selection or editing transactions.

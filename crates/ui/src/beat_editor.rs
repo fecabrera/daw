@@ -29,6 +29,41 @@ pub(super) fn parse_trigger_note(text: &str) -> Option<f64> {
     daw_unit_core::natural_note(&natural, sharp).map(f64::from)
 }
 
+/// Row controls never need source, effect or modulation graphs.
+#[derive(Clone)]
+pub(super) struct BeatRow {
+    id: Id,
+    name: String,
+    muted: bool,
+    soloed: bool,
+    trigger_pitch: u8,
+    stops: Vec<Id>,
+    mix: RowMix,
+}
+#[derive(Clone, Copy, PartialEq)]
+struct RowMix {
+    id: Id,
+    gain_db: f32,
+    pan: f32,
+}
+impl From<&BeatSubtrack> for BeatRow {
+    fn from(row: &BeatSubtrack) -> Self {
+        Self {
+            id: row.id,
+            name: row.name.clone(),
+            muted: row.muted,
+            soloed: row.soloed,
+            trigger_pitch: row.trigger_pitch,
+            stops: row.stops.clone(),
+            mix: RowMix {
+                id: row.instrument.main.id,
+                gain_db: row.instrument.main.gain_db,
+                pan: row.instrument.main.pan,
+            },
+        }
+    }
+}
+
 #[derive(Default)]
 pub(super) struct BeatUi {
     track: Option<Id>,
@@ -38,6 +73,7 @@ pub(super) struct BeatUi {
     selected: HashSet<Id>,
     states: std::collections::HashMap<Id, instrument_panel::InstrumentUi>,
     pub step_index: crate::beat_grid::StepIndex,
+    pub thumbnails: std::cell::RefCell<crate::beat_thumbnail::Cache>,
     rename: Option<(Id, String, bool)>,
     drag: Option<BeatDrag>,
     length_drag: Option<MonitorDrag>,
@@ -279,7 +315,7 @@ impl DawUi {
         &mut self,
         ui: &mut egui::Ui,
         track: Id,
-        row: &BeatSubtrack,
+        row: &BeatRow,
         font_size: f32,
     ) -> Option<egui::Response> {
         if !self.beat_renaming(row.id) {
@@ -354,7 +390,7 @@ impl DawUi {
         &mut self,
         ui: &mut egui::Ui,
         track: Id,
-        row: &BeatSubtrack,
+        row: &BeatRow,
     ) -> egui::Response {
         let editing = self.beat_renaming(row.id);
         let response = self
@@ -427,7 +463,7 @@ impl DawUi {
         &mut self,
         ui: &mut egui::Ui,
         track: Id,
-        row: &BeatSubtrack,
+        row: &BeatRow,
         response: &egui::Response,
         rect: Rect,
     ) {
@@ -491,7 +527,7 @@ impl DawUi {
                         .session
                         .project
                         .beat(track)
-                        .map(|b| b.subtracks.clone())
+                        .map(|b| b.subtracks.iter().map(BeatRow::from).collect::<Vec<_>>())
                         .unwrap_or_default();
                     for other in siblings.iter().filter(|r| r.id != row.id) {
                         let mut selected = row.stops.contains(&other.id);
@@ -776,7 +812,12 @@ impl DawUi {
     }
     pub(super) fn beat_grid(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
         self.reconcile_beat(track.id);
-        let Some(beat) = self.session.project.beat(track.id).cloned() else {
+        let Some(rows) = self
+            .session
+            .project
+            .beat(track.id)
+            .map(|beat| beat.subtracks.iter().map(BeatRow::from).collect::<Vec<_>>())
+        else {
             return;
         };
         let active = track
@@ -934,7 +975,7 @@ impl DawUi {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let mut row_bounds = Vec::new();
-                for row in &beat.subtracks {
+                for row in &rows {
                     let top = ui.next_widget_position();
                     let height = 32.0;
                     let rect = Rect::from_min_size(top, Vec2::new(ui.available_width(), height));
@@ -976,12 +1017,12 @@ impl DawUi {
                                 .layout(egui::Layout::top_down(egui::Align::Min)),
                         );
                         header.spacing_mut().item_spacing = Vec2::new(mix_controls::GROUP_GAP, 4.0);
-                        let mut bus = row.instrument.main.clone();
+                        let mut bus = row.mix;
                         let (mut muted, mut soloed) = (row.muted, row.soloed);
                         let levels = self
                             .output
                             .as_ref()
-                            .and_then(|o| o.layer_meter(row.id, row.instrument.main.id))
+                            .and_then(|o| o.layer_meter(row.id, row.mix.id))
                             .map_or([(0.0, false); 2], |meter| meter.levels());
                         let ((response, knobs, toggles), cleared) =
                             meters::stereo_panel_with_content(
@@ -996,7 +1037,7 @@ impl DawUi {
                                             |ui| {
                                                 mix_controls::named_row(
                                                     ui,
-                                                    &mut bus,
+                                                    (&mut bus.gain_db, &mut bus.pan),
                                                     &mut muted,
                                                     &mut soloed,
                                                     |ui| self.beat_name(ui, track.id, row),
@@ -1010,7 +1051,7 @@ impl DawUi {
                             ui,
                             self.output
                                 .as_ref()
-                                .and_then(|o| o.layer_meter(row.id, row.instrument.main.id)),
+                                .and_then(|o| o.layer_meter(row.id, row.mix.id)),
                             cleared,
                         );
                         #[cfg(test)]
@@ -1061,8 +1102,7 @@ impl DawUi {
                         self.beat_header_menu(ui, track.id, row, &panel, rect);
                         #[cfg(not(test))]
                         let _ = (response, knobs, toggles);
-                        if bus != row.instrument.main || muted != row.muted || soloed != row.soloed
-                        {
+                        if bus != row.mix || muted != row.muted || soloed != row.soloed {
                             self.edit_beat(
                                 track.id,
                                 BeatEdit::SetMix {

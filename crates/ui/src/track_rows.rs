@@ -79,3 +79,25 @@ impl DawUi {
         }
     }
 }
+
+/// Metadata used by track headers; processing graphs and clip content stay in the project.
+pub(super) fn header_snapshot(track: &daw_core::Track) -> daw_core::Track {
+    daw_core::Track {
+        id: track.id,
+        name: track.name.clone(),
+        kind: track.kind,
+        color: track.color,
+        gain_db: track.gain_db,
+        pan: track.pan,
+        muted: track.muted,
+        soloed: track.soloed,
+        group_id: track.group_id,
+        group_collapsed: track.group_collapsed,
+        effects: Vec::new(),
+        effects_compact: track.effects_compact,
+        instrument: None,
+        beat: None,
+        midi_options: track.midi_options,
+        clips: Vec::new(),
+    }
+}
