@@ -613,7 +613,7 @@ impl DawUi {
                                                                     let effect=layer.effects.iter_mut().find(|e|e.id==id).unwrap();
                                                                     Some(self.inline_layer_effect(ui,track.id,layer.id,effect,(height,compact),&modulation_sources))
                                                                 }
-                                                                daw_core::InstrumentComponent::Sampler => Some(self.sampler_unit(ui, track.id, layer, &modulation_sources, height, compact)),
+                                                                daw_core::InstrumentComponent::Sampler => Some(self.sampler_unit(ui, &track, layer, &modulation_sources, height, compact)),
                                                                 daw_core::InstrumentComponent::Oscillators => {
                                                                     let (rect, header, power) = self.oscillator_unit(ui, track.id, layer, height, compact, &modulation_sources);
                                                                     oscillator_panel = Some(rect);

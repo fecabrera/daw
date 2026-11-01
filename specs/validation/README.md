@@ -4,6 +4,21 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Nested sample preview color correction — 2026-11-01
+
+The minor finding against `e86bb6d` is corrected. The shared Sampler/Granulizer
+body reads its color from the existing presentation track snapshot instead of
+looking for a nested owner ID among real project tracks. This preserves parent
+color without copying another instrument graph. A paint regression covers
+header and body colors for both source types on ordinary MIDI and nested beat
+instruments.
+
+`cargo test --offline --locked --workspace` passes: 2,105 tests, 14 ignored,
+across 260 suites, including all 827 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for this correction.
+
 ## Beat reorder, audition and paint corrections — 2026-11-01
 
 The three minor findings against `dedbd19` are corrected. Primary reorder

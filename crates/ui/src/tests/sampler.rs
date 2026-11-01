@@ -1239,3 +1239,81 @@ fn granulizer_catalog_layout_controls_and_source_conflicts_use_shared_sample_she
         assert!(instrument.main.visible_components().is_empty());
     }
 }
+
+#[test]
+fn sample_preview_uses_presentation_color_for_midi_and_nested_sources() {
+    for nested in [false, true] {
+        for granular in [false, true] {
+            let mut app = DawUi::default();
+            let parent = if nested {
+                app.session.project.add_beat_track().unwrap()
+            } else {
+                app.session.project.add_midi_track().unwrap()
+            };
+            let owner = if nested {
+                let row = daw_core::BeatSubtrack::new("Colored".into());
+                let owner = row.id;
+                app.session
+                    .project
+                    .edit(Edit::Beat {
+                        track_id: parent,
+                        edit: daw_core::BeatEdit::Add {
+                            subtrack: Box::new(row),
+                            index: 0,
+                        },
+                    })
+                    .unwrap();
+                owner
+            } else {
+                parent
+            };
+            app.session.project.tracks[0].color = daw_core::DEFAULT_TRACK_COLORS[3];
+            let mut presentation = app.session.project.instrument_track(owner).unwrap();
+            let colors = theme::clip_colors(presentation.color, None);
+            assert_ne!(
+                colors.body,
+                theme::clip_colors(daw_core::DEFAULT_TRACK_COLOR, None).body
+            );
+            // Paint-only input: decoding is not needed to verify the shared header/body colors.
+            let sampler = daw_core::SamplerSettings {
+                input: Some(daw_core::SamplerInput {
+                    asset_id: Id::new_v4(),
+                    name: "Color preview".into(),
+                    source_offset_frame: 0,
+                    length_frames: 48000,
+                    repeat: None,
+                    stretch: None,
+                }),
+                end_frame: 48000,
+                granulizer: granular.then(Default::default),
+                ..Default::default()
+            };
+            let layer = &mut presentation.instrument.as_mut().unwrap().layers[0];
+            layer.oscillators.clear();
+            layer.sampler = Some(sampler);
+            app.selected_track = Some(parent);
+            app.view_mode = ViewMode::Instrument;
+            if nested {
+                app.navigate_beat_owner(parent, Some(owner), false);
+            }
+            let ctx = context();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1800.0, 900.0))),
+                    ..Default::default()
+                },
+                |ui| app.instrument_body(ui, presentation.clone(), false),
+            );
+            let wave = app.instrument_ui.samplers[0].waveform;
+            let header = Rect::from_min_max(
+                wave.min + Vec2::new(0.0, 38.0),
+                Pos2::new(wave.right(), wave.top() + 60.0),
+            );
+            let body = Rect::from_min_max(header.left_bottom(), wave.max);
+            for (rect, color) in [(header, colors.header), (body, colors.body)] {
+                assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(paint) if paint.rect == rect && paint.fill == color)), "nested={nested}, granular={granular}, rect={rect:?}");
+            }
+            output.textures_delta.clear();
+        }
+    }
+}
