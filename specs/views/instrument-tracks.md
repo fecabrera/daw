@@ -28,6 +28,9 @@ Arm name/icon/background drags at the initial primary press; preserve control an
 
 Subtrack gestures reuse beat multi-selection, group insertion and `BeatEdit::Reorder`. Limit the allowed release area to the original parent's visible subtrack rows, intersected with the viewport. Reject another beat parent, project group, Master or outside drop. Cancel on Escape, focus loss, disabled editing, revision changes or lost gesture ownership. Same-position releases and selection/disclosure stay clean. Do not construct or publish project edits before release.
 
+Only primary-button release completes a primary reorder. Secondary and middle
+button releases retain its preview and leave project data and history unchanged.
+
 Record the originating pane and view for each beat reorder. When Tracks and the
 step editor display the same parent, only the originating pane paints the preview,
 scrolls and completes or cancels its release. Another pane's outside bounds cannot

@@ -1500,3 +1500,54 @@ fn beat_parent_navigation_targets_final_output_catalog_effects() {
         );
     }
 }
+
+#[test]
+fn beat_reorder_ignores_other_button_releases_in_both_panes() {
+    for browser in [false, true] {
+        for other in [egui::PointerButton::Secondary, egui::PointerButton::Middle] {
+            let (mut app, ctx, parent, ids, _, _) = beat_fixture();
+            if !browser {
+                app.set_view_mode(ViewMode::Edit, &ctx);
+                app.select_editor_track(parent);
+                app.set_tracks_panel_visible(true);
+                frame(&mut app, &ctx, vec![]);
+            }
+            let original = app.session.project.clone();
+            let (press, target) = if browser {
+                let a = rect(&app, ids[0]);
+                let b = rect(&app, ids[1]);
+                (
+                    a.left_center() + Vec2::new(50.0, 0.0),
+                    Pos2::new(a.left() + 50.0, b.bottom() - 4.0),
+                )
+            } else {
+                let a = app.beat_ui.headers[&ids[0]];
+                let b = app.beat_ui.headers[&ids[1]];
+                (a.center(), Pos2::new(a.center().x, b.bottom() - 4.0))
+            };
+            pointer(&mut app, &ctx, press, true);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);
+            assert!(app.beat_dragging());
+            for pressed in [true, false] {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerButton {
+                        pos: target,
+                        button: other,
+                        pressed,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            assert!(ctx.input(|i| i.pointer.primary_down()));
+            assert_eq!(app.session.project, original);
+            assert!(app.beat_dragging());
+            pointer(&mut app, &ctx, target, false);
+            assert!(!app.beat_dragging());
+            assert_ne!(app.session.project, original);
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            assert_eq!(app.session.project, original);
+        }
+    }
+}

@@ -4,6 +4,29 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat reorder, audition and paint corrections — 2026-11-01
+
+The three minor findings against `dedbd19` are corrected. Primary reorder
+completion ignores secondary and middle releases in both panes. Explicit beat
+audition retains the complete step gate, including steps longer than eight
+seconds; automatic preview retains its eight-second cap. Beat Instrument
+painting reads the Output identity first, then copies only the visible owner's
+settings, without cloning hidden sibling processing graphs.
+
+Focused checks pass for secondary/middle release in Editor and Tracks, primary
+release commit and Undo, and the 12-second explicit gate versus the 8-second
+automatic gate at 5 BPM. The manual debug selected-owner paint probe measured
+247 ms for 100 frames with an empty hidden sibling and 245 ms with 4,096 hidden
+effects. This is a local scaling observation, not a native frame-rate guarantee
+or a release timing benchmark.
+
+`cargo test --offline --locked --workspace` passes: 2,104 tests, 14 ignored,
+across 260 suites, including all 826 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py` pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for these corrections.
+
 ## Beat parent catalog target correction — 2026-11-01
 
 Selecting a beat parent now selects its final Output bus for catalog effects

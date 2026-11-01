@@ -2652,3 +2652,49 @@ fn output_and_subtrack_pages_keep_owner_local_layer_selection() {
     assert!(app.midi_editor.layer_bounds.is_empty());
     assert!(!app.dirty);
 }
+
+#[test]
+#[ignore = "manual selected-owner paint scaling probe"]
+fn selected_beat_owner_paint_ignores_sibling_processing_size() {
+    let (mut app, ctx, parent, row, _) = setup();
+    app.view_mode = ViewMode::Instrument;
+    app.navigate_beat_owner(parent, Some(row), false);
+    app.set_tracks_panel_visible(false);
+    let sibling = BeatSubtrack::new("Hidden".into());
+    app.session
+        .project
+        .edit(Edit::Beat {
+            track_id: parent,
+            edit: BeatEdit::Add {
+                subtrack: Box::new(sibling),
+                index: 1,
+            },
+        })
+        .unwrap();
+    for heavy in [false, true] {
+        if heavy {
+            app.session.project.tracks[0]
+                .beat
+                .as_mut()
+                .unwrap()
+                .subtracks[1]
+                .instrument
+                .layers[0]
+                .effects = (0..4096)
+                .map(|_| daw_core::EffectInstance::drive())
+                .collect();
+        }
+        for _ in 0..5 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        let start = std::time::Instant::now();
+        for _ in 0..100 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        eprintln!(
+            "hidden sibling heavy={heavy}: {:?} per 100 paints",
+            start.elapsed()
+        );
+        assert_eq!(app.instrument_ui.track, Some(row));
+    }
+}

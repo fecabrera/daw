@@ -555,7 +555,9 @@ impl DawUi {
                     y,
                     Stroke::new(2.0, ui.visuals().selection.bg_fill),
                 );
-                if ui.input(|i| i.pointer.any_released()) && ui.clip_rect().contains(pointer) {
+                if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
+                    && ui.clip_rect().contains(pointer)
+                {
                     let current: Vec<_> = self
                         .session
                         .project
@@ -577,7 +579,9 @@ impl DawUi {
                     }
                 }
             }
-            if ui.input(|i| i.pointer.any_released() || !i.pointer.primary_down()) {
+            if ui.input(|i| {
+                i.pointer.button_released(egui::PointerButton::Primary) || !i.pointer.primary_down()
+            }) {
                 self.beat_ui.drag = None;
             }
         }
@@ -1337,23 +1341,25 @@ impl DawUi {
             return;
         };
         self.reconcile_beat(track);
-        let Some(beat) = self.session.project.beat(track).cloned() else {
+        let Some(output) = self.session.project.beat(track).map(|beat| beat.output.id) else {
             return;
         };
-        let owner = self.selected_instrument_owner().unwrap_or(beat.output.id);
+        let owner = self.selected_instrument_owner().unwrap_or(output);
         self.beat_ui.group_viewport = Some(ui.max_rect());
-        if owner != beat.output.id {
+        if owner != output {
             if let Some(snapshot) = self.session.project.instrument_track(owner) {
                 self.instrument_body(ui, snapshot, false);
             }
             return;
         }
+        let original = self.session.project.beat(track).unwrap().output.clone();
+        let mut settings = self.session.project.instrument_snapshot(output).unwrap();
         self.activate_component_drag(ui);
         let panel = panels::ControlPanel::begin(ui, ui.max_rect());
         let header = panel.header(ui, "Output", |_| {});
         panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
         let available = ui.available_rect_before_wrap();
-        let height = panels::unit_height(beat.output.collapsed).min(available.height());
+        let height = panels::unit_height(original.collapsed).min(available.height());
         let rect = Rect::from_min_max(
             Pos2::new(available.left(), available.bottom() - height),
             available.max,
@@ -1366,7 +1372,6 @@ impl DawUi {
             self.midi_editor.add_layer_bounds = Rect::NOTHING;
         }
         self.instrument_ui.component_viewports.push((owner, rect));
-        let mut settings = beat.output_settings();
         let sources = modulation_panel::sources(Some(&settings));
         let providers = modulation_panel::provider_sources(&settings);
         self.instrument_main(
@@ -1383,7 +1388,7 @@ impl DawUi {
         );
         let handled =
             self.finish_instrument_components(ui, owner, &mut settings, &[(owner, rect)], rect);
-        if !handled && settings.main != beat.output {
+        if !handled && settings.main != original {
             self.edit_beat(track, BeatEdit::SetOutput(Box::new(settings.main)));
         }
         #[cfg(test)]

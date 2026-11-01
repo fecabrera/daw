@@ -1,6 +1,11 @@
 //! Worker-only previews rendered by the normal instrument and bus graph.
 use super::*;
 
+enum BeatPreview {
+    Automatic(daw_core::BeatResolution),
+    Explicit(daw_core::BeatResolution),
+}
+
 impl Session {
     /// Render an isolated chord without changing the session or transport.
     /// Limit the gate to eight seconds, followed by one second of release/effect tail.
@@ -68,8 +73,13 @@ impl Session {
         resolution: daw_core::BeatResolution,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Vec<[f32; 2]>> {
-        let (mut renderer, gate) =
-            self.beat_audition_renderer(track, subtrack, transpose, resolution, cancelled)?;
+        let (mut renderer, gate) = self.beat_audition_renderer(
+            track,
+            subtrack,
+            transpose,
+            BeatPreview::Automatic(resolution),
+            cancelled,
+        )?;
         self.render_audition(
             &mut renderer,
             gate + u64::from(self.project.sample_rate_hz),
@@ -86,8 +96,13 @@ impl Session {
         resolution: daw_core::BeatResolution,
         cancelled: &impl Fn() -> bool,
     ) -> Result<NoteAudition> {
-        let (mut renderer, gate) =
-            self.beat_audition_renderer(track, subtrack, transpose, resolution, cancelled)?;
+        let (mut renderer, gate) = self.beat_audition_renderer(
+            track,
+            subtrack,
+            transpose,
+            BeatPreview::Explicit(resolution),
+            cancelled,
+        )?;
         renderer.begin_beat_audition(subtrack);
         Ok(NoteAudition {
             renderer,
@@ -105,9 +120,12 @@ impl Session {
         track: Id,
         subtrack: Id,
         transpose: i8,
-        resolution: daw_core::BeatResolution,
+        preview: BeatPreview,
         cancelled: &impl Fn() -> bool,
     ) -> Result<(daw_engine::Renderer, u64)> {
+        let resolution = match preview {
+            BeatPreview::Automatic(resolution) | BeatPreview::Explicit(resolution) => resolution,
+        };
         if cancelled() {
             return Err(error("Beat audition cancelled"));
         }
@@ -152,10 +170,11 @@ impl Session {
             .project
             .edit(daw_core::Edit::ReplaceBeatPattern { clip_id, pattern })
             .map_err(error)?;
-        let gate = session
-            .project
-            .midi_frame(resolution.step_ticks())
-            .clamp(1, 8 * u64::from(session.project.sample_rate_hz));
+        let gate = session.project.midi_frame(resolution.step_ticks()).max(1);
+        let gate = match preview {
+            BeatPreview::Automatic(_) => gate.min(8 * u64::from(session.project.sample_rate_hz)),
+            BeatPreview::Explicit(_) => gate,
+        };
         let clip = session
             .project
             .tracks
@@ -394,6 +413,28 @@ mod tests {
             })
             .unwrap();
         (session, track, id)
+    }
+
+    #[test]
+    fn explicit_beat_gate_keeps_long_steps_while_automatic_preview_stays_bounded() {
+        let (mut session, track, row) = beat_session();
+        session.project.edit(Edit::SetTempo { bpm: 5.0 }).unwrap();
+        let resolution = daw_core::BeatResolution::Quarter;
+        let preview = session
+            .beat_subtrack_audition(track, row, 0, resolution, &|| false)
+            .unwrap();
+        assert_eq!(
+            preview.minimum,
+            session.project.midi_frame(resolution.step_ticks())
+        );
+        assert_eq!(
+            preview.minimum,
+            12 * u64::from(session.project.sample_rate_hz)
+        );
+        let (_, gate) = session
+            .beat_audition_renderer(track, row, 0, BeatPreview::Automatic(resolution), &|| false)
+            .unwrap();
+        assert_eq!(gate, 8 * u64::from(session.project.sample_rate_hz));
     }
 
     fn natural_preview(session: &Session, track: Id, row: Id) -> Vec<[f32; 2]> {
