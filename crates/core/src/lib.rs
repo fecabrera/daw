@@ -17,6 +17,8 @@ pub use daw_unit_core::{
 pub use daw_unit_core::{STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
 mod beat;
 mod beat_project;
+mod beat_resize;
+pub use beat_resize::PatternTrimBounds;
 mod chords;
 pub use beat::{
     BEAT_STATE_VERSION, BeatEdit, BeatInstrument, BeatPattern, BeatPatternSource, BeatResolution,

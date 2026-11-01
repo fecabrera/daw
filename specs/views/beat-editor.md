@@ -35,7 +35,7 @@ The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, sh
 | B21 | The Beat MVP includes simple lane-stop connections. If connected lanes trigger together, the stopping lane wins. | Stop or suppress the target lane's hit and play the stopping lane's hit. |
 | B22 | Open a beat clip from Timeline in Editor using the beat pattern editor, and retain its clip/subtrack selection when switching to Instrument. Keep the same instrument identity when its layer sources change. | No audio/MIDI subtrack creation or conversion command. |
 | B23 | Editor and Instrument share subtrack gain, pan, mute and solo; Instrument provides serial subtrack effects. Sum lanes through serial track-level effects. | Defer parallel audio paths, shared-effect sends, and audio sidechains. |
-| B24 | Default to one bar at 1/16 resolution. Offer 1–16 bars and 1/4, 1/8, 1/16, or 1/32 resolution. | Apply one grid to every lane in the pattern. |
+| B24 | Default to one bar and four steps per beat. Retain 1–16 source bars and unstretched steps of 1/4, 1/8, 1/16 or 1/32 bar. | Apply one grid to all lanes; captions measure audible bar fractions after stretch. Saved source enum values remain compatible. |
 | B25 | Place the beat pattern editor inside the shared Editor view, alongside audio and MIDI pattern editors chosen by clip type. | Replace the earlier standalone Beat view; preserve the accepted beat-editing and processing rules. |
 | B26 | Give each beat track one beat instrument containing all its lanes. | Each subtrack instrument retains its own source layers, controls, effects, and voice state. Combine lanes into one output bus before parent-track effects and gain/pan. |
 | B27 | Add beat track appears in the menubar/application Track menu, Tracks Plus dropdown and creation context menus. | Share one command, label and guard path with the existing Add actions. |
@@ -75,7 +75,7 @@ Accepted on 2026-10-11 through B19–B24, with navigation revised by B25. This i
 
 | Area | Initial behavior | Deferred work |
 | --- | --- | --- |
-| Pattern grid | 1–16 bars; 1/4, 1/8, 1/16, or 1/32 resolution. Default one bar at 1/16. All lanes share the grid. | Wider grid options. |
+| Pattern grid | 1–16 source bars; unstretched steps of 1/4, 1/8, 1/16 or 1/32 bar. Default one bar at 1/16 bar. All lanes share the grid. Display includes stretch. | Wider source grids. |
 | Step controls | On/off and per-step velocity; one trigger-pitch setting per subtrack. | Per-step pitch, swing, probability, repeated hits. |
 | Playback | Steps trigger instruments and send note-off after one step. Source trigger modes, envelopes and Amplitude determine audible duration. New triggers replace the current voice. | Customizable trigger-duration modes and subtrack polyphony. |
 | Lane stops | Simple directional stop connections, with a short fade. The stopping lane wins when connected lanes trigger together. | More advanced trigger-control rules. |
@@ -168,7 +168,7 @@ Verify independent lane controls and effect state. Check that each lane's effect
 
 Verify per-step velocity, one fixed trigger pitch per subtrack, and gain/pan/mute/solo controls. Check that opening a beat clip from Timeline selects the beat pattern editor in Editor and establishes the correct editing context, including clips with subtrack instruments using different source units. Verify that switching to Instrument preserves its clip/lane selection. All subtracks are instruments; changing their source units does not convert a subtrack type.
 
-Verify user-set pattern length and resolution apply to every lane. Check save/reopen and source isolation when these settings change. Test the one-bar/1/16 default and every accepted length/resolution. Verify one-step instrument note-off and simple lane stops across pattern and clip-loop boundaries. Add tests for user-selectable duration modes when that later feature is implemented.
+Verify user-set pattern length and resolution apply to every lane. Check save/reopen and source isolation when these settings change. Test the one-bar/four-steps-per-beat default and every accepted length/resolution. Verify one-step instrument note-off and simple lane stops across pattern and clip-loop boundaries. Add tests for user-selectable duration modes when that later feature is implemented.
 
 Verify the open/closed hi-hat example: triggering the connected closed hi-hat lane stops the open hi-hat and plays its own hit. Check that unconnected lanes are unaffected and save/reopen preserves the connection. Verify the short stop fade and stopping-lane priority for simultaneous triggers; add affected-voice checks with future subtrack polyphony.
 
@@ -214,7 +214,7 @@ for indentation, fixed-right-edge columns and depth-aware row dividers. Nested
 left edges reuse `ControlPanel::row_left_divider`; do not add beat-specific border
 geometry or painters.
 
-When no pattern is selected, keep an empty 1/16 step grid visible across the
+When no pattern is selected, keep an empty quarter-beat step grid visible across the
 lower ruler viewport. Disable the step widgets, including keyboard activation;
 clicks do not select another clip, create assets or change project/history state.
 The display uses no other clip's steps. Retain subtrack controls and the current
@@ -301,7 +301,7 @@ Reuse `instrument_lanes_header` for the Beat subtracks title and Plus action so
 button artwork, size, right inset, enablement and tooltip match Instrument.
 
 Keep disabled placeholder cells visible outside the selected clip's timeline range
-as well as when no pattern is selected. Use the selected grid resolution, or 1/16
+as well as when no pattern is selected. Use the selected stretched step interval, or 1/4 beat
 without a selected pattern. Clip placeholders at selected-range boundaries so they
 do not overlap active cells. They show no saved hits, playhead highlights or edit
 actions. Other clips never supply their pattern content to the placeholder grid.
@@ -327,3 +327,39 @@ height, input frame/padding and initial full-name Unicode selection. Track Mixer
 headers retain their smaller font through the helper argument. Reuse
 `inline_edit_action`: Enter commits, Escape, window/field focus loss or disabled
 UI cancels. Keep beat empty-name rejection and transactional `BeatEdit::Rename`.
+
+Body-edge drags extend unlooped beat clips through the shared pattern resize
+path. Keep frame-based trims and the existing header-edge looping behavior.
+Source growth, timing, grid bounds and source isolation follow
+[beat body-edge source extension](beat-model.md#beat-body-edge-source-extension).
+
+The Length monitor derives its value from the selected clip's visible frame
+length, project rate and tempo, rather than `BeatPattern::bars`. Include trims,
+stretch and visible repeats. Reuse `transport_monitor_control`,
+`musical_sections`, `musical_steps` and `monitor_drag_position` from the transport.
+Keep its font, digit spacing, unit color and per-section drag behavior. Duration
+counts are zero-based (`0001.00` = one bar); allow half a sample of musical
+boundary rounding. The exact seconds/sample duration remains in the tooltip.
+Sub-beat trims retain their exact stored frame length despite whole-beat display.
+
+Preview duration during a length drag without changing the project. Release
+commits the right edge through `trimmed_clips` for an unlooped clip or
+`looped_by`/`resized_clips` for repetitions, then shared `publish_resize`
+preparation/history. Escape, focus loss, disabled editing, or changed clip/revision
+cancels; cancelled gestures stay cancelled until a new press. Guard other edits
+while the length drag is active. Clamp unlooped edits to shared source bounds and
+looped edits to one repeat cycle through the timeline limit. Keep stored source
+grid bars separate from visible clip duration. This supersedes the earlier Bars
+readout.
+
+Subdivision captions and choices measure the audible step duration against one
+4/4 bar: `(resolution.step_ticks / (4 * MIDI_TICKS_PER_BEAT)) * clip.stretch`.
+Use the saved stretch ratio, never clip length or pattern bar count. Unstretched
+Quarter/Eighth/Sixteenth/ThirtySecond source grids display 1/4, 1/8, 1/16 and 1/32 bar.
+Keep stored enum values and source ticks unchanged for compatibility. Display
+reduced fractions for compact ratios and up to four decimal bar digits for large
+frame-derived fractions. Menu choices use the same stretched units and still edit
+the underlying source grid once; choosing a grid does not apply another stretch.
+The disabled placeholder grid uses the same exact stretched step interval.
+Active cells retain the existing source trim/repeat/stretch mapping. Trimming and
+source bar-count changes leave subdivision captions unchanged.

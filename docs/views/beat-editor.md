@@ -14,13 +14,29 @@ Editor keeps the selected track's clip overview above the step rows. Empty disab
 
 ## Grid and hit controls
 
-Patterns share one grid across all subtracks. Choose 1–16 bars and 1/4, 1/8, 1/16 or 1/32 resolution. The default is one bar at 1/16. Shortening the pattern or choosing a coarser grid keeps hidden steps silent. Expanding the grid restores their original positions and velocities.
+Patterns share one grid across all subtracks. **Length** uses the transport’s musical-position display, with duration counts starting at zero: `0001.00` means one bar and `0000.02` means two beats. It follows trimming, stretching and repetitions. Drag the bar or beat section up or down to adjust it; hold Shift for slower adjustment. Release to apply, or press Escape to cancel. The tooltip shows the exact duration in seconds and samples, including fractions smaller than one beat.
+
+Unlooped sources support up to 16 bars before stretch; stretched and looped clips can show larger lengths. **Subdivision** shows each step’s length relative to one 4/4 bar. With no stretch, the choices are 1/4, 1/8, 1/16 and 1/32 bar. The default is one bar with 1/16-bar steps. Stretching updates these values; for example, doubling a 1/16-bar step makes it 1/8 bar. Trimming or changing pattern length does not change the step duration. Unusual stretch ratios can show a decimal bar value. Trimming or choosing a coarser grid keeps hidden steps silent. Expanding the range or restoring the resolution reveals their original positions and velocities.
 
 An enabled step starts at velocity 100. Right-click it to change velocity from 1 to 127. Right-click a subtrack name to set its trigger pitch from MIDI 0 to 127; the default is 60. Every hit on that subtrack uses this pitch, plus any clip transpose.
 
 Each subtrack has one active voice. A new hit replaces its previous voice. Note-off follows one step later; source trigger mode, Envelope and Amplitude settings determine audible duration. A Sampler in One-shot mode can continue after note-off.
 
 Pattern edits affect only the active clip and create a new source. Other clips keep their previous content. A grid change that would create an invalid source range or overlap another clip is rejected without changing the project. Moving, copying or pasting a beat clip onto a different beat track is currently rejected. Same-track arrangement gestures remain available.
+
+## Extend a beat clip
+
+In Timeline or Editor’s track overview, drag either edge of an unlooped clip’s
+body to extend it. Hold Shift to bypass snapping. Release to apply; Escape
+cancels. The opposite edge stays fixed. Extending beyond the saved source grows
+that clip’s pattern, up to 16 bars, and leaves other clips unchanged. Existing
+hits keep their timing. Previously hidden hits can become visible in the added
+range. Shortening keeps the pattern content available for later extension.
+The clip can end partway through a bar; **Length** follows its visible duration.
+
+Drag a clip header’s edge to extend repetitions. Looped clips retain their
+existing body-trim behavior. Resize previews include any neighboring clips that
+will be trimmed or removed. Undo restores the complete change.
 
 ## Manage subtracks
 
@@ -48,7 +64,7 @@ Stops use a 5 ms fade, including for one-shot samples. If both subtracks have a 
 
 Beat settings and embedded patterns save with the project. Sampler recordings follow the normal external/included source rules; use **Collect project sources** before moving a project that references external recordings. The CLI can inspect beat tracks, validate, collect sources and render them through the same engine.
 
-Use the lower editor's topbar to set the pattern's bar count and step resolution.
+Use the lower editor's topbar to adjust the clip length and step resolution.
 Subtrack names and mix controls appear in the left panel, with a right-pinned
 Plus button in the **Beat subtracks** header. Headers and steps scroll together.
 Each header shows the name, followed by mute, solo, pan and gain pinned right. The ruler above the steps follows the same

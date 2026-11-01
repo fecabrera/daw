@@ -1658,3 +1658,400 @@ fn subtrack_name_input_selects_the_whole_name_and_matches_track_commit_and_cance
         assert!(!app.dirty);
     }
 }
+
+#[test]
+fn beat_body_edges_extend_in_timeline_and_editor_with_release_only_commit_and_escape() {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
+        for edge in [daw_core::ClipEdge::Left, daw_core::ClipEdge::Right] {
+            for cancel in [false, true] {
+                let (mut app, ctx, track, row, clip) = setup();
+                app.session.project.tracks[0].clips[0].start_frame = 96_000;
+                app.view_mode = view;
+                app.zoom = 120.0;
+                app.scroll = 0.0;
+                app.midi_editor.zoom = 120.0;
+                app.midi_editor.scroll = 0.0;
+                app.history = None;
+                app.ensure_history();
+                app.dirty = false;
+                frame(&mut app, &ctx, vec![]);
+                let original = app.session.project.clone();
+                let current = &original.tracks[0].clips[0];
+                let block = if view == ViewMode::Edit {
+                    app.midi_editor.clip_bounds[&clip]
+                } else {
+                    app.clip_block(app.lane_bounds[&track], current, current.start_frame)
+                };
+                let origin = Pos2::new(
+                    if edge == daw_core::ClipEdge::Left {
+                        block.left() + 1.0
+                    } else {
+                        block.right() - 1.0
+                    },
+                    block.top() + 30.0,
+                );
+                let end = origin
+                    + Vec2::new(
+                        if edge == daw_core::ClipEdge::Left {
+                            -60.0
+                        } else {
+                            60.0
+                        },
+                        0.0,
+                    );
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(origin), button(origin, true)],
+                );
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                assert_eq!(
+                    app.session.project, original,
+                    "drag preview cannot edit the project"
+                );
+                assert!(app.drag.is_some(), "body edge starts a resize in {view:?}");
+                if cancel {
+                    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+                }
+                frame(&mut app, &ctx, vec![button(end, false)]);
+                frame(&mut app, &ctx, vec![]);
+                assert!(app.error.is_none(), "{:?}", app.error);
+                if cancel {
+                    assert_eq!(app.session.project, original);
+                    assert!(!app.dirty);
+                } else {
+                    let resized = &app.session.project.tracks[0].clips[0];
+                    assert_eq!(resized.length_frames, current.length_frames + 24_000);
+                    assert_ne!(resized.asset_id, current.asset_id);
+                    match edge {
+                        daw_core::ClipEdge::Left => assert_eq!(resized.end(), current.end()),
+                        daw_core::ClipEdge::Right => {
+                            assert_eq!(resized.start_frame, current.start_frame)
+                        }
+                    }
+                    assert!(app.dirty);
+                    let extended = app.session.project.clone();
+                    app.perform_history_action(crate::history::HistoryAction::Undo, &ctx);
+                    assert_eq!(app.session.project, original);
+                    app.perform_history_action(crate::history::HistoryAction::Redo, &ctx);
+                    assert_eq!(app.session.project, extended);
+                    if view == ViewMode::Edit && edge == daw_core::ClipEdge::Right {
+                        frame(&mut app, &ctx, vec![]);
+                        let point =
+                            app.beat_ui.steps[&(row, 4 * daw_core::MIDI_TICKS_PER_BEAT)].center();
+                        click(&mut app, &ctx, point);
+                        let asset = app.session.project.tracks[0].clips[0].asset_id;
+                        let pattern = &app
+                            .session
+                            .project
+                            .assets
+                            .iter()
+                            .find(|a| a.id == asset)
+                            .unwrap()
+                            .beat_pattern
+                            .as_ref()
+                            .unwrap()
+                            .pattern;
+                        assert!(
+                            pattern
+                                .steps
+                                .iter()
+                                .any(|step| step.start_tick == 4 * daw_core::MIDI_TICKS_PER_BEAT)
+                        );
+                    }
+                }
+                assert_eq!(app.selected_clip, Some(clip));
+                assert_eq!(app.selected_track, Some(track));
+            }
+        }
+    }
+}
+
+#[test]
+fn beat_length_monitor_follows_trim_stretch_extension_and_loop_without_editing_the_source() {
+    fn shown(app: &mut DawUi, ctx: &egui::Context) -> String {
+        let before = app.session.project.clone();
+        let shapes = frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0));
+        let bounds = app.beat_ui.grid_options.unwrap();
+        let value = shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::Text(t) if bounds.contains(t.pos) => Some(t.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect::<String>();
+        assert_eq!(
+            app.session.project, before,
+            "drawing derived values cannot edit the project"
+        );
+        value
+    }
+    let (mut app, ctx, _, _, _) = setup();
+    assert_eq!(shown(&mut app, &ctx), "0001.00");
+    let mut clip = app.session.project.tracks[0].clips[0].clone();
+    clip.length_frames /= 2;
+    app.session.project = app
+        .session
+        .project
+        .trimmed_clips(&[clip], daw_core::ClipEdge::Right)
+        .unwrap();
+    assert_eq!(shown(&mut app, &ctx), "0000.02");
+    let clip = app.session.project.tracks[0].clips[0].clone();
+    let stretched = clip
+        .stretched_to(clip.start_frame, clip.length_frames * 2)
+        .unwrap();
+    app.session.project = app
+        .session
+        .project
+        .stretched_clips(&[stretched], daw_core::ClipEdge::Right)
+        .unwrap();
+    assert_eq!(shown(&mut app, &ctx), "0001.00");
+    let mut clip = app.session.project.tracks[0].clips[0].clone();
+    clip.length_frames += 24_000;
+    app.session.project = app
+        .session
+        .project
+        .trimmed_clips(&[clip], daw_core::ClipEdge::Right)
+        .unwrap();
+    assert_eq!(shown(&mut app, &ctx), "0001.01");
+    let clip = app.session.project.tracks[0].clips[0].clone();
+    let looped = clip.looped_by(daw_core::ClipEdge::Right, 24_000);
+    app.session.project = app
+        .session
+        .project
+        .resized_clips(&[looped], daw_core::ClipEdge::Right)
+        .unwrap();
+    assert_eq!(shown(&mut app, &ctx), "0001.02");
+}
+
+#[test]
+fn beat_length_monitor_reuses_transport_drag_sections_and_commits_on_release() {
+    for cancellation in ["none", "escape", "focus"] {
+        let (mut app, ctx, _, _, _) = setup();
+        app.dirty = false;
+        let before = app.session.project.clone();
+        let bounds = app.beat_ui.grid_options.unwrap();
+        let origin = Pos2::new(bounds.right() - 8.0, bounds.center().y);
+        let end = origin - Vec2::new(0.0, 2.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(origin), button(origin, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert_eq!(app.session.project, before, "{cancellation}");
+        if cancellation == "escape" {
+            super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+        } else if cancellation == "focus" {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused: false,
+                    events: vec![egui::Event::WindowFocused(false)],
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            output.textures_delta.clear();
+        }
+        if cancellation != "none" {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end - Vec2::new(0.0, 3.0))],
+            );
+        }
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.error.is_none(), "{:?}", app.error);
+        if cancellation != "none" {
+            assert_eq!(app.session.project, before, "{cancellation}");
+            assert!(!app.dirty);
+        } else {
+            assert_eq!(
+                app.session.project.tracks[0].clips[0].length_frames,
+                144_000
+            );
+            assert!(app.dirty);
+        }
+    }
+}
+
+#[test]
+fn subdivision_measures_stretched_step_duration_against_one_bar_and_ignores_clip_length() {
+    fn shown(app: &mut DawUi, ctx: &egui::Context) -> String {
+        let shapes = frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0));
+        let bounds = app.beat_ui.subdivision_bounds.unwrap();
+        shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::Text(t) if bounds.contains(t.pos) => Some(t.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect()
+    }
+    let (mut app, ctx, _, row, id) = setup();
+    assert_eq!(shown(&mut app, &ctx), "1/16");
+    app.session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: id,
+            pattern: BeatPattern::default()
+                .with_grid(2, daw_core::BeatResolution::Eighth)
+                .unwrap(),
+        })
+        .unwrap();
+    let clip = app.session.project.tracks[0].clips[0].clone();
+    let compressed = clip.stretched_to(clip.start_frame, 96_000).unwrap();
+    app.session.project = app
+        .session
+        .project
+        .stretched_clips(&[compressed], daw_core::ClipEdge::Right)
+        .unwrap();
+    app.midi_editor.content.fitted = false;
+    app.midi_editor.content.zoom = 480.0;
+    assert_eq!(shown(&mut app, &ctx), "1/16");
+    let measured_beats = |app: &DawUi| {
+        let a = app.beat_ui.steps[&(row, 0)];
+        let b = app.beat_ui.steps[&(row, 480)];
+        f64::from(b.left() - a.left()) / f64::from(app.midi_editor.content.zoom) * 2.0
+    };
+    assert!((measured_beats(&app) - 0.25).abs() < 1e-6);
+    let clip = app.session.project.tracks[0].clips[0].clone();
+    let stretched = clip.stretched_to(clip.start_frame, 192_000).unwrap();
+    app.session.project = app
+        .session
+        .project
+        .stretched_clips(&[stretched], daw_core::ClipEdge::Right)
+        .unwrap();
+    assert_eq!(shown(&mut app, &ctx), "1/8");
+    assert!((measured_beats(&app) - 0.5).abs() < 1e-6);
+    let mut clip = app.session.project.tracks[0].clips[0].clone();
+    clip.length_frames = 96_000;
+    app.session.project = app
+        .session
+        .project
+        .trimmed_clips(&[clip], daw_core::ClipEdge::Right)
+        .unwrap();
+    assert_eq!(shown(&mut app, &ctx), "1/8");
+    let asset = app.session.project.tracks[0].clips[0].asset_id;
+    let pattern = app
+        .session
+        .project
+        .assets
+        .iter()
+        .find(|a| a.id == asset)
+        .unwrap()
+        .beat_pattern
+        .as_ref()
+        .unwrap()
+        .pattern
+        .clone();
+    app.session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: id,
+            pattern: pattern.with_grid(3, pattern.resolution).unwrap(),
+        })
+        .unwrap();
+    assert_eq!(shown(&mut app, &ctx), "1/8");
+    let clip = app.session.project.tracks[0].clips[0].clone();
+    let stretched = clip.stretched_to(clip.start_frame, 144_000).unwrap();
+    app.session.project = app
+        .session
+        .project
+        .stretched_clips(&[stretched], daw_core::ClipEdge::Right)
+        .unwrap();
+    assert_eq!(shown(&mut app, &ctx), "3/16");
+    assert!((measured_beats(&app) - 0.75).abs() < 1e-6);
+    app.midi_editor.content.zoom = 120.0;
+    shown(&mut app, &ctx);
+    let active = app.beat_ui.steps[&(row, 0)];
+    let disabled = app
+        .beat_ui
+        .disabled_steps
+        .iter()
+        .find(|(id, r)| {
+            *id == row
+                && r.left() > active.left() + 400.0
+                && r.right() < app.midi_editor.content.ruler.right()
+        })
+        .unwrap()
+        .1;
+    assert!(
+        (disabled.width() - active.width()).abs() < 0.1,
+        "disabled grid uses the same stretched step length"
+    );
+}
+
+#[test]
+fn subdivision_choices_show_audible_bar_fractions_and_edit_the_source_grid_once() {
+    let (mut app, ctx, _, row, id) = setup();
+    let pattern = BeatPattern::default()
+        .with_grid(1, daw_core::BeatResolution::ThirtySecond)
+        .unwrap()
+        .with_step(row, 120, Some(100))
+        .unwrap()
+        .with_grid(1, daw_core::BeatResolution::Sixteenth)
+        .unwrap();
+    let steps = pattern.steps.clone();
+    app.session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: id,
+            pattern,
+        })
+        .unwrap();
+    let clip = app.session.project.tracks[0].clips[0].clone();
+    let stretched = clip
+        .stretched_to(clip.start_frame, clip.length_frames * 2)
+        .unwrap();
+    app.session.project = app
+        .session
+        .project
+        .stretched_clips(&[stretched], daw_core::ClipEdge::Right)
+        .unwrap();
+    frame(&mut app, &ctx, vec![]);
+    let bounds = app.beat_ui.subdivision_bounds.unwrap();
+    click(&mut app, &ctx, bounds.center());
+    assert_eq!(app.beat_ui.subdivision_items.len(), 4);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    for ((_, bounds), expected) in app
+        .beat_ui
+        .subdivision_items
+        .iter()
+        .zip(["1/2", "1/4", "1/8", "1/16"])
+    {
+        assert!(
+            shapes.iter().any(|s| matches!(&s.shape,
+            egui::Shape::Text(t) if bounds.contains(t.pos) && t.galley.text() == expected)),
+            "stretched popup choice must show {expected} of one bar"
+        );
+    }
+    let choice = app
+        .beat_ui
+        .subdivision_items
+        .iter()
+        .find(|(r, _)| *r == daw_core::BeatResolution::ThirtySecond)
+        .unwrap()
+        .1;
+    click(&mut app, &ctx, choice.center());
+    let clip = &app.session.project.tracks[0].clips[0];
+    let source = app
+        .session
+        .project
+        .assets
+        .iter()
+        .find(|a| a.id == clip.asset_id)
+        .unwrap()
+        .beat_pattern
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        source.pattern.resolution,
+        daw_core::BeatResolution::ThirtySecond
+    );
+    assert_eq!(source.pattern.steps, steps);
+    assert_eq!(clip.stretch, daw_core::ClipStretch::new(1, 2));
+    assert!(app.beat_ui.steps.contains_key(&(row, 120)));
+}

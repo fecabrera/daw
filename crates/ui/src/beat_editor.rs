@@ -14,6 +14,9 @@ pub(super) struct BeatUi {
     collapsed_groups: HashSet<Id>,
     rename: Option<(Id, String, bool)>,
     drag: Option<BeatDrag>,
+    length_drag: Option<MonitorDrag>,
+    length_preview: Option<(Id, u64, u64)>,
+    length_cancelled: bool,
     focus: selection_focus::SelectionFocus,
     focused_header: Option<egui::Id>,
     group_viewport: Option<Rect>,
@@ -27,6 +30,10 @@ pub(super) struct BeatUi {
     pub final_output: Option<Rect>,
     #[cfg(test)]
     pub grid_options: Option<Rect>,
+    #[cfg(test)]
+    pub subdivision_bounds: Option<Rect>,
+    #[cfg(test)]
+    pub subdivision_items: Vec<(BeatResolution, Rect)>,
     #[cfg(test)]
     pub mix_bounds: std::collections::HashMap<Id, [Rect; 4]>,
     #[cfg(test)]
@@ -49,7 +56,7 @@ impl DawUi {
         }
     }
     pub(super) fn beat_dragging(&self) -> bool {
-        self.beat_ui.drag.is_some()
+        self.beat_ui.drag.is_some() || self.beat_ui.length_drag.is_some()
     }
     pub(super) fn beat_sampler_target(&self, pointer: Pos2) -> Option<(Id, Id)> {
         if !self
@@ -412,8 +419,10 @@ impl DawUi {
         let active = track
             .clips
             .iter()
-            .find(|c| Some(c.id) == self.selected_clip);
+            .find(|c| Some(c.id) == self.selected_clip)
+            .cloned();
         let mut pattern = active
+            .as_ref()
             .and_then(|c| {
                 self.session
                     .project
@@ -424,26 +433,115 @@ impl DawUi {
             .and_then(|a| a.beat_pattern.as_ref())
             .map(|s| s.pattern.clone());
         let original = pattern.clone();
+        if active.is_none() || ui.input(|i| i.pointer.primary_pressed()) {
+            self.beat_ui.length_drag = None;
+            self.beat_ui.length_preview = None;
+            self.beat_ui.length_cancelled = false;
+        }
         if let Some(pattern) = &mut pattern {
-            let mut bars = pattern.bars;
-            ui.label("Bars");
-            let bars_response = ui.add(egui::DragValue::new(&mut bars).range(1..=16));
+            let clip = active.as_ref().unwrap();
+            let cancelled = self.beat_ui.length_cancelled
+                || !ui.is_enabled()
+                || !ui.input(|i| i.focused)
+                || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                || !self.edit_environment_available()
+                || self
+                    .beat_ui
+                    .length_preview
+                    .is_some_and(|(id, revision, _)| {
+                        id != clip.id || revision != self.change_revision
+                    });
+            if cancelled {
+                self.beat_ui.length_cancelled = true;
+                self.beat_ui.length_drag = None;
+                self.beat_ui.length_preview = None;
+            }
+            let frame = self
+                .beat_ui
+                .length_preview
+                .map_or(clip.length_frames, |(_, _, frames)| frames);
+            let tempo = self.session.project.tempo_bpm;
+            let rate = self.session.project.sample_rate_hz;
+            let (minimum, maximum) = if let Some(repeat) = clip.repeat {
+                (
+                    repeat.length_frames.min(clip.length_frames),
+                    u64::MAX - clip.start_frame,
+                )
+            } else {
+                (
+                    1,
+                    self.session
+                        .project
+                        .pattern_trim_bounds(clip, daw_core::ClipEdge::Right)
+                        .map_or(clip.length_frames, |b| {
+                            b.frame_limits().end() - clip.start_frame
+                        }),
+                )
+            };
+            ui.label("Length");
+            let monitor = transport_monitor_control(
+                ui,
+                &musical_time::duration_monitor_at_rate(frame, tempo, rate),
+                &format!(
+                    "Clip length in bars and beats (4/4): {:.6} seconds, {frame} samples",
+                    self.session.project.seconds(frame)
+                ),
+                0,
+                Sense::hover(),
+            );
+            let responses = musical_sections(ui, &monitor, 0);
             #[cfg(test)]
             {
-                self.beat_ui.grid_options = Some(bars_response.rect);
+                self.beat_ui.grid_options = Some(monitor.response.rect);
             }
-            #[cfg(not(test))]
-            let _ = bars_response;
+            if !cancelled
+                && let Some(frames) = monitor_drag_position(
+                    ui,
+                    &responses,
+                    &mut self.beat_ui.length_drag,
+                    clip.length_frames,
+                    &musical_steps(tempo, rate),
+                    minimum..=maximum,
+                )
+            {
+                self.beat_ui.length_preview = Some((clip.id, self.change_revision, frames));
+            }
+            if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
+                && let Some((_, _, frames)) = self.beat_ui.length_preview.take()
+            {
+                self.set_beat_clip_length(clip, frames);
+            }
             let mut resolution = pattern.resolution;
-            menus::Dropdown::from_id_salt(("beat-grid", track.id))
-                .selected_text(resolution_name(resolution))
+            #[cfg(test)]
+            {
+                self.beat_ui.subdivision_items.clear();
+            }
+            let dropdown = menus::Dropdown::from_id_salt(("beat-grid", track.id))
+                .selected_text(resolution_name(resolution, clip.stretch))
                 .show_ui(ui, |ui| {
                     for choice in BeatResolution::ALL {
-                        ui.selectable_value(&mut resolution, choice, resolution_name(choice));
+                        let response = ui.selectable_value(
+                            &mut resolution,
+                            choice,
+                            resolution_name(choice, clip.stretch),
+                        );
+                        #[cfg(test)]
+                        {
+                            self.beat_ui.subdivision_items.push((choice, response.rect));
+                        }
+                        #[cfg(not(test))]
+                        let _ = response;
                     }
                 });
-            if (bars != pattern.bars || resolution != pattern.resolution)
-                && let Ok(next) = pattern.with_grid(bars, resolution)
+            #[cfg(test)]
+            {
+                self.beat_ui.subdivision_bounds = Some(dropdown.response.rect);
+            }
+            dropdown.response.on_hover_text(
+                "Step length as a fraction of one bar (4/4), including clip stretch.",
+            );
+            if resolution != pattern.resolution
+                && let Ok(next) = pattern.with_grid(pattern.bars, resolution)
             {
                 *pattern = next;
             }
@@ -456,6 +554,29 @@ impl DawUi {
                 clip_id: clip.id,
                 pattern,
             });
+        }
+    }
+    fn set_beat_clip_length(&mut self, clip: &Clip, frames: u64) {
+        if !self.editing_enabled() {
+            return;
+        }
+        let frames = frames.clamp(1, u64::MAX - clip.start_frame);
+        if frames == clip.length_frames {
+            return;
+        }
+        let edge = daw_core::ClipEdge::Right;
+        let next = if clip.repeat.is_some() {
+            let candidate =
+                clip.looped_by(edge, i128::from(frames) - i128::from(clip.length_frames));
+            self.session.project.resized_clips(&[candidate], edge)
+        } else {
+            let mut candidate = clip.clone();
+            candidate.length_frames = frames;
+            self.session.project.trimmed_clips(&[candidate], edge)
+        };
+        match next {
+            Ok(next) => self.publish_resize(next),
+            Err(error) => self.fail(error),
         }
     }
     pub(super) fn beat_grid(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
@@ -546,7 +667,12 @@ impl DawUi {
             .map_or(BeatResolution::Sixteenth.step_ticks(), |p| {
                 p.resolution.step_ticks()
             });
-        let steps_per_beat = f64::from(daw_core::MIDI_TICKS_PER_BEAT) / f64::from(step_ticks);
+        let resolution = pattern
+            .as_ref()
+            .map_or(BeatResolution::Sixteenth, |p| p.resolution);
+        let (numerator, denominator) =
+            step_length_in_beats(resolution, active.as_ref().and_then(|c| c.stretch));
+        let steps_per_beat = denominator as f64 / numerator as f64;
         let grid_steps = pattern
             .as_ref()
             .map_or(16, |p| p.length_ticks() / step_ticks)
@@ -1252,11 +1378,40 @@ impl DawUi {
         ui.advance_cursor_after_rect(available);
     }
 }
-fn resolution_name(resolution: BeatResolution) -> &'static str {
-    match resolution {
-        BeatResolution::Quarter => "1/4",
-        BeatResolution::Eighth => "1/8",
-        BeatResolution::Sixteenth => "1/16",
-        BeatResolution::ThirtySecond => "1/32",
+/// Exact audible interval in beats, shared with placeholder geometry.
+fn step_length_in_beats(
+    resolution: BeatResolution,
+    stretch: Option<daw_core::ClipStretch>,
+) -> (u128, u128) {
+    let (output, input) = stretch.map_or((1, 1), |s| {
+        (u128::from(s.output_frames), u128::from(s.source_frames))
+    });
+    let numerator = u128::from(resolution.step_ticks()) * output;
+    let denominator = u128::from(daw_core::MIDI_TICKS_PER_BEAT) * input;
+    reduced_fraction(numerator, denominator)
+}
+fn reduced_fraction(numerator: u128, denominator: u128) -> (u128, u128) {
+    let (mut a, mut b) = (numerator, denominator);
+    while b != 0 {
+        (a, b) = (b, a % b);
     }
+    (numerator / a, denominator / a)
+}
+fn resolution_name(resolution: BeatResolution, stretch: Option<daw_core::ClipStretch>) -> String {
+    let (numerator, denominator) = step_length_in_beats(resolution, stretch);
+    let (numerator, denominator) = reduced_fraction(
+        numerator,
+        denominator * u128::from(musical_time::BEATS_PER_BAR),
+    );
+    if denominator == 1 {
+        return numerator.to_string();
+    }
+    if numerator <= 999 && denominator <= 999 {
+        return format!("{numerator}/{denominator}");
+    }
+    // Frame-derived stretches can have large exact fractions. Keep captions compact.
+    format!("{:.4}", numerator as f64 / denominator as f64)
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_owned()
 }

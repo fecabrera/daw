@@ -5249,3 +5249,56 @@ fn beat_sampler_sources_survive_save_as_collection_reopen_and_cancelled_preparat
     reopened.plan().render(0, &mut reopened_audio);
     assert_eq!(original_audio, reopened_audio);
 }
+
+#[test]
+fn extended_beat_source_preserves_prefix_audio_and_roundtrips_with_its_clip_range() {
+    use daw_core::{BeatEdit, BeatPattern, BeatSubtrack, ClipEdge, OscillatorSettings};
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_beat_track().unwrap();
+    let mut row = BeatSubtrack::new("Kick".into());
+    row.instrument = OscillatorSettings::default().into();
+    let row_id = row.id;
+    session
+        .project
+        .edit(Edit::Beat {
+            track_id: track,
+            edit: BeatEdit::Add {
+                subtrack: Box::new(row),
+                index: 0,
+            },
+        })
+        .unwrap();
+    let id = session.project.add_beat_pattern(track, 0).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: id,
+            pattern: BeatPattern::default()
+                .with_step(row_id, 0, Some(100))
+                .unwrap(),
+        })
+        .unwrap();
+    let old = session.project.tracks[0].clips[0].clone();
+    let mut before = vec![[0.0; 2]; old.length_frames as usize - 480];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut before);
+    assert!(before.iter().flatten().any(|s| s.abs() > 0.01));
+    let mut extended = old;
+    extended.length_frames += 24_000;
+    session.project = session
+        .project
+        .trimmed_clips(&[extended], ClipEdge::Right)
+        .unwrap();
+    session.prepare_stretches().unwrap();
+    let mut after = vec![[0.0; 2]; before.len()];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut after);
+    assert_eq!(after, before);
+    let folder = fixture.0.join("Extended beat");
+    session.save(&folder).unwrap();
+    let loaded = Session::open(&folder).unwrap();
+    assert_eq!(loaded.project.tracks, session.project.tracks);
+    assert_eq!(loaded.project.assets, session.project.assets);
+    let mut reopened = vec![[0.0; 2]; after.len()];
+    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut reopened);
+    assert_eq!(reopened, after);
+}

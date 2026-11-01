@@ -4,6 +4,100 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat subdivision uses one bar as its reference — 2026-10-31
+
+The user's correction supersedes the preceding beat-relative captions. Subdivision
+now divides the audible step interval by one 4/4 bar, retaining clip stretch and
+independence from pattern/clip length. Unstretched choices are 1/4, 1/8, 1/16 and
+1/32 bar; doubling a default 1/16-bar step displays 1/8 bar. Tooltip, dropdown
+choices, user guide and current specification use the bar reference. Actual step
+spacing, stored source grids and the shared Length monitor remain unchanged.
+Regression captions cover the default, compression, stretch, trim and source-bar
+changes while still checking actual step timing and disabled-grid spacing.
+
+The corrected UI suite passes **786 tests**. Focused subdivision checks pass
+**4 tests**, including actual popup text for every stretched choice. Strict locked
+workspace/all-target Clippy, formatting, changed Markdown targets and both staged
+and unstaged whitespace checks pass. `sh tools/package_macos.sh debug` rebuilt
+`target/debug/DAW.app`. Native visual/gesture checks and Windows/Linux execution
+remain unverified for this display-unit correction.
+
+## Beat subdivision measures audible steps against one beat — 2026-10-31
+
+Subdivision captions now use source step ticks multiplied by clip stretch,
+relative to one project beat. Unstretched grids display 1, 1/2, 1/4 and 1/8;
+source enum values and saved ticks remain compatible. Changing clip length or
+pattern bars cannot change subdivision. Menu options use the same audible units
+and select the stored grid once. Disabled placeholder cells share the stretched
+step spacing. Large frame-derived fractions use compact decimal beat captions.
+
+Regressions compare captions with actual rendered step spacing through
+compression, stretch, trim and source-bar changes, including a 3/2 stretch and
+matching disabled cells. A stretched dropdown selection preserves stretch and
+stored hit identities while revealing the finer grid's hidden hit.
+
+`cargo test --locked -p daw-ui --lib` passes **786 tests**, including 37 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, changed
+Markdown targets and staged/unstaged whitespace checks pass. The edge-extension
+workspace run passed **2,035 tests**, with 11 ignored across 258 suites; the final
+UI additions passed the complete UI rerun above. The new project save/reopen/audio
+workflow test and CLI smoke check also pass. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`. Native visual/device checks and Windows/Linux
+execution remain unverified.
+
+## Beat length uses the transport musical monitor — 2026-10-31
+
+Length reuses transport monitor painting, musical sections and drag accumulation.
+It derives the visible clip duration after trims, stretching and looping, with
+zero-based duration counts. Dragging previews the value; release publishes the
+resize. Escape remains latched through continued pointer motion, and focus,
+environment, clip/revision guards cancel stale gestures. Exact sub-beat duration
+remains in the tooltip.
+
+Regressions inspect the actual painted monitor after trim/stretch/extension/loop,
+exercise beat-section dragging, release-only commit and cancellation, and verify
+zero-based formatting and rounded musical boundaries across all six project rates.
+
+`cargo test --locked -p daw-ui --lib` passes **784 tests**, including 35 beat
+regressions and duration-format coverage. Focused final monitor regressions pass
+with continued motion after Escape and real window focus loss. Strict locked
+workspace/all-target Clippy, formatting, changed Markdown targets and whitespace
+checks pass. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+Native visual/gesture checks and Windows/Linux execution remain unverified.
+
+## Beat pattern body-edge extension — 2026-10-31
+
+Timeline and Editor use shared pattern trim bounds to extend unlooped beat clips
+beyond their previous source length. Core grows a fresh immutable source only
+when necessary, retains exact clip endpoints and metadata, and delegates neighbor
+trims/removals to the existing atomic resize transaction. Fractional-bar trims
+retain the source; left extension prepends full grid bars with a compensating
+source offset. Stored hits retain IDs and timing, with at most two frames of
+existing tick/stretch rounding. Bounds include hidden hits and the 16-bar source
+limit. Header looping and looped body trims retain their existing behavior.
+
+Focused core regressions cover partial-bar right extension, shared-source
+isolation, subsequent trimming, left extension at all six rates with stretch,
+neighbor overwrites, upper-bound rejection and hidden-hit protection. Paired
+Timeline/Editor regressions cover both edges, unchanged drag previews, release,
+Escape cancellation, selection retention, undo/redo of source and clip edits,
+and editing a step inside the newly extended range. A project workflow regression
+checks unchanged prefix audio and identical source/range/audio after save/reopen.
+
+Completed checks:
+
+- `cargo test --locked --workspace`: **2,035 passed, 11 ignored** across 258 suites
+  for the core/UI edge-extension change. Final Length/subdivision UI and project
+  workflow additions pass the focused/full UI reruns recorded here.
+- `cargo test --locked -p daw-core --lib beat_resize`: **3 passed**.
+- `cargo test --locked -p daw-ui --lib`: **781 passed**, including 33 beat tests.
+- `cargo test --locked -p daw-project --test workflow extended_beat_source`: **1 passed**.
+- Strict locked workspace/all-target Clippy, formatting and whitespace checks pass.
+- Locked CLI build and `python3 tools/check_cli.py` pass.
+- `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+
+Native pointer/device checks and Windows/Linux execution remain unverified.
+
 ## Shared track, beat-subtrack and layer name input — 2026-10-31
 
 `rows::name_input` now owns the common track, beat-subtrack and Instrument-layer

@@ -4709,7 +4709,7 @@ impl DawUi {
         let mut clip = drag.clip.clone();
         if let Some(edge) = drag.mode.resize_edge()
             && matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight)
-            && let Ok(bounds) = self.session.project.midi_pattern_bounds(&clip, edge)
+            && let Ok(bounds) = self.session.project.pattern_trim_bounds(&clip, edge)
         {
             let delta = i128::from(self.drag_delta(drag, pointer));
             let target = self.clip_drag_timeline().snap_bounded(

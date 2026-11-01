@@ -49,3 +49,31 @@ Editor and Instrument share subtrack selection, name/context controls, mix widge
 Instrument composes a compact one-row group header, followed by source layers, local provider lanes and a separate Output child using the MIDI instrument body. The shared track-group chevron controls child visibility as independent UI state, initially expanded. All child lanes, including the subtrack Output, hide on group collapse. Compact header controls retain access to the same bus. There is no nested Layers title row. Child lane headers use the shared track-panel indent; unit bodies and column dividers remain aligned. The group selection border encloses its children. All lane rails use the shared toolbar. One final Output remains pinned outside group scrolling. Component catalog registration still controls which units can enter each lane; source/provider menus stay local.
 
 Automated coverage includes legacy/model round trips, isolated sources, transfer rejection, rollback, copied identities, source collection after original media removal, Save As/reopen, CLI validation/inspection/rendering, both view structures, pointer group reorder/delete/cancel, every supported processing rate, allocation-free audio, one-shot stops, live/export/seek parity, bounded voice memory, final Output gain and Macro routing. Native visual, device and Windows/Linux acceptance is recorded separately in validation; automated egui checks do not establish native pointer behavior.
+
+## Beat body-edge source extension
+
+Unlooped beat clips use `Project::pattern_trim_bounds` through the same Timeline
+and Editor body-edge drag, snapping, group-preview and release-only resize paths
+as MIDI. MIDI keeps its existing tick-domain bounds. Beat bounds remain in sample
+frames: retain ordinary fractional-bar trims, allow outward growth beyond the
+saved source, clamp to project zero/timeline limits and at most 16 source bars.
+Header-edge looping and looped-clip body trimming retain their existing behavior.
+
+`Project::trimmed_clips` delegates beat candidates to `beat_resize` before the
+shared `apply_pattern_resizes` neighbor transaction. Grow immutable sources only
+when necessary; retain source identity for trims and expansion within an existing
+source. Keep other source users unchanged. Copy the original clip metadata,
+retain its stretch, keep the opposite endpoint exact, and change only its frame
+range, source offset and (when grown) asset ID. Extend the stored grid by whole
+bars while retaining the exact dragged frame range. Hidden hits remain stored and
+can reappear when the source grows.
+
+For left expansion beyond source zero, prepend whole bars and shift every stored
+hit by their tick count. Set the source offset to hide unused leading padding.
+Compute padding from the difference between scaled old/new source lengths to
+avoid rounding an extra bar into stretched sources. Retain hit IDs, velocity,
+subtrack bindings and project timing within two frames of tick/stretch rounding.
+Include hidden hits when bounding left padding; never discard them at the
+16-bar limit. Validate new assets and the final neighbor edits atomically.
+Previews and cancellation do not change project/history/dirty state; release
+publishes the complete result through normal preparation and session history.

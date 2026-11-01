@@ -201,7 +201,12 @@ impl Project {
         *self = next;
         Ok(id)
     }
-    fn beat_asset(&self, owner: Id, name: String, pattern: BeatPattern) -> Result<Asset> {
+    pub(crate) fn beat_asset(
+        &self,
+        owner: Id,
+        name: String,
+        pattern: BeatPattern,
+    ) -> Result<Asset> {
         let source = BeatPatternSource::new(owner, pattern)?;
         let frames = self.midi_frame(source.pattern.length_ticks());
         if frames == 0 || frames == u64::MAX {

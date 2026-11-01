@@ -177,7 +177,7 @@ impl Project {
         })
     }
 
-    /// Body trims resize MIDI content while audio retains ordinary source-bound trimming.
+    /// Body trims resize MIDI content and extend beat sources; audio keeps source bounds.
     /// Prepare each selected source from the original project, then resolve neighbors once.
     pub fn trimmed_clips(&self, clips: &[Clip], edge: ClipEdge) -> Result<Self> {
         let mut next = self.clone();
@@ -224,6 +224,23 @@ impl Project {
                             .unwrap()
                             .clone(),
                     );
+                    next.tracks
+                        .iter_mut()
+                        .flat_map(|t| &mut t.clips)
+                        .find(|c| c.id == clip.id)
+                        .unwrap()
+                        .asset_id = clip.asset_id;
+                }
+                resized.push(clip);
+            } else if self
+                .assets
+                .iter()
+                .find(|a| a.id == original.asset_id)
+                .is_some_and(|a| a.beat_pattern.is_some())
+            {
+                let (clip, asset) = self.beat_trim_result(original, candidate, edge)?;
+                if let Some(asset) = asset {
+                    next.assets.push(asset);
                     next.tracks
                         .iter_mut()
                         .flat_map(|t| &mut t.clips)

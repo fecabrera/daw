@@ -25,6 +25,13 @@ pub fn monitor_at_rate(frame: u64, tempo_bpm: f32, sample_rate_hz: u32) -> Strin
     format!("{bar:04}.{beat:02}")
 }
 
+/// Completed bars/beats of a duration. Allow half a sample of tick/frame rounding.
+pub fn duration_monitor_at_rate(frame: u64, tempo_bpm: f32, sample_rate_hz: u32) -> String {
+    let beats = (((frame as f64 + 0.5) / f64::from(sample_rate_hz)) * (f64::from(tempo_bpm) / 60.0))
+        .floor() as u64;
+    format!("{:04}.{:02}", beats / BEATS_PER_BAR, beats % BEATS_PER_BAR)
+}
+
 #[cfg(test)]
 pub fn shift(frame: u64, tempo_bpm: f32, beats: i64) -> u64 {
     shift_at_rate(frame, tempo_bpm, beats, daw_core::SAMPLE_RATE)
@@ -421,6 +428,24 @@ impl Timeline {
 mod tests {
     use super::*;
     use daw_core::frames;
+
+    #[test]
+    fn duration_monitor_counts_from_zero_and_accepts_rounded_musical_boundaries() {
+        for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {
+            for tempo in [120.0, 123.0, 123.5] {
+                let frame =
+                    |beats: f64| (beats * f64::from(rate) * 60.0 / f64::from(tempo)).round() as u64;
+                assert_eq!(duration_monitor_at_rate(0, tempo, rate), "0000.00");
+                assert_eq!(duration_monitor_at_rate(frame(2.0), tempo, rate), "0000.02");
+                assert_eq!(duration_monitor_at_rate(frame(4.0), tempo, rate), "0001.00");
+                assert_eq!(duration_monitor_at_rate(frame(6.0), tempo, rate), "0001.02");
+                assert_eq!(
+                    duration_monitor_at_rate(frame(4.0) - 1, tempo, rate),
+                    "0000.03"
+                );
+            }
+        }
+    }
 
     #[test]
     fn bounded_grid_snap_shares_bypass_radius_and_scrolled_pixel_coordinates() {
