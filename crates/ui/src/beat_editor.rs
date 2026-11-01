@@ -345,6 +345,10 @@ impl DawUi {
             self.beat_ui.selected.clear();
         }
         self.clear_layer_selections_except(Some(destination));
+        if owner.is_none() {
+            self.instrument_ui.select_layer(destination);
+            self.instrument_ui.track_effects_target = false;
+        }
     }
     pub(super) fn beat_name(
         &mut self,

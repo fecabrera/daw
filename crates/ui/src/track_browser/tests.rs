@@ -1422,3 +1422,81 @@ fn group_context_creates_audio_midi_beat_and_nested_groups_inside_the_clicked_pa
         }
     }
 }
+
+#[test]
+fn beat_parent_navigation_targets_final_output_catalog_effects() {
+    use crate::effects_panel::EffectTarget;
+    let (mut app, ctx, parent, rows, _, _) = beat_fixture();
+    let output = app.session.project.beat(parent).unwrap().output.id;
+    app.session
+        .project
+        .tracks
+        .iter_mut()
+        .find(|t| t.id == parent)
+        .unwrap()
+        .beat
+        .as_mut()
+        .unwrap()
+        .output
+        .macro_module
+        .add();
+    let original_parent = app
+        .session
+        .project
+        .tracks
+        .iter()
+        .find(|t| t.id == parent)
+        .unwrap()
+        .effects
+        .clone();
+    for _ in 0..2 {
+        let point = rect(&app, rows[0]).left_center() + Vec2::new(50.0, 0.0);
+        click(&mut app, &ctx, point);
+        let point = rect(&app, parent).left_center() + Vec2::new(50.0, 0.0);
+        click(&mut app, &ctx, point);
+        assert_eq!(
+            app.effect_catalog_target(),
+            Some(EffectTarget::Layer {
+                track: output,
+                layer: output
+            })
+        );
+        let settings = app.session.project.instrument_snapshot(output).unwrap();
+        assert!(
+            crate::modulation_panel::sources(Some(&settings))
+                .iter()
+                .any(|source| source.id.layer == output)
+        );
+        let effect = daw_core::EffectInstance::drive();
+        let id = effect.id;
+        let mut parent_effects = original_parent.clone();
+        app.add_catalog_effects(&mut parent_effects, [effect]);
+        assert_eq!(parent_effects, original_parent);
+        assert!(
+            app.session
+                .project
+                .beat(parent)
+                .unwrap()
+                .output
+                .effects
+                .iter()
+                .any(|e| e.id == id)
+        );
+        assert_eq!(
+            app.session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == parent)
+                .unwrap()
+                .effects,
+            original_parent
+        );
+        frame(&mut app, &ctx, vec![]);
+        app.instrument_ui.track_effects_target = true;
+        assert_eq!(
+            app.effect_catalog_target(),
+            Some(EffectTarget::Track(parent))
+        );
+    }
+}

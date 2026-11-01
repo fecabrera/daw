@@ -4,6 +4,25 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat parent catalog target correction — 2026-11-01
+
+Selecting a beat parent now selects its final Output bus for catalog effects
+through shared owner navigation. This corrects the minor finding against
+`aaf433f`: the visible Output page could otherwise insert effects into the parent
+track chain after returning from a subtrack. Explicit parent-track targeting
+remains available.
+
+The automated Tracks pointer regression passes. It navigates from subtrack to
+parent twice, inserts a catalog effect into final Output, checks the unchanged
+parent chain and Output-local Macro discovery, and checks explicit parent-track
+targeting.
+
+`cargo test --offline --locked --workspace` passes: 2,102 tests, 13 ignored,
+across 260 suites, including all 825 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for this correction.
+
 ## Beat scroll and velocity review corrections — 2026-11-01
 
 The two minor findings from the five-reviewer review of the `0808f29` tree
