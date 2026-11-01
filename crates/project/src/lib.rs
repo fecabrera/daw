@@ -1,4 +1,5 @@
 mod background_audio;
+mod effect_warnings;
 pub use background_audio::BackgroundAudio;
 mod audition;
 pub use audition::NoteAudition;
@@ -215,32 +216,9 @@ impl Session {
                 vec![]
             },
         };
-        for effect in &session.project.master.effects {
-            if let daw_core::EffectSettings::Missing { type_id, .. } = &effect.unit {
-                session.warnings.push(format!(
-                    "Unavailable effect {type_id} on Master; bypassed with settings retained"
-                ));
-            }
-        }
-        for track in &session.project.tracks {
-            for effect in track
-                .effects
-                .iter()
-                .chain(track.instrument.iter().flat_map(|i| {
-                    i.layers
-                        .iter()
-                        .flat_map(|l| &l.effects)
-                        .chain(&i.main.effects)
-                }))
-            {
-                if let daw_core::EffectSettings::Missing { type_id, .. } = &effect.unit {
-                    session.warnings.push(format!(
-                        "Unavailable effect {type_id} on track {}; bypassed with settings retained",
-                        track.name
-                    ));
-                }
-            }
-        }
+        session
+            .warnings
+            .extend(effect_warnings::missing(&session.project));
         Ok(ProjectDocument(session))
     }
     /// Worker-only completion of a document or edited model. Existing immutable buffers are reused.

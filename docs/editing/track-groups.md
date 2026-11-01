@@ -1,12 +1,12 @@
 # Track groups
 
-A track group is a stereo processing bus. Its children send their output to the group instead of directly to Master. Groups can contain audio tracks, MIDI tracks, and other groups.
+A track group is a stereo processing bus. Its children send their output to the group instead of directly to Master. Groups can contain audio tracks, MIDI tracks, beat tracks, and other groups.
 
 ## Track menus
 
 The Track menu separates its actions into five groups:
 
-- Add audio track, Add MIDI track.
+- Add audio track, Add MIDI track, Add beat track.
 - Rename track, Duplicate track.
 - Group selected tracks, Ungroup tracks.
 - Mute, Solo.
@@ -24,7 +24,11 @@ In Timeline, child track panels sit inside their group with a left margin. The g
 
 The new group starts at 0 dB, with pan centered and Mute and Solo off. It starts without effects. Children keep their clips, instruments, effects, levels, and identities. Grouping tracks that are apart brings them together in their existing order.
 
-In Timeline, drag an audio or MIDI track's icon, name, or blank header area into the middle of a group row to add it to that group. This also works when the group is collapsed. Drag a group to move its complete subtree. Drop near a row edge to reorder. Use the left side of the track header when dropping at an edge to move to an outer group, or drop after the last row to return to Master. The insertion line shows the destination. Release to apply; Escape, focus loss, or dropping outside the track area cancels. A group cannot be moved into itself or one of its children.
+In Timeline, drag an audio, MIDI or beat track's icon, name, or blank header area into the middle of a group row to add it to that group. This also works when the group is collapsed. Drag a group to move its complete subtree. Drop near a row edge to reorder. Use the left side of the track header when dropping at an edge to move to an outer group, or drop after the last row to return to Master. The insertion line shows the destination. Release to apply; Escape, focus loss, or dropping outside the track area cancels. A group cannot be moved into itself or one of its children.
+
+A beat parent joins a project track group as one track. Its [Instrument subtrack
+groups](../views/beat-editor.md#instrument-groups-and-output) remain inside that
+beat instrument; they are separate from project track groups.
 
 ## Mix and process
 

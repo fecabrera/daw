@@ -1,4 +1,5 @@
 mod beat;
+mod beat_gain;
 mod buses;
 pub use beat::BeatVoicePlan;
 mod cache_policy;

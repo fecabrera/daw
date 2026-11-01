@@ -55,6 +55,13 @@ struct BeatDrag {
     moving: Vec<Id>,
 }
 impl DawUi {
+    #[cfg(test)]
+    pub(super) fn cached_beat_layer_selected(&self, owner: Id, layer: Id) -> bool {
+        self.beat_ui
+            .states
+            .get(&owner)
+            .is_some_and(|state| state.selected_layers.contains(&layer))
+    }
     pub(super) fn beat_group_collapsed(&self, id: Id) -> bool {
         self.beat_ui.collapsed_groups.contains(&id)
     }
@@ -116,7 +123,7 @@ impl DawUi {
             .retain(|id| beat.subtracks.iter().any(|r| r.id == *id));
         self.beat_ui
             .states
-            .retain(|id, _| beat.subtracks.iter().any(|r| r.id == *id));
+            .retain(|id, _| *id == beat.output.id || beat.subtracks.iter().any(|r| r.id == *id));
         if self
             .beat_ui
             .primary

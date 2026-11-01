@@ -2593,3 +2593,34 @@ fn subtrack_context_menu_opens_across_headers_without_changing_controls() {
         }
     }
 }
+
+#[test]
+fn final_output_selection_survives_shift_layer_click() {
+    let (mut app, ctx, track, row, _) = setup();
+    app.view_mode = ViewMode::Instrument;
+    frame(&mut app, &ctx, vec![]);
+    let output = app.session.project.beat(track).unwrap().output.id;
+    let rect = app.beat_ui.final_output.unwrap();
+    click(&mut app, &ctx, rect.min + Vec2::new(45.0, 15.0));
+    assert_eq!(app.instrument_ui.track, Some(output));
+    assert!(app.instrument_ui.selected_layers.contains(&output));
+    let layer = app.session.project.instrument_settings(row).unwrap().layers[0].id;
+    let point = app.midi_editor.layer_bounds[&layer].name.center();
+    super::instrument_catalog::click(&mut app, &ctx, point, true);
+    frame(&mut app, &ctx, vec![]);
+    assert!(
+        app.cached_beat_layer_selected(output, output),
+        "cached final Output lost its selection"
+    );
+    click(&mut app, &ctx, point);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.cached_beat_layer_selected(output, output));
+    let rect = app.beat_ui.final_output.unwrap();
+    click(&mut app, &ctx, rect.min + Vec2::new(45.0, 15.0));
+    super::instrument_catalog::click(&mut app, &ctx, point, true);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.cached_beat_layer_selected(output, output));
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.cached_beat_layer_selected(output, output));
+}

@@ -9,7 +9,7 @@ pub(super) struct Buses {
     roots: Vec<usize>,
     groups: Vec<usize>,
     pub output: Vec<[f32; 2]>,
-    clip_gains: Vec<schedule::Ranges>,
+    clip_gains: Vec<super::beat_gain::Envelope>,
 }
 impl Buses {
     pub fn new(plan: &RenderPlan) -> Self {
@@ -25,11 +25,11 @@ impl Buses {
                 .tracks
                 .iter()
                 .map(|t| {
-                    schedule::Ranges::new(
+                    super::beat_gain::Envelope::new(
                         plan.beat_tracks
                             .get(&t.id)
-                            .into_iter()
-                            .flat_map(|b| b.clip_gains.iter().map(|c| (c.0, c.1))),
+                            .map_or(&[], |b| b.clip_gains.as_slice()),
+                        project.sample_rate_hz,
                     )
                 })
                 .collect(),
@@ -56,7 +56,7 @@ impl Buses {
             + self
                 .clip_gains
                 .iter()
-                .map(schedule::Ranges::heap_bytes)
+                .map(super::beat_gain::Envelope::heap_bytes)
                 .sum::<u64>()
             + vec_bytes(&self.children)
             + self.children.iter().map(vec_bytes).sum::<u64>()
@@ -140,15 +140,7 @@ impl Renderer {
             let (sample, _) = self.alignment.tracks[index].tick((sample, false));
             let content_frame =
                 latency::delayed_frame(frame, self.alignment.output_frames[index], region);
-            let gain = self.buses.clip_gains[index]
-                .at(content_frame)
-                .and_then(|clip| {
-                    self.plan
-                        .beat_tracks
-                        .get(&self.plan.project.tracks[index].id)
-                        .map(|b| b.clip_gains[clip].2)
-                })
-                .unwrap_or(1.0);
+            let gain = self.buses.clip_gains[index].at(content_frame, region);
             self.buses.output[index] =
                 self.gains[index].apply(sample.map(|v| v * gain), false, live, self.ramp);
         }

@@ -1,3 +1,4 @@
+mod effect_owners;
 pub use daw_unit_core::{DRIVE_V2_TYPE_ID, DriveV2Clip, DriveV2ColorShape, DriveV2Settings};
 pub use daw_unit_core::{EXCITER_TYPE_ID, ExciterBand, ExciterMode, ExciterSettings};
 pub use daw_unit_core::{EqBandMode, MULTIBAND_EQ_TYPE_ID, MultibandEqBand, MultibandEqSettings};
@@ -446,38 +447,9 @@ pub fn seconds(frames: u64) -> f64 {
 impl Project {
     /// Track and Master instances share validation, monitoring, and missing-unit handling.
     pub fn all_effects(&self) -> impl Iterator<Item = &EffectInstance> {
-        self.tracks
-            .iter()
-            .flat_map(|track| {
-                track
-                    .effects
-                    .iter()
-                    .chain(track.instrument.iter().flat_map(|i| {
-                        i.layers
-                            .iter()
-                            .flat_map(|l| &l.effects)
-                            .chain(&i.main.effects)
-                    }))
-            })
-            .chain(
-                self.tracks
-                    .iter()
-                    .filter_map(|t| t.beat.as_ref())
-                    .flat_map(|b| {
-                        b.output
-                            .effects
-                            .iter()
-                            .chain(b.subtracks.iter().flat_map(|s| {
-                                s.instrument
-                                    .layers
-                                    .iter()
-                                    .flat_map(|l| &l.effects)
-                                    .chain(&s.instrument.main.effects)
-                            }))
-                    }),
-            )
-            .chain(&self.master.effects)
+        self.effect_chains().flat_map(|(_, effects)| effects)
     }
+
     pub fn frames(&self, seconds: f64) -> u64 {
         (seconds.max(0.0) * f64::from(self.sample_rate_hz)).round() as u64
     }

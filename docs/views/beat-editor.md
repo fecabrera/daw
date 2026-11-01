@@ -1,6 +1,6 @@
 # Beat tracks and step editor
 
-Use beat tracks to build rhythms from independently configured instruments. Mixer shows the parent beat track only.
+Use beat tracks to build rhythms from independently configured instruments. Mixer shows the parent beat track only. You can place that parent inside a [project track group](../editing/track-groups.md).
 
 ## Create a beat
 
@@ -25,6 +25,11 @@ Patterns share one grid across all subtracks. **Length** uses the transport’s 
 Unlooped sources support up to 16 bars before stretch; stretched and looped clips can show larger lengths. **Subdivision** shows each step’s length relative to one 4/4 bar. With no stretch, the choices are 1/4, 1/8, 1/16 and 1/32 bar. The default is one bar with 1/16-bar steps. Stretching updates these values; for example, doubling a 1/16-bar step makes it 1/8 bar. Trimming or changing pattern length does not change the step duration. Unusual stretch ratios can show a decimal bar value. Trimming or choosing a coarser grid keeps hidden steps silent. Expanding the range or restoring the resolution reveals their original positions and velocities.
 
 An enabled step starts at velocity 100. Right-click it to change velocity from 1 to 127. Right-click a subtrack name to set its trigger pitch from MIDI 0 to 127; the default is 60. Every hit on that subtrack uses this pitch, plus any clip transpose.
+
+Clip Gain also controls retained Output effect tails in a gap. The next unmuted
+clip takes over the shared bus gain, including any remaining tails, over up to
+5 ms. A following clip or loop boundary can shorten that transition.
+Silence applies exactly at the clip start.
 
 Each subtrack has one active voice. A new hit replaces its previous voice. Note-off follows one step later; source trigger mode, Envelope and Amplitude settings determine audible duration. A Sampler in One-shot mode can continue after note-off.
 

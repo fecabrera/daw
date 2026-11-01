@@ -4,6 +4,54 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat tail gain, retained selection and load diagnostics — 2026-11-01
+
+Corrected the four findings in the [local ac7f4ac review](https://github.com/fecabrera/daw/pull/5#issuecomment-6559056746).
+The original report and audit remain pinned to that reviewed revision.
+
+- A prepared post-Output gain envelope holds the preceding unmuted clip gain
+  through effect tails and gaps. Following clips take over the shared bus gain
+  over up to 5 ms, shortened at the next clip or loop boundary. Silence is exact
+  at its clip start. Loop gaps retain the preceding iteration's gain. The periodic
+  envelope uses the shared delayed content clock without callback allocation or
+  mutable gain history. Prepared memory accounting remains shared.
+- Instrument state pruning retains the current final beat Output alongside live
+  subtracks. Shift preserves its selected lane across idle frames; plain selection
+  and Escape still clear it.
+- Core exposes one complete typed effect-chain traversal. Validation and load
+  diagnostics share it for Master, track effects, ordinary MIDI and every beat
+  source-layer/subtrack Output/final Output chain. Warnings identify owners;
+  opaque unavailable-effect settings remain intact.
+- The grouping guide now includes beat parent tracks in supported child types,
+  creation commands and drag instructions, and distinguishes project groups from
+  Instrument subtrack groups.
+
+Generated regressions verify silent and -24 dB Chorus tails with and without
+Output latency, live/offline/seek parity, looping, following gain transitions,
+short loops, exact small positive gains, retained multi-owner selection and
+Escape/plain replacement. A seven-owner save/open matrix checks warnings, retained
+opaque state and agreement between traversal and effect-chain lookup.
+
+Completed checks:
+
+- `cargo fmt --all --check` and `git diff --check` pass. Changed user-guide and
+  specification links resolve to existing files and headings.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings` passes.
+- `cargo test --offline --locked --workspace` passes: 2,061 tests, 13 ignored,
+  across 259 suites.
+- The final `cargo test --offline --locked -p daw-engine` rerun passes all 174
+  tests across eight suites after the loop-transition correction. Focused project
+  and UI tests also pass, including the seven-owner load matrix and 55 matching UI
+  tests (one manual probe ignored).
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`
+  pass, including deterministic exports, source collection, missing sources,
+  group buses, codecs and exit codes.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app` successfully.
+
+Native visual/display-scale, menu/pointer/keyboard, listening/device and
+Windows/Linux acceptance remain open. These fixes and automated checks do not
+establish Stage 6 native acceptance or change the pinned review's verdict.
+
 ## Full beat subtrack header context menus — 2026-11-01
 
 Editor and Instrument now attach the shared subtrack menu to the complete header

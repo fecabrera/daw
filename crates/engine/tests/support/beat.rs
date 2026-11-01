@@ -333,3 +333,105 @@ fn beat_clip_gain_retains_timing_through_nested_latency_and_loops() {
         }
     }
 }
+
+#[test]
+fn beat_output_tails_retain_clip_attenuation() {
+    for gain_db in [SILENT_GAIN_DB, -24.0] {
+        for latency in [false, true] {
+            let mut reference_plan = beat_plan(48_000, false, false);
+            reference_plan.project.tracks[0].clips[0].length_frames = 2400;
+            let parent = reference_plan.project.tracks[0].id;
+            reference_plan
+                .project
+                .add_beat_pattern(parent, 24000)
+                .unwrap();
+            let mut chorus = EffectInstance::chorus();
+            if let EffectSettings::Chorus(c) = &mut chorus.unit {
+                c.feedback = 0.8;
+                c.dry_wet = 1.0;
+                c.delay_ms = 30.0;
+                c.depth = 0.0;
+            }
+            let effects = &mut reference_plan.project.tracks[0]
+                .beat
+                .as_mut()
+                .unwrap()
+                .output
+                .effects;
+            effects.push(chorus);
+            if latency {
+                let mut limiter = EffectInstance::limiter();
+                if let EffectSettings::Limiter(settings) = &mut limiter.unit {
+                    settings.enabled = false;
+                }
+                effects.push(limiter);
+            }
+            let mut plan = reference_plan.clone();
+            plan.project.tracks[0].clips[0].gain_db = gain_db;
+            plan.project.validate().unwrap();
+            let gain = linear_gain(gain_db);
+            let mut reference = vec![[0.0; 2]; 12000];
+            Renderer::new(reference_plan.clone()).render_offline(&mut reference);
+            assert!(reference[2400..].iter().any(|s| s[0].abs() > 0.01));
+            let mut actual = reference.clone();
+            Renderer::new(plan.clone()).render_offline(&mut actual);
+            let mut live = Renderer::new(plan.clone());
+            live.play();
+            for (frame, (before, after)) in reference.iter().zip(&actual).enumerate() {
+                let live = live.next_sample();
+                for ch in 0..2 {
+                    assert!(
+                        (after[ch] - before[ch] * gain).abs() < 1e-6,
+                        "{frame} {gain_db} {latency}"
+                    );
+                    if frame >= 2400 {
+                        assert!((live[ch] - after[ch]).abs() < 1e-6);
+                    }
+                }
+            }
+            let mut seek = [[0.0; 2]; 128];
+            Renderer::new(plan.clone()).render_offline_at(3000, &mut seek);
+            assert_eq!(seek.as_slice(), &actual[3000..3128]);
+            // A later empty clip takes over the shared tail gain without changing the DSP.
+            let mut following = plan.clone();
+            let mut following_reference = reference_plan.clone();
+            for project in [&mut following.project, &mut following_reference.project] {
+                project.tracks[0].clips[1].start_frame = 6000;
+            }
+            following.project.tracks[0].clips[1].gain_db = -6.0;
+            let mut before = vec![[0.0; 2]; 8000];
+            let mut after = before.clone();
+            Renderer::new(following_reference).render_offline(&mut before);
+            Renderer::new(following).render_offline(&mut after);
+            assert!(before[6000..6240].iter().any(|s| s[0].abs() > 1e-5));
+            for frame in 5800_usize..8000 {
+                let amount = (frame.saturating_sub(6000) as f32 / 240.0).min(1.0);
+                let expected_gain = if frame >= 6240 {
+                    linear_gain(-6.0)
+                } else {
+                    gain + (linear_gain(-6.0) - gain) * amount
+                };
+                for ch in 0..2 {
+                    assert!((after[frame][ch] - before[frame][ch] * expected_gain).abs() < 1e-6);
+                }
+            }
+            for project in [&mut plan.project, &mut reference_plan.project] {
+                project.transport.r#loop.enabled = true;
+                project.transport.r#loop.start_frame = 0;
+                project.transport.r#loop.end_frame = 10000;
+            }
+            let mut reference = Renderer::new(reference_plan);
+            let mut actual = Renderer::new(plan);
+            reference.play();
+            actual.play();
+            for frame in 0..22000 {
+                let a = reference.next_sample();
+                let b = actual.next_sample();
+                assert!(
+                    (b[0] - a[0] * gain).abs() < 1e-6,
+                    "loop {frame} {gain_db} {latency}"
+                );
+            }
+        }
+    }
+}
