@@ -4,6 +4,32 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat scroll and velocity review corrections — 2026-11-01
+
+The two minor findings from the five-reviewer review of the `0808f29` tree
+(also used by amended commit `624bb1f`) are corrected. The Tracks scroll-area
+prepass checks beat reorder ownership. Editor-origin drags leave its scroll
+position unchanged; Tracks-origin reorders retain edge scrolling in Editor and
+Instrument. Velocity popups stay open for input clicks, so click/type/Enter works
+alongside dragging with the existing 1–127 bounds.
+
+Both focused automated regressions pass. The scrolling test uses 41 beat rows,
+checks both origins and views, and verifies that scrolling and Escape do not
+change the project. The velocity test types 63 and out-of-range values, checks
+clamping, step identity and selection, and verifies that another clip and its
+shared previous source remain unchanged.
+
+Completed checks:
+
+- `cargo test --offline --locked --workspace` passes: 2,101 tests, 13 ignored,
+  across 260 suites, including all 824 active UI tests.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`,
+  formatting, diff checks and all 132 local file targets in the changed Markdown
+  files pass.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+
+Native UI/device and Windows/Linux checks have not been run for these fixes.
+
 ## Beat review corrections — 2026-11-01
 
 The fixes address the six validated findings against `5f3a3e3`. Core group

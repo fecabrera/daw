@@ -296,6 +296,11 @@ In Editor, the header background also starts renaming on double-click. Child
 mix controls and meters retain their own input ownership; do not intercept their
 double-clicks for rename. Opening a name input does not edit the project.
 
+The step Velocity context popup stays open for clicks inside it. Its standard
+drag input supports dragging and click/type/Enter entry, bounded to 1–127.
+Velocity edits retain the step's subtrack and tick and create content only for
+the active clip; other clips sharing its previous source remain unchanged.
+
 The Trigger pitch context item uses the shared `menus::value_row` action geometry:
 standard item padding, height, gaps and outer popup margin, with the note field
 pinned to the right inner edge. Reuse the shared note-name mapping and parser,

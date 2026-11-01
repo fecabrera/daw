@@ -405,6 +405,67 @@ fn beat_fixture() -> (DawUi, egui::Context, Id, [Id; 3], Id, Id) {
 }
 
 #[test]
+fn beat_reorder_scrolls_tracks_only_for_tracks_origin() {
+    for (view, browser_origin) in [
+        (ViewMode::Edit, false),
+        (ViewMode::Edit, true),
+        (ViewMode::Instrument, true),
+    ] {
+        let (mut app, ctx, parent, ids, _, _) = beat_fixture();
+        let edits = (0..38)
+            .map(|n| daw_core::BeatEdit::Add {
+                subtrack: Box::new(daw_core::BeatSubtrack::new(format!("Row {n}"))),
+                index: n + 3,
+            })
+            .collect();
+        app.session
+            .project
+            .edit(Edit::Beat {
+                track_id: parent,
+                edit: daw_core::BeatEdit::Batch(edits),
+            })
+            .unwrap();
+        app.set_view_mode(view, &ctx);
+        if view == ViewMode::Edit {
+            app.select_editor_track(parent);
+        }
+        app.set_tracks_panel_visible(true);
+        frame(&mut app, &ctx, vec![]);
+        let original = app.session.project.clone();
+        let top = app.track_browser.bounds.rows[0].1.top();
+        let press = if browser_origin {
+            let rect = rect(&app, ids[0]);
+            Pos2::new(rect.left() + 50.0, rect.center().y)
+        } else {
+            app.beat_ui.headers[&ids[0]].center()
+        };
+        pointer(&mut app, &ctx, press, true);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(press + Vec2::new(0.0, 10.0))],
+        );
+        assert!(app.beat_dragging());
+        let panel = app.track_browser.bounds.panel;
+        let edge = Pos2::new(panel.center().x, panel.bottom() - 10.0);
+        for _ in 0..12 {
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(edge)]);
+        }
+        let after = app.track_browser.bounds.rows[0].1.top();
+        if browser_origin {
+            assert!(after < top, "Tracks-origin drag must scroll: {view:?}");
+        } else {
+            assert_eq!(after, top, "Editor drag must retain Tracks position");
+        }
+        assert_eq!(app.session.project, original, "scrolling must not commit");
+        key(&mut app, &ctx, egui::Key::Escape);
+        pointer(&mut app, &ctx, edge, false);
+        assert_eq!(app.session.project, original);
+        assert!(!app.beat_dragging());
+    }
+}
+
+#[test]
 fn compact_controls_keep_catalog_row_sizes_and_right_alignment_for_every_owner() {
     for color in [
         settings::ColorTheme::Dark,

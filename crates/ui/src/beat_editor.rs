@@ -87,6 +87,12 @@ impl DawUi {
             self.beat_ui.drag = None;
         }
     }
+    pub(super) fn beat_reorder_in(&self, pane: BeatDragPane) -> bool {
+        self.beat_ui
+            .drag
+            .as_ref()
+            .is_some_and(|drag| drag.pane == pane)
+    }
     #[cfg(test)]
     pub(super) fn beat_sampler_waveform(&self, owner: Id, layer: Id) -> Option<Rect> {
         self.instrument_ui
@@ -1202,24 +1208,28 @@ impl DawUi {
                                             }
                                         }
                                         if let Some(step) = step {
-                                            menus::ContextMenu::new(&response).show(|ui| {
-                                                let mut velocity = step.velocity;
-                                                ui.label("Velocity");
-                                                ui.add(
-                                                    egui::DragValue::new(&mut velocity)
-                                                        .range(1..=127),
-                                                );
-                                                if velocity != step.velocity
-                                                    && let Ok(next) = pattern.with_step(
-                                                        row.id,
-                                                        tick,
-                                                        Some(velocity),
-                                                    )
-                                                {
-                                                    *pattern = next;
-                                                    self.beat_ui.step_index.edited(pattern);
-                                                }
-                                            });
+                                            menus::ContextMenu::new(&response)
+                                                .close_behavior(
+                                                    egui::PopupCloseBehavior::CloseOnClickOutside,
+                                                )
+                                                .show(|ui| {
+                                                    let mut velocity = step.velocity;
+                                                    ui.label("Velocity");
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut velocity)
+                                                            .range(1..=127),
+                                                    );
+                                                    if velocity != step.velocity
+                                                        && let Ok(next) = pattern.with_step(
+                                                            row.id,
+                                                            tick,
+                                                            Some(velocity),
+                                                        )
+                                                    {
+                                                        *pattern = next;
+                                                        self.beat_ui.step_index.edited(pattern);
+                                                    }
+                                                });
                                         }
                                     });
                                 }

@@ -32,6 +32,9 @@ Record the originating pane and view for each beat reorder. When Tracks and the
 step editor display the same parent, only the originating pane paints the preview,
 scrolls and completes or cancels its release. Another pane's outside bounds cannot
 clear that drag. Shared Escape, focus and revision guards still cancel it.
+The Tracks scroll-area prepass must also check the reorder origin. Editor
+reorders leave the Tracks scroll position unchanged. Tracks-origin beat reorders
+and ordinary track drags retain edge scrolling.
 Closing Tracks cancels its own drag. View switching retains the active-gesture
 guard and clears beat reorder state when a view change is accepted.
 

@@ -34,6 +34,100 @@ fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
 }
 
 #[test]
+fn velocity_popup_accepts_typed_values_and_preserves_other_clip_content() {
+    let (mut app, ctx, parent, row, clip) = setup();
+    let point = app.beat_ui.steps[&(row, 0)].center();
+    click(&mut app, &ctx, point);
+    let mut other = app.session.project.tracks[0].clips[0].clone();
+    other.id = Id::new_v4();
+    other.start_frame += other.length_frames;
+    app.session.project.tracks[0].clips.push(other.clone());
+    app.session.project.validate().unwrap();
+    let source = app
+        .session
+        .project
+        .assets
+        .iter()
+        .find(|a| a.id == other.asset_id)
+        .unwrap()
+        .clone();
+    let instrument = app.session.project.beat(parent).unwrap().clone();
+    frame(&mut app, &ctx, vec![]);
+    let point = app.beat_ui.steps[&(row, 0)].center();
+    for pressed in [true, false] {
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Secondary,
+                    pressed,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+    }
+    let mut current = 100;
+    for (typed, expected) in [("63", 63), ("999", 127), ("0", 1)] {
+        let label = current.to_string();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let input = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    Some(Rect::from_min_size(text.pos, text.galley.size()))
+                }
+                _ => None,
+            })
+            .expect("velocity value");
+        click(&mut app, &ctx, input.center());
+        assert!(egui::Popup::is_any_open(&ctx));
+        assert!(ctx.text_edit_focused());
+        frame(&mut app, &ctx, vec![egui::Event::Text(typed.into())]);
+        super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
+        assert!(egui::Popup::is_any_open(&ctx));
+        let active = app.session.project.tracks[0]
+            .clips
+            .iter()
+            .find(|c| c.id == clip)
+            .unwrap();
+        let pattern = app
+            .session
+            .project
+            .assets
+            .iter()
+            .find(|a| a.id == active.asset_id)
+            .unwrap()
+            .beat_pattern
+            .as_ref()
+            .unwrap();
+        assert_eq!(pattern.pattern.steps.len(), 1);
+        let step = &pattern.pattern.steps[0];
+        assert_eq!(
+            (step.subtrack_id, step.start_tick, step.velocity),
+            (row, 0, expected)
+        );
+        assert_eq!(app.session.project.tracks[0].clips[1], other);
+        assert_eq!(
+            app.session
+                .project
+                .assets
+                .iter()
+                .find(|a| a.id == source.id)
+                .unwrap(),
+            &source
+        );
+        assert_eq!(app.session.project.beat(parent).unwrap(), &instrument);
+        assert_eq!(app.selected_clip, Some(clip));
+        current = expected;
+    }
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+    assert!(!egui::Popup::is_any_open(&ctx));
+}
+
+#[test]
 fn editor_subtrack_reorder_owns_its_release_with_tracks_open_or_closed() {
     for tracks_open in [false, true] {
         for cancel in ["none", "escape", "focus", "outside", "view"] {

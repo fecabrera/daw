@@ -464,7 +464,9 @@ impl DawUi {
             .auto_shrink([false, false])
             .max_height((bounds.bottom() - header.response.rect.bottom()).max(0.0))
             .show(ui, |ui| {
-                if self.track_drag.is_some() || self.beat_dragging() {
+                if self.track_drag.is_some()
+                    || self.beat_reorder_in(crate::beat_editor::BeatDragPane::Tracks)
+                {
                     crate::drag::scroll_drag(
                         ui,
                         crate::drag::Axis::Vertical,
