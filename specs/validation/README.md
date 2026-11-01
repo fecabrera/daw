@@ -4,6 +4,24 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Full beat subtrack header context menus — 2026-11-01
+
+Editor and Instrument now attach the shared subtrack menu to the complete header
+rectangle. Names, controls, meters, padding and borders use one guarded popup
+owner in expanded and collapsed groups. Instrument resolves the header popup
+after child menus so egui's hit radius cannot substitute a nearby layer menu at
+the shared border. Primary control gestures retain their existing responses.
+
+The pointer regression checks seven horizontal positions at three heights in
+Editor and both Instrument group states. It verifies the subtrack menu content,
+Escape dismissal, unchanged project data and clean dirty state.
+
+Completed checks: all 796 UI tests pass, with one diagnostic probe ignored;
+strict locked workspace/all-target Clippy and formatting pass. The locked offline
+workspace run passes 2,055 tests, with 13 ignored across 258 suites. The final UI
+rerun includes the strengthened popup-content assertion and header-border ordering
+correction. The macOS debug bundle was rebuilt. Native pointer/window checks remain unverified.
+
 ## Beat PR review corrections — 2026-11-01
 
 Corrected all six findings from the [five-reviewer PR #5 review](https://github.com/fecabrera/daw/pull/5#issuecomment-6552566634),

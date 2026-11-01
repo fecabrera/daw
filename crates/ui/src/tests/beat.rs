@@ -2534,3 +2534,62 @@ fn beat_editor_dense_grid_scaling() {
         );
     }
 }
+
+#[test]
+fn subtrack_context_menu_opens_across_headers_without_changing_controls() {
+    for view in [ViewMode::Edit, ViewMode::Instrument] {
+        for collapsed in [false, true] {
+            let (mut app, ctx, _, row, _) = setup();
+            app.view_mode = view;
+            if collapsed {
+                app.toggle_beat_group(row);
+            }
+            frame(&mut app, &ctx, vec![]);
+            let rect = app.beat_ui.header_panels[&row];
+            let original = app.session.project.clone();
+            app.dirty = false;
+            for x in [1.0, 30.0, 100.0, 145.0, 180.0, 215.0, 245.0] {
+                for y in [1.0, rect.height() * 0.5, rect.height() - 1.0] {
+                    let point = rect.min + Vec2::new(x, y);
+                    for pressed in [true, false] {
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![
+                                egui::Event::PointerMoved(point),
+                                egui::Event::PointerButton {
+                                    pos: point,
+                                    button: egui::PointerButton::Secondary,
+                                    pressed,
+                                    modifiers: Default::default(),
+                                },
+                            ],
+                        );
+                    }
+                    assert!(
+                        egui::Popup::is_any_open(&ctx),
+                        "{view:?} {collapsed} {point:?}"
+                    );
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    assert!(
+                        shapes.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::Text(text) if text.galley.text() == "Trigger pitch"
+                        )),
+                        "the shared subtrack menu must own the popup: {view:?} {collapsed} {point:?} {:?}",
+                        shapes
+                            .iter()
+                            .filter_map(|shape| match &shape.shape {
+                                egui::Shape::Text(text) => Some(text.galley.text()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                    );
+                    assert_eq!(app.session.project, original);
+                    assert!(!app.dirty);
+                    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+                    assert!(!egui::Popup::is_any_open(&ctx));
+                }
+            }
+        }
+    }
+}

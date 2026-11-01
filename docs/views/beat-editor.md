@@ -51,6 +51,7 @@ Selecting a subtrack in Editor also selects its instrument when you return to
 Instrument, including after selecting the final Output.
 
 - Click a name to select one subtrack; Shift-click headers to toggle group membership. In Editor, clicking any part of a subtrack header, including its controls or empty space, selects that subtrack. Press Escape to clear subtrack selection in Editor or Instrument. Escape first cancels an active rename or drag.
+- Right-click anywhere in a subtrack header, including its controls, meters or empty space, to open its context menu. Opening or dismissing the menu does not change controls or pattern content.
 - Double-click a name, or use its context menu, to rename it. The name uses the same text input as track names and starts with the whole name selected. Enter accepts; Escape or moving focus elsewhere cancels.
 - Drag a selected name to reorder the selected subtracks together. Release inside the list to apply the move. Escape, focus loss or an outside release cancels it.
 - Use the name's context menu to delete selected subtracks. Delete/Backspace also removes them while a subtrack name has keyboard focus. Text, step and unit controls retain their own keyboard behavior.
