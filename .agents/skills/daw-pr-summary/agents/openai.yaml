@@ -1,0 +1,4 @@
+interface:
+  display_name: "DAW PR Summary"
+  short_description: "Compare PR claims, docs, specs and code changes"
+  default_prompt: "Use $daw-pr-summary to summarize a DAW pull request and identify inconsistencies between its description, documentation, specifications and code."
