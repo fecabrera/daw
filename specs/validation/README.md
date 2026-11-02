@@ -5,6 +5,17 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Upper catalog visibility documentation correction — 2026-11-02
+
+The review of `71902ab` retained one minor documentation finding. The architecture
+and repository instructions now distinguish independent upper catalog choices in
+each view from shared Timeline/Instrument bottom effects-lane visibility. The
+older shared upper-catalog statement is explicitly superseded. Implementation
+and current user guidance agree; no runtime behavior changed.
+
+Changed-document local file targets and `git diff --check` pass. Source tests and
+native checks were not repeated for this documentation-only correction.
+
 ## Main track selection and preview review corrections — 2026-11-02
 
 The review of `4c45133` against `origin/main` confirmed two major findings.

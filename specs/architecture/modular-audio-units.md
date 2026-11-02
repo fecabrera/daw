@@ -78,7 +78,7 @@ D35 (2026-10-13) adds effect unit selection and header drag reordering to the Ef
 
 ### Shared effects workspace in Editor and Mixer — 2026-10-28
 
-Editor and Mixer now reuse the same effect catalog/lane shell and left rail as Timeline and Instrument. Editor offers Effects, Chords and Effects lane; its existing options column remains and there is no Clip settings rail button. Mixer offers Effects and Effects lane for selected tracks/groups or Master. Editor/Mixer panels start closed and retain independent UI-only visibility; Timeline/Instrument retain their shared flags. Reuse target resolution, controls, keyboard/focus/drag guards and saved chains without DSP or schema changes. See [workspace requirements](iteration-1.md#timeline-and-mixer-views).
+Editor and Mixer now reuse the same effect catalog/lane shell and left rail as Timeline and Instrument. Editor offers Effects, Chords and Effects lane; its existing options column remains and there is no Clip settings rail button. Mixer offers Effects and Effects lane for selected tracks/groups or Master. Editor/Mixer panels start closed and retain independent UI-only visibility. Since 2026-11-02, upper catalog choices are independent in every view; only the Timeline/Instrument bottom lane retains shared visibility. This supersedes their earlier shared upper-catalog flag. Reuse target resolution, controls, keyboard/focus/drag guards and saved chains without DSP or schema changes. See [workspace requirements](iteration-1.md#timeline-and-mixer-views).
 
 ## Accepted Units MVP scope
 
@@ -424,7 +424,7 @@ Master owns a saved `effects` list and `effects_compact` flag, both defaulted fo
 
 ## Shared Instrument effects workspace — 2026-10-14
 
-Instrument now shares Timeline’s left toolbar, effects catalog, and bottom effects lane through the same workspace composition. This extends the earlier Timeline-only placement. Instrument’s upper content remains the Layers/source/envelope workspace; its catalog is left of Layers and its lane is below the instrument content. Visibility is shared UI state across Timeline and Instrument, with independent catalog/lane toggles. The rail retains its full playback-to-status height and existing size/style.
+Instrument now shares Timeline’s left toolbar, effects catalog, and bottom effects lane through the same workspace composition. This extends the earlier Timeline-only placement. Instrument’s upper content remains the Layers/source/envelope workspace; its catalog is left of Layers and its lane is below the instrument content. The original shared upper-catalog visibility was superseded on 2026-11-02: each view retains its own upper panel choice. Timeline and Instrument still share bottom effects-lane visibility. Catalog and lane toggles remain separate UI state. The rail retains its full playback-to-status height and existing size/style.
 
 Instrument edits only the selected MIDI track’s existing serial chain. It reuses catalog selection/keyboard addition, drag previews/drop, unit editing, compact/collapse state, group reorder/removal, and focus/gesture guards. Its MIDI selector retains clip selection. Stale Timeline geometry/drop targets are cleared when Instrument renders. Pane changes do not alter instruments, effects, project data, or processing order; no DSP or saved-schema changes are introduced.
 
