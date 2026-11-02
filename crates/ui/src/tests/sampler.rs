@@ -325,7 +325,7 @@ fn layer_duplication_stages_selection_until_success_and_retains_it_on_failure_or
 #[test]
 fn sampler_catalog_root_sharp_controls_and_compact_layout_follow_shared_ui_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        let (mut app, ctx, layer) = fixture(theme);
+        let (mut app, ctx, _) = fixture(theme);
         assert!(state(&app).input.is_none());
         assert_eq!(state(&app).root_note, 60);
         let b = &app.instrument_ui.samplers[0];
@@ -353,12 +353,6 @@ fn sampler_catalog_root_sharp_controls_and_compact_layout_follow_shared_ui_in_bo
         let sharp = app.instrument_ui.samplers[0].sharp.center();
         click(&mut app, &ctx, sharp, false);
         assert_eq!(state(&app).root_note, 127);
-        // Adding another source is a clean rejection; existing settings survive.
-        let before = state(&app).clone();
-        app.dirty = false;
-        add_component(&mut app, &ctx, layer, 0);
-        assert_eq!(state(&app), &before);
-        assert!(!app.dirty);
         choose_duration_mode(&mut app, &ctx, "Time (ms)");
         assert_eq!(state(&app).mode, daw_core::SamplerMode::Time);
         assert!(app.instrument_ui.samplers[0].duration.is_positive());
@@ -1314,6 +1308,141 @@ fn sample_preview_uses_presentation_color_for_midi_and_nested_sources() {
                 assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(paint) if paint.rect == rect && paint.fill == color)), "nested={nested}, granular={granular}, rect={rect:?}");
             }
             output.textures_delta.clear();
+        }
+    }
+}
+
+#[test]
+fn catalog_source_additions_replace_sources_but_append_oscillator_strips() {
+    let (mut app, ctx, layer) = fixture(settings::ColorTheme::Dark);
+    let track = app.selected_track.unwrap();
+    let effect = daw_core::EffectInstance::drive();
+    let effect_id = effect.id;
+    let row = &mut app
+        .session
+        .project
+        .instrument_settings_mut(track)
+        .unwrap()
+        .layers[0];
+    row.effects.push(effect);
+    row.gain_db = -3.0;
+    row.amplitude.present = true;
+    add_component(&mut app, &ctx, layer, 0);
+    let settings = app.session.project.instrument_settings(track).unwrap();
+    assert!(settings.layers[0].sampler.is_none());
+    let first = settings.layers[0].oscillators[0].id;
+    add_component(&mut app, &ctx, layer, 0);
+    let settings = app.session.project.instrument_settings(track).unwrap();
+    assert_eq!(settings.layers[0].oscillators.len(), 2);
+    assert_eq!(settings.layers[0].oscillators[0].id, first);
+    add_component(&mut app, &ctx, layer, 6);
+    assert!(state(&app).granulizer.is_some());
+    assert!(
+        app.session
+            .project
+            .instrument_settings(track)
+            .unwrap()
+            .layers[0]
+            .oscillators
+            .is_empty()
+    );
+    add_component(&mut app, &ctx, layer, 5);
+    assert!(state(&app).granulizer.is_none());
+    let row = &app
+        .session
+        .project
+        .instrument_settings(track)
+        .unwrap()
+        .layers[0];
+    assert_eq!(row.effects[0].id, effect_id);
+    assert_eq!(row.gain_db, -3.0);
+    assert!(row.amplitude.present);
+    app.session.project.validate().unwrap();
+}
+
+#[test]
+fn layer_file_targets_install_sampler_for_midi_and_beat_sources_atomically() {
+    for nested in [false, true] {
+        for source in 0..4 {
+            let mut app = DawUi::default();
+            let parent = if nested {
+                app.session.project.add_beat_track().unwrap()
+            } else {
+                app.session.project.add_midi_track().unwrap()
+            };
+            let owner = if nested {
+                let row = daw_core::BeatSubtrack::new("Subtrack".into());
+                let id = row.id;
+                app.session
+                    .project
+                    .edit(Edit::Beat {
+                        track_id: parent,
+                        edit: daw_core::BeatEdit::Add {
+                            subtrack: Box::new(row),
+                            index: 0,
+                        },
+                    })
+                    .unwrap();
+                id
+            } else {
+                parent
+            };
+            let layer = &mut app
+                .session
+                .project
+                .instrument_settings_mut(owner)
+                .unwrap()
+                .layers[0];
+            layer.clear_sources();
+            match source {
+                1 => layer.oscillators.push(Default::default()),
+                2 => layer.sampler = Some(Default::default()),
+                3 => layer.sampler = Some(daw_core::SamplerSettings::granular()),
+                _ => {}
+            }
+            let layer_id = layer.id;
+            app.select_track(parent, false);
+            app.view_mode = ViewMode::Instrument;
+            if nested {
+                app.navigate_beat_owner(parent, Some(owner), false);
+            }
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let rect = app
+                .instrument_ui
+                .source_drop_rows
+                .iter()
+                .find(|(id, _)| *id == layer_id)
+                .unwrap()
+                .1;
+            assert_eq!(
+                app.sampler_drop_target(rect.center()),
+                Some((owner, layer_id))
+            );
+            let file = TestWav::new();
+            app.load_layer_sampler_file((owner, layer_id), file.0.clone());
+            wait(&mut app, &ctx);
+            let layer = &app
+                .session
+                .project
+                .instrument_settings(owner)
+                .unwrap()
+                .layers[0];
+            assert_eq!(layer.id, layer_id);
+            assert!(layer.oscillators.is_empty());
+            let sampler = layer.sampler.as_ref().unwrap();
+            assert!(sampler.granulizer.is_none() && sampler.input.is_some());
+            app.session.project.validate().unwrap();
+            let before = app.session.project.clone();
+            app.load_layer_sampler_file((owner, layer_id), file.0.with_extension("missing"));
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            while app.job.is_some() {
+                assert!(std::time::Instant::now() < deadline);
+                app.poll();
+                std::thread::yield_now();
+            }
+            assert!(app.error.is_some());
+            assert_eq!(app.session.project, before);
         }
     }
 }

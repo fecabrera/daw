@@ -22,6 +22,7 @@ pub(super) struct InstrumentUi {
     drag: Option<LayerDrag>,
     pub(super) oscillator_slots: Vec<(Id, Id, Rect)>,
     pub(super) samplers: Vec<crate::sampler_panel::Bounds>,
+    pub(super) source_drop_rows: Vec<(Id, Rect)>,
     pub(super) component_slots: Vec<(Id, daw_core::InstrumentComponent, Rect)>,
     #[cfg(test)]
     pub(super) main_bounds: crate::instrument_main::MainBounds,
@@ -87,6 +88,7 @@ impl InstrumentUi {
     pub(super) fn clear_layout(&mut self) {
         self.oscillator_slots.clear();
         self.samplers.clear();
+        self.source_drop_rows.clear();
         self.component_slots.clear();
         self.effect_slots.clear();
         self.inline_effect_removals.clear();
@@ -249,6 +251,7 @@ impl DawUi {
     pub(super) fn instrument_view(&mut self, ui: &mut egui::Ui) {
         self.instrument_ui.oscillator_slots.clear();
         self.instrument_ui.samplers.clear();
+        self.instrument_ui.source_drop_rows.clear();
         self.instrument_ui.component_slots.clear();
         self.instrument_ui.effect_slots.clear();
         self.instrument_ui.component_viewports.clear();
@@ -808,6 +811,10 @@ impl DawUi {
                     }
                 });
             });
+        self.instrument_ui.source_drop_rows = layer_rows
+            .iter()
+            .map(|(id, rect)| (*id, rect.intersect(scroll.inner_rect)))
+            .collect();
         let reorder_rows = layer_rows.clone();
         layer_rows.extend(modulation_rows);
         for (_, rect) in &mut layer_rows {
@@ -1554,8 +1561,7 @@ impl DawUi {
             layer.remove_oscillator(id);
         }
         if replace_source {
-            layer.oscillators.clear();
-            layer.oscillator_modulations.clear();
+            layer.clear_sources();
             layer.sampler = Some(if replace_granular {
                 daw_core::SamplerSettings::granular()
             } else {

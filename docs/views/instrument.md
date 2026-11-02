@@ -86,3 +86,10 @@ Layer effects process that layer's notes together, after Amplitude and before la
 Effects run in their left-to-right order. Moving a control component across an effect changes its display position; it does not change modulation timing or the fixed Amplitude processing stage. Master effects process the combined track mix.
 
 The header power control turns a unit on or off. Right-click a header for **Enable** or **Disable** as the first menu item. On a selected unit, this action applies to all selected units in its lane. Double-click its header to collapse or expand it. Off units keep their settings and remain editable. See [moving and copying units](../editing/units.md) and [modulation](../modulation/README.md).
+
+Adding a source from the component catalog replaces the selected layer's source.
+Adding Oscillator to an existing Oscillator appends a strip. Other layer settings,
+effects and modulators remain. Drop an audio file on a regular layer to install
+Sampler with that file; this also replaces Oscillator or Granulizer. These rules
+apply to MIDI instruments and beat subtracks. Output and modulation lanes do not
+accept source or file drops. Failed or cancelled preparation retains the layer.

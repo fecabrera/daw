@@ -143,7 +143,7 @@ Macro headers use these same installed-component gestures. The module moves all 
 
 ## Sampler source ownership — 2026-10-17
 
-The component catalog also exposes [Sampler](../instruments/sampler.md). Each regular layer accepts one Oscillator component or one Sampler component. Oscillator retains multiple internal strips. Sampler stays first, cannot enter Main, and rejects source conflicts during catalog previews, additions, and installed moves/copies. Source headers provide an explicit Replace source action. Existing group selection, insertion, copy IDs, removal keys, and cancellation apply. Sampler copies share immutable audio and receive new sampler IDs. Sampler removal discards its source settings and prunes its saved order entry; other retained components keep their restoration behavior.
+The component catalog also exposes [Sampler](../instruments/sampler.md). Each regular layer accepts one Oscillator component or one Sampler component. Oscillator retains multiple internal strips. Sampler stays first, cannot enter Main, and replaces the previous source on catalog addition; adding Oscillator to Oscillator appends a strip. Incompatible installed source moves/copies remain rejected. Source headers provide an explicit Replace source action. Existing group selection, insertion, copy IDs, removal keys, and cancellation apply. Sampler copies share immutable audio and receive new sampler IDs. Sampler removal discards its source settings and prunes its saved order entry; other retained components keep their restoration behavior.
 
 ## Granulizer sample-source slot
 

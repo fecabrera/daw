@@ -8,7 +8,7 @@ Implemented design, updated 2026-10-18. Sampler is an instrument component for r
 
 The [saved-cache and background-preparation contract](../architecture/background-audio-preparation.md) adds persistent pitch buffers and nonblocking MIDI edits. Editor-model publication and playable-bank publication now have separate readiness.
 
-Register Sampler once in the Instrument components catalog. A layer can have one of Oscillator, Sampler, or [Granulizer](granulizer.md); the Oscillator component can still contain multiple oscillator strips. Empty layers remain silent. Sampler stays first in the layer and cannot enter Main. Conflicting catalog additions and installed transfers leave the project unchanged and show an unsupported-target hint. A catalog selection containing multiple source types cannot enter a regular layer.
+Register Sampler once in the Instrument components catalog. A layer can have one of Oscillator, Sampler, or [Granulizer](granulizer.md); the Oscillator component can still contain multiple oscillator strips. Empty layers remain silent. Sampler stays first in the layer and cannot enter Main. Catalog additions replace the existing source; Oscillator on Oscillator appends a strip. Incompatible installed transfers leave the project unchanged and show an unsupported-target hint. A catalog selection containing multiple source types cannot enter a regular layer.
 
 Source headers offer an explicit **Replace source** action. Replacement keeps the layer's identity, mix settings, modulators, and Amplitude stage. It discards the old source settings and oscillator pitch routes when applicable. Component selection, Delete/Backspace, header group moves/copies, focus, insertion previews, and cancellation reuse the existing component paths. Sampler copies receive a fresh sampler ID and share the immutable audio asset. Removing Sampler discards its settings; retained Envelope/LFO/Macro/Amplitude settings keep their existing restoration rules.
 
@@ -86,3 +86,22 @@ Compatible Gain, route, power, and presentation edits retain sample positions, h
 The editor can bend a running note before its new offline pitch variant is prepared. Preserve the fractional sample cursor, gain and modulation smoother; linearly interpolate the current buffer at the new pitch ratio with a five-millisecond ratio ramp. Measure start/end boundary fades in output time during the bend. This transient bend changes playback speed. Cancellation returns to the original pitch. Do not restart ended samples.
 
 On pitch-only publication, swap immutable prepared banks between playing and retired sources without releasing final owners on the callback. Select the committed pitch buffer at the current cursor, crossfade changed PCM for five milliseconds (including replacements at the same pitch index), and ramp the residual rate ratio back to unity. New notes use the committed prepared buffer normally. Other compatible bank updates preserve positions. Worker failure leaves the old bank and written pitch intact. The saved project and export use prepared constant-duration pitches, never transient editor input.
+
+
+## Layer source additions and file drops — 2026-11-02
+
+Catalog source additions replace the regular layer's existing source. Oscillator
+on Oscillator appends a fresh strip, preserving existing strip identities.
+`InstrumentLayerSettings::clear_sources` discards only source settings, targeted
+oscillator routes and stale source order entries. Retain the layer ID, mix,
+providers, Amplitude and effects. Registration metadata allows source replacement
+only on regular layers and rejects multi-source catalog selections atomically.
+
+Instrument publishes clipped regular-layer file-drop bounds for the visible
+owner only, including empty layers and source headers. Both MIDI and nested beat
+owners use the same target and latest-request worker. A layer file drop prepares
+Sampler and the decoded input through `Session::with_layer_sampler_decoded` before
+publishing the complete session. Existing Sampler file replacement retains its
+controls; another source is replaced by a fresh Sampler. Failures and cancellation
+retain the original session. Existing source Choose sample and Timeline clip-drop
+paths keep their Sampler/Granulizer settings and unit-specific targets.

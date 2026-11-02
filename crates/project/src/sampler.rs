@@ -55,6 +55,28 @@ impl Session {
         data: AudioData,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Self> {
+        self.with_decoded_layer_audio(track, layer, path, data, cancelled, false)
+    }
+    /// File drop on a regular layer installs Sampler atomically with prepared audio.
+    pub fn with_layer_sampler_decoded(
+        &self,
+        track: Id,
+        layer: Id,
+        path: &Path,
+        data: AudioData,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Self> {
+        self.with_decoded_layer_audio(track, layer, path, data, cancelled, true)
+    }
+    fn with_decoded_layer_audio(
+        &self,
+        track: Id,
+        layer: Id,
+        path: &Path,
+        data: AudioData,
+        cancelled: &impl Fn() -> bool,
+        replace_source: bool,
+    ) -> Result<Self> {
         if cancelled() {
             return Err(error("Sample preparation cancelled"));
         }
@@ -88,6 +110,20 @@ impl Session {
             source_metadata: data.metadata.clone(),
         });
         next.audio.insert(id, data);
+        let settings = next
+            .project
+            .instrument_settings_mut(track)
+            .and_then(|i| i.layers.iter_mut().find(|l| l.id == layer))
+            .ok_or_else(|| error("Instrument layer no longer exists"))?;
+        if replace_source
+            && settings
+                .sampler
+                .as_ref()
+                .is_none_or(|s| s.granulizer.is_some())
+        {
+            settings.clear_sources();
+            settings.sampler = Some(Default::default());
+        }
         next.assign_sampler_input(
             track,
             layer,

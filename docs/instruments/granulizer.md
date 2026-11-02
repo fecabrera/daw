@@ -4,12 +4,12 @@ Granulizer turns an audio region into overlapping short pieces called grains. MI
 
 ## Load a sample
 
-1. Add **Granulizer** from **Instrument → Sources** to an empty layer.
-2. Drop one WAV, MP3, or AAC-LC file onto the unit, or open its header menu and select **Choose sample…**. You can also drop an audio clip from the Timeline to retain its visible trim, repeats, and stretch.
+1. Add **Granulizer** from **Instrument → Sources** to a regular layer. This replaces its existing source.
+2. Open the unit header menu and select **Choose sample…** for a WAV, MP3, or AAC-LC file. Dropping an external audio file onto the layer or unit instead replaces the source with Sampler. A Timeline audio-clip drop keeps Granulizer and retains the clip's visible trim, repeats, and stretch.
 3. Select the input region using the bar above the waveform. Set the root note to the MIDI note that should play at the original pitch; the default is C4.
 4. Add notes to a MIDI pattern on the track and start playback.
 
-Each layer accepts one of Oscillator, Sampler, or Granulizer. The source header menu can replace it. Switching between Sampler and Granulizer retains the sample and selected region. Other layer components remain in place.
+Each layer accepts one of Oscillator, Sampler, or Granulizer. The source header menu can replace it. Switching between Sampler and Granulizer through the header menu retains the sample and selected region. Catalog replacement creates a new source. Other layer components remain in place.
 
 Loading and region preparation run in the background. Failed or cancelled work retains the previous sample and settings. Missing recordings retain their saved reference and play silence. Saving retains external recording references; it does not bundle the files or change their contents. Projects containing Granulizer require a build that supports this component.
 

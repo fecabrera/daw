@@ -514,6 +514,7 @@ impl DawUi {
             layer.prune_component_order();
         }
         if replace {
+            layer.clear_sources();
             layer.oscillators.push(Default::default());
             layer.component_order.retain(|c| !c.is_source());
         }
@@ -535,6 +536,19 @@ impl DawUi {
         if self.view_mode != ViewMode::Instrument {
             return None;
         }
+        let owner = self.selected_instrument_owner()?;
+        self.sampler_unit_drop_target(pointer).or_else(|| {
+            self.instrument_ui
+                .source_drop_rows
+                .iter()
+                .find(|(_, rect)| rect.contains(pointer))
+                .map(|(layer, _)| (owner, *layer))
+        })
+    }
+    pub(super) fn sampler_unit_drop_target(&self, pointer: Pos2) -> Option<(Id, Id)> {
+        if !self.media_ready() || self.view_mode != ViewMode::Instrument {
+            return None;
+        }
         if self
             .selected_track
             .and_then(|id| self.session.project.beat(id))
@@ -542,14 +556,14 @@ impl DawUi {
         {
             return self.beat_sampler_target(pointer);
         }
+        let owner = self.selected_instrument_owner()?;
         self.instrument_ui
             .samplers
             .iter()
-            .find(|b| {
-                Some(b.track) == self.selected_instrument_owner() && b.panel.contains(pointer)
-            })
+            .find(|b| b.track == owner && b.panel.contains(pointer))
             .map(|b| (b.track, b.layer))
     }
+
     pub(super) fn run_sampler_job(
         &mut self,
         label: &str,
@@ -564,6 +578,12 @@ impl DawUi {
         self.settings_cancel = Some(cancel);
     }
     pub(super) fn load_sampler_file(&mut self, target: (Id, Id), path: PathBuf) {
+        self.load_source_file(target, path, false);
+    }
+    pub(super) fn load_layer_sampler_file(&mut self, target: (Id, Id), path: PathBuf) {
+        self.load_source_file(target, path, true);
+    }
+    fn load_source_file(&mut self, target: (Id, Id), path: PathBuf, replace_source: bool) {
         let session = self.session.clone();
         let hover = self.file_hover.take().filter(|h| h.path == path);
         self.run_sampler_job("Preparing sample", move |cancel| {
@@ -575,11 +595,13 @@ impl DawUi {
                 })
                 .map_err(|e| e.to_string())?
             };
-            session
-                .with_sampler_decoded(target.0, target.1, &path, audio, &|| {
-                    cancel.load(Ordering::Relaxed)
-                })
-                .map_err(|e| e.to_string())
+            let cancelled = || cancel.load(Ordering::Relaxed);
+            if replace_source {
+                session.with_layer_sampler_decoded(target.0, target.1, &path, audio, &cancelled)
+            } else {
+                session.with_sampler_decoded(target.0, target.1, &path, audio, &cancelled)
+            }
+            .map_err(|e| e.to_string())
         });
     }
 }

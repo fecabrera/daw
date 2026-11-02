@@ -2429,9 +2429,9 @@ impl DawUi {
             {
                 self.file_drop_target = None;
                 if ctx.input(|i| i.raw.dropped_files.len()) > 1 {
-                    self.fail("Drop one audio file onto Sampler or Granulizer");
+                    self.fail("Drop one audio file onto an instrument layer");
                 } else {
-                    self.load_sampler_file(target, dropped.path().to_path_buf());
+                    self.load_layer_sampler_file(target, dropped.path().to_path_buf());
                 }
             } else if self.file_action_enabled(FileAction::Import)
                 && let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned())
@@ -5284,7 +5284,7 @@ impl DawUi {
                 .input(|input| input.pointer.latest_pos())
                 .unwrap_or(drag.origin);
             if drag.mode == ClipDragMode::Move {
-                if let Some(target) = self.sampler_drop_target(pointer) {
+                if let Some(target) = self.sampler_unit_drop_target(pointer) {
                     if drag.clips.len() > 1 {
                         self.fail("Drop one audio clip onto Sampler or Granulizer");
                         return;

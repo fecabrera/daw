@@ -204,6 +204,13 @@ impl InstrumentLayerSettings {
             .filter(|c| !c.is_source() || self.has_component(*c))
             .collect()
     }
+    /// Remove source-owned settings and routes, retaining the rest of the layer.
+    pub fn clear_sources(&mut self) {
+        self.oscillators.clear();
+        self.oscillator_modulations.clear();
+        self.sampler = None;
+        self.prune_component_order();
+    }
     /// Remove installed units together. Retained providers/stages keep their IDs and settings.
     /// Oscillator removal follows source-strip removal: discard sources and their pitch routes.
     pub fn remove_components(&mut self, units: &[InstrumentComponent]) -> Option<bool> {

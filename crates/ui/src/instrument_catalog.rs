@@ -32,7 +32,6 @@ pub(super) struct Entry {
     add_provider: Option<fn(&mut daw_core::InstrumentBusSettings)>,
     source: bool,
     provider_lane: Option<ModulationLaneKind>,
-    layer_available: fn(&daw_core::InstrumentLayerSettings) -> bool,
 }
 impl Entry {
     const fn layer(
@@ -50,12 +49,10 @@ impl Entry {
             add_provider: None,
             source: false,
             provider_lane: None,
-            layer_available: |_| true,
         }
     }
-    const fn source(mut self, available: fn(&daw_core::InstrumentLayerSettings) -> bool) -> Self {
+    const fn source(mut self) -> Self {
         self.source = true;
-        self.layer_available = available;
         self
     }
     const fn with_main(mut self, add: fn(&mut daw_core::InstrumentBusSettings)) -> Self {
@@ -85,10 +82,7 @@ impl Entry {
         } else if owner == settings.main.id {
             self.supports_main()
         } else {
-            settings
-                .layers
-                .iter()
-                .any(|layer| layer.id == owner && (self.layer_available)(layer))
+            settings.layers.iter().any(|layer| layer.id == owner)
         }
     }
     fn add_to(self, settings: &mut daw_core::InstrumentSettings, owner: Id) {
@@ -101,6 +95,9 @@ impl Entry {
                 add(&mut settings.main);
             }
         } else if let Some(layer) = settings.layers.iter_mut().find(|layer| layer.id == owner) {
+            if self.source && !(self.type_id == "daw.oscillator" && !layer.oscillators.is_empty()) {
+                layer.clear_sources();
+            }
             (self.add_layer)(layer);
         }
     }
@@ -110,7 +107,7 @@ pub(super) const ENTRIES: [Entry; 7] = [
     Entry::layer("daw.oscillator", "Oscillator", Category::Sources, |l| {
         l.oscillators.push(Default::default())
     })
-    .source(|l| l.sampler.is_none()),
+    .source(),
     Entry::provider(
         "daw.envelope",
         "Envelope",
@@ -130,11 +127,11 @@ pub(super) const ENTRIES: [Entry; 7] = [
     Entry::layer("daw.sampler", "Sampler", Category::Sources, |l| {
         l.sampler = Some(Default::default())
     })
-    .source(|l| l.sampler.is_none() && l.oscillators.is_empty()),
+    .source(),
     Entry::layer("daw.granulizer", "Granulizer", Category::Sources, |l| {
         l.sampler = Some(daw_core::SamplerSettings::granular())
     })
-    .source(|l| l.sampler.is_none() && l.oscillators.is_empty()),
+    .source(),
 ];
 
 pub(super) fn catalog() -> catalog::Catalog {
@@ -306,7 +303,9 @@ impl DawUi {
                         None => "This component is not supported by the selected lane.",
                     });
                 } else if entry.source && !entry.can_add(&settings, owner) {
-                    response.clone().on_hover_text("A layer can contain Oscillator, Sampler, or Granulizer. Remove its source or use Replace source in the installed source header menu.");
+                    response
+                        .clone()
+                        .on_hover_text("Sources can be added to regular instrument layers only.");
                 }
             }
         }

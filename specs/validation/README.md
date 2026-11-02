@@ -6,6 +6,32 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Layer source replacement and audio-file drops — 2026-11-02
+
+Catalog source additions replace the installed source on a regular instrument
+layer. Adding Oscillator to Oscillator appends a strip. External audio-file drops
+on regular MIDI and beat-subtrack layers install Sampler after worker preparation.
+Layer identity, mix settings, effects and Amplitude remain intact. Failed loads
+retain the original project. Choose sample and Timeline clip drops retain their
+existing unit-specific behavior.
+
+Completed checks on macOS:
+
+- Locked offline workspace tests passed, including documentation tests. The full
+  UI suite passed 838 tests, with three existing manual probes ignored.
+- Catalog and sampler suites passed 18 tests each. New tests cover source
+  replacement, oscillator appending, retained layer settings, empty and occupied
+  MIDI/beat file-drop targets, and rollback after a failed load. After removing
+  an unused test binding, all 18 sampler tests passed again.
+- Strict locked offline workspace/all-target Clippy, formatting, diff and changed
+  Markdown local file-target checks passed.
+- CLI smoke checks passed, including source collection, track inspection,
+  codecs, repeatability, group buses and failure paths.
+- The debug macOS app was rebuilt through `tools/package_macos.sh debug`.
+
+Native UI, audio-device and Windows/Linux checks were not run. No dependency or
+audio DSP changes were made.
+
 ## Instrument and audio loop tails — 2026-11-02
 
 Continuous transport wraps retain MIDI/beat one-shot cursors and instrument
