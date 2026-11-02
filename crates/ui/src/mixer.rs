@@ -273,7 +273,12 @@ impl DawUi {
                 .max_rect(master_rect),
         );
         master_ui.set_clip_rect(master_rect.intersect(ui.clip_rect()));
-        self.mixer_strip(&mut master_ui, master_rect, None);
+        self.mixer_strip(
+            &mut master_ui,
+            master_rect,
+            None,
+            master_left > bounds.left(),
+        );
         self.master_selection(&master_ui, master_rect);
 
         let tracks_rect = Rect::from_min_max(bounds.min, Pos2::new(master_left, bounds.bottom()));
@@ -306,7 +311,12 @@ impl DawUi {
                             );
                             let mut strip_ui = ui
                                 .new_child(egui::UiBuilder::new().max_rect(rect).id_salt("strip"));
-                            self.mixer_strip(&mut strip_ui, rect, Some(&track));
+                            self.mixer_strip(
+                                &mut strip_ui,
+                                rect,
+                                Some(&track),
+                                rect.left() > tracks_rect.left(),
+                            );
                             #[cfg(test)]
                             self.mixer_bounds.insert(track.id, rect);
                             // Select the whole panel without taking input from its controls.
@@ -360,6 +370,8 @@ impl DawUi {
                 let mut outline_rect = rect.shrink(1.0);
                 // Reach the next strip's divider without leaving header fill outside the stroke.
                 outline_rect.max.x = rect.right();
+                // Meet the track's left and top edges without an inset row of fill.
+                outline_rect.min = rect.min;
                 strip_edges(&tracks_ui, outline_rect, outline);
                 // Replace this portion of the shared line; do not add another row.
                 tracks_ui.painter().hline(
@@ -404,7 +416,13 @@ impl DawUi {
         ui.add_space(((ui.available_width() - leading_width - text.size().x) / 2.0).max(0.0));
     }
 
-    fn mixer_strip(&mut self, ui: &mut egui::Ui, rect: Rect, track: Option<&daw_core::Track>) {
+    fn mixer_strip(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        track: Option<&daw_core::Track>,
+        left_divider: bool,
+    ) {
         let palette = theme::palette(ui.ctx());
         ui.painter().rect_filled(rect, 0.0, palette.panel);
         if let Some(track) = track {
@@ -416,8 +434,11 @@ impl DawUi {
             );
         }
         let border = Stroke::new(1.0, palette.border);
-        ui.painter()
-            .vline(rect.left() + 0.5, rect.y_range(), border);
+        // The toolbar or open catalog owns the workspace's left separator.
+        if left_divider {
+            ui.painter()
+                .vline(rect.left() + 0.5, rect.y_range(), border);
+        }
         if track.is_none() {
             ui.painter()
                 .vline(rect.right() - 0.5, rect.y_range(), border);

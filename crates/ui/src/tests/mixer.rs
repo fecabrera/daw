@@ -232,9 +232,11 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                         Pos2::new(bounds.left() + 0.5, bounds.top()),
                         Pos2::new(bounds.left() + 0.5, bounds.bottom()),
                     ];
-                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    // The first strip shares the toolbar/catalog separator; Master owns its divider.
+                    assert_eq!(shapes.iter().any(|shape| matches!(&shape.shape,
                             egui::Shape::LineSegment { points: line, stroke }
-                                if *line == points && *stroke == egui::Stroke::new(1.0, theme::palette(&ctx).border))));
+                                if *line == points && *stroke == egui::Stroke::new(1.0, theme::palette(&ctx).border))),
+                        bounds == app.master_bounds);
                 }
                 assert!(
                     shapes.iter().any(|shape| matches!(&shape.shape,
@@ -254,7 +256,11 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                         .iter()
                         .find_map(|shape| match &shape.shape {
                             egui::Shape::Path(path)
-                                if path.points[1] == strip.shrink(2.0).left_top()
+                                if path.points[1]
+                                    == Pos2::new(
+                                        strip.left() + outline.width / 2.0,
+                                        strip.top() + outline.width / 2.0,
+                                    )
                                     && path.stroke.color
                                         == egui::epaint::ColorMode::Solid(outline.color)
                                     && path.stroke.width == outline.width =>
@@ -264,6 +270,16 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                             _ => None,
                         })
                         .unwrap();
+                    assert_eq!(
+                        path.points[1].x - path.stroke.width / 2.0,
+                        strip.left(),
+                        "Selected left outline must meet the track left without a gap"
+                    );
+                    assert_eq!(
+                        path.points[1].y - path.stroke.width / 2.0,
+                        strip.top(),
+                        "Selected top outline must meet the track top without a gap"
+                    );
                     assert_eq!(
                         path.points[2].x + path.stroke.width / 2.0,
                         app.mixer_bounds[&next_track].left(),
