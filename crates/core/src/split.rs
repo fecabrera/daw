@@ -90,6 +90,11 @@ impl Project {
                 return self.unfold_midi_split(clip, &asset.name, &pattern, at, notes);
             }
             let new_id = self.split_geometry(clip, at)?;
+            // A non-crossing loop needs only a geometry split. The linear source
+            // window does not describe its phased audible position.
+            if clip.repeat.is_some() {
+                return Ok(new_id);
+            }
             self.retarget_midi_split(clip, new_id, &asset.name, &pattern, at, notes)?;
             return Ok(new_id);
         }
@@ -201,8 +206,8 @@ fn linear_piece(clip: &Clip, asset_id: Id, start: u64, end: u64, id: Id) -> Clip
         length_frames: end - start,
         repeat: None,
         stretch: None,
-        gain_db: 0.0,
-        transpose: 0,
+        gain_db: clip.gain_db,
+        transpose: clip.transpose,
     }
 }
 
@@ -759,6 +764,129 @@ mod tests {
                 .iter()
                 .any(|(_, start, length)| *start == 480 && *length == 960)
         );
+    }
+
+    #[test]
+    fn silent_loop_split_keeps_shared_patterns_with_phase_offset_and_stretch() {
+        for rate in crate::SAMPLE_RATES {
+            for mode in MidiNoteSplit::ALL {
+                for scale in [1, 2] {
+                    for offset_ticks in [0, 120] {
+                        let (mut project, id, note, _) = midi_project(rate);
+                        project
+                            .edit(Edit::ReplaceMidiPattern {
+                                clip_id: id,
+                                pattern: MidiPattern {
+                                    length_ticks: 3840,
+                                    notes: vec![MidiNote {
+                                        id: note,
+                                        start_tick: 480,
+                                        length_ticks: 240,
+                                        pitch: 60,
+                                        velocity: 100,
+                                    }],
+                                },
+                            })
+                            .unwrap();
+                        let beat = project.midi_frame(960) * scale;
+                        let offset = project.midi_frame(offset_ticks) * scale;
+                        let phase = project.midi_frame(480) * scale;
+                        let at = project.midi_frame(600) * scale;
+                        let clip = &mut project.tracks[0].clips[0];
+                        clip.length_frames = 3 * beat;
+                        clip.source_offset_frame = offset;
+                        clip.repeat = Some(ClipLoop {
+                            length_frames: beat,
+                            phase_frame: phase,
+                        });
+                        clip.stretch = (scale == 2).then(|| crate::ClipStretch::new(1, 2).unwrap());
+                        clip.gain_db = -6.0;
+                        clip.transpose = 12;
+                        let asset = clip.asset_id;
+                        project.validate().unwrap();
+                        let pattern = project
+                            .assets
+                            .iter()
+                            .find(|a| a.id == asset)
+                            .unwrap()
+                            .midi_pattern
+                            .as_ref()
+                            .unwrap();
+                        assert!(
+                            !note_occurrences(&project, &project.tracks[0].clips[0], pattern)
+                                .iter()
+                                .any(|n| n.start < at && at < n.end)
+                        );
+                        let mut other = project.tracks[0].clips[0].clone();
+                        other.id = Id::new_v4();
+                        other.start_frame = 3 * beat;
+                        project.tracks[0].clips.push(other.clone());
+                        let (split, created) = project.split_clips(&[id], at, mode).unwrap();
+                        assert_eq!(split.assets, project.assets);
+                        assert_eq!(
+                            split.tracks[0].clips.iter().find(|c| c.id == other.id),
+                            Some(&other)
+                        );
+                        for clip in split.tracks[0]
+                            .clips
+                            .iter()
+                            .filter(|c| c.id == id || created.contains(&c.id))
+                        {
+                            assert_eq!(clip.asset_id, asset);
+                            assert_eq!((clip.gain_db, clip.transpose), (-6.0, 12));
+                        }
+                        split.validate().unwrap();
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn crossing_loop_split_preserves_clip_settings_in_both_modes() {
+        for rate in crate::SAMPLE_RATES {
+            for mode in MidiNoteSplit::ALL {
+                let (mut project, id, note, _) = midi_project(rate);
+                project.tracks[0].clips[0].length_frames = project.midi_frame(960);
+                project
+                    .edit(Edit::ReplaceMidiPattern {
+                        clip_id: id,
+                        pattern: MidiPattern {
+                            length_ticks: 960,
+                            notes: vec![MidiNote {
+                                id: note,
+                                start_tick: 0,
+                                length_ticks: 960,
+                                pitch: 60,
+                                velocity: 100,
+                            }],
+                        },
+                    })
+                    .unwrap();
+                let beat = project.midi_frame(960);
+                let clip = &mut project.tracks[0].clips[0];
+                clip.length_frames = 3 * beat;
+                clip.repeat = Some(ClipLoop {
+                    length_frames: beat,
+                    phase_frame: 0,
+                });
+                clip.gain_db = -6.0;
+                clip.transpose = 12;
+                clip.name = "Loop".into();
+                let (split, created) = project.split_clips(&[id], beat + beat / 2, mode).unwrap();
+                assert_eq!(created.len(), 1);
+                for clip in &split.tracks[0].clips {
+                    assert_eq!((clip.gain_db, clip.transpose), (-6.0, 12));
+                    assert_eq!(clip.name, "Loop");
+                    assert!(clip.repeat.is_none());
+                }
+                assert_eq!(
+                    serde_json::from_slice::<Project>(&serde_json::to_vec(&split).unwrap())
+                        .unwrap(),
+                    split
+                );
+            }
+        }
     }
 
     fn pattern_notes(project: &Project, clip: Id) -> Vec<(Id, u32, u32)> {

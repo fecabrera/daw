@@ -1,0 +1,2 @@
+# Preserve the upstream notice bytes used by tools/runtime_notices.json.
+crates/ui/assets/licenses/nu-ansi-term-0.50.3-LICENSE.txt -text

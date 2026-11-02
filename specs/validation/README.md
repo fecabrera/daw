@@ -6,6 +6,36 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Looped MIDI split and notice corrections — 2026-11-02
+
+Splitting a looping MIDI clip without a note occurrence crossing the split now
+changes only clip geometry. Both pieces retain the shared pattern and its phase,
+source offset and stretch. Splits that unfold crossing notes retain clip gain
+and transpose in both note-split modes.
+
+Completed checks:
+
+- Six focused core split tests passed. The new cases cover both split modes at
+  all six processing rates, shared patterns, phase, source offset and stretch.
+- The project regression passed audible Sampler pitch and gain checks, live and
+  offline parity, save/reopen parity and float32 WAV export in both split modes.
+- Fourteen packaging tests passed. The runtime notice inventory now includes
+  exact locked-version texts for harfrust, tiny-skia, tiny-skia-path, nu-ansi-term
+  and sharded-slab. This fixes the confirmed omissions; it is not a complete
+  licensing audit.
+- Strict locked offline workspace/all-target Clippy passed. Changed Markdown
+  file targets and `git diff --check` passed.
+- `cargo test --offline --locked --workspace` and
+  `cargo fmt --all --check` passed. The locked offline CLI build and
+  `python3 tools/check_cli.py` passed.
+- `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+
+The project guide now states that memory-pressure history eviction has no
+notification. EQ guidance distinguishes standalone visual order from fixed
+automation bindings and DSP order. The ONNX advisory remains unchanged, as
+requested. Native UI, device, plugin-host and other-platform acceptance were
+not run for these corrections.
+
 ## Standalone review corrections — 2026-11-02
 
 Regular MIDI Sampler requests now include each clip's effective transposed keys.

@@ -393,3 +393,107 @@ fn transposed_sampler_note_prepares_and_renders_effective_pitch() {
         assert_eq!(rendered, restored);
     }
 }
+
+#[test]
+fn loop_split_retains_gain_pitch_live_export_and_saved_state() {
+    for mode in daw_core::MidiNoteSplit::ALL {
+        let fixture = Fixture::new();
+        let mut session = fixture.session(StretchEngine::INTEGRATED, &[60]);
+        let beat = session.project.midi_frame(960);
+        let id = session.project.tracks[0].clips[0].id;
+        session.project.tracks[0].clips[0].length_frames = beat;
+        session
+            .project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: id,
+                pattern: MidiPattern {
+                    length_ticks: 960,
+                    notes: vec![MidiNote {
+                        id: Id::new_v4(),
+                        start_tick: 0,
+                        length_ticks: 960,
+                        pitch: 60,
+                        velocity: 127,
+                    }],
+                },
+            })
+            .unwrap();
+        let clip = &mut session.project.tracks[0].clips[0];
+        clip.length_frames = 3 * beat;
+        clip.repeat = Some(daw_core::ClipLoop {
+            length_frames: beat,
+            phase_frame: 0,
+        });
+        clip.gain_db = -6.0;
+        clip.transpose = 12;
+        session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .sampler
+            .as_mut()
+            .unwrap()
+            .trigger = daw_core::SamplerTrigger::Gate;
+        let (project, created) = session
+            .project
+            .split_clips(&[id], beat + beat / 2, mode)
+            .unwrap();
+        assert_eq!(created.len(), 1);
+        session.project = project;
+        session.prepare_stretches().unwrap();
+        for clip in &session.project.tracks[0].clips {
+            assert_eq!((clip.gain_db, clip.transpose), (-6.0, 12));
+        }
+        let mut rendered = vec![[0.0; 2]; (3 * beat) as usize];
+        Renderer::new(session.plan()).render_offline(&mut rendered);
+        assert_pitch(&rendered[..4800], 48000, 12);
+        assert_pitch(
+            &rendered[(2 * beat) as usize..(2 * beat) as usize + 4800],
+            48000,
+            12,
+        );
+        let mut neutral = session.clone();
+        for clip in &mut neutral.project.tracks[0].clips {
+            clip.gain_db = 0.0;
+        }
+        let mut reference = vec![[0.0; 2]; rendered.len()];
+        Renderer::new(neutral.plan()).render_offline(&mut reference);
+        let gain = 10_f32.powf(-6.0 / 20.0);
+        for (actual, unity) in rendered.iter().zip(&reference) {
+            for ch in 0..2 {
+                assert!((actual[ch] - unity[ch] * gain).abs() < 2e-6);
+            }
+        }
+        let mut live = Renderer::new(session.plan());
+        live.play();
+        for (i, expected) in rendered.iter().enumerate() {
+            let actual = live.next_sample();
+            if i > 240 {
+                assert_eq!(&actual, expected);
+            }
+        }
+        let folder = fixture.0.join("split-project");
+        session.save(&folder).unwrap();
+        let reopened = Session::open(&folder).unwrap();
+        let mut saved = vec![[0.0; 2]; rendered.len()];
+        Renderer::new(reopened.plan()).render_offline(&mut saved);
+        assert_eq!(saved, rendered);
+        let export = fixture.0.join("split.wav");
+        session
+            .export_with_settings(
+                &export,
+                false,
+                daw_media::ExportSettings {
+                    format: daw_media::ExportFormat::Wav,
+                    wav_codec: daw_media::WavCodec::Float32,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            daw_media::decode_wav(&export).unwrap().samples.as_slice(),
+            rendered.as_slice()
+        );
+    }
+}

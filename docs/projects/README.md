@@ -108,7 +108,7 @@ Open application Settings and choose **MIDI > Split MIDI notes**. Split into two
 
 Audio preparation uses a shared 2 GiB budget for decoded samples and working buffers. Long files, high processing rates, and stretched copies need more space. If preparation exceeds the budget, shorten the source, use a lower processing rate, or close an unused project and try again. A failed import or settings change retains the current project and playback. This budget is not a limit on track count or total application memory.
 
-Hover over the processing-rate and buffer-size label in the status bar to see estimated memory use. Undo history and seek checkpoints have separate limits. When audio memory is nearly full, starting a background operation can remove older undo/redo steps; a notice reports this change. The current project stays intact.
+Hover over the processing-rate and buffer-size label in the status bar to see estimated memory use. Undo history and seek checkpoints have separate limits. When audio memory is nearly full, starting a background operation can remove older undo/redo steps without a notification. The current project stays intact.
 
 Playback preparation also limits retained processing state to an estimated 512 MiB. If it reports that this limit is exceeded, current playback continues. Reduce instrument voices or effects, or retry after pending work finishes. These estimates exclude some system, graphics and temporary memory.
 

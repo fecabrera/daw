@@ -1,5 +1,5 @@
 {
-  "scope": "Confirmed notice omissions from standalone review 633bf24; not a complete licensing audit.",
+  "scope": "Confirmed runtime notice omissions from standalone reviews; not a complete licensing audit.",
   "notices": [
     {
       "component": "alsa-sys-0.3.1",
@@ -60,6 +60,56 @@
         "plugins"
       ],
       "reason": "Runtime notice retained in the common UI notice inventory; unused target notices may be bundled conservatively."
+    },
+    {
+      "component": "harfrust-0.12.0",
+      "notice": "crates/ui/assets/licenses/harfrust-0.12.0-LICENSE.txt",
+      "sha256": "3a7c3f0b887abb7c638faf022d29257418458614c6724b120ceeffb279f9c7d2",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Exact runtime license text retained in common UI notice inputs; unused-target notices may be included conservatively."
+    },
+    {
+      "component": "tiny-skia-0.11.4",
+      "notice": "crates/ui/assets/licenses/tiny-skia-0.11.4-LICENSE.txt",
+      "sha256": "6d41e05f1d54fe726997cb0334ec539f1dff50600b1d5d90462ec2b392770ced",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Exact runtime license text retained in common UI notice inputs; unused-target notices may be included conservatively."
+    },
+    {
+      "component": "tiny-skia-path-0.11.4",
+      "notice": "crates/ui/assets/licenses/tiny-skia-0.11.4-LICENSE.txt",
+      "sha256": "6d41e05f1d54fe726997cb0334ec539f1dff50600b1d5d90462ec2b392770ced",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Exact runtime license text retained in common UI notice inputs; unused-target notices may be included conservatively."
+    },
+    {
+      "component": "nu-ansi-term-0.50.3",
+      "notice": "crates/ui/assets/licenses/nu-ansi-term-0.50.3-LICENSE.txt",
+      "sha256": "284465860407420254e39be4e1bdcaaf2e7f2d18e06f9bab75bc75341a5d8501",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Exact runtime license text retained in common UI notice inputs; unused-target notices may be included conservatively."
+    },
+    {
+      "component": "sharded-slab-0.1.7",
+      "notice": "crates/ui/assets/licenses/sharded-slab-0.1.7-LICENSE.txt",
+      "sha256": "eafbfa606bc005ed7fd2f623d65af17ffe4ef7c017221ac14405bf4140771ea9",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Exact runtime license text retained in common UI notice inputs; unused-target notices may be included conservatively."
     }
   ]
 }
