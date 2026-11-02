@@ -2038,3 +2038,42 @@ fn chorus_track_master_export_seek_and_compatible_edits_share_history_without_al
         }
     }
 }
+
+#[test]
+fn audio_transport_loop_repeats_only_looped_pcm_and_retains_effect_tail() {
+    let rate = 48000;
+    let mut p = plan(rate, false);
+    let asset = p.project.tracks[0].clips[0].asset_id;
+    let samples = (0..8192)
+        .map(|i| {
+            if (3000..3800).contains(&i) {
+                [0.2; 2]
+            } else if i >= 4500 {
+                [1.0; 2]
+            } else {
+                [0.0; 2]
+            }
+        })
+        .collect();
+    p.audio.get_mut(&asset).unwrap().samples = Arc::new(samples);
+    p.project.transport.r#loop = Loop {
+        enabled: true,
+        start_frame: 0,
+        end_frame: 4096,
+    };
+    let mut dry = Renderer::new(p.clone());
+    p.project.tracks[0].effects.push(EffectInstance::chorus());
+    let mut wet = Renderer::new(p);
+    dry.play();
+    wet.play();
+    let mut tail = 0.0;
+    for frame in 0..5096 {
+        let d = dry.next_sample();
+        let w = wet.next_sample();
+        if frame > 4096 + rate / 100 {
+            assert_eq!(d, [0.0; 2]);
+            tail += w[0].abs() + w[1].abs();
+        }
+    }
+    assert!(tail > 0.01, "effect tail was lost at the loop boundary");
+}

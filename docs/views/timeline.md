@@ -84,6 +84,10 @@ Press Space to play or pause from any view, pane, or focused control. Text field
 
 The ruler uses four beats per bar, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI and beat timing follow tempo.
 
+At a transport loop boundary, MIDI and beat releases and one-shot samples
+continue into the next iteration. Audio clips repeat only the selected loop
+region. Track, group and Master effect tails continue across the boundary.
+
 Seeking and editing notes during playback keep the current audio and playhead running while the change is prepared. A seek then fades to the requested position. A note edit takes effect at the current playback position, without pausing or returning to an earlier position. Changes to effect latency use the same continuous playback behavior.
 
 Recently prepared positions use cached sound state for faster seeks. The first seek, a seek outside the cached range, or a seek after a project edit can still require history reconstruction. This can delay when a change becomes audible. Rapid changes replace pending changes. Pause stops the active audio even while a seek or edit is being prepared; ordinary pause and resume retain the current sound state.

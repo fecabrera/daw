@@ -95,3 +95,17 @@ Include hidden hits when bounding left padding; never discard them at the
 16-bar limit. Validate new assets and the final neighbor edits atomically.
 Previews and cancellation do not change project/history/dirty state; release
 publishes the complete result through normal preparation and session history.
+
+## Live transport loop tails
+
+A continuous transport wrap releases instrument note gates without resetting their
+voices. One-shot sources, envelope releases and bus effects finish across the
+boundary; hits and directed stops in the next iteration retain normal priority.
+Instrument clip-edge fades must not silence these voices during live looping. Gaps at
+the loop start continue the retained voices with their preceding clip gain. A choke already fading at the wrap
+continues toward silence and cannot return to full gain. Seek/reset still
+reconstructs the destination instead of carrying voices from the old position.
+Keep this path allocation-free and use the latency-compensated feed wrap when
+processing lookahead is active. This applies to MIDI and beat instruments. Nonlooping clip boundaries retain
+their existing behavior. Audio clips repeat only the selected region; existing
+track, group and Master effect histories continue through the wrap.

@@ -509,3 +509,119 @@ fn beat_output_tails_retain_clip_attenuation() {
         }
     }
 }
+
+#[test]
+fn beat_loop_wrap_retains_last_one_shot_tail() {
+    for rate in SAMPLE_RATES {
+        for effect in [false, true] {
+            let mut plan = beat_plan(rate, true, false);
+            let owner = plan.project.tracks[0].beat.as_ref().unwrap().subtracks[0].id;
+            if effect {
+                plan.project.tracks[0].beat.as_mut().unwrap().subtracks[0]
+                    .instrument
+                    .layers[0]
+                    .effects
+                    .push(EffectInstance::limiter());
+            }
+            let clip = plan.project.tracks[0].clips[0].id;
+            let pattern = BeatPattern::default()
+                .with_step(owner, 3600, Some(127))
+                .unwrap();
+            plan.project
+                .edit(Edit::ReplaceBeatPattern {
+                    clip_id: clip,
+                    pattern: pattern.clone(),
+                })
+                .unwrap();
+            let end = plan.project.tracks[0].clips[0].end();
+            let mut reference = plan.clone();
+            reference
+                .project
+                .edit(Edit::ReplaceBeatPattern {
+                    clip_id: clip,
+                    pattern: pattern.with_grid(2, BeatResolution::Sixteenth).unwrap(),
+                })
+                .unwrap();
+            plan.project.transport.r#loop = Loop {
+                enabled: true,
+                start_frame: 0,
+                end_frame: end,
+            };
+            let mut actual = Renderer::new(plan);
+            let mut expected = Renderer::new(reference);
+            actual.play();
+            expected.play();
+            for frame in 0..end + u64::from(rate / 12) {
+                ALLOCATIONS.with(|count| count.set(0));
+                TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+                let a = actual.next_sample();
+                TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+                assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+                let b = expected.next_sample();
+                if frame > end + u64::from(rate / 100) {
+                    for channel in 0..2 {
+                        assert!(
+                            (a[channel] - b[channel]).abs() < 1e-5,
+                            "rate={rate} effect={effect} frame={frame} {a:?} {b:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn beat_choke_finishes_across_transport_wrap_without_recovering_gain() {
+    let rate = 48000;
+    let mut plan = beat_plan(rate, true, true);
+    plan.project.edit(Edit::SetTempo { bpm: 6000.0 }).unwrap();
+    let beat = plan.project.tracks[0].beat.as_ref().unwrap();
+    let (open, closed) = (beat.subtracks[0].id, beat.subtracks[1].id);
+    let clip = plan.project.tracks[0].clips[0].id;
+    let pattern = BeatPattern::default()
+        .with_step(closed, 0, Some(127))
+        .unwrap()
+        .with_step(open, 1920, Some(127))
+        .unwrap()
+        .with_step(closed, 3600, Some(127))
+        .unwrap();
+    plan.project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: clip,
+            pattern: pattern.clone(),
+        })
+        .unwrap();
+    let end = plan.project.tracks[0].clips[0].end();
+    let mut reference = plan.clone();
+    reference
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: clip,
+            pattern: pattern.with_grid(2, BeatResolution::Sixteenth).unwrap(),
+        })
+        .unwrap();
+    // A stop at the loop start must not restart an already fading choke.
+    plan.project.transport.r#loop = Loop {
+        enabled: true,
+        start_frame: 0,
+        end_frame: end,
+    };
+    let mut actual = Renderer::new(plan);
+    let mut expected = Renderer::new(reference);
+    actual.seek(0);
+    expected.seek(0);
+    actual.play();
+    expected.play();
+    let mut previous = f32::MAX;
+    for frame in 0..end + rate as u64 / 50 {
+        let value = actual.next_sample()[0].abs();
+        expected.next_sample();
+        if frame >= end {
+            assert!(value <= previous + 1e-6, "choke recovered gain at {frame}");
+        }
+        previous = value;
+    }
+    assert_eq!(actual.next_sample(), [0.0; 2]);
+    assert_eq!(expected.next_sample(), [0.0; 2]);
+}

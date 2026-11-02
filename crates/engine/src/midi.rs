@@ -461,6 +461,9 @@ fn clip_pitch(pitch: u8, transpose: i8) -> u8 {
 #[derive(Clone)]
 pub(crate) struct MidiTrackRuntime {
     beat_stopped: bool,
+    loop_wrapped: bool,
+    tail_clip_gain: f32,
+    carried_stop_gain: Option<f32>,
     previous_stop_gain: f32,
     // Regular buses follow canonical layer order; Main is always the final bus.
     layer_effects: Vec<super::layer_effects::LayerEffects>,
@@ -809,6 +812,9 @@ impl MidiTrackRuntime {
             super::layer_effects::parallel_latency(instrument, project.sample_rate_hz);
         Some(Self {
             beat_stopped: false,
+            loop_wrapped: false,
+            tail_clip_gain: 1.0,
+            carried_stop_gain: None,
             previous_stop_gain: 1.0,
             layer_effects: layers
                 .iter()
@@ -1484,6 +1490,9 @@ impl MidiTrackRuntime {
         self.held_sample
     }
     pub fn reset(&mut self) {
+        self.loop_wrapped = false;
+        self.tail_clip_gain = 1.0;
+        self.carried_stop_gain = None;
         self.shared.reset();
         self.beat_stopped = false;
         self.previous_stop_gain = 1.0;
@@ -1541,7 +1550,16 @@ impl MidiTrackRuntime {
         self.voices.iter().any(|voice| !voice.sleeping)
     }
 
+    /// Release note gates at a continuous wrap while retaining source/release state.
+    pub fn wrap_loop(&mut self) {
+        let stop = self.previous_stop_gain;
+        self.end_notes();
+        self.loop_wrapped = true;
+        self.carried_stop_gain = (stop < 1.0).then_some(stop);
+    }
     pub fn end_notes(&mut self) {
+        self.loop_wrapped = false;
+        self.carried_stop_gain = None;
         self.shared.end();
         for voice in &mut self.voices {
             voice.end_note();
@@ -1679,18 +1697,42 @@ impl MidiTrackRuntime {
         self.sample_in_region(frame, None)
     }
     pub fn sample_in_region(&mut self, frame: u64, loop_region: Option<(u64, u64)>) -> [f32; 2] {
-        let mut clip_gain = 1.0;
+        let wrapped = self.loop_wrapped;
+        let retain_tails = loop_region.is_some();
+        let carried_gain = if let Some(gain) = &mut self.carried_stop_gain {
+            *gain = (*gain - 1.0 / (self.sample_rate_hz / 200).max(1) as f32).max(0.0);
+            if *gain == 0.0 && !self.beat_stopped {
+                for voice in &mut self.voices {
+                    voice.reset();
+                }
+                self.shared.end();
+                self.beat_stopped = true;
+            }
+            *gain
+        } else {
+            1.0
+        };
+
+        let mut clip_gain = if retain_tails {
+            self.tail_clip_gain
+        } else {
+            1.0
+        };
         let sample = if let Some(index) = self.clip_ranges.at(frame) {
+            // Preserve the wrap marker across a leading gap until scheduling resumes.
+            self.loop_wrapped = false;
             let prepared = &self.clips[index];
             let clip = &prepared.clip;
             clip_gain = linear_gain(clip.gain_db);
+            self.tail_clip_gain = clip_gain;
             let position = clip.source_frame(frame - clip.start_frame);
             let source = clip
                 .stretch
                 .map_or(position, |s| s.original_frame(position));
             let restarted = self.last_clip != Some(clip.id)
                 || self.last_source.is_none_or(|last| source < last);
-            if restarted {
+            if restarted && !wrapped {
+                self.carried_stop_gain = None;
                 self.beat_stopped = false;
                 self.previous_stop_gain = 1.0;
                 self.next_event = prepared.events.partition_point(|e| e.frame <= source);
@@ -1724,6 +1766,9 @@ impl MidiTrackRuntime {
                     }
                 }
             } else {
+                if restarted {
+                    self.next_event = prepared.events.partition_point(|e| e.frame < source);
+                }
                 while let Some(event) = prepared
                     .events
                     .get(self.next_event)
@@ -1734,6 +1779,7 @@ impl MidiTrackRuntime {
                     let voice = &mut self.voices[event.slot];
                     if let Some((pitch, velocity)) = event.on {
                         self.beat_stopped = false;
+                        self.carried_stop_gain = None;
                         // Choke gain is outside the voice so effect tails survive.
                         // Capture it once before a new hit removes that multiplier.
                         if self.previous_stop_gain != 1.0 {
@@ -1765,7 +1811,11 @@ impl MidiTrackRuntime {
             }
             self.last_clip = Some(clip.id);
             self.last_source = Some(source);
-            let mut stop_gain = 1.0;
+            let mut stop_gain = if self.carried_stop_gain.is_some() {
+                carried_gain
+            } else {
+                1.0
+            };
             if let Some(stop) = prepared
                 .stops
                 .partition_point(|f| *f <= source)
@@ -1781,7 +1831,9 @@ impl MidiTrackRuntime {
                 if latest_note.is_none_or(|note| stop >= note) {
                     let age = position.saturating_sub(output_frame(clip, stop));
                     let fade_frames = u64::from((self.sample_rate_hz / 200).max(1));
-                    stop_gain = 1.0 - (age.min(fade_frames) as f32 / fade_frames as f32);
+                    // A new stop must not restore a choke already carried across the wrap.
+                    stop_gain =
+                        stop_gain.min(1.0 - (age.min(fade_frames) as f32 / fade_frames as f32));
                     if age >= fade_frames && !self.beat_stopped {
                         for voice in &mut self.voices {
                             voice.reset();
@@ -1793,24 +1845,35 @@ impl MidiTrackRuntime {
             }
             self.previous_stop_gain = stop_gain;
             let fade = stop_gain
-                * super::sample_fade(
-                    clip,
-                    frame - clip.start_frame,
-                    position,
-                    self.sample_rate_hz,
-                );
+                * if retain_tails {
+                    1.0
+                } else {
+                    super::sample_fade(
+                        clip,
+                        frame - clip.start_frame,
+                        position,
+                        self.sample_rate_hz,
+                    )
+                };
             self.voice_sample(frame, loop_region, fade)
         } else {
             if self.last_clip.take().is_some() {
-                self.shared.reset_notes();
-                // Clip fades have already reached zero; do not resurrect a release tail in a gap.
-                for voice in &mut self.voices {
-                    voice.reset();
+                if retain_tails {
+                    self.shared.end();
+                    for voice in &mut self.voices {
+                        voice.end_note();
+                    }
+                } else {
+                    self.shared.reset_notes();
+                    // Clip fades have already reached zero; do not resurrect a release tail in a gap.
+                    for voice in &mut self.voices {
+                        voice.reset();
+                    }
                 }
             }
             self.last_source = None;
-            self.previous_stop_gain = 1.0;
-            self.voice_sample(frame, loop_region, 1.0)
+            self.previous_stop_gain = carried_gain;
+            self.voice_sample(frame, loop_region, carried_gain)
         };
         if self.main_remaining > 0 {
             for ch in 0..2 {

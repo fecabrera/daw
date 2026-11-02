@@ -5,6 +5,36 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+
+## Instrument and audio loop tails — 2026-11-02
+
+Continuous transport wraps retain MIDI/beat one-shot cursors and instrument
+release state after note-off instead of reconstructing and clearing voices.
+Leading gaps retain the wrap scheduling marker and preceding clip gain. Carried
+beat chokes continue toward zero even when the next iteration issues another stop.
+Audio clips repeat only the selected region; bus effect histories continue.
+Seek/stop resets and nonlooping clip boundaries retain their existing behavior.
+
+Completed checks on macOS:
+
+- Locked offline workspace checks passed. After expanding the fix from beat to
+  all instrument tracks, a fresh complete `daw-engine` run passed. The final
+  focused tests cover six processing rates, one-shots, MIDI envelope releases,
+  leading gaps with attenuated clip gain, beat chokes and latency-producing effects.
+  The new instrument tests check zero callback allocations.
+- An audio-track regression confirms that a Chorus tail crosses the boundary
+  while recording content beyond the loop region is not played.
+- A temporary probe on a copy of the supplied two-bar project compared the
+  isolated longest sample with uninterrupted playback. Samples match exactly
+  from 10–200 ms after the wrap. Original project files were not modified.
+- Strict locked offline workspace/all-target Clippy, formatting, diff and changed
+  Markdown local file-target checks passed. CLI smoke checks passed, including
+  source collection, inspection, codecs, repeatability, group buses and failures.
+- The debug macOS app was rebuilt through `tools/package_macos.sh debug`.
+
+Native listening/device and Windows/Linux checks were not run. Logs and the
+saved-project probe remain under ignored `work/`; no private media is tracked.
+
 ## Upper catalog visibility documentation correction — 2026-11-02
 
 The review of `71902ab` retained one minor documentation finding. The architecture

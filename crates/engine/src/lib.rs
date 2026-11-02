@@ -958,7 +958,7 @@ impl Renderer {
             && self.alignment.previous_feed.is_some_and(|old| frame < old)
         {
             for runtime in self.midi.iter_mut().flatten() {
-                runtime.end_notes();
+                runtime.wrap_loop();
             }
         }
         self.alignment.previous_feed = Some(frame);
@@ -1128,7 +1128,7 @@ impl Renderer {
             {
                 if self.alignment.total == 0 {
                     for runtime in self.midi.iter_mut().flatten() {
-                        runtime.end_notes();
+                        runtime.wrap_loop();
                     }
                 }
                 self.playhead = l.start_frame;

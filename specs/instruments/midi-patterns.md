@@ -279,3 +279,14 @@ Release publishes the final pitch and commits the validated editor edit. When re
 Gesture cancellation, Stop, focus loss, leaving Editor and blocked edits end the transient preview. With pending audio, restore the complete playback schedule's pitch even when the gesture started from a newer editor revision. Cancel or failed background preparation keeps the visible editor edits, history and last complete playable revision. Retry prepares the current editor revision; only complete bank/schedule publication acknowledges its target pitches. Undo/Redo restores editor history and requests its required audio without reviving an older transient preview. See [background preparation](../architecture/background-audio-preparation.md#state-and-user-behavior).
 
 Pitch-only pattern changes retain the schedule topology and compatible runtime. Hash clip properties and sorted note IDs, gates and velocities, excluding pattern asset identity and note pitch. Swap prepared schedules into the playing runtime while retaining voice slots, note age, oscillator phase, envelopes, LFO clocks, route state and smoothing. Retune oscillator base frequency over five milliseconds; existing pitch modulation remains additive. Source/root/range, gate, velocity or topology changes keep their existing reconstruction rules. Reuse portable Sampler/Granulizer retuning. All owner retirement stays outside the callback.
+
+## Live transport loop tails
+
+On a continuous loop wrap, send note-off without resetting the prepared voices.
+Retain one-shot sample cursors and envelope releases until normal voice lifecycle
+or a new trigger replaces them. Restart event scheduling at the loop source
+position without reconstructing and erasing those voices. Preserve the wrap scheduling marker and preceding clip gain across a leading
+gap until the first clip resumes. Keep normal seek/reset reconstruction and
+nonlooping clip behavior. Reuse the same allocation-free
+transport-wrap path as beat instruments, including latency-compensated feed clocks.
+Audio clips repeat only the selected range while effects retain their histories.

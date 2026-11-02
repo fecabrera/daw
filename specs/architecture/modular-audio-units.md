@@ -362,7 +362,7 @@ These details must preserve the accepted behavior. Specify future polyphony, nes
 4. Add the Units view and project persistence over that same model. Add Editor with editor selection by clip type. Implement the accepted beat pattern editor MVP scope over shared event scheduling and unit processing, after specifying its remaining implementation details.
 5. Package reusable Rust crates and add standalone tools after the unit contract works in both playback and export.
 
-Before expanding the unit set, check source rejection on audio tracks, invalid-graph rollback, parameter smoothing, event timing, every supported project rate/buffer size, variable block sizes, save/reopen, and playback/export consistency. Measure callback allocation and blocking behavior, CPU/memory use, and native-device stability. Verify independent MIDI voices and note-offs, Beat lane retrigger replacement, transport resets, preserved pause state, loop voice termination with continuing effects, mute processing, smooth bypass, and atomic graph replacement. Test zero latency for earlier units and compensated Limiter timing, tail rendering and truncation notices, missing-unit fallback/data preservation, and pattern-versus-track ownership. Verify that multiple oscillator units form one instrument with independent per-voice oscillator state, one aggregate output bus, and preserved routing/settings after save/reopen. Measure the accepted eight-voice workload and record its hardware and results.
+Before expanding the unit set, check source rejection on audio tracks, invalid-graph rollback, parameter smoothing, event timing, every supported project rate/buffer size, variable block sizes, save/reopen, and playback/export consistency. Measure callback allocation and blocking behavior, CPU/memory use, and native-device stability. Verify independent MIDI voices and note-offs, Beat lane retrigger replacement, transport resets, preserved pause state, loop note-off with continuing instrument releases, one-shots and effects, mute processing, smooth bypass, and atomic graph replacement. Test zero latency for earlier units and compensated Limiter timing, tail rendering and truncation notices, missing-unit fallback/data preservation, and pattern-versus-track ownership. Verify that multiple oscillator units form one instrument with independent per-voice oscillator state, one aggregate output bus, and preserved routing/settings after save/reopen. Measure the accepted eight-voice workload and record its hardware and results.
 
 Verify that audio, MIDI, and beat clips open their respective editors in Editor, including beat clips using subtrack instruments with different source units. Check clip/lane context retention across Timeline, Editor, and Units. Beat-specific validation criteria are recorded in the [beat pattern editor design](../views/beat-editor.md#validation-criteria).
 
@@ -654,3 +654,15 @@ Retain one beat instrument per parent track, immutable pattern sources, independ
 ## Beat subtrack instrument identity — 2026-10-31
 
 Every beat subtrack is an instrument. This supersedes the earlier audio/MIDI beat-lane classification in D07 and the type-specific creation/lifecycle rules. Add beat subtrack creates an instrument group directly; Sampler, Oscillator or another supported source is configured inside its layers. Changing a source does not convert the subtrack type or replace its identity. The selected subtrack’s Layers page owns its sources, local LFO/Envelope lanes and Output. Selecting the parent opens the final beat Output. See B33 in the [beat editor specification](../views/beat-editor.md) and the [implementation plan](../views/beat-tracks-plan.md).
+
+
+## Transport loop tails — 2026-11-02
+
+Continuous loop wraps send instrument note-off while retaining MIDI/beat source
+cursors and release state. This supersedes loop-boundary voice termination;
+normal retriggers and beat Stops retain their existing voice rules. Shared bus
+effects continue processing their histories. Audio clips repeat only the selected
+loop range; do not play recording content beyond that range. Keep seek/stop resets,
+nonlooping clip boundaries and five-millisecond de-clicking unchanged. Prepare all
+state outside the callback and retain the latency-compensated wrap path. See the
+[loop-tail implementation contract](../views/beat-model.md#live-transport-loop-tails).

@@ -5411,3 +5411,85 @@ mod modulation_lanes;
 
 #[path = "support/beat.rs"]
 mod beat;
+
+#[test]
+fn midi_loop_wrap_retains_one_shots_and_envelope_releases() {
+    for rate in SAMPLE_RATES {
+        for sampler in [false, true] {
+            let mut p = if sampler {
+                sampler_plan(rate, SamplerTrigger::OneShot)
+            } else {
+                plan(Waveform::Sine, rate)
+            };
+            if !sampler {
+                let envelope = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+                    .envelopes[0]
+                    .settings;
+                *envelope = EnvelopeSettings::default();
+                envelope.release.time_ms = 300.0;
+            }
+            let clip_id = p.project.tracks[0].clips[0].id;
+            let note = MidiNote {
+                id: Id::new_v4(),
+                start_tick: 3600,
+                length_ticks: 240,
+                pitch: 20,
+                velocity: 127,
+            };
+            p.project
+                .edit(Edit::ReplaceMidiPattern {
+                    clip_id,
+                    pattern: MidiPattern {
+                        length_ticks: 3840,
+                        notes: vec![note.clone()],
+                    },
+                })
+                .unwrap();
+            p.project.tracks[0].clips[0].start_frame = u64::from(rate / 50);
+            p.project.tracks[0].clips[0].gain_db = -12.0;
+            let length = p.project.tracks[0].clips[0].length_frames;
+            let end = p.project.tracks[0].clips[0].end();
+            let mut reference = p.clone();
+            reference
+                .project
+                .edit(Edit::ReplaceMidiPattern {
+                    clip_id,
+                    pattern: MidiPattern {
+                        length_ticks: 7680,
+                        notes: vec![note],
+                    },
+                })
+                .unwrap();
+            reference.project.tracks[0].clips[0].length_frames = length * 2;
+            reference.project.validate().unwrap();
+            p.project.transport.r#loop = Loop {
+                enabled: true,
+                start_frame: 0,
+                end_frame: end,
+            };
+            let mut actual = Renderer::new(p);
+            let mut expected = Renderer::new(reference);
+            actual.play();
+            expected.play();
+            let mut energy = 0.0;
+            for frame in 0..end + u64::from(rate / 12) {
+                ALLOCATIONS.with(|c| c.set(0));
+                TRACK_ALLOCATIONS.with(|c| c.set(true));
+                let a = actual.next_sample();
+                TRACK_ALLOCATIONS.with(|c| c.set(false));
+                assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+                let b = expected.next_sample();
+                if frame > end + u64::from(rate / 100) {
+                    energy += a[0].abs();
+                    for ch in 0..2 {
+                        assert!(
+                            (a[ch] - b[ch]).abs() < 1e-5,
+                            "{rate} {sampler} {frame}: {a:?} {b:?}"
+                        );
+                    }
+                }
+            }
+            assert!(energy > 0.01);
+        }
+    }
+}

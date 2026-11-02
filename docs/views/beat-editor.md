@@ -98,3 +98,8 @@ Use the scrollbar below the steps to move through time without moving the
 track overview or subtrack headers. It remains available without a selected pattern.
 
 In **Tracks**, the beat parent's chevron hides or shows its subtrack rows. Beat parents start expanded. Hiding rows retains playback and the selected instrument. The Output strip's toolbar controls that strip separately.
+
+When the transport loop restarts, beat one-shots and release tails continue into
+the next iteration. A new hit on the same subtrack replaces the previous voice;
+configured Stops connections still choke their targets. Seeking starts playback
+from the new position instead of carrying sounds from the old position.
