@@ -2348,7 +2348,7 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
             let oscillator = app.midi_editor.oscillator_panel_bounds;
             let envelope = app.midi_editor.envelope_panel_bounds;
             let waveform_size = shapes.iter().find_map(|shape| match &shape.shape {
-                egui::Shape::Path(path) if (path.stroke.width - 1.25).abs() < 0.01 => {
+                egui::Shape::Path(path) if path.points.len() == 129 => {
                     let bounds = Rect::from_points(&path.points);
                     oscillator.contains_rect(bounds).then_some(bounds.size())
                 }
@@ -2437,9 +2437,6 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
                             let bounds = Rect::from_points(&diagram.points);
                             assert!((bounds.width() - 10.0).abs() < 0.01);
                             assert!((bounds.height() - 6.0).abs() < 0.01);
-                            if let Some(size) = waveform_size {
-                                assert!((bounds.size() - size).length() < 0.01);
-                            }
                             let start = diagram.points[0];
                             let end = *diagram.points.last().unwrap();
                             let deviation = diagram
@@ -6310,7 +6307,12 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
             })
             .collect();
         centers.sort_by(|a, b| a.y.total_cmp(&b.y));
-        assert_eq!(centers.len(), 3);
+        assert_eq!(centers.len(), 2);
+        // The shape selector occupies the old waveform row without moving Pitch/Gain.
+        centers.insert(
+            0,
+            centers[0] - Vec2::new(0.0, knobs::CHOICE_SIZE + theme::TOOLBAR_PADDING as f32),
+        );
         for (index, label) in [(1, "0"), (2, "-12.0 dB")] {
             let reference = shapes
                 .iter()
@@ -6417,33 +6419,27 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
                 }
             );
         }
-        let diagrams: Vec<_> = shapes
+        let waveforms: Vec<_> = shapes
             .iter()
             .filter_map(|shape| match &shape.shape {
-                egui::Shape::Path(path) if (path.stroke.width - 1.25).abs() < 0.01 => Some(path),
+                egui::Shape::Path(path) if path.points.len() == 129 && path.stroke.width == 1.0 => {
+                    Some(path)
+                }
                 _ => None,
             })
             .collect();
-        assert_eq!(diagrams.len(), 4, "show one diagram for each waveform");
-        for (index, diagram) in diagrams.iter().enumerate() {
-            let bounds = Rect::from_points(&diagram.points);
-            assert!(
-                Rect::from_center_size(centers[0], Vec2::splat(knobs::CHOICE_SIZE))
-                    .contains_rect(bounds)
-            );
-            let color = if index == 0 {
-                theme::accent(&ctx)
-            } else {
-                theme::palette(&ctx).secondary
-            };
-            assert_eq!(diagram.stroke.color, egui::epaint::ColorMode::Solid(color));
-        }
-        assert_ne!(diagrams[1].points, diagrams[3].points);
+        assert_eq!(waveforms.len(), 1, "show one cycle for the source");
+        let bounds = Rect::from_points(&waveforms[0].points);
+        assert!(app.midi_editor.oscillator_strip_bounds[0].contains_rect(bounds));
+        assert_eq!(
+            waveforms[0].stroke.color,
+            egui::epaint::ColorMode::Solid(theme::accent(&ctx))
+        );
         for center in &centers {
             assert!((center.x - centers[0].x).abs() < 0.1);
         }
         assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::Text(text) if matches!(text.galley.text(), "Waveform" | "Pitch" | "Gain" | "Sine" | " semitones" | "-12.0" | " dB")
+            egui::Shape::Text(text) if matches!(text.galley.text(), "Waveform" | "Pitch" | "Gain" | " semitones" | "-12.0" | " dB")
         )), "Oscillator has no parameter-name labels or separate value column");
         for label in ["−∞", "+12"] {
             let bounds = shapes
@@ -6472,7 +6468,7 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
                 < 0.1
         );
         let assets = format!("{:?}", app.session.project.assets);
-        for point in centers {
+        for point in centers.into_iter().skip(1) {
             click_note_or_lane(&mut app, &ctx, point);
             frame(
                 &mut app,
@@ -6497,6 +6493,27 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
                 }],
             );
         }
+        let selected = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(t) if t.galley.text() == "Sine" => {
+                    Some(t.galley.rect.translate(t.pos.to_vec2()).center())
+                }
+                _ => None,
+            })
+            .expect("waveform dropdown");
+        click_note_or_lane(&mut app, &ctx, selected);
+        let popup = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let saw = popup
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(t) if t.galley.text() == "Saw" => {
+                    Some(t.galley.rect.translate(t.pos.to_vec2()).center())
+                }
+                _ => None,
+            })
+            .expect("Saw dropdown option");
+        click_note_or_lane(&mut app, &ctx, saw);
         let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
         assert_eq!(instrument.layers[0].oscillators[0].waveform, Waveform::Saw);
         assert_eq!(instrument.layers[0].oscillators[0].transpose, 1);

@@ -1340,7 +1340,7 @@ impl DawUi {
                                                             ui,
                                                             &mut oscillator.waveform,
                                                             knobs::CHOICE_SIZE,
-                                                            knobs::waveform,
+                                                            |ui, waveform| crate::oscillator_preview::show(ui, waveform, unit_enabled && !oscillator.muted),
                                                         ),
                                                         knobs::row(
                                                             ui,

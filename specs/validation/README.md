@@ -6,6 +6,29 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Oscillator waveform display — 2026-11-02
+
+Each source replaces its Waveform knob with a one-cycle phase-domain preview and
+a Small-text dropdown. Pitch/Gain positions, source strip width and unit geometry
+stay unchanged. The display stays available while stopped or playing and excludes
+mixed audio, gain and modulation. No audio callback or saved-state changes remain.
+
+Completed checks:
+
+- `cargo test --offline --locked --workspace` passed before the final waveform
+  selector revision. Final changes are confined to UI presentation and docs.
+- `cargo test --offline --locked -p daw-ui oscillator_` passed after that revision.
+  Coverage includes one-cycle shape extrema, dropdown selection, Pitch/Gain edits,
+  Dark/Light geometry, shared panel height, strip reordering and modulation controls.
+- `cargo test --offline --locked -p daw-ui` passed: 842 tests passed, three ignored.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`
+  and `cargo fmt --all --check` passed for the final implementation.
+- Local documentation link targets and `git diff --check` passed.
+- `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app` with the final
+  per-oscillator preview and dropdown.
+
+Native display/gesture and Windows/Linux checks have not run.
+
 ## Empty Sampler control alignment — 2026-11-02
 
 The empty preview chooser uses non-advancing placement. It no longer moves the
