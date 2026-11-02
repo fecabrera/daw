@@ -4,7 +4,8 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 ## Current features
 
-- **Timeline:** arrange, trim, loop, stretch, transpose, split, move, copy, and duplicate audio and MIDI clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog.
+- **Timeline:** arrange, trim, loop, stretch, transpose, split, move, copy, and duplicate audio, MIDI and beat clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog.
+- **Beat editor:** build rhythms with [step patterns](docs/views/beat-editor.md) and independently configured subtrack instruments.
 - **MIDI editor:** create patterns and edit notes in a piano roll, with a project track browser, track controls and optional scale snapping.
 - **Instruments:** build layered synthesizers, samplers, and granular instruments, with instrument-wide LFO and Envelope lanes and a shared Output bus. Browse project tracks and groups from Instrument.
 - **Instrument components:** [Oscillator](docs/instruments/oscillator.md), [Sampler](docs/instruments/sampler.md), [Granulizer](docs/instruments/granulizer.md), [Envelope](docs/instruments/envelope.md), [LFO](docs/instruments/lfo.md), [Amplitude](docs/instruments/amplitude.md), and [Macro](docs/instruments/macro.md).
@@ -25,7 +26,7 @@ Audio and MIDI workflows are available in four views: **Timeline**, **Instrument
 
 The project format is experimental. Normal imports retain external references; included recordings stay inside the project folder. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
 
-Planned work includes audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
+Planned work includes audio editing, advanced beat editing, more effects, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
 
 ## Documentation
 

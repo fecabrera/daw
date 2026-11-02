@@ -8,7 +8,7 @@ Audio track headers show a waveform icon; MIDI track headers show a keyboard ico
 
 Use **Expand tracks to two rows**, beside Fit all clips and zoom in the playback toolbar, for the full layout. **Collapse tracks to one row** restores the default compact layout. Timeline and Editor share this choice for the app session. It does not change the project or audio. Master stays on one row.
 
-The Tracks header’s Add track (Plus) button opens a dropdown with **Add audio track** and **Add MIDI track**. Choose an item to create and select a new empty track. Opening or dismissing the menu does not add a track.
+The Tracks header’s Add track (Plus) button opens a dropdown with **Add audio track**, **Add MIDI track**, and **Add beat track**. Choose an item to create and select a new empty track. Opening or dismissing the menu does not add a track.
 
 The Add track and Duplicate track buttons stay available when another pane or non-text control has focus. Duplicate still requires a selected track. Text entry, jobs, dialogs, active gestures, and loss of window focus retain their guards.
 
@@ -82,7 +82,7 @@ Duplicating into new track space creates fresh track defaults. Group paste also 
 
 Press Space to play or pause from any view, pane, or focused control. Text fields take precedence: Space inserts a space while you edit text. Holding Space does not toggle playback repeatedly. Dialogs and blocking background jobs still disable the shortcut.
 
-The ruler uses four beats per bar, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI timing follows tempo.
+The ruler uses four beats per bar, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI and beat timing follow tempo.
 
 Seeking and editing notes during playback keep the current audio and playhead running while the change is prepared. A seek then fades to the requested position. A note edit takes effect at the current playback position, without pausing or returning to an earlier position. Changes to effect latency use the same continuous playback behavior.
 

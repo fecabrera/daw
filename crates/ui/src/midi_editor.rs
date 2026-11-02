@@ -303,7 +303,12 @@ impl DawUi {
         if !self.view_mode.has_clip_lanes() || !self.clip_actions_available(ctx) {
             return;
         }
-        match self.session.project.add_midi_pattern(track, start) {
+        let result = if self.session.project.beat(track).is_some() {
+            self.session.project.add_beat_pattern(track, start)
+        } else {
+            self.session.project.add_midi_pattern(track, start)
+        };
+        match result {
             Ok(id) => {
                 self.select_clip(id, track, false);
                 self.changed();
@@ -317,7 +322,7 @@ impl DawUi {
         track: &daw_core::Track,
         lane: Rect,
     ) {
-        if track.kind != TrackKind::Midi
+        if !matches!(track.kind, TrackKind::Midi | TrackKind::Beat)
             || !ui.is_enabled()
             || !self.clip_actions_available(ui.ctx())
             || !ui.rect_contains_pointer(lane)
@@ -363,11 +368,11 @@ impl DawUi {
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
         child.set_clip_rect(canvas.intersect(ui.clip_rect()));
-        self.edit_canvas(&mut child);
+        self.edit_canvas(&mut child, bounds);
         ui.advance_cursor_after_rect(bounds);
     }
 
-    fn edit_canvas(&mut self, ui: &mut egui::Ui) {
+    fn edit_canvas(&mut self, ui: &mut egui::Ui, editor_bounds: Rect) {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         if !ui.is_enabled()
             || !ui.input(|i| i.focused)
@@ -417,7 +422,26 @@ impl DawUi {
         };
         self.midi_editor.content_active = true;
         self.editor_content_header(ui, &track);
-        if track.kind == TrackKind::Midi {
+        if track.kind == TrackKind::Beat {
+            // One lower-pane scroll area owns the left headers and right steps.
+            let available = ui.available_rect_before_wrap();
+            let bounds = Rect::from_min_max(
+                Pos2::new(editor_bounds.left(), available.top()),
+                Pos2::new(
+                    available.right(),
+                    (available.bottom() - SCROLLBAR_HEIGHT).max(available.top()),
+                ),
+            );
+            let mut beat = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("beat-editor-lanes")
+                    .max_rect(bounds)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            beat.set_clip_rect(bounds.intersect(editor_bounds));
+            self.beat_grid(&mut beat, &track);
+            self.editor_scrollbar(ui, ui.max_rect().bottom(), "editor_content_scrollbar");
+        } else if track.kind == TrackKind::Midi {
             self.piano_roll(ui, &track, &assets, previous_track);
         } else {
             self.audio_editor(ui);

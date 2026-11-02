@@ -2,6 +2,67 @@
 use super::*;
 use daw_core::MidiPattern;
 
+/// Shared temporal painting with separate MIDI pitch and unbounded beat-row coordinates.
+enum NotePreview<'a> {
+    Midi(&'a MidiPattern),
+    Beat(&'a crate::beat_thumbnail::Level),
+}
+impl NotePreview<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Midi(pattern) => pattern.notes.len(),
+            Self::Beat(level) => level.notes.len(),
+        }
+    }
+    fn note(&self, index: usize) -> crate::beat_thumbnail::Note {
+        match self {
+            Self::Midi(pattern) => {
+                let note = &pattern.notes[index];
+                crate::beat_thumbnail::Note {
+                    start_tick: note.start_tick,
+                    length_ticks: note.length_ticks,
+                    row: usize::from(note.pitch),
+                }
+            }
+            Self::Beat(level) => level.notes[index],
+        }
+    }
+    fn bounds(&self) -> (usize, usize) {
+        match self {
+            Self::Midi(pattern) => {
+                let min = pattern.notes.iter().map(|n| n.pitch).min().unwrap_or(60);
+                let max = pattern
+                    .notes
+                    .iter()
+                    .map(|n| n.pitch)
+                    .max()
+                    .unwrap_or(72)
+                    .max(min.saturating_add(12));
+                (usize::from(min), usize::from(max))
+            }
+            Self::Beat(level) => (0, level.max_row),
+        }
+    }
+    fn max_length(&self) -> Option<u32> {
+        match self {
+            Self::Midi(_) => None,
+            Self::Beat(level) => Some(level.max_length),
+        }
+    }
+    fn partition_point(&self, predicate: impl Fn(crate::beat_thumbnail::Note) -> bool) -> usize {
+        let (mut low, mut high) = (0, self.len());
+        while low < high {
+            let mid = low + (high - low) / 2;
+            if predicate(self.note(mid)) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        low
+    }
+}
+
 impl DawUi {
     pub(super) fn paint_clip(
         &self,
@@ -32,7 +93,20 @@ impl DawUi {
                     .find(|a| a.id == clip.asset_id)
                     .and_then(|a| a.midi_pattern.as_ref())
             });
-        let missing = audio.is_none() && pattern.is_none();
+        let live_beat = self
+            .session
+            .project
+            .assets
+            .iter()
+            .find(|a| a.id == clip.asset_id)
+            .and_then(|a| a.beat_pattern.as_ref());
+        let beat = prepared
+            .and_then(|source| match source {
+                PreparedClipSource::Beat(beat) => Some(beat),
+                _ => None,
+            })
+            .or(live_beat);
+        let missing = audio.is_none() && pattern.is_none() && beat.is_none();
         let lane = painter.clip_rect();
         let colors = if missing {
             theme::ClipColors::default()
@@ -62,6 +136,50 @@ impl DawUi {
                 "Missing source",
                 egui::FontId::proportional(13.0),
                 theme::palette(painter.ctx()).warning,
+            );
+        } else if let Some(beat) = beat {
+            let rows: Vec<_> = self
+                .session
+                .project
+                .tracks
+                .iter()
+                .filter_map(|track| track.beat.as_ref())
+                .find(|container| container.id == beat.instrument_id)
+                .map(|container| container.subtracks.iter().map(|row| row.id).collect())
+                .unwrap_or_default();
+            let step_frames = self
+                .session
+                .project
+                .midi_frame(beat.pattern.resolution.step_ticks());
+            let step_frames = clip.stretch.map_or(step_frames, |stretch| {
+                stretch.scale(step_frames).unwrap_or(0)
+            });
+            let pixels = self.session.project.seconds(step_frames) as f32 * self.view_zoom();
+            // Staged source-growth IDs are disposable. Do not retain their overview
+            // allocations in the live-source cache across pointer frames.
+            let level = if live_beat.is_none() {
+                crate::beat_thumbnail::Cache::default().level(
+                    (self.session.project.project_id, self.change_revision),
+                    clip.asset_id,
+                    &rows,
+                    &beat.pattern,
+                    pixels,
+                )
+            } else {
+                self.beat_ui.thumbnails.borrow_mut().level(
+                    (self.session.project.project_id, self.change_revision),
+                    clip.asset_id,
+                    &rows,
+                    &beat.pattern,
+                    pixels,
+                )
+            };
+            self.paint_pattern_notes(
+                &clip_painter,
+                block,
+                clip,
+                NotePreview::Beat(&level),
+                colors.waveform,
             );
         } else if let Some(pattern) = pattern {
             self.paint_midi_notes(&clip_painter, block, clip, pattern, colors.waveform);
@@ -125,15 +243,19 @@ impl DawUi {
         pattern: &MidiPattern,
         color: egui::Color32,
     ) {
+        self.paint_pattern_notes(painter, block, clip, NotePreview::Midi(pattern), color);
+    }
+
+    fn paint_pattern_notes(
+        &self,
+        painter: &egui::Painter,
+        block: Rect,
+        clip: &Clip,
+        pattern: NotePreview<'_>,
+        color: egui::Color32,
+    ) {
         let body = Rect::from_min_max(Pos2::new(block.left(), block.top() + 22.0), block.max);
-        let min_pitch = pattern.notes.iter().map(|n| n.pitch).min().unwrap_or(60);
-        let max_pitch = pattern
-            .notes
-            .iter()
-            .map(|n| n.pitch)
-            .max()
-            .unwrap_or(72)
-            .max(min_pitch.saturating_add(12));
+        let (min_row, max_row) = pattern.bounds();
         let count = clip.repeat.map_or(1, |repeat| {
             (clip.length_frames / repeat.length_frames).saturating_add(2)
         });
@@ -149,7 +271,33 @@ impl DawUi {
         let pixels_per_repeat = self.session.project.seconds(base) as f32 * self.view_zoom();
         let stride = (0.5 / pixels_per_repeat).ceil().max(1.0) as usize;
         for repetition in (first..count.min(first.saturating_add(visible_count))).step_by(stride) {
-            for note in &pattern.notes {
+            let range = if let Some(max_ticks) = pattern.max_length() {
+                // Cached beat levels are sorted by start. Restrict traversal to notes
+                // that can overlap this visible source interval, including boundary hits.
+                let mapped = |ticks| {
+                    let frames = self.session.project.midi_frame(ticks);
+                    clip.stretch
+                        .map_or(frames, |s| s.scale(frames).unwrap_or(0))
+                };
+                let origin = i128::from(clip.source_offset_frame)
+                    + i128::from(clip.repeat.map_or(0, |r| r.phase_frame))
+                    - i128::from(repetition) * i128::from(base);
+                let left = origin + i128::from(visible_start);
+                let right = origin
+                    + ((painter.clip_rect().right() - body.left()).max(0.0) / self.view_zoom()
+                        * self.session.project.sample_rate_hz as f32)
+                        .ceil() as i128;
+                let longest = i128::from(mapped(max_ticks).saturating_add(2));
+                let first = pattern
+                    .partition_point(|note| i128::from(mapped(note.start_tick)) + longest < left);
+                let last =
+                    pattern.partition_point(|note| i128::from(mapped(note.start_tick)) <= right);
+                first..last.max(first)
+            } else {
+                0..pattern.len()
+            };
+            for index in range {
+                let note = pattern.note(index);
                 let original_start = self.session.project.midi_frame(note.start_tick);
                 let original_end = self
                     .session
@@ -183,10 +331,13 @@ impl DawUi {
                     + finish.min(i128::from(clip.length_frames)) as f32
                         / self.session.project.sample_rate_hz as f32
                         * self.view_zoom();
+                if right < painter.clip_rect().left() || x > painter.clip_rect().right() {
+                    continue;
+                }
                 // Keep the fixed two-point note marker inside compact track bodies.
                 let y = (body.bottom()
-                    - (f32::from(note.pitch.saturating_sub(min_pitch)) + 1.0)
-                        / f32::from(max_pitch - min_pitch + 2)
+                    - (note.row.saturating_sub(min_row) as f32 + 1.0)
+                        / (max_row - min_row + 2) as f32
                         * body.height())
                 .min(body.bottom() - 2.0);
                 painter.rect_filled(

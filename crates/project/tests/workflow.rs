@@ -5174,3 +5174,131 @@ fn metadata_inspection_validates_manifest_and_normalizes_legacy_revisions_in_mem
         assert_eq!(fs::read(&path).unwrap(), original);
     }
 }
+
+#[test]
+fn beat_sampler_sources_survive_save_as_collection_reopen_and_cancelled_preparation() {
+    use daw_core::{BeatEdit, BeatPattern, BeatSubtrack, SamplerInput, SamplerSettings};
+    let fixture = Fixture::new();
+    let source = fixture.wav("beat-source.wav", 48_000, 2, 24, false);
+    let mut session = Session::default();
+    let audio_clip = session.import(&source, None, 0).unwrap();
+    let imported = session.project.tracks[0]
+        .clips
+        .iter()
+        .find(|c| c.id == audio_clip)
+        .unwrap()
+        .clone();
+    let track = session.project.add_beat_track().unwrap();
+    let mut row = BeatSubtrack::new("Sample".into());
+    row.instrument.layers[0].sampler = Some(SamplerSettings {
+        input: Some(SamplerInput::from(&imported)),
+        end_frame: imported.length_frames,
+        ..Default::default()
+    });
+    let id = row.id;
+    let sampler = row.instrument.layers[0].sampler.as_ref().unwrap().id;
+    session
+        .project
+        .edit(Edit::Beat {
+            track_id: track,
+            edit: BeatEdit::Add {
+                subtrack: Box::new(row),
+                index: 0,
+            },
+        })
+        .unwrap();
+    let clip = session.project.add_beat_pattern(track, 0).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: clip,
+            pattern: BeatPattern::default().with_step(id, 0, Some(100)).unwrap(),
+        })
+        .unwrap();
+    session.project.tracks.retain(|t| t.id == track);
+    session.prepare_stretches().unwrap();
+    assert!(session.sampler_audio.contains_key(&sampler));
+    let before = session.project.clone();
+    assert!(session.prepare_stretches_cancellable(&|| true).is_err());
+    assert_eq!(session.project, before);
+    let first = fixture.0.join("Beat project");
+    session.save(&first).unwrap();
+    let report = session
+        .source_collection_snapshot(None, 0)
+        .unwrap()
+        .preflight(None, &|| false)
+        .unwrap();
+    assert!(report.summary().embedded_references >= 1);
+    assert_eq!(report.summary().source_files, 1);
+    let outcome = report
+        .into_plan()
+        .unwrap()
+        .execute(&|_| true, &|| false, &mut |_| Ok(()))
+        .unwrap();
+    outcome.apply(&mut session, None, 0).unwrap();
+    fs::remove_file(&source).unwrap();
+    let second = fixture.0.join("Copied beat project");
+    session.save(&second).unwrap();
+    let reopened = Session::open(&second).unwrap();
+    assert_eq!(reopened.project.beat(track).unwrap().subtracks[0].id, id);
+    assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
+    assert!(reopened.sampler_audio.contains_key(&sampler));
+    let mut original_audio = vec![[0.0; 2]; 8000];
+    let mut reopened_audio = original_audio.clone();
+    session.plan().render(0, &mut original_audio);
+    reopened.plan().render(0, &mut reopened_audio);
+    assert_eq!(original_audio, reopened_audio);
+}
+
+#[test]
+fn extended_beat_source_preserves_prefix_audio_and_roundtrips_with_its_clip_range() {
+    use daw_core::{BeatEdit, BeatPattern, BeatSubtrack, ClipEdge, OscillatorSettings};
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_beat_track().unwrap();
+    let mut row = BeatSubtrack::new("Kick".into());
+    row.instrument = OscillatorSettings::default().into();
+    let row_id = row.id;
+    session
+        .project
+        .edit(Edit::Beat {
+            track_id: track,
+            edit: BeatEdit::Add {
+                subtrack: Box::new(row),
+                index: 0,
+            },
+        })
+        .unwrap();
+    let id = session.project.add_beat_pattern(track, 0).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: id,
+            pattern: BeatPattern::default()
+                .with_step(row_id, 0, Some(100))
+                .unwrap(),
+        })
+        .unwrap();
+    let old = session.project.tracks[0].clips[0].clone();
+    let mut before = vec![[0.0; 2]; old.length_frames as usize - 480];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut before);
+    assert!(before.iter().flatten().any(|s| s.abs() > 0.01));
+    let mut extended = old;
+    extended.length_frames += 24_000;
+    session.project = session
+        .project
+        .trimmed_clips(&[extended], ClipEdge::Right)
+        .unwrap();
+    session.prepare_stretches().unwrap();
+    let mut after = vec![[0.0; 2]; before.len()];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut after);
+    assert_eq!(after, before);
+    let folder = fixture.0.join("Extended beat");
+    session.save(&folder).unwrap();
+    let loaded = Session::open(&folder).unwrap();
+    assert_eq!(loaded.project.tracks, session.project.tracks);
+    assert_eq!(loaded.project.assets, session.project.assets);
+    let mut reopened = vec![[0.0; 2]; after.len()];
+    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut reopened);
+    assert_eq!(reopened, after);
+}

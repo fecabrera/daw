@@ -3718,11 +3718,23 @@ fn empty_midi_lane_double_click_creates_one_beat_without_switching_views() {
             if ["Add MIDI track", "New MIDI pattern"].contains(&t.galley.text())))
         );
         let before = format!("{:?}", app.session.project);
-        assert!(!app.track_action_enabled(TrackAction::AddMidi, &ctx));
+        assert_eq!(
+            app.track_action_enabled(TrackAction::AddMidi, &ctx),
+            view == ViewMode::Instrument
+        );
         assert!(!app.track_action_enabled(TrackAction::Duplicate, &ctx));
-        app.perform_track_action(TrackAction::AddMidi, &ctx);
         app.add_midi_pattern(track, 96_000, &ctx);
         assert_eq!(format!("{:?}", app.session.project), before);
+        let count = app.session.project.tracks.len();
+        app.perform_track_action(TrackAction::AddMidi, &ctx);
+        if view == ViewMode::Instrument {
+            assert_eq!(app.session.project.tracks.len(), count + 1);
+            let added = app.session.project.tracks.last().unwrap();
+            assert_eq!(added.kind, TrackKind::Midi);
+            assert!(added.clips.is_empty());
+        } else {
+            assert_eq!(format!("{:?}", app.session.project), before);
+        }
     }
 }
 

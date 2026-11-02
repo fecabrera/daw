@@ -1210,9 +1210,9 @@ fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
                 .iter()
                 .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == name))
         };
-        assert!(has(&shapes, "Select a MIDI track"));
+        assert!(has(&shapes, "Select an instrument track"));
         assert!(!has(&shapes, "Add source"));
-        let point = label_point(&mut app, &ctx, "Select MIDI track", None);
+        let point = label_point(&mut app, &ctx, "Select instrument track", None);
         click(&mut app, &ctx, point);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(has(&shapes, "MIDI only"));
@@ -1291,7 +1291,9 @@ fn instrument_empty_states_keep_the_layers_panel_and_disable_add_until_midi_sele
             let text = shapes
                 .iter()
                 .find_map(|shape| match &shape.shape {
-                    egui::Shape::Text(t) if t.galley.text() == "Select a MIDI track" => Some(t),
+                    egui::Shape::Text(t) if t.galley.text() == "Select an instrument track" => {
+                        Some(t)
+                    }
                     _ => None,
                 })
                 .expect("empty layer message");
@@ -1395,7 +1397,7 @@ fn available_views_and_empty_states_support_the_shared_effects_workspace() {
                 shapes
                     .iter()
                     .any(|s| matches!(&s.shape, egui::Shape::Text(t)
-                if t.galley.text() == "Select a MIDI track"))
+                if t.galley.text() == "Select an instrument track"))
             );
         }
         assert!(!app.dirty);

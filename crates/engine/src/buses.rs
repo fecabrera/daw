@@ -9,9 +9,11 @@ pub(super) struct Buses {
     roots: Vec<usize>,
     groups: Vec<usize>,
     pub output: Vec<[f32; 2]>,
+    clip_gains: Vec<super::beat_gain::Envelope>,
 }
 impl Buses {
-    pub fn new(project: &Project) -> Self {
+    pub fn new(plan: &RenderPlan) -> Self {
+        let project = &plan.project;
         let index: HashMap<_, _> = project
             .tracks
             .iter()
@@ -19,6 +21,18 @@ impl Buses {
             .map(|(i, t)| (t.id, i))
             .collect();
         let mut buses = Self {
+            clip_gains: project
+                .tracks
+                .iter()
+                .map(|t| {
+                    super::beat_gain::Envelope::new(
+                        plan.beat_tracks
+                            .get(&t.id)
+                            .map_or(&[], |b| b.clip_gains.as_slice()),
+                        project.sample_rate_hz,
+                    )
+                })
+                .collect(),
             children: vec![Vec::new(); project.tracks.len()],
             roots: Vec::new(),
             groups: Vec::new(),
@@ -38,7 +52,13 @@ impl Buses {
         buses
     }
     pub fn heap_bytes(&self) -> u64 {
-        vec_bytes(&self.children)
+        vec_bytes(&self.clip_gains)
+            + self
+                .clip_gains
+                .iter()
+                .map(super::beat_gain::Envelope::heap_bytes)
+                .sum::<u64>()
+            + vec_bytes(&self.children)
             + self.children.iter().map(vec_bytes).sum::<u64>()
             + vec_bytes(&self.roots)
             + vec_bytes(&self.groups)
@@ -100,16 +120,29 @@ impl Renderer {
                     *value += self.buses.output[child][ch];
                 }
             }
+            if let Some(runtime) = self.midi[index].as_mut() {
+                runtime.sample_in_region(frame, region);
+            }
+            let controls = (
+                self.midi[index]
+                    .as_ref()
+                    .map_or(&[][..], |r| r.modulation_values()),
+                self.midi[index].as_ref().map(|r| r.modulation_sources()),
+            );
             let (sample, _) = self.effects[index].sample(
                 sum,
                 Some(false),
                 latency::delayed_frame(frame, self.alignment.input_frames[index], region),
                 self.plan.project.tempo_bpm,
                 region,
-                (&[], None),
+                controls,
             );
             let (sample, _) = self.alignment.tracks[index].tick((sample, false));
-            self.buses.output[index] = self.gains[index].apply(sample, false, live, self.ramp);
+            let content_frame =
+                latency::delayed_frame(frame, self.alignment.output_frames[index], region);
+            let gain = self.buses.clip_gains[index].at(content_frame, region);
+            self.buses.output[index] =
+                self.gains[index].apply(sample.map(|v| v * gain), false, live, self.ramp);
         }
         let mut sum = [0.0; 2];
         for &root in &self.buses.roots {

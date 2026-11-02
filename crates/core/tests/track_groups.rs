@@ -154,3 +154,82 @@ fn copies_have_new_track_and_effect_ids_and_legacy_tracks_remain_flat() {
     assert!(json["tracks"][0].get("group_id").is_none());
     assert_eq!(serde_json::from_value::<Project>(json).unwrap(), p);
 }
+
+#[test]
+fn empty_group_creation_is_an_independent_root_with_normal_membership_and_storage() {
+    let (mut project, ids) = fixture();
+    group(&mut project, &ids[..2]);
+    let original = project.clone();
+    let id = project.add_group_track().unwrap();
+    assert_eq!(&project.tracks[..original.tracks.len()], &original.tracks);
+    let bus = project.tracks.last().unwrap();
+    assert_eq!(bus.id, id);
+    assert_eq!(bus.name, "Group 2");
+    assert_eq!(bus.kind, TrackKind::Group);
+    assert!(bus.group_id.is_none());
+    assert!(!bus.group_collapsed && !bus.muted && !bus.soloed);
+    assert!(bus.clips.is_empty() && bus.effects.is_empty());
+    assert!(bus.instrument.is_none() && bus.beat.is_none());
+    assert_eq!((bus.gain_db, bus.pan), (0.0, 0.0));
+    let index = project.tracks.len() - 1;
+    project
+        .edit(Edit::MoveTrack {
+            track_id: ids[2],
+            group_id: Some(id),
+            index,
+        })
+        .unwrap();
+    project.validate().unwrap();
+    assert_eq!(project.tracks.last().unwrap().group_id, Some(id));
+    let restored: Project =
+        serde_json::from_str(&serde_json::to_string(&project).unwrap()).unwrap();
+    assert_eq!(restored, project);
+}
+
+#[test]
+fn invalid_project_rejects_empty_group_creation_without_mutation() {
+    let (mut project, _) = fixture();
+    project.tracks[0].group_id = Some(Id::new_v4());
+    let original = project.clone();
+    assert!(project.add_group_track().is_err());
+    assert_eq!(project, original);
+}
+
+#[test]
+fn creating_each_track_kind_in_a_group_is_atomic_and_preserves_the_surrounding_tree() {
+    for kind in [
+        TrackKind::Audio,
+        TrackKind::Midi,
+        TrackKind::Beat,
+        TrackKind::Group,
+    ] {
+        let (mut project, ids) = fixture();
+        let parent = group(&mut project, &ids[..2]);
+        let original = project.clone();
+        let slot = project.track_subtree(parent).unwrap().end;
+        let id = project.add_track_in_group(parent, kind).unwrap();
+        assert_eq!(&project.tracks[..slot], &original.tracks[..slot]);
+        assert_eq!(&project.tracks[slot + 1..], &original.tracks[slot..]);
+        let track = &project.tracks[slot];
+        assert_eq!(
+            (track.id, track.kind, track.group_id),
+            (id, kind, Some(parent))
+        );
+        assert!(track.clips.is_empty());
+        assert_eq!(project.track_subtree(parent).unwrap().end, slot + 1);
+        project.validate().unwrap();
+        let restored: Project =
+            serde_json::from_str(&serde_json::to_string(&project).unwrap()).unwrap();
+        assert_eq!(restored, project);
+        for target in [ids[2], Id::new_v4()] {
+            let before = project.clone();
+            assert!(project.add_track_in_group(target, kind).is_err());
+            assert_eq!(project, before);
+        }
+        let mut invalid = original.clone();
+        invalid.tracks.last_mut().unwrap().group_id = Some(Id::new_v4());
+        let before = invalid.clone();
+        assert!(invalid.add_track_in_group(parent, kind).is_err());
+        assert_eq!(invalid, before);
+    }
+}

@@ -95,9 +95,12 @@ impl DawUi {
                     && ctx.dragged_id().is_none()
                     && !self.instrument_ui.has_layer_gesture()
             }
-            TrackAction::Add | TrackAction::AddMidi | TrackAction::Duplicate => {
-                !ctx.text_edit_focused() && ctx.dragged_id().is_none()
-            }
+            TrackAction::Add
+            | TrackAction::AddMidi
+            | TrackAction::AddBeat
+            | TrackAction::AddGroup
+            | TrackAction::AddSubtrack
+            | TrackAction::Duplicate => !ctx.text_edit_focused() && ctx.dragged_id().is_none(),
             TrackAction::Mute | TrackAction::Solo
                 if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument) =>
             {
@@ -106,8 +109,12 @@ impl DawUi {
             _ => !ctx.egui_wants_keyboard_input(),
         };
         (action != TrackAction::Ungroup || self.selected_group().is_some())
+            && (action != TrackAction::AddSubtrack || self.selected_beat_parent().is_some())
             && (action != TrackAction::AddMidi
-                || matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit))
+                || matches!(
+                    self.view_mode,
+                    ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit
+                ))
             && (action != TrackAction::Duplicate
                 || matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
                 || !self.session.project.tracks.iter().any(|track| {
@@ -125,13 +132,19 @@ impl DawUi {
                     .filter(|track| self.track_selected(track.id))
                     .count()
                     == 1)
-            && (matches!(action, TrackAction::Add | TrackAction::AddMidi)
-                || self
-                    .session
-                    .project
-                    .tracks
-                    .iter()
-                    .any(|track| self.track_selected(track.id)))
+            && (matches!(
+                action,
+                TrackAction::Add
+                    | TrackAction::AddMidi
+                    | TrackAction::AddBeat
+                    | TrackAction::AddGroup
+                    | TrackAction::AddSubtrack
+            ) || self
+                .session
+                .project
+                .tracks
+                .iter()
+                .any(|track| self.track_selected(track.id)))
     }
 
     pub fn perform_track_action(&mut self, action: TrackAction, ctx: &egui::Context) {
@@ -144,6 +157,12 @@ impl DawUi {
             return;
         }
         self.ensure_history();
+        if action == TrackAction::AddSubtrack {
+            if let Some(parent) = self.selected_beat_parent() {
+                self.add_subtrack_from_menu(parent, ctx);
+            }
+            return;
+        }
         if self.view_mode == ViewMode::Instrument
             && matches!(action, TrackAction::Mute | TrackAction::Solo)
         {
@@ -181,15 +200,30 @@ impl DawUi {
             self.duplicate_selected_tracks();
             return;
         }
-        if matches!(action, TrackAction::Add | TrackAction::AddMidi) {
-            let result = if action == TrackAction::AddMidi {
+        if matches!(
+            action,
+            TrackAction::Add
+                | TrackAction::AddMidi
+                | TrackAction::AddBeat
+                | TrackAction::AddGroup
+                | TrackAction::AddSubtrack
+        ) {
+            let result = if action == TrackAction::AddGroup {
+                self.session.project.add_group_track()
+            } else if action == TrackAction::AddBeat {
+                self.session.project.add_beat_track()
+            } else if action == TrackAction::AddMidi {
                 self.session.project.add_midi_track()
             } else {
                 self.session.project.add_track()
             };
             match result {
                 Ok(id) => {
-                    self.select_track(id, false);
+                    if self.view_mode == ViewMode::Edit {
+                        self.select_editor_track(id);
+                    } else {
+                        self.select_track(id, false);
+                    }
                     self.changed();
                 }
                 Err(error) => self.fail(error),
@@ -340,8 +374,96 @@ impl DawUi {
         }
     }
 
-    fn add_track_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
-        for action in [TrackAction::Add, TrackAction::AddMidi] {
+    pub(super) fn selected_beat_parent(&self) -> Option<Id> {
+        let id = if self.view_mode == ViewMode::Edit {
+            self.editor_track().map(|track| track.id)
+        } else {
+            self.selected_track
+        }?;
+        self.session.project.beat(id).map(|_| id)
+    }
+
+    /// Explicit beat target for row menus; the menubar uses the selected parent.
+    pub(super) fn add_subtrack_from_menu(&mut self, parent: Id, ctx: &egui::Context) {
+        if !self.track_action_enabled(TrackAction::AddBeat, ctx)
+            || self.session.project.beat(parent).is_none()
+        {
+            return;
+        }
+        if self.view_mode == ViewMode::Edit
+            && self.editor_track().is_none_or(|track| track.id != parent)
+        {
+            self.select_editor_track(parent);
+        } else {
+            self.select_track(parent, false);
+        }
+        self.reconcile_beat(parent);
+        self.add_beat_subtrack(parent);
+        self.track_browser.show_children(parent);
+    }
+
+    pub(super) fn add_track_to_group_from_menu(
+        &mut self,
+        group: Id,
+        action: TrackAction,
+        ctx: &egui::Context,
+    ) {
+        if !self.track_action_enabled(action, ctx) {
+            return;
+        }
+        let kind = match action {
+            TrackAction::Add => daw_core::TrackKind::Audio,
+            TrackAction::AddMidi => daw_core::TrackKind::Midi,
+            TrackAction::AddBeat => daw_core::TrackKind::Beat,
+            TrackAction::AddGroup => daw_core::TrackKind::Group,
+            _ => return,
+        };
+        self.ensure_history();
+        match self.session.project.add_track_in_group(group, kind) {
+            Ok(id) => {
+                if self.view_mode == ViewMode::Edit {
+                    self.select_editor_track(id);
+                } else {
+                    self.select_track(id, false);
+                }
+                self.track_browser.show_children(group);
+                self.changed();
+            }
+            Err(error) => self.fail(error),
+        }
+    }
+
+    pub(super) fn track_creation_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
+        for action in [
+            TrackAction::Add,
+            TrackAction::AddMidi,
+            TrackAction::AddBeat,
+            TrackAction::AddGroup,
+        ] {
+            if action.starts_menu_group() {
+                menus::separator(ui);
+            }
+            if ui
+                .add_enabled(
+                    self.track_action_enabled(action, ui.ctx()),
+                    menus::action_button(action.label()),
+                )
+                .clicked()
+            {
+                ui.close();
+                return Some(action);
+            }
+        }
+        None
+    }
+
+    pub(super) fn add_track_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
+        if let Some(action) = self.track_creation_menu(ui) {
+            return Some(action);
+        }
+        if self.selected_beat_parent().is_some() {
+            menus::separator(ui);
+            let action = TrackAction::AddSubtrack;
             if ui
                 .add_enabled(
                     self.track_action_enabled(action, ui.ctx()),
@@ -385,14 +507,47 @@ impl DawUi {
         }
         let response = ui.interact(rect, ui.id().with("empty-tracks"), egui::Sense::click());
         let action = crate::menus::ContextMenu::new(&response)
-            .show(|ui| self.add_track_menu(ui))
+            .show(|ui| self.track_creation_menu(ui))
             .and_then(|response| response.inner);
         if let Some(action) = action {
             self.perform_track_action(action, ui.ctx());
         }
     }
 
-    pub(super) fn track_context_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
+    pub(super) fn track_context_menu(
+        &self,
+        ui: &mut egui::Ui,
+        track: Option<Id>,
+    ) -> Option<TrackAction> {
+        if track.is_some_and(|id| {
+            self.session
+                .project
+                .tracks
+                .iter()
+                .any(|track| track.id == id && track.kind == daw_core::TrackKind::Group)
+        }) {
+            if let Some(action) = self.track_creation_menu(ui) {
+                return Some(action);
+            }
+            menus::separator(ui);
+        }
+        if track
+            .or_else(|| self.selected_beat_parent())
+            .is_some_and(|id| self.session.project.beat(id).is_some())
+        {
+            let action = TrackAction::AddSubtrack;
+            if ui
+                .add_enabled(
+                    self.track_action_enabled(TrackAction::AddBeat, ui.ctx()),
+                    menus::action_button(action.label()),
+                )
+                .clicked()
+            {
+                ui.close();
+                return Some(action);
+            }
+            menus::separator(ui);
+        }
         for (index, action) in [
             TrackAction::Rename,
             TrackAction::Duplicate,

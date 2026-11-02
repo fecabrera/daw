@@ -22,6 +22,8 @@ pub(super) struct EditorViewport {
     pub zoom_bounds: Rect,
     #[cfg(test)]
     pub fit_bounds: Rect,
+    #[cfg(test)]
+    pub scrollbar_bounds: Rect,
 }
 
 impl Default for EditorViewport {
@@ -46,6 +48,8 @@ impl Default for EditorViewport {
             zoom_bounds: Rect::NOTHING,
             #[cfg(test)]
             fit_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            scrollbar_bounds: Rect::NOTHING,
         }
     }
 }
@@ -128,6 +132,10 @@ impl DawUi {
             ),
             Pos2::new(ui.max_rect().right(), bottom),
         );
+        #[cfg(test)]
+        if self.midi_editor.content_active {
+            self.midi_editor.content.scrollbar_bounds = bounds;
+        }
         self.timeline_scrollbar_at(ui, bounds, id);
     }
 
@@ -137,12 +145,13 @@ impl DawUi {
             .iter()
             .find(|clip| Some(clip.id) == self.selected_clip);
         let midi = track.kind == daw_core::TrackKind::Midi;
-        let scrollbar = if midi {
+        let scrollbar = if midi || track.kind == daw_core::TrackKind::Beat {
             ui.spacing().scroll.allocated_width()
         } else {
             0.0
         };
-        let width = (ui.available_width() - track_overview::LABEL_WIDTH - scrollbar).max(1.0);
+        let label_width = track_overview::LABEL_WIDTH;
+        let width = (ui.available_width() - label_width - scrollbar).max(1.0);
         self.midi_editor.content.prepare(
             clip,
             width,
@@ -155,6 +164,9 @@ impl DawUi {
                 let enabled = (clip.is_some() || (!midi && !track.clips.is_empty()))
                     && self.editing_enabled()
                     && !self.midi_editor.dragging();
+                if track.kind == daw_core::TrackKind::Beat {
+                    self.beat_pattern_options(ui, track);
+                }
                 ui.add_enabled_ui(enabled, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let mut zoom = self.view_zoom();
@@ -191,21 +203,32 @@ impl DawUi {
         panels::ControlPanel::pinned_row_divider(ui, toolbar.response.rect);
         panels::ControlPanel::row_dividers(ui, toolbar.response.rect, false, true);
         let viewport = Rect::from_min_max(
-            ui.next_widget_position() + Vec2::new(track_overview::LABEL_WIDTH, 0.0),
+            ui.next_widget_position() + Vec2::new(label_width, 0.0),
             ui.max_rect().max - Vec2::new(scrollbar, 0.0),
         );
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
-        self.editor_content_ruler(ui, scrollbar, midi);
+        self.editor_content_ruler(
+            ui,
+            scrollbar,
+            midi || track.kind == daw_core::TrackKind::Beat,
+            label_width,
+        );
     }
 
-    fn editor_content_ruler(&mut self, ui: &mut egui::Ui, scrollbar: f32, midi: bool) {
+    fn editor_content_ruler(
+        &mut self,
+        ui: &mut egui::Ui,
+        scrollbar: f32,
+        midi: bool,
+        label_width: f32,
+    ) {
         let (row, _) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), RULER_HEIGHT),
             Sense::hover(),
         );
         let rect = Rect::from_min_max(
-            row.min + Vec2::new(track_overview::LABEL_WIDTH, 0.0),
+            row.min + Vec2::new(label_width, 0.0),
             row.max - Vec2::new(scrollbar, 0.0),
         );
         if midi {

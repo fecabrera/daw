@@ -53,6 +53,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         id,
         name: "tone".into(),
         midi_pattern: None,
+        beat_pattern: None,
         source: Source {
             kind: "external".into(),
             path: "/tone.wav".into(),
@@ -83,6 +84,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         })
         .collect();
     RenderPlan {
+        beat_tracks: Default::default(),
         project,
         audio: HashMap::from([(
             id,
@@ -246,6 +248,7 @@ fn midi_plan(rate: u32) -> RenderPlan {
         .unwrap();
     project.tracks[0].clips[0].length_frames = project.midi_frame(3840);
     RenderPlan {
+        beat_tracks: Default::default(),
         project,
         audio: HashMap::new(),
         sampler_audio: Default::default(),

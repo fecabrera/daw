@@ -42,19 +42,40 @@ impl DawUi {
         let midi = track_id.is_some();
         let original = self.editor_midi_options();
         let mut options = original;
+        let beat_track = self
+            .editor_track()
+            .filter(|t| t.kind == TrackKind::Beat)
+            .map(|t| t.id);
+        let beat = beat_track.is_some();
         let audio = self
             .editor_track()
             .is_some_and(|t| t.kind == TrackKind::Audio);
         let title = rows::fixed(&mut child, toolbars::HEIGHT, |ui| {
-            panel.header(
-                ui,
-                if audio {
-                    "Clip options"
-                } else {
-                    "MIDI options"
-                },
-                |_| {},
-            )
+            if let Some(track) = beat_track {
+                let header = self.instrument_lanes_header(
+                    ui,
+                    &panel,
+                    "Beat subtracks",
+                    "Add beat subtrack",
+                    self.editing_enabled(),
+                );
+                if header.inner.clicked() {
+                    self.add_beat_subtrack(track);
+                }
+                header.response
+            } else {
+                panel
+                    .header(
+                        ui,
+                        if audio {
+                            "Clip options"
+                        } else {
+                            "MIDI options"
+                        },
+                        |_| {},
+                    )
+                    .response
+            }
         });
         panels::ControlPanel::row_dividers(&child, title.response.rect, false, true);
         #[cfg(test)]
@@ -72,7 +93,7 @@ impl DawUi {
                 .show(&mut child, |ui| {
                     self.clip_settings_body(ui, &panel, options_bounds, allowed)
                 });
-        } else {
+        } else if !beat {
             self.clear_clip_settings_edits();
             egui::ScrollArea::vertical()
             .id_salt("editor-options-scroll")
@@ -140,13 +161,13 @@ impl DawUi {
             ui.set_min_width(TRACK_WIDTH - 14.0);
             ui.set_min_height(self.track_row_height() - 14.0);
             ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-            let track = self.editor_track().cloned();
+            let track = self.editor_track().map(track_rows::header_snapshot);
             let levels = track
                 .as_ref()
                 .and_then(|t| self.output.as_ref()?.track_meter(t.id))
                 .map_or([(0.0, false); 2], |meter| meter.levels());
             let cleared = meters::stereo_panel(ui, self.track_row_height() - 14.0, levels, |ui| {
-                let track = self.editor_track().cloned();
+                let track = self.editor_track().map(track_rows::header_snapshot);
                 let mut header_rows = track_rows::HeaderRows::new(ui, self.track_rows_collapsed);
                 rows::centered(
                     &mut header_rows.name,

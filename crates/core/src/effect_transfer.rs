@@ -43,6 +43,21 @@ pub(crate) fn source_available(
     })
 }
 impl Project {
+    /// Final Output chains accept the parent ID, but providers belong to Output.
+    fn effect_instrument_owner(&self, track: Id, layer: Id) -> Id {
+        self.beat(track)
+            .filter(|beat| beat.output.id == layer)
+            .map_or(track, |beat| beat.output.id)
+    }
+    fn canonical_effect_target(&self, target: EffectChainTarget) -> EffectChainTarget {
+        match target {
+            EffectChainTarget::Layer { track, layer } => EffectChainTarget::Layer {
+                track: self.effect_instrument_owner(track, layer),
+                layer,
+            },
+            target => target,
+        }
+    }
     pub fn effect_chain(&self, target: EffectChainTarget) -> Option<(&[EffectInstance], bool)> {
         match target {
             EffectChainTarget::Master => Some((&self.master.effects, self.master.effects_compact)),
@@ -52,12 +67,18 @@ impl Project {
                 .find(|t| t.id == id)
                 .map(|t| (t.effects.as_slice(), t.effects_compact)),
             EffectChainTarget::Layer { track, layer } => {
-                let i = self
+                if let Some(beat) = self.beat(track).filter(|b| b.output.id == layer) {
+                    return Some((&beat.output.effects, beat.output.collapsed));
+                }
+                if let Some(beat) = self
                     .tracks
                     .iter()
-                    .find(|t| t.id == track)?
-                    .instrument
-                    .as_ref()?;
+                    .filter_map(|t| t.beat.as_ref())
+                    .find(|b| b.output.id == track && layer == track)
+                {
+                    return Some((&beat.output.effects, beat.output.collapsed));
+                }
+                let i = self.instrument_settings(track)?;
                 if i.main.id == layer {
                     Some((&i.main.effects, i.main.collapsed))
                 } else {
@@ -80,12 +101,14 @@ impl Project {
         let EffectChainTarget::Layer { track, layer } = destination else {
             return Ok(transfer);
         };
-        let original = self
-            .tracks
-            .iter()
-            .find(|t| t.id == track)
-            .and_then(|t| t.instrument.as_ref())
-            .ok_or_else(|| Error("Instrument not found".into()))?;
+        let track = self.effect_instrument_owner(track, layer);
+        let original = match self.instrument_settings(track) {
+            Some(settings) => std::borrow::Cow::Borrowed(settings),
+            None => std::borrow::Cow::Owned(
+                self.instrument_snapshot(track)
+                    .ok_or_else(|| Error("Instrument not found".into()))?,
+            ),
+        };
         let (mut order, visible) = if layer == original.main.id {
             (
                 original.main.retained_units(),
@@ -117,12 +140,17 @@ impl Project {
         order.splice(at..at, selected);
         let mut next = self.clone();
         next.edit(transfer.edit.clone())?;
-        let instrument = next
-            .tracks
-            .iter_mut()
-            .find(|t| t.id == track)
-            .and_then(|t| t.instrument.as_mut())
-            .ok_or_else(|| Error("Inline effect destination was removed".into()))?;
+        let final_output = next.instrument_settings(track).is_none();
+        let mut snapshot;
+        let instrument = if final_output {
+            snapshot = next
+                .instrument_snapshot(track)
+                .ok_or_else(|| Error("Inline effect destination was removed".into()))?;
+            &mut snapshot
+        } else {
+            next.instrument_settings_mut(track)
+                .ok_or_else(|| Error("Inline effect destination was removed".into()))?
+        };
         if layer == instrument.main.id {
             order.retain(|u| !matches!(u,InstrumentComponent::Effect(id) if !instrument.main.effects.iter().any(|e|e.id==*id)));
             let desired: Vec<_> = order
@@ -152,6 +180,9 @@ impl Project {
             }
         }
         let instrument = instrument.clone();
+        if final_output {
+            next.set_instrument_settings(track, Some(instrument.clone()))?;
+        }
         next.validate()?;
         transfer.edit = Edit::Batch(vec![
             transfer.edit,
@@ -175,14 +206,21 @@ impl Project {
         if self.effect_chain(destination).is_none() || units.is_empty() {
             return false;
         }
-        let instrument = match destination {
-            EffectChainTarget::Track(track) | EffectChainTarget::Layer { track, .. } => self
-                .tracks
-                .iter()
-                .find(|t| t.id == track)
-                .and_then(|t| t.instrument.as_ref()),
+        let owner = match destination {
+            EffectChainTarget::Track(track) => Some(track),
+            EffectChainTarget::Layer { track, layer } => {
+                Some(self.effect_instrument_owner(track, layer))
+            }
             EffectChainTarget::Master => None,
         };
+        let instrument = owner.and_then(|owner| self.instrument_settings(owner));
+        let output_settings = match destination {
+            EffectChainTarget::Layer { .. } if instrument.is_none() => {
+                owner.and_then(|owner| self.instrument_snapshot(owner))
+            }
+            _ => None,
+        };
+        let instrument = instrument.or(output_settings.as_ref());
         units.iter().enumerate().all(|(index, id)| {
             !units[..index].contains(id)
                 && original.iter().find(|e| e.id == *id).is_some_and(|effect| {
@@ -204,6 +242,9 @@ impl Project {
         index: usize,
         duplicate: bool,
     ) -> Result<EffectTransfer> {
+        // Equivalent Output aliases must also compare equal for same-chain moves.
+        let source = self.canonical_effect_target(source);
+        let destination = self.canonical_effect_target(destination);
         if !self.can_transfer_effects(source, destination, units) {
             return Err(Error(
                 "Effects are not compatible with the destination chain".into(),

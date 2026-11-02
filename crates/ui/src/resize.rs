@@ -136,7 +136,7 @@ impl DawUi {
             Err(error) => self.fail(error),
         }
     }
-    fn publish_resize(&mut self, next: daw_core::Project) {
+    pub(super) fn publish_resize(&mut self, next: daw_core::Project) {
         let changed = self
             .session
             .project

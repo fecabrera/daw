@@ -324,7 +324,7 @@ fn snapshot(session: &Session) -> Result<Snapshot> {
     // History can outlive Save As. Resolve references against their original folder,
     // without touching source files or retaining a stale relative-path base.
     for asset in &mut next.project.assets {
-        if asset.midi_pattern.is_none() && !asset.source.is_included_recording() {
+        if asset.is_audio() && !asset.source.is_included_recording() {
             asset.source.path = session
                 .source_path_unchecked(asset)?
                 .to_string_lossy()

@@ -1,4 +1,7 @@
+mod beat;
+mod beat_gain;
 mod buses;
+pub use beat::BeatVoicePlan;
 mod cache_policy;
 pub use cache_policy::{CachePolicy, CacheProfile};
 mod memory;
@@ -27,6 +30,7 @@ pub const NOTE_AUDITION_MAX_CHUNK_FRAMES: usize = 1 << 20;
 
 #[derive(Clone)]
 pub struct RenderPlan {
+    pub beat_tracks: HashMap<Id, BeatVoicePlan>,
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
     pub sampler_audio: HashMap<Id, daw_media::PreparedSampler>,
@@ -238,7 +242,14 @@ struct TrackGains {
 }
 impl Renderer {
     pub fn new(plan: RenderPlan) -> Self {
-        let end_frame = plan.project.end();
+        let plan = plan.prepare_beats();
+        let end_frame = plan.project.end().max(
+            plan.beat_tracks
+                .values()
+                .map(|b| b.logical_end_frame)
+                .max()
+                .unwrap_or(0),
+        );
         let track_index = plan
             .project
             .tracks
@@ -324,11 +335,12 @@ impl Renderer {
             .tracks
             .iter()
             .map(|track| {
-                midi::MidiTrackRuntime::with_audio(
+                midi::MidiTrackRuntime::with_beat_audio(
                     &plan.project,
                     track,
                     &plan.audio,
                     &plan.sampler_audio,
+                    plan.beat_tracks.get(&track.id),
                 )
             })
             .collect();
@@ -428,7 +440,7 @@ impl Renderer {
         }
         let source_fingerprint = hash.finish();
         let alignment = latency::Alignment::new(&plan.project);
-        let buses = buses::Buses::new(&plan.project);
+        let buses = buses::Buses::new(&plan);
         let mut renderer = Self {
             buses,
             alignment,
@@ -910,6 +922,26 @@ impl Renderer {
         }
     }
 
+    /// Start the prepared beat trigger without resetting it at its clip boundary.
+    /// Worker-only, like `begin_note_audition`.
+    pub fn begin_beat_audition(&mut self, subtrack: Id) {
+        self.reset_processing();
+        if let Some(&index) = self.track_index.get(&subtrack)
+            && let Some(runtime) = &mut self.midi[index]
+        {
+            runtime.begin_beat_audition();
+        }
+        self.prime_latency(false);
+    }
+
+    /// Includes silent attacks and normal per-note/shared release ownership.
+    pub fn audition_active(&self) -> bool {
+        self.midi
+            .iter()
+            .flatten()
+            .any(|runtime| runtime.audition_active())
+    }
+
     pub fn latency_frames(&self) -> u64 {
         self.alignment.total
     }
@@ -1218,6 +1250,7 @@ mod tests {
         };
         project.assets.push(Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id,
             name: "Test".into(),
             source: Source {
@@ -1244,6 +1277,7 @@ mod tests {
             transpose: 0,
         });
         RenderPlan {
+            beat_tracks: Default::default(),
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             project,

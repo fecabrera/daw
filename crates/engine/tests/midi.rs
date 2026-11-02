@@ -67,6 +67,7 @@ fn plan(waveform: Waveform, rate: u32) -> RenderPlan {
         .unwrap();
     project.tracks[0].clips[0].length_frames = project.midi_frame(3840);
     RenderPlan {
+        beat_tracks: Default::default(),
         project,
         audio: HashMap::new(),
         sampler_audio: Default::default(),
@@ -3432,6 +3433,7 @@ fn sampler_plan(rate: u32, trigger: SamplerTrigger) -> RenderPlan {
         source_metadata: metadata.clone(),
         decoded_frame_count: length,
         midi_pattern: None,
+        beat_pattern: None,
     });
     let audio = daw_media::AudioData {
         sample_rate_hz: rate,
@@ -5406,3 +5408,6 @@ mod source_output_meters;
 
 #[path = "support/modulation_lanes.rs"]
 mod modulation_lanes;
+
+#[path = "support/beat.rs"]
+mod beat;

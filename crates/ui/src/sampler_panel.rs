@@ -75,22 +75,22 @@ impl DawUi {
                         .project
                         .assets
                         .iter()
-                        .any(|a| a.id == d.clip.asset_id && a.midi_pattern.is_none())
+                        .any(|a| a.id == d.clip.asset_id && a.is_audio())
             })
         {
             return;
         }
-        let Some(track) = self
+        let Some((track, owner)) = self
             .session
             .project
-            .tracks
-            .iter()
-            .find(|t| {
-                t.instrument
-                    .as_ref()
-                    .is_some_and(|i| i.layers.iter().any(|l| l.sampler.is_some()))
+            .instrument_owners()
+            .find(|(_, _, instrument)| {
+                instrument
+                    .layers
+                    .iter()
+                    .any(|layer| layer.sampler.is_some())
             })
-            .map(|t| t.id)
+            .map(|(parent, owner, _)| (parent, owner))
         else {
             return;
         };
@@ -99,18 +99,23 @@ impl DawUi {
         if self.view_mode == ViewMode::Instrument {
             self.selected_track = Some(track);
             self.master_selected = false;
+            if track != owner {
+                self.navigate_beat_owner(track, Some(owner), false);
+            }
         }
         self.drag = drag;
     }
     pub(super) fn sampler_unit(
         &mut self,
         ui: &mut egui::Ui,
-        track: Id,
+        track: &daw_core::Track,
         layer: &mut InstrumentLayerSettings,
         sources: &[modulation_panel::Source],
         height: f32,
         compact: bool,
     ) -> Rect {
+        let color = track.color;
+        let track = track.id;
         let audio_ready = self.media_ready();
         let layer_id = layer.id;
         let s = layer.sampler.as_mut().unwrap();
@@ -190,15 +195,7 @@ impl DawUi {
                             ui.painter().rect_filled(wave, 0.0, palette.background);
                             if let Some(input) = s.input.clone() {
                                 let clip = Clip::from(&input);
-                                let colors = theme::clip_colors(
-                                    self.session
-                                        .project
-                                        .tracks
-                                        .iter()
-                                        .find(|t| t.id == track)
-                                        .map_or(daw_core::DEFAULT_TRACK_COLOR, |t| t.color),
-                                    None,
-                                );
+                                let colors = theme::clip_colors(color, None);
                                 ui.painter().rect_filled(body, 0.0, colors.body);
                                 crate::clip_paint::paint_header(
                                     ui.painter(),
@@ -538,10 +535,19 @@ impl DawUi {
         if self.view_mode != ViewMode::Instrument {
             return None;
         }
+        if self
+            .selected_track
+            .and_then(|id| self.session.project.beat(id))
+            .is_some()
+        {
+            return self.beat_sampler_target(pointer);
+        }
         self.instrument_ui
             .samplers
             .iter()
-            .find(|b| Some(b.track) == self.selected_track && b.panel.contains(pointer))
+            .find(|b| {
+                Some(b.track) == self.selected_instrument_owner() && b.panel.contains(pointer)
+            })
             .map(|b| (b.track, b.layer))
     }
     pub(super) fn run_sampler_job(

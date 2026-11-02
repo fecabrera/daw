@@ -55,6 +55,24 @@ fn valid(saved: &[InstrumentComponent], inventory: &[InstrumentComponent]) -> bo
                 && (!unit.is_source() || index == 0)
         })
 }
+// A Batch can temporarily contain invalid duplicate entries. Preserve them for
+// transaction validation instead of silently repairing malformed saved layouts.
+fn retarget_effect_slots(saved: &mut [InstrumentComponent], effects: &[crate::EffectInstance]) {
+    if saved.iter().enumerate().any(|(n, unit)| {
+        matches!(unit, InstrumentComponent::Effect(_)) && saved[..n].contains(unit)
+    }) {
+        return;
+    }
+    let mut ids = effects.iter().map(|effect| effect.id);
+    for unit in saved {
+        if let InstrumentComponent::Effect(id) = unit
+            && let Some(next) = ids.next()
+        {
+            *id = next;
+        }
+    }
+}
+
 fn move_unit(
     saved: &mut Vec<InstrumentComponent>,
     inventory: &[InstrumentComponent],
@@ -241,6 +259,13 @@ impl InstrumentLayerSettings {
             index,
         )
     }
+    /// Update the serial effect chain while retaining mixed and hidden layout slots.
+    pub fn set_effects(&mut self, effects: Vec<crate::EffectInstance>, collapsed: bool) {
+        self.effects = effects;
+        self.prune_component_order();
+        retarget_effect_slots(&mut self.component_order, &self.effects);
+        self.collapsed = collapsed;
+    }
     /// Transfers remove concrete providers; retained hidden units keep their layout slot.
     pub fn prune_component_order(&mut self) {
         let inventory = self.component_inventory();
@@ -332,6 +357,13 @@ impl InstrumentBusSettings {
             units,
             index,
         )
+    }
+    /// Update the serial effect chain while retaining mixed and hidden layout slots.
+    pub fn set_effects(&mut self, effects: Vec<crate::EffectInstance>, collapsed: bool) {
+        self.effects = effects;
+        self.prune_component_order();
+        retarget_effect_slots(&mut self.component_order, &self.effects);
+        self.collapsed = collapsed;
     }
     /// Transfers remove concrete providers; retained hidden units keep their layout slot.
     pub fn prune_component_order(&mut self) {

@@ -17,7 +17,10 @@ impl HeaderRows {
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
         // Two 22-point buttons, their six-point gap, a six-point group gap,
         // and two 28-point knob slots separated by four points.
-        let mix_width = 2.0 * toolbars::CONTROL_HEIGHT + 6.0 + 6.0 + 2.0 * knobs::SIZE + 4.0;
+        let mix_width = 2.0 * toolbars::CONTROL_HEIGHT
+            + 2.0 * mix_controls::GROUP_GAP
+            + 2.0 * knobs::SIZE
+            + mix_controls::KNOB_GAP;
         let (name, mix) = if collapsed {
             let mix = Rect::from_min_max(Pos2::new(body.right() - mix_width, body.top()), body.max);
             (
@@ -74,5 +77,27 @@ impl DawUi {
             self.track_rows_collapsed = !self.track_rows_collapsed;
             ui.ctx().request_repaint();
         }
+    }
+}
+
+/// Metadata used by track headers; processing graphs and clip content stay in the project.
+pub(super) fn header_snapshot(track: &daw_core::Track) -> daw_core::Track {
+    daw_core::Track {
+        id: track.id,
+        name: track.name.clone(),
+        kind: track.kind,
+        color: track.color,
+        gain_db: track.gain_db,
+        pan: track.pan,
+        muted: track.muted,
+        soloed: track.soloed,
+        group_id: track.group_id,
+        group_collapsed: track.group_collapsed,
+        effects: Vec::new(),
+        effects_compact: track.effects_compact,
+        instrument: None,
+        beat: None,
+        midi_options: track.midi_options,
+        clips: Vec::new(),
     }
 }

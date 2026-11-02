@@ -541,6 +541,107 @@ fn sampler_audio_clip_drag_opens_instrument_and_assigns_on_drop_without_moving_t
 }
 
 #[test]
+fn beat_sampler_audio_clip_drag_opens_parent_and_assigns_without_moving_the_clip() {
+    for granular in [false, true] {
+        let mut app = DawUi::default();
+        let ctx = context();
+        let parent = app.session.project.add_beat_track().unwrap();
+        let mut row = daw_core::BeatSubtrack::new("Sample".into());
+        let owner = row.id;
+        let layer = row.instrument.layers[0].id;
+        row.instrument.layers[0].sampler = Some(if granular {
+            daw_core::SamplerSettings::granular()
+        } else {
+            Default::default()
+        });
+        app.session
+            .project
+            .edit(Edit::Beat {
+                track_id: parent,
+                edit: daw_core::BeatEdit::Add {
+                    subtrack: Box::new(row),
+                    index: 0,
+                },
+            })
+            .unwrap();
+        let file = TestWav::new();
+        let audio_track = app.session.project.add_track().unwrap();
+        app.session.import(&file.0, Some(audio_track), 0).unwrap();
+        let source = app.session.project.tracks[1].clips[0].clone();
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        app.select_track(audio_track, false);
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let instrument = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == "Instrument" => {
+                    Some(t.pos + t.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .expect("Instrument view button");
+        let start = app
+            .clip_block(app.lane_bounds[&audio_track], &source, 0)
+            .min
+            + Vec2::new(20.0, 12.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start + Vec2::new(10.0, 0.0))],
+        );
+        assert!(app.drag.is_some());
+        app.dirty = false;
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(instrument)]);
+        assert_eq!(app.view_mode, ViewMode::Instrument);
+        assert_eq!(app.selected_track, Some(parent));
+        frame(&mut app, &ctx, vec![]);
+        let target = app.beat_sampler_waveform(owner, layer).unwrap().center();
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);
+        assert!(
+            app.session
+                .project
+                .instrument_settings(owner)
+                .unwrap()
+                .layers[0]
+                .sampler
+                .as_ref()
+                .unwrap()
+                .input
+                .is_none()
+                && !app.dirty
+        );
+        frame(&mut app, &ctx, vec![button(target, false)]);
+        wait(&mut app, &ctx);
+        assert_eq!(
+            app.session
+                .project
+                .instrument_settings(owner)
+                .unwrap()
+                .layers[0]
+                .sampler
+                .as_ref()
+                .unwrap()
+                .input
+                .as_ref()
+                .unwrap()
+                .asset_id,
+            source.asset_id
+        );
+        assert!(app.dirty && app.session.project.tracks[0].clips.is_empty());
+        assert_eq!(
+            serde_json::to_value(&app.session.project.tracks[1].clips[0]).unwrap(),
+            serde_json::to_value(source).unwrap()
+        );
+        assert_eq!(app.sampler_drop_target(target), Some((owner, layer)));
+    }
+}
+#[test]
 fn sampler_cancelled_preparation_cannot_publish_a_late_result() {
     let (mut app, ctx, _) = fixture(settings::ColorTheme::Light);
     app.dirty = false;
@@ -1136,5 +1237,83 @@ fn granulizer_catalog_layout_controls_and_source_conflicts_use_shared_sample_she
         let main = instrument.main.id;
         crate::instrument_catalog::add_components(&mut instrument, main, &["daw.granulizer"]);
         assert!(instrument.main.visible_components().is_empty());
+    }
+}
+
+#[test]
+fn sample_preview_uses_presentation_color_for_midi_and_nested_sources() {
+    for nested in [false, true] {
+        for granular in [false, true] {
+            let mut app = DawUi::default();
+            let parent = if nested {
+                app.session.project.add_beat_track().unwrap()
+            } else {
+                app.session.project.add_midi_track().unwrap()
+            };
+            let owner = if nested {
+                let row = daw_core::BeatSubtrack::new("Colored".into());
+                let owner = row.id;
+                app.session
+                    .project
+                    .edit(Edit::Beat {
+                        track_id: parent,
+                        edit: daw_core::BeatEdit::Add {
+                            subtrack: Box::new(row),
+                            index: 0,
+                        },
+                    })
+                    .unwrap();
+                owner
+            } else {
+                parent
+            };
+            app.session.project.tracks[0].color = daw_core::DEFAULT_TRACK_COLORS[3];
+            let mut presentation = app.session.project.instrument_track(owner).unwrap();
+            let colors = theme::clip_colors(presentation.color, None);
+            assert_ne!(
+                colors.body,
+                theme::clip_colors(daw_core::DEFAULT_TRACK_COLOR, None).body
+            );
+            // Paint-only input: decoding is not needed to verify the shared header/body colors.
+            let sampler = daw_core::SamplerSettings {
+                input: Some(daw_core::SamplerInput {
+                    asset_id: Id::new_v4(),
+                    name: "Color preview".into(),
+                    source_offset_frame: 0,
+                    length_frames: 48000,
+                    repeat: None,
+                    stretch: None,
+                }),
+                end_frame: 48000,
+                granulizer: granular.then(Default::default),
+                ..Default::default()
+            };
+            let layer = &mut presentation.instrument.as_mut().unwrap().layers[0];
+            layer.oscillators.clear();
+            layer.sampler = Some(sampler);
+            app.selected_track = Some(parent);
+            app.view_mode = ViewMode::Instrument;
+            if nested {
+                app.navigate_beat_owner(parent, Some(owner), false);
+            }
+            let ctx = context();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1800.0, 900.0))),
+                    ..Default::default()
+                },
+                |ui| app.instrument_body(ui, presentation.clone(), false),
+            );
+            let wave = app.instrument_ui.samplers[0].waveform;
+            let header = Rect::from_min_max(
+                wave.min + Vec2::new(0.0, 38.0),
+                Pos2::new(wave.right(), wave.top() + 60.0),
+            );
+            let body = Rect::from_min_max(header.left_bottom(), wave.max);
+            for (rect, color) in [(header, colors.header), (body, colors.body)] {
+                assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(paint) if paint.rect == rect && paint.fill == color)), "nested={nested}, granular={granular}, rect={rect:?}");
+            }
+            output.textures_delta.clear();
+        }
     }
 }

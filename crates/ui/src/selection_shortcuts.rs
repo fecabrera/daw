@@ -1,4 +1,4 @@
-//! Shared Escape handling for arrangement and instrument layer selection.
+//! Shared Escape handling for arrangement, instrument layers and beat subtracks.
 use super::*;
 
 impl DawUi {
@@ -14,12 +14,17 @@ impl DawUi {
 
     pub(super) fn selection_escape_available(&self, ctx: &egui::Context) -> bool {
         self.selection_shortcut_environment_available(ctx)
+            && !self.track_browser.has_gesture()
             && !self.instrument_ui.has_layer_gesture()
             && !strip_reorder::dragging(ctx)
     }
 
     pub(super) fn selection_escape(&mut self, ctx: &egui::Context) {
-        if !matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
+        let beat_editor = self.view_mode == ViewMode::Edit
+            && self
+                .editor_track()
+                .is_some_and(|track| track.kind == daw_core::TrackKind::Beat);
+        if !(matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument) || beat_editor)
             || !self.selection_escape_available(ctx)
             || ctx.text_edit_focused()
             || egui::Popup::is_any_open(ctx)
@@ -47,8 +52,10 @@ impl DawUi {
             return;
         }
         if self.view_mode == ViewMode::Instrument {
-            self.instrument_ui.selected_layer = None;
-            self.instrument_ui.selected_layers.clear();
+            self.deselect_beat_subtracks();
+            self.clear_layer_selections_except(None);
+        } else if beat_editor {
+            self.deselect_beat_subtracks();
         } else if self.selected_clip.is_some()
             || !self.selected_clips.is_empty()
             || self.portion.is_some()

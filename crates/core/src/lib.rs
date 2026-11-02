@@ -1,8 +1,10 @@
+mod effect_owners;
 pub use daw_unit_core::{DRIVE_V2_TYPE_ID, DriveV2Clip, DriveV2ColorShape, DriveV2Settings};
 pub use daw_unit_core::{EXCITER_TYPE_ID, ExciterBand, ExciterMode, ExciterSettings};
 pub use daw_unit_core::{EqBandMode, MULTIBAND_EQ_TYPE_ID, MultibandEqBand, MultibandEqSettings};
 pub use daw_unit_core::{GrainWindow, GranulizerSettings};
 pub use daw_unit_core::{SATURATOR_TYPE_ID, SaturatorClipMode, SaturatorSettings, SaturatorShape};
+mod instrument_validation;
 mod memory;
 mod source_storage;
 pub use source_storage::{SourceStorage, validate_included_source_path};
@@ -14,7 +16,15 @@ pub use daw_unit_core::{
     SamplerMode, SamplerSettings, SamplerTrigger,
 };
 pub use daw_unit_core::{STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
+mod beat;
+mod beat_project;
+mod beat_resize;
+pub use beat_resize::PatternTrimBounds;
 mod chords;
+pub use beat::{
+    BEAT_STATE_VERSION, BeatEdit, BeatInstrument, BeatPattern, BeatPatternSource, BeatResolution,
+    BeatStep, BeatSubtrack, BeatTrigger,
+};
 mod midi;
 pub use chords::{CHORD_ROOTS, Chord, ChordKind};
 mod midi_options;
@@ -217,6 +227,8 @@ pub struct Master {
 pub struct Asset {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub midi_pattern: Option<MidiPattern>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beat_pattern: Option<BeatPatternSource>,
     pub id: Id,
     pub name: String,
     pub source: Source,
@@ -257,6 +269,8 @@ pub struct Track {
     pub midi_options: MidiOptions,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instrument: Option<InstrumentSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beat: Option<Box<BeatInstrument>>,
     pub id: Id,
     pub name: String,
     /// Default color for this track's clips; older projects assign it by track position.
@@ -433,21 +447,9 @@ pub fn seconds(frames: u64) -> f64 {
 impl Project {
     /// Track and Master instances share validation, monitoring, and missing-unit handling.
     pub fn all_effects(&self) -> impl Iterator<Item = &EffectInstance> {
-        self.tracks
-            .iter()
-            .flat_map(|track| {
-                track
-                    .effects
-                    .iter()
-                    .chain(track.instrument.iter().flat_map(|i| {
-                        i.layers
-                            .iter()
-                            .flat_map(|l| &l.effects)
-                            .chain(&i.main.effects)
-                    }))
-            })
-            .chain(&self.master.effects)
+        self.effect_chains().flat_map(|(_, effects)| effects)
     }
+
     pub fn frames(&self, seconds: f64) -> u64 {
         (seconds.max(0.0) * f64::from(self.sample_rate_hz)).round() as u64
     }
@@ -505,6 +507,29 @@ impl Project {
                 return Err(invalid("Duplicate asset ID"));
             }
             a.source.validate_storage()?;
+            if a.midi_pattern.is_some() && a.beat_pattern.is_some() {
+                return Err(invalid(
+                    "A source cannot contain both MIDI and beat content",
+                ));
+            }
+            if let Some(source) = &a.beat_pattern {
+                source.validate()?;
+                if source.id != a.id
+                    || a.source.kind != "beat_pattern"
+                    || a.source.path_kind != "embedded"
+                    || !a.source.path.is_empty()
+                    || a.decoded_frame_count == 0
+                    || a.decoded_frame_count == u64::MAX
+                    || a.decoded_frame_count != self.midi_frame(source.pattern.length_ticks())
+                    || source.pattern.visible_steps().any(|step| {
+                        self.midi_frame(step.start_tick + source.pattern.resolution.step_ticks())
+                            <= self.midi_frame(step.start_tick)
+                    })
+                {
+                    return Err(invalid("Invalid beat pattern source"));
+                }
+                continue;
+            }
             if let Some(pattern) = &a.midi_pattern {
                 pattern.validate()?;
                 if a.source.kind != "midi_pattern"
@@ -544,6 +569,7 @@ impl Project {
         let assets: std::collections::HashMap<_, _> =
             self.assets.iter().map(|a| (a.id, a)).collect();
         for t in &self.tracks {
+            self.validate_beat_track(t, &mut ids)?;
             t.midi_options.validate()?;
             if t.kind != TrackKind::Midi && !t.midi_options.is_default() {
                 return Err(invalid("MIDI options require a MIDI track"));
@@ -567,41 +593,9 @@ impl Project {
                 ));
             }
             self.validate_samplers(t)?;
-            for route in t.instrument.iter().flat_map(|i| &i.layers).flat_map(|l| {
-                l.amplitude
-                    .modulations
-                    .iter()
-                    .chain(&l.oscillator_modulations)
-                    .chain(l.sampler.iter().flat_map(|s| &s.modulations))
-            }) {
-                if route.source.is_some_and(|source| {
-                    !t.instrument
-                        .as_ref()
-                        .is_some_and(|i| i.modulation_source(source).is_some())
-                }) {
-                    return Err(invalid(
-                        "Instrument modulation source does not exist in this instrument",
-                    ));
-                }
-            }
-            for route in t
-                .effects
-                .iter()
-                .chain(t.instrument.iter().flat_map(|i| {
-                    i.layers
-                        .iter()
-                        .flat_map(|l| &l.effects)
-                        .chain(&i.main.effects)
-                }))
-                .flat_map(|e| e.unit.modulations())
-            {
-                if route.source.is_some_and(|source| {
-                    !effect_transfer::source_available(t.instrument.as_ref(), source)
-                }) {
-                    return Err(invalid(
-                        "Effect modulation requires a shared source in the same MIDI track",
-                    ));
-                }
+            instrument_validation::validate_routes(t.instrument.as_ref(), &t.effects)?;
+            for clip in &t.clips {
+                self.validate_beat_destination(t.id, clip.asset_id)?;
             }
             let mut previous_end = 0;
             let mut clips = t.clips.iter().collect::<Vec<_>>();
@@ -692,6 +686,7 @@ impl Project {
             kind: TrackKind::Audio,
             midi_options: MidiOptions::default(),
             instrument: None,
+            beat: None,
             id,
             name: format!("Audio {}", self.tracks.len() + 1),
             color: default_track_color(self.tracks.len()),
@@ -719,6 +714,10 @@ impl Project {
 
     fn apply_edit(&mut self, command: Edit) -> Result<()> {
         match command {
+            Edit::Beat { track_id, edit } => self.beat_mut(track_id)?.edit(edit)?,
+            Edit::ReplaceBeatPattern { clip_id, pattern } => {
+                self.replace_beat_pattern(clip_id, pattern)?
+            }
             Edit::GroupTracks {
                 track_ids,
                 group_id,
@@ -751,59 +750,27 @@ impl Project {
                 effects,
                 compact,
             } => {
-                // A Batch may temporarily contain invalid layout entries. Keep duplicate
-                // references for final validation rather than normalizing them away.
+                if let Some(beat) = self.tracks.iter_mut().find_map(|track| {
+                    let beat = track.beat.as_mut()?;
+                    (beat.output.id == layer_id
+                        && (track.id == track_id || beat.output.id == track_id))
+                        .then_some(beat)
+                }) {
+                    beat.output.set_effects(effects, compact);
+                    return Ok(());
+                }
                 let instrument = self
-                    .tracks
-                    .iter_mut()
-                    .find(|t| t.id == track_id)
-                    .and_then(|t| t.instrument.as_mut())
+                    .instrument_settings_mut(track_id)
                     .ok_or_else(|| Error("Instrument not found".into()))?;
                 if layer_id == instrument.main.id {
-                    instrument.main.effects = effects;
-                    instrument.main.prune_component_order();
-                    if !instrument
-                        .main
-                        .component_order
-                        .iter()
-                        .enumerate()
-                        .any(|(n, u)| {
-                            matches!(u, InstrumentComponent::Effect(_))
-                                && instrument.main.component_order[..n].contains(u)
-                        })
-                    {
-                        let mut ids = instrument.main.effects.iter().map(|e| e.id);
-                        for unit in &mut instrument.main.component_order {
-                            if let InstrumentComponent::Effect(id) = unit
-                                && let Some(next) = ids.next()
-                            {
-                                *id = next;
-                            }
-                        }
-                    }
-                    instrument.main.collapsed = compact;
+                    instrument.main.set_effects(effects, compact);
                 } else {
-                    let layer = instrument
+                    instrument
                         .layers
                         .iter_mut()
-                        .find(|l| l.id == layer_id)
-                        .ok_or_else(|| Error("Instrument layer not found".into()))?;
-                    layer.effects = effects;
-                    layer.prune_component_order();
-                    if !layer.component_order.iter().enumerate().any(|(n, u)| {
-                        matches!(u, InstrumentComponent::Effect(_))
-                            && layer.component_order[..n].contains(u)
-                    }) {
-                        let mut ids = layer.effects.iter().map(|e| e.id);
-                        for unit in &mut layer.component_order {
-                            if let InstrumentComponent::Effect(id) = unit
-                                && let Some(next) = ids.next()
-                            {
-                                *id = next;
-                            }
-                        }
-                    }
-                    layer.collapsed = compact;
+                        .find(|layer| layer.id == layer_id)
+                        .ok_or_else(|| Error("Instrument layer not found".into()))?
+                        .set_effects(effects, compact);
                 }
             }
             Edit::SetEffects {
@@ -811,6 +778,16 @@ impl Project {
                 effects,
                 compact,
             } => {
+                if self.instrument_snapshot(track_id).is_some()
+                    && !self.tracks.iter().any(|t| t.id == track_id)
+                {
+                    if !effects.is_empty() {
+                        return Err(Error(
+                            "Beat subtrack effects belong to its output bus".into(),
+                        ));
+                    }
+                    return Ok(());
+                }
                 let track = self
                     .tracks
                     .iter_mut()
@@ -850,12 +827,7 @@ impl Project {
                 track_id,
                 instrument,
             } => {
-                let track = self
-                    .tracks
-                    .iter_mut()
-                    .find(|t| t.id == track_id)
-                    .ok_or_else(|| Error("Track not found".into()))?;
-                track.instrument = instrument;
+                self.set_instrument_settings(track_id, instrument)?;
             }
             Edit::Batch(commands) => {
                 for command in commands {
@@ -890,7 +862,7 @@ impl Project {
                     };
                     for track in &mut self.tracks {
                         for clip in &mut track.clips {
-                            if track.kind == TrackKind::Midi {
+                            if matches!(track.kind, TrackKind::Midi | TrackKind::Beat) {
                                 clip.length_frames =
                                     checked_frame((clip.length_frames as f64 * ratio).round())?;
                                 clip.source_offset_frame = checked_frame(
@@ -909,11 +881,9 @@ impl Project {
                         }
                     }
                     for asset in &mut self.assets {
-                        if let Some(pattern) = &asset.midi_pattern {
+                        if let Some(length_ticks) = asset.pattern_length_ticks() {
                             asset.decoded_frame_count = checked_frame(
-                                (f64::from(pattern.length_ticks)
-                                    * f64::from(self.sample_rate_hz)
-                                    * 60.0
+                                (f64::from(length_ticks) * f64::from(self.sample_rate_hz) * 60.0
                                     / (f64::from(bpm) * f64::from(MIDI_TICKS_PER_BEAT)))
                                 .round(),
                             )?;
@@ -1091,6 +1061,14 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    Beat {
+        track_id: Id,
+        edit: BeatEdit,
+    },
+    ReplaceBeatPattern {
+        clip_id: Id,
+        pattern: BeatPattern,
+    },
     GroupTracks {
         track_ids: Vec<Id>,
         group_id: Id,
@@ -1571,6 +1549,7 @@ mod tests {
         let asset_id = Id::new_v4();
         project.assets.push(Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id: asset_id,
             name: "Take".into(),
             source: Source {

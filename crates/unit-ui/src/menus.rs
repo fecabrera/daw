@@ -11,6 +11,40 @@ pub fn action_button(label: impl Into<WidgetText>) -> egui::Button<'static> {
     egui::Button::new(label.into()).gap(ITEM_SPACING)
 }
 
+/// Give an editable value the same row padding and height as menu actions.
+pub fn value_row<R>(
+    ui: &mut Ui,
+    label: impl Into<WidgetText>,
+    width: f32,
+    value: impl FnOnce(&mut Ui) -> R,
+) -> InnerResponse<R> {
+    let slot_id = egui::Id::new("menu_value");
+    let mut atoms = egui::Atoms::new(label.into());
+    atoms.push_right(egui::Atom::grow());
+    atoms.push_right(egui::Atom::custom(slot_id, Vec2::new(width, 0.0)));
+    let row = egui::Button::new(atoms).gap(ITEM_SPACING).atom_ui(ui);
+    // Invisible/sizing passes do not paint atoms or return their custom slots.
+    let inner = row.response.rect.shrink2(ui.spacing().button_padding);
+    let slot = row.rect(slot_id).unwrap_or_else(|| {
+        egui::Rect::from_center_size(
+            egui::pos2(inner.right() - width / 2.0, inner.center().y),
+            Vec2::new(width, 0.0),
+        )
+    });
+    let slot = egui::Rect::from_center_size(slot.center(), Vec2::new(width, inner.height()));
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(row.response.id)
+            .max_rect(slot)
+            .layout(egui::Layout::right_to_left(egui::Align::Center)),
+    );
+    // The enclosing row already supplies the standard item padding.
+    child.spacing_mut().button_padding = Vec2::ZERO;
+    child.spacing_mut().interact_size = Vec2::new(0.0, slot.height());
+    child.style_mut().drag_value_text_style = TextStyle::Button;
+    InnerResponse::new(value(&mut child), row.response)
+}
+
 /// Style popup contents without changing the collapsed selector's geometry.
 pub fn popup_style(style: &mut Style) {
     egui::containers::menu::menu_style(style);
@@ -107,6 +141,12 @@ impl ContextMenu {
     /// Retain caller-owned opening guards for compound controls such as track panels.
     pub fn open_memory(mut self, state: impl Into<Option<egui::SetOpenCommand>>) -> Self {
         self.0 = self.0.open_memory(state);
+        self
+    }
+
+    /// Editable menu values must retain their popup when the field is clicked.
+    pub fn close_behavior(mut self, behavior: egui::PopupCloseBehavior) -> Self {
+        self.0 = self.0.close_behavior(behavior);
         self
     }
 

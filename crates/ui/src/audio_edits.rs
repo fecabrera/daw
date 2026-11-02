@@ -44,10 +44,7 @@ impl DawUi {
             .zip(self.instrument_ui.selected_layer)
             .filter(|(track, layer)| {
                 project
-                    .tracks
-                    .iter()
-                    .find(|t| t.id == *track)
-                    .and_then(|t| t.instrument.as_ref())
+                    .instrument_settings(*track)
                     .is_some_and(|i| i.main.id == *layer || i.layers.iter().any(|l| l.id == *layer))
             })
             .map(|(track, layer)| (track, layer, self.instrument_ui.selected_layers.clone()));

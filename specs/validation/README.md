@@ -4,6 +4,952 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat staged preview and row-index corrections — 2026-11-01
+
+Both minor findings against `cdb71f7` are corrected. The shared prepared clip
+source carries staged beat patterns into Timeline and Editor resize painting.
+Transient preview source IDs use disposable overview data. Beat thumbnail rows
+retain full indices instead of wrapping into synthetic MIDI pitches; temporal
+painting stays shared with MIDI.
+
+Focused tests pass for left/right source growth in both views, retained hit
+geometry, unchanged session data on preview/cancellation, transient cache
+ownership, distinct rows 1/61/200 at detailed/coarse levels, actual 61-row paint,
+and existing trim/repeat/stretch and dense-thumbnail checks.
+
+`cargo test --offline --locked --workspace` passes: 2,111 tests, 15 ignored,
+across 260 suites, including all 833 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for these corrections.
+
+## Beat Editor and thumbnail paint corrections — 2026-11-01
+
+The three minor findings against `e2de9ec` are corrected. Current requirements
+link delivered selection/navigation behavior instead of marking it pending.
+Editor rows, headers and overview tracks copy metadata and required clip content
+without processing graphs. Shared beat thumbnail conversion uses immutable
+source/revision and ordered-row keys, a direct row index and cached zoom levels.
+Sorted time bounds and pixel detail limit marker work. Existing MIDI mapping
+continues to handle trim, repeat, phase and stretch.
+
+Focused checks pass: 71 beat tests, cache reuse/invalidation, dense shared-source
+thumbnail shape bounds, and exact detailed marker geometry against MIDI for
+trim/repeat/stretch combinations. A manual debug Editor probe measured 226 ms
+for 100 paints with an empty sibling and 227 ms with 4,096 hidden effects. This
+is a synthetic local observation, not a native frame-rate or release guarantee.
+Twenty 25-point thumbnails sharing a 32,768-hit source emit 19,280 shapes and
+convert once; the debug probe took 61 ms cold and 7 ms warm.
+
+`cargo test --offline --locked --workspace` passes: 2,108 tests, 15 ignored,
+across 260 suites, including all 830 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for this correction.
+
+## Nested sample preview color correction — 2026-11-01
+
+The minor finding against `e86bb6d` is corrected. The shared Sampler/Granulizer
+body reads its color from the existing presentation track snapshot instead of
+looking for a nested owner ID among real project tracks. This preserves parent
+color without copying another instrument graph. A paint regression covers
+header and body colors for both source types on ordinary MIDI and nested beat
+instruments.
+
+`cargo test --offline --locked --workspace` passes: 2,105 tests, 14 ignored,
+across 260 suites, including all 827 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for this correction.
+
+## Beat reorder, audition and paint corrections — 2026-11-01
+
+The three minor findings against `dedbd19` are corrected. Primary reorder
+completion ignores secondary and middle releases in both panes. Explicit beat
+audition retains the complete step gate, including steps longer than eight
+seconds; automatic preview retains its eight-second cap. Beat Instrument
+painting reads the Output identity first, then copies only the visible owner's
+settings, without cloning hidden sibling processing graphs.
+
+Focused checks pass for secondary/middle release in Editor and Tracks, primary
+release commit and Undo, and the 12-second explicit gate versus the 8-second
+automatic gate at 5 BPM. The manual debug selected-owner paint probe measured
+247 ms for 100 frames with an empty hidden sibling and 245 ms with 4,096 hidden
+effects. This is a local scaling observation, not a native frame-rate guarantee
+or a release timing benchmark.
+
+`cargo test --offline --locked --workspace` passes: 2,104 tests, 14 ignored,
+across 260 suites, including all 826 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py` pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for these corrections.
+
+## Beat parent catalog target correction — 2026-11-01
+
+Selecting a beat parent now selects its final Output bus for catalog effects
+through shared owner navigation. This corrects the minor finding against
+`aaf433f`: the visible Output page could otherwise insert effects into the parent
+track chain after returning from a subtrack. Explicit parent-track targeting
+remains available.
+
+The automated Tracks pointer regression passes. It navigates from subtrack to
+parent twice, inserts a catalog effect into final Output, checks the unchanged
+parent chain and Output-local Macro discovery, and checks explicit parent-track
+targeting.
+
+`cargo test --offline --locked --workspace` passes: 2,102 tests, 13 ignored,
+across 260 suites, including all 825 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for this correction.
+
+## Beat scroll and velocity review corrections — 2026-11-01
+
+The two minor findings from the five-reviewer review of the `0808f29` tree
+(also used by amended commit `624bb1f`) are corrected. The Tracks scroll-area
+prepass checks beat reorder ownership. Editor-origin drags leave its scroll
+position unchanged; Tracks-origin reorders retain edge scrolling in Editor and
+Instrument. Velocity popups stay open for input clicks, so click/type/Enter works
+alongside dragging with the existing 1–127 bounds.
+
+Both focused automated regressions pass. The scrolling test uses 41 beat rows,
+checks both origins and views, and verifies that scrolling and Escape do not
+change the project. The velocity test types 63 and out-of-range values, checks
+clamping, step identity and selection, and verifies that another clip and its
+shared previous source remain unchanged.
+
+Completed checks:
+
+- `cargo test --offline --locked --workspace` passes: 2,101 tests, 13 ignored,
+  across 260 suites, including all 824 active UI tests.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`,
+  formatting, diff checks and all 132 local file targets in the changed Markdown
+  files pass.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+
+Native UI/device and Windows/Linux checks have not been run for these fixes.
+
+## Beat review corrections — 2026-11-01
+
+The fixes address the six validated findings against `5f3a3e3`. Core group
+constructors, shared menu helpers and the migrated context-menu test caller are
+included together, so the desktop/UI build no longer relies on omitted files.
+
+Beat reorder state records its originating pane and view. Only that pane owns
+preview scrolling and release cleanup. Tracks and the step editor cannot consume
+each other's drops. Panel closure cancels a Tracks drag; view changes cancel
+either origin. Invalid releases, Escape and focus loss retain project data.
+
+Retrigger transitions retain the previous stop-faded voice and layer contribution
+before removing the choke multiplier. Clip fades stay separate, layer/Output
+effect histories remain alive, and the callback adds no allocation. Output effect
+eligibility resolves the canonical owner for local providers. Transfers also
+normalize both aliases before comparing same-chain identity, including mixed
+parent/Output alias moves and copies.
+
+Completed focused checks:
+
+- `cargo check --offline --locked -p daw-ui` passes on the repaired sources.
+- `cargo test --offline --locked -p daw-core --test beat_output_effects` passes
+  both tests, including every source/destination alias pair, local Macro binding,
+  move/copy identity and storage round trips.
+- `cargo test --offline --locked -p daw-ui subtrack_` passes all 24 matching
+  tests. Pointer regressions cover Editor reordering with Tracks open/closed,
+  browser-origin moves, outside drops, Escape, focus loss, view guards and
+  originating-panel closure.
+- `cargo test --offline --locked -p daw-engine --test midi beat_retrigger_during_stop_fade`
+  passes the six-rate, two-compression, with/without-layer-effect matrix. It checks
+  continuity during/after the stop fade, live/offline/seek parity and zero guarded
+  callback allocations.
+- `cargo test --offline --locked --workspace` passes: 2,099 tests, 13 ignored,
+  across 260 suites, including 822 UI tests. The final view-guard assertions also
+  pass the 24-test focused UI rerun.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`
+  passes on the final sources. Formatting, diff and changed Markdown file-target
+  checks pass.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`
+  pass. The CLI smoke test covers collection, inspection, WAV/MP3/AAC output,
+  repeatability, missing sources, group buses, overwrite protection and exit codes.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+
+Native UI/device listening and Windows/Linux checks remain separate acceptance
+work; automated input/rendering checks do not establish those results.
+
+## Tracks creation menus — 2026-11-01
+
+Tracks Plus and blank-panel context menus share one creation body for audio,
+MIDI, beat and empty group tracks. Only Plus adds Add subtrack for the selected
+beat (or displayed Editor beat); blank contexts omit that item. Group contexts
+create all four kinds inside the clicked group as one staged change. Native and egui Track menubars expose Add group and
+Add subtrack through the same action list and guards. Beat context actions retain
+the clicked parent independently of other or multiple selection. Creation occurs
+on release; menu opening and dismissal retain the original project.
+
+Empty groups are validated root buses with default mix settings and no sources,
+clips or effects. Existing rows and memberships remain unchanged. Core coverage
+checks empty-group defaults, child creation for all four track kinds, later
+membership moves, storage round trips and rollback on an invalid project. UI coverage checks both panel menus in both
+views, every creation choice, collapsed/nonselected beat targets, empty projects,
+menubar guards, Editor owner resolution, and release-only dispatch.
+
+Completed checks:
+
+- `cargo test --offline --locked -p daw-core --test track_groups` passes all eight tests.
+- `cargo test --offline --locked -p daw-core -p daw-ui` passes on the final group-child implementation, including all 817 UI tests with one ignored probe. Pointer cases verify four choices in blank contexts, an extra Add subtrack in Plus, child creation for every track kind inside the clicked group, and one-step Undo/Redo. All 27 Tracks tests and the menu-shortcut tests also pass after the separator adjustment.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`, formatting and diff checks pass on the final group-child and blank-context changes.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+- An isolated native macOS test instance verifies native Add group creation, disabled/enabled menubar Add subtrack, native subtrack creation, the beat-row Add subtrack action, and the initial shared blank-panel choices. The final blank-panel omission and group-child actions are covered by automated pointer tests.
+
+The menus separate Add beat track from Add group through the shared popup and
+native menu boundary. `cargo test --offline --locked --workspace` passes: 2,089
+tests, 13 ignored, across 260 suites. That run compiled before the final
+group-child, blank-context and beat-header/pitch adjustments. The final affected
+core, UI and shared-control reruns recorded here cover those later changes.
+Native device/audio and Windows/Linux UI checks were not run for this menu change.
+
+### Beat header rename and Trigger pitch follow-up
+
+Double-clicking blank space beside an Editor subtrack name now opens the shared
+rename input. Mix controls retain their own double-click actions. Trigger pitch
+uses canonical menu row geometry with a right-pinned note field, C4 by default.
+Sharp notes display as D3#; input also accepts D#3. The popup remains open while
+editing. Invalid text and Escape preserve the saved pitch.
+
+- `cargo test --offline --locked -p daw-ui -p daw-unit-ui` passes on these final
+  sources: 820 UI tests with one ignored probe and 33 shared-control tests.
+  Pointer tests verify blank-header rename/commit, mix-control ownership, both
+  views' menu padding/height/gaps/right alignment, typed note commit and invalid
+  input/Escape cancellation. Note-name tests round-trip all 128 MIDI pitches.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`
+  passes. Formatting, diff and changed Markdown link checks pass.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`. An isolated
+  native macOS instance verifies blank-header double-click rename and Enter
+  commit, matching menu spacing/right-pinned C4, and typed D3# commit with the
+  popup retained. The test instance was closed without saving its scratch
+  project. Native audio/device and Windows/Linux checks remain untested.
+
+## Shared Tracks controls, beat navigation and reordering — 2026-11-01
+
+Instrument and Editor now share a compact Tracks hierarchy with project rows and
+beat subtracks. Mute/Solo buttons and Pan/Gain faces are 16 points, pinned right
+with unchanged catalog row heights. M/S labels use 9-point text. Scaled knob paint retains the caller’s clip
+rectangle instead of scaling the viewport into the knob. This applies to the
+shared knob implementation used by built-in units and standalone editors.
+
+Selecting a subtrack opens the normal MIDI Layers body with local providers and
+Output. Selecting a beat parent shows only final Output. This supersedes the
+simultaneous expandable Instrument groups in the 2026-10-31 records below.
+Editor retains its active beat pattern when selecting another child of the open
+parent. Source navigation selects the corresponding subtrack owner.
+
+Track moves reuse the core subtree/group transaction and commit on release.
+Subtrack group moves reuse the beat transaction and remain inside the original
+beat parent. Controls, inline rename, keyboard navigation, full-row context menus,
+view/panel state and editing guards retain their shared interactions. Cancelled
+or same-position drops do not edit the project.
+
+Completed checks:
+
+- `cargo fmt --all --check`, `git diff --check` and changed Markdown link targets pass.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings` passes on the final sources, including browser renaming.
+- `cargo test --offline --locked -p daw-ui` passes all 811 UI tests, with one ignored probe. Shared-control coverage passes all 33 tests. Cases cover all themes at 1×/1.5×/2×, canonical mix edits, owner navigation, rename/context menus, release-only moves, complete group subtrees, rejected cycles/cross-beat moves, and cancellation.
+- Native macOS Dark-theme checks cover compact button/knob visibility in Tracks,
+  beat creation, subtrack creation, selected-owner Layers, subtrack pointer
+  reordering, context-menu opening over Mute, and shared Editor panel alignment.
+  A rebuilt app separately verifies the final 16-point Pan/Gain faces.
+- `sh tools/package_macos.sh debug` builds `target/debug/DAW.app`.
+
+The final regressions cover MIDI creation through the actual Plus menu in both
+views, Editor creation with an existing selected clip, normal presses retaining
+enabled workspace controls, drag-threshold activation and armed-gesture
+cancellation on Escape, view changes and panel closure. MIDI creation remains
+guarded by the common focus, text, gesture and job/dialog checks. Additional
+regressions cover audio/MIDI/beat/group renaming in both browser views, Unicode
+replacement, commit on Enter, Escape/panel-close cancellation, and context
+menus over mix controls without mix edits. The original shared track-name and
+subtrack-name input tests also pass.
+
+`cargo test --offline --locked --workspace` passes: 2,076 tests, 13 ignored,
+across 260 suites. That run compiled before the final UI creation/press/rename
+additions; the final 811-test UI rerun and strict workspace Clippy cover those
+changes. Native audio and Windows/Linux UI checks were not run for this
+presentation change.
+
+## Beat Output ordering, source navigation and worker startup — 2026-11-01
+
+Corrected the three findings in the [five-reviewer fd0edf8 review](https://github.com/fecabrera/daw/pull/5#issuecomment-6560148478).
+The report remains pinned to that reviewed commit.
+
+- Final beat Output uses complete retained inline order and the shared layer/bus
+  effect-slot retargeting. Empty and explicit layouts preserve hidden controls;
+  invalid duplicates still fail final transaction validation. Both parent and
+  Output owner IDs resolve to the same bus.
+- Shared instrument-owner discovery includes ordinary instruments and nested beat
+  subtracks. Timeline audio-clip drags open the real beat parent and load Sampler
+  or Granulizer without moving the source clip.
+- Device startup creates a silent, track-free renderer with the saved project
+  clock. The existing worker compiles logical content and publishes complete
+  renderers/bindings. First Play, device recreation and first audition share that
+  constructor. Warm/Plan requests reuse compiled beat content until processing
+  inputs change. Initial monitor handles and audition flags survive publication.
+
+Focused generated checks cover empty/explicit and hidden-control layouts,
+reorders, library copies, identity/round-trip persistence, beat Sampler and
+Granulizer pointer drags, warm/fresh startup, stopped/playing handoff, reference
+renderer parity, stale Play cancellation, independent audition and monitor-handle
+retention. A mismatched 48 kHz project / 44.1 kHz device-rate check verifies exact
+audition continuity through stopped startup publication, including already
+converted samples. Callback handoff and sampling use the existing zero-allocation
+guard.
+
+Completed checks:
+
+- `cargo fmt --all --check`, `git diff --check` and changed guide/specification
+  link checks pass.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`
+  passes after the final resampling correction.
+- `cargo test --offline --locked -p daw-core -p daw-unit-core -p daw-output -p daw-ui`
+  passes: 1,050 tests, two ignored probes across 12 suites.
+- `cargo test --offline --locked --workspace` passes: 2,068 tests, 13 ignored,
+  across 260 suites.
+- The final `cargo test --offline --locked -p daw-output --lib` rerun passes all
+  51 tests, including the additional device-rate audition continuity regression
+  and the final callback correction.
+- `cargo build --offline --locked -p daw-cli` passes.
+- `python3 tools/check_cli.py` passes: source collection, inspection, WAV/MP3/AAC,
+  repeatability, missing sources, group buses, overwrite and exit codes.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app` successfully.
+
+Native visual/display-scale, physical pointer/menu/keyboard, listening/device and
+Windows/Linux acceptance remain open. These fixes do not close Stage 6 or change
+the pinned review's verdict.
+
+## Beat tail gain, retained selection and load diagnostics — 2026-11-01
+
+Corrected the four findings in the [local ac7f4ac review](https://github.com/fecabrera/daw/pull/5#issuecomment-6559056746).
+The original report and audit remain pinned to that reviewed revision.
+
+- A prepared post-Output gain envelope holds the preceding unmuted clip gain
+  through effect tails and gaps. Following clips take over the shared bus gain
+  over up to 5 ms, shortened at the next clip or loop boundary. Silence is exact
+  at its clip start. Loop gaps retain the preceding iteration's gain. The periodic
+  envelope uses the shared delayed content clock without callback allocation or
+  mutable gain history. Prepared memory accounting remains shared.
+- Instrument state pruning retains the current final beat Output alongside live
+  subtracks. Shift preserves its selected lane across idle frames; plain selection
+  and Escape still clear it.
+- Core exposes one complete typed effect-chain traversal. Validation and load
+  diagnostics share it for Master, track effects, ordinary MIDI and every beat
+  source-layer/subtrack Output/final Output chain. Warnings identify owners;
+  opaque unavailable-effect settings remain intact.
+- The grouping guide now includes beat parent tracks in supported child types,
+  creation commands and drag instructions, and distinguishes project groups from
+  Instrument subtrack groups.
+
+Generated regressions verify silent and -24 dB Chorus tails with and without
+Output latency, live/offline/seek parity, looping, following gain transitions,
+short loops, exact small positive gains, retained multi-owner selection and
+Escape/plain replacement. A seven-owner save/open matrix checks warnings, retained
+opaque state and agreement between traversal and effect-chain lookup.
+
+Completed checks:
+
+- `cargo fmt --all --check` and `git diff --check` pass. Changed user-guide and
+  specification links resolve to existing files and headings.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings` passes.
+- `cargo test --offline --locked --workspace` passes: 2,061 tests, 13 ignored,
+  across 259 suites.
+- The final `cargo test --offline --locked -p daw-engine` rerun passes all 174
+  tests across eight suites after the loop-transition correction. Focused project
+  and UI tests also pass, including the seven-owner load matrix and 55 matching UI
+  tests (one manual probe ignored).
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`
+  pass, including deterministic exports, source collection, missing sources,
+  group buses, codecs and exit codes.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app` successfully.
+
+Native visual/display-scale, menu/pointer/keyboard, listening/device and
+Windows/Linux acceptance remain open. These fixes and automated checks do not
+establish Stage 6 native acceptance or change the pinned review's verdict.
+
+## Full beat subtrack header context menus — 2026-11-01
+
+Editor and Instrument now attach the shared subtrack menu to the complete header
+rectangle. Names, controls, meters, padding and borders use one guarded popup
+owner in expanded and collapsed groups. Instrument resolves the header popup
+after child menus so egui's hit radius cannot substitute a nearby layer menu at
+the shared border. Primary control gestures retain their existing responses.
+
+The pointer regression checks seven horizontal positions at three heights in
+Editor and both Instrument group states. It verifies the subtrack menu content,
+Escape dismissal, unchanged project data and clean dirty state.
+
+Completed checks: all 796 UI tests pass, with one diagnostic probe ignored;
+strict locked workspace/all-target Clippy and formatting pass. The locked offline
+workspace run passes 2,055 tests, with 13 ignored across 258 suites. The final UI
+rerun includes the strengthened popup-content assertion and header-border ordering
+correction. The macOS debug bundle was rebuilt. Native pointer/window checks remain unverified.
+
+## Beat PR review corrections — 2026-11-01
+
+Corrected all six findings from the [five-reviewer PR #5 review](https://github.com/fecabrera/daw/pull/5#issuecomment-6552566634),
+which examined head `38e00640505838dbb1557923df04d563b93be67a`.
+The original review artifacts remain pinned to that head.
+
+- Beat clip gain uses a prepared bus output clock after child, effect and sibling
+  alignment delays. Shared loop-aware mapping retains gain timing in playback,
+  seek and export. Renderer memory accounting includes the prepared clocks.
+- Editor caches hit lookup by immutable asset ID, subtrack ID and source tick.
+  Source-cell generation uses visible frame bounds. Offscreen row widgets are
+  omitted while full-list drag geometry and active controls/renames remain.
+  Hidden hits, repeat/trim/stretch mapping and source publication stay shared.
+- Source-layer drag capture resolves nested instrument owner IDs. Group move,
+  modifier-copy and Escape/focus/outside cancellation retain release-only edits.
+- Editor name, mix-control and blank-header selection clear final Output
+  targeting through one subtrack-selection transition.
+- Nested presentation snapshots copy only required parent metadata and the
+  requested instrument. They do not clone sibling instruments, effects or clips.
+- The beat delivery plan now consistently specifies a compact group header and
+  a separate Output child backed by the same canonical subtrack bus.
+
+Regressions cover different adjacent gains and nonzero starts at 44.1/48/96 kHz,
+latency on source layers, subtrack Output, final Output, sibling and parent paths,
+looping and seek parity. UI checks cover nested group move/copy/cancellation,
+cross-view target selection from names/controls/blank headers, visible-cell edits,
+bounded offscreen widget work and index reuse. Core checks retain snapshot
+identity, settings, parent metadata and independence from project mutation.
+
+Completed checks:
+
+- `cargo fmt --all --check` and `git diff --check`: pass.
+- Changed Markdown file targets: all 120 local targets exist. Fragment anchors
+  and external URLs were not exhaustively checked.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: pass.
+- `cargo test --offline --locked --workspace`: 2,054 passed, 0 failed and
+  13 ignored across 258 completed suites.
+- `cargo test --offline --locked --release -p daw-ui -p daw-core --lib scaling -- --ignored --nocapture`: both optimized diagnostic probes pass.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: pass.
+  The smoke checks cover collection, inspection, WAV/MP3/AAC encoding,
+  repeatability, missing sources, group buses, overwrite handling and exit codes.
+- `sh tools/package_macos.sh debug`: rebuilt `target/debug/DAW.app`.
+
+Generated optimized probes on the available macOS arm64 host measured:
+
+| Probe | Rows | Reviewed head (ms) | Corrections (ms) |
+| --- | ---: | ---: | ---: |
+| Dense 16-bar, 1/32 Editor repaint | 32 | 69.152 | 22.015 |
+| Dense 16-bar, 1/32 Editor repaint | 64 | 229.072 | 20.936 |
+| Nested instrument snapshot sweep | 128 | 3.132 | 0.051 |
+| Nested instrument snapshot sweep | 256 | 12.229 | 0.064 |
+
+Editor results average three frames after two warm-up frames at 1280×800.
+Snapshot results average ten sweeps of default empty instruments. The probes
+remain ignored in normal test runs and require the explicit optimized command
+above. Timing includes the test harness and shared-host load; it is not a native
+GPU frame-rate or device-performance guarantee. Deterministic widget-work and
+source-index checks run in the normal UI suite.
+
+Native UI/menu/gesture, listening/device and Windows/Linux acceptance remain
+unverified. Automated tests and a rebuilt bundle do not establish those results.
+
+## Shared beat subtrack level meters — 2026-10-31
+
+Editor subtrack headers now reuse the track stereo panel and existing subtrack
+Main output handles. Gain stays immediately before the rails. The shared helper
+can return child responses so selection and mix controls retain their behavior.
+No audio processing or additional meter publication was added. Instrument keeps
+the same handle in its expanded Output and collapsed subtrack header.
+
+Regression coverage checks three themes and two display scales, rail geometry,
+thin-row alignment, right-pinned gain, unchanged project data after meter clicks,
+and existing Instrument collapsed-header geometry. The UI suite passes **791 tests**.
+Locked workspace tests pass **2,048 tests**, with 11 ignored across 258 suites.
+Strict locked workspace/all-target Clippy, formatting, Markdown targets and
+whitespace checks pass. The debug macOS app was rebuilt.
+Native listening/UI and Windows/Linux execution remain unverified.
+
+## Beat audition buttons retain instrument endings — 2026-10-31
+
+Explicit subtrack audition buttons now stream bounded chunks through the existing
+held-note output path. The engine reuses the compiled beat trigger but removes
+its clip boundary, then sends normal note-off after the step gate. Envelopes and
+One-shot/Gate sources determine the audible end. Completion requires idle voices
+and one second of output below −120 dBFS, rather than a fixed release cutoff.
+Cancellation and stale-preview guards remain shared.
+
+Project regressions verify a 2.5-second envelope release, a three-second one-shot,
+natural completion, bounded chunks, Gate behavior, mute/solo eligibility,
+cancellation, invalid identities and unchanged live project data. The seven
+project audition tests pass. The UI suite passes 790 tests; the three audition
+state tests also pass after switching the direct-result fixture to a stream.
+Strict locked workspace/all-target Clippy, formatting and whitespace checks pass.
+Locked workspace tests pass **2,047 tests**, with 11 ignored across 258 suites.
+CLI build/smoke checks pass. The debug macOS app was rebuilt.
+Native listening/device/gesture checks and Windows/Linux execution remain
+unverified.
+
+## Beat subtrack audition cells and step gaps — 2026-10-31
+
+Each Editor subtrack has an empty 16-point-wide audition button centered in the fixed
+gutter, with the shared step button appearance. Explicit preview requests reuse the existing beat worker/render/output
+path, bypass the automatic headphones toggle and fall back to default note/grid
+settings without a selected pattern. Existing editor/context/cancellation guards
+remain. Preview clicks retain pattern content, selection, revision and dirty state.
+All step cells now have four-point horizontal external insets. A shared-style
+vertical divider separates the audition gutter from the pattern grid across the
+lower viewport.
+
+Regressions cover a different subtrack's preview without selection or pattern
+edits, automatic audition off, no selected or existing pattern, dialog guards,
+three-theme geometry, the absence of a dot, eight-point gaps, the full-height separator, horizontal
+anchoring and synchronized vertical scrolling. Audition state tests inject results
+to verify direct playback with the toggle off and cancellation for invalid view,
+revision, focus, disabled UI and dialogs. The shared project audio test also
+renders an identical preview with no arranged pattern.
+
+Completed checks: `cargo test --locked --workspace` passes **2,045 tests**,
+with 11 ignored across 258 suites. After the final empty-button sizing and margin
+refinements, `cargo test --locked -p daw-ui --lib` passes **790 tests**,
+including 40 beat-editor tests and the direct-preview scope test. The five shared
+project audition tests pass, including preview audio without arranged clips.
+Strict locked workspace/all-target Clippy, formatting, changed Markdown targets
+and whitespace checks pass. `sh tools/package_macos.sh debug` rebuilt
+`target/debug/DAW.app`. Native audio-device/gesture checks and Windows/Linux
+execution remain unverified.
+
+## Beat subdivision uses one bar as its reference — 2026-10-31
+
+The user's correction supersedes the preceding beat-relative captions. Subdivision
+now divides the audible step interval by one 4/4 bar, retaining clip stretch and
+independence from pattern/clip length. Unstretched choices are 1/4, 1/8, 1/16 and
+1/32 bar; doubling a default 1/16-bar step displays 1/8 bar. Tooltip, dropdown
+choices, user guide and current specification use the bar reference. Actual step
+spacing, stored source grids and the shared Length monitor remain unchanged.
+Regression captions cover the default, compression, stretch, trim and source-bar
+changes while still checking actual step timing and disabled-grid spacing.
+
+The corrected UI suite passes **786 tests**. Focused subdivision checks pass
+**4 tests**, including actual popup text for every stretched choice. Strict locked
+workspace/all-target Clippy, formatting, changed Markdown targets and both staged
+and unstaged whitespace checks pass. `sh tools/package_macos.sh debug` rebuilt
+`target/debug/DAW.app`. Native visual/gesture checks and Windows/Linux execution
+remain unverified for this display-unit correction.
+
+## Beat subdivision measures audible steps against one beat — 2026-10-31
+
+Subdivision captions now use source step ticks multiplied by clip stretch,
+relative to one project beat. Unstretched grids display 1, 1/2, 1/4 and 1/8;
+source enum values and saved ticks remain compatible. Changing clip length or
+pattern bars cannot change subdivision. Menu options use the same audible units
+and select the stored grid once. Disabled placeholder cells share the stretched
+step spacing. Large frame-derived fractions use compact decimal beat captions.
+
+Regressions compare captions with actual rendered step spacing through
+compression, stretch, trim and source-bar changes, including a 3/2 stretch and
+matching disabled cells. A stretched dropdown selection preserves stretch and
+stored hit identities while revealing the finer grid's hidden hit.
+
+`cargo test --locked -p daw-ui --lib` passes **786 tests**, including 37 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, changed
+Markdown targets and staged/unstaged whitespace checks pass. The edge-extension
+workspace run passed **2,035 tests**, with 11 ignored across 258 suites; the final
+UI additions passed the complete UI rerun above. The new project save/reopen/audio
+workflow test and CLI smoke check also pass. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`. Native visual/device checks and Windows/Linux
+execution remain unverified.
+
+## Beat length uses the transport musical monitor — 2026-10-31
+
+Length reuses transport monitor painting, musical sections and drag accumulation.
+It derives the visible clip duration after trims, stretching and looping, with
+zero-based duration counts. Dragging previews the value; release publishes the
+resize. Escape remains latched through continued pointer motion, and focus,
+environment, clip/revision guards cancel stale gestures. Exact sub-beat duration
+remains in the tooltip.
+
+Regressions inspect the actual painted monitor after trim/stretch/extension/loop,
+exercise beat-section dragging, release-only commit and cancellation, and verify
+zero-based formatting and rounded musical boundaries across all six project rates.
+
+`cargo test --locked -p daw-ui --lib` passes **784 tests**, including 35 beat
+regressions and duration-format coverage. Focused final monitor regressions pass
+with continued motion after Escape and real window focus loss. Strict locked
+workspace/all-target Clippy, formatting, changed Markdown targets and whitespace
+checks pass. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+Native visual/gesture checks and Windows/Linux execution remain unverified.
+
+## Beat pattern body-edge extension — 2026-10-31
+
+Timeline and Editor use shared pattern trim bounds to extend unlooped beat clips
+beyond their previous source length. Core grows a fresh immutable source only
+when necessary, retains exact clip endpoints and metadata, and delegates neighbor
+trims/removals to the existing atomic resize transaction. Fractional-bar trims
+retain the source; left extension prepends full grid bars with a compensating
+source offset. Stored hits retain IDs and timing, with at most two frames of
+existing tick/stretch rounding. Bounds include hidden hits and the 16-bar source
+limit. Header looping and looped body trims retain their existing behavior.
+
+Focused core regressions cover partial-bar right extension, shared-source
+isolation, subsequent trimming, left extension at all six rates with stretch,
+neighbor overwrites, upper-bound rejection and hidden-hit protection. Paired
+Timeline/Editor regressions cover both edges, unchanged drag previews, release,
+Escape cancellation, selection retention, undo/redo of source and clip edits,
+and editing a step inside the newly extended range. A project workflow regression
+checks unchanged prefix audio and identical source/range/audio after save/reopen.
+
+Completed checks:
+
+- `cargo test --locked --workspace`: **2,035 passed, 11 ignored** across 258 suites
+  for the core/UI edge-extension change. Final Length/subdivision UI and project
+  workflow additions pass the focused/full UI reruns recorded here.
+- `cargo test --locked -p daw-core --lib beat_resize`: **3 passed**.
+- `cargo test --locked -p daw-ui --lib`: **781 passed**, including 33 beat tests.
+- `cargo test --locked -p daw-project --test workflow extended_beat_source`: **1 passed**.
+- Strict locked workspace/all-target Clippy, formatting and whitespace checks pass.
+- Locked CLI build and `python3 tools/check_cli.py` pass.
+- `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+
+Native pointer/device checks and Windows/Linux execution remain unverified.
+
+## Shared track, beat-subtrack and layer name input — 2026-10-31
+
+`rows::name_input` now owns the common track, beat-subtrack and Instrument-layer
+rename field. Callers retain stable widget IDs, accessible names, existing model
+transactions and name validation. The field shares font/color, input padding,
+width, control height and initial full-name Unicode selection. Beat renaming now
+uses the track/layer Enter-commit and Escape/focus-loss-cancel behavior, while
+retaining empty-name rejection. Existing selection and reorder gestures remain.
+
+The new regression replaces the entire beat name with Unicode text and commits
+with Enter in both Editor and Instrument, then checks that focus loss discards
+a second draft without modifying the project or dirty state. Existing track and
+layer rename, focus-loss, Escape and drag guards also remain covered by the UI suite.
+
+`cargo test --locked -p daw-ui --lib` passes **780 tests**, including 32 beat
+regressions and the existing track/layer rename tests. Strict locked
+workspace/all-target Clippy, formatting, changed Markdown targets and whitespace
+checks pass. The scrollbar workspace run passed 2,030 tests with 11 ignored
+across 258 suites; the final shared-name changes also passed the complete UI
+suite and Clippy reruns described above. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`.
+Native visual/gesture checks and Windows/Linux execution remain unverified.
+
+## Beat Editor shared horizontal scrollbar — 2026-10-31
+
+Beat Editor reuses the same `editor_scrollbar` control and lower content clock
+as MIDI and Audio. It stays at the lower canvas bottom, aligned with the ruler
+and outside the vertically scrolling header/step rows. Reserved scrollbar space
+prevents row controls from covering it. It remains usable without a selected clip.
+The pointer regression drags the shared thumb and checks lower viewport movement,
+fixed header/overview positions, ruler alignment, unchanged project/selection and
+dirty state, and retained disabled steps after deselection.
+
+`cargo test --locked -p daw-ui --lib` passes **779 tests**, including 31 beat
+regressions. `cargo test --locked --workspace` passes **2,030 tests**, with
+11 ignored across 258 suites. Strict locked workspace/all-target Clippy, formatting, changed
+Markdown file targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`. Native visual/gesture checks and Windows/Linux
+execution remain unverified.
+
+## Beat Editor gutter and shared audition — 2026-10-31
+
+Beat Editor now uses the same 52-point panel/content gutter as MIDI and Audio.
+The lower ruler and steps share that offset; headers keep their fixed left-panel
+bounds and synchronized vertical scrolling. The gutter reuses the MIDI headphones
+control and audition toggle. Enabling a step requests an isolated beat preview
+through the existing cancellable worker and normal rendering graph. Removing steps
+and clicking disabled cells are silent. Previews preserve the live project and
+transport, apply trigger pitch/clip transpose and bus controls, and retain the
+shared boundary fades. The gate is limited to one step or eight seconds, followed
+by one second of tail.
+
+Checks completed:
+
+- `cargo test --locked --workspace`: **2,029 passed, 11 ignored** across 258 suites.
+  Focused project/audition and full UI reruns also pass after the final preview
+  duration and target-scope guards.
+- `cargo test --locked -p daw-ui --lib`: **778 passed**, including 30 beat regressions.
+- `cargo test --locked -p daw-project --lib audition::tests`: **5 passed**, covering
+  beat audio, transpose, gain, duration bounds, invalid targets, cancellation and
+  live-project preservation, plus existing MIDI/chord behavior.
+- Strict locked workspace/all-target Clippy, formatting, changed documentation
+  file targets and whitespace checks pass.
+- Locked CLI build and `python3 tools/check_cli.py` pass.
+- `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+
+Native audition/device and visual verification, plus Windows/Linux execution,
+remain unverified for this change.
+
+## Disabled steps outside selected beat patterns — 2026-10-31
+
+The disabled placeholder grid previously rendered only with no selected pattern,
+leaving the canvas blank beyond a selected pattern's end. It now fills visible time
+before and after the selected clip too, using the saved resolution or the default
+1/16 when unselected. Placeholders are clipped outside the selected range, disabled,
+and empty; active source mapping and step editing remain unchanged.
+
+Regressions cover a selected one-bar pattern in a wider viewport, disabled clicks,
+active editing, hit-radius rejection immediately outside the clip end, ranges before
+and after a moved clip, another unselected pattern
+within the viewport, and deselection with existing patterns. Disabled interaction
+retains project data and the selected clip.
+
+`cargo test --locked -p daw-ui --lib` passes **777 tests**, including 29 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt the app. Native UI/device verification and Windows/Linux execution remain
+unverified for this change.
+
+## Beat Editor left-panel headers and shared Plus — 2026-10-31
+
+Editor subtrack headers now occupy the existing left control panel, while the
+steps and lower ruler start at the canvas left edge without a second header
+column. One lower-pane ScrollArea covers headers and steps for synchronized
+vertical scrolling. The old left advice block and topbar Add beat subtrack button
+are removed. Beat subtracks uses Instrument's shared header/Plus component, with
+the same artwork, dimensions and right inset. Pattern Bars/resolution remain in
+the lower canvas topbar.
+
+Regressions check header/control bounds inside the left panel, step/ruler alignment
+at its right edge, Plus placement and parity with Instrument, creation through the
+Plus action, synchronized scrolling over the left panel and unchanged project data
+while scrolling. Existing header selection/control/Escape tests remain applicable.
+
+`cargo test --locked -p daw-ui --lib` passes **775 tests**, including 27 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`. Native UI/device verification and Windows/Linux
+execution remain unverified for this change.
+
+## Layer selection across beat subtrack owners — 2026-10-31
+
+Per-subtrack UI caches previously retained old layer highlights when another
+subtrack was selected. Instrument now resolves the clicked owner before painting
+groups, clears the other owners' layer selections on plain interaction, and keeps
+them for Shift selection. Inactive groups no longer initialize an automatic layer
+selection. The overall beat Output uses the same policy. Shared Escape handling
+clears current and cached layer selections through `clear_layer_selection`.
+
+The regression reproduces LFO selection in one subtrack followed by Layer 1 in
+another. It checks replacement, Shift retention, inactive defaults, Escape,
+overall Output interaction, and unchanged project/dirty state.
+
+`cargo test --locked -p daw-ui --lib` passes **773 tests**, including 25 beat
+regressions. The final focused cross-subtrack selection regression also passes.
+Strict locked workspace/all-target Clippy, formatting, relative documentation
+targets and whitespace checks pass. The macOS debug app was rebuilt. Native UI/device
+verification and Windows/Linux execution remain unverified for this change.
+
+## Editor subtrack panel selection and Escape — 2026-10-31
+
+Editor header padding and mix-control presses now select the subtrack, while name
+clicks retain their existing once-only selection path. A background click target
+keeps padding clicks out of neighboring steps. Child controls retain their own
+focus and actions; blank header space receives header focus. Control presses do
+not enable header-only deletion. Beat Editor now shares Instrument's view-level
+Escape path, with remembered Editor text focus to retain rename cancellation.
+
+Regressions cover plain/Shift background selection, padding beside the step grid,
+all four control actions and selection on press, Escape after each control,
+unchanged clip selection/project data on deselection, and existing text/drag guards.
+
+`cargo test --locked -p daw-ui --lib` passes **772 tests**, including 24 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt the app. Native UI/device verification and Windows/Linux execution remain
+unverified for this change.
+
+## Instrument Escape after disclosure and child controls — 2026-10-31
+
+The previous name-focus handler missed Instrument Escape after a disclosure or
+child-control interaction. Instrument now clears beat subtrack selection through
+the existing view-level `selection_escape` path, alongside instrument layers and
+before widgets process keys. Editor keeps its header-focus behavior. The shared
+handler preserves text/gesture, popup, job/dialog and window-focus guards and leaves
+Escape available for catalog deselection.
+
+Regressions reproduce expanding/collapsing through the chevron, clearing selection
+from a child mix control, shared catalog Escape handling, and rename/drag priority
+in both Editor and Instrument. Project data remains unchanged by deselection.
+
+`cargo test --locked -p daw-ui --lib` passes **770 tests**, including 22 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt the app. Native UI/device verification and Windows/Linux execution remain
+unverified for this change.
+
+## Subtrack Escape deselection and shared outlines — 2026-10-31
+
+Escape clears focused subtrack-header selection in Editor and Instrument without
+project edits or track/clip selection changes. The key uses the existing catalog
+focus-release fallback. Rename consumes Escape, and active drag cancellation takes
+priority over deselection. Subtrack outlines now use the same
+`ControlPanel::selected_row` painter and after-divider paint order as Tracks.
+This keeps the right edge and rounded corners visible above neutral column borders.
+
+Regressions exercise grouped deselection in both views, retained project/dirty and
+track/clip state, rename/drag cancellation, and complete rounded inside outlines
+above neutral dividers in dark/light themes.
+
+`cargo test --locked -p daw-ui --lib` passes **768 tests**, including 20 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. `sh tools/package_macos.sh debug`
+rebuilt `target/debug/DAW.app`. Native UI/device verification and Windows/Linux
+execution remain unverified for these changes.
+
+## Beat editor names and right-pinned mix controls — 2026-10-31
+
+Editor subtrack rows now use Name, Mute, Solo, Pan, Gain order. They reuse compact
+track `HeaderRows` and `mix_controls::header_row`, replacing the separate inline
+arrangement. The full mix region is reserved at the right inset; the name takes
+the remaining left region and truncates without moving controls. The geometry
+regression checks ordering, the right anchor, standard gaps, stable control bounds
+for short/long names and working mute/solo controls.
+
+`cargo test --locked -p daw-ui --lib` passes **765 tests**, including 17 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. The macOS debug app was rebuilt.
+Native UI/device checks and Windows/Linux execution remain unverified for this change.
+
+## Collapsed subtracks hide their Output lane — 2026-10-31
+
+Collapsed Instrument subtracks now show only the compact header with output mix
+controls and meter. All child lanes, including that subtrack's Output, are hidden;
+Add layer stays hidden. The overall beat Output remains pinned outside groups.
+Hidden child hit/drop geometry is cleared, and release of an owned component drag
+still cancels safely. The ordinary MIDI instrument body renders only for expanded
+groups, removing the temporary source-only collapse path.
+
+Regressions assert that only the overall Output is painted while the subtrack is
+collapsed, compact header mute remains functional, Add layer is absent, hidden
+child viewports are empty, group borders close correctly, and expansion restores
+the same child settings without changing the project. This supersedes the earlier
+always-visible subtrack Output behavior recorded below.
+
+`cargo test --locked -p daw-ui --lib` passes all **765 tests**, including the
+17 beat regressions. Strict locked workspace/all-target Clippy, formatting,
+relative documentation targets and whitespace checks pass. The macOS debug app
+was rebuilt. Native UI/device checks and Windows/Linux execution remain unverified.
+
+## Subtrack Add layer anchoring and group borders — 2026-10-31
+
+Expanded Add layer uses right-to-left placement so its right edge stays at the
+compact header's inner inset, independent of name width. Group sizing now includes
+the shared border pixel for both modulation lanes. Envelope's bottom divider
+coincides with Output's pinned top divider. The shared group row painter supplies
+a full-width bottom border after child rendering, in expanded and collapsed states.
+Regressions verify the button edge, coincident separator coordinates, absence of
+adjacent separator strokes, and full bottom borders in both states.
+
+`cargo test --locked -p daw-ui --lib` passes all **765 tests**. Strict locked
+workspace/all-target Clippy, formatting, relative documentation targets and
+whitespace checks pass. `sh tools/package_macos.sh debug` rebuilt the app. Native
+UI/device verification and Windows/Linux execution remain unverified for this fix.
+
+## Subtrack output controls and layer creation — 2026-10-31
+
+Expanded Instrument subtrack headers contain name/disclosure and Add layer, with
+no mix controls or meter. The nested Layers title row is removed. Its layer
+creation logic is shared with MIDI. Output owns the shared mute/solo, pan/gain
+controls and meter. Collapse hides source/provider rows, retains the Output lane,
+shows output controls in the compact header and hides Add layer. Both control
+locations edit the same bus without adding a DSP stage.
+
+Regression coverage checks header/Output control placement, layer creation through
+the header, stable surviving layer IDs, missing Layers title, collapsed Add-layer
+visibility, retained Output, mute changes and the existing source/selection/drag
+contracts. This supersedes the preceding header-control and full-hide layout.
+
+`cargo test --locked -p daw-ui --lib` passes **765 tests**, including **17 beat
+regressions**. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass. The macOS debug app was rebuilt
+with `sh tools/package_macos.sh debug`. Native UI/device checks and Windows/Linux
+execution remain unverified for this change.
+
+## Compact subtrack headers and nested Output — 2026-10-31
+
+Instrument now gives each subtrack a one-row track-style group header and a
+separate nested Output lane after its source and modulation lanes. The header
+reuses `track_rows::HeaderRows`, the track frame, shared mix controls, meter
+reservation and disclosure button. The child body uses the ordinary MIDI
+instrument composition and Output renderer; the earlier beat-specific Output
+header binding and top-of-group output path were removed. Header and Output
+controls share the existing canonical bus; no DSP stage or saved schema changed.
+
+Regression coverage checks compact header height, one Output per subtrack plus
+the fixed final Output, child ordering/alignment, independent group/strip collapse,
+cleared hidden drop geometry, catalog release-only placement and shared editing
+controls. The current B32 supersedes the preceding named-output-header design.
+
+`cargo test --locked -p daw-ui --lib` passes **764 tests**, including all 16 beat
+regressions. Strict locked workspace/all-target Clippy, formatting, relative
+documentation targets and whitespace checks pass.
+`sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Native UI/device
+verification and Windows/Linux execution remain unverified for this layout change.
+
+## Shared group panels and disabled beat steps — 2026-10-31
+
+Timeline track groups and Instrument beat groups share `panels::GroupPanel`
+indentation, aligned column bounds and row-divider painting. Beat nested edges
+reuse the existing track-group left-divider painter. Data ownership and editing
+commands remain in their existing modules.
+
+Without a selected pattern, Editor paints an empty disabled 1/16 grid across the
+current ruler viewport. It does not load another clip's content or create assets.
+Regressions cover disabled clicks with an existing unselected pattern, an empty
+track after scrolling, retained subtrack mix controls, and the expanded/collapsed
+group border geometry from the preceding correction.
+
+`cargo test --locked -p daw-ui --lib` passes **764 tests**; the final focused
+beat suite passes **16 tests**. Strict locked workspace/all-target Clippy,
+formatting, relative documentation targets and whitespace checks pass. The
+macOS debug app was rebuilt. Native UI/device checks and Windows/Linux execution
+remain unverified for this change.
+
+## Expanded beat subtrack bottom divider — 2026-10-31
+
+The named subtrack header's bottom divider now starts at its child-panel inset
+when the group is expanded. The gutter remains open, matching Timeline track
+groups. Collapsed subtracks retain a full-width bottom divider. Automated egui
+coverage checks both states and retains the divider across the child panel and
+unit area. This corrects the header boundary omitted by the earlier gutter tests.
+
+`cargo test --locked -p daw-ui --lib` passes all **763 tests**. Strict locked
+workspace/all-target Clippy, formatting and whitespace checks pass.
+`sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Native UI
+verification and Windows/Linux execution were not performed for this correction.
+
+## Beat track integration and compact editor — 2026-10-31
+
+Beat tracks now integrate the versioned container and immutable pattern sources with
+project validation, history, save/open, source collection, preparation, playback,
+export and CLI inspection. Editor and Instrument share stable subtrack selection,
+name/mix controls and release-only ordering. Instrument uses the MIDI page shell,
+local source/LFO/Envelope lanes and one pinned final Output. The lower editor uses
+32-point rows, topbar pattern options and one shared ruler/time transform for
+steps, zoom and scrolling; trim, repeat and stretch mappings remain clip-owned.
+
+Completed automated checks on macOS arm64:
+
+- `cargo test --locked -p daw-ui --lib`: **763 passed**, including **15 beat regressions** for compact row geometry, topbar placement, ruler alignment across zoom changes and trimmed/stretched clips, source isolation, both view structures, shared selection/reorder/delete/cancellation, requested M/S/name/pan/gain ordering and track spacing, mute/solo actions, nested group indentation/disclosure without project edits, overview double-click pattern creation without a redundant button, catalog drops and local modulation ownership.
+- `cargo test --locked -p daw-engine --test midi beat_`: **7 passed**, covering six processing rates, allocation-free callbacks, one-shot stop fades, live/export/seek parity, bounded voices, unchanged audio after row reordering/collapse, empty container duration, final Output controls/Macro routing and clip gain after final Output effects.
+- Project source-collection/Save As/reopen and CLI beat validation/inspection/rendering integration regressions pass. Core and unit-core coverage is included in the workspace run below.
+- Strict locked workspace/all-target Clippy passes with warnings denied.
+
+`cargo test --locked --workspace` passes: **2010 tests passed, 11 ignored, no failures**, across 258 suites including documentation tests. That run compiled before the final UI refinements; the final code passed the complete UI suite and strict all-target workspace Clippy afterward. The separate seven-test beat engine run covers the final clip-gain regression. The locked CLI build and `python3 tools/check_cli.py` pass. `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`. Formatting, whitespace and all 482 relative file targets in changed Markdown pass. Native UI verification could not start because the native
+computer-use connection failed. Physical audio-device/listening, Windows and Linux
+execution remain unverified. Synthetic egui checks do not establish native rendering
+or pointer behavior. Logs are under `work/beat-*`.
+
+## Beat model foundation — 2026-10-31 (historical standalone stage)
+
+Standalone versioned beat container, subtrack and immutable pattern-source types now exist in `daw-core`. Atomic container edits reuse ordinary instrument settings and modulation ownership checks. Grid changes retain hidden hits, cross-container destinations are rejected, and tick trigger compilation covers local mute/solo and acyclic stop links. The shared bus heap estimate replaces the equivalent inline calculation in ordinary instruments.
+
+The latest focused run passes 111 core and 55 unit-core tests, including 19 beat tests. Locked workspace/all-target Clippy passes with warnings denied; affected-crate Clippy also passes after the final validation additions. Formatting, local documentation links, whitespace and CLI smoke checks pass. Workspace tests are in progress; logs are under `work/beat-*`.
+
+At this historical stage this was not beat-track feature acceptance. Project/Asset integration, save/open/history, sample preparation, playback/export/seek, public creation, Editor rows and grouped Instrument lanes remain pending. No native UI, audio-device, Windows or Linux acceptance was performed for this foundation. See the [model contract](../views/beat-model.md) for integration gates.
+
 ## Silent history memory eviction — 2026-10-31
 
 Memory-driven Undo/Redo eviction no longer adds the “Removed older undo/redo entries” notice to the status area. History count/byte limits and pressure handling still apply. Unrelated source warnings remain visible. The user guide and current history/performance specifications now describe silent eviction; earlier validation entries retain their historical behavior.

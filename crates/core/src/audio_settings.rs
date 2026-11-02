@@ -53,12 +53,7 @@ impl Project {
                 repeat.phase_frame = scale(repeat.phase_frame)?.min(repeat.length_frames - 1);
             }
         }
-        for layer in next
-            .tracks
-            .iter_mut()
-            .filter_map(|t| t.instrument.as_mut())
-            .flat_map(|i| &mut i.layers)
-        {
+        for layer in next.instruments_mut().flat_map(|i| &mut i.layers) {
             if let Some(s) = &mut layer.sampler {
                 s.start_frame = scale(s.start_frame)?;
                 s.end_frame = scale(s.end_frame)?;
@@ -78,8 +73,8 @@ impl Project {
         next.transport.r#loop.end_frame = scale(next.transport.r#loop.end_frame)?;
         next.sample_rate_hz = sample_rate_hz;
         for index in 0..next.assets.len() {
-            if let Some(pattern) = &next.assets[index].midi_pattern {
-                next.assets[index].decoded_frame_count = next.midi_frame(pattern.length_ticks);
+            if let Some(ticks) = next.assets[index].pattern_length_ticks() {
+                next.assets[index].decoded_frame_count = next.midi_frame(ticks);
                 next.assets[index].source_metadata.sample_rate_hz = sample_rate_hz;
             }
         }
@@ -100,6 +95,7 @@ mod tests {
         let asset = crate::Id::new_v4();
         project.assets.push(crate::Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id: asset,
             name: "source.wav".into(),
             source: crate::Source {

@@ -83,7 +83,7 @@ impl Status {
         }
     }
 }
-// Prepared on the application thread and retired there. The callback only reads
+// Prepared and retired outside the callback. The callback only reads
 // the existing meter handles and writes atomics; it does not allocate or lock.
 struct PreparedRenderer {
     _memory: performance::RendererMemoryLease,
@@ -541,27 +541,22 @@ impl AudioOutput {
             None => AudioPreparation::new(plan.clone())?,
         };
         let status = preparation.status.clone();
-        let meters = track_meters(&plan, &HashMap::new());
-        let layers = layer_meters::prepare(&plan, &Default::default());
-        let sources = source_meters::prepare(&plan, &Default::default());
-        let reductions = effect_meters(&plan, &HashMap::new());
-        let outputs = output_meters(&plan, &HashMap::new());
-        let changes = band_meters(&plan, &HashMap::new());
-        let modulation = modulation_meters(&plan, &HashMap::new());
-        let exciter_solos = effect_audition::prepare(&plan, &HashMap::new());
-        let live_pitches = daw_engine::LiveMidiPitches::prepare(&plan.project, &Default::default());
+        let preparation::Bindings {
+            tracks: meters,
+            layers,
+            effects: reductions,
+            exciter_solos,
+            outputs,
+            sources,
+            bands: changes,
+            modulation,
+            live_pitches,
+        } = preparation::Bindings::prepare(&plan, &Default::default());
         // Retried stream construction happens before playback; each attempt receives fresh queues.
         let build = |cfg: &cpal::StreamConfig| -> Result<BuiltStream, String> {
             let (commands, consumer) = RingBuffer::new(32);
             let (retire, retired) = RingBuffer::new(64);
-            let mut state = Callback::new(
-                plan.clone(),
-                &meters,
-                consumer,
-                retire,
-                status.clone(),
-                rate,
-            )?;
+            let mut state = Callback::initial(&plan, consumer, retire, status.clone(), rate)?;
             let audition = state.audition_sender.take().unwrap();
             effect_audition::bind(&mut state.renderer, &exciter_solos);
             bind_effect_meters(&mut state.renderer, &reductions);
@@ -614,7 +609,13 @@ impl AudioOutput {
         status
             .playhead
             .store(plan.project.transport.playhead_frame, Ordering::Relaxed);
-        Ok(Self {
+        let initial_transport = TransportState {
+            frame: plan.project.transport.playhead_frame,
+            playing: false,
+            paused: false,
+            playback_start: None,
+        };
+        let mut output = Self {
             plan: Arc::new(plan),
             desired_transport: None,
             project_rate_hz,
@@ -637,7 +638,9 @@ impl AudioOutput {
             source_meters: sources,
             modulation_meters: modulation,
             live_pitches,
-        })
+        };
+        output.prepare(Some(initial_transport));
+        Ok(output)
     }
     fn send(&mut self, command: Command) -> Result<(), String> {
         self.drain();
@@ -953,6 +956,7 @@ struct Callback {
     audition: audition::Player,
     audition_sender: Option<audition::Sender>,
     renderer: Box<PreparedRenderer>,
+    initial_renderer: bool,
     commands: Consumer<Command>,
     retired: Producer<Box<PreparedRenderer>>,
     pending: Option<Box<PreparedRenderer>>,
@@ -973,6 +977,26 @@ impl Callback {
             .max(self.input.first().map_or(0, Vec::len))
             .max((self.project_rate_hz as usize / 200).max(1))
     }
+    /// The only device-startup constructor: never instantiate logical track DSP here.
+    fn initial(
+        plan: &RenderPlan,
+        commands: Consumer<Command>,
+        retired: Producer<Box<PreparedRenderer>>,
+        status: Arc<Status>,
+        rate: u32,
+    ) -> Result<Self, String> {
+        let mut callback = Self::new(
+            preparation::initial_plan(plan),
+            &HashMap::new(),
+            commands,
+            retired,
+            status,
+            rate,
+        )?;
+        callback.initial_renderer = true;
+        Ok(callback)
+    }
+
     fn new(
         plan: RenderPlan,
         meters: &HashMap<Id, Arc<StereoMeter>>,
@@ -1011,6 +1035,7 @@ impl Callback {
             audition,
             audition_sender: Some(sender),
             renderer: Box::new(PreparedRenderer::try_new(plan, meters)?),
+            initial_renderer: false,
             commands,
             retired,
             pending: None,
@@ -1062,7 +1087,12 @@ impl Callback {
                     }
                     if next.prepared_transport {
                         next.activate_transport(&self.renderer);
-                        self.discard_buffered_output();
+                        // The initial stopped renderer contributes only silence. Its
+                        // converted buffer can contain active audition audio, which
+                        // must survive publication of a stopped project renderer.
+                        if !self.initial_renderer || next.playing || self.renderer.playing {
+                            self.discard_buffered_output();
+                        }
                     } else if next.can_inherit_without_preroll(&self.renderer) {
                         next.inherit(&mut self.renderer);
                     } else {
@@ -1140,6 +1170,7 @@ impl Callback {
         }
         let revision = next.revision;
         let old = std::mem::replace(&mut self.renderer, next);
+        self.initial_renderer = false;
         self.status.publish_transport(&self.renderer);
         self.status
             .applied_revision
@@ -1310,6 +1341,7 @@ mod tests {
         };
         project.assets.push(Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id,
             name: "Test".into(),
             source: Source {
@@ -1336,6 +1368,7 @@ mod tests {
             transpose: 0,
         });
         RenderPlan {
+            beat_tracks: Default::default(),
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             project,
@@ -1601,6 +1634,7 @@ mod tests {
     #[test]
     fn track_meter_latches_stereo_and_follows_track_identity() {
         let mut plan = RenderPlan {
+            beat_tracks: Default::default(),
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             project: daw_core::Project::default(),
@@ -1634,6 +1668,7 @@ mod tests {
     fn callback_resamples_without_device_and_retires_plans() {
         for rate in [44_100, 48_000, 96_000] {
             let plan = RenderPlan {
+                beat_tracks: Default::default(),
                 sampler_audio: Default::default(),
                 stretched_audio: HashMap::new(),
                 project: daw_core::Project::default(),

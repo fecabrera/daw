@@ -15,11 +15,14 @@ impl Project {
         component: InstrumentComponent,
         duplicate: bool,
     ) -> bool {
-        self.tracks
-            .iter()
-            .find(|t| t.id == track)
-            .and_then(|t| t.instrument.as_ref())
-            .is_some_and(|i| eligible(i, source, destination, component, duplicate))
+        let owned;
+        let instrument = if let Some(i) = self.instrument_settings(track) {
+            Some(i)
+        } else {
+            owned = self.instrument_snapshot(track);
+            owned.as_ref()
+        };
+        instrument.is_some_and(|i| eligible(i, source, destination, component, duplicate))
     }
 
     pub(crate) fn apply_component_transfer(
@@ -31,185 +34,206 @@ impl Project {
         component: InstrumentComponent,
         duplicate: bool,
     ) -> Result<InstrumentComponent> {
-        let track = self
-            .tracks
-            .iter_mut()
-            .find(|t| t.id == track)
-            .ok_or_else(|| Error("Track not found".into()))?;
-        let instrument = track
-            .instrument
-            .as_mut()
-            .ok_or_else(|| Error("Track has no instrument".into()))?;
-        if !eligible(instrument, source, destination, component, duplicate) {
-            return Err(Error(
-                "Component cannot be transferred to this layer".into(),
-            ));
+        if let Some((instrument, effects)) = self.instrument_parts_mut(track) {
+            return transfer(
+                instrument,
+                effects,
+                source,
+                destination,
+                destination_index,
+                component,
+                duplicate,
+            );
         }
-        if source == destination
-            && !duplicate
-            && !matches!(component, InstrumentComponent::Oscillator(_))
-        {
-            let index = destination_index
-                .ok_or_else(|| Error("Component reorder requires an insertion index".into()))?;
-            let moved = if let Some(bus) = instrument.bus_mut(source) {
-                bus.move_component(component, index)
-            } else {
-                instrument
-                    .layers
-                    .iter_mut()
-                    .find(|l| l.id == source)
-                    .unwrap()
-                    .move_component(component, index)
-            };
-            moved.ok_or_else(|| {
-                Error("Invalid component insertion index or pinned source".into())
-            })?;
-            return Ok(component);
-        }
-        let mut placed = component;
-        match component {
-            InstrumentComponent::Effect(_) => {
-                return Err(Error("Effects use the effect-chain transfer API".into()));
-            }
-            InstrumentComponent::Sampler => {
-                let from = instrument
-                    .layers
-                    .iter_mut()
-                    .find(|l| l.id == source)
-                    .unwrap();
-                let mut sampler = if duplicate {
-                    from.sampler.clone().unwrap()
-                } else {
-                    from.sampler.take().unwrap()
-                };
-                if duplicate {
-                    sampler.id = Id::new_v4();
-                    fresh_routes(&mut sampler.modulations);
-                }
-                instrument
-                    .layers
-                    .iter_mut()
-                    .find(|l| l.id == destination)
-                    .unwrap()
-                    .sampler = Some(sampler);
-            }
-            InstrumentComponent::Oscillators | InstrumentComponent::Oscillator(_) => {
-                transfer_oscillators(
-                    instrument,
-                    source,
-                    destination,
-                    destination_index,
-                    component,
-                    duplicate,
-                )?;
-            }
-            InstrumentComponent::Macros => {
-                let remaps = macros::transfer(instrument, source, destination, duplicate);
-                if !duplicate {
-                    for (old, new) in remaps {
-                        remap_consumers(instrument, &mut track.effects, old, new);
-                    }
-                }
-            }
-            InstrumentComponent::Amplitude => {
-                let from = instrument
-                    .layers
-                    .iter_mut()
-                    .find(|l| l.id == source)
-                    .unwrap();
-                let mut amplitude = from.amplitude.clone();
-                if duplicate {
-                    fresh_routes(&mut amplitude.modulations);
-                } else {
-                    // Do not leave a second retained destination with the moved route identities.
-                    from.amplitude = AmplitudeSettings::default();
-                }
-                instrument
-                    .layers
-                    .iter_mut()
-                    .find(|l| l.id == destination)
-                    .unwrap()
-                    .amplitude = amplitude;
-            }
-            InstrumentComponent::Envelope(id) | InstrumentComponent::Lfo(id) => {
-                let new_id =
-                    if duplicate || providers(instrument, destination).any(|unit| unit == id) {
-                        Id::new_v4()
-                    } else {
-                        id
-                    };
-                placed = match component {
-                    InstrumentComponent::Envelope(_) => InstrumentComponent::Envelope(new_id),
-                    _ => InstrumentComponent::Lfo(new_id),
-                };
-                match component {
-                    InstrumentComponent::Envelope(_) => {
-                        let from = envelopes_mut(instrument, source);
-                        let index = from.iter().position(|e| e.id == id).unwrap();
-                        let mut unit = if duplicate {
-                            from[index].clone()
-                        } else {
-                            from.remove(index)
-                        };
-                        unit.id = new_id;
-                        if duplicate {
-                            fresh_routes(&mut unit.modulations);
-                        }
-                        envelopes_mut(instrument, destination).push(unit);
-                    }
-                    InstrumentComponent::Lfo(_) => {
-                        let from = lfos_mut(instrument, source);
-                        let index = from.iter().position(|e| e.id == id).unwrap();
-                        let mut unit = if duplicate {
-                            from[index].clone()
-                        } else {
-                            from.remove(index)
-                        };
-                        unit.id = new_id;
-                        if duplicate {
-                            fresh_routes(&mut unit.modulations);
-                        }
-                        lfos_mut(instrument, destination).push(unit);
-                    }
-                    _ => unreachable!(),
-                }
-                if !duplicate {
-                    let old = ModulationSourceId {
-                        layer: source,
-                        unit: id,
-                    };
-                    let new = ModulationSourceId {
-                        layer: destination,
-                        unit: new_id,
-                    };
-                    remap_consumers(instrument, &mut track.effects, old, new);
-                }
-            }
-        }
-        for layer in &mut instrument.layers {
-            layer.prune_component_order();
-        }
-        instrument.main.prune_component_order();
-        // Strip insertion belongs to Oscillator; other indices describe the unit layout.
-        if !placed.is_source()
-            && let Some(index) = destination_index
-        {
-            let moved = if let Some(bus) = instrument.bus_mut(destination) {
-                bus.move_component(placed, index)
-            } else {
-                instrument
-                    .layers
-                    .iter_mut()
-                    .find(|l| l.id == destination)
-                    .unwrap()
-                    .move_component(placed, index)
-            };
-            moved.ok_or_else(|| {
-                Error("Invalid component insertion index or pinned source".into())
-            })?;
-        }
-        Ok(placed)
+        let mut settings = self
+            .instrument_snapshot(track)
+            .ok_or_else(|| Error("Instrument not found".into()))?;
+        let result = transfer(
+            &mut settings,
+            &mut [],
+            source,
+            destination,
+            destination_index,
+            component,
+            duplicate,
+        )?;
+        self.set_instrument_settings(track, Some(settings))?;
+        Ok(result)
     }
+}
+fn transfer(
+    instrument: &mut InstrumentSettings,
+    effects: &mut [EffectInstance],
+    source: Id,
+    destination: Id,
+    destination_index: Option<usize>,
+    component: InstrumentComponent,
+    duplicate: bool,
+) -> Result<InstrumentComponent> {
+    if !eligible(instrument, source, destination, component, duplicate) {
+        return Err(Error(
+            "Component cannot be transferred to this layer".into(),
+        ));
+    }
+    if source == destination
+        && !duplicate
+        && !matches!(component, InstrumentComponent::Oscillator(_))
+    {
+        let index = destination_index
+            .ok_or_else(|| Error("Component reorder requires an insertion index".into()))?;
+        let moved = if let Some(bus) = instrument.bus_mut(source) {
+            bus.move_component(component, index)
+        } else {
+            instrument
+                .layers
+                .iter_mut()
+                .find(|l| l.id == source)
+                .unwrap()
+                .move_component(component, index)
+        };
+        moved.ok_or_else(|| Error("Invalid component insertion index or pinned source".into()))?;
+        return Ok(component);
+    }
+    let mut placed = component;
+    match component {
+        InstrumentComponent::Effect(_) => {
+            return Err(Error("Effects use the effect-chain transfer API".into()));
+        }
+        InstrumentComponent::Sampler => {
+            let from = instrument
+                .layers
+                .iter_mut()
+                .find(|l| l.id == source)
+                .unwrap();
+            let mut sampler = if duplicate {
+                from.sampler.clone().unwrap()
+            } else {
+                from.sampler.take().unwrap()
+            };
+            if duplicate {
+                sampler.id = Id::new_v4();
+                fresh_routes(&mut sampler.modulations);
+            }
+            instrument
+                .layers
+                .iter_mut()
+                .find(|l| l.id == destination)
+                .unwrap()
+                .sampler = Some(sampler);
+        }
+        InstrumentComponent::Oscillators | InstrumentComponent::Oscillator(_) => {
+            transfer_oscillators(
+                instrument,
+                source,
+                destination,
+                destination_index,
+                component,
+                duplicate,
+            )?;
+        }
+        InstrumentComponent::Macros => {
+            let remaps = macros::transfer(instrument, source, destination, duplicate);
+            if !duplicate {
+                for (old, new) in remaps {
+                    remap_consumers(instrument, effects, old, new);
+                }
+            }
+        }
+        InstrumentComponent::Amplitude => {
+            let from = instrument
+                .layers
+                .iter_mut()
+                .find(|l| l.id == source)
+                .unwrap();
+            let mut amplitude = from.amplitude.clone();
+            if duplicate {
+                fresh_routes(&mut amplitude.modulations);
+            } else {
+                // Do not leave a second retained destination with the moved route identities.
+                from.amplitude = AmplitudeSettings::default();
+            }
+            instrument
+                .layers
+                .iter_mut()
+                .find(|l| l.id == destination)
+                .unwrap()
+                .amplitude = amplitude;
+        }
+        InstrumentComponent::Envelope(id) | InstrumentComponent::Lfo(id) => {
+            let new_id = if duplicate || providers(instrument, destination).any(|unit| unit == id) {
+                Id::new_v4()
+            } else {
+                id
+            };
+            placed = match component {
+                InstrumentComponent::Envelope(_) => InstrumentComponent::Envelope(new_id),
+                _ => InstrumentComponent::Lfo(new_id),
+            };
+            match component {
+                InstrumentComponent::Envelope(_) => {
+                    let from = envelopes_mut(instrument, source);
+                    let index = from.iter().position(|e| e.id == id).unwrap();
+                    let mut unit = if duplicate {
+                        from[index].clone()
+                    } else {
+                        from.remove(index)
+                    };
+                    unit.id = new_id;
+                    if duplicate {
+                        fresh_routes(&mut unit.modulations);
+                    }
+                    envelopes_mut(instrument, destination).push(unit);
+                }
+                InstrumentComponent::Lfo(_) => {
+                    let from = lfos_mut(instrument, source);
+                    let index = from.iter().position(|e| e.id == id).unwrap();
+                    let mut unit = if duplicate {
+                        from[index].clone()
+                    } else {
+                        from.remove(index)
+                    };
+                    unit.id = new_id;
+                    if duplicate {
+                        fresh_routes(&mut unit.modulations);
+                    }
+                    lfos_mut(instrument, destination).push(unit);
+                }
+                _ => unreachable!(),
+            }
+            if !duplicate {
+                let old = ModulationSourceId {
+                    layer: source,
+                    unit: id,
+                };
+                let new = ModulationSourceId {
+                    layer: destination,
+                    unit: new_id,
+                };
+                remap_consumers(instrument, effects, old, new);
+            }
+        }
+    }
+    for layer in &mut instrument.layers {
+        layer.prune_component_order();
+    }
+    instrument.main.prune_component_order();
+    // Strip insertion belongs to Oscillator; other indices describe the unit layout.
+    if !placed.is_source()
+        && let Some(index) = destination_index
+    {
+        let moved = if let Some(bus) = instrument.bus_mut(destination) {
+            bus.move_component(placed, index)
+        } else {
+            instrument
+                .layers
+                .iter_mut()
+                .find(|l| l.id == destination)
+                .unwrap()
+                .move_component(placed, index)
+        };
+        moved.ok_or_else(|| Error("Invalid component insertion index or pinned source".into()))?;
+    }
+    Ok(placed)
 }
 
 pub(super) fn eligible(

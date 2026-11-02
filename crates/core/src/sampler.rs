@@ -32,9 +32,7 @@ impl From<&Clip> for SamplerInput {
 }
 impl Project {
     pub fn samplers(&self) -> impl Iterator<Item = &SamplerSettings> {
-        self.tracks
-            .iter()
-            .filter_map(|t| t.instrument.as_ref())
+        self.instruments()
             .flat_map(|i| &i.layers)
             .filter_map(|l| l.sampler.as_ref())
     }
@@ -42,6 +40,12 @@ impl Project {
         for s in track
             .instrument
             .iter()
+            .chain(
+                track
+                    .beat
+                    .iter()
+                    .flat_map(|b| b.subtracks.iter().map(|s| &s.instrument)),
+            )
             .flat_map(|i| &i.layers)
             .filter_map(|l| l.sampler.as_ref())
         {
@@ -52,13 +56,12 @@ impl Project {
             }
             if let Some(input) = &s.input {
                 self.validate_clip(&Clip::from(input))?;
-                if self
+                if !self
                     .assets
                     .iter()
                     .find(|a| a.id == input.asset_id)
                     .unwrap()
-                    .midi_pattern
-                    .is_some()
+                    .is_audio()
                 {
                     return Err(Error("Sampler requires an audio source".into()));
                 }

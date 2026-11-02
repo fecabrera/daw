@@ -144,6 +144,51 @@ fn routes(
         )
 }
 
+impl crate::InstrumentSettings {
+    /// Copy the whole local graph, including its fixed provider lanes and Output.
+    pub fn duplicate(&self) -> Self {
+        fn layer(bus: &crate::InstrumentBusSettings) -> InstrumentLayerSettings {
+            InstrumentLayerSettings {
+                id: bus.id,
+                name: "Output".into(),
+                collapsed: bus.collapsed,
+                component_order: bus.component_order.clone(),
+                effects: bus.effects.clone(),
+                gain_db: bus.gain_db,
+                pan: bus.pan,
+                envelopes: bus.envelopes.clone(),
+                lfos: bus.lfos.clone(),
+                macro_module: bus.macro_module.clone(),
+                ..Default::default()
+            }
+        }
+        fn bus(layer: InstrumentLayerSettings) -> crate::InstrumentBusSettings {
+            crate::InstrumentBusSettings {
+                id: layer.id,
+                collapsed: layer.collapsed,
+                component_order: layer.component_order,
+                effects: layer.effects,
+                gain_db: layer.gain_db,
+                pan: layer.pan,
+                envelopes: layer.envelopes,
+                lfos: layer.lfos,
+                macro_module: layer.macro_module,
+            }
+        }
+        let buses: Vec<_> = self.buses().map(layer).collect();
+        let sources: Vec<_> = self.layers.iter().chain(&buses).collect();
+        let mut copied = InstrumentLayerSettings::duplicate_group(&sources);
+        let mut outputs = copied.split_off(self.layers.len()).into_iter();
+        Self {
+            version: self.version,
+            layers: copied,
+            main: bus(outputs.next().unwrap()),
+            lfo_lane: Box::new(bus(outputs.next().unwrap())),
+            envelope_lane: Box::new(bus(outputs.next().unwrap())),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

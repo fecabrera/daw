@@ -63,6 +63,11 @@ impl DawUi {
             daw_core::ModulationLaneKind::name,
         );
         let output = kind.is_none();
+        let beat_output = self.session.project.tracks.iter().any(|t| {
+            t.beat
+                .as_ref()
+                .is_some_and(|b| b.output.id == track && b.output.id == bus.id)
+        });
         let compact = bus.collapsed;
         let height = panels::unit_height(compact);
         let mut child = ui.new_child(
@@ -78,7 +83,8 @@ impl DawUi {
         );
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         // Main must keep its own Macro editor enabled while it has keyboard focus.
-        let enabled = self.component_drag.as_ref().is_none_or(|d| !d.active)
+        let enabled = !self.beat_dragging()
+            && self.component_drag.as_ref().is_none_or(|d| !d.active)
             && !self.instrument_ui.dragging()
             && (!self.instrument_ui.editing_name()
                 || self
@@ -125,29 +131,36 @@ impl DawUi {
                     ui.allocate_exact_size(Vec2::new(TRACK_WIDTH, height), Sense::click());
                 ui.painter()
                     .rect_filled(label, 0.0, theme::palette(ui.ctx()).panel);
+                let header_rect = label.shrink(7.0);
                 let mut header = ui.new_child(
                     egui::UiBuilder::new()
-                        .max_rect(label.shrink(7.0))
+                        .max_rect(header_rect)
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
                 header.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                 if output {
-                let levels = self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)).map_or([(0.0, false); 2], |m| m.levels());
+                let levels = self.output.as_ref().and_then(|o| if beat_output {o.track_meter(bus.id)} else {o.layer_meter(track, bus.id)}).map_or([(0.0, false); 2], |m| m.levels());
                 let cleared = meters::stereo_panel(&mut header, ROW_HEIGHT - 14.0, levels, |header| {
                 rows::centered(header, toolbars::CONTROL_HEIGHT, |ui| {
                     let icon = icons::header_icon_with_rotation(ui, icons::Lucide::Merge, Sense::hover(), std::f32::consts::FRAC_PI_2).on_hover_text("Instrument output");
                     icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));
                     let name = ui.label(egui::RichText::new(InstrumentBusSettings::DISPLAY_NAME).size(rows::NAME_FONT_SIZE));
                     #[cfg(test)] { bounds.icon = icon.rect; bounds.name = name.rect; }
-                    #[cfg(not(test))] let _ = name;
+                    #[cfg(not(test))] let _ = (icon, name);
                 });
+                if self.session.project.beat_subtrack(track).is_some() {
+                    let knobs = self.beat_output_mix(header, track, bus);
+                    #[cfg(test)] { bounds.mix = [knobs.bounds[0]]; }
+                    #[cfg(not(test))] let _ = knobs;
+                } else {
                 let gain = rows::centered(header, knobs::SIZE, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| knobs::header_gain(ui, &mut bus.gain_db)).inner
                 }).inner;
                 #[cfg(test)] { bounds.mix = [gain.rect]; }
                 #[cfg(not(test))] let _ = gain;
+                }
                 });
-                meters::reset_on_click(ui, self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)), cleared);
+                meters::reset_on_click(ui, self.output.as_ref().and_then(|o| if beat_output {o.track_meter(bus.id)} else {o.layer_meter(track, bus.id)}), cleared);
                 } else {
                     rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
                         let icon=icons::header_icon(ui, icons::Lucide::Activity, Sense::hover());

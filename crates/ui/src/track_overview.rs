@@ -24,7 +24,11 @@ impl DawUi {
                     .iter()
                     .find(|track| Some(track.id) == self.selected_track)
             })
-            .cloned();
+            .map(|track| {
+                let mut snapshot = track_rows::header_snapshot(track);
+                snapshot.clips = track.clips.clone();
+                snapshot
+            });
         let assets = project
             .assets
             .iter()
@@ -155,8 +159,15 @@ impl DawUi {
             let pattern = assets
                 .iter()
                 .find(|a| a.id == clip.asset_id)
-                .and_then(|a| a.midi_pattern.as_ref())
-                .map(|pattern| PreparedClipSource::Midi(self.editor_pattern(clip.id, pattern)));
+                .and_then(|asset| {
+                    asset
+                        .midi_pattern
+                        .as_ref()
+                        .map(|pattern| {
+                            PreparedClipSource::Midi(self.editor_pattern(clip.id, pattern))
+                        })
+                        .or_else(|| asset.beat_pattern.as_ref().map(PreparedClipSource::Beat))
+                });
             self.paint_clip(
                 &painter,
                 track.color,

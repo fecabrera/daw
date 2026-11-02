@@ -5,8 +5,9 @@ impl TrackKind {
     /// Clip placement and validation use the saved asset's source type.
     pub fn accepts_asset(self, asset: &Asset) -> bool {
         match self {
-            Self::Audio => asset.midi_pattern.is_none(),
+            Self::Audio => asset.is_audio(),
             Self::Midi => asset.midi_pattern.is_some(),
+            Self::Beat => asset.beat_pattern.is_some(),
             Self::Group => false,
         }
     }
@@ -40,6 +41,7 @@ impl Project {
                 return Err(Error("Track not found".into()));
             }
             self.validate_clip(&placement.clip)?;
+            self.validate_beat_destination(placement.track_id, placement.clip.asset_id)?;
         }
         // Remove the full moving group first, so original ranges cannot trim each other.
         for track in &mut self.tracks {
@@ -83,6 +85,7 @@ mod tests {
         let asset_id = Id::new_v4();
         project.assets.push(Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id: asset_id,
             name: "Source".into(),
             decoded_frame_count: 1000,

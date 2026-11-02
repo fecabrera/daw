@@ -106,7 +106,7 @@ fn same_audio(a: Option<&AudioData>, b: Option<&AudioData>) -> bool {
 }
 fn normalize_external(session: &Session, project: &mut Project) -> Result<()> {
     for asset in &mut project.assets {
-        if asset.midi_pattern.is_none() && !asset.source.is_included_recording() {
+        if asset.is_audio() && !asset.source.is_included_recording() {
             asset.source.path = session
                 .source_path_unchecked(asset)?
                 .to_string_lossy()
@@ -124,7 +124,7 @@ pub(crate) fn relocated_project(
     let mut project = session.project.clone();
     normalize_external(session, &mut project)?;
     for asset in &mut project.assets {
-        if asset.midi_pattern.is_some() {
+        if !asset.is_audio() {
             continue;
         }
         let original = session.source_path_unchecked(asset)?;
@@ -255,7 +255,7 @@ impl SaveSnapshot {
                 .project
                 .assets
                 .iter()
-                .filter(|a| a.midi_pattern.is_none() && owned(&a.source))
+                .filter(|a| a.is_audio() && owned(&a.source))
             {
                 let source = session.source_path(asset)?;
                 let canonical = match fs::canonicalize(&source) {
@@ -416,7 +416,7 @@ impl SaveSnapshot {
         next.folder = Some(folder.to_owned());
         // Keep included paths portable; preserve normal external Save behavior.
         for asset in &mut next.project.assets {
-            if asset.midi_pattern.is_some() || asset.source.is_included_recording() {
+            if !asset.is_audio() || asset.source.is_included_recording() {
                 continue;
             }
             let path = PathBuf::from(&asset.source.path);

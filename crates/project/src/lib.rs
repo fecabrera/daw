@@ -1,4 +1,5 @@
 mod background_audio;
+mod effect_warnings;
 pub use background_audio::BackgroundAudio;
 mod audition;
 pub use audition::NoteAudition;
@@ -158,7 +159,7 @@ impl Session {
             if cancelled() {
                 return Err(error("Audio preparation cancelled"));
             }
-            if asset.midi_pattern.is_some() {
+            if !asset.is_audio() {
                 continue;
             }
             let Some(cached) = self.audio.get(&asset.id) else {
@@ -183,6 +184,7 @@ impl Session {
 
     pub fn plan(&self) -> RenderPlan {
         RenderPlan {
+            beat_tracks: Default::default(),
             project: self.project.clone(),
             audio: self.audio.clone(),
             sampler_audio: self.sampler_audio.clone(),
@@ -214,32 +216,9 @@ impl Session {
                 vec![]
             },
         };
-        for effect in &session.project.master.effects {
-            if let daw_core::EffectSettings::Missing { type_id, .. } = &effect.unit {
-                session.warnings.push(format!(
-                    "Unavailable effect {type_id} on Master; bypassed with settings retained"
-                ));
-            }
-        }
-        for track in &session.project.tracks {
-            for effect in track
-                .effects
-                .iter()
-                .chain(track.instrument.iter().flat_map(|i| {
-                    i.layers
-                        .iter()
-                        .flat_map(|l| &l.effects)
-                        .chain(&i.main.effects)
-                }))
-            {
-                if let daw_core::EffectSettings::Missing { type_id, .. } = &effect.unit {
-                    session.warnings.push(format!(
-                        "Unavailable effect {type_id} on track {}; bypassed with settings retained",
-                        track.name
-                    ));
-                }
-            }
-        }
+        session
+            .warnings
+            .extend(effect_warnings::missing(&session.project));
         Ok(ProjectDocument(session))
     }
     /// Worker-only completion of a document or edited model. Existing immutable buffers are reused.
@@ -272,7 +251,7 @@ impl Session {
             .project
             .assets
             .iter()
-            .filter(|asset| asset.midi_pattern.is_none())
+            .filter(|asset| asset.is_audio())
             .count() as u64
             + 1;
         let mut done = 0;
@@ -281,7 +260,7 @@ impl Session {
             if cancelled() {
                 return Err(error("Audio preparation cancelled"));
             }
-            if asset.midi_pattern.is_some() {
+            if !asset.is_audio() {
                 continue;
             }
             if session.audio.contains_key(&asset.id) {
@@ -454,6 +433,7 @@ impl Session {
         };
         next.assets.push(Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id: asset_id,
             name,
             source: Source {
@@ -535,7 +515,7 @@ impl Session {
         progress(0, end);
         let path = absolute(path)?;
         for asset in &self.project.assets {
-            if asset.midi_pattern.is_some() {
+            if !asset.is_audio() {
                 continue;
             }
             let source = self.source_path(asset)?;

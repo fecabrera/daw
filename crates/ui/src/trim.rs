@@ -11,11 +11,11 @@ impl DawUi {
         block: Rect,
         pointer: Pos2,
     ) -> bool {
-        // MIDI edges crop/pad the pattern and resolve covered neighbors like Editor.
+        // Pattern source edits resolve covered neighbors instead of linking their edges.
         if self
             .session
             .project
-            .midi_pattern_bounds(clip, ClipEdge::Left)
+            .pattern_trim_bounds(clip, ClipEdge::Left)
             .is_ok()
         {
             return false;
@@ -91,7 +91,7 @@ impl DawUi {
             if self
                 .session
                 .project
-                .midi_pattern_bounds(&drag.clip, edge)
+                .pattern_trim_bounds(&drag.clip, edge)
                 .is_err()
                 && let Some(source) = source_length(&drag.clip)
                 && let Some(expanded) = drag.clip.trimmed_by(
@@ -146,7 +146,7 @@ impl DawUi {
                 return Vec::new();
             };
             let clip = if let Ok(bounds) =
-                self.session.project.midi_pattern_bounds(&entry.clip, edge)
+                self.session.project.pattern_trim_bounds(&entry.clip, edge)
             {
                 let original = bounds.edge_frame();
                 let requested = i128::from(original) + delta;

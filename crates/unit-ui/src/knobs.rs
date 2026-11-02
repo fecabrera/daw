@@ -751,7 +751,10 @@ fn base_knob(
             (scale != 1.0).then(|| ui.ctx().graphics_mut(|g| g.entry(ui.layer_id()).next_idx()));
         {
             let rect = paint_rect;
-            let painter = ui.painter();
+            // Paint-list transforms also transform clips. Invert the clip first so
+            // scaled faces retain the caller's viewport, including its outer edges.
+            let mut painter = ui.painter().clone();
+            painter.set_clip_rect(transform.inverse() * ui.clip_rect());
             let center = rect.center();
             let radius = SIZE / 2.0 - 2.0;
             let (start, sweep) = if spec.mode_labels().is_some() {
@@ -1382,6 +1385,34 @@ mod tests {
             results.push(value);
         }
         assert_eq!(results[0], results[1]);
+    }
+
+    #[test]
+    fn scaled_header_knobs_preserve_a_tight_viewport_clip() {
+        for scale in [16.0 / SIZE, 22.0 / SIZE, 1.0, 1.5] {
+            let ctx = egui::Context::default();
+            let rect = Rect::from_min_size(Pos2::new(80.0, 120.0), Vec2::splat(SIZE * scale));
+            let mut value = 0.0;
+            let mut output = ctx.run_ui(Default::default(), |ui| {
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+                child.set_clip_rect(rect);
+                pan_scaled(&mut child, &mut value, scale);
+            });
+            let mut paths = 0;
+            for shape in &output.shapes {
+                if matches!(shape.shape, Shape::Path(_) | Shape::Circle(_)) {
+                    let bounds = shape.shape.visual_bounding_rect();
+                    assert!(
+                        shape.clip_rect.contains_rect(bounds),
+                        "{scale}: {bounds:?} clipped by {:?}",
+                        shape.clip_rect
+                    );
+                    paths += 1;
+                }
+            }
+            output.textures_delta.clear();
+            assert!(paths > 0);
+        }
     }
 
     #[test]

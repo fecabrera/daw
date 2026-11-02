@@ -180,7 +180,7 @@ impl DawUi {
                 .project
                 .assets
                 .iter()
-                .any(|asset| asset.id == clip.asset_id && asset.midi_pattern.is_none())
+                .any(|asset| asset.id == clip.asset_id && asset.is_audio())
         });
         if contains_audio && self.reject_pending_audio_transform() {
             return;

@@ -18,13 +18,15 @@ impl Project {
         components: &[InstrumentComponent],
         duplicate: bool,
     ) -> bool {
-        let Some(i) = self
-            .tracks
-            .iter()
-            .find(|t| t.id == track)
-            .and_then(|t| t.instrument.as_ref())
-        else {
-            return false;
+        let owned;
+        let i = if let Some(i) = self.instrument_settings(track) {
+            i
+        } else {
+            owned = self.instrument_snapshot(track);
+            let Some(i) = owned.as_ref() else {
+                return false;
+            };
+            i
         };
         !components.is_empty()
             && components.iter().enumerate().all(|(n, c)| {
@@ -58,7 +60,7 @@ impl Project {
         if !self.can_transfer_components(track, source, destination, components, duplicate) {
             return Err(Error("Selected components cannot enter this layer".into()));
         }
-        let original = self.tracks.iter().find(|t| t.id == track).unwrap();
+        let original = self.instrument_track(track).unwrap();
         let i = original.instrument.as_ref().unwrap();
         let order = if let Some(bus) = i.bus(source) {
             bus.visible_components()
@@ -89,8 +91,8 @@ impl Project {
                 )?);
             }
         }
-        let t = next.tracks.iter_mut().find(|t| t.id == track).unwrap();
-        let i = t.instrument.as_mut().unwrap();
+        let mut settings = next.instrument_snapshot(track).unwrap();
+        let i = &mut settings;
         let result = if let Some(bus) = i.bus_mut(destination) {
             bus.place_components(&placed, index)
         } else {
@@ -101,8 +103,9 @@ impl Project {
                 .place_components(&placed, index)
         };
         result.ok_or_else(|| Error("Invalid component group position or pinned source".into()))?;
+        next.set_instrument_settings(track, Some(settings))?;
         next.validate()?;
-        let t = next.tracks.iter().find(|t| t.id == track).unwrap();
+        let t = next.instrument_track(track).unwrap();
         Ok(ComponentTransfer {
             changed: t.instrument != original.instrument || t.effects != original.effects,
             components: placed,

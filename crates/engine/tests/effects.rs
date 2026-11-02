@@ -48,6 +48,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         id,
         name: "tone".into(),
         midi_pattern: None,
+        beat_pattern: None,
         source: Source {
             kind: "external".into(),
             path: "/tone.wav".into(),
@@ -78,6 +79,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         })
         .collect();
     RenderPlan {
+        beat_tracks: Default::default(),
         project,
         audio: HashMap::from([(
             id,

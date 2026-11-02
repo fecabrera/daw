@@ -2,6 +2,39 @@ use egui::{Align, InnerResponse, Layout, Ui, Vec2};
 
 pub const NAME_FONT_SIZE: f32 = 13.0;
 
+/// Shared inline name field for track, beat-subtrack and instrument-layer headers.
+/// Select the complete Unicode name when the caller starts a rename.
+pub(super) fn name_input(
+    ui: &mut Ui,
+    text: &mut String,
+    id: egui::Id,
+    font_size: f32,
+    focus: &mut bool,
+) -> egui::Response {
+    let width = ui.available_width();
+    let mut output = egui::TextEdit::singleline(text)
+        .id(id)
+        .font(egui::FontId::proportional(font_size))
+        .text_color(crate::theme::palette(ui.ctx()).text)
+        .horizontal_align(egui::Align::Min)
+        .desired_width(width)
+        .min_size(Vec2::new(width, crate::toolbars::CONTROL_HEIGHT))
+        .show(ui);
+    if *focus {
+        output.response.request_focus();
+        output
+            .state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::two(
+                egui::text::CCursor::new(0),
+                egui::text::CCursor::new(text.chars().count()),
+            )));
+        output.state.store(ui.ctx(), output.response.id);
+        *focus = false;
+    }
+    output.response.response
+}
+
 /// Standard wrapped advice and model information below dialog controls.
 pub(super) fn advice(ui: &mut Ui, text: impl Into<String>) -> egui::Response {
     let color = crate::theme::palette(ui.ctx()).secondary;

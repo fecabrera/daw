@@ -153,20 +153,34 @@ pub fn stereo_panel(
     levels: [(f32, bool); 2],
     content: impl FnOnce(&mut Ui),
 ) -> [bool; 2] {
+    stereo_panel_with_content(ui, height, levels, content).1
+}
+
+/// The same panel, retaining child responses for header selection and mix controls.
+pub fn stereo_panel_with_content<R>(
+    ui: &mut Ui,
+    height: f32,
+    levels: [(f32, bool); 2],
+    content: impl FnOnce(&mut Ui) -> R,
+) -> (R, [bool; 2]) {
     ui.horizontal_top(|ui| {
         let content_width =
             (ui.available_width() - (STEREO_WIDTH - SCALE_WIDTH) - ui.spacing().item_spacing.x)
                 .max(1.0);
-        ui.allocate_ui_with_layout(
-            Vec2::new(content_width, height),
-            egui::Layout::top_down(egui::Align::Min),
-            |ui| {
-                // Short headers must not pull the meters away from the panel's right edge.
-                ui.set_min_width(content_width);
-                content(ui);
-            },
-        );
-        stereo_with_scale(ui, height, levels, false).map(|response| response.clicked())
+        let content = ui
+            .allocate_ui_with_layout(
+                Vec2::new(content_width, height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    // Short headers must not pull the meters away from the panel's right edge.
+                    ui.set_min_width(content_width);
+                    content(ui)
+                },
+            )
+            .inner;
+        let clicked =
+            stereo_with_scale(ui, height, levels, false).map(|response| response.clicked());
+        (content, clicked)
     })
     .inner
 }

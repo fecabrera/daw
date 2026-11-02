@@ -195,9 +195,10 @@ impl super::DawUi {
         {
             self.clip_transpose_drag = None;
         }
-        let contains_audio = self.session.project.assets.iter().any(|asset| {
-            asset.midi_pattern.is_none() && clips.iter().any(|clip| clip.asset_id == asset.id)
-        });
+        let contains_audio =
+            self.session.project.assets.iter().any(|asset| {
+                asset.is_audio() && clips.iter().any(|clip| clip.asset_id == asset.id)
+            });
         let transpose_enabled = !contains_audio || self.media_ready();
         if !transpose_enabled {
             self.clip_transpose_drag = None;
@@ -747,6 +748,12 @@ fn drag_transpose(ui: &Ui, response: &Response, current: i8) -> Option<i8> {
 }
 
 fn source_label(asset: &Asset) -> (String, String) {
+    if asset.beat_pattern.is_some() {
+        return (
+            "Beat pattern".into(),
+            "This clip uses a beat pattern".into(),
+        );
+    }
     if asset.midi_pattern.is_some() {
         (
             "MIDI pattern".into(),

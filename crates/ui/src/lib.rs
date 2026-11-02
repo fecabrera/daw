@@ -48,6 +48,9 @@ mod amplitude_panel;
 #[cfg(any(target_os = "windows", target_os = "linux", test))]
 mod application_menu;
 mod auto_filter_panel;
+mod beat_editor;
+mod beat_grid;
+mod beat_thumbnail;
 mod bitcrusher_panel;
 mod catalog;
 mod chord_audition;
@@ -438,6 +441,9 @@ pub enum TrackAction {
     Ungroup,
     Add,
     AddMidi,
+    AddBeat,
+    AddGroup,
+    AddSubtrack,
     Mute,
     Solo,
     Rename,
@@ -445,9 +451,12 @@ pub enum TrackAction {
     Delete,
 }
 impl TrackAction {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 12] = [
         Self::Add,
         Self::AddMidi,
+        Self::AddBeat,
+        Self::AddGroup,
+        Self::AddSubtrack,
         Self::Rename,
         Self::Duplicate,
         Self::Group,
@@ -458,7 +467,10 @@ impl TrackAction {
     ];
 
     pub fn starts_menu_group(self) -> bool {
-        matches!(self, Self::Mute | Self::Rename | Self::Group | Self::Delete)
+        matches!(
+            self,
+            Self::AddGroup | Self::Mute | Self::Rename | Self::Group | Self::Delete
+        )
     }
 
     pub fn label(self) -> &'static str {
@@ -467,6 +479,9 @@ impl TrackAction {
             Self::Ungroup => "Ungroup tracks",
             Self::Add => "Add audio track",
             Self::AddMidi => "Add MIDI track",
+            Self::AddBeat => "Add beat track",
+            Self::AddGroup => "Add group",
+            Self::AddSubtrack => "Add subtrack",
             Self::Mute => "Mute",
             Self::Solo => "Solo",
             Self::Rename => "Rename track",
@@ -477,7 +492,15 @@ impl TrackAction {
 
     pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
         let (modifiers, key) = match self {
-            Self::Add | Self::AddMidi | Self::Duplicate | Self::Delete => return None,
+            Self::Add
+            | Self::AddMidi
+            | Self::AddBeat
+            | Self::AddGroup
+            | Self::AddSubtrack
+            | Self::Duplicate
+            | Self::Delete => {
+                return None;
+            }
             Self::Group => (egui::Modifiers::COMMAND, egui::Key::G),
             Self::Ungroup => (
                 egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -713,6 +736,7 @@ struct ClipPreview {
 enum PreparedClipSource<'a> {
     Audio(&'a daw_media::AudioData),
     Midi(&'a daw_core::MidiPattern),
+    Beat(&'a daw_core::BeatPatternSource),
 }
 struct FileDropTarget {
     track: Option<Id>,
@@ -746,6 +770,7 @@ pub struct DawUi {
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
     instrument_ui: instrument_panel::InstrumentUi,
+    beat_ui: beat_editor::BeatUi,
     effects_catalog: catalog::Catalog,
     chords: chords_catalog::Chords,
     instrument_catalog: catalog::Catalog,
@@ -893,6 +918,7 @@ impl Default for DawUi {
             selected_effects: HashSet::new(),
             midi_editor: Default::default(),
             instrument_ui: Default::default(),
+            beat_ui: Default::default(),
             #[cfg(test)]
             effects_bounds: Default::default(),
             #[cfg(test)]
@@ -1167,6 +1193,8 @@ impl DawUi {
                 self.saved_navigation_revision = self.navigation_revision;
                 self.midi_editor.cancel();
                 self.instrument_ui = Default::default();
+                self.beat_ui = Default::default();
+                self.cancel_browser_interactions();
                 self.instrument_catalog.clear();
                 self.component_drag = None;
                 self.effects_drag = None;
@@ -1442,7 +1470,7 @@ impl DawUi {
                     }
                     if let Some((track, layer, layers)) = layer_selection
                         && self.instrument_ui.track == Some(track)
-                        && self.selected_track == Some(track)
+                        && self.selected_instrument_owner() == Some(track)
                     {
                         self.instrument_ui.selected_layer = Some(layer);
                         self.instrument_ui.selected_layers = layers;
@@ -1562,6 +1590,8 @@ impl DawUi {
             self.scroll = 0.0;
             self.midi_editor.cancel();
             self.instrument_ui = Default::default();
+            self.beat_ui = Default::default();
+            self.cancel_browser_interactions();
             self.instrument_catalog.clear();
             self.component_drag = None;
             self.effects_drag = None;
@@ -1903,6 +1933,7 @@ impl DawUi {
 
     fn edit_shortcuts_available(&self, ctx: &egui::Context) -> bool {
         self.editing_enabled()
+            && !self.track_browser.has_gesture()
             && !self.instrument_ui.editing_name()
             && ctx.input(|input| input.focused)
             && self.drag.is_none()
@@ -2108,7 +2139,7 @@ impl DawUi {
                 || !self.edit_environment_available()
                 || !ui.is_enabled()
                 || ui.input(|input| !input.focused)
-                || self.instrument_ui.track != self.selected_track)
+                || self.instrument_ui.track != self.selected_instrument_owner())
         {
             self.instrument_ui.cancel();
         }
@@ -2131,19 +2162,14 @@ impl DawUi {
         {
             history.begin_group();
         }
-        if self.instrument_ui.track != self.selected_track {
+        if self.instrument_ui.track != self.selected_instrument_owner() {
             self.instrument_ui.cancel();
-            self.instrument_ui.track = self.selected_track;
+            self.instrument_ui.track = self.selected_instrument_owner();
             self.instrument_ui.selected_layers.clear();
             self.instrument_ui.selected_layer = self
-                .session
-                .project
-                .tracks
-                .iter()
-                .find(|t| Some(t.id) == self.selected_track)
-                .and_then(|t| t.instrument.as_ref())
-                .and_then(|i| i.layers.first())
-                .map(|l| l.id);
+                .selected_instrument_owner()
+                .and_then(|id| self.session.project.instrument_snapshot(id))
+                .and_then(|i| i.layers.first().map(|l| l.id).or(Some(i.main.id)));
             self.instrument_catalog.clear();
         }
         if let Some(drag) = &mut self.drag {
@@ -2480,8 +2506,10 @@ impl DawUi {
         }
         // egui may release text focus at frame start when Escape is pressed.
         self.selection_text_focus = ctx.memory(|memory| memory.focused()).filter(|_| {
-            matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
-                && ctx.text_edit_focused()
+            matches!(
+                self.view_mode,
+                ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit
+            ) && ctx.text_edit_focused()
         });
     }
     fn file_menu(&mut self, ui: &mut egui::Ui) {
@@ -2578,7 +2606,8 @@ impl DawUi {
     }
 
     fn editing_enabled(&self) -> bool {
-        !self.strip_dragging
+        !self.beat_dragging()
+            && !self.strip_dragging
             && self.chords.drag.is_none()
             && self.effects_drag.is_none()
             && self.component_drag.is_none()
@@ -3899,6 +3928,7 @@ impl DawUi {
                 let (icon, label) = match track.kind {
                     daw_core::TrackKind::Audio => (icons::Lucide::AudioLines, "Audio track"),
                     daw_core::TrackKind::Midi => (icons::Lucide::KeyboardMusic, "MIDI track"),
+                    daw_core::TrackKind::Beat => (icons::Lucide::ListMusic, "Beat track"),
                     daw_core::TrackKind::Group => unreachable!(),
                 };
                 let timeline = self.view_mode == mixer::ViewMode::Timeline;
@@ -3928,6 +3958,49 @@ impl DawUi {
             self.track_name_label(ui, track);
         });
     }
+    fn track_name_input(
+        &mut self,
+        ui: &mut egui::Ui,
+        track: &daw_core::Track,
+        font_size: f32,
+    ) -> Option<egui::Response> {
+        if !self
+            .track_name_edit
+            .as_ref()
+            .is_some_and(|edit| edit.track == track.id)
+        {
+            return None;
+        }
+        let mut edit = self.track_name_edit.take().unwrap();
+        let response = rows::name_input(
+            ui,
+            &mut edit.text,
+            ui.make_persistent_id(("track_name", track.id)),
+            font_size,
+            &mut edit.focus,
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::text_edit(ui.is_enabled(), &track.name, &edit.text, "Track name")
+        });
+        if let Some(action) = inline_edit_action(ui, &response) {
+            response.surrender_focus();
+            if action == InlineEditAction::Commit
+                && edit.text != track.name
+                && let Some(track) = self
+                    .session
+                    .project
+                    .tracks
+                    .iter_mut()
+                    .find(|t| t.id == edit.track)
+            {
+                track.name = edit.text;
+                self.changed();
+            }
+        } else {
+            self.track_name_edit = Some(edit);
+        }
+        Some(response)
+    }
     fn track_name_label(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
         let width = ui.available_width();
         let font_size = if self.view_mode == mixer::ViewMode::Mixer {
@@ -3935,53 +4008,12 @@ impl DawUi {
         } else {
             rows::NAME_FONT_SIZE
         };
-        if self
-            .track_name_edit
-            .as_ref()
-            .is_some_and(|edit| edit.track == track.id)
+        if !self.browser_track_renaming(track.id)
+            && self.track_name_input(ui, track, font_size).is_some()
         {
-            let mut edit = self.track_name_edit.take().unwrap();
-            let mut output = egui::TextEdit::singleline(&mut edit.text)
-                .id(ui.make_persistent_id(("track_name", track.id)))
-                .font(egui::FontId::proportional(font_size))
-                .text_color(theme::palette(ui.ctx()).text)
-                .horizontal_align(egui::Align::Min)
-                .desired_width(width)
-                .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
-                .show(ui);
-            output.response.widget_info(|| {
-                egui::WidgetInfo::text_edit(ui.is_enabled(), &track.name, &edit.text, "Track name")
-            });
-            if edit.focus {
-                output.response.request_focus();
-                output
-                    .state
-                    .cursor
-                    .set_char_range(Some(egui::text::CCursorRange::two(
-                        egui::text::CCursor::new(0),
-                        egui::text::CCursor::new(edit.text.chars().count()),
-                    )));
-                output.state.store(ui.ctx(), output.response.id);
-                edit.focus = false;
-            }
-            if let Some(action) = inline_edit_action(ui, &output.response) {
-                output.response.surrender_focus();
-                if action == InlineEditAction::Commit
-                    && edit.text != track.name
-                    && let Some(track) = self
-                        .session
-                        .project
-                        .tracks
-                        .iter_mut()
-                        .find(|t| t.id == edit.track)
-                {
-                    track.name = edit.text;
-                    self.changed();
-                }
-            } else {
-                self.track_name_edit = Some(edit);
-            }
-        } else {
+            return;
+        }
+        {
             use egui::AtomExt as _;
             let mixer_colors = (self.view_mode == mixer::ViewMode::Mixer)
                 .then(|| theme::clip_colors(track.color, None));
@@ -4163,8 +4195,13 @@ impl DawUi {
                     ui.next_widget_position(),
                     Vec2::new(ui.available_width(), row_height),
                 );
-                let inset = track_groups::panel_indent(self.session.project.track_depth(id));
-                let panel_width = TRACK_WIDTH - inset;
+                let panel = panels::GroupPanel::bounds(
+                    row,
+                    TRACK_WIDTH,
+                    self.session.project.track_depth(id),
+                );
+                let inset = panel.left() - row.left();
+                let panel_width = panel.width();
                 let interacting = self.drag.is_some()
                     || self.track_drag.is_some()
                     || self.marquee.is_some()
@@ -4321,17 +4358,29 @@ impl DawUi {
                         });
                     if let Some(action) = menus::ContextMenu::new(&inner.response)
                         .open_memory(context_click.then_some(egui::SetOpenCommand::Bool(true)))
-                        .show(|ui| self.track_context_menu(ui))
+                        .show(|ui| self.track_context_menu(ui, Some(track.id)))
                         .and_then(|response| response.inner)
                     {
-                        context_action = Some(action);
+                        context_action = Some((track.id, action));
                     }
                     self.lane(ui, &track, inner.response.rect, row_index, count);
                 });
             }
-            if let Some(action) = context_action {
+            if let Some((track, action)) = context_action {
                 // Finish painting before changing the tracks and their control state.
-                self.perform_track_action(action, ui.ctx());
+                if matches!(
+                    action,
+                    TrackAction::Add
+                        | TrackAction::AddMidi
+                        | TrackAction::AddBeat
+                        | TrackAction::AddGroup
+                ) {
+                    self.add_track_to_group_from_menu(track, action, ui.ctx());
+                } else if action == TrackAction::AddSubtrack {
+                    self.add_subtrack_from_menu(track, ui.ctx());
+                } else {
+                    self.perform_track_action(action, ui.ctx());
+                }
             }
             outlines
         })
@@ -4708,7 +4757,7 @@ impl DawUi {
         let mut clip = drag.clip.clone();
         if let Some(edge) = drag.mode.resize_edge()
             && matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight)
-            && let Ok(bounds) = self.session.project.midi_pattern_bounds(&clip, edge)
+            && let Ok(bounds) = self.session.project.pattern_trim_bounds(&clip, edge)
         {
             let delta = i128::from(self.drag_delta(drag, pointer));
             let target = self.clip_drag_timeline().snap_bounded(
@@ -5169,8 +5218,13 @@ impl DawUi {
             ghost.multiply_opacity(0.75);
             let source = project
                 .and_then(|p| p.assets.iter().find(|a| a.id == preview.clip.asset_id))
-                .and_then(|a| a.midi_pattern.as_ref())
-                .map(PreparedClipSource::Midi);
+                .and_then(|asset| {
+                    asset
+                        .midi_pattern
+                        .as_ref()
+                        .map(PreparedClipSource::Midi)
+                        .or_else(|| asset.beat_pattern.as_ref().map(PreparedClipSource::Beat))
+                });
             self.paint_clip(&ghost, track_color, block, &preview.clip, false, source);
             painter.rect_stroke(
                 block,
@@ -5303,12 +5357,17 @@ impl DawUi {
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
         self.paint_grid(&painter, rect);
         // Keep row separators below clip shells and their selection outlines.
-        panels::ControlPanel::row_dividers(ui, panel.union(rect), index > 0, false);
+        let row = Rect::from_min_max(Pos2::new(rect.left() - TRACK_WIDTH, rect.top()), rect.max);
+        panels::GroupPanel::row_dividers(
+            ui,
+            row,
+            self.session.project.track_depth(track_id),
+            index > 0,
+            false,
+        );
         if index + 1 == count {
             // The final child and all enclosing groups share one bottom edge.
-            let row =
-                Rect::from_min_max(Pos2::new(rect.left() - TRACK_WIDTH, rect.top()), rect.max);
-            panels::ControlPanel::row_dividers(ui, row, false, true);
+            panels::GroupPanel::row_dividers(ui, row, 0, false, true);
         }
         for clip in &track.clips {
             let block = self.clip_block(rect, clip, clip.start_frame);
@@ -5497,6 +5556,7 @@ impl DawUi {
 mod tests {
     mod audio_editor;
     mod background_audio;
+    mod beat;
     mod chords;
     mod clip_duplication;
     mod clip_menu;
@@ -5553,6 +5613,7 @@ mod tests {
         let asset = Id::new_v4();
         app.session.project.assets.push(daw_core::Asset {
             midi_pattern: None,
+            beat_pattern: None,
             id: asset,
             name: "Missing".into(),
             source: daw_core::Source {

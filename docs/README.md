@@ -16,7 +16,7 @@ Knob tooltips show only the parameter name on the left and the current value on 
 - [Instrument](views/instrument.md): build layered sounds and add effects.
 - [Editor](views/editor.md): create MIDI patterns, edit notes, and inspect audio clip waveforms.
 - [Mixer](views/mixer.md): balance tracks and Master.
-- [Beat editor roadmap](views/beat-editor.md): planned step-editing capabilities; not yet available.
+- [Beat tracks and step editor](views/beat-editor.md): create rhythms and configure independent subtrack instruments.
 
 ## Instrument components
 

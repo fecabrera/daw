@@ -53,6 +53,31 @@ pub(super) fn unit_add_strip(
 /// Shared muted full-height separator for internally padded unit strips.
 pub(super) use daw_unit_ui::layout::unit_divider;
 
+/// Shared geometry and separators for track groups and beat subtrack groups.
+pub(super) struct GroupPanel;
+
+impl GroupPanel {
+    /// Retain usable controls in deeply nested groups.
+    pub(super) fn indent(depth: usize) -> f32 {
+        depth.min(3) as f32 * 2.0 * f32::from(crate::theme::TOOLBAR_PADDING)
+    }
+
+    /// Inset the left edge while keeping every control column's right edge aligned.
+    pub(super) fn bounds(row: Rect, width: f32, depth: usize) -> Rect {
+        Rect::from_min_max(
+            row.min + Vec2::new(Self::indent(depth), 0.0),
+            egui::pos2(row.left() + width, row.bottom()),
+        )
+    }
+
+    /// Group boundaries start at the row's depth; a header with visible children uses their
+    /// depth for the bottom edge so the hierarchy gutter remains open.
+    pub(super) fn row_dividers(ui: &Ui, row: Rect, depth: usize, top: bool, bottom: bool) {
+        let row = Rect::from_min_max(row.min + Vec2::new(Self::indent(depth), 0.0), row.max);
+        ControlPanel::row_dividers(ui, row, top, bottom);
+    }
+}
+
 /// Base control column shared by Tracks, Layers, and the Effects catalog. Row content stays with each view.
 /// Paint the border last so selected rows, lanes, and scrolling cannot cover it.
 pub(super) struct ControlPanel {
@@ -70,9 +95,13 @@ impl ControlPanel {
     pub(super) const WIDTH: f32 = 250.0;
 
     pub(super) fn begin(ui: &Ui, bounds: Rect) -> Self {
+        Self::with_width(ui, bounds, Self::WIDTH)
+    }
+
+    pub(super) fn with_width(ui: &Ui, bounds: Rect, width: f32) -> Self {
         let rect = Rect::from_min_max(
             bounds.min,
-            egui::pos2(bounds.left() + Self::WIDTH, bounds.bottom()),
+            egui::pos2(bounds.left() + width, bounds.bottom()),
         );
         ui.painter()
             .rect_filled(rect, 0.0, crate::theme::palette(ui.ctx()).panel);
@@ -133,8 +162,9 @@ impl ControlPanel {
         selected: bool,
         depth: usize,
         leading: (crate::icons::Lucide, Option<bool>),
+        trailing_width: f32,
     ) -> Response {
-        self.catalog_row(
+        self.catalog_row_with_trailing(
             ui,
             name,
             selected,
@@ -142,6 +172,7 @@ impl ControlPanel {
             leading
                 .1
                 .map_or(CatalogIcon::Track(leading.0), CatalogIcon::Group),
+            trailing_width,
         )
     }
 
@@ -224,6 +255,18 @@ impl ControlPanel {
         depth: usize,
         leading: CatalogIcon,
     ) -> Response {
+        self.catalog_row_with_trailing(ui, name, selected, depth, leading, 0.0)
+    }
+
+    fn catalog_row_with_trailing(
+        &self,
+        ui: &mut Ui,
+        name: &str,
+        selected: bool,
+        depth: usize,
+        leading: CatalogIcon,
+        trailing_width: f32,
+    ) -> Response {
         let folder = match leading {
             CatalogIcon::Folder(open) | CatalogIcon::Group(open) => Some(open),
             _ => None,
@@ -235,17 +278,28 @@ impl ControlPanel {
             egui::TextStyle::Small.resolve(ui.style()),
             palette.text,
         );
-        let (rect, response) = ui.allocate_exact_size(
-            Vec2::new(
-                ui.available_width(),
-                galley.size().y.max(crate::icons::TOOLBAR_ICON_SIZE) + 2.0 * padding,
+        let (id, rect) = ui.allocate_space(Vec2::new(
+            ui.available_width(),
+            galley.size().y.max(crate::icons::TOOLBAR_ICON_SIZE) + 2.0 * padding,
+        ));
+        let hit = Rect::from_min_max(
+            rect.min,
+            egui::pos2(
+                (rect.right() - trailing_width).max(rect.left()),
+                rect.bottom(),
             ),
-            if !matches!(leading, CatalogIcon::None) {
-                egui::Sense::click()
-            } else {
+        );
+        let mut response = ui.interact(
+            hit,
+            id,
+            if trailing_width > 0.0 || matches!(leading, CatalogIcon::None) {
                 egui::Sense::click_and_drag()
+            } else {
+                egui::Sense::click()
             },
         );
+        // Layout/selection covers the full row; controls own the reserved hit area.
+        response.rect = rect;
         response.widget_info(|| {
             egui::WidgetInfo::selected(
                 if folder.is_some() {
@@ -270,6 +324,8 @@ impl ControlPanel {
                 crate::theme::toggle_colors(ui.ctx(), true).0,
             );
         }
+        let content_clip = ui.clip_rect();
+        ui.set_clip_rect(hit.intersect(content_clip));
         let icon_size = crate::icons::TOOLBAR_ICON_SIZE;
         let step = icon_size + padding;
         let indent = depth as f32 * step;
@@ -310,14 +366,20 @@ impl ControlPanel {
             }
         };
         let text_offset = indent + slots * step;
-        ui.painter().galley_with_override_text_color(
-            egui::pos2(
-                rect.left() + padding + text_offset,
-                rect.center().y - galley.size().y * 0.5,
-            ),
-            galley,
-            color,
-        );
+        ui.painter()
+            .with_clip_rect(
+                hit.shrink2(Vec2::new(padding, 0.0))
+                    .intersect(ui.clip_rect()),
+            )
+            .galley_with_override_text_color(
+                egui::pos2(
+                    rect.left() + padding + text_offset,
+                    rect.center().y - galley.size().y * 0.5,
+                ),
+                galley,
+                color,
+            );
+        ui.set_clip_rect(content_clip);
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
     }
 

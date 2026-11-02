@@ -124,6 +124,8 @@ impl DawUi {
         if !self.view_switch_enabled() || self.view_mode == mode {
             return;
         }
+        self.cancel_browser_interactions();
+        self.cancel_beat_reorder(None);
         self.view_mode = mode;
         if mode != ViewMode::Timeline {
             self.clip_settings_visible = false;
@@ -331,10 +333,10 @@ impl DawUi {
                                 .open_memory(
                                     context_click.then_some(egui::SetOpenCommand::Bool(true)),
                                 )
-                                .show(|ui| self.track_context_menu(ui))
+                                .show(|ui| self.track_context_menu(ui, Some(track.id)))
                                 .and_then(|response| response.inner)
                             {
-                                action = Some(selected);
+                                action = Some((track.id, selected));
                             }
                             outlines.push((track.id, rect));
                         });
@@ -367,8 +369,20 @@ impl DawUi {
                 );
             }
         }
-        if let Some(action) = action {
-            self.perform_track_action(action, ui.ctx());
+        if let Some((track, action)) = action {
+            if matches!(
+                action,
+                TrackAction::Add
+                    | TrackAction::AddMidi
+                    | TrackAction::AddBeat
+                    | TrackAction::AddGroup
+            ) {
+                self.add_track_to_group_from_menu(track, action, ui.ctx());
+            } else if action == TrackAction::AddSubtrack {
+                self.add_subtrack_from_menu(track, ui.ctx());
+            } else {
+                self.perform_track_action(action, ui.ctx());
+            }
         }
     }
 
