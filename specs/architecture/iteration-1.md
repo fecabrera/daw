@@ -822,3 +822,13 @@ Validate identical workspace paint before/during a held save in all four views a
 ## Ruler label contrast
 
 The shared ruler painter colors label glyphs by their painted background. Outside the selection, use the theme text color; inside an enabled loop, use contrast against its fill. Disabled selections retain their existing theme-specific text. Clip a label that spans an edge into the corresponding color regions. Use pixel geometry, including the label inset, rather than tick-beat membership: integer frame rounding can place the end just past a tick while its label is outside the fill. Apply this contract to Timeline, Editor and sample previews through the shared painter.
+
+## Non-overwrite export publication — 2026-11-02
+
+When overwrite is disabled, publish a complete same-directory temporary export
+with an atomic hard-link creation, then remove the temporary name. Creating the
+link cannot replace an existing destination, including one created after the
+initial existence check. Filesystems without this operation fail safely; do not
+fall back to replacement or a partially visible copy. Once publication succeeds,
+temporary-name cleanup failure must not remove the published file. Explicit
+overwrite and manifest-save paths retain the existing replacement operation.

@@ -110,6 +110,16 @@
         "plugins"
       ],
       "reason": "Exact runtime license text retained in common UI notice inputs; unused-target notices may be included conservatively."
+    },
+    {
+      "component": "arrayref-0.3.9",
+      "notice": "crates/ui/assets/licenses/arrayref-0.3.9-LICENSE.txt",
+      "sha256": "1bc7e6f475b3ec99b7e2643411950ae2368c250dd4c5c325f80f9811362a94a1",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Required BSD notice for the enabled desktop SVG runtime; shared plugin notice inputs may retain it conservatively."
     }
   ]
 }

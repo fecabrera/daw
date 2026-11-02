@@ -62,6 +62,26 @@ pub(crate) fn replace(source: &Path, target: &Path) -> io::Result<()> {
     }
 }
 
+/// Publish complete bytes only if the destination is absent. Both names are in
+/// one directory, so creating the hard link is an atomic no-replacement step on
+/// every supported platform. Unsupported filesystems fail without a partial copy.
+pub(crate) fn create(source: &Path, target: &Path) -> io::Result<()> {
+    let source = canonical_entry(source)?;
+    let target = canonical_entry(target)?;
+    if source == target || source.parent() != target.parent() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Publication requires distinct files in the same folder",
+        ));
+    }
+    ordinary_file(&source, false)?;
+    fs::hard_link(&source, &target)?;
+    // Publication has succeeded. Cleanup cannot make it a failed export or
+    // justify removing the destination another process may already be reading.
+    let _ = fs::remove_file(source);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,6 +152,51 @@ mod tests {
         replace(&source, &target).unwrap();
         assert_eq!(fs::read(target).unwrap(), b"first manifest");
         assert_eq!(fs::read_dir(&f.0).unwrap().count(), 1);
+    }
+    #[test]
+    fn no_replace_retains_a_destination_created_after_the_initial_check() {
+        let f = Fixture::new();
+        let source = f.0.join("complete.tmp");
+        let target = f.0.join("export.wav");
+        fs::write(&source, b"new export").unwrap();
+        assert!(!target.exists());
+        fs::write(&target, b"other export").unwrap();
+        assert_eq!(
+            create(&source, &target).unwrap_err().kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(fs::read(&target).unwrap(), b"other export");
+        assert_eq!(fs::read(&source).unwrap(), b"new export");
+    }
+    #[test]
+    fn simultaneous_no_replace_publications_have_one_complete_winner() {
+        let f = Fixture::new();
+        let barrier = std::sync::Barrier::new(2);
+        let target = f.0.join("export.wav");
+        let first = f.0.join("first.tmp");
+        let second = f.0.join("second.tmp");
+        fs::write(&first, b"first complete").unwrap();
+        fs::write(&second, b"second complete").unwrap();
+        let (a, b) = std::thread::scope(|scope| {
+            let a = scope.spawn(|| {
+                barrier.wait();
+                create(&first, &target)
+            });
+            let b = scope.spawn(|| {
+                barrier.wait();
+                create(&second, &target)
+            });
+            (a.join().unwrap(), b.join().unwrap())
+        });
+        let (error, winner, loser, expected) = match (a, b) {
+            (Ok(()), Err(error)) => (error, first, second, b"first complete".as_slice()),
+            (Err(error), Ok(())) => (error, second, first, b"second complete".as_slice()),
+            _ => panic!("exactly one publication must succeed"),
+        };
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert!(!winner.exists());
+        assert!(loser.exists());
+        assert_eq!(fs::read(target).unwrap(), expected);
     }
     #[test]
     fn invalid_destination_retains_both_original_files() {

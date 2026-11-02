@@ -383,6 +383,15 @@ impl Worker {
             .map_err(|e| format!("Cannot start audio preparation: {e}"))?;
         Ok(Self(shared))
     }
+    #[cfg(test)]
+    pub(super) fn suspended() -> Self {
+        Self(Arc::new((Mutex::new(State::default()), Condvar::new())))
+    }
+    #[cfg(test)]
+    pub(super) fn fail_for_test(&self, message: &str) {
+        let revision = self.0.0.lock().unwrap().revision;
+        publish_error(&self.0, revision, message.to_owned());
+    }
     pub fn configure_cache(&self, profile: daw_engine::CacheProfile, editing: bool) {
         let mut state = self.0.0.lock().unwrap();
         if state.cache_controls.profile != profile || state.cache_controls.editing != editing {

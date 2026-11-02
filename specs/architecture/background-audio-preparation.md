@@ -157,3 +157,15 @@ Completion means both repeated-work reduction and responsive editing are demonst
 ## Verified encoded input — 2026-11-02
 
 Decoded-cache builders stage encoded input into a private worker-owned temporary file with a 64 KiB streaming buffer. Hash those exact staged bytes and decode only that immutable snapshot. Reject a receipt mismatch or source mutation before publishing the builder result. Failure/cancellation removes the staging directory. Cache domain `decoded-verified-v2` excludes entries produced by the earlier path-based decoder. Source collection PCM verification uses the same encoded snapshot boundary; no encoded staging or file I/O enters painting or the audio callback.
+
+## Immediate Stop during renderer preparation — 2026-11-02
+
+Stop first reserves capacity in the bounded callback command queue. Queue-full
+failure leaves transport intent unchanged. A successful request sends the existing
+revision-guarded pending-pause command and prepares the stopped return position
+on the worker. The callback pauses active audio and discards buffered output
+without acknowledging an unprepared renderer. Stale commands cannot stop a later
+Play. Preparation failure retains stopped intent and the callback revision,
+clears the preparation indicator and reports the error. A later Play prepares
+that retained position; it cannot resume the old paused DSP clock. Native device
+acceptance remains separate from device-independent orchestration tests.

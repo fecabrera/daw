@@ -508,7 +508,10 @@ fn history_resolves_original_folders_after_save_as_without_using_the_live_folder
     let f = Fixture::new();
     let source = f.wav("original/relative.wav", 0.2);
     let mut live = f.saved(&[&source]);
-    assert_eq!(live.project.assets[0].source.path_kind, "relative");
+    // Exercise a legacy relative parent reference independently of Save's
+    // current choice to retain this external path in absolute form.
+    live.project.assets[0].source.path = "../original/relative.wav".into();
+    live.project.assets[0].source.path_kind = "relative".into();
     let mut history = SessionHistory::new(&live, true).unwrap();
     live.project.assets.clear();
     live.project.tracks.clear();

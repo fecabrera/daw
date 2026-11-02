@@ -435,9 +435,11 @@ pub struct AudioOutput {
     desired_transport: Option<(u64, TransportState)>,
     project_rate_hz: u32,
     buffer_size_frames: u32,
-    _stream: cpal::Stream,
+    // None is used only by device-independent control/callback tests.
+    _stream: Option<cpal::Stream>,
     preparation: preparation::Worker,
     prepare_revision: u64,
+    preparation_failed: bool,
     prepared: Option<preparation::Ready>,
     commands: Producer<Command>,
     retired: Consumer<Box<PreparedRenderer>>,
@@ -620,10 +622,11 @@ impl AudioOutput {
             desired_transport: None,
             project_rate_hz,
             buffer_size_frames,
-            _stream: stream,
+            _stream: Some(stream),
             audition,
             preparation: preparation.worker,
             prepare_revision: 0,
+            preparation_failed: false,
             prepared: None,
             commands,
             retired,
@@ -690,6 +693,17 @@ impl AudioOutput {
     }
     pub fn take_preparation_error(&mut self) -> Option<String> {
         let error = self.preparation.take_error()?;
+        if self
+            .desired_transport
+            .is_some_and(|(_, state)| !state.playing)
+        {
+            // Retain Stop/Pause intent and its immediate callback command even
+            // when reconstruction fails before the callback consumes it. Play
+            // must prepare this requested position rather than resume old DSP.
+            self.preparation_failed = true;
+            self.prepared = None;
+            return Some(error);
+        }
         self.desired_transport = None;
         self.prepare_revision = self.status.applied_revision.load(Ordering::Acquire);
         self.status
@@ -713,6 +727,7 @@ impl AudioOutput {
             .map_or_else(|| self.status.transport(), |(_, state)| state)
     }
     fn prepare(&mut self, state: Option<TransportState>) {
+        self.preparation_failed = false;
         self.prepare_revision = self
             .preparation
             .submit(self.plan.clone(), self.bindings(), state);
@@ -843,7 +858,8 @@ impl AudioOutput {
         if state.playing {
             return Ok(());
         }
-        let resume = state.paused && !self.preparing();
+        let resume = state.paused
+            && self.prepare_revision == self.status.applied_revision.load(Ordering::Acquire);
         if !state.paused {
             state.playback_start = Some(state.frame);
         }
@@ -861,7 +877,7 @@ impl AudioOutput {
         let mut state = self.current_transport();
         state.paused |= state.playing;
         state.playing = false;
-        if self.preparing() {
+        if self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire) {
             if self.commands.is_full() {
                 return Err("Audio command queue is full; try again".into());
             }
@@ -876,6 +892,7 @@ impl AudioOutput {
             return Err("Audio command queue is full; try again".into());
         }
         let revision = self.preparation.cancel();
+        self.preparation_failed = false;
         self.prepare_revision = revision;
         self.status
             .requested_revision
@@ -889,12 +906,19 @@ impl AudioOutput {
     }
     pub fn stop(&mut self) -> Result<(), String> {
         self.drain();
+        if self.commands.is_full() {
+            return Err("Audio command queue is full; try again".into());
+        }
         let mut state = self.current_transport();
         state.frame = state.playback_start.take().unwrap_or(state.frame);
         state.playing = false;
         state.paused = false;
         self.prepare(Some(state));
-        Ok(())
+        // No intervening drain: reserve the checked slot for immediate silence,
+        // before a fast worker can enqueue its completed replacement.
+        self.commands
+            .push(Command::PausePending(self.prepare_revision))
+            .map_err(|_| "Audio command queue is full; try again".into())
     }
     pub fn seek(&mut self, frame: u64) -> Result<(), String> {
         self.drain();
@@ -904,7 +928,8 @@ impl AudioOutput {
         Ok(())
     }
     pub fn preparing(&self) -> bool {
-        self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire)
+        !self.preparation_failed
+            && self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire)
     }
     pub fn drain(&mut self) {
         self.audition.drain();

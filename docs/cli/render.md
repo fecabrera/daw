@@ -18,7 +18,7 @@ daw-cli render --project examples/demo --output mix.aac --bitrate 192
 
 All formats export stereo. WAV uses the project rate. MP3 and AAC convert project rates above 48 kHz to 48 kHz. AAC writes AAC-LC in `.aac` files; `.m4a` and `.mp4` are unsupported. Integer WAV, MP3 and AAC clamp levels above full scale. Float32 WAV retains headroom. Warnings report clipping and missing or shortened sources.
 
-An empty project, invalid media or processing error returns exit code 1. Incompatible format options return exit code 2. Export protects source files and the project manifest. Failure leaves an existing destination intact. Warnings do not fail a completed export.
+An empty project, invalid media or processing error returns exit code 1. Incompatible format options return exit code 2. Export protects source files and the project manifest. Failure leaves an existing destination intact. Without `--overwrite`, this also protects a file created by another export while this export is running. If the destination cannot safely publish a new file without replacement, export fails. Warnings do not fail a completed export.
 
 See [Project export](../projects/README.md#export) for desktop export controls.
 

@@ -557,10 +557,11 @@ impl Session {
             }
             let clipped = encoder.clipped();
             encoder.finish().map_err(error)?;
-            if !overwrite && path.exists() {
-                return Err(error("Output appeared during export; refusing overwrite"));
+            if overwrite {
+                replace_file(&temp, &path)?;
+            } else {
+                file_publish::create(&temp, &path).map_err(error)?;
             }
-            replace_file(&temp, &path)?;
             let mut warnings = self.warnings.clone();
             if clipped {
                 warnings.push(
@@ -593,9 +594,8 @@ fn normalize(path: &Path) -> PathBuf {
     for c in path.components() {
         match c {
             Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
+            // Parent components must be resolved by the filesystem after any
+            // preceding symlink, not cancelled against lexical components.
             other => out.push(other.as_os_str()),
         }
     }

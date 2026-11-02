@@ -6,6 +6,50 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Split bounds, Stop and filesystem corrections — 2026-11-02
+
+Looping MIDI splits test crossings with source-note/phase arithmetic before
+expansion. Genuine unfolding preflights a shared 4,096-occurrence transaction
+budget and uses bounded fallible reservations. Stop sends immediate pending-pause
+intent to the callback while a worker prepares the return position. Failure keeps
+stopped intent; a later Play prepares that position instead of resuming old DSP.
+
+External paths retain parent components for filesystem resolution after symlinks.
+Save keeps external references absolute when a new relative spelling would need
+parent traversal. Non-overwrite exports publish complete bytes through atomic
+no-replacement creation. The exact arrayref 0.3.9 notice is now in shared package
+inputs. Chorus guidance excludes the discrete Rate mode selector from modulation.
+The ONNX finding remains unchanged, as requested.
+
+Completed checks:
+
+- Core tests passed. Allocation checks compare 480,000-frame and 2,880,000,000-frame
+  geometry splits: both allocate the same amount, below 64 KiB. Excessive
+  unfolding rejects before expansion; the budget applies across selected clips.
+  Crossing checks cover all six rates, repeat edges, phases, offsets and stretch.
+- All 76 project workflow tests passed, including symlink-parent paths through
+  open/import/save/export, Save As, history and render/export workflows.
+- Output tests passed. Public Stop tests withhold worker completion, inject
+  failure before callback handling, verify return-position preparation on Play,
+  reject full queues without changed intent, and check allocation-free callback
+  work at 48 kHz and with 44.1 kHz device conversion.
+- Seven file-publication tests passed. Generated concurrent writers have one
+  complete winner; a destination created after the initial check retains its
+  bytes. Fourteen packaging tests passed with the exact notice inventory.
+- Changed Markdown file targets and `git diff --check` passed.
+- Workspace normal-test groups passed across the initial run and a continuation
+  from `daw-project` after making a legacy relative-path fixture explicit. Earlier
+  passing package groups were retained. Full-workspace documentation tests,
+  strict all-target Clippy and rustfmt checks passed with locked offline Cargo
+  inputs. The locked offline CLI build passed.
+- `python3 tools/check_cli.py` passed source-collection, inspection, codec,
+  repeatability, source-failure, group-bus, overwrite and exit-code checks.
+  `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+
+Native device/UI, Windows/Linux filesystem and plugin-host acceptance remain
+unrun. Hard-link publication rejects unsupported filesystems safely. These
+checks do not establish full dependency-license or corresponding-source coverage.
+
 ## Looped MIDI split and notice corrections — 2026-11-02
 
 Splitting a looping MIDI clip without a note occurrence crossing the split now

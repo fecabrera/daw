@@ -926,3 +926,129 @@ fn prepared_audio_clip_transpose_activates_and_runs_without_callback_heap_work()
         assert!(retired.pop().is_ok());
     }
 }
+
+fn controlled_output(rate: u32) -> (AudioOutput, Callback) {
+    let plan = tests::transport_plan();
+    let bindings = preparation::Bindings::prepare(&plan, &Default::default());
+    let (commands, consumer) = RingBuffer::new(4);
+    let (retire, retired) = RingBuffer::new(8);
+    let status = Arc::new(Status::default());
+    let mut callback = Callback::new(
+        plan.clone(),
+        &bindings.tracks,
+        consumer,
+        retire,
+        status.clone(),
+        rate,
+    )
+    .unwrap();
+    let output = AudioOutput {
+        audition: callback.audition_sender.take().unwrap(),
+        plan: Arc::new(plan),
+        desired_transport: None,
+        project_rate_hz: 48_000,
+        buffer_size_frames: 512,
+        _stream: None,
+        preparation: preparation::Worker::suspended(),
+        prepare_revision: 0,
+        preparation_failed: false,
+        prepared: None,
+        commands,
+        retired,
+        status,
+        description: String::new(),
+        track_meters: bindings.tracks,
+        layer_meters: bindings.layers,
+        effect_meters: bindings.effects,
+        exciter_solos: bindings.exciter_solos,
+        output_meters: bindings.outputs,
+        source_meters: bindings.sources,
+        band_meters: bindings.bands,
+        modulation_meters: bindings.modulation,
+        live_pitches: bindings.live_pitches,
+    };
+    (output, callback)
+}
+
+#[test]
+fn public_stop_silences_audio_before_worker_completion_and_survives_failure() {
+    for rate in [44_100, 48_000] {
+        for fail in [false, true] {
+            let (mut output, mut callback) = controlled_output(rate);
+            callback.renderer.play();
+            for _ in 0..1024 {
+                realtime(|| callback.next());
+            }
+            output.status.publish_transport(&callback.renderer);
+            let audible_frame = callback.renderer.playhead;
+            let return_frame = callback.renderer.transport_state().playback_start.unwrap();
+            assert!(audible_frame > return_frame);
+            output.stop().unwrap();
+            let stopped = output.transport_intent();
+            assert_eq!(
+                stopped,
+                TransportState {
+                    frame: return_frame,
+                    playing: false,
+                    paused: false,
+                    playback_start: None
+                }
+            );
+            let stop_revision = output.prepare_revision;
+            if fail {
+                // Failure can be delivered before the callback sees Stop.
+                output.preparation.fail_for_test("injected failure");
+                assert_eq!(
+                    output.take_preparation_error().as_deref(),
+                    Some("injected failure")
+                );
+                assert!(!output.preparing());
+                assert_eq!(output.transport_intent(), stopped);
+            }
+            realtime(|| callback.update());
+            assert!(!callback.renderer.playing);
+            assert_eq!(callback.index, callback.output_count);
+            assert_ne!(
+                output.status.applied_revision.load(Ordering::Acquire),
+                stop_revision
+            );
+            for _ in 0..2048 {
+                realtime(|| callback.next());
+            }
+            assert_eq!(callback.renderer.playhead, audible_frame);
+            assert!(realtime(|| callback.next())[0].abs() < 1e-6);
+            // A later Play must prepare the saved return position, not resume
+            // the paused renderer at its old audible frame.
+            output.play().unwrap();
+            let playing = output.transport_intent();
+            assert!(playing.playing);
+            assert_eq!(playing.frame, return_frame);
+            assert_eq!(playing.playback_start, Some(return_frame));
+            let worker = preparation::Worker::new(output.status.clone()).unwrap();
+            worker.submit(output.plan.clone(), output.bindings(), Some(playing));
+            let mut prepared = ready(&worker);
+            prepared.revision = output.prepare_revision;
+            prepared.renderer.revision = output.prepare_revision;
+            output.prepared = Some(prepared);
+            output.drain();
+            realtime(|| callback.update());
+            assert_eq!(callback.renderer.transport_state(), playing);
+        }
+    }
+}
+
+#[test]
+fn public_stop_rejects_a_full_queue_without_changing_transport_intent() {
+    let (mut output, mut callback) = controlled_output(48_000);
+    callback.renderer.play();
+    output.status.publish_transport(&callback.renderer);
+    let before = output.transport_intent();
+    while !output.commands.is_full() {
+        output.commands.push(Command::Play).unwrap();
+    }
+    assert!(output.stop().unwrap_err().contains("queue is full"));
+    assert_eq!(output.transport_intent(), before);
+    assert_eq!(output.prepare_revision, 0);
+    realtime(|| callback.update());
+    assert!(callback.renderer.playing);
+}

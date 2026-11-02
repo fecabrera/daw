@@ -4,6 +4,15 @@ Date: 2026-10-29.
 
 Status: storage and verification foundations implemented. [Stage 1 inventory/preflight](source-bundling-stage1.md) is also implemented. [Stage 2 copying/publication](source-bundling-stage2.md) is implemented; [Stage 3 session integration](source-bundling-stage3.md) is implemented; [Stage 4 desktop controls](source-bundling-stage4.md) are implemented in the [staged plan](source-bundling.md).
 
+External paths retain filesystem semantics. Making a path absolute must not cancel
+`..` against a preceding symlink lexically. Pure source resolution preserves parent
+components; worker-side identity checks can resolve existing paths canonically.
+This applies to project opening, import, save and export, including missing output
+leaves. Save retains the captured absolute spelling of external paths when a new
+relative spelling would require parent traversal. It can write a relative external
+reference without parent components only when the requested save base resolves
+to the same source. Existing external relative parent references remain valid. Included-source containment keeps its separate strict validation.
+
 ## Storage model and compatibility
 
 [`SourceStorage`](../../crates/core/src/source_storage.rs) describes ownership independently of `Source.kind` (provenance) and `Source.path_kind` (path representation). `Source.storage` is optional and omitted when absent. The wire values are `external`, `project` and `embedded`.

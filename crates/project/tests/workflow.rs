@@ -433,6 +433,8 @@ fn named_saves_reject_invalid_names_collisions_and_fail_without_changing_session
     assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
     let mut invalid_source = session.clone();
     invalid_source.folder = None;
+    invalid_source.project.assets[0].source.path = "source.wav".into();
+    invalid_source.project.assets[0].source.path_kind = "relative".into();
     let before = serde_json::to_value(&invalid_source.project).unwrap();
     assert!(invalid_source.save_new(&fixture.0, "Failed save").is_err());
     assert!(!fixture.0.join("Failed save").exists());
@@ -1140,7 +1142,7 @@ fn save_reopen_export_repeatability_missing_and_shortened_sources() {
     s.import(&source, None, 480).unwrap();
     let folder = f.0.join("project");
     s.save(&folder).unwrap();
-    assert_eq!(s.project.assets[0].source.path_kind, "relative");
+    assert_eq!(s.source_path(&s.project.assets[0]).unwrap(), source);
     let loaded = Session::open(&folder).unwrap();
     let one = f.0.join("one.wav");
     let two = f.0.join("two.wav");
@@ -5301,4 +5303,42 @@ fn extended_beat_source_preserves_prefix_audio_and_roundtrips_with_its_clip_rang
     let mut reopened = vec![[0.0; 2]; after.len()];
     daw_engine::Renderer::new(loaded.plan()).render_offline(&mut reopened);
     assert_eq!(reopened, after);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_parent_paths_keep_filesystem_meaning_for_open_import_save_and_export() {
+    let fixture = Fixture::new();
+    let chosen = fixture.0.join("chosen");
+    let physical = fixture.0.join("physical");
+    fs::create_dir_all(&chosen).unwrap();
+    fs::create_dir_all(physical.join("child")).unwrap();
+    std::os::unix::fs::symlink(physical.join("child"), chosen.join("link")).unwrap();
+    let source = fixture.wav("sample.wav", 48_000, 2, 16, false);
+    fs::copy(&source, physical.join("sample.wav")).unwrap();
+    fs::write(chosen.join("sample.wav"), b"different invalid source").unwrap();
+    let mut expected = Session::default();
+    expected.import(&source, None, 0).unwrap();
+    expected.save(&physical).unwrap();
+    let mut other = Session::default();
+    other.save(&chosen).unwrap();
+    let requested = chosen.join("link/..");
+    let mut opened = Session::open(&requested).unwrap();
+    assert_eq!(opened.project.project_id, expected.project.project_id);
+    opened
+        .import(&requested.join("sample.wav"), None, 10_000)
+        .unwrap();
+    opened.export(&requested.join("out.wav"), false).unwrap();
+    assert!(physical.join("out.wav").is_file());
+    assert!(!chosen.join("out.wav").exists());
+    opened.project.master.gain_db = -6.0;
+    opened.save(&requested).unwrap();
+    assert_eq!(
+        Session::open(&physical).unwrap().project.master.gain_db,
+        -6.0
+    );
+    assert_eq!(
+        Session::open(&chosen).unwrap().project.project_id,
+        other.project.project_id
+    );
 }

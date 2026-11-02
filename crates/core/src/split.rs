@@ -27,6 +27,10 @@ impl MidiNoteSplit {
     }
 }
 
+// At most 8,192 resulting notes are built synchronously across a split group.
+// Geometry-only splits do not consume this budget.
+const MAX_SPLIT_OCCURRENCES: usize = 4096;
+
 struct Occurrence {
     note: MidiNote,
     start: u64,
@@ -65,14 +69,21 @@ impl Project {
         }
         let mut next = self.clone();
         let mut created = Vec::with_capacity(targets.len());
+        let mut remaining = MAX_SPLIT_OCCURRENCES;
         for clip in &targets {
-            created.push(next.split_one(clip, at, notes)?);
+            created.push(next.split_one(clip, at, notes, &mut remaining)?);
         }
         next.validate()?;
         Ok((next, created))
     }
 
-    fn split_one(&mut self, clip: &Clip, at: u64, notes: MidiNoteSplit) -> Result<Id> {
+    fn split_one(
+        &mut self,
+        clip: &Clip,
+        at: u64,
+        notes: MidiNoteSplit,
+        remaining: &mut usize,
+    ) -> Result<Id> {
         let asset = self
             .assets
             .iter()
@@ -80,14 +91,10 @@ impl Project {
             .cloned()
             .ok_or_else(|| Error("Clip references a missing asset record".into()))?;
         if let Some(pattern) = asset.midi_pattern.clone() {
-            if clip.repeat.is_some()
-                && note_occurrences(self, clip, &pattern)
-                    .iter()
-                    .any(|occurrence| occurrence.start < at && occurrence.end > at)
-            {
+            if clip.repeat.is_some() && crossing_note(self, clip, &pattern, at) {
                 // A loop stores one copy of each note. Unfold the two sides so a
                 // split changes only the occurrence under the playhead.
-                return self.unfold_midi_split(clip, &asset.name, &pattern, at, notes);
+                return self.unfold_midi_split(clip, &asset.name, &pattern, at, notes, remaining);
             }
             let new_id = self.split_geometry(clip, at)?;
             // A non-crossing loop needs only a geometry split. The linear source
@@ -151,8 +158,10 @@ impl Project {
         pattern: &MidiPattern,
         at: u64,
         notes: MidiNoteSplit,
+        remaining: &mut usize,
     ) -> Result<Id> {
-        let occurrences = note_occurrences(self, clip, pattern);
+        let occurrences = note_occurrences(self, clip, pattern, *remaining)?;
+        *remaining -= occurrences.len();
         let new_id = Id::new_v4();
         let left_pattern =
             piece_pattern(self, &occurrences, clip.start_frame, at, at, notes, false)?;
@@ -309,63 +318,101 @@ fn window_patterns(
     )
 }
 
-fn note_occurrences(project: &Project, clip: &Clip, pattern: &MidiPattern) -> Vec<Occurrence> {
-    let base = clip
-        .repeat
-        .map_or(clip.length_frames, |repeat| repeat.length_frames);
-    if base == 0 {
-        return Vec::new();
+/// Source-note bounds within one repeat, in stretched frames relative to its start.
+fn repeat_note_bounds(project: &Project, clip: &Clip, note: &MidiNote) -> Option<(i128, i128)> {
+    let repeat = clip.repeat?;
+    let original_start = project.midi_frame(note.start_tick);
+    let original_end = project.midi_frame(note.start_tick.saturating_add(note.length_ticks));
+    let start = match clip.stretch {
+        Some(stretch) => stretch.scale(original_start)?,
+        None => original_start,
     }
-    let count = clip
+    .max(clip.source_offset_frame);
+    let end = match clip.stretch {
+        Some(stretch) => stretch.scale(original_end)?,
+        None => original_end,
+    }
+    .min(
+        clip.source_offset_frame
+            .saturating_add(repeat.length_frames),
+    );
+    (end > start).then(|| {
+        (
+            i128::from(start - clip.source_offset_frame),
+            i128::from(end - clip.source_offset_frame),
+        )
+    })
+}
+
+fn crossing_note(project: &Project, clip: &Clip, pattern: &MidiPattern, at: u64) -> bool {
+    let Some(repeat) = clip.repeat.filter(|r| r.length_frames > 0) else {
+        return false;
+    };
+    let local = (u128::from(at - clip.start_frame) + u128::from(repeat.phase_frame))
+        % u128::from(repeat.length_frames);
+    pattern.notes.iter().any(|note| {
+        repeat_note_bounds(project, clip, note)
+            .is_some_and(|(start, end)| start < local as i128 && (local as i128) < end)
+    })
+}
+
+fn repetitions(clip: &Clip, start: i128, end: i128) -> std::ops::Range<i128> {
+    let repeat = clip.repeat.expect("only looping notes are unfolded");
+    let base = i128::from(repeat.length_frames);
+    let phase = i128::from(repeat.phase_frame);
+    // Strict intersection with [0, length), including the clipped first repeat.
+    let first = ((phase - end).div_euclid(base) + 1).max(0);
+    let last = (i128::from(clip.length_frames) - 1 + phase - start).div_euclid(base);
+    first..(last + 1).max(first)
+}
+
+fn split_resource_error() -> Error {
+    Error("MIDI split exceeds the 4,096 loop-occurrence budget; shorten the looping clip before splitting".into())
+}
+
+fn note_occurrences(
+    project: &Project,
+    clip: &Clip,
+    pattern: &MidiPattern,
+    budget: usize,
+) -> Result<Vec<Occurrence>> {
+    let repeat = clip
         .repeat
-        .map_or(1, |_| (clip.length_frames / base).saturating_add(2));
-    let phase = clip.repeat.map_or(0, |repeat| repeat.phase_frame);
+        .filter(|r| r.length_frames > 0)
+        .ok_or_else(|| Error("Expected a positive MIDI loop".into()))?;
+    let mut count = 0usize;
+    for note in &pattern.notes {
+        if let Some((start, end)) = repeat_note_bounds(project, clip, note) {
+            let range = repetitions(clip, start, end);
+            let n = usize::try_from(range.end - range.start).map_err(|_| split_resource_error())?;
+            count = count
+                .checked_add(n)
+                .filter(|n| *n <= budget)
+                .ok_or_else(split_resource_error)?;
+        }
+    }
     let mut occurrences = Vec::new();
-    for repetition in 0..count {
-        for note in &pattern.notes {
-            let original_start = project.midi_frame(note.start_tick);
-            let original_end =
-                project.midi_frame(note.start_tick.saturating_add(note.length_ticks));
-            let mut start = clip.stretch.map_or(original_start, |stretch| {
-                stretch.scale(original_start).unwrap_or(0)
-            });
-            let mut end = clip.stretch.map_or(original_end, |stretch| {
-                stretch.scale(original_end).unwrap_or(0)
-            });
-            if let Some(repeat) = clip.repeat {
-                start = start.max(clip.source_offset_frame);
-                end = end.min(
-                    clip.source_offset_frame
-                        .saturating_add(repeat.length_frames),
-                );
-                if end <= start {
-                    continue;
-                }
-            }
-            let local =
-                i128::from(start) - i128::from(clip.source_offset_frame) - i128::from(phase)
-                    + i128::from(repetition) * i128::from(base);
-            let finish = local + i128::from(end.saturating_sub(start));
-            if finish <= 0 || local >= i128::from(clip.length_frames) {
-                continue;
-            }
-            let visible_start = local.max(0) as u64;
-            let visible_end = u64::try_from(finish.min(i128::from(clip.length_frames)))
-                .unwrap_or(clip.length_frames);
-            if visible_end <= visible_start {
-                continue;
-            }
-            let Some(project_end) = clip.start_frame.checked_add(visible_end) else {
-                continue;
-            };
+    occurrences
+        .try_reserve_exact(count)
+        .map_err(|_| split_resource_error())?;
+    for note in &pattern.notes {
+        let Some((start, end)) = repeat_note_bounds(project, clip, note) else {
+            continue;
+        };
+        for repetition in repetitions(clip, start, end) {
+            let shift =
+                repetition * i128::from(repeat.length_frames) - i128::from(repeat.phase_frame);
+            let visible_start = (start + shift).max(0) as u64;
+            let visible_end = (end + shift).min(i128::from(clip.length_frames)) as u64;
             occurrences.push(Occurrence {
                 note: note.clone(),
-                start: clip.start_frame.saturating_add(visible_start),
-                end: project_end,
+                start: clip.start_frame + visible_start,
+                end: clip.start_frame + visible_end,
             });
         }
     }
-    occurrences
+    occurrences.sort_unstable_by_key(|o| (o.start, o.note.start_tick, o.note.pitch, o.note.id));
+    Ok(occurrences)
 }
 
 fn piece_pattern(
@@ -379,6 +426,11 @@ fn piece_pattern(
 ) -> Result<MidiPattern> {
     let mut notes = Vec::new();
     let mut used = HashSet::new();
+    notes
+        .try_reserve_exact(occurrences.len())
+        .map_err(|_| split_resource_error())?;
+    used.try_reserve(occurrences.len())
+        .map_err(|_| split_resource_error())?;
     for occurrence in occurrences {
         let crosses = occurrence.start < at && occurrence.end > at;
         if crosses && mode == MidiNoteSplit::PreserveFirst && right_side {
@@ -813,9 +865,15 @@ mod tests {
                             .as_ref()
                             .unwrap();
                         assert!(
-                            !note_occurrences(&project, &project.tracks[0].clips[0], pattern)
-                                .iter()
-                                .any(|n| n.start < at && at < n.end)
+                            !note_occurrences(
+                                &project,
+                                &project.tracks[0].clips[0],
+                                pattern,
+                                MAX_SPLIT_OCCURRENCES
+                            )
+                            .unwrap()
+                            .iter()
+                            .any(|n| n.start < at && at < n.end)
                         );
                         let mut other = project.tracks[0].clips[0].clone();
                         other.id = Id::new_v4();
@@ -885,6 +943,62 @@ mod tests {
                         .unwrap(),
                     split
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn crossing_predicate_matches_visible_occurrences_at_repeat_edges() {
+        for rate in crate::SAMPLE_RATES {
+            for stretch in [
+                None,
+                Some(crate::ClipStretch::new(1, 2).unwrap()),
+                Some(crate::ClipStretch::new(2, 1).unwrap()),
+            ] {
+                for offset_ticks in [0, 120] {
+                    let (mut project, _, _, _) = midi_project(rate);
+                    let scale = |ticks| {
+                        let frame = project.midi_frame(ticks);
+                        stretch.map_or(frame, |s| s.scale(frame).unwrap())
+                    };
+                    let base = scale(960);
+                    let offset = scale(offset_ticks);
+                    let pattern = project.assets[0].midi_pattern.clone().unwrap();
+                    for phase in [0, base / 2, base - 1] {
+                        let clip = &mut project.tracks[0].clips[0];
+                        clip.start_frame = 111;
+                        clip.source_offset_frame = offset;
+                        clip.length_frames = 3 * base;
+                        clip.repeat = Some(ClipLoop {
+                            length_frames: base,
+                            phase_frame: phase,
+                        });
+                        clip.stretch = stretch;
+                        project.validate().unwrap();
+                        let clip = &project.tracks[0].clips[0];
+                        let occurrences =
+                            note_occurrences(&project, clip, &pattern, MAX_SPLIT_OCCURRENCES)
+                                .unwrap();
+                        for local in [
+                            1,
+                            base / 2 - 1,
+                            base / 2,
+                            base / 2 + 1,
+                            base - 1,
+                            base,
+                            base + 1,
+                            2 * base,
+                            3 * base - 1,
+                        ] {
+                            let at = clip.start_frame + local;
+                            assert_eq!(
+                                crossing_note(&project, clip, &pattern, at),
+                                occurrences.iter().any(|o| o.start < at && at < o.end),
+                                "rate={rate}, phase={phase}, local={local}"
+                            );
+                        }
+                    }
+                }
             }
         }
     }

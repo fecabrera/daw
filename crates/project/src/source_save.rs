@@ -421,14 +421,14 @@ impl SaveSnapshot {
             }
             let path = PathBuf::from(&asset.source.path);
             if let Some(relative) = crate::relative_path(folder, &path).filter(|relative| {
-                // External references may use '..'. Preserve a relative spelling
-                // only when it resolves identically from the retained caller base.
+                // Keep external parent paths in their captured absolute spelling.
+                // Rewriting them relative to a new save root would change pure
+                // history identities or resolve through another symlink.
                 asset.source.kind == "generated"
-                    || crate::relative_path(
-                        &crate::normalize(&requested_folder.join(relative)),
-                        &path,
-                    )
-                    .is_some_and(|difference| difference.as_os_str().is_empty())
+                    || (!relative
+                        .components()
+                        .any(|c| c == std::path::Component::ParentDir)
+                        && crate::same_file(&requested_folder.join(relative), &path))
             }) {
                 asset.source.path = relative.to_string_lossy().into_owned();
                 if asset.source.kind == "generated" {

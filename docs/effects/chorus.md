@@ -25,7 +25,7 @@ Width affects the wet signal only: 0% makes it mono, 100% retains its normal ste
 
 Header power bypasses the complete effect, including Level, while retaining delay and modulation history. Changing controls or rearranging a compatible unit retains that history. Double-click a knob to reset it; hold Shift while dragging for fine adjustment. Collapse and compact views hide the normal controls.
 
-All controls except Voices accept shared Envelope, LFO and Macro modulation through the existing [connection strips](../modulation/README.md). Rate amounts use octaves in both modes and stay within the active mode’s rate range; Delay uses milliseconds; Stereo phase uses degrees; Depth, Feedback, Width and Dry/Wet use percentage points; Level uses dB. Audio tracks and Master have no instrument providers, so their connections can remain unassigned.
+All controls except Rate mode and Voices accept shared Envelope, LFO and Macro modulation through the existing [connection strips](../modulation/README.md). Rate amounts use octaves in both modes and stay within the active mode’s rate range; Delay uses milliseconds; Stereo phase uses degrees; Depth, Feedback, Width and Dry/Wet use percentage points; Level uses dB. Audio tracks and Master have no instrument providers, so their connections can remain unassigned.
 
 Chorus continues processing through timeline gaps. Export ends at the arranged duration and does not append its delay tail. Seeking reconstructs history on a worker; long arrangements can need preparation time. The dry signal has no added delay; the wet delays are part of the effect's sound.
 
