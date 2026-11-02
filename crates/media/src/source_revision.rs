@@ -37,12 +37,14 @@ impl SourceSnapshot {
         }
         let directory =
             std::env::temp_dir().join(format!("daw-encoded-{}", daw_core::Id::new_v4()));
-        let mut builder = fs::DirBuilder::new();
+        let builder = fs::DirBuilder::new();
         #[cfg(unix)]
-        {
+        let builder = {
             use std::os::unix::fs::DirBuilderExt;
+            let mut builder = builder;
             builder.mode(0o700);
-        }
+            builder
+        };
         builder
             .create(&directory)
             .map_err(|e| Error(format!("Cannot stage source: {e}")))?;
