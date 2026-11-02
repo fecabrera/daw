@@ -6,6 +6,28 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Standalone branch review mode — 2026-11-02
+
+The DAW review skill accepts `--mode standalone` for a branch's full committed
+snapshot. It pins only the head, inventories tracked files, and creates no base
+snapshot or diff. Existing defects, code and dependencies remain in scope.
+Comparison mode remains the default. Independent reviewers, separate findings
+validation and severity/coverage gates apply in both modes.
+
+Completed checks:
+
+- `python3 .agents/skills/daw-review/scripts/test_review.py`: 24 passed. New
+  coverage checks a single-commit branch without merge-base/diff operations,
+  excluded dirty/untracked files, fixed snapshots after branch movement,
+  reviewer/adjudicator prompts, report/audit output, active code/dependency
+  coverage gates, invalid mode/base combinations and default comparison behavior.
+- The skill-creator validator passed. CLI help, local Markdown file targets and
+  `git diff --check` passed.
+
+These checks use temporary Git repositories and synthetic reviewer reports.
+They do not constitute a multi-agent branch review. Rust and native application
+checks were not rerun; only review tooling and instructions changed.
+
 ## Layer source replacement and audio-file drops — 2026-11-02
 
 Catalog source additions replace the installed source on a regular instrument

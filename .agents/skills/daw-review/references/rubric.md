@@ -2,6 +2,10 @@
 
 Read this repository's current `AGENTS.md`, the root README, `docs/README.md`, and `specs/README.md`. Read relevant nested instructions and topic specs/guides. Use a feature → requirement → implementation → guide → verification map to check the affected scope. Historical design/validation text can be superseded; separate accepted requirements, proposals, and results.
 
+## Review mode
+
+**Comparison** reviews new, changed and affected behavior between pinned revisions. **Standalone** reviews the full committed branch snapshot without a baseline. In standalone mode, read "changed" or "affected" flow/feature below as every applicable flow/feature present at the pinned head. Inventory the full implementation and docs, include existing defects, and mark unreviewed required areas as limited coverage. Do not infer introduction history from the absence of a diff. Requirement violations need current evidence, not proof that a recent commit caused them.
+
 ## Documentation
 
 | Criterion | Review |
@@ -12,7 +16,7 @@ Read this repository's current `AGENTS.md`, the root README, `docs/README.md`, a
 
 ## Code Quality
 
-Apply this category only when source, scripts, tests or behavior-affecting configuration changes. Otherwise mark all four Code Quality criteria SKIPPED, report no code findings, and omit code audits/source-test execution. Documentation review may still inspect source to verify claims. SKIPPED contributes neither PASS nor FAIL.
+In comparison mode, apply this category only when source, scripts, tests or behavior-affecting configuration changes. In standalone mode, apply it when these inputs exist in the pinned tree. Otherwise mark all four Code Quality criteria SKIPPED, report no code findings, and omit code audits/source-test execution. Documentation review may still inspect source to verify claims. SKIPPED contributes neither PASS nor FAIL.
 
 ### Implementation
 
@@ -45,9 +49,13 @@ Follow the crate responsibilities in AGENTS.md. Applications depend on shared li
 
 ## Dependencies
 
-Apply this category when dependencies or their use, exposure, linkage or delivery change between the pinned revisions. Otherwise record SKIPPED for both dependency criteria; do not run these audits or let missing evidence affect PASS/FAIL. Skipping is a scope decision, not a security or licensing clearance.
+In comparison mode, apply this category when dependencies or their use, exposure, linkage or delivery change between the pinned revisions. In standalone mode, apply it when dependency inputs exist in the pinned tree. Otherwise record SKIPPED for both dependency criteria; do not run these audits or let missing evidence affect PASS/FAIL. Skipping is a scope decision, not a security or licensing clearance.
 
-### Affected dependency scope
+### Standalone dependency scope
+
+Inventory the project's full pinned resolved graph, including transitive, build and Git dependencies, relevant features/targets, native/vendor libraries, bundled resources, notices and deliverables. Existing dependencies are in scope without a change or exposure delta. Apply Vulnerabilities and Licensing below to that set, assessing current exposure and distribution obligations rather than comparing them to a baseline. Record resolution/audit evidence and current primary sources; missing required evidence remains limited coverage. Exclude packages not used or distributed by this project with a concrete reason. Do not apply the comparison exclusions below to skip existing dependencies.
+
+### Affected dependency scope (comparison only)
 
 Build a criterion-specific inventory from the pinned diff and resolved graphs. Include added, removed or updated dependencies and affected transitive packages; changed features, target selection, linkage, native/vendor payloads, build behavior, packaging and notices; and unchanged versions whose use or exposure changes in the PR. Cite the change that affects each package, target and criterion. A new dependency edge includes its relevant transitive closure, even when those versions already exist in Cargo.lock.
 
@@ -57,7 +65,7 @@ Apply findings and coverage gates only to this affected set. Exclude unrelated p
 
 ### Vulnerabilities
 
-Use target `Cargo.toml`/`Cargo.lock`, resolved transitive packages, native/static libraries, build dependencies, Git sources/revisions, platform/feature gates and packaged code to identify the affected vulnerability scope. Compare baseline and target exposure for that set; label newly introduced, worsened and pre-existing exposure only where the PR affects it. Do not install/upgrade tools or change dependencies as part of review.
+Use target `Cargo.toml`/`Cargo.lock`, resolved transitive packages, native/static libraries, build dependencies, Git sources/revisions, platform/feature gates and packaged code to identify the mode's vulnerability scope. In comparison mode, compare baseline and target exposure for that set; label newly introduced, worsened and pre-existing exposure only where the PR affects it. In standalone mode, assess current exposure across the pinned project without baseline attribution. Do not install/upgrade tools or change dependencies as part of review.
 
 Use available audit tools and current primary advisories (RustSec, upstream advisories, OSV/GHSA records) and record database/source date, package, exact locked version, advisory ID, affected/fixed range, platform/features, and applicability. Validate findings against primary sources rather than relying on memory or a tool exit code. Record stale/offline databases and unresolved graphs as limited coverage. No database hit does not prove absence of vulnerabilities. Missing advisory access is not itself a package vulnerability.
 
@@ -76,4 +84,4 @@ Read project `LICENSE` and the license expressions/text/exceptions, vendored/nat
 | minor | A real localized issue with limited impact or a practical workaround; a nonblocking documentation, maintainability, or performance defect with demonstrated consequences. |
 | nit | A small style, wording, or consistency issue with no material functional impact. |
 
-Use the highest supported impact, not the most alarming possible outcome. Speculation is a limitation or investigation note. Each finding needs one root cause, category/subcategory, exact evidence, trigger/impact, and a feasible suggestion. Group duplicate symptoms; separate distinct root causes. Preserve pre-existing/new provenance in the description. A finding can be valid even if only one reviewer found it.
+Use the highest supported impact, not the most alarming possible outcome. Speculation is a limitation or investigation note. Each finding needs one root cause, category/subcategory, exact evidence, trigger/impact, and a feasible suggestion. Group duplicate symptoms; separate distinct root causes. Preserve supported pre-existing/new provenance in comparison reviews; standalone reviews need not establish introduction history. A finding can be valid even if only one reviewer found it.

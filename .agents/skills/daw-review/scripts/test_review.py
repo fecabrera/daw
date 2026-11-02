@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Contract tests for review artifacts, not tests of model wording."""
 from copy import deepcopy
+from contextlib import redirect_stdout
 import importlib.util
 import io
 import json
@@ -259,6 +260,27 @@ class Reports(unittest.TestCase):
             with self.assertRaises(ValueError):
                 review.read_json(path)
 
+    def test_standalone_scope_includes_existing_code_and_dependencies(self):
+        self.run.update({"mode": "standalone", "base_sha": None, "merge_base": None,
+                         "changed_files": None, "tracked_files": ["Cargo.toml", "Cargo.lock", "crates/ui/src/lib.rs", "docs/guide.md"]})
+        self.assertTrue(review.code_scope(self.run)["changed"])
+        self.assertTrue(review.dependency_scope(self.run)["changed"])
+        entry = report(findings=[finding(), finding("F02", "deps")])
+        review.validate_reviewer(entry, self.run)
+        for key in ("code.implementation", "deps.vulnerabilities"):
+            with self.subTest(key=key):
+                invalid = deepcopy(entry)
+                invalid["coverage"][key]["status"] = "skipped"
+                with self.assertRaises(ValueError):
+                    review.validate_reviewer(invalid, self.run)
+                final = adjudication()
+                final["coverage"][key] = {"status": "limited", "evidence": ["Inspected snapshot."], "limits": ["Required area not verified."]}
+                self.assertEqual(review.summary([], final, self.run)["total"]["status"], "FAIL")
+        for category in ("code", "deps"):
+            scope = review.code_scope if category == "code" else review.dependency_scope
+            self.assertTrue(scope({"mode": "standalone"})["changed"])
+            self.assertFalse(scope({"mode": "standalone", "tracked_files": ["docs/guide.md"]})["changed"])
+
 
 class Snapshots(unittest.TestCase):
     def make_repo(self, root):
@@ -275,6 +297,104 @@ class Snapshots(unittest.TestCase):
         review.git(root, "add", ".")
         review.git(root, "commit", "-qm", "base")
         return review.commit(root, "HEAD")
+
+    def test_standalone_single_commit_snapshot_prompts_and_report_without_base(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            self.make_repo(repo)
+            (repo / "crates/ui/lib.rs").write_text("pub fn existing_feature() {}\n")
+            review.git(repo, "add", ".")
+            # Keep one root commit: there is no earlier revision to compare.
+            review.git(repo, "commit", "--amend", "--no-edit", "-q")
+            review.git(repo, "branch", "standalone-target")
+            head = review.commit(repo, "standalone-target")
+            (repo / "crates/ui/lib.rs").write_text("uncommitted private source\n")
+            (repo / "untracked.txt").write_text("private data\n")
+            before = review.git(repo, "status", "--porcelain")
+            args = SimpleNamespace(repo=repo, out=root / "run", reviewers=2, config=None, base=None,
+                                   head="standalone-target", type="branch", target="standalone-target", mode="standalone")
+            with patch.object(review, "git", wraps=review.git) as calls:
+                review.prepare(args)
+                operations = [call.args[1] for call in calls.call_args_list]
+                self.assertNotIn("merge-base", operations)
+                self.assertNotIn("diff", operations)
+            self.assertEqual(review.git(repo, "status", "--porcelain"), before)
+            run = review.load_run(args.out)[1]
+            self.assertEqual(run["mode"], "standalone")
+            self.assertEqual(run["head_sha"], head)
+            self.assertTrue(run["excluded_working_tree_changes"])
+            for key in ("base_ref", "base_sha", "merge_base", "changed_files"):
+                self.assertIsNone(run[key])
+            self.assertIn("crates/ui/lib.rs", run["tracked_files"])
+            self.assertNotIn("untracked.txt", run["tracked_files"])
+            self.assertEqual((args.out / "head/crates/ui/lib.rs").read_text(), "pub fn existing_feature() {}\n")
+            self.assertFalse((args.out / "base").exists())
+            self.assertFalse((args.out / "diff.patch").exists())
+            self.assertTrue(run["code_scope"]["changed"])
+            self.assertTrue(run["dependency_scope"]["changed"])
+            # Moving the branch later cannot change the pinned review.
+            review.git(repo, "add", "crates/ui/lib.rs")
+            review.git(repo, "commit", "-qm", "later branch commit")
+            review.git(repo, "branch", "-f", "standalone-target", "HEAD")
+            for configured in run["reviewers"]:
+                entry = report(configured["id"])
+                entry["head_sha"] = head
+                review.write_json(args.out / f"reports/{configured['id']}.json", entry)
+            for reviewer, adjudicator in [("reviewer-1", False), (None, True)]:
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    review.prompt(SimpleNamespace(run=args.out, reviewer=reviewer, adjudicator=adjudicator))
+                task = json.loads(output.getvalue()[output.getvalue().index("{\n"):])
+                self.assertEqual(task["head_sha"], head)
+                self.assertEqual(task["tracked_files"], run["tracked_files"])
+                self.assertEqual(task["skipped_categories"], [])
+                for key in ("base_sha", "merge_base", "base_snapshot", "diff", "changed_files"):
+                    self.assertNotIn(key, task)
+            final = adjudication()
+            final["head_sha"] = head
+            # A supported existing defect counts without any baseline attribution.
+            existing = finding("F001", "docs", "major")
+            existing["description"] = "The pinned guide contradicts the accepted requirement. Introduction history is not assessed."
+            final["additional_findings"] = [existing]
+            review.write_json(args.out / "adjudication.json", final)
+            review.render(SimpleNamespace(run=args.out, adjudication=args.out / "adjudication.json", coordinator_model="not exposed"))
+            text = (args.out / "report.md").read_text()
+            self.assertIn("**Mode:** standalone", text)
+            self.assertIn(f"**Revision:** `{head}`", text)
+            self.assertNotIn("**Revisions:**", text)
+            self.assertNotIn("`None`", text)
+            audit = review.read_json(args.out / "audit.json")
+            self.assertEqual(audit["summary"]["total"]["status"], "FAIL")
+            self.assertEqual(audit["summary"]["total"]["major"], 1)
+            self.assertEqual(audit["run"]["mode"], "standalone")
+
+    def test_cli_rejects_base_for_standalone_and_requires_it_for_comparison(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            self.make_repo(repo)
+            common = [sys.executable, str(Path(review.__file__)), "prepare", "--repo", str(repo),
+                      "--target", "HEAD", "--head", "HEAD", "--reviewers", "1", "--out", str(root / "run")]
+            for options in (["--type", "branch"], ["--type", "branch", "--mode", "standalone", "--base", "HEAD"],
+                            ["--type", "pr", "--mode", "standalone"]):
+                with self.subTest(options=options):
+                    result = subprocess.run([*common, *options], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertFalse((root / "run").exists())
+            result = subprocess.run([*common, "--type", "branch", "--mode", "standalone"], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(review.load_run(root / "run")[1]["mode"], "standalone")
+            comparison = [str(root / "comparison") if item == str(root / "run") else item for item in common]
+            result = subprocess.run([*comparison, "--type", "branch", "--base", "HEAD"], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            run = review.load_run(root / "comparison")[1]
+            self.assertEqual(run["mode"], "comparison")
+            self.assertEqual(run["changed_files"], [])
+            self.assertFalse(run["code_scope"]["changed"])
+            self.assertFalse(run["dependency_scope"]["changed"])
+            self.assertTrue((root / "comparison/base").is_dir())
+            self.assertTrue((root / "comparison/diff.patch").is_file())
 
     def test_freezes_commits_excludes_dirty_data_and_preserves_working_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
