@@ -4352,6 +4352,19 @@ impl DawUi {
                             }
                         }
                     }
+                    if ui.is_enabled()
+                        && self.editing_enabled()
+                        && self.track_drag.is_none()
+                        && ui.rect_contains_pointer(inner.response.rect)
+                        && ui.input(|input| {
+                            input.focused
+                                && input.pointer.button_clicked(egui::PointerButton::Primary)
+                                && !input.modifiers.shift
+                                && !input.modifiers.command
+                        })
+                    {
+                        self.select_track(track.id, false);
+                    }
                     outlines.push((track.id, inner.response.rect));
                     let context_click = ui.is_enabled()
                         && self.editing_enabled()

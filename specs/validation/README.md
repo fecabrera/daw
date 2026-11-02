@@ -4,6 +4,33 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+
+## Main track selection and preview review corrections — 2026-11-02
+
+The review of `4c45133` against `origin/main` confirmed two major findings.
+Stationary plain Timeline clicks now replace the selected track group on release;
+selected-group drags retain the group. The new egui regression checks the name
+click and the scope of the next Mute action. Its original coordinate hit Mute;
+the test now targets the name and passes.
+
+Track move previews use linear preorder membership and lightweight topology
+layouts. Eligibility and no-op checks do not copy or validate unrelated project
+content. Full candidate validation remains part of the atomic release edit.
+The core regression covers a 1,024-track selection and retained ordering.
+
+Validation on macOS:
+
+- The locked offline workspace run passed all suites before UI, then stopped at
+  the new regression's incorrect control coordinate. After correcting the test,
+  the complete UI suite and remaining workspace packages (`daw-unit-core`,
+  `daw-unit-ui`, `timestretch`, `timestretch-cli`) passed.
+- All locked offline workspace doctests passed.
+- Strict locked offline workspace/all-target Clippy, formatting and diff checks
+  passed. The debug macOS app was rebuilt with `tools/package_macos.sh debug`.
+
+Native UI/device, listening and Windows/Linux checks were not run. Logs are in
+`work/reviews/main-fix-{workspace,remaining,doctests,clippy,package}.log`.
+
 ## Beat staged preview and row-index corrections — 2026-11-01
 
 Both minor findings against `cdb71f7` are corrected. The shared prepared clip

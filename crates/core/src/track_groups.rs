@@ -144,17 +144,22 @@ impl Project {
     }
     /// Filter a selection to subtree roots so a child cannot be edited twice.
     pub fn track_selection_roots(&self, selection: &[Id]) -> Vec<Id> {
-        self.tracks
-            .iter()
-            .filter(|t| {
-                selection.contains(&t.id)
-                    && !selection
-                        .iter()
-                        .any(|id| self.track_is_descendant(t.id, *id))
-            })
-            .map(|t| t.id)
-            .collect()
+        let selected: HashSet<_> = selection.iter().copied().collect();
+        let mut included = HashMap::new();
+        let mut roots = Vec::new();
+        for track in &self.tracks {
+            let inherited = track
+                .group_id
+                .is_some_and(|id| *included.get(&id).unwrap_or(&false));
+            let own = selected.contains(&track.id);
+            if own && !inherited {
+                roots.push(track.id);
+            }
+            included.insert(track.id, own || inherited);
+        }
+        roots
     }
+
     /// Local bus gates. A soloed descendant opens its ancestor path; a group's
     /// own solo does not override a child's mute or an explicit sibling solo.
     pub fn track_mix_audible(&self) -> Vec<bool> {
@@ -314,55 +319,104 @@ impl Project {
     }
     /// Indices of complete selected subtrees, in project order.
     pub fn moving_track_indices(&self, selection: &[Id]) -> Vec<usize> {
-        let roots = self.track_selection_roots(selection);
-        (0..self.tracks.len())
-            .filter(|&i| {
-                roots.iter().any(|id| {
-                    self.tracks[i].id == *id || self.track_is_descendant(self.tracks[i].id, *id)
-                })
-            })
-            .collect()
+        let selected: HashSet<_> = selection.iter().copied().collect();
+        let mut included = HashMap::new();
+        let mut indices = Vec::new();
+        for (index, track) in self.tracks.iter().enumerate() {
+            let moving = selected.contains(&track.id)
+                || track
+                    .group_id
+                    .is_some_and(|id| *included.get(&id).unwrap_or(&false));
+            included.insert(track.id, moving);
+            if moving {
+                indices.push(index);
+            }
+        }
+        indices
     }
     pub fn can_move_tracks(&self, selection: &[Id], parent: Option<Id>, index: usize) -> bool {
-        self.moved_tracks(selection, parent, index).is_ok()
+        self.track_move_layout(selection, parent, index).is_ok()
     }
-    /// Index is measured after removing all selected subtrees.
-    pub fn moved_tracks(&self, selection: &[Id], parent: Option<Id>, index: usize) -> Result<Self> {
-        if selection.is_empty()
-            || selection
-                .iter()
-                .any(|id| !self.tracks.iter().any(|t| t.id == *id))
-        {
+    /// Lightweight preview: original row indices and destination parents only.
+    /// The project is in validated preorder; audio and instrument content is never copied.
+    pub fn track_move_layout(
+        &self,
+        selection: &[Id],
+        parent: Option<Id>,
+        index: usize,
+    ) -> Result<Vec<(usize, Option<Id>)>> {
+        let ids: HashSet<_> = self.tracks.iter().map(|t| t.id).collect();
+        if selection.is_empty() || selection.iter().any(|id| !ids.contains(id)) {
             return Err(Error("Select tracks to move".into()));
         }
-        let roots = self.track_selection_roots(selection);
-        let moved = self.moving_track_indices(selection);
+        let roots: HashSet<_> = self.track_selection_roots(selection).into_iter().collect();
+        let moved: HashSet<_> = self.moving_track_indices(selection).into_iter().collect();
         if index > self.tracks.len() - moved.len()
             || parent.is_some_and(|id| {
-                moved.iter().any(|&i| self.tracks[i].id == id)
-                    || !self
-                        .tracks
-                        .iter()
-                        .any(|t| t.id == id && t.kind == TrackKind::Group)
+                !self
+                    .tracks
+                    .iter()
+                    .enumerate()
+                    .any(|(i, t)| t.id == id && t.kind == TrackKind::Group && !moved.contains(&i))
             })
         {
             return Err(Error("Invalid group or track drop position".into()));
         }
-        let mut next = self.clone();
         let mut children = Vec::new();
         let mut remaining = Vec::new();
-        for (i, mut track) in next.tracks.into_iter().enumerate() {
+        for (i, track) in self.tracks.iter().enumerate() {
             if moved.contains(&i) {
-                if roots.contains(&track.id) {
-                    track.group_id = parent;
-                }
-                children.push(track);
+                children.push((
+                    i,
+                    if roots.contains(&track.id) {
+                        parent
+                    } else {
+                        track.group_id
+                    },
+                ));
             } else {
-                remaining.push(track);
+                remaining.push((i, track.group_id));
             }
         }
         remaining.splice(index..index, children);
-        next.tracks = remaining;
+        // Check contiguous parent-before-child order using topology alone.
+        let mut path = Vec::new();
+        let mut active = HashSet::new();
+        for &(i, parent) in &remaining {
+            if let Some(parent) = parent {
+                if !active.contains(&parent) {
+                    return Err(Error("Invalid group or track drop position".into()));
+                }
+                while path.last() != Some(&parent) {
+                    active.remove(&path.pop().unwrap());
+                }
+            } else {
+                path.clear();
+                active.clear();
+            }
+            if self.tracks[i].kind == TrackKind::Group {
+                path.push(self.tracks[i].id);
+                active.insert(self.tracks[i].id);
+            }
+        }
+        Ok(remaining)
+    }
+    /// Index is measured after removing all selected subtrees.
+    pub fn moved_tracks(&self, selection: &[Id], parent: Option<Id>, index: usize) -> Result<Self> {
+        let layout = self.track_move_layout(selection, parent, index)?;
+        let mut next = self.clone();
+        let mut tracks: Vec<_> = std::mem::take(&mut next.tracks)
+            .into_iter()
+            .map(Some)
+            .collect();
+        next.tracks = layout
+            .into_iter()
+            .map(|(i, parent)| {
+                let mut track = tracks[i].take().unwrap();
+                track.group_id = parent;
+                track
+            })
+            .collect();
         next.validate()?;
         Ok(next)
     }

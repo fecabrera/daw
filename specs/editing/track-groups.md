@@ -76,3 +76,10 @@ See [validation history](../validation/README.md) for executed checks and platfo
 Instrument and Editor support project-track reorder and group membership through the [shared browser contract](../views/instrument-tracks.md#reordering-and-group-membership). Move complete group subtrees through the core transaction. Beat subtracks are virtual browser children, not project groups; their drags remain inside the original beat parent.
 
 Dragging a selected project track moves all selected tracks in project order. Selected groups include their complete subtrees; selected descendants move once. Drop in the middle of an existing group row to add the selection to that group, including collapsed groups. Edge drops reorder the selection. The move commits as one undoable transaction on release.
+
+Move previews use `Project::track_move_layout`: one preorder membership pass and
+lightweight index/parent ordering, without copying or validating clips, assets or
+processing graphs. Both drag surfaces use this topology for eligibility and no-op
+detection. `moved_tracks` constructs and validates the full project only for the
+release transaction. A stationary plain Timeline click replaces the selection;
+arming a drag retains the group until the gesture is resolved.

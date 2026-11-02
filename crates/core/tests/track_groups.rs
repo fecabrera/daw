@@ -271,3 +271,26 @@ fn moving_selected_tracks_preserves_order_and_rejects_cycles_atomically() {
         [ids[2], bus, ids[1], ids[0], ids[3]]
     );
 }
+
+#[test]
+fn large_selection_preview_retains_project_order() {
+    let mut project = Project::default();
+    let id = project.add_track().unwrap();
+    let track = project.tracks[0].clone();
+    project.tracks = (0..1024)
+        .map(|_| {
+            let mut t = track.clone();
+            t.id = Id::new_v4();
+            t
+        })
+        .collect();
+    project.validate().unwrap();
+    let selection: Vec<_> = project.tracks[..512].iter().map(|t| t.id).collect();
+    let layout = project.track_move_layout(&selection, None, 512).unwrap();
+    assert_eq!(
+        layout.iter().map(|(i, _)| *i).collect::<Vec<_>>(),
+        (512..1024).chain(0..512).collect::<Vec<_>>()
+    );
+    assert!(project.track_move_layout(&[id], None, 0).is_err());
+    assert_eq!(project.tracks[0].id, selection[0]);
+}

@@ -1598,3 +1598,49 @@ fn upper_toolbar_panels_remain_independent_across_all_views() {
     assert_eq!(app.session.project, original);
     assert!(!app.dirty);
 }
+
+#[test]
+fn plain_timeline_click_replaces_selected_group_before_track_actions() {
+    let (mut app, ctx, [a, b, _, _, _, _]) = fixture();
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    app.select_track(a, false);
+    app.select_track(b, true);
+    frame(&mut app, &ctx, vec![]);
+    let point = Pos2::new(
+        app.timeline_bounds.left() - TRACK_WIDTH + 60.0,
+        app.lane_bounds[&b].top() + 18.0,
+    );
+    click(&mut app, &ctx, point);
+    assert_eq!(app.selected_track, Some(b));
+    assert_eq!(app.selected_tracks, [b].into());
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.selected_tracks, [b].into());
+    assert!(app.track_action_enabled(TrackAction::Mute, &ctx));
+    assert!(!ctx.input(|input| input.pointer.any_down()));
+    assert_eq!(app.view_mode, ViewMode::Timeline);
+    app.perform_track_action(TrackAction::Mute, &ctx);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while app.job.is_some() {
+        assert!(std::time::Instant::now() < deadline);
+        app.poll();
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert!(
+        !app.session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == a)
+            .unwrap()
+            .muted
+    );
+    assert!(
+        app.session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == b)
+            .unwrap()
+            .muted
+    );
+}

@@ -126,16 +126,18 @@ impl DawUi {
     pub(super) fn track_move_changed(&self, ids: &[Id], parent: Option<Id>, index: usize) -> bool {
         self.session
             .project
-            .moved_tracks(ids, parent, index)
-            .is_ok_and(|next| {
-                next.tracks.iter().map(|t| (t.id, t.group_id)).ne(self
-                    .session
-                    .project
-                    .tracks
+            .track_move_layout(ids, parent, index)
+            .is_ok_and(|layout| {
+                layout
                     .iter()
-                    .map(|t| (t.id, t.group_id)))
+                    .enumerate()
+                    .any(|(position, &(original, parent))| {
+                        position != original
+                            || self.session.project.tracks[original].group_id != parent
+                    })
             })
     }
+
     pub(super) fn track_drop_target(
         &self,
         id: Id,
