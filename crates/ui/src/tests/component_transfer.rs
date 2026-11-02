@@ -26,7 +26,7 @@ fn setup(theme: settings::ColorTheme, compact: bool) -> (DawUi, egui::Context, [
         },
     );
     app.set_view_mode(ViewMode::Instrument, &ctx);
-    app.timeline_catalog_visible = false;
+    app.set_effects_catalog_visible(false);
     app.timeline_effects_visible = false;
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;

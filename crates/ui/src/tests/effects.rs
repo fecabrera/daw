@@ -4011,7 +4011,7 @@ fn selecting_master_shows_its_independent_chain_and_restores_track_effects_in_th
 }
 
 #[test]
-fn instrument_reuses_the_effects_toolbar_catalog_and_lane_with_shared_visibility() {
+fn instrument_has_independent_catalog_and_shared_effects_lane_visibility() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let mut app = DawUi::default();
         app.effects_catalog.expand_folders();
@@ -4065,7 +4065,7 @@ fn instrument_reuses_the_effects_toolbar_catalog_and_lane_with_shared_visibility
         assert!(app.effects_bounds.chain.is_empty());
         app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
-        assert!(!app.timeline_catalog_visible && !app.timeline_effects_visible);
+        assert!(app.timeline_catalog_visible && !app.timeline_effects_visible);
         app.set_view_mode(ViewMode::Instrument, &ctx);
         frame(&mut app, &ctx, vec![]);
         click(&mut app, &ctx, library);
@@ -4168,7 +4168,7 @@ fn effects_lane_toolbar_stays_pinned_and_edits_saved_compact_state() {
             let library = app.effects_bounds.library_toggle.center();
             click(&mut app, &ctx, library);
             frame(&mut app, &ctx, vec![]);
-            assert!(!app.timeline_catalog_visible);
+            assert!(!app.effects_catalog_visible());
             let toggle = app.effects_bounds.lane_compact.center();
             click(&mut app, &ctx, toggle);
             assert!(app.effect_chain(owner).unwrap().1);

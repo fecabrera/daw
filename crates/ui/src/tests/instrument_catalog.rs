@@ -208,7 +208,7 @@ pub(super) fn add_component(app: &mut DawUi, ctx: &egui::Context, layer: Id, ind
         click(app, ctx, point, false);
     }
     let was_open = app.instrument_catalog_visible;
-    let effects_was_open = app.timeline_catalog_visible;
+    let effects_was_open = app.instrument_effects_catalog_visible;
     if !was_open {
         open(app, ctx);
     }
@@ -248,7 +248,7 @@ fn instrument_catalog_is_exclusive_and_reuses_the_control_panel_in_both_themes()
             7.0
         );
         open(&mut app, &ctx);
-        assert!(!app.timeline_catalog_visible);
+        assert!(!app.instrument_effects_catalog_visible);
         assert_eq!(app.effects_bounds.library, Rect::NOTHING);
         assert_eq!(app.instrument_catalog_bounds.library, effects);
         assert_eq!(
@@ -257,13 +257,13 @@ fn instrument_catalog_is_exclusive_and_reuses_the_control_panel_in_both_themes()
         );
         let point = app.effects_bounds.library_toggle.center();
         click(&mut app, &ctx, point, false);
-        assert!(app.timeline_catalog_visible);
+        assert!(app.instrument_effects_catalog_visible);
         assert!(!app.instrument_catalog_visible);
         assert_eq!(app.instrument_catalog_bounds.library, Rect::NOTHING);
         open(&mut app, &ctx);
         let point = app.instrument_catalog_bounds.toggle.center();
         click(&mut app, &ctx, point, false);
-        assert!(!app.instrument_catalog_visible && !app.timeline_catalog_visible);
+        assert!(!app.instrument_catalog_visible && !app.instrument_effects_catalog_visible);
         assert_eq!(
             app.midi_editor.instrument_header_bounds.left(),
             app.effects_bounds.toolbar.right()

@@ -133,6 +133,7 @@ pub(super) struct Visibility {
 impl DawUi {
     pub(super) fn effects_catalog_visible(&self) -> bool {
         match self.view_mode {
+            ViewMode::Instrument => self.instrument_effects_catalog_visible,
             ViewMode::Edit => self.editor_effects.catalog,
             ViewMode::Mixer => self.mixer_effects.catalog,
             _ => self.timeline_catalog_visible,
@@ -141,6 +142,7 @@ impl DawUi {
 
     pub(super) fn set_effects_catalog_visible(&mut self, visible: bool) {
         match self.view_mode {
+            ViewMode::Instrument => self.instrument_effects_catalog_visible = visible,
             ViewMode::Edit => self.editor_effects.catalog = visible,
             ViewMode::Mixer => self.mixer_effects.catalog = visible,
             _ => self.timeline_catalog_visible = visible,
@@ -172,10 +174,10 @@ impl DawUi {
     }
 
     pub(super) fn set_chords_visible(&mut self, visible: bool) {
-        if self.view_mode == ViewMode::Edit {
-            self.editor_effects.chords = visible;
-        } else {
-            self.chords.visible = visible;
+        match self.view_mode {
+            ViewMode::Edit => self.editor_effects.chords = visible,
+            ViewMode::Timeline => self.chords.visible = visible,
+            _ => {}
         }
     }
 

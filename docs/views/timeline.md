@@ -145,3 +145,5 @@ two channels are unsupported. A rejected import leaves the arrangement intact.
 MP3 encoder delay and padding are removed when the file provides that information.
 AAC files can retain encoder padding, so their clip length can be slightly longer
 than the original uncompressed recording.
+
+Each view retains its own upper left toolbar panel choice for the app session. Opening a panel closes the other upper panels in that view. Switching views restores that view's choice, including a closed panel. The left toolbar stays available when its panels are closed.

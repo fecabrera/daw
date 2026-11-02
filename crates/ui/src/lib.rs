@@ -783,6 +783,7 @@ pub struct DawUi {
     instrument_catalog_bounds: instrument_catalog::Bounds,
     master_selected: bool,
     timeline_catalog_visible: bool,
+    instrument_effects_catalog_visible: bool,
     editor_effects: effects_panel::Visibility,
     mixer_effects: effects_panel::Visibility,
     clip_settings_visible: bool,
@@ -905,6 +906,7 @@ impl Default for DawUi {
             #[cfg(test)]
             instrument_catalog_bounds: Default::default(),
             timeline_catalog_visible: true,
+            instrument_effects_catalog_visible: true,
             editor_effects: Default::default(),
             mixer_effects: Default::default(),
             clip_settings_visible: false,
@@ -3111,7 +3113,9 @@ impl DawUi {
         if toggles.tracks.as_ref().is_some_and(|r| r.clicked()) {
             self.set_tracks_panel_visible(!self.tracks_panel_visible());
             if self.tracks_panel_visible() {
-                self.instrument_catalog_visible = false;
+                if self.view_mode == ViewMode::Instrument {
+                    self.instrument_catalog_visible = false;
+                }
                 self.instrument_catalog.clear();
                 self.set_effects_catalog_visible(false);
                 self.effects_catalog.clear();
@@ -3137,7 +3141,9 @@ impl DawUi {
                 self.set_tracks_panel_visible(false);
                 self.set_chords_visible(false);
                 self.chords.catalog.clear();
-                self.instrument_catalog_visible = false;
+                if self.view_mode == ViewMode::Instrument {
+                    self.instrument_catalog_visible = false;
+                }
                 self.instrument_catalog.clear();
             }
             ui.ctx().request_repaint();

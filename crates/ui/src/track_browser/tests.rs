@@ -1551,3 +1551,50 @@ fn beat_reorder_ignores_other_button_releases_in_both_panes() {
         }
     }
 }
+
+#[test]
+fn upper_toolbar_panels_remain_independent_across_all_views() {
+    let (mut app, ctx, _) = fixture();
+    let original = app.session.project.clone();
+    frame(&mut app, &ctx, vec![]);
+    let components = app.instrument_catalog_bounds.toggle.center();
+    click(&mut app, &ctx, components);
+    for view in [ViewMode::Timeline, ViewMode::Edit, ViewMode::Mixer] {
+        app.set_view_mode(view, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        // Open Effects, then close it. Neither action changes Instrument.
+        if !app.effects_catalog_visible() {
+            let effects = app.effects_bounds.library_toggle.center();
+            click(&mut app, &ctx, effects);
+        }
+        let effects = app.effects_bounds.library_toggle.center();
+        click(&mut app, &ctx, effects);
+        assert!(app.instrument_catalog_visible);
+        assert!(!app.effects_catalog_visible());
+        if view != ViewMode::Mixer {
+            let chords = app.chords.bounds.toggle.center();
+            click(&mut app, &ctx, chords);
+            assert!(app.chords_visible());
+        }
+    }
+    for view in [
+        ViewMode::Timeline,
+        ViewMode::Edit,
+        ViewMode::Instrument,
+        ViewMode::Mixer,
+    ] {
+        app.set_view_mode(view, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.effects_bounds.toolbar.is_positive());
+        assert!(!app.effects_catalog_visible());
+        if view == ViewMode::Instrument {
+            assert!(app.instrument_catalog_visible);
+            assert!(app.instrument_catalog_bounds.library.is_positive());
+            assert!(!app.tracks_panel_visible());
+        } else if view != ViewMode::Mixer {
+            assert!(app.chords_visible());
+        }
+    }
+    assert_eq!(app.session.project, original);
+    assert!(!app.dirty);
+}
