@@ -1,6 +1,11 @@
     use super::*;
     use egui::{Event, Modifiers, PointerButton, Pos2, Rect, Vec2};
-    fn frame(ctx: &egui::Context, editor: &mut Editor, events: Vec<Event>, focused: bool) {
+    fn frame(
+        ctx: &egui::Context,
+        editor: &mut Editor,
+        events: Vec<Event>,
+        focused: bool,
+    ) -> Vec<egui::epaint::ClippedShape> {
         let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(
@@ -14,6 +19,7 @@
             |ui| editor.show(ui),
         );
         output.textures_delta.clear();
+        output.shapes
     }
     fn pointer(p: Pos2, pressed: bool) -> Event {
         Event::PointerButton {
@@ -174,7 +180,44 @@
         model.publish(state);
         for (slot, p) in Parameter::ALL[1..].iter().copied().enumerate() {
             frame(&ctx, &mut editor, vec![], true);
-            drag(&ctx, &mut editor, slot, true);
+            if p == Parameter::Clip {
+                let shapes = frame(&ctx, &mut editor, vec![], true);
+                let pos = shapes
+                    .iter()
+                    .find_map(|s| match &s.shape {
+                        egui::Shape::Text(t) if t.galley.text() == "Soft" => {
+                            Some(t.pos + t.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .expect("Clip dropdown");
+                frame(
+                    &ctx,
+                    &mut editor,
+                    vec![Event::PointerMoved(pos), pointer(pos, true)],
+                    true,
+                );
+                frame(&ctx, &mut editor, vec![pointer(pos, false)], true);
+                let shapes = frame(&ctx, &mut editor, vec![], true);
+                let pos = shapes
+                    .iter()
+                    .find_map(|s| match &s.shape {
+                        egui::Shape::Text(t) if t.galley.text() == "Tube" => {
+                            Some(t.pos + t.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .expect("Tube dropdown item");
+                frame(
+                    &ctx,
+                    &mut editor,
+                    vec![Event::PointerMoved(pos), pointer(pos, true)],
+                    true,
+                );
+                frame(&ctx, &mut editor, vec![pointer(pos, false)], true);
+            } else {
+                drag(&ctx, &mut editor, slot, true);
+            }
             let edits = events(&model);
             assert_eq!(edits.first(), Some(&Edit::Begin(p)), "{p:?}: {edits:?}");
             assert!(edits.iter().any(|e| matches!(e,Edit::Value(q,_)if *q==p)));

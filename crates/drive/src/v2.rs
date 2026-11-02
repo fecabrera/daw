@@ -15,6 +15,7 @@ pub struct DriveV2 {
     blend: Ramp,
     bypass: Ramp,
     hard: Ramp,
+    tube: Ramp,
     external: ModulationSmoother<3>,
     frames: u32,
     effective: [f32; 7],
@@ -67,6 +68,7 @@ impl DriveV2 {
             level: Ramp::new(amplitude(s.level_db)),
             blend: Ramp::new(s.dry_wet),
             bypass: Ramp::new(f32::from(s.enabled)),
+            tube: Ramp::new(f32::from(s.clip == DriveV2Clip::Tube)),
             hard: Ramp::new(f32::from(s.clip == DriveV2Clip::Hard)),
             external: ModulationSmoother::new(context),
             frames: (context.sample_rate_hz / 200).max(1),
@@ -89,13 +91,14 @@ impl DriveV2 {
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
         self.monitor.attach_peak(meter);
     }
-    fn ramps(&mut self) -> [&mut Ramp; 5] {
+    fn ramps(&mut self) -> [&mut Ramp; 6] {
         [
             &mut self.input,
             &mut self.level,
             &mut self.blend,
             &mut self.bypass,
             &mut self.hard,
+            &mut self.tube,
         ]
     }
 
@@ -107,6 +110,8 @@ impl DriveV2 {
         self.level.retarget(amplitude(s.level_db), self.frames);
         self.blend.retarget(s.dry_wet, self.frames);
         self.bypass.retarget(f32::from(s.enabled), self.frames);
+        self.tube
+            .retarget(f32::from(s.clip == DriveV2Clip::Tube), self.frames);
         self.hard
             .retarget(f32::from(s.clip == DriveV2Clip::Hard), self.frames);
     }
@@ -187,6 +192,7 @@ impl ModulationDestination for DriveV2 {
                 m.offset(ModulationParameter::ColorFrequency),
             ],
             self.hard.value,
+            self.tube.value,
         );
         let processed = self.core.effective_parameters();
         self.effective = [

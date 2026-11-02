@@ -1,6 +1,6 @@
 use daw_unit_core::{
-    DRIVE_MAX_FREQUENCY_HZ, DRIVE_MAX_VOLUME_DB, DRIVE_MIN_FREQUENCY_HZ, DriveV2ColorShape,
-    DriveV2Settings, SILENT_GAIN_DB, gain,
+    DRIVE_MAX_FREQUENCY_HZ, DRIVE_MAX_VOLUME_DB, DRIVE_MIN_FREQUENCY_HZ, DriveV2Clip,
+    DriveV2ColorShape, DriveV2Settings, SILENT_GAIN_DB, gain,
 };
 use std::fmt;
 
@@ -103,7 +103,7 @@ impl Parameter {
                 0,
             ),
             Self::DryWet => ("dry_wet", "Dry/Wet", 0.0, 1.0, 1.0, Scale::Linear, 0),
-            Self::Clip => ("clip", "Clip mode", 0.0, 1.0, 0.0, Scale::Choice, 1),
+            Self::Clip => ("clip", "Clip mode", 0.0, 2.0, 0.0, Scale::Choice, 2),
             Self::ColorEnabled => (
                 "color_enabled",
                 "Color power",
@@ -191,6 +191,9 @@ impl Parameter {
     pub fn normalize(self, plain: f64) -> Result<f64, ParameterError> {
         self.validate(plain)?;
         let info = self.info();
+        if self == Self::Clip {
+            return Ok([0.0, 1.0, 0.5][plain as usize]);
+        }
         Ok(match info.scale {
             Scale::Gain => gain::knob_position(plain),
             Scale::Logarithmic => (plain / info.minimum).ln() / (info.maximum / info.minimum).ln(),
@@ -202,6 +205,15 @@ impl Parameter {
             return Err(ParameterError);
         }
         let info = self.info();
+        if self == Self::Clip {
+            return Ok(if normalized < 0.25 {
+                0.0
+            } else if normalized < 0.75 {
+                2.0
+            } else {
+                1.0
+            });
+        }
         if normalized == 0.0 {
             return Ok(info.minimum);
         }
@@ -222,7 +234,7 @@ impl Parameter {
         Ok(match self {
             Self::Bypass | Self::ColorEnabled => if value == 0.0 { "Off" } else { "On" }.into(),
             Self::Volume | Self::InputGain => format!("{} dB", gain::format_db(value)),
-            Self::Clip => if value == 0.0 { "Soft" } else { "Hard" }.into(),
+            Self::Clip => DriveV2Clip::ALL[value as usize].name().into(),
             Self::ColorShape => DriveV2ColorShape::ALL[value as usize].name().into(),
             Self::ColorFrequency => format!("{value:.0} Hz"),
             _ => format!("{:.0}%", value * 100.0),
@@ -240,6 +252,7 @@ impl Parameter {
             Self::Clip => match text.as_str() {
                 "soft" | "0" => 0.0,
                 "hard" | "1" => 1.0,
+                "tube" | "2" => 2.0,
                 _ => return Err(ParameterError),
             },
             Self::ColorShape => {

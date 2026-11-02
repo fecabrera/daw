@@ -118,3 +118,32 @@ fn timed_parameter_application_copies_only_the_selected_validated_value() {
         assert!(processor.state().to_settings().valid());
     }
 }
+
+#[test]
+fn tube_state_and_host_values_preserve_legacy_clip_endpoints() {
+    assert_eq!(P::Clip.normalize(0.0), Ok(0.0));
+    assert_eq!(P::Clip.normalize(1.0), Ok(1.0));
+    assert_eq!(P::Clip.normalize(2.0), Ok(0.5));
+    for mode in DriveV2Clip::ALL {
+        let settings = DriveV2Settings {
+            clip: mode,
+            ..Default::default()
+        };
+        let state = PluginState::from_settings(&settings).unwrap();
+        assert_eq!(
+            PluginState::decode(&state.encode()).unwrap().to_settings(),
+            settings
+        );
+        let plain = mode.index() as f64;
+        assert_eq!(
+            P::Clip.denormalize(P::Clip.normalize(plain).unwrap()),
+            Ok(plain)
+        );
+        assert_eq!(P::Clip.parse(mode.name()), Ok(plain));
+        assert_eq!(
+            serde_json::from_str::<DriveV2Settings>(&serde_json::to_string(&settings).unwrap())
+                .unwrap(),
+            settings
+        );
+    }
+}

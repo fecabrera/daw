@@ -3,11 +3,11 @@ use super::*;
 fn all_v2_parameters_retarget_with_direct_dsp_parity() {
     let _serial = SERIAL.lock().unwrap();
     for rate in SUPPORTED_RATES {
-        for hard in [0.0, 1.0] {
+        for clip in [0.0, 1.0, 2.0] {
             let mut plugin = Plugin::new();
             let mut state = PluginState::default();
             state.set(P::ColorEnabled, 1.0).unwrap();
-            state.set(P::Clip, hard).unwrap();
+            state.set(P::Clip, clip).unwrap();
             state.set(P::InputGain, 6.0).unwrap();
             state.set(P::DryWet, 0.37).unwrap();
             plugin.load(state);

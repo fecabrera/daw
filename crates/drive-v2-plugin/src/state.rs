@@ -92,11 +92,7 @@ impl PluginState {
             input_gain_db: daw_unit_core::gain::to_db_f32(self.get(Parameter::InputGain)),
             dry_wet: self.get(Parameter::DryWet) as f32,
             color_enabled: self.get(Parameter::ColorEnabled) != 0.0,
-            clip: if self.get(Parameter::Clip) == 0.0 {
-                daw_unit_core::DriveV2Clip::Soft
-            } else {
-                daw_unit_core::DriveV2Clip::Hard
-            },
+            clip: daw_unit_core::DriveV2Clip::ALL[self.get(Parameter::Clip) as usize],
             gain: self.get(Parameter::Gain) as f32,
             tone: self.get(Parameter::Tone) as f32,
             color_shape: DriveV2ColorShape::ALL[self.get(Parameter::ColorShape) as usize],
@@ -120,7 +116,7 @@ impl PluginState {
             f64::from(settings.color_frequency_hz),
             f64::from(settings.input_gain_db),
             f64::from(settings.dry_wet),
-            f64::from(settings.clip == daw_unit_core::DriveV2Clip::Hard),
+            settings.clip.index() as f64,
             f64::from(settings.color_enabled),
         ];
         let mut state = Self::default();

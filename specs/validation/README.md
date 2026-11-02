@@ -6,6 +6,37 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Drive v2 Tube mode — 2026-11-02
+
+Drive v2 adds asymmetric Tube saturation and a shared Small-text Clip mode
+dropdown. The three strips retain their width and Gain/Tone/footer rows. Mode
+changes crossfade over five milliseconds. Soft retains original Drive arithmetic.
+Legacy Soft/Hard saved values and normalized automation endpoints are unchanged;
+Tube uses plain value 2 and normalized value 0.5. Intermediate normalized
+automation can now select Tube, as specified in the plugin contract.
+
+Completed checks:
+
+- Fourteen Drive DSP tests passed, including Tube silence, asymmetry, finite
+  output, cloning, retarget/reset and all six rates; original Soft parity passed.
+  Tube normalization uses the larger signed excursion. A full-scale input matrix
+  across Gain settings and all rates stays within ±1 with Color off, neutral
+  Tone and unity input/output gains.
+- The DAW dropdown/history/layout test passed in Dark and Light themes.
+- All eight Drive v2 editor tests passed, including balanced dropdown host edits
+  and shared-body parity. Plugin contract and CLAP/VST3 host tests include Tube.
+- Workspace test groups passed across the initial run and resumed unit-ui /
+  timestretch groups after updating the old knob-size assertion. All workspace
+  documentation tests passed. Following the signed-peak correction, Drive,
+  Drive v2 contract/editor and both format suites passed again.
+- Strict workspace/all-target Clippy passed; unit-ui Clippy passed after its test
+  update. Rustfmt, changed Markdown file targets and whitespace checks passed.
+  The locked offline CLI build and `python3 tools/check_cli.py` passed.
+  `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app` with the
+  corrected Tube normalization.
+
+Native UI/device/third-party-host and listening acceptance remain unrun.
+
 ## Desktop packaging and guidance corrections — 2026-11-02
 
 macOS/Linux packaging explicitly selects the repository target directory for

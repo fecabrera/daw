@@ -22,7 +22,7 @@ Extract the ZIP. On macOS copy the complete `Drive v2.vst3` bundle into `~/Libra
 
 ## Controls and state
 
-The fixed editor is 270 × 218 logical points. Drive contains Soft/Hard, Gain and Tone; Color contains Shape, Strength and Frequency with its own footer power button; Output contains Input Gain, Output Level and Dry/Wet. Color power disables its three controls without deleting their values. Automation can still update them while Color is off.
+The fixed editor is 270 × 218 logical points. Drive contains the Soft/Hard/Tube dropdown, Gain and Tone; Color contains Shape, Strength and Frequency with its own footer power button; Output contains Input Gain, Output Level and Dry/Wet. Color power disables its three controls without deleting their values. Automation can still update them while Color is off.
 
 The host exposes all ten controls plus whole-unit Bypass. Input Gain and Output Level support exact silence through +12 dB. Audio is stereo 32-bit at 44.1/48/88.2/96/176.4/192 kHz. Latency is zero, with a one-second residual tail declaration. Unsupported rates and formats are rejected. Processing, smoothing, and bypass match built-in Drive v2.
 

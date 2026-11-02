@@ -111,26 +111,30 @@ pub fn show(
                                         })
                                         .inner
                                     } else if column == 0 && row == 0 {
-                                        knobs::row(ui, clip, knobs::CHOICE_SIZE, |ui, value| {
-                                            let mut mode = f32::from(*value == DriveV2Clip::Hard);
-                                            let response = ui.add(Knob::new(
-                                                &mut mode,
-                                                KnobSpec::new("Clip mode", 0.0..=1.0, 0.0, 1.0)
-                                                    .two_way_labels("Soft", "Hard")
-                                                    .format(|v| {
-                                                        if v < 0.5 {
-                                                            "Soft".into()
-                                                        } else {
-                                                            "Hard".into()
+                                        rows::selector_row(ui, "Clip mode", |ui| {
+                                            let value = &mut *clip;
+                                            let before = *value;
+                                            let mut response =
+                                                crate::menus::Dropdown::from_id_salt("clip-mode")
+                                                    .small_items()
+                                                    .selected_text(
+                                                        egui::RichText::new(value.name())
+                                                            .size(crate::layout::HEADER_FONT_SIZE),
+                                                    )
+                                                    .width(65.0)
+                                                    .show_ui(ui, |ui| {
+                                                        for mode in DriveV2Clip::ALL {
+                                                            ui.selectable_value(
+                                                                value,
+                                                                mode,
+                                                                mode.name(),
+                                                            );
                                                         }
-                                                    }),
-                                            ));
-                                            if response.changed() {
-                                                *value = if mode < 0.5 {
-                                                    DriveV2Clip::Soft
-                                                } else {
-                                                    DriveV2Clip::Hard
-                                                };
+                                                    })
+                                                    .response
+                                                    .on_hover_text("Clip mode");
+                                            if *value != before {
+                                                response.mark_changed();
                                             }
                                             response
                                         })
@@ -268,12 +272,17 @@ mod tests {
                                 for row in 0..3 {
                                     let r = b.knobs[column][row];
                                     assert!(b.rect.contains_rect(r));
+                                    if column == 0 && row == 0 {
+                                        assert_eq!(r.size(), Vec2::new(65.0, 22.0));
+                                        assert!(b.sections[0].contains_rect(r));
+                                        continue;
+                                    }
                                     assert_eq!(r.size(), Vec2::splat(knobs::CHOICE_SIZE));
                                     assert_eq!(
                                         r.center().x,
                                         UNIT_STRIP_WIDTH * (column as f32 + 0.5)
                                     );
-                                    assert_eq!(r.center().y, b.knobs[0][row].center().y);
+                                    assert_eq!(r.center().y, b.knobs[1][row].center().y);
                                 }
                             }
                             for slot in 3..=5 {

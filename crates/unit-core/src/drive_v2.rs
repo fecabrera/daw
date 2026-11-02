@@ -32,6 +32,20 @@ pub enum DriveV2Clip {
     #[default]
     Soft,
     Hard,
+    Tube,
+}
+impl DriveV2Clip {
+    pub const ALL: [Self; 3] = [Self::Soft, Self::Hard, Self::Tube];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Soft => "Soft",
+            Self::Hard => "Hard",
+            Self::Tube => "Tube",
+        }
+    }
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|v| *v == self).unwrap_or(0)
+    }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DriveV2Settings {

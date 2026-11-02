@@ -85,7 +85,7 @@ scale = "linear"
 id = 109
 key = "clip"
 minimum = 0.0
-maximum = 1.0
+maximum = 2.0
 default = 0.0
 scale = "choice"
 

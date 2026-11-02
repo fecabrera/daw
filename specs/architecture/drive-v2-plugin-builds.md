@@ -25,7 +25,7 @@ Vendor: `Sie`. Product: `Drive v2`. CLAP ID: `io.github.fecabrera.daw.drive-v2`.
 | 106 | color_frequency | 250–2000 Hz, logarithmic / 750 Hz |
 | 107 | input_gain | Exact silence through +12 dB / 0 dB |
 | 108 | dry_wet | 0–1 / 1 |
-| 109 | clip | 0 Soft, 1 Hard / 0 |
+| 109 | clip | 0 Soft, 1 Hard, 2 Tube / 0 |
 | 110 | color_enabled | Boolean / off |
 
 IDs 100–106 retain familiar slots where applicable, but v2 has a distinct product identity and different Color shape meaning. Original Drive identity, state, parameter values, and two-strip panel remain covered by their existing compatibility fixtures. No automatic preset migration is claimed.
@@ -56,3 +56,5 @@ Reproduce the loaded-library checks by building both v2 packages with `--feature
 ## Output meter
 
 The shared Output strip includes the [standard level rail and held-peak indicator](modular-audio-units.md#standard-effect-out-strip-meter), using the same prepared meter and control-thread CLAP/VST3 telemetry paths as Drive. These values are not parameters or saved state. Editor dimensions, identity, and all existing state fixtures remain unchanged.
+
+Clip mode adds Tube at plain value 2 without changing parameter ID 109 or legacy Soft/Hard plain values. Normalized values remain Soft=0 and Hard=1; Tube occupies 0.5. Nearest-choice boundaries are 0.25 and 0.75. This preserves existing automation endpoints; intermediate normalized automation can now select Tube. State envelope/default bytes remain version 1; old Soft/Hard states load unchanged. Older builds cannot load Tube states. The shared DAW/plugin body uses the standard dropdown.

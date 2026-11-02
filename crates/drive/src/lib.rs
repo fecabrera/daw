@@ -243,7 +243,7 @@ impl Drive {
     /// Offsets in the same order: dB, normalized fractions, and octaves for Frequency.
     /// Sources and route amounts belong to the host; this portable stage smooths offsets by 1 ms.
     pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 5]) -> [f32; 2] {
-        let output = self.process_kernel(input, offsets, 0.0, false);
+        let output = self.process_kernel(input, offsets, 0.0, 0.0, false);
         self.monitor.sample_output(output);
         output
     }
@@ -253,14 +253,16 @@ impl Drive {
         input: [f32; 2],
         offsets: [f32; 5],
         hard: f32,
+        tube: f32,
     ) -> [f32; 2] {
-        self.process_kernel(input, offsets, hard, true)
+        self.process_kernel(input, offsets, hard, tube, true)
     }
     fn process_kernel(
         &mut self,
         input: [f32; 2],
         offsets: [f32; 5],
         hard: f32,
+        tube: f32,
         pre_level: bool,
     ) -> [f32; 2] {
         let offsets = self.external.process(offsets);
@@ -300,12 +302,27 @@ impl Drive {
                 color
             } else {
                 let soft = (color * self.clipping).tanh() * self.normalization;
-                if hard <= 0.0 {
+                let blended = if hard <= 0.0 {
                     soft
                 } else {
                     let hard_sample =
                         (color * self.clipping).clamp(-1.0, 1.0) / self.clipping.min(1.0);
                     soft + (hard_sample - soft) * hard
+                };
+                if tube <= 0.0 {
+                    blended
+                } else {
+                    // Bias asymmetry adds even harmonics. Subtract the bias so
+                    // silence stays exact; normalize against the larger full-scale excursion.
+                    let bias = 0.3_f32;
+                    let baseline = bias.tanh();
+                    let positive = (self.clipping + bias).tanh() - baseline;
+                    let negative = baseline - (bias - self.clipping).tanh();
+                    let tube_sample =
+                        ((color * self.clipping + bias).tanh() - baseline) / positive.max(negative);
+                    // Crossfade all modes with independent weights; the soft
+                    // contribution is already reduced by the hard weight.
+                    blended + (tube_sample - soft) * tube
                 }
             };
             let tone = self.tone_filter[channel].filter_mono(clipped);

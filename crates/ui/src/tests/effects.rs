@@ -6200,7 +6200,7 @@ fn drive_v2_catalog_three_strip_layout_color_power_and_gain_edits_use_shared_his
         assert_eq!(app.effects_bounds.drive_v2_units.len(), 1);
         let b = &app.effects_bounds.drive_v2_units[0];
         assert!(b.sections.iter().all(|r| (r.width() - 90.0).abs() < 1.0));
-        for row in 0..3 {
+        for row in 1..3 {
             for col in 1..3 {
                 assert!(
                     (b.knobs[col][row].center().y - b.knobs[0][row].center().y).abs() < 1.0,
@@ -6210,7 +6210,8 @@ fn drive_v2_catalog_three_strip_layout_color_power_and_gain_edits_use_shared_his
                 );
             }
         }
-        assert!((b.knobs[1][0].center().x - b.knobs[0][0].center().x - 90.0).abs() < 1.0);
+        assert!((b.knobs[1][1].center().x - b.knobs[0][1].center().x - 90.0).abs() < 1.0);
+        assert!(b.sections[0].contains_rect(b.clip));
         assert!((b.knobs[2][0].center().x - b.knobs[1][0].center().x - 90.0).abs() < 1.0);
         assert_eq!(b.clip, b.knobs[0][0]);
         assert!(b.knobs[2][0].left() > b.clip.right());
@@ -6240,16 +6241,24 @@ fn drive_v2_catalog_three_strip_layout_color_power_and_gain_edits_use_shared_his
         end_click_sequence(&mut app, &ctx);
         let mode = app.effects_bounds.drive_v2_units[0].clip.center();
         click(&mut app, &ctx, mode);
-        for _ in 0..2 {
-            super::instrument_catalog::key(&mut app, &ctx, egui::Key::ArrowRight, false, false);
-        }
-        assert_eq!(settings(&app).clip, daw_core::DriveV2Clip::Hard);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let point = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == "Tube" => {
+                    Some(t.pos + t.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .expect("Tube menu item");
+        click(&mut app, &ctx, point);
+        assert_eq!(settings(&app).clip, daw_core::DriveV2Clip::Tube);
         app.perform_history_action(crate::HistoryAction::Undo, &ctx);
         frame(&mut app, &ctx, vec![]);
         assert_eq!(settings(&app).clip, daw_core::DriveV2Clip::Soft);
         app.perform_history_action(crate::HistoryAction::Redo, &ctx);
         frame(&mut app, &ctx, vec![]);
-        assert_eq!(settings(&app).clip, daw_core::DriveV2Clip::Hard);
+        assert_eq!(settings(&app).clip, daw_core::DriveV2Clip::Tube);
         let saved = serde_json::to_value(&app.session.project).unwrap();
         let restored: daw_core::Project = serde_json::from_value(saved).unwrap();
         restored.validate().unwrap();

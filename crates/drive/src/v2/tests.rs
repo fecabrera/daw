@@ -197,3 +197,73 @@ fn all_destinations_use_shared_scope_smoothing_bounds_and_exact_base_silence() {
         }
     }
 }
+
+#[test]
+fn tube_is_asymmetric_finite_silent_and_preserves_mode_transition_history() {
+    for rate in RATES {
+        let settings = DriveV2Settings {
+            clip: DriveV2Clip::Tube,
+            gain: 0.7,
+            ..Default::default()
+        };
+        let mut silence = DriveV2::new(context(rate), &settings);
+        for _ in 0..1000 {
+            assert_eq!(silence.process_sample([0.0; 2]), [0.0; 2]);
+        }
+        let mut positive = DriveV2::new(context(rate), &settings);
+        let mut negative = positive.clone();
+        let mut a = [0.0; 2];
+        let mut b = a;
+        for _ in 0..2000 {
+            a = positive.process_sample([0.4; 2]);
+            b = negative.process_sample([-0.4; 2]);
+        }
+        assert!((a[0] + b[0]).abs() > 0.05);
+        assert!(a.into_iter().chain(b).all(f32::is_finite));
+        for clip in DriveV2Clip::ALL {
+            positive.retarget(&DriveV2Settings {
+                clip,
+                ..settings.clone()
+            });
+            let mut same = positive.clone();
+            for i in 0..1000 {
+                let sample = [(i as f32 * 0.17).sin() * 2.0, (i as f32 * 0.19).cos()];
+                let out = positive.process_sample(sample);
+                assert_eq!(out, same.process_sample(sample));
+                assert!(out.into_iter().all(f32::is_finite));
+            }
+        }
+        positive.retarget(&settings);
+        positive.reset();
+        let mut fresh = DriveV2::new(context(rate), &settings);
+        for _ in 0..1000 {
+            assert_eq!(
+                positive.process_sample([0.2, -0.2]),
+                fresh.process_sample([0.2, -0.2])
+            );
+        }
+    }
+}
+
+#[test]
+fn tube_does_not_add_peak_headroom_for_full_scale_input() {
+    for rate in RATES {
+        for gain in [0.0, 0.001, 0.2, 0.7, 1.0] {
+            for input in [-1.0, -0.5, 0.0, 0.5, 1.0] {
+                let settings = DriveV2Settings {
+                    clip: DriveV2Clip::Tube,
+                    gain,
+                    ..Default::default()
+                };
+                let mut unit = DriveV2::new(context(rate), &settings);
+                for _ in 0..1000 {
+                    let output = unit.process_sample([input; 2]);
+                    assert!(
+                        output.iter().all(|v| v.is_finite() && v.abs() <= 1.00001),
+                        "rate={rate}, gain={gain}, input={input}: {output:?}"
+                    );
+                }
+            }
+        }
+    }
+}

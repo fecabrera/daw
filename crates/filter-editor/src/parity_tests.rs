@@ -163,9 +163,11 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
             if !screen.contains_rect(rect) {
                 continue;
             }
-            // Saturator's two menu selectors retain egui's menu-specific keyboard contract.
-            if daw_drive_plugin::IDENTITY.product == "Saturator"
-                && matches!(parameter.info().key, "shape" | "clip_mode")
+            // Dropdown selectors use menu selection, not the knob drag gesture below.
+            if (daw_drive_plugin::IDENTITY.product == "Saturator"
+                && matches!(parameter.info().key, "shape" | "clip_mode"))
+                || (daw_drive_plugin::IDENTITY.product == "Drive v2"
+                    && parameter.info().key == "clip")
             {
                 continue;
             }
