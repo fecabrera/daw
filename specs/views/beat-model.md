@@ -55,6 +55,10 @@ graphs. Beat thumbnails cache overview levels by immutable source, project
 revision and ordered subtrack IDs. Coarser levels combine subpixel hits; sorted
 start ticks limit traversal and drawing to the visible source interval. Detailed
 thumbnails retain the shared MIDI trim, repeat, phase and stretch mapping.
+Keep full ordered row indices rather than mapping rows into MIDI's pitch range.
+Timeline and Editor resize painters pass staged beat content alongside staged
+MIDI/audio sources. Disposable source-growth IDs do not enter the live overview
+cache; previews retain hit positions and leave the session unchanged.
 
 Editor and Instrument share subtrack selection, name/context controls, mix widgets and release-only group reorder. One shared context menu owns the full subtrack header rectangle, including controls, meters and padding, in the Editor and Tracks browser. Reuse the canonical compound-control popup opening guard; secondary clicks do not trigger primary control actions or project edits. Selecting a subtrack name, control or header background clears final Output targeting through one selection transition. Drag cancellation covers Escape, focus loss, outside release and model revision changes. Delete requires subtrack-header focus and does not act on text, steps or units. Removing the primary row selects a deterministic neighboring primary; removed IDs are pruned. Selection and source identity survive view changes.
 

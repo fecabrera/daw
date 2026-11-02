@@ -1,12 +1,17 @@
 //! Immutable beat overview levels. Conversion is shared by clips using one source.
-use daw_core::{BeatPattern, Id, MidiNote, MidiPattern};
+use daw_core::{BeatPattern, Id};
 use std::{collections::HashMap, sync::Arc};
 
+#[derive(Clone, Copy)]
+pub(super) struct Note {
+    pub start_tick: u32,
+    pub length_ticks: u32,
+    pub row: usize,
+}
 pub(super) struct Level {
-    pub pattern: MidiPattern,
+    pub notes: Vec<Note>,
     pub max_length: u32,
-    pub min_pitch: u8,
-    pub max_pitch: u8,
+    pub max_row: usize,
 }
 struct Overview {
     rows: Vec<Id>,
@@ -40,48 +45,35 @@ impl Cache {
             let index: HashMap<_, _> = rows
                 .iter()
                 .enumerate()
-                .map(|(row, id)| (*id, 60 + (row % 60) as u8))
+                .map(|(row, id)| (*id, row))
                 .collect();
             let notes: Vec<_> = pattern
                 .visible_steps()
                 .filter_map(|step| {
-                    Some(MidiNote {
-                        id: step.id,
+                    Some(Note {
                         start_tick: step.start_tick,
                         length_ticks: pattern.resolution.step_ticks(),
-                        pitch: *index.get(&step.subtrack_id)?,
-                        velocity: step.velocity,
+                        row: *index.get(&step.subtrack_id)?,
                     })
                 })
                 .collect();
-            let min = notes.iter().map(|n| n.pitch).min().unwrap_or(60);
-            let max = notes
-                .iter()
-                .map(|n| n.pitch)
-                .max()
-                .unwrap_or(72)
-                .max(min.saturating_add(12));
             let mut levels = Vec::new();
             let mut bin = pattern.resolution.step_ticks();
             let mut current = notes;
             loop {
-                current.sort_by_key(|n| (n.start_tick, n.pitch));
+                current.sort_by_key(|n| (n.start_tick, n.row));
                 levels.push(Arc::new(Level {
-                    pattern: MidiPattern {
-                        length_ticks: pattern.length_ticks(),
-                        notes: current.clone(),
-                    },
+                    notes: current.clone(),
                     max_length: bin,
-                    min_pitch: min,
-                    max_pitch: max,
+                    max_row: rows.len().saturating_sub(1).max(12),
                 }));
                 if bin >= pattern.length_ticks() {
                     break;
                 }
                 bin = bin.saturating_mul(2);
-                let mut bins: HashMap<_, MidiNote> = HashMap::new();
+                let mut bins: HashMap<_, Note> = HashMap::new();
                 for note in current {
-                    bins.entry((note.pitch, note.start_tick / bin))
+                    bins.entry((note.row, note.start_tick / bin))
                         .and_modify(|merged| {
                             let end = (merged.start_tick + merged.length_ticks)
                                 .max(note.start_tick + note.length_ticks);
@@ -131,18 +123,40 @@ mod tests {
             .unwrap();
         let mut cache = Cache::default();
         let full = cache.level((project, 0), source, &[row, other], &pattern, 2.0);
-        assert_eq!(full.pattern.notes.len(), 2);
-        assert_eq!(full.pattern.notes[0].pitch, 60);
-        assert_eq!(full.pattern.notes[1].pitch, 61);
+        assert_eq!(full.notes.len(), 2);
+        assert_eq!(full.notes[0].row, 0);
+        assert_eq!(full.notes[1].row, 1);
         assert!(Arc::ptr_eq(
             &full,
             &cache.level((project, 0), source, &[row, other], &pattern, 2.0)
         ));
         assert_eq!(cache.builds, 1);
         let swapped = cache.level((project, 0), source, &[other, row], &pattern, 2.0);
-        assert_eq!(swapped.pattern.notes[0].pitch, 61);
+        assert_eq!(swapped.notes[0].row, 1);
         cache.level((project, 1), source, &[other, row], &pattern, 0.01);
         cache.level((Id::new_v4(), 1), source, &[other, row], &pattern, 0.01);
         assert_eq!(cache.builds, 4);
+    }
+    #[test]
+    fn full_row_indices_remain_distinct_at_every_detail_level() {
+        let rows: Vec<_> = (0..200).map(|_| Id::new_v4()).collect();
+        let pattern = BeatPattern::default()
+            .with_step(rows[0], 0, Some(100))
+            .unwrap()
+            .with_step(rows[60], 0, Some(100))
+            .unwrap()
+            .with_step(rows[199], 0, Some(100))
+            .unwrap();
+        let mut cache = Cache::default();
+        let generation = (Id::new_v4(), 0);
+        let source = Id::new_v4();
+        for pixels in [2.0, 0.01] {
+            let level = cache.level(generation, source, &rows, &pattern, pixels);
+            assert_eq!(
+                level.notes.iter().map(|note| note.row).collect::<Vec<_>>(),
+                vec![0, 60, 199]
+            );
+            assert_eq!(level.max_row, 199);
+        }
     }
 }

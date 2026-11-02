@@ -4,6 +4,25 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat staged preview and row-index corrections — 2026-11-01
+
+Both minor findings against `cdb71f7` are corrected. The shared prepared clip
+source carries staged beat patterns into Timeline and Editor resize painting.
+Transient preview source IDs use disposable overview data. Beat thumbnail rows
+retain full indices instead of wrapping into synthetic MIDI pitches; temporal
+painting stays shared with MIDI.
+
+Focused tests pass for left/right source growth in both views, retained hit
+geometry, unchanged session data on preview/cancellation, transient cache
+ownership, distinct rows 1/61/200 at detailed/coarse levels, actual 61-row paint,
+and existing trim/repeat/stretch and dense-thumbnail checks.
+
+`cargo test --offline --locked --workspace` passes: 2,111 tests, 15 ignored,
+across 260 suites, including all 833 active UI tests. Strict workspace/all-target
+Clippy, formatting, diff and local Markdown file-target checks pass.
+`sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`.
+Native UI/device and Windows/Linux checks have not been run for these corrections.
+
 ## Beat Editor and thumbnail paint corrections — 2026-11-01
 
 The three minor findings against `e2de9ec` are corrected. Current requirements

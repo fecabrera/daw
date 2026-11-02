@@ -2953,3 +2953,129 @@ fn detailed_beat_thumbnails_share_trim_repeat_stretch_mapping_with_midi() {
         }
     }
 }
+
+#[test]
+fn beat_source_growth_previews_keep_hits_in_both_views_and_edges() {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
+        for left in [false, true] {
+            let (mut app, ctx, track, row, clip) = setup();
+            let pattern = BeatPattern::default()
+                .with_step(row, 960, Some(100))
+                .unwrap();
+            app.session
+                .project
+                .edit(Edit::ReplaceBeatPattern {
+                    clip_id: clip,
+                    pattern,
+                })
+                .unwrap();
+            app.session.project.tracks[0].clips[0].start_frame = 96_000;
+            app.view_mode = view;
+            app.zoom = 120.0;
+            app.scroll = 0.0;
+            app.midi_editor.zoom = 120.0;
+            app.midi_editor.scroll = 0.0;
+            frame(&mut app, &ctx, vec![]);
+            let original = app.session.project.clone();
+            let current = original.tracks[0].clips[0].clone();
+            let block = if view == ViewMode::Edit {
+                app.midi_editor.clip_bounds[&clip]
+            } else {
+                app.clip_block(app.lane_bounds[&track], &current, current.start_frame)
+            };
+            let hit_x = block.left() + 60.0;
+            let origin = Pos2::new(
+                if left {
+                    block.left() + 1.0
+                } else {
+                    block.right() - 1.0
+                },
+                block.top() + 30.0,
+            );
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(origin), button(origin, true)],
+            );
+            let builds = app.beat_ui.thumbnails.borrow().builds;
+            for distance in [60.0, 70.0, 80.0] {
+                let end = origin + Vec2::new(if left { -distance } else { distance }, 0.0);
+                let shapes = frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(end)],
+                    Vec2::new(1280.0, 800.0),
+                );
+                assert!(app.drag.is_some());
+                assert_eq!(app.session.project, original);
+                assert!(!shapes.iter().any(
+                    |s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="Missing source")
+                ));
+                assert!(shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Rect(r) if (r.rect.left()-hit_x).abs()<1.0 && (r.rect.height()-2.0).abs()<0.01 && r.rect.top()>block.top()+22.0 && r.rect.bottom()<=block.bottom()+0.01)),"retained hit geometry: {view:?}, left={left}");
+                assert_eq!(
+                    app.beat_ui.thumbnails.borrow().builds,
+                    builds,
+                    "transient growth sources must not fill the live cache"
+                );
+            }
+            super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+            assert_eq!(app.session.project, original);
+        }
+    }
+}
+
+#[test]
+fn beat_thumbnails_keep_first_and_sixty_first_rows_separate() {
+    let (mut app, ctx, _, _, clip) = setup();
+    let rows: Vec<_> = (0..61)
+        .map(|i| BeatSubtrack::new(format!("Row {i}")))
+        .collect();
+    let pattern = BeatPattern::default()
+        .with_step(rows[0].id, 0, Some(100))
+        .unwrap()
+        .with_step(rows[60].id, 0, Some(100))
+        .unwrap();
+    app.session.project.tracks[0]
+        .beat
+        .as_mut()
+        .unwrap()
+        .subtracks = rows;
+    app.session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: clip,
+            pattern,
+        })
+        .unwrap();
+    app.session.project.validate().unwrap();
+    let clip = app.session.project.tracks[0].clips[0].clone();
+    app.set_view_zoom(120.0);
+    let color = theme::clip_colors(app.session.project.tracks[0].color, None).waveform;
+    let mut out = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 500.0))),
+            ..Default::default()
+        },
+        |ui| {
+            app.paint_clip(
+                ui.painter(),
+                app.session.project.tracks[0].color,
+                Rect::from_min_size(Pos2::new(40.0, 40.0), Vec2::new(240.0, 320.0)),
+                &clip,
+                false,
+                None,
+            );
+        },
+    );
+    let ys: Vec<_> = out
+        .shapes
+        .iter()
+        .filter_map(|s| match &s.shape {
+            egui::Shape::Rect(r) if r.fill == color => Some(r.rect.top()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ys.len(), 2);
+    assert!((ys[0] - ys[1]).abs() > 200.0);
+    out.textures_delta.clear();
+}

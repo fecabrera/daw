@@ -736,6 +736,7 @@ struct ClipPreview {
 enum PreparedClipSource<'a> {
     Audio(&'a daw_media::AudioData),
     Midi(&'a daw_core::MidiPattern),
+    Beat(&'a daw_core::BeatPatternSource),
 }
 struct FileDropTarget {
     track: Option<Id>,
@@ -5217,8 +5218,13 @@ impl DawUi {
             ghost.multiply_opacity(0.75);
             let source = project
                 .and_then(|p| p.assets.iter().find(|a| a.id == preview.clip.asset_id))
-                .and_then(|a| a.midi_pattern.as_ref())
-                .map(PreparedClipSource::Midi);
+                .and_then(|asset| {
+                    asset
+                        .midi_pattern
+                        .as_ref()
+                        .map(PreparedClipSource::Midi)
+                        .or_else(|| asset.beat_pattern.as_ref().map(PreparedClipSource::Beat))
+                });
             self.paint_clip(&ghost, track_color, block, &preview.clip, false, source);
             painter.rect_stroke(
                 block,
