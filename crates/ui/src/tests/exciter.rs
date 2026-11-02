@@ -216,3 +216,88 @@ fn mode_dropdown_and_context_removal_preserve_surviving_band_routes() {
     assert_eq!(s.modulations[0].target, Some(retained));
     assert!(s.bands.iter().all(|b| b.id != removed));
 }
+
+#[test]
+fn exciter_reorder_commits_on_release_keeps_ranges_and_supports_history() {
+    for compact in [false, true] {
+        for cancel in [false, true] {
+            let (mut app, ctx, _) = fixture();
+            let daw_core::EffectSettings::Exciter(settings) =
+                &mut app.session.project.tracks[0].effects[0].unit
+            else {
+                unreachable!()
+            };
+            settings.bands[0].drive_db = 6.0;
+            let mut route =
+                daw_core::Modulation::new(daw_core::ModulationParameter::SaturatorDrive);
+            route.target = Some(settings.bands[0].id);
+            settings.modulations.push(route);
+            app.session.project.tracks[0].effects_compact = compact;
+            frame(&mut app, &ctx, vec![]);
+            app.history = None;
+            app.ensure_history();
+            let before = app.session.project.clone();
+            let bounds = &app.effects_bounds.exciter_units[0].body;
+            let start = bounds.bands[0].left_center() + Vec2::new(2.0, 0.0);
+            let end = bounds.bands[3].right_center() - Vec2::new(2.0, 0.0);
+            let button = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                pressed,
+                button: egui::PointerButton::Primary,
+                modifiers: Default::default(),
+            };
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(app.session.project, before);
+            if cancel {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            if cancel {
+                assert_eq!(app.session.project, before);
+                continue;
+            }
+            let daw_core::EffectSettings::Exciter(old) = &before.tracks[0].effects[0].unit else {
+                unreachable!()
+            };
+            let daw_core::EffectSettings::Exciter(new) =
+                &app.session.project.tracks[0].effects[0].unit
+            else {
+                unreachable!()
+            };
+            let mut moved = old.bands[0].clone();
+            moved.upper_hz = new.bands[3].upper_hz;
+            assert_eq!(new.bands[3], moved);
+            assert_eq!(new.modulations, old.modulations);
+            assert_eq!(
+                new.bands.iter().map(|b| b.upper_hz).collect::<Vec<_>>(),
+                old.bands.iter().map(|b| b.upper_hz).collect::<Vec<_>>()
+            );
+            app.session.project.validate().unwrap();
+            let after = app.session.project.clone();
+            assert_eq!(
+                serde_json::from_slice::<daw_core::Project>(&serde_json::to_vec(&after).unwrap())
+                    .unwrap(),
+                after
+            );
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            assert_eq!(app.session.project, before);
+            app.perform_history_action(HistoryAction::Redo, &ctx);
+            assert_eq!(app.session.project, after);
+        }
+    }
+}

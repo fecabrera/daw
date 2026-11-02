@@ -66,7 +66,9 @@ unsafe extern "C" fn load(plugin: *const clap_plugin, stream: *const clap_istrea
         // Main-thread loads coalesce in a fixed mailbox. Inactive publication is
         // immediate. Active publication is consumed at the next process/flush/reset;
         // block events then take precedence in their existing stream order.
+        i.editor.recall_presentation(state.presentation());
         i.exchange.recall(state);
+        i.editor.model.publish(state);
         if i.lifecycle.load(Ordering::Acquire) == 1 {
             let audio = unsafe { i.audio() };
             i.apply_pending(audio);

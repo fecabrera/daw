@@ -48,3 +48,7 @@ The effect uses 4× oversampling to reduce aliasing and keeps a fixed processing
 Each band's Drive, Mix and Level, plus Out Level and Dry/Wet, accept the shared modulation controls. Mode and crossover controls are not modulation destinations. Removing or copying bands preserves the other bands' connections. See [modulation](../modulation/README.md) and [unit editing](../editing/units.md) for routing, selection, copying, collapse and compact mode.
 
 This release provides the built-in effect. Separate CLAP/VST3 products are not included.
+
+## Reorder bands
+
+In the DAW, drag a band label or unused strip space to move its processing controls to another frequency range. The Ranges boundaries stay fixed. The band identity, settings, modulation connections and Solo selection move together. Release inside the band bank to commit; Escape or an outside drop cancels. The project saves the order, and Undo/Redo restores it.

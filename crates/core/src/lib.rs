@@ -43,7 +43,9 @@ pub use daw_unit_core::{
     LfoPolarity, LfoRestart, LfoSettings, MacroInstance, MacroModuleSettings, MacroSettings,
     Modulation, ModulationLaneKind, ModulationParameter, ModulationSourceId, ModulationValue,
 };
-pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
+pub use midi::{
+    MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind, transposed_midi_pitch,
+};
 pub use midi_options::{MidiOptions, MidiScale};
 mod audio_quality;
 mod audio_settings;

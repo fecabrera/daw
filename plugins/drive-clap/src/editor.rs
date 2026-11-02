@@ -45,6 +45,7 @@ pub(crate) struct Bridge {
     consumed: UnsafeCell<u64>,
     pending_values: Cell<[u64; daw_drive_plugin::Parameter::COUNT]>,
     main_pending: AtomicBool,
+    presentation: Cell<Option<[u8; 64]>>,
     retry: UnsafeCell<bool>,
 }
 impl Default for Bridge {
@@ -61,11 +62,23 @@ impl Default for Bridge {
             consumed: UnsafeCell::new(0),
             pending_values: Cell::new([0; daw_drive_plugin::Parameter::COUNT]),
             main_pending: AtomicBool::new(false),
+            presentation: Cell::new(None),
             retry: UnsafeCell::new(false),
         }
     }
 }
 impl Bridge {
+    /// Main-thread presentation is saved immediately, without waiting for audio
+    /// event delivery. It never changes the prepared processor or parameter IDs.
+    pub fn recall_presentation(&self, order: [u8; 64]) {
+        self.model.discard_presentation();
+        self.presentation.set(Some(order));
+    }
+    pub fn apply_presentation(&self, state: &mut daw_drive_plugin::PluginState) {
+        if let Some(order) = self.presentation.get() {
+            state.set_presentation(order);
+        }
+    }
     pub fn main(&self, i: &Instance) {
         self.model.output_reset.store(false, Ordering::Release);
         self.model.meter_reset.store(0, Ordering::Release);
@@ -73,6 +86,7 @@ impl Bridge {
             window.host_main_thread_callback();
         }
         let mut desired = self.model.current().unwrap_or_default();
+        let mut presentation_dirty = false;
         let mut producer = self.producer.borrow_mut();
         let blocked = loop {
             if producer.slots() == 0 {
@@ -81,6 +95,13 @@ impl Bridge {
             let Some(edit) = self.model.pop() else {
                 break false;
             };
+            if let Edit::Presentation(order) = edit {
+                if desired.set_presentation(order) {
+                    self.presentation.set(Some(order));
+                    presentation_dirty = true;
+                }
+                continue;
+            }
             let seq = self.sent.get().wrapping_add(1);
             if producer.push((edit, seq)).is_err() {
                 break true;
@@ -100,6 +121,7 @@ impl Bridge {
         drop(producer);
         let applied = self.applied.load(Ordering::Acquire);
         if let Some(current) = i.current() {
+            desired.set_presentation(current.presentation());
             for (index, p) in daw_drive_plugin::Parameter::ALL.into_iter().enumerate() {
                 if self.pending_values.get()[index] <= applied {
                     let _ = desired.set(p, current.get(p));
@@ -107,6 +129,20 @@ impl Bridge {
             }
         }
         self.model.publish(desired);
+        // Host callbacks may reenter: all queue/model borrows are released first.
+        if presentation_dirty && let Some(get) = unsafe { (*i.host).get_extension } {
+            let state = unsafe {
+                get(
+                    i.host,
+                    daw_plugin_clap::sys::ext::state::CLAP_EXT_STATE.as_ptr(),
+                )
+            } as *const daw_plugin_clap::sys::ext::state::clap_host_state;
+            if !state.is_null()
+                && let Some(mark) = unsafe { (*state).mark_dirty }
+            {
+                unsafe { mark(i.host) };
+            }
+        }
         if applied != self.sent.get() || blocked {
             let params = i.host_params.load(Ordering::Acquire);
             if !params.is_null()
@@ -153,6 +189,10 @@ impl Bridge {
                 flags: CLAP_EVENT_IS_LIVE,
             };
             let ok = match edit {
+                Edit::Presentation(order) => {
+                    audio.state.set_presentation(order);
+                    true
+                }
                 Edit::Begin(p) | Edit::End(p) => {
                     let event = clap_event_param_gesture {
                         header: clap_event_header {
@@ -573,6 +613,80 @@ mod tests {
             i.editor.applied.load(Ordering::Acquire),
             CAPACITY as u64 + 1
         );
+        unsafe {
+            ((*plugin).destroy.unwrap())(plugin);
+        }
+    }
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+    use daw_drive_plugin::PluginState;
+    use daw_plugin_clap::sys::{ext::state::*, host::clap_host, version::CLAP_VERSION};
+    struct Host {
+        plugin: Cell<*const clap_plugin>,
+        observed: AtomicBool,
+    }
+    unsafe extern "C" fn dirty(host: *const clap_host) {
+        let data = unsafe { &*((*host).host_data.cast::<Host>()) };
+        let i = unsafe { instance(data.plugin.get()) }.unwrap();
+        data.observed.store(
+            i.current().unwrap().presentation()[0] == 1,
+            Ordering::Relaxed,
+        );
+        i.editor.main(i); // Reentry must not retain a producer or model borrow.
+    }
+    static STATE: clap_host_state = clap_host_state {
+        mark_dirty: Some(dirty),
+    };
+    unsafe extern "C" fn extension(
+        _: *const clap_host,
+        id: *const c_char,
+    ) -> *const std::ffi::c_void {
+        if unsafe { CStr::from_ptr(id) } == CLAP_EXT_STATE {
+            (&STATE as *const clap_host_state).cast()
+        } else {
+            ptr::null()
+        }
+    }
+    #[test]
+    fn presentation_is_saved_before_audio_delivery_and_recall_discards_stale_edits() {
+        let mut state = PluginState::default();
+        let mut order = state.presentation();
+        order.rotate_left(1);
+        if !state.set_presentation(order) {
+            return;
+        } // Fixed-body products have no order state.
+        let data = Host {
+            plugin: Cell::new(ptr::null()),
+            observed: AtomicBool::new(false),
+        };
+        let host = clap_host {
+            clap_version: CLAP_VERSION,
+            host_data: (&data as *const Host).cast_mut().cast(),
+            name: c"order test".as_ptr(),
+            vendor: c"test".as_ptr(),
+            url: c"".as_ptr(),
+            version: c"1".as_ptr(),
+            get_extension: Some(extension),
+            request_restart: None,
+            request_process: None,
+            request_callback: None,
+        };
+        let plugin = Instance::create(&host, ptr::null());
+        data.plugin.set(plugin);
+        let i = unsafe { instance(plugin) }.unwrap();
+        assert!(i.editor.model.push(&[Edit::Presentation(order)]));
+        i.editor.main(i);
+        assert!(data.observed.load(Ordering::Relaxed));
+        assert_eq!(i.current().unwrap().presentation(), order);
+        assert_eq!(i.editor.sent.get(), 0, "presentation needs no audio events");
+        assert!(i.editor.model.push(&[Edit::Presentation(order)]));
+        let original = PluginState::default();
+        i.editor.recall_presentation(original.presentation());
+        i.editor.main(i);
+        assert_eq!(i.current().unwrap().presentation(), original.presentation());
         unsafe {
             ((*plugin).destroy.unwrap())(plugin);
         }

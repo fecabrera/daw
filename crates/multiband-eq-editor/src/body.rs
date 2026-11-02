@@ -19,7 +19,8 @@ pub fn visible(settings: &MultibandEqSettings, mut slots: u64) -> u64 {
     let frequency = P::ALL[3].info().default as f32;
     let gain = P::ALL[4].info().default as f32;
     let q = P::ALL[5].info().default as f32;
-    for (i, band) in settings.bands.iter().take(64).enumerate() {
+    for band in settings.bands.iter().take(64) {
+        let i = (band.id.as_u128() - 1) as usize;
         if band.enabled
             || band.mode != mode
             || band.frequency_hz != frequency
@@ -32,14 +33,27 @@ pub fn visible(settings: &MultibandEqSettings, mut slots: u64) -> u64 {
     slots
 }
 pub fn view(settings: &MultibandEqSettings, slots: u64) -> (MultibandEqSettings, Vec<usize>) {
-    let indices: Vec<_> = (0..settings.bands.len().min(64))
+    let indices: Vec<_> = settings
+        .bands
+        .iter()
+        .map(|b| (b.id.as_u128() - 1) as usize)
         .filter(|i| slots & (1 << i) != 0)
         .collect();
     (
         MultibandEqSettings {
             enabled: settings.enabled,
             output_gain_db: settings.output_gain_db,
-            bands: indices.iter().map(|i| settings.bands[*i].clone()).collect(),
+            bands: indices
+                .iter()
+                .map(|i| {
+                    settings
+                        .bands
+                        .iter()
+                        .find(|b| b.id.as_u128() == *i as u128 + 1)
+                        .unwrap()
+                        .clone()
+                })
+                .collect(),
             ..Default::default()
         },
         indices,
@@ -67,33 +81,82 @@ pub fn render(
     slots: &mut u64,
     levels: &[f32; 64],
 ) -> Bounds {
+    let owner = ui.make_persistent_id("eq-slot-order");
+    let reordering = daw_unit_ui::strip_reorder::active(ui, owner);
     let before = PluginState::from_settings(settings).ok();
     *slots = visible(settings, *slots);
     let (mut view, indices) = self::view(settings, *slots);
+    let original = view.bands.clone();
     let active_levels: Vec<_> = indices.iter().map(|i| levels[*i]).collect();
     let (b, captured) = control_capture::scope(ui, |ui| {
         egui::ScrollArea::horizontal()
             .id_salt("bands")
             .show(ui, |ui| {
-                multiband_eq::show(
-                    ui,
-                    &mut view,
-                    (false, unit_control_height()),
-                    multiband_eq::Controls {
-                        add_enabled: indices.len() < 64,
-                        markers: &[],
-                        levels: &active_levels,
-                        output_marker: None,
-                        output_level: Some(level),
-                    },
-                )
+                daw_unit_ui::strip_reorder::scroll(ui);
+                ui.add_enabled_ui(!reordering, |ui| {
+                    multiband_eq::show(
+                        ui,
+                        &mut view,
+                        (false, unit_control_height()),
+                        multiband_eq::Controls {
+                            add_enabled: indices.len() < 64,
+                            markers: &[],
+                            levels: &active_levels,
+                            output_marker: None,
+                            output_level: Some(level),
+                        },
+                    )
+                })
+                .inner
             })
             .inner
     });
     for (local, slot) in indices.iter().copied().enumerate() {
-        settings.bands[slot] = view.bands[local].clone();
+        *settings
+            .bands
+            .iter_mut()
+            .find(|b| b.id.as_u128() == slot as u128 + 1)
+            .unwrap() = view.bands[local].clone();
     }
     settings.output_gain_db = view.output_gain_db;
+    let mut order = view.bands.clone();
+    let slots_rects: Vec<_> = indices
+        .iter()
+        .zip(&b.band_responses)
+        .map(|(slot, r)| (egui::Id::new(*slot), r.rect))
+        .collect();
+    for (local, response) in b.band_responses.iter().enumerate() {
+        let control = ui.input(|i| i.pointer.press_origin()).is_some_and(|p| {
+            b.power[local].contains(p) || b.knobs[local].iter().any(|r| r.contains(p))
+        });
+        if !control {
+            daw_unit_ui::strip_reorder::arm(
+                ui,
+                owner,
+                response,
+                egui::Id::new(indices[local]),
+                &original,
+            );
+        }
+    }
+    if let (Some((_, first)), Some((_, last))) = (slots_rects.first(), slots_rects.last()) {
+        daw_unit_ui::strip_reorder::finish(
+            ui,
+            owner,
+            &mut order,
+            &slots_rects,
+            first.union(*last).intersect(ui.clip_rect()),
+        );
+    }
+    if order
+        .iter()
+        .map(|v| (v.id.as_u128() - 1) as usize)
+        .ne(indices.iter().copied())
+    {
+        settings
+            .bands
+            .sort_by_key(|b| order.iter().position(|slot| slot.id == b.id).unwrap_or(64));
+    }
     let mut rects = [Rect::NOTHING; P::COUNT - 1];
     for (local, slot) in indices.iter().copied().enumerate() {
         let base = 5 * slot;
@@ -108,8 +171,13 @@ pub fn render(
     if let Some(local) = b.remove {
         let slot = indices[local];
         *slots &= !(1 << slot);
-        let id = settings.bands[slot].id;
-        settings.bands[slot] = MultibandEqBand {
+        let index = settings
+            .bands
+            .iter()
+            .position(|b| b.id.as_u128() == slot as u128 + 1)
+            .unwrap();
+        let id = settings.bands[index].id;
+        settings.bands[index] = MultibandEqBand {
             id,
             enabled: false,
             ..Default::default()
@@ -120,7 +188,12 @@ pub fn render(
         && let Some(slot) = (0..settings.bands.len().min(64)).find(|i| *slots & (1 << i) == 0)
     {
         *slots |= 1 << slot;
-        settings.bands[slot].enabled = true;
+        settings
+            .bands
+            .iter_mut()
+            .find(|b| b.id.as_u128() == slot as u128 + 1)
+            .unwrap()
+            .enabled = true;
         direct = Some((5 * slot, add.clone()));
     }
     let after = PluginState::from_settings(settings).ok();

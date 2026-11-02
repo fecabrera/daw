@@ -24,3 +24,7 @@ The knob shows the base value; the live dot shows the processed value. Sources a
 Right-click a strip's empty space, Value knob, or power control and choose Remove macro. Plus restores the first retained strip before adding another. Removing the whole component retains all its strips for restoration.
 
 Drag the component header to move or copy its strips between layers and Output. An occupied destination merges the strips. Individual strip transfers are not available. Names, settings, and connections save with the project. See [unit editing](../editing/units.md).
+
+## Reorder controls
+
+Drag a Macro label or unused strip space to reorder controls. Release inside the strip bank to apply the move. Escape or an outside drop cancels. Values, names, power and modulation connections move with the control. The project saves the order, and Undo/Redo restores it.

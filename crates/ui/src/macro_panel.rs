@@ -89,7 +89,7 @@ fn name_label(
                 egui::Label::new(label.clone())
                     .selectable(false)
                     .truncate()
-                    .sense(egui::Sense::click()),
+                    .sense(egui::Sense::click_and_drag()),
             )
             .on_hover_text(format!("{}\nDouble-click to rename macro.", label.text()));
         if response.double_clicked() && ui.is_enabled() && ui.input(|i| i.focused) {
@@ -114,6 +114,15 @@ pub(super) fn unit(
     if !module.present {
         return None;
     }
+    let owner = ui.make_persistent_id("macro-strip-order");
+    let reordering = crate::strip_reorder::active(ui, owner);
+    let original: Vec<_> = module
+        .controls
+        .iter()
+        .filter(|c| c.present)
+        .cloned()
+        .collect();
+    let mut slots = Vec::new();
     let is_enabled = module.enabled;
     let mut enabled = is_enabled;
     let mut collapsed = module.collapsed;
@@ -128,6 +137,7 @@ pub(super) fn unit(
     };
     let result = ui.scope_builder(egui::UiBuilder::new().id_salt("macro-module")
         .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")), |ui| {
+        if reordering { ui.disable(); }
         panels::PanelStyle { margin: 0, ..Default::default() }.unit(ui, ("Macro", compact), height,
             &mut enabled, &mut collapsed, |ui| {
             ui.horizontal_top(|ui| {
@@ -138,7 +148,7 @@ pub(super) fn unit(
                     let live = controls.live.iter().find(|(id, _)| *id == control.id).map(|(_, v)| *v);
                     let marker = modulation_panel::marker(&routes, controls.sources, ModulationParameter::MacroValue,
                         control.settings.value, is_enabled && control.enabled, None, [live, None]);
-                    let strip = ui.scope_builder(egui::UiBuilder::new().id_salt(control.id).sense(egui::Sense::click()), |ui| egui::Frame::new().inner_margin(10).show(ui, |ui| {
+                    let strip = ui.scope_builder(egui::UiBuilder::new().id_salt(control.id).sense(egui::Sense::click_and_drag()), |ui| egui::Frame::new().inner_margin(10).show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                             ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
                             ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
@@ -163,6 +173,14 @@ pub(super) fn unit(
                             responses
                         })
                     }));
+                    // Labels and unused space share the release-only reorder lifecycle.
+                    let responses = &strip.inner.inner.inner;
+                    let control_press = ui.input(|i| i.pointer.press_origin()).is_some_and(|p| responses[..responses.len().saturating_sub(1)].iter().any(|r| r.rect.contains(p)));
+                    if !control_press && controls.name_edit.is_none() {
+                        crate::strip_reorder::arm_items(ui, owner, &strip.response, control.id, &original);
+                        if let Some(label) = responses.last() { crate::strip_reorder::arm_items(ui, owner, label, control.id, &original); }
+                    }
+                    slots.push((control.id, strip.response.rect));
                     // Child controls own their pointer events; include them as well as strip padding.
                     for response in strip.inner.inner.inner.iter().chain([&strip.response]) {
                         crate::menus::ContextMenu::new(response).show(|ui| {
@@ -186,6 +204,29 @@ pub(super) fn unit(
             });
         })
     }).inner;
+    let mut ordered: Vec<_> = module
+        .controls
+        .iter()
+        .filter(|c| c.present)
+        .cloned()
+        .collect();
+    if let (Some((_, first)), Some((_, last))) = (slots.first(), slots.last()) {
+        crate::strip_reorder::finish_items(
+            ui,
+            owner,
+            &mut ordered,
+            &slots,
+            first.union(*last).intersect(ui.clip_rect()),
+        );
+        for (slot, value) in module
+            .controls
+            .iter_mut()
+            .filter(|c| c.present)
+            .zip(ordered)
+        {
+            *slot = value;
+        }
+    }
     module.enabled = enabled;
     module.collapsed = collapsed;
     modulation_panel::toggle(

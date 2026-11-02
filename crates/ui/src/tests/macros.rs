@@ -526,3 +526,73 @@ fn macro_names_commit_on_enter_and_cancel_without_changing_routes_or_power() {
         }
     }
 }
+
+#[test]
+fn macro_order_release_preserves_controls_and_history() {
+    for compact in [false, true] {
+        let mut app = DawUi::default();
+        let ctx = context();
+        let track = app.session.project.add_midi_track().unwrap();
+        let layer = &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        for _ in 0..3 {
+            layer.macro_module.add();
+        }
+        layer.macro_module.controls[0].settings.value = 0.25;
+        layer.macro_module.controls[0].name = Some("Macro 1".into());
+        let mut route = Modulation::new(P::MacroValue);
+        route.target = Some(layer.macro_module.controls[0].id);
+        layer.macro_module.modulations.push(route);
+        app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .collapsed = compact;
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let start = text_rect(&shapes, "Macro 1").center();
+        let end = text_rect(&shapes, "Macro 3").right_center() + Vec2::new(5.0, 0.0);
+        app.history = None;
+        app.ensure_history();
+        let before = app.session.project.clone();
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            pressed,
+            button: egui::PointerButton::Primary,
+            modifiers: Default::default(),
+        };
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert_eq!(app.session.project, before);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        let new = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .macro_module;
+        let old = &before.tracks[0].instrument.as_ref().unwrap().layers[0].macro_module;
+        assert_eq!(new.controls[2], old.controls[0]);
+        assert_eq!(new.modulations, old.modulations);
+        app.session.project.validate().unwrap();
+        let after = app.session.project.clone();
+        assert_eq!(
+            serde_json::from_slice::<daw_core::Project>(&serde_json::to_vec(&after).unwrap())
+                .unwrap(),
+            after
+        );
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert_eq!(app.session.project, before);
+        app.perform_history_action(HistoryAction::Redo, &ctx);
+        assert_eq!(app.session.project, after);
+    }
+}

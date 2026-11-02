@@ -36,3 +36,33 @@ fn all_fixed_band_levels_survive_meter_transport_and_clear_on_bypass() {
     }
     assert!(plugin::meter_values(&meter)[13..].iter().all(|v| *v == 0.0));
 }
+
+#[test]
+fn saved_band_order_preserves_slot_parameters_and_recalls_legacy_state() {
+    use plugin::{Parameter as P, PluginState, StateExchange};
+    let legacy = include_bytes!("fixtures/legacy-default-state.bin");
+    assert_eq!(PluginState::decode(legacy).unwrap(), PluginState::default());
+    let mut state = PluginState::default();
+    state.set(P::ALL[4], 6.0).unwrap();
+    let values = P::ALL.map(|p| state.get(p));
+    let mut order = state.presentation();
+    order.rotate_left(1);
+    assert!(state.set_presentation(order));
+    assert_eq!(P::ALL.map(|p| state.get(p)), values);
+    assert_eq!(
+        PluginState::from_settings(&state.to_settings()).unwrap(),
+        state
+    );
+    assert_eq!(PluginState::decode(&state.encode()).unwrap(), state);
+    let exchange = StateExchange::default();
+    exchange.recall(state);
+    assert_eq!(exchange.current(), Some(state));
+    let mut revision = 0;
+    assert_eq!(exchange.consume(&mut revision), Some(state));
+    exchange.publish(state, revision);
+    assert_eq!(exchange.current(), Some(state));
+    let mut invalid = state.encode();
+    let length = invalid.len();
+    invalid[length - 64] = invalid[length - 63];
+    assert!(PluginState::decode(&invalid).is_err());
+}

@@ -453,9 +453,7 @@ fn note_frequency(pitch: u8, transpose: i8) -> f32 {
 }
 
 fn clip_pitch(pitch: u8, transpose: i8) -> u8 {
-    i16::from(pitch)
-        .saturating_add(i16::from(transpose))
-        .clamp(0, 127) as u8
+    daw_core::transposed_midi_pitch(pitch, transpose)
 }
 
 #[derive(Clone)]

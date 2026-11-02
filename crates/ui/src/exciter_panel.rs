@@ -83,6 +83,9 @@ pub(super) fn show(
             [live(None).map(|v| v[i]), None],
         )
     });
+    let owner = ui.make_persistent_id("exciter-strip-order");
+    let reordering = crate::strip_reorder::active(ui, owner);
+    let original = settings.bands.clone();
     let (compact, height) = dimensions;
     let mut enabled = settings.enabled;
     let mut collapsed = settings.collapsed;
@@ -102,17 +105,21 @@ pub(super) fn show(
         |ui| {
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
-                body = daw_unit_ui::exciter::show(
-                    ui,
-                    settings,
-                    (compact, crate::envelope_panel::body_height(compact)),
-                    daw_unit_ui::exciter::Controls {
-                        solos: &mut selected,
-                        band_markers: &markers,
-                        output_markers: &output_markers,
-                        level,
-                    },
-                );
+                body = ui
+                    .add_enabled_ui(!reordering, |ui| {
+                        daw_unit_ui::exciter::show(
+                            ui,
+                            settings,
+                            (compact, crate::envelope_panel::body_height(compact)),
+                            daw_unit_ui::exciter::Controls {
+                                solos: &mut selected,
+                                band_markers: &markers,
+                                output_markers: &output_markers,
+                                level,
+                            },
+                        )
+                    })
+                    .inner;
                 if settings.modulation_open {
                     panels::unit_divider(ui, body.output.right(), body.output.y_range().into());
                     let mut targets: Vec<_> = settings
@@ -152,6 +159,39 @@ pub(super) fn show(
             });
         },
     );
+    let mut slots = Vec::new();
+    for (i, (band, response)) in original.iter().zip(&body.band_responses).enumerate() {
+        let control = ui
+            .input(|input| input.pointer.press_origin())
+            .is_some_and(|p| {
+                body.power[i].contains(p)
+                    || body.solo[i].contains(p)
+                    || body.modes[i].contains(p)
+                    || body.knobs[i].iter().any(|r| r.contains(p))
+            });
+        if !control {
+            crate::strip_reorder::arm_items(ui, owner, response, band.id, &original);
+        }
+        slots.push((band.id, response.rect));
+    }
+    let cutoffs: Vec<_> = settings.bands.iter().map(|b| b.upper_hz).collect();
+    let before_ids: Vec<_> = settings.bands.iter().map(|b| b.id).collect();
+    if let (Some((_, first)), Some((_, last))) = (slots.first(), slots.last()) {
+        crate::strip_reorder::finish_items(
+            ui,
+            owner,
+            &mut settings.bands,
+            &slots,
+            first.union(*last).intersect(ui.clip_rect()),
+        );
+    }
+    // Ranges owns the ordered crossover topology; strip processing/IDs move to
+    // the destination range without invalidating boundaries or route identities.
+    if settings.bands.iter().map(|b| b.id).ne(before_ids) {
+        for (band, cutoff) in settings.bands.iter_mut().zip(cutoffs) {
+            band.upper_hz = cutoff;
+        }
+    }
     let mut solo_changed = false;
     for (id, selected) in ids.into_iter().zip(selected) {
         solo_changed |= if selected {

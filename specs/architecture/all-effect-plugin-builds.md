@@ -38,7 +38,7 @@ The plugin prepares 64 stable band slots, each with Enabled, Mode, Frequency, Ga
 
 `MultibandEq::retarget` changes only same-ID/same-order prepared settings. Route/topology changes still require worker preparation and `inherit`. Reject mismatched topologies before changing any band. The plugin retains its settings vector through processing; automation must not reconstruct it. Editor and CLAP gesture queues scale to the fixed parameter count while remaining bounded. The editor starts with one band, the shared Add strip and Output. Add reveals and enables the next hidden slot; power bypass retains the visible strip. Remove resets and hides that slot while preserving its stable identity. Enabled or modified slots become visible after state recall. The visible-slot mask is instance UI state, separate from parameters and serialized presets. The bank scrolls horizontally as needed, and Add is disabled at 64 visible slots. These presentation rules do not change the fixed automation bank. Tests cover Add, power, Remove and identity preservation.
 
-The fixed band order is a current implementation limit under the [variable-strip reordering requirement](modular-audio-units.md#variable-strip-reordering). Standalone band reordering remains pending. Its implementation must preserve the published slot parameter IDs and bindings while saving the chosen order separately; it must not renumber automation parameters by display position.
+Standalone Multiband EQ uses the shared release-only strip gesture lifecycle. Its version-2 state appends a validated 64-slot permutation; version-1 state loads with the original order. Published automation IDs and their slot bindings remain fixed. UI controls resolve slots by stable UUID, and the prepared DSP retains canonical slot order. Shared state exchanges publish the complete bounded state, including presentation fields. CLAP consumes order from its bounded editor queue on the control thread, saves it immediately without audio-event delivery, and marks non-parameter state dirty after releasing queue borrows. Order does not enter DSP processing. VST3 stores the order in controller state and calls the host dirty-state hook. The owning host controls native state undo; native undo/recall acceptance is not established by headless tests. The visible-slot mask remains instance-only UI state as described above.
 
 ## Packaging, CI, and checks
 
@@ -47,3 +47,13 @@ The manifest-discovered packager requires no product allowlist. `--units all` no
 The plugin workflow runs fourteen products across three platforms (42 jobs), with both formats, typed model/editor and ABI tests, packaging, separate artifacts, checksums, and logs. Existing library-path environment variables retain `DRIVE_*` names for shared host tests.
 
 ABI tests cover native metadata, latency at all rates, every parameter, choices, dense automation, legal in-place/irregular buffers, zero-frame flushes, state corruption and active recall. Product tests freeze identities and default state, validate mappings/text conversions, compare portable DSP and wrappers, and check bypass meter clearing. Platform-native editor/device and external-host checks remain separate from automated tests. Record executed checks and remaining limits in [validation history](../validation/README.md).
+
+## Runtime notice inventory — 2026-11-02
+
+`tools/runtime_notices.json` records exact text hashes for the confirmed tracing,
+tracing-subscriber, libloading, ashpd, alsa-sys and ICU4X notice omissions. Their
+texts live in `crates/ui/assets/licenses`, already copied by all desktop and plugin
+packagers. Archive tests compare the staged bytes with this inventory for each
+format and target. Notices can be included conservatively on targets that do not
+link a component. This inventory closes those omissions; it is not a complete
+license or corresponding-source audit of every dependency and deliverable.

@@ -40,3 +40,7 @@ Right-click a strip's empty space, Value knob, or Power button and select Remove
 Drag the installed component's header to move its strips between regular layers and Main. A populated destination merges them and keeps its own header settings. Moving updates all consumers, including other macros, LFOs, Oscillator, Amplitude, and track effects. Identity collisions receive fresh IDs and matching target/source updates. Modifier dragging copies the module with fresh strip/route IDs and matching new targets; copied incoming connections retain their original source assignments. Names survive moves, copies, removal, and restoration. Existing preview, cancellation, and release-only transactions are shared with other components. Individual strip drag transfers remain outside this change.
 
 Save/reopen, Save As, track duplication, sample-rate changes, and layer reordering retain macro values, identities, routes, and presentation. Compatible live value/power/routing edits retain other providers, voices, and phases. Checks and native-platform limits are recorded in [validation](../validation/README.md).
+
+## Strip reordering — 2026-11-02
+
+Macro strip order uses the shared `unit-ui` gesture lifecycle. Only visible controls participate; hidden control entries remain retained. Knobs, Power and active name editing cannot arm a reorder. Commit the complete control values/identities through the existing instrument edit on valid release only. Routes remain keyed by stable identity; project persistence and history retain the resulting order.

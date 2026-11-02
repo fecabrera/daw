@@ -106,7 +106,9 @@ impl Instance {
         }
     }
     pub fn current(&self) -> Option<PluginState> {
-        self.exchange.current()
+        let mut state = self.exchange.current()?;
+        self.editor.apply_presentation(&mut state);
+        Some(state)
     }
 }
 /// SAFETY: non-null plugin points to our live plugin structure until destroy.

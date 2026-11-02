@@ -53,6 +53,14 @@ impl Default for PluginState {
     }
 }
 impl PluginState {
+    /// This unit has no independently saved strip order.
+    pub fn presentation(&self) -> [u8; 64] {
+        std::array::from_fn(|i| i as u8)
+    }
+    pub fn set_presentation(&mut self, _: [u8; 64]) -> bool {
+        false
+    }
+
     pub(crate) fn copy_parameter_from(&mut self, parameter: Parameter, source: &Self) {
         self.values[parameter.index()] = source.values[parameter.index()];
     }

@@ -238,14 +238,19 @@ fn sampler_requests(project: &Project) -> Vec<(&SamplerSettings, Vec<u8>)> {
             .clips
             .iter()
             .filter_map(|clip| {
-                project
+                let pattern = project
                     .assets
                     .iter()
                     .find(|a| a.id == clip.asset_id)?
                     .midi_pattern
-                    .as_ref()
+                    .as_ref()?;
+                Some((clip, pattern))
             })
-            .flat_map(|p| p.notes.iter().map(|n| n.pitch))
+            .flat_map(|(clip, p)| {
+                p.notes
+                    .iter()
+                    .map(move |n| daw_core::transposed_midi_pitch(n.pitch, clip.transpose))
+            })
             .collect();
         notes.sort_unstable();
         notes.dedup();
@@ -259,10 +264,7 @@ fn sampler_requests(project: &Project) -> Vec<(&SamplerSettings, Vec<u8>)> {
                 let mut notes: Vec<_> = track
                     .clips
                     .iter()
-                    .map(|clip| {
-                        (i16::from(row.trigger_pitch) + i16::from(clip.transpose)).clamp(0, 127)
-                            as u8
-                    })
+                    .map(|clip| daw_core::transposed_midi_pitch(row.trigger_pitch, clip.transpose))
                     .chain(std::iter::once(row.trigger_pitch))
                     .collect();
                 notes.sort_unstable();

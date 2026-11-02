@@ -73,6 +73,12 @@ class PackagingTests(unittest.TestCase):
                         for notice in ("Outfit-OFL.txt", "Hack-LICENSE.txt", "window/baseview-LICENSE-MIT.txt",
                                        "fallback-fonts/egui-fonts-Hack-Regular.txt"):
                             self.assertIn(license_prefix + notice, zipped.namelist())
+                        inventory = json.loads((ROOT / "tools/runtime_notices.json").read_text())
+                        for entry in inventory["notices"]:
+                            source = ROOT / entry["notice"]
+                            expected = source.read_bytes()
+                            self.assertEqual(hashlib.sha256(expected).hexdigest(),entry["sha256"])
+                            self.assertEqual(zipped.read(license_prefix + "ui/" + source.name), expected)
                         self.assertIn("README.txt", zipped.namelist())
                         if system == "macos":
                             self.assertIn(f"Drive.{format_name}/Contents/_CodeSignature/CodeResources", zipped.namelist())

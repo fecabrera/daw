@@ -34,17 +34,19 @@ impl Processor {
         {
             return Err(ConfigurationError);
         }
+        let mut settings = state.to_settings();
+        settings.bands.sort_unstable_by_key(|b| b.id);
         let mut drive = Drive::new(
             ProcessingContext {
                 sample_rate_hz: rate as u32,
                 max_block_frames: maximum,
             },
-            &state.to_settings(),
+            &settings,
         );
         drive.prepare_fixed_band_slots();
         Ok(Self {
             drive,
-            settings: state.to_settings(),
+            settings,
             frame: 0,
             tempo: 120.0,
             state,
@@ -52,7 +54,8 @@ impl Processor {
     }
     pub fn set_output_meter(&mut self, meter: std::sync::Arc<crate::OutputMeter>) {
         self.drive.set_output_peak_meter(meter.output.clone());
-        for (band, handle) in self.settings.bands.iter().zip(&meter.eq_bands) {
+        for band in &self.settings.bands {
+            let handle = &meter.eq_bands[(band.id.as_u128() - 1) as usize];
             self.drive
                 .set_band_level_meter(band.id, handle.current().clone());
         }

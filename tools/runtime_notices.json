@@ -1,0 +1,65 @@
+{
+  "scope": "Confirmed notice omissions from standalone review 633bf24; not a complete licensing audit.",
+  "notices": [
+    {
+      "component": "alsa-sys-0.3.1",
+      "notice": "crates/ui/assets/licenses/alsa-sys-0.3.1-LICENSE.txt",
+      "sha256": "219766b3420f49f6204143c5f3ef750888fb6de29ce5f63e909f146e90b375a2",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Runtime notice retained in the common UI notice inventory; unused target notices may be bundled conservatively."
+    },
+    {
+      "component": "ashpd-0.11.1",
+      "notice": "crates/ui/assets/licenses/ashpd-0.11.1-LICENSE.txt",
+      "sha256": "ae26bc7b1bc91fb8648f6a298decbb1a77090a56c9d04e2c23b8365e5f54acb5",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Runtime notice retained in the common UI notice inventory; unused target notices may be bundled conservatively."
+    },
+    {
+      "component": "icu_normalizer-2.3.0",
+      "notice": "crates/ui/assets/licenses/icu_normalizer-2.3.0-LICENSE.txt",
+      "sha256": "f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Runtime notice retained in the common UI notice inventory; unused target notices may be bundled conservatively."
+    },
+    {
+      "component": "libloading-0.8.9",
+      "notice": "crates/ui/assets/licenses/libloading-0.8.9-LICENSE.txt",
+      "sha256": "b29f8b01452350c20dd1af16ef83b598fea3053578ccc1c7a0ef40e57be2620f",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Runtime notice retained in the common UI notice inventory; unused target notices may be bundled conservatively."
+    },
+    {
+      "component": "tracing-0.1.44",
+      "notice": "crates/ui/assets/licenses/tracing-0.1.44-LICENSE.txt",
+      "sha256": "898b1ae9821e98daf8964c8d6c7f61641f5f5aa78ad500020771c0939ee0dea1",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Runtime notice retained in the common UI notice inventory; unused target notices may be bundled conservatively."
+    },
+    {
+      "component": "tracing-subscriber-0.3.23",
+      "notice": "crates/ui/assets/licenses/tracing-subscriber-0.3.23-LICENSE.txt",
+      "sha256": "898b1ae9821e98daf8964c8d6c7f61641f5f5aa78ad500020771c0939ee0dea1",
+      "deliverables": [
+        "desktop",
+        "plugins"
+      ],
+      "reason": "Runtime notice retained in the common UI notice inventory; unused target notices may be bundled conservatively."
+    }
+  ]
+}

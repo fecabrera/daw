@@ -105,3 +105,7 @@ publishing the complete session. Existing Sampler file replacement retains its
 controls; another source is replaced by a fresh Sampler. Failures and cancellation
 retain the original session. Existing source Choose sample and Timeline clip-drop
 paths keep their Sampler/Granulizer settings and unit-specific targets.
+
+## Effective clip pitches — 2026-11-02
+
+MIDI Sampler preparation collects effective pitches for every referencing clip, including hidden pattern notes. Apply the shared core `transposed_midi_pitch` mapping (clip transpose plus note, clamped to 0–127) before deduplication. Readiness and preparation use the same requests. Multiple clips sharing a pattern can require different variants; note scheduling uses the identical mapping.

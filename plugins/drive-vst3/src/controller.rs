@@ -53,14 +53,42 @@ impl IEditControllerTrait for Controller {
             kResultOk
         })
     }
-    // The component owns base parameters. No independent editor preferences exist
-    // yet, so controller-specific state is explicitly unsupported, not a second
-    // conflicting copy of component state.
-    unsafe fn setState(&self, _: *mut IBStream) -> tresult {
-        kNotImplemented
+    // Non-parameter strip order belongs to controller state; parameter IDs stay fixed.
+    unsafe fn setState(&self, stream: *mut IBStream) -> tresult {
+        boundary(kInternalError, || {
+            let mut probe = self.data.state.get();
+            if !probe.set_presentation(probe.presentation()) {
+                return kNotImplemented;
+            }
+            let Some(mut stream) = (unsafe { Stream::new(stream) }) else {
+                return kInvalidArgument;
+            };
+            let Ok(saved) = PluginState::read_from(&mut stream) else {
+                return kResultFalse;
+            };
+            let mut state = self.data.state.get();
+            state.set_presentation(saved.presentation());
+            self.data.state.set(state);
+            self.data.model.discard_presentation();
+            self.data.model.publish(state);
+            kResultOk
+        })
     }
-    unsafe fn getState(&self, _: *mut IBStream) -> tresult {
-        kNotImplemented
+    unsafe fn getState(&self, stream: *mut IBStream) -> tresult {
+        boundary(kInternalError, || {
+            let mut probe = self.data.state.get();
+            if !probe.set_presentation(probe.presentation()) {
+                return kNotImplemented;
+            }
+            let Some(mut stream) = (unsafe { Stream::new(stream) }) else {
+                return kInvalidArgument;
+            };
+            if self.data.state.get().write_to(&mut stream).is_ok() {
+                kResultOk
+            } else {
+                kResultFalse
+            }
+        })
     }
     unsafe fn getParameterCount(&self) -> i32 {
         Parameter::COUNT as i32

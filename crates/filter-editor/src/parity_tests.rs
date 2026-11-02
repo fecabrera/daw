@@ -204,6 +204,7 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
             let mut changed = false;
             while let Some(edit) = model.pop() {
                 match edit {
+                    Edit::Presentation(_) => panic!("parameter gestures must not reorder strips"),
                     Edit::Begin(p) => {
                         assert_eq!(p, parameter, "wrong gesture target");
                         began = true;

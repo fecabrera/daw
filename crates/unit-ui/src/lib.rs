@@ -31,3 +31,6 @@ pub mod auto_filter;
 pub mod equalizer;
 
 pub mod multiband_eq;
+
+pub mod drag;
+pub mod strip_reorder;

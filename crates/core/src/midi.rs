@@ -3,6 +3,11 @@ use serde::{Deserialize, Serialize};
 
 pub const MIDI_TICKS_PER_BEAT: u32 = 960;
 
+/// Effective MIDI key after a clip transpose, shared by preparation and scheduling.
+pub fn transposed_midi_pitch(pitch: u8, transpose: i8) -> u8 {
+    (i16::from(pitch) + i16::from(transpose)).clamp(0, 127) as u8
+}
+
 /// Map a visible MIDI clip edge to source ticks without limiting expansion to its source.
 pub struct MidiPatternBounds {
     edge: ClipEdge,
@@ -515,5 +520,24 @@ impl Project {
             .unwrap()
             .asset_id = id;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod transpose_tests {
+    #[test]
+    fn effective_pitch_clamps_at_both_midi_endpoints() {
+        for (pitch, transpose, expected) in [
+            (0, i8::MIN, 0),
+            (60, -12, 48),
+            (60, 12, 72),
+            (127, i8::MAX, 127),
+            (64, i8::MIN, 0),
+            (12, -12, 0),
+            (115, 12, 127),
+            (127, -12, 115),
+        ] {
+            assert_eq!(super::transposed_midi_pitch(pitch, transpose), expected);
+        }
     }
 }

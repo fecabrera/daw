@@ -64,11 +64,20 @@ pub fn decode_audio_cached(
             });
         }
     }
-    let disk_key =
-        crate::preparation_cache::key(b"decoded", &[&receipt.sha256, &rate.to_le_bytes()]);
+    let disk_key = crate::preparation_cache::key(
+        b"decoded-verified-v2",
+        &[&receipt.sha256, &rate.to_le_bytes()],
+    );
     let audio = crate::preparation_cache::cached_audio(disk_key, cancelled, || {
-        let audio = crate::decode_audio_cancellable(&key.0, rate, cancelled)?;
-        if receipt != crate::SourceRevision::read(&key.0, cancelled)? {
+        let snapshot = crate::source_revision::SourceSnapshot::read(&key.0, cancelled)?;
+        if snapshot.revision != receipt {
+            return Err(Error(
+                "Source changed during audio preparation; try again".into(),
+            ));
+        }
+        let audio = crate::decode_audio_cancellable(&snapshot.path, rate, cancelled)?;
+        if before != revision(&key.0)? || receipt != crate::SourceRevision::read(&key.0, cancelled)?
+        {
             return Err(Error(
                 "Source changed during audio preparation; try again".into(),
             ));

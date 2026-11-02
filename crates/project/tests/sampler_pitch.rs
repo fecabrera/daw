@@ -360,3 +360,36 @@ fn parallel_project_preparation_matches_serial_banks_and_cancellation_keeps_the_
         assert_eq!(parallel.project, before);
     }
 }
+
+#[test]
+fn transposed_sampler_note_prepares_and_renders_effective_pitch() {
+    for engine in [StretchEngine::INTEGRATED, StretchEngine::RUBBER_BAND] {
+        let fixture = Fixture::new();
+        let mut session = fixture.session(engine, &[60]);
+        session.project.tracks[0].clips[0].transpose = 12;
+        let mut second = session.project.tracks[0].clips[0].clone();
+        second.id = Id::new_v4();
+        second.start_frame = second.length_frames;
+        second.transpose = -12;
+        session.project.tracks[0].clips.push(second);
+        assert!(session.sampler_preparation_needed(&session.project));
+        session.prepare_stretches().unwrap();
+        let offsets: Vec<_> = session.sampler_audio[&settings(&session).id]
+            .variants()
+            .map(|(n, _)| n)
+            .collect();
+        assert!(offsets.contains(&12) && offsets.contains(&-12));
+        assert!(!session.sampler_preparation_needed(&session.project));
+        let boundary = session.project.tracks[0].clips[1].start_frame as usize;
+        let mut rendered = vec![[0.0; 2]; boundary + 24000];
+        Renderer::new(session.plan()).render_offline(&mut rendered);
+        assert_pitch(&rendered[..12000], 48000, 12);
+        assert_pitch(&rendered[boundary..boundary + 12000], 48000, -12);
+        session.save(&fixture.0.join("saved")).unwrap();
+        let reopened = Session::open(&fixture.0.join("saved")).unwrap();
+        assert!(!reopened.sampler_preparation_needed(&reopened.project));
+        let mut restored = vec![[0.0; 2]; rendered.len()];
+        Renderer::new(reopened.plan()).render_offline(&mut restored);
+        assert_eq!(rendered, restored);
+    }
+}

@@ -207,7 +207,7 @@ Move the complete strip with its stable identity, settings, modulation connectio
 
 Tests must cover release-only commits, identity and connection preservation, persistence, Undo/Redo, cancellation, no-op drops, control exclusions, edge scrolling and applicable host contexts. Reuse the existing interaction tests and retain built-in/plugin editor parity checks.
 
-Current coverage includes Oscillator sources, modulation connections and built-in Multiband EQ bands. Macro strips, Multiband Exciter bands and standalone Multiband EQ slots still need this behavior. These are implementation gaps under this requirement, not exceptions. This requirement does not claim those interactions are already implemented.
+Current coverage includes Oscillator sources, modulation connections, built-in Multiband EQ bands, DAW Macro controls and Multiband Exciter bands, and standalone Multiband EQ slots. The shared drag primitives and strip lifecycle live in `unit-ui`; DAW adapters retain project transactions and stable UUID mapping. Exciter keeps the Ranges crossover topology fixed while a processing strip moves to another range. Standalone EQ saves a separate slot permutation without changing parameter IDs or the prepared DSP bank order. Native host undo/recall behavior still requires platform acceptance checks.
 
 ### Shared knob base
 

@@ -6,6 +6,52 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Standalone review corrections — 2026-11-02
+
+Regular MIDI Sampler requests now include each clip's effective transposed keys.
+Preparation/readiness and note scheduling share the core bounded mapping. Decoded
+cache builders hash and decode private encoded snapshots, validate before cache
+publication, remove temporary input on failure/cancellation, and use a new cache
+domain to exclude earlier entries. Source collection verification shares that
+snapshot boundary.
+
+Shared strip gestures now live in unit-ui. DAW Macro controls and Exciter bands
+commit order on valid release through existing project history. Exciter keeps
+crossover positions fixed while moving processing identities/settings. Standalone
+Multiband EQ saves a validated slot permutation in version-2 state, accepts legacy
+version-1 state, and preserves parameter IDs plus canonical DSP slot order. CLAP
+presentation saves do not wait for audio events; host recalls discard stale queued
+presentation edits. VST3 keeps presentation in controller state. Native host undo
+and recall acceptance remains a platform check.
+
+Confirmed runtime notice omissions are retained under the common DAW UI notice
+inputs. [The scoped inventory](../../tools/runtime_notices.json) records exact
+text hashes; package tests verify the staged copies. This is not a complete
+licensing or corresponding-source audit.
+
+Completed checks:
+
+- Locked offline workspace tests and documentation tests passed. The UI suite
+  passed 840 tests, with three existing manual probes ignored.
+- Regression checks cover shared-pattern clips with positive/negative transpose,
+  both preparation backends, audible pitch and save/reopen parity; MIDI endpoint
+  clamping; encoded snapshot cleanup; both A-to-B-to-A cache cases; Macro/Exciter
+  identity, routes, persistence and history; and standalone EQ release/cancel,
+  parameter bindings, legacy state and coherent publication.
+- After the final presentation-save corrections, strict workspace/all-target
+  Clippy, the complete media suite, EQ/Drive CLAP and EQ VST3 library checks
+  passed. The CLAP regression checks immediate save visibility, safe synchronous
+  host reentry and recall that supersedes queued order edits.
+- Fourteen packaging tests passed, including exact notice bytes in every tested
+  target/format archive. Formatting, diff and changed Markdown file targets passed.
+- CLI smoke checks passed. The debug macOS application was rebuilt through
+  tools/package_macos.sh debug.
+
+Native UI/device/listening, external host undo, Windows/Linux runtime and release
+performance acceptance were not run. The minor native ONNX advisory was outside
+these requested corrections and remains unchanged. Temporary check logs are not
+tracked.
+
 ## Standalone branch review mode — 2026-11-02
 
 The DAW review skill accepts `--mode standalone` for a branch's full committed

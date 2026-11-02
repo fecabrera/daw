@@ -15,12 +15,21 @@ pub fn to_settings(state: &PluginState) -> Settings {
         ..Settings::default()
     };
     update_settings(state, &mut settings);
+    settings.bands.sort_unstable_by_key(|b| {
+        state
+            .presentation()
+            .iter()
+            .position(|slot| u128::from(*slot) + 1 == b.id.as_u128())
+            .unwrap_or(64)
+    });
+
     settings
 }
 pub fn update_settings(state: &PluginState, settings: &mut Settings) {
     settings.enabled = state.get(P::Bypass) == 0.0;
     settings.output_gain_db = daw_unit_core::gain::to_db_f32(state.get(P::Level));
-    for (i, band) in settings.bands.iter_mut().enumerate() {
+    for band in settings.bands.iter_mut() {
+        let i = (band.id.as_u128() - 1) as usize;
         let base = 1 + 5 * i;
         band.enabled = state.get(P::ALL[base]) != 0.0;
         band.mode = daw_unit_core::EqBandMode::ALL[state.get(P::ALL[base + 1]) as usize];
@@ -39,7 +48,11 @@ pub fn values(settings: &Settings) -> [f64; P::COUNT] {
         }
         let slot = (i - 1) / 5;
         let field = (i - 1) % 5;
-        let Some(band) = settings.bands.get(slot) else {
+        let Some(band) = settings
+            .bands
+            .iter()
+            .find(|b| b.id.as_u128() == slot as u128 + 1)
+        else {
             return P::ALL[i].info().default;
         };
         match field {

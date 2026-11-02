@@ -3,8 +3,8 @@ use crate::{AudioData, Error, Result};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, Metadata},
-    io::Read,
-    path::Path,
+    io::{Read, Write},
+    path::{Path, PathBuf},
 };
 
 /// Original encoded bytes, independent of source path and project processing rate.
@@ -13,6 +13,89 @@ use std::{
 pub struct SourceRevision {
     pub byte_length: u64,
     pub sha256: [u8; 32],
+}
+
+/// Private worker-owned encoded input. Streaming to disk bounds scratch memory and
+/// prevents pathname mutations from changing the bytes passed to either decoder.
+pub(crate) struct SourceSnapshot {
+    directory: PathBuf,
+    pub path: PathBuf,
+    pub revision: SourceRevision,
+}
+impl Drop for SourceSnapshot {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.directory);
+    }
+}
+impl SourceSnapshot {
+    pub fn read(path: &Path, cancelled: &impl Fn() -> bool) -> Result<Self> {
+        check_cancelled(cancelled)?;
+        let expected = stamp(fs::metadata(path).map_err(|e| Error(e.to_string()))?)?;
+        let mut input = File::open(path).map_err(|e| Error(e.to_string()))?;
+        if stamp(input.metadata().map_err(|e| Error(e.to_string()))?)? != expected {
+            return Err(Error("Source changed before preparation".into()));
+        }
+        let directory =
+            std::env::temp_dir().join(format!("daw-encoded-{}", daw_core::Id::new_v4()));
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder
+            .create(&directory)
+            .map_err(|e| Error(format!("Cannot stage source: {e}")))?;
+        let extension = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .and_then(|value| {
+                crate::IMPORT_EXTENSIONS
+                    .iter()
+                    .copied()
+                    .find(|known| value.eq_ignore_ascii_case(known))
+            })
+            .unwrap_or("audio");
+        let mut snapshot = Self {
+            path: directory.join(format!("source.{extension}")),
+            directory,
+            revision: SourceRevision {
+                byte_length: 0,
+                sha256: [0; 32],
+            },
+        };
+        let mut output = File::create_new(&snapshot.path).map_err(|e| Error(e.to_string()))?;
+        let mut hash = Sha256::new();
+        let mut buffer = [0; 64 * 1024];
+        loop {
+            check_cancelled(cancelled)?;
+            let count = input.read(&mut buffer).map_err(|e| Error(e.to_string()))?;
+            if count == 0 {
+                break;
+            }
+            snapshot.revision.byte_length = snapshot
+                .revision
+                .byte_length
+                .checked_add(count as u64)
+                .ok_or_else(|| Error("Source byte length overflow".into()))?;
+            if snapshot.revision.byte_length > expected.0 {
+                return Err(Error("Source changed during preparation".into()));
+            }
+            hash.update(&buffer[..count]);
+            output
+                .write_all(&buffer[..count])
+                .map_err(|e| Error(format!("Cannot stage source: {e}")))?;
+        }
+        snapshot.revision.sha256 = hash.finalize().into();
+        if snapshot.revision.byte_length != expected.0
+            || stamp(input.metadata().map_err(|e| Error(e.to_string()))?)? != expected
+            || stamp(fs::metadata(path).map_err(|e| Error(e.to_string()))?)? != expected
+        {
+            return Err(Error("Source changed during preparation".into()));
+        }
+        check_cancelled(cancelled)?;
+        Ok(snapshot)
+    }
 }
 
 fn stamp(metadata: Metadata) -> Result<(u64, std::time::SystemTime)> {
@@ -111,8 +194,10 @@ pub fn check_prepared_source(
     prepared: &AudioData,
     cancelled: &impl Fn() -> bool,
 ) -> Result<PreparedSourceCheck> {
-    let before = SourceRevision::read(path, cancelled)?;
-    let current = crate::decode_audio_cancellable(path, prepared.sample_rate_hz, cancelled)?;
+    let snapshot = SourceSnapshot::read(path, cancelled)?;
+    let before = snapshot.revision;
+    let current =
+        crate::decode_audio_cancellable(&snapshot.path, prepared.sample_rate_hz, cancelled)?;
     let mut matches =
         prepared.metadata == current.metadata && prepared.samples.len() == current.samples.len();
     if matches {
@@ -202,6 +287,27 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn encoded_snapshot_binds_decoder_input_and_removes_private_scratch() {
+        let fixture = Fixture::new();
+        let path = fixture.wav(1000);
+        let snapshot = SourceSnapshot::read(&path, &|| false).unwrap();
+        let directory = snapshot.directory.clone();
+        assert_eq!(
+            snapshot.revision,
+            SourceRevision::read(&path, &|| false).unwrap()
+        );
+        fixture.wav(2000);
+        let decoded = crate::decode_audio_cancellable(&snapshot.path, 48000, &|| false).unwrap();
+        assert_eq!(decoded.samples[0], [1000.0 / 32768.0; 2]);
+        assert_ne!(
+            snapshot.revision,
+            SourceRevision::read(&path, &|| false).unwrap()
+        );
+        drop(snapshot);
+        assert!(!directory.exists());
     }
 
     #[test]

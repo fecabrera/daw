@@ -153,3 +153,7 @@ Exit gate: serial/parallel audio equality, deterministic complete-bank publicati
 - Update Sampler, performance, history, project-loading, CLI, and relevant repository instructions as each stage lands. Update user guides and README feature claims only for delivered behavior. Record measured results and remaining limits in validation history.
 
 Completion means both repeated-work reduction and responsive editing are demonstrated. A first uncached transform may still take time; the interface must explain that state and preserve correct audio and user edits.
+
+## Verified encoded input — 2026-11-02
+
+Decoded-cache builders stage encoded input into a private worker-owned temporary file with a 64 KiB streaming buffer. Hash those exact staged bytes and decode only that immutable snapshot. Reject a receipt mismatch or source mutation before publishing the builder result. Failure/cancellation removes the staging directory. Cache domain `decoded-verified-v2` excludes entries produced by the earlier path-based decoder. Source collection PCM verification uses the same encoded snapshot boundary; no encoded staging or file I/O enters painting or the audio callback.

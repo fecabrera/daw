@@ -7,14 +7,15 @@ use std::{
     io::{Read, Write},
 };
 
-pub const STATE_VERSION: u32 = 1;
-pub const MAX_STATE_BYTES: usize = 16 + 8 * Parameter::COUNT;
+pub const STATE_VERSION: u32 = 2;
+pub const MAX_STATE_BYTES: usize = 16 + 8 * Parameter::COUNT + 64;
 
 /// A validated, copyable snapshot. State I/O runs outside the audio callback.
 /// There are no project IDs, modulation routes, paths, UI shells, or DSP histories.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PluginState {
     values: [f64; Parameter::COUNT],
+    band_order: [u8; 64],
 }
 
 #[derive(Debug)]
@@ -49,10 +50,26 @@ impl Default for PluginState {
     fn default() -> Self {
         Self {
             values: Parameter::ALL.map(|p| p.info().default),
+            band_order: std::array::from_fn(|i| i as u8),
         }
     }
 }
 impl PluginState {
+    pub fn presentation(&self) -> [u8; 64] {
+        self.band_order
+    }
+    pub fn set_presentation(&mut self, order: [u8; 64]) -> bool {
+        let mut seen = 0_u64;
+        for slot in order {
+            if slot >= 64 || seen & (1_u64 << slot) != 0 {
+                return false;
+            }
+            seen |= 1_u64 << slot;
+        }
+        self.band_order = order;
+        true
+    }
+
     pub(crate) fn copy_parameter_from(&mut self, parameter: Parameter, source: &Self) {
         self.values[parameter.index()] = source.values[parameter.index()];
     }
@@ -80,15 +97,19 @@ impl PluginState {
     pub fn from_settings(settings: &Settings) -> Result<Self, ParameterError> {
         if !settings.valid()
             || settings.bands.len() != 64
-            || !settings
+            || settings
                 .bands
                 .iter()
-                .enumerate()
-                .all(|(i, b)| b.id == uuid::Uuid::from_u128(i as u128 + 1))
+                .any(|b| !(1..=64).contains(&b.id.as_u128()))
         {
             return Err(ParameterError);
         }
         let mut state = Self::default();
+        if !state.set_presentation(std::array::from_fn(|i| {
+            (settings.bands[i].id.as_u128() - 1) as u8
+        })) {
+            return Err(ParameterError);
+        }
         for (parameter, value) in Parameter::ALL.into_iter().zip(mapping::values(settings)) {
             state.set(parameter, value)?;
         }
@@ -102,13 +123,16 @@ impl PluginState {
         for (chunk, value) in bytes[16..].chunks_exact_mut(8).zip(self.values) {
             chunk.copy_from_slice(&value.to_le_bytes());
         }
+        bytes[MAX_STATE_BYTES - 64..].copy_from_slice(&self.band_order);
         bytes
     }
     pub fn decode(bytes: &[u8]) -> Result<Self, StateError> {
-        if bytes.len() != MAX_STATE_BYTES || &bytes[..8] != MAGIC {
+        if ![MAX_STATE_BYTES, MAX_STATE_BYTES - 64].contains(&bytes.len()) || &bytes[..8] != MAGIC {
             return Err(StateError::InvalidEnvelope);
         }
-        if bytes[8..12] != STATE_VERSION.to_le_bytes()
+        let legacy = bytes[8..12] == 1_u32.to_le_bytes() && bytes.len() == MAX_STATE_BYTES - 64;
+        if (!legacy
+            && (bytes[8..12] != STATE_VERSION.to_le_bytes() || bytes.len() != MAX_STATE_BYTES))
             || bytes[12..16] != SETTINGS_VERSION.to_le_bytes()
         {
             return Err(StateError::UnsupportedVersion);
@@ -118,6 +142,9 @@ impl PluginState {
             let mut word = [0; 8];
             word.copy_from_slice(chunk);
             state.set(parameter, f64::from_le_bytes(word))?;
+        }
+        if !legacy && !state.set_presentation(bytes[MAX_STATE_BYTES - 64..].try_into().unwrap()) {
+            return Err(StateError::InvalidEnvelope);
         }
         Ok(state)
     }

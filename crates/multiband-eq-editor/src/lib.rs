@@ -323,3 +323,82 @@ mod inventory_tests {
         assert_eq!(P::COUNT, 322);
     }
 }
+
+#[cfg(test)]
+mod order_tests {
+    use super::*;
+    use daw_drive_plugin::{Parameter, PluginState};
+    #[test]
+    fn band_drag_preserves_automation_slots_and_persists_only_on_release() {
+        for cancel in [false, true] {
+            let ctx = egui::Context::default();
+            daw_unit_ui::theme::configure(&ctx);
+            daw_unit_ui::fonts::configure(&ctx);
+            let mut settings = PluginState::default().to_settings();
+            let mut slots = 7;
+            let mut render = |events| {
+                let mut bounds = None;
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(700.0, 600.0),
+                        )),
+                        events,
+                        focused: true,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        bounds = Some(body::render(
+                            ui,
+                            &mut settings,
+                            0.0.into(),
+                            &mut slots,
+                            &[0.0; 64],
+                        ));
+                    },
+                );
+                output.textures_delta.clear();
+                (
+                    bounds.unwrap(),
+                    PluginState::from_settings(&settings).unwrap(),
+                )
+            };
+            let (bounds, before) = render(vec![]);
+            let start = bounds.sections[0].left_center() + egui::vec2(2.0, 0.0);
+            let end = bounds.sections[2].right_center() - egui::vec2(2.0, 0.0);
+            let button = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                pressed,
+                button: egui::PointerButton::Primary,
+                modifiers: Default::default(),
+            };
+            render(vec![egui::Event::PointerMoved(start), button(start, true)]);
+            let (_, preview) = render(vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(preview, before);
+            if cancel {
+                render(vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }]);
+            }
+            let (_, after) = render(vec![button(end, false)]);
+            if cancel {
+                assert_eq!(after, before);
+                continue;
+            }
+            assert_eq!(&after.presentation()[..3], &[1, 2, 0]);
+            assert_eq!(
+                Parameter::ALL.map(|p| after.get(p)),
+                Parameter::ALL.map(|p| before.get(p))
+            );
+            let model = Model::default();
+            model.publish(after);
+            assert_eq!(model.current(), Some(after));
+            assert_eq!(PluginState::decode(&after.encode()).unwrap(), after);
+        }
+    }
+}

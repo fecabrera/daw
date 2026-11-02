@@ -12,6 +12,7 @@ pub struct Bounds {
     pub ranges: Rect,
     pub crossovers: Vec<Rect>,
     pub bands: Vec<Rect>,
+    pub band_responses: Vec<Response>,
     pub modes: Vec<Rect>,
     pub knobs: Vec<[Rect; 3]>,
     pub power: Vec<Rect>,
@@ -28,6 +29,7 @@ impl Default for Bounds {
             ranges: Rect::NOTHING,
             crossovers: Vec::new(),
             bands: Vec::new(),
+            band_responses: Vec::new(),
             modes: Vec::new(),
             knobs: Vec::new(),
             power: Vec::new(),
@@ -120,6 +122,7 @@ struct BandControls<'a> {
     tooltip: String,
 }
 struct BandBounds {
+    response: Option<Response>,
     section: Rect,
     mode: Rect,
     knobs: [Rect; 3],
@@ -136,6 +139,7 @@ fn band(
 ) -> BandBounds {
     let (compact, height) = dimensions;
     let mut b = BandBounds {
+        response: None,
         section: Rect::NOTHING,
         mode: Rect::NOTHING,
         knobs: [Rect::NOTHING; 3],
@@ -143,82 +147,99 @@ fn band(
         solo: Rect::NOTHING,
         remove: false,
     };
-    b.section = panels::unit_strip(ui, height, egui::UiBuilder::new().id_salt(s.id), |ui| {
-        let start = ui.cursor().top();
-        ui.spacing_mut().item_spacing.y = GAP;
-        if !compact {
-            let mode = menus::Dropdown::from_id_salt("mode")
-                .small_items()
-                .selected_text(egui::RichText::new(s.mode.label()).size(panels::HEADER_FONT_SIZE))
-                .width(ui.available_width())
-                .truncate()
-                .show_ui(ui, |ui| {
-                    for value in ExciterMode::ALL {
-                        ui.selectable_value(&mut s.mode, value, value.label());
-                    }
-                })
-                .response
-                .on_hover_text("Saturation mode");
-            b.mode = mode.rect;
-            for (row, target) in [0, 2, 1].into_iter().enumerate() {
-                let mut spec = parameter_knobs::destination(P::SATURATOR[target])
-                    .display_scale(SIZE / knobs::CHOICE_SIZE);
-                if target == 2 {
-                    spec = spec.named("Mix").reset_to(0.0);
-                }
-                let response = knobs::row(ui, s, SIZE, |ui, s| {
-                    let value = match target {
-                        0 => &mut s.drive_db,
-                        1 => &mut s.level_db,
-                        _ => &mut s.mix,
-                    };
-                    ui.add(Knob::new(value, spec).modulated(c.markers[target].as_ref(), c.open))
-                });
-                remove_menu(&response, &mut b.remove, c.removable);
-                b.knobs[row] = response.rect;
-            }
-            footer_space(ui, start, height);
-        }
-        rows::centered(ui, if compact { height } else { 22.0 }, |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            let width = (ui.available_width() - 26.0).max(0.0);
-            b.power = ui
-                .allocate_ui_with_layout(
-                    Vec2::new(width, 22.0),
-                    egui::Layout::left_to_right(egui::Align::Center),
-                    |ui| {
-                        let response = rows::power_label(
-                            ui,
-                            &format!("B{}", index + 1),
-                            &format!("Toggle exciter band {}", index + 1),
-                            s.enabled,
-                        );
-                        if response.clicked() {
-                            s.enabled = !s.enabled;
+    let strip = ui.scope_builder(
+        egui::UiBuilder::new().sense(egui::Sense::click_and_drag()),
+        |ui| {
+            panels::unit_strip(
+                ui,
+                height,
+                egui::UiBuilder::new()
+                    .id_salt(s.id)
+                    .sense(egui::Sense::click_and_drag()),
+                |ui| {
+                    let start = ui.cursor().top();
+                    ui.spacing_mut().item_spacing.y = GAP;
+                    if !compact {
+                        let mode = menus::Dropdown::from_id_salt("mode")
+                            .small_items()
+                            .selected_text(
+                                egui::RichText::new(s.mode.label()).size(panels::HEADER_FONT_SIZE),
+                            )
+                            .width(ui.available_width())
+                            .truncate()
+                            .show_ui(ui, |ui| {
+                                for value in ExciterMode::ALL {
+                                    ui.selectable_value(&mut s.mode, value, value.label());
+                                }
+                            })
+                            .response
+                            .on_hover_text("Saturation mode");
+                        b.mode = mode.rect;
+                        for (row, target) in [0, 2, 1].into_iter().enumerate() {
+                            let mut spec = parameter_knobs::destination(P::SATURATOR[target])
+                                .display_scale(SIZE / knobs::CHOICE_SIZE);
+                            if target == 2 {
+                                spec = spec.named("Mix").reset_to(0.0);
+                            }
+                            let response = knobs::row(ui, s, SIZE, |ui, s| {
+                                let value = match target {
+                                    0 => &mut s.drive_db,
+                                    1 => &mut s.level_db,
+                                    _ => &mut s.mix,
+                                };
+                                ui.add(
+                                    Knob::new(value, spec)
+                                        .modulated(c.markers[target].as_ref(), c.open),
+                                )
+                            });
+                            remove_menu(&response, &mut b.remove, c.removable);
+                            b.knobs[row] = response.rect;
                         }
-                        remove_menu(&response, &mut b.remove, c.removable);
-                        response.on_hover_text(&c.tooltip).rect
-                    },
-                )
-                .inner;
-            let response = rows::square_toggle(ui, "S", *c.solo)
-                .on_hover_text("Solo this band for listening. Export is unchanged.");
-            response.widget_info(|| {
-                egui::WidgetInfo::selected(
-                    egui::WidgetType::Button,
-                    ui.is_enabled(),
-                    *c.solo,
-                    format!("Solo exciter band {}", index + 1),
-                )
-            });
-            if response.clicked() {
-                *c.solo = !*c.solo;
-            }
-            b.solo = response.rect;
-        });
-    })
-    .response
-    .rect;
+                        footer_space(ui, start, height);
+                    }
+                    rows::centered(ui, if compact { height } else { 22.0 }, |ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let width = (ui.available_width() - 26.0).max(0.0);
+                        b.power = ui
+                            .allocate_ui_with_layout(
+                                Vec2::new(width, 22.0),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    let response = rows::power_label(
+                                        ui,
+                                        &format!("B{}", index + 1),
+                                        &format!("Toggle exciter band {}", index + 1),
+                                        s.enabled,
+                                    );
+                                    if response.clicked() {
+                                        s.enabled = !s.enabled;
+                                    }
+                                    remove_menu(&response, &mut b.remove, c.removable);
+                                    response.on_hover_text(&c.tooltip).rect
+                                },
+                            )
+                            .inner;
+                        let response = rows::square_toggle(ui, "S", *c.solo)
+                            .on_hover_text("Solo this band for listening. Export is unchanged.");
+                        response.widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::Button,
+                                ui.is_enabled(),
+                                *c.solo,
+                                format!("Solo exciter band {}", index + 1),
+                            )
+                        });
+                        if response.clicked() {
+                            *c.solo = !*c.solo;
+                        }
+                        b.solo = response.rect;
+                    });
+                },
+            )
+        },
+    );
+    b.section = strip.response.rect;
+    b.response = Some(strip.response);
     b
 }
 fn output(
@@ -284,6 +305,7 @@ pub fn show(
             let band = band(ui, &mut s.bands[i], i, dimensions, controls);
             if band.remove { remove = Some(s.bands[i].id); }
             panels::unit_divider(ui, band.section.left(), band.section.y_range().into());
+            b.band_responses.push(band.response.unwrap());
             b.bands.push(band.section); b.modes.push(band.mode); b.knobs.push(band.knobs);
             b.power.push(band.power); b.solo.push(band.solo);
         }

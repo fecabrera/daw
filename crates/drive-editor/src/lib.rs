@@ -17,6 +17,7 @@ pub enum Edit {
     Begin(Parameter),
     Value(Parameter, f64),
     End(Parameter),
+    Presentation([u8; 64]),
 }
 /// Access this channel only from editor/control threads. The audio callback never locks it.
 pub struct Model {
@@ -61,6 +62,12 @@ impl Model {
             state.set(p, f64::from_bits(v)).ok()?;
         }
         Some(state)
+    }
+    /// A host recall supersedes presentation edits not yet delivered to control.
+    pub fn discard_presentation(&self) {
+        if let Ok(mut events) = self.events.lock() {
+            events.retain(|e| !matches!(e, Edit::Presentation(_)));
+        }
     }
     pub fn pop(&self) -> Option<Edit> {
         self.events.lock().ok()?.pop_front()

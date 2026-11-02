@@ -31,6 +31,19 @@ impl ControllerData {
         let handler = self.handler.borrow().clone();
         while let Some(edit) = self.model.pop() {
             match edit {
+                Edit::Presentation(order) => {
+                    let mut state = self.state.get();
+                    if state.set_presentation(order) {
+                        self.state.set(state);
+                        if let Some(h) = &handler
+                            && let Some(h2) = h.cast::<IComponentHandler2>()
+                        {
+                            unsafe {
+                                h2.setDirty(1);
+                            }
+                        }
+                    }
+                }
                 Edit::Begin(p) => {
                     if let Some(h) = &handler {
                         unsafe {

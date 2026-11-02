@@ -21,13 +21,14 @@ pub enum Edit {
     Begin(Parameter),
     Value(Parameter, f64),
     End(Parameter),
+    Presentation([u8; 64]),
 }
 /// Access this channel only from editor/control threads. The audio callback never locks it.
 pub struct Model {
     pub output_meter: Arc<daw_drive_plugin::OutputMeter>,
     pub meter_reset: std::sync::atomic::AtomicU32,
     pub output_reset: std::sync::atomic::AtomicBool,
-    state: Snapshot<{ Parameter::COUNT }>,
+    state: Snapshot<{ daw_drive_plugin::MAX_STATE_BYTES.div_ceil(8) }>,
     events: Mutex<VecDeque<Edit>>,
     /// Presentation-only band inventory; it never enters audio or parameter state.
     pub visible_band_slots: std::sync::atomic::AtomicU64,
@@ -40,7 +41,7 @@ impl Default for Model {
             output_meter: Arc::default(),
             meter_reset: std::sync::atomic::AtomicU32::new(0),
             output_reset: std::sync::atomic::AtomicBool::new(false),
-            state: Snapshot::new(Parameter::ALL.map(|p| PluginState::default().get(p).to_bits())),
+            state: Snapshot::new(state_words(PluginState::default())),
             events: Mutex::new(VecDeque::with_capacity(CAPACITY)),
             visible_band_slots: std::sync::atomic::AtomicU64::new(1),
             appearance: AtomicU32::new(0),
@@ -55,16 +56,20 @@ impl Model {
     }
 
     pub fn publish(&self, state: PluginState) {
-        self.state
-            .publish(Parameter::ALL.map(|p| state.get(p).to_bits()));
+        self.state.publish(state_words(state));
     }
     pub fn current(&self) -> Option<PluginState> {
         let (_, values) = self.state.read()?;
-        let mut state = PluginState::default();
-        for (p, v) in Parameter::ALL.into_iter().zip(values) {
-            state.set(p, f64::from_bits(v)).ok()?;
-        }
+        let bytes: [u8; daw_drive_plugin::MAX_STATE_BYTES] =
+            std::array::from_fn(|i| values[i / 8].to_le_bytes()[i % 8]);
+        let state = PluginState::decode(&bytes).ok()?;
         Some(state)
+    }
+    /// A host recall supersedes presentation edits not yet delivered to control.
+    pub fn discard_presentation(&self) {
+        if let Ok(mut events) = self.events.lock() {
+            events.retain(|e| !matches!(e, Edit::Presentation(_)));
+        }
     }
     pub fn pop(&self) -> Option<Edit> {
         self.events.lock().ok()?.pop_front()
@@ -168,6 +173,7 @@ impl Editor {
         ui.painter()
             .rect_filled(ui.max_rect(), 0.0, theme::palette(ui.ctx()).panel);
         if let Some(state) = self.model.current() {
+            self.state.set_presentation(state.presentation());
             // Host bypass is not an editable body control, but it must mask stale telemetry.
             let _ = self
                 .state
@@ -210,6 +216,11 @@ impl Editor {
                 self.active[slot] = false;
             }
         }
+        if next.presentation() != self.state.presentation()
+            && self.model.push(&[Edit::Presentation(next.presentation())])
+        {
+            self.state.set_presentation(next.presentation());
+        }
         daw_unit_ui::menus::ContextMenu::new(&background).show(|ui| {
             for (index, name) in ["Dark", "Light", "Mist"].into_iter().enumerate() {
                 if ui
@@ -225,4 +236,15 @@ impl Editor {
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(33));
     }
+}
+
+fn state_words(state: PluginState) -> [u64; daw_drive_plugin::MAX_STATE_BYTES.div_ceil(8)] {
+    let bytes = state.encode();
+    std::array::from_fn(|i| {
+        let mut word = [0; 8];
+        for (j, v) in word.iter_mut().enumerate() {
+            *v = bytes.get(i * 8 + j).copied().unwrap_or(0);
+        }
+        u64::from_le_bytes(word)
+    })
 }
