@@ -35,11 +35,11 @@ impl Gesture {
 }
 fn project_target(
     project: &Project,
-    source: Id,
+    selection: &[Id],
     rows: &[(Row, Rect)],
     pointer: Pos2,
 ) -> Option<(Option<Id>, usize, f32)> {
-    let moved = project.track_subtree(source).ok()?;
+    let moved = project.moving_track_indices(selection);
     let index_of = |row: &Row| {
         project
             .tracks
@@ -53,11 +53,11 @@ fn project_target(
             .find(|(row, _)| index_of(row).is_some_and(|i| i >= index && i < end))
             .map(|(_, rect)| rect.bottom())
     };
-    let adjust = |slot: usize| slot - moved.end.min(slot).saturating_sub(moved.start);
+    let adjust = |slot: usize| slot - moved.iter().filter(|&&i| i < slot).count();
     let finish = |parent, index, y| {
         let index = adjust(index);
         project
-            .can_move_track(source, parent, index)
+            .can_move_tracks(selection, parent, index)
             .then_some((parent, index, y))
     };
     for (row, rect) in rows {
@@ -105,7 +105,7 @@ fn project_target(
     }
     let bottom = rows.last()?.1.bottom();
     project
-        .can_move_track(source, None, project.tracks.len() - moved.len())
+        .can_move_tracks(selection, None, project.tracks.len() - moved.len())
         .then_some((None, project.tracks.len() - moved.len(), bottom))
 }
 impl DawUi {
@@ -154,7 +154,9 @@ impl DawUi {
                 );
                 return;
             }
-            self.browser_select(&gesture.row, false);
+            if !self.track_selected(gesture.row.id) {
+                self.browser_select(&gesture.row, false);
+            }
             self.track_drag = Some(gesture.row.id);
         }
         if !gesture.active {
@@ -169,22 +171,21 @@ impl DawUi {
             .input(|i| i.pointer.latest_pos())
             .filter(|p| viewport.contains(*p))
             .and_then(|pointer| {
-                project_target(&self.session.project, gesture.row.id, rows, pointer)
+                project_target(
+                    &self.session.project,
+                    &self.track_drag_selection(gesture.row.id),
+                    rows,
+                    pointer,
+                )
             });
         ui.ctx().set_cursor_icon(if target.is_some() {
             egui::CursorIcon::Grabbing
         } else {
             egui::CursorIcon::NotAllowed
         });
-        let changed = target.filter(|(parent, index, _)| {
-            self.session
-                .project
-                .track_subtree(gesture.row.id)
-                .is_ok_and(|range| {
-                    *parent != self.session.project.tracks[range.start].group_id
-                        || *index != range.start
-                })
-        });
+        let track_ids = self.track_drag_selection(gesture.row.id);
+        let changed = target
+            .filter(|(parent, index, _)| self.track_move_changed(&track_ids, *parent, *index));
         if let Some((_, _, y)) = changed {
             ui.painter_at(viewport).hline(
                 viewport.x_range(),
@@ -195,8 +196,8 @@ impl DawUi {
         if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
             self.track_drag = None;
             if let Some((group_id, index, _)) = changed {
-                self.edit(Edit::MoveTrack {
-                    track_id: gesture.row.id,
+                self.edit(Edit::MoveTracks {
+                    track_ids,
                     group_id,
                     index,
                 });

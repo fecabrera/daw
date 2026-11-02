@@ -312,59 +312,65 @@ impl Project {
         }
         Ok(())
     }
-    pub fn can_move_track(&self, id: Id, parent: Option<Id>, index: usize) -> bool {
-        let Ok(range) = self.track_subtree(id) else {
-            return false;
-        };
-        if index > self.tracks.len() - range.len() {
-            return false;
-        }
-        if parent.is_some_and(|p| {
-            p == id
-                || self.track_is_descendant(p, id)
-                || !self
-                    .tracks
-                    .iter()
-                    .any(|t| t.id == p && t.kind == TrackKind::Group)
-        }) {
-            return false;
-        }
-        let remaining: Vec<_> = self
-            .tracks
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| !range.contains(i))
-            .map(|(_, t)| t)
-            .collect();
-        // Insert at a direct-child boundary, including the end of the parent's subtree.
-        if let Some(next) = remaining.get(index)
-            && next.group_id == parent
-        {
-            return true;
-        }
-        if let Some(parent) = parent {
-            let Some(p) = remaining.iter().position(|t| t.id == parent) else {
-                return false;
-            };
-            index > p
-                && remaining[p + 1..index]
-                    .iter()
-                    .all(|t| self.track_is_descendant(t.id, parent))
-                && remaining
-                    .get(index)
-                    .is_none_or(|t| !self.track_is_descendant(t.id, parent))
-        } else {
-            index == remaining.len()
-        }
+    /// Indices of complete selected subtrees, in project order.
+    pub fn moving_track_indices(&self, selection: &[Id]) -> Vec<usize> {
+        let roots = self.track_selection_roots(selection);
+        (0..self.tracks.len())
+            .filter(|&i| {
+                roots.iter().any(|id| {
+                    self.tracks[i].id == *id || self.track_is_descendant(self.tracks[i].id, *id)
+                })
+            })
+            .collect()
     }
-    pub(crate) fn move_track(&mut self, id: Id, parent: Option<Id>, index: usize) -> Result<()> {
-        if !self.can_move_track(id, parent, index) {
+    pub fn can_move_tracks(&self, selection: &[Id], parent: Option<Id>, index: usize) -> bool {
+        self.moved_tracks(selection, parent, index).is_ok()
+    }
+    /// Index is measured after removing all selected subtrees.
+    pub fn moved_tracks(&self, selection: &[Id], parent: Option<Id>, index: usize) -> Result<Self> {
+        if selection.is_empty()
+            || selection
+                .iter()
+                .any(|id| !self.tracks.iter().any(|t| t.id == *id))
+        {
+            return Err(Error("Select tracks to move".into()));
+        }
+        let roots = self.track_selection_roots(selection);
+        let moved = self.moving_track_indices(selection);
+        if index > self.tracks.len() - moved.len()
+            || parent.is_some_and(|id| {
+                moved.iter().any(|&i| self.tracks[i].id == id)
+                    || !self
+                        .tracks
+                        .iter()
+                        .any(|t| t.id == id && t.kind == TrackKind::Group)
+            })
+        {
             return Err(Error("Invalid group or track drop position".into()));
         }
-        let range = self.track_subtree(id)?;
-        let mut moved: Vec<_> = self.tracks.drain(range).collect();
-        moved[0].group_id = parent;
-        self.tracks.splice(index..index, moved);
+        let mut next = self.clone();
+        let mut children = Vec::new();
+        let mut remaining = Vec::new();
+        for (i, mut track) in next.tracks.into_iter().enumerate() {
+            if moved.contains(&i) {
+                if roots.contains(&track.id) {
+                    track.group_id = parent;
+                }
+                children.push(track);
+            } else {
+                remaining.push(track);
+            }
+        }
+        remaining.splice(index..index, children);
+        next.tracks = remaining;
+        next.validate()?;
+        Ok(next)
+    }
+    pub fn can_move_track(&self, id: Id, parent: Option<Id>, index: usize) -> bool {
+        self.can_move_tracks(&[id], parent, index)
+    }
+    pub(crate) fn move_track(&mut self, id: Id, parent: Option<Id>, index: usize) -> Result<()> {
+        *self = self.moved_tracks(&[id], parent, index)?;
         Ok(())
     }
     pub(crate) fn duplicate_group(&mut self, id: Id, new_id: Id) -> Result<()> {

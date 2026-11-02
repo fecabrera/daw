@@ -74,3 +74,5 @@ See [validation history](../validation/README.md) for executed checks and platfo
 ## Shared Tracks browser
 
 Instrument and Editor support project-track reorder and group membership through the [shared browser contract](../views/instrument-tracks.md#reordering-and-group-membership). Move complete group subtrees through the core transaction. Beat subtracks are virtual browser children, not project groups; their drags remain inside the original beat parent.
+
+Dragging a selected project track moves all selected tracks in project order. Selected groups include their complete subtrees; selected descendants move once. Drop in the middle of an existing group row to add the selection to that group, including collapsed groups. Edge drops reorder the selection. The move commits as one undoable transaction on release.

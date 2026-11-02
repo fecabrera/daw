@@ -233,3 +233,41 @@ fn creating_each_track_kind_in_a_group_is_atomic_and_preserves_the_surrounding_t
         assert_eq!(invalid, before);
     }
 }
+
+#[test]
+fn moving_selected_tracks_preserves_order_and_rejects_cycles_atomically() {
+    let (mut p, ids) = fixture();
+    let bus = group(&mut p, &[ids[1]]);
+    p.edit(Edit::MoveTracks {
+        track_ids: vec![ids[3], ids[0]],
+        group_id: Some(bus),
+        index: 2,
+    })
+    .unwrap();
+    assert_eq!(
+        p.tracks.iter().map(|t| t.id).collect::<Vec<_>>(),
+        [bus, ids[1], ids[0], ids[3], ids[2]]
+    );
+    assert_eq!(p.tracks[2].group_id, Some(bus));
+    assert_eq!(p.tracks[3].group_id, Some(bus));
+    let before = p.clone();
+    assert!(
+        p.edit(Edit::MoveTracks {
+            track_ids: vec![bus, ids[0]],
+            group_id: Some(bus),
+            index: 0,
+        })
+        .is_err()
+    );
+    assert_eq!(p, before);
+    p.edit(Edit::MoveTracks {
+        track_ids: vec![bus, ids[0]],
+        group_id: None,
+        index: 1,
+    })
+    .unwrap();
+    assert_eq!(
+        p.tracks.iter().map(|t| t.id).collect::<Vec<_>>(),
+        [ids[2], bus, ids[1], ids[0], ids[3]]
+    );
+}

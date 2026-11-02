@@ -63,3 +63,5 @@ Select one group and choose **Ungroup tracks**, or press Command+Shift+G on macO
 Duplicate copies the group structure, instruments, and settings into new tracks. As with ordinary track duplication, the copied tracks start without clips. Delete removes the group and its complete subtree. Selecting both a group and a child does not duplicate or delete the child twice.
 
 These edits support [undo and redo](undo-redo.md). Group membership, settings, effects, and collapsed state are saved with the project.
+
+Dragging a selected project track moves all selected tracks in project order. Selected groups include their complete subtrees; selected descendants move once. Drop in the middle of an existing group row to add the selection to that group, including collapsed groups. Edge drops reorder the selection. The move commits as one undoable transaction on release.

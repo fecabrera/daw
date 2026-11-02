@@ -724,6 +724,13 @@ impl Project {
                 name,
             } => self.group_tracks(&track_ids, group_id, name)?,
             Edit::UngroupTrack { track_id } => self.ungroup_track(track_id)?,
+            Edit::MoveTracks {
+                track_ids,
+                group_id,
+                index,
+            } => {
+                *self = self.moved_tracks(&track_ids, group_id, index)?;
+            }
             Edit::MoveTrack {
                 track_id,
                 group_id,
@@ -1076,6 +1083,11 @@ pub enum Edit {
     },
     UngroupTrack {
         track_id: Id,
+    },
+    MoveTracks {
+        track_ids: Vec<Id>,
+        group_id: Option<Id>,
+        index: usize,
     },
     MoveTrack {
         track_id: Id,

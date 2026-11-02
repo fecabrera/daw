@@ -4109,15 +4109,9 @@ impl DawUi {
         let target = pointer
             .filter(|_| ui.rect_contains_pointer(viewport))
             .and_then(|pointer| self.track_drop_target(track_id, pointer));
-        let changed_target = target.filter(|(parent, index, _)| {
-            self.session
-                .project
-                .track_subtree(track_id)
-                .is_ok_and(|range| {
-                    *parent != self.session.project.tracks[range.start].group_id
-                        || *index != range.start
-                })
-        });
+        let track_ids = self.track_drag_selection(track_id);
+        let changed_target = target
+            .filter(|(parent, index, _)| self.track_move_changed(&track_ids, *parent, *index));
         if let Some((_, _, y)) = changed_target {
             ui.painter_at(viewport).line_segment(
                 [
@@ -4135,8 +4129,8 @@ impl DawUi {
         if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
             self.track_drag = None;
             if let Some((group_id, index, _)) = changed_target {
-                self.edit(Edit::MoveTrack {
-                    track_id,
+                self.edit(Edit::MoveTracks {
+                    track_ids,
                     group_id,
                     index,
                 });
@@ -4345,7 +4339,11 @@ impl DawUi {
                         } else {
                             let toggle =
                                 ui.input(|input| input.modifiers.shift || input.modifiers.command);
-                            self.select_track(track.id, toggle);
+                            if toggle || !self.track_selected(track.id) {
+                                self.select_track(track.id, toggle);
+                            } else {
+                                self.selected_track = Some(track.id);
+                            }
                         }
                     }
                     outlines.push((track.id, inner.response.rect));
@@ -8219,6 +8217,42 @@ mod tests {
             assert!(app.track_drag.is_none());
         }
     }
+    #[test]
+    fn selected_track_drag_moves_the_selection_into_a_group_on_release() {
+        let (mut app, tracks, _) = multi_clip_fixture();
+        let ctx = context();
+        let group = app.session.project.add_group_track().unwrap();
+        app.select_track(tracks[0], false);
+        app.select_track(tracks[2], true);
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        let start = Pos2::new(
+            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.lane_bounds[&tracks[0]].top() + 18.0,
+        );
+        let end = Pos2::new(start.x, app.lane_bounds[&group].center().y);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert_eq!(app.session.project, before);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert_eq!(
+            app.session
+                .project
+                .tracks
+                .iter()
+                .map(|t| t.id)
+                .collect::<Vec<_>>(),
+            [tracks[1], group, tracks[0], tracks[2]]
+        );
+        assert_eq!(app.session.project.tracks[2].group_id, Some(group));
+        assert_eq!(app.session.project.tracks[3].group_id, Some(group));
+        assert!(app.track_selected(tracks[0]) && app.track_selected(tracks[2]));
+    }
+
     #[test]
     fn track_name_drags_preview_and_reorder_whole_tracks() {
         for (source, destination, order) in [

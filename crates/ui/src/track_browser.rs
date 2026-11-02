@@ -202,11 +202,18 @@ impl DawUi {
         let parent = row.beat.unwrap_or(row.id);
         let changed_parent = self.selected_track != Some(parent);
         if self.view_mode == ViewMode::Edit {
+            let selection = self.selected_tracks.clone();
+            let primary = self.selected_track;
             if row.beat.is_none() || self.editor_track().is_none_or(|track| track.id != parent) {
                 self.select_editor_track(parent);
             }
+            if shift && row.beat.is_none() {
+                self.selected_tracks = selection;
+                self.selected_track = primary;
+                self.select_track(parent, true);
+            }
         } else {
-            self.select_track(parent, false);
+            self.select_track(parent, shift && row.beat.is_none());
         }
         if self.session.project.beat(parent).is_some() {
             self.navigate_beat_owner(parent, row.beat.map(|_| row.id), shift);
@@ -497,7 +504,7 @@ impl DawUi {
                         let row_selected = if row.beat.is_some() {
                             self.beat_subtrack_selected(row.id) && selected_parent == row.beat
                         } else {
-                            selected == Some(row.id)
+                            self.track_selected(row.id) || selected == Some(row.id)
                         };
                         let response = ui
                             .push_id(
@@ -705,7 +712,7 @@ impl DawUi {
             self.perform_track_action(action, ui.ctx());
         }
         if let Some(row) = select {
-            self.browser_select(&row, ui.input(|i| i.modifiers.shift));
+            self.browser_select(&row, ui.input(|i| i.modifiers.shift || i.modifiers.command));
             if row.beat.is_some()
                 && !self.beat_renaming(row.id)
                 && let Some((_, rect)) = painted.iter().find(|(painted, _)| painted.id == row.id)

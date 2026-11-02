@@ -114,15 +114,38 @@ impl DawUi {
     }
     /// The middle half of a group row accepts children. At a row edge, the
     /// name gutter chooses the parent depth; the far left moves to Master.
+    pub(super) fn track_drag_selection(&self, id: Id) -> Vec<Id> {
+        self.session
+            .project
+            .tracks
+            .iter()
+            .filter(|t| t.id == id || (self.track_selected(id) && self.track_selected(t.id)))
+            .map(|t| t.id)
+            .collect()
+    }
+    pub(super) fn track_move_changed(&self, ids: &[Id], parent: Option<Id>, index: usize) -> bool {
+        self.session
+            .project
+            .moved_tracks(ids, parent, index)
+            .is_ok_and(|next| {
+                next.tracks.iter().map(|t| (t.id, t.group_id)).ne(self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .map(|t| (t.id, t.group_id)))
+            })
+    }
     pub(super) fn track_drop_target(
         &self,
         id: Id,
         pointer: Pos2,
     ) -> Option<(Option<Id>, usize, f32)> {
         let project = &self.session.project;
-        let moved = project.track_subtree(id).ok()?;
+        let selection = self.track_drag_selection(id);
+        let moved = project.moving_track_indices(&selection);
         let visible = project.visible_tracks();
-        let remaining_index = |slot: usize| slot - moved.end.min(slot).saturating_sub(moved.start);
+        let remaining_index = |slot: usize| slot - moved.iter().filter(|&&i| i < slot).count();
         let subtree_bottom = |end: usize| {
             visible
                 .iter()
@@ -142,11 +165,9 @@ impl DawUi {
             {
                 let end = project.track_subtree(track.id).ok()?.end;
                 let slot = remaining_index(end);
-                return project.can_move_track(id, Some(track.id), slot).then_some((
-                    Some(track.id),
-                    slot,
-                    subtree_bottom(end)?,
-                ));
+                return project
+                    .can_move_tracks(&selection, Some(track.id), slot)
+                    .then_some((Some(track.id), slot, subtree_bottom(end)?));
             }
             if pointer.y < rect.bottom() {
                 let after = pointer.y >= rect.center().y;
@@ -174,7 +195,7 @@ impl DawUi {
                 };
                 let slot = remaining_index(slot);
                 return project
-                    .can_move_track(id, parent, slot)
+                    .can_move_tracks(&selection, parent, slot)
                     .then_some((parent, slot, y));
             }
         }
@@ -185,7 +206,7 @@ impl DawUi {
             .map(Rect::bottom)?;
         let slot = project.tracks.len() - moved.len();
         project
-            .can_move_track(id, None, slot)
+            .can_move_tracks(&selection, None, slot)
             .then_some((None, slot, y))
     }
 }
