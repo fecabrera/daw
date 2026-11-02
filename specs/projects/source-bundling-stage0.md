@@ -57,13 +57,22 @@ The receipt has no path, asset ID, project rate or cached PCM. Moving a file doe
 
 ### Import/open and legacy policy
 
-Normal import/open retains the current weak path/rate/length/mtime decode cache. Stage 0 does not add hashing to normal imports, persist receipts, or change `AudioData`/callback ownership. Existing prepared sessions therefore require worker revalidation before collection.
+Historical Stage 0 policy retained a weak path/rate/length/mtime decode cache and
+added no hashing to ordinary imports. The [verified decoded-cache contract](../audio/import.md)
+supersedes that cache policy. Current import/open reads a content receipt before
+live reuse, uses content-keyed persistent reuse and decodes immutable snapshots
+on cache-building misses. This does not persist a trusted import receipt in
+`AudioData` or the project manifest. Retained sessions still require worker
+revalidation before collection.
 
 `verify_prepared_source(path, prepared, cancelled)` reads a content revision, bypasses the cache for a fresh decode at the prepared project rate, compares source metadata and every stereo sample bit for bit, then rechecks the content revision. Check cancellation between comparison blocks. Compare original project-rate audio, not a stretched or transposed derivative; peaks do not establish source identity. Use the existing decode memory admission budget. Resource exhaustion fails without replacing or releasing the active session.
 
 This fallback proves audio equivalence to a retained buffer; without a prior trusted receipt it cannot prove which encoded bytes were present at the original import. Do not claim otherwise. If the current original file produces the same metadata and PCM, the full current encoded file may be collected. A known prior content receipt, once introduced, must also match. A mismatch, unavailable buffer or missing source is a preflight failure, not permission to encode PCM as a new original or silently reload the active sound.
 
-For final collection, verify the private staged file against its expected revision **and** prepared audio before publication. Rechecking an externally mutable source before/after decoding alone cannot certify that an intervening decode saw the same bytes. Retain immutable prepared owners through the operation. A future optimization may bind a trusted digest to a frozen file decoded during import/open; it must establish that binding before skipping revalidation.
+For final collection, verify the private staged file against its expected revision **and** prepared audio before publication. Rechecking an externally mutable source before/after decoding alone cannot certify that an intervening decode saw the same bytes. Retain immutable prepared owners through the operation. The current decoder already verifies immutable encoded snapshots, but that alone
+does not attach a retained import receipt to each session audio owner. Skipping
+collection revalidation would require that explicit owner-to-receipt binding;
+it remains outside this contract.
 
 ### Inventory identity and conflicts
 
