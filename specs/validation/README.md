@@ -6,6 +6,14 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Empty Sampler control alignment — 2026-11-02
+
+The empty preview chooser uses non-advancing placement. It no longer moves the
+bottom control row above the loaded preview's row. Automated geometry comparisons
+passed in Dark/Light for Off/Time/Bars. All 22 Sampler-related UI tests, strict
+UI/all-target Clippy, rustfmt and whitespace checks passed. The macOS debug app
+rebuilt successfully. No native UI/device check ran; audio processing is unchanged.
+
 ## Drive v2 Tube mode — 2026-11-02
 
 Drive v2 adds asymmetric Tube saturation and a shared Small-text Clip mode

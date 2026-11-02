@@ -1446,3 +1446,48 @@ fn layer_file_targets_install_sampler_for_midi_and_beat_sources_atomically() {
         }
     }
 }
+
+#[test]
+fn empty_sampler_controls_match_loaded_preview_geometry() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for mode in [
+            daw_core::SamplerMode::Off,
+            daw_core::SamplerMode::Time,
+            daw_core::SamplerMode::Bars,
+        ] {
+            let (mut app, ctx, layer) = fixture(theme);
+            app.session.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0]
+                .sampler
+                .as_mut()
+                .unwrap()
+                .mode = mode;
+            frame(&mut app, &ctx, vec![]);
+            let b = &app.instrument_ui.samplers[0];
+            let origin = b.waveform.min.to_vec2();
+            let empty = [b.root_group, b.duration, b.duration_unit, b.trigger]
+                .map(|r| r.translate(-origin));
+            assert!(
+                (b.root_group.top() - b.waveform.bottom() - f32::from(theme::TOOLBAR_PADDING))
+                    .abs()
+                    < 0.01
+            );
+            assert!((b.trigger.center().y - b.root_group.center().y).abs() < 0.01);
+            let file = TestWav::new();
+            let track = app.selected_track.unwrap();
+            app.session = app
+                .session
+                .with_sampler_file(track, layer, &file.0)
+                .unwrap();
+            frame(&mut app, &ctx, vec![]);
+            let b = &app.instrument_ui.samplers[0];
+            let origin = b.waveform.min.to_vec2();
+            let loaded = [b.root_group, b.duration, b.duration_unit, b.trigger]
+                .map(|r| r.translate(-origin));
+            assert_eq!(empty, loaded, "mode={mode:?}");
+        }
+    }
+}

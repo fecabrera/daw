@@ -322,7 +322,7 @@ impl DawUi {
                                     palette.secondary,
                                 );
                                 let picker = Rect::from_center_size(body.center() + egui::vec2(0.0, 24.0), egui::vec2(128.0, 22.0));
-                                if ui.put(picker, egui::Button::new("Choose sample…")).clicked() { choose = true; }
+                                if ui.place(picker, egui::Button::new("Choose sample…")).clicked() { choose = true; }
                             }
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x =
