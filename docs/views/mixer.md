@@ -12,7 +12,9 @@ Select a track, group or Master to change the effect target. Add effects from th
 
 Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Each track and group header centers its icon and name together. Icons use the same contrasting text color as their header names. Master’s icon matches its label. The icon-to-label gap matches the vertical padding around the icon. Master uses the same centered layout.
 
-Gain changes level. Pan positions mono audio and balances stereo audio. Use numeric fields for a precise value or drag the knobs. Shift gives finer adjustment. Double-click a knob to restore its default. Gain accepts a numeric dB value or `−∞` for exact silence. Very low finite values keep a numeric readout.
+Gain uses a vertical fader on tracks, groups and Master. Drag it from exact silence (−∞) to +12 dB. Hold Shift for finer adjustment, or double-click the fader to reset it to 0 dB. Pan uses a knob on tracks and groups to position mono audio or balance stereo audio. Master has no Pan knob.
+
+Use numeric fields for precise values. Press Enter or leave the field to apply a valid value; Escape cancels the draft. Gain accepts a finite dB value or `−∞` for exact silence. Track and group numeric gain can exceed the fader's travel range; Master input clamps to silence through +12 dB. Very low finite values keep a numeric readout. Pan accepts −1 (left) through +1 (right), with 0 at center.
 
 Mute silences a track. Solo plays the selected soloed tracks and excludes the others. Solo takes priority over mute: a track with both enabled plays. Select several tracks to apply Mute or Solo together from the Track menu or with M and S.
 

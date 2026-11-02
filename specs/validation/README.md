@@ -6,6 +6,21 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Desktop packaging and guidance corrections — 2026-11-02
+
+macOS/Linux packaging explicitly selects the repository target directory for
+both debug and release builds. Synthetic fixtures verify that environment and
+Cargo configuration target-directory overrides cannot select stale executables.
+The Mixer guide identifies Gain faders, Pan knobs and numeric input behavior.
+Contributor instructions now link current effect and Beat requirements instead
+of obsolete feature status. ONNX remains unchanged as requested.
+
+All 36 Python tooling tests passed, including eight synthetic packaging cases.
+Shell syntax checks, rustfmt and changed Markdown file targets passed.
+`sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+No Rust implementation changed; the prior workspace test/lint results remain
+applicable. No real Linux package build or native UI/device/host test ran.
+
 ## Split bounds, Stop and filesystem corrections — 2026-11-02
 
 Looping MIDI splits test crossings with source-note/phase arithmetic before

@@ -7,8 +7,8 @@ if [ "$(uname -s)" != Linux ]; then
 fi
 profile="${1:-debug}"
 case "$profile" in
-  debug) cargo build --locked -p daw-desktop ;;
-  release) cargo build --locked -p daw-desktop --release ;;
+  debug) cargo build --locked --target-dir "$PWD/target" -p daw-desktop ;;
+  release) cargo build --locked --target-dir "$PWD/target" -p daw-desktop --release ;;
   *) echo "Usage: $0 [debug|release]" >&2; exit 2 ;;
 esac
 case "$(uname -m)" in

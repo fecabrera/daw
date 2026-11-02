@@ -22,3 +22,5 @@ python3 tools/benchmark_audio_preparation.py --runs 3 --seconds 58
 ```
 
 It builds the release example, generates temporary audio under ignored `work/audio-preparation`, and compares uncached, empty-cache, and new-process saved-cache runs. Results record the source hash, toolchain, timings, and cache hit/build counts. Use `--skip-build` only after rebuilding the example for the current source. This measures headless media preparation, not native presentation or device latency. See the [implementation plan and contracts](../../specs/architecture/background-audio-preparation.md).
+
+The macOS and Linux desktop packagers explicitly build into the repository's `target/` directory. They override `CARGO_TARGET_DIR` and Cargo `build.target-dir` so the packaged executable comes from that build.
