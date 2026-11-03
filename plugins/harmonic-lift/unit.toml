@@ -1,0 +1,288 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.harmonic-lift"
+vendor = "Sie"
+version = "0.1.0"
+product = "Harmonic Lift"
+clap_id = "io.github.fecabrera.daw.harmonic-lift"
+processor_id = "d837bed895df568cb6a3e548d2a66ae7"
+controller_id = "d4cb4140e41a511a9f72a0cd06d4bbf1"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "input"
+minimum = -60.0
+maximum = 12.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 102
+key = "quality"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 103
+key = "band_1_power"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 104
+key = "band_1_frequency"
+minimum = 20.0
+maximum = 250.0
+default = 135.0
+scale = "linear"
+
+[[parameters]]
+id = 105
+key = "band_1_gain"
+minimum = 0.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 106
+key = "band_2_power"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 107
+key = "band_2_frequency"
+minimum = 250.0
+maximum = 500.0
+default = 375.0
+scale = "linear"
+
+[[parameters]]
+id = 108
+key = "band_2_gain"
+minimum = 0.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 109
+key = "band_3_power"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 110
+key = "band_3_frequency"
+minimum = 500.0
+maximum = 2000.0
+default = 1250.0
+scale = "linear"
+
+[[parameters]]
+id = 111
+key = "band_3_gain"
+minimum = 0.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 112
+key = "band_4_power"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 113
+key = "band_4_frequency"
+minimum = 2000.0
+maximum = 4000.0
+default = 3000.0
+scale = "linear"
+
+[[parameters]]
+id = 114
+key = "band_4_gain"
+minimum = 0.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 115
+key = "band_5_power"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 116
+key = "band_5_frequency"
+minimum = 4000.0
+maximum = 6000.0
+default = 5000.0
+scale = "linear"
+
+[[parameters]]
+id = 117
+key = "band_5_gain"
+minimum = 0.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 118
+key = "band_6_power"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 119
+key = "band_6_frequency"
+minimum = 6000.0
+maximum = 12000.0
+default = 9000.0
+scale = "linear"
+
+[[parameters]]
+id = 120
+key = "band_6_gain"
+minimum = 0.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 121
+key = "drive"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 122
+key = "push"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 123
+key = "limit"
+minimum = -24.0
+maximum = 0.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 124
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 125
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[strips]]
+footer = "Input"
+controls = [
+{ parameter = "input", control = "db" },
+{ parameter = "quality", control = "selector" },
+]
+
+[[strips]]
+footer = "Low"
+power = "band_1_power"
+controls = [
+{ parameter = "band_1_frequency", control = "frequency" },
+{ parameter = "band_1_gain", control = "db" },
+]
+
+[[strips]]
+footer = "Low Mid"
+power = "band_2_power"
+controls = [
+{ parameter = "band_2_frequency", control = "frequency" },
+{ parameter = "band_2_gain", control = "db" },
+]
+
+[[strips]]
+footer = "Mid"
+power = "band_3_power"
+controls = [
+{ parameter = "band_3_frequency", control = "frequency" },
+{ parameter = "band_3_gain", control = "db" },
+]
+
+[[strips]]
+footer = "High Mid"
+power = "band_4_power"
+controls = [
+{ parameter = "band_4_frequency", control = "frequency" },
+{ parameter = "band_4_gain", control = "db" },
+]
+
+[[strips]]
+footer = "Presence"
+power = "band_5_power"
+controls = [
+{ parameter = "band_5_frequency", control = "frequency" },
+{ parameter = "band_5_gain", control = "db" },
+]
+
+[[strips]]
+footer = "High"
+power = "band_6_power"
+controls = [
+{ parameter = "band_6_frequency", control = "frequency" },
+{ parameter = "band_6_gain", control = "db" },
+]
+
+[[strips]]
+footer = "Maximizer"
+controls = [
+{ parameter = "drive", control = "percent" },
+{ parameter = "push", control = "percent" },
+{ parameter = "limit", control = "db" },
+]
+
+[[strips]]
+footer = "Out"
+controls = [
+{ parameter = "level", control = "gain" },
+{ parameter = "dry_wet", control = "percent" },
+]

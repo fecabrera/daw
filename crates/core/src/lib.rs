@@ -1,4 +1,10 @@
 mod effect_owners;
+pub use daw_unit_core::{
+    HARMONIC_BAND_NAMES, HARMONIC_FREQUENCY_DEFAULTS, HARMONIC_FREQUENCY_RANGES,
+    HARMONIC_LIFT_STATE_VERSION, HARMONIC_LIFT_TYPE_ID, HarmonicBand, HarmonicLiftSettings,
+    HarmonicQuality,
+};
+
 pub use daw_unit_core::{DRIVE_V2_TYPE_ID, DriveV2Clip, DriveV2ColorShape, DriveV2Settings};
 pub use daw_unit_core::{EXCITER_TYPE_ID, ExciterBand, ExciterMode, ExciterSettings};
 pub use daw_unit_core::{EqBandMode, MULTIBAND_EQ_TYPE_ID, MultibandEqBand, MultibandEqSettings};

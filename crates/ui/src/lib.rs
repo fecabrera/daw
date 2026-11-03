@@ -76,6 +76,7 @@ mod export_status;
 pub mod faders;
 mod file_drop;
 pub mod fonts;
+mod harmonic_lift_panel;
 pub mod icons;
 mod instrument_catalog;
 mod instrument_component_drag;

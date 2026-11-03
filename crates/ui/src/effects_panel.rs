@@ -1160,6 +1160,42 @@ impl DawUi {
                                     );
                                     (response, Rect::NOTHING)
                                 }
+                                daw_core::EffectSettings::HarmonicLift(settings) => {
+                                    let reduction = self
+                                        .output
+                                        .as_ref()
+                                        .map_or(0.0, |output| output.gain_reduction_db(effect.id));
+                                    let reduction = meters::GainReduction::new(
+                                        reduction,
+                                        self.output.as_ref().and_then(|output| {
+                                            output.gain_reduction_meter(effect.id)
+                                        }),
+                                    );
+                                    let (_bounds, header) = crate::harmonic_lift_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        reduction,
+                                        modulation_sources,
+                                        |band| {
+                                            self.output.as_ref().and_then(|o| {
+                                                o.modulation_snapshot(band.map_or(
+                                                    daw_engine::ModulationTarget::Effect(effect.id),
+                                                    |band| {
+                                                        daw_engine::ModulationTarget::EffectBand {
+                                                            effect: effect.id,
+                                                            band,
+                                                        }
+                                                    },
+                                                ))
+                                            })
+                                        },
+                                        output_level,
+                                    );
+                                    let power = _bounds.power;
+
+                                    (header, power)
+                                }
                                 daw_core::EffectSettings::Compressor(settings) => {
                                     let reduction = self
                                         .output

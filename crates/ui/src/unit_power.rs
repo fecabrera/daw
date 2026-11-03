@@ -61,6 +61,7 @@ pub(super) fn effect_enabled(settings: &mut EffectSettings) -> Option<&mut bool>
         EffectSettings::AutoFilter(s) => Some(&mut s.enabled),
         EffectSettings::Filter(s) => Some(&mut s.enabled),
         EffectSettings::Compressor(s) => Some(&mut s.enabled),
+        EffectSettings::HarmonicLift(s) => Some(&mut s.enabled),
         EffectSettings::Ott(s) => Some(&mut s.enabled),
         EffectSettings::Limiter(s) => Some(&mut s.enabled),
         EffectSettings::DirectionMixer(s) => Some(&mut s.enabled),

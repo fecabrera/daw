@@ -64,6 +64,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Drive](effects/drive.md)
 - [Drive v2](effects/drive-v2.md)
 - [Saturator](effects/saturator.md)
+- [Harmonic Lift](effects/harmonic-lift.md)
 - [Multiband Exciter](effects/exciter.md)
 - [Bitcrusher](effects/bitcrusher.md)
 - [Filter](effects/filter.md)

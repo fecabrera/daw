@@ -372,6 +372,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             Some(entries[10]),
             Some(entries[11]),
             Some(entries[14]),
+            Some(entries[15]),
             None,
             Some(entries[7]),
             Some(entries[8]),

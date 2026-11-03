@@ -406,6 +406,9 @@ impl Renderer {
             for effect in effects {
                 effect.id.hash(&mut hash);
                 match &effect.unit {
+                    daw_core::EffectSettings::HarmonicLift(_) => {
+                        daw_unit_core::HARMONIC_LIFT_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::Exciter(_) => {
                         daw_unit_core::EXCITER_TYPE_ID.hash(&mut hash)
                     }
@@ -784,15 +787,16 @@ impl Renderer {
     /// Shared preparation admission for cache workers and direct reconstruction.
     /// A bus chain must retain the history of its complete child mix.
     fn needs_processing_history(&self) -> bool {
-        self.plan
-            .project
-            .all_effects()
-            .any(|e| matches!(e.unit, daw_core::EffectSettings::Chorus(_)))
-            || self
-                .midi
-                .iter()
-                .flatten()
-                .any(|m| m.needs_envelope_history())
+        self.plan.project.all_effects().any(|e| {
+            matches!(
+                e.unit,
+                daw_core::EffectSettings::Chorus(_) | daw_core::EffectSettings::HarmonicLift(_)
+            )
+        }) || self
+            .midi
+            .iter()
+            .flatten()
+            .any(|m| m.needs_envelope_history())
             || (self
                 .plan
                 .project

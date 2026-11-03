@@ -32,7 +32,9 @@ pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Resp
     let color = if on { palette.text } else { palette.secondary };
     let galley = ui.painter().layout_no_wrap(label.to_owned(), font, color);
     let size = crate::layout::COMPACT_BUTTON_SIZE;
-    let gap = f32::from(crate::theme::TOOLBAR_PADDING);
+    // Retain the full label when only the usual gap exceeds the strip width.
+    let gap = f32::from(crate::theme::TOOLBAR_PADDING)
+        .min((ui.available_width() - size - galley.size().x).max(0.0));
     let width = galley
         .size()
         .x

@@ -19,6 +19,7 @@ pub mod saturator;
 
 pub mod compressor;
 pub mod control_capture;
+pub mod harmonic_lift;
 
 pub mod chorus;
 pub mod direction_mixer;

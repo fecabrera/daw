@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+daw-harmonic-lift.workspace = true
 daw-noise.workspace = true
 daw-exciter.workspace = true
 daw-chorus.workspace = true

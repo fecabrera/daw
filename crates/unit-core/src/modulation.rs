@@ -166,8 +166,20 @@ pub enum ModulationParameter {
     CompressorAttack,
     CompressorRelease,
     CompressorKnee,
+    HarmonicInput,
+    HarmonicDrive,
+    HarmonicPush,
+    HarmonicLimit,
 }
 impl ModulationParameter {
+    pub const HARMONIC_LIFT: [Self; 6] = [
+        Self::HarmonicInput,
+        Self::HarmonicDrive,
+        Self::HarmonicPush,
+        Self::HarmonicLimit,
+        Self::Level,
+        Self::DryWet,
+    ];
     pub const NOISE: [Self; 3] = [Self::NoiseColor, Self::NoiseWidth, Self::NoiseLevel];
     pub const EQ_BAND: [Self; 3] = [Self::EqBandGain, Self::EqBandFrequency, Self::EqBandQ];
     pub const GRANULIZER: [Self; 9] = [
@@ -297,6 +309,10 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::HarmonicInput => "Wet Input",
+            Self::HarmonicDrive => "Drive",
+            Self::HarmonicPush => "Push",
+            Self::HarmonicLimit => "Limit Level",
             Self::ChorusDelay => "Delay",
             Self::ChorusDepth => "Depth",
             Self::ChorusFeedback => "Feedback",
@@ -392,6 +408,7 @@ impl ModulationParameter {
     }
     pub fn limit(self) -> f32 {
         match self {
+            Self::HarmonicInput | Self::HarmonicLimit => 24.0,
             Self::ChorusDelay => 25.0,
             Self::ChorusDepth => 1.0,
             Self::ChorusFeedback => 1.6,
@@ -460,6 +477,8 @@ impl ModulationParameter {
     }
     pub fn unit(self) -> &'static str {
         match self {
+            Self::HarmonicInput | Self::HarmonicLimit => "dB",
+            Self::HarmonicDrive | Self::HarmonicPush => "%",
             Self::ChorusDelay => "ms",
             Self::ChorusDepth => "%",
             Self::ChorusFeedback => "%",

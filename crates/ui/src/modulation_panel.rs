@@ -621,6 +621,11 @@ pub(super) fn marker(
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(1.0, 2000.0))
         }
         ModulationParameter::LimiterLookahead => offsets.map(|o| (base + o).clamp(0.0, 10.0)),
+        ModulationParameter::HarmonicInput => offsets.map(|o| (base + o).clamp(-60.0, 12.0)),
+        ModulationParameter::HarmonicLimit => offsets.map(|o| (base + o).clamp(-24.0, 0.0)),
+        ModulationParameter::HarmonicDrive | ModulationParameter::HarmonicPush => {
+            offsets.map(|o| (base + o).clamp(0.0, 1.0))
+        }
         ModulationParameter::CompressorThreshold => offsets.map(|o| (base + o).clamp(-60.0, 0.0)),
         ModulationParameter::CompressorRatio => offsets.map(|o| (base + o).clamp(1.0, 20.0)),
         ModulationParameter::CompressorKnee => offsets.map(|o| (base + o).clamp(0.0, 24.0)),
@@ -794,6 +799,12 @@ pub(super) fn marker(
         }
         ModulationParameter::LimiterRelease | ModulationParameter::LimiterLookahead => {
             format!("{value:.1} ms")
+        }
+        ModulationParameter::HarmonicInput | ModulationParameter::HarmonicLimit => {
+            format!("{value:.1} dB")
+        }
+        ModulationParameter::HarmonicDrive | ModulationParameter::HarmonicPush => {
+            format!("{:.0}%", value * 100.0)
         }
         ModulationParameter::CompressorThreshold => format!("{value:.1} dBFS"),
         ModulationParameter::CompressorRatio => format!("{value:.1}:1"),

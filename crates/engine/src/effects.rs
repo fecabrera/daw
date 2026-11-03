@@ -8,6 +8,7 @@ use daw_drive::{Drive, DriveV2};
 use daw_equalizer::{Equalizer, MultibandEq};
 use daw_exciter::Exciter;
 use daw_filter::Filter;
+use daw_harmonic_lift::HarmonicLift;
 use daw_limiter::Limiter;
 use daw_ott::Ott;
 use daw_saturator::Saturator;
@@ -19,6 +20,7 @@ use std::sync::Arc;
 enum RuntimeEffect {
     MultibandEq(Box<MultibandEq>),
     Exciter(Box<Exciter>),
+    HarmonicLift(Box<HarmonicLift>),
     Eq3(Box<Equalizer>, Vec<super::modulation::Route>),
     Drive(Box<Drive>, Vec<super::modulation::Route>),
     DriveV2(Box<DriveV2>, Vec<super::modulation::Route>),
@@ -37,6 +39,9 @@ enum RuntimeEffect {
 impl RuntimeEffect {
     fn heap_bytes(&self) -> u64 {
         match self {
+            Self::HarmonicLift(unit) => {
+                std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes()
+            }
             Self::Exciter(unit) => std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes(),
             Self::MultibandEq(unit) => {
                 std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes()
@@ -114,6 +119,7 @@ impl RuntimeEffect {
     fn latency_frames(&self) -> u32 {
         match self {
             Self::MultibandEq(unit) => unit.latency_frames(),
+            Self::HarmonicLift(unit) => unit.latency_frames(),
             Self::Exciter(unit) => unit.latency_frames(),
             Self::Eq3(unit, _) => unit.latency_frames(),
             Self::Drive(unit, _) => unit.latency_frames(),
@@ -142,6 +148,16 @@ impl RuntimeEffect {
         ),
     ) -> [f32; 2] {
         match self {
+            Self::HarmonicLift(unit) => unit.process_at(
+                input,
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::Exciter(unit) => unit.process_at(
                 input,
                 values,
@@ -336,6 +352,7 @@ impl RuntimeEffect {
     fn reset(&mut self) {
         match self {
             Self::MultibandEq(unit) => unit.reset(),
+            Self::HarmonicLift(unit) => unit.reset(),
             Self::Exciter(unit) => unit.reset(),
             Self::Eq3(unit, routes) => {
                 unit.reset();
@@ -420,6 +437,9 @@ impl RuntimeEffect {
     }
     fn retarget(&mut self, settings: &EffectSettings) -> bool {
         match (self, settings) {
+            (Self::HarmonicLift(unit), EffectSettings::HarmonicLift(settings)) => {
+                return unit.retarget(settings);
+            }
             (Self::Exciter(unit), EffectSettings::Exciter(settings)) => {
                 return unit.retarget(settings);
             }
@@ -500,6 +520,11 @@ impl EffectChain {
                     (
                         effect.id,
                         match &effect.unit {
+                            EffectSettings::HarmonicLift(settings) => {
+                                Some(RuntimeEffect::HarmonicLift(Box::new(HarmonicLift::new(
+                                    context, settings,
+                                ))))
+                            }
                             EffectSettings::Exciter(settings) => Some(RuntimeEffect::Exciter(
                                 Box::new(Exciter::new(context, settings)),
                             )),
@@ -645,6 +670,12 @@ impl EffectChain {
                 .and_then(|&i| previous.units.get_mut(i))
                 && let Some(next) = next
             {
+                if let (RuntimeEffect::HarmonicLift(next), RuntimeEffect::HarmonicLift(previous)) =
+                    (&mut *next, &mut *previous)
+                {
+                    next.inherit(previous);
+                    continue;
+                }
                 if let (RuntimeEffect::Exciter(next), RuntimeEffect::Exciter(previous)) =
                     (&mut *next, &mut *previous)
                 {
@@ -714,6 +745,9 @@ impl EffectChain {
             (_, Some(RuntimeEffect::MultibandEq(unit))) => {
                 unit.band_parameters(band).map(super::parameter_snapshot)
             }
+            (_, Some(RuntimeEffect::HarmonicLift(unit))) => {
+                unit.band_parameters(band).map(super::parameter_snapshot)
+            }
             (_, Some(RuntimeEffect::Exciter(unit))) => {
                 unit.band_parameters(band).map(super::parameter_snapshot)
             }
@@ -744,6 +778,9 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::DriveV2(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::HarmonicLift(unit)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Exciter(unit)))) => {
@@ -785,6 +822,9 @@ impl EffectChain {
     pub fn set_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::PeakMeter>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
             Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
+                unit.set_gain_reduction_peak_meter(meter.clone())
+            }
+            Some((_, Some(RuntimeEffect::HarmonicLift(unit)))) => {
                 unit.set_gain_reduction_peak_meter(meter.clone())
             }
             Some((_, Some(RuntimeEffect::Limiter(unit, _)))) => {
@@ -838,6 +878,9 @@ impl EffectChain {
             }
             Some((_, Some(RuntimeEffect::Bitcrusher(unit, _)))) => {
                 unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::HarmonicLift(unit)))) => {
+                unit.set_output_peak_meter(meter.clone())
             }
             Some((_, Some(RuntimeEffect::Exciter(unit)))) => {
                 unit.set_output_peak_meter(meter.clone())

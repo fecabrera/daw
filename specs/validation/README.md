@@ -6983,3 +6983,5 @@ Executed locally on macOS arm64:
 - Cross-checked the actual `output::wasapi` and `output::devices` modules, including the Windows subprocess test, with `cargo check --target x86_64-pc-windows-msvc --all-targets` in an ignored minimal harness using CPAL 0.16.0 and windows-sys 0.52.0. The same Windows-target harness passed strict all-target Clippy after selecting one consistent pinned compiler/driver. These validate Rust/Win32 binding types, not linking or native execution.
 
 Native Windows execution and an updated GitHub CI run remain required to confirm that the reported crash is resolved. No native Windows runtime result is claimed. Hardware format negotiation, repeated actual Settings refresh and live playback/device switching remain separate device checks.
+
+- [Harmonic Lift](harmonic-lift.md): native six-branch enhancement and CLAP/VST3 validation.

@@ -94,6 +94,16 @@ fn ott_frequency(low: bool) -> KnobSpec {
 }
 pub fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::HarmonicInput => KnobSpec::new("Wet Input", -60.0..=12.0, 0.0, 0.1)
+            .value_label(|v| format!("{v:.1} dB"))
+            .format(|v| format!("{v:.1} dB"))
+            .endpoint_labels("−60", "+12"),
+        Parameter::HarmonicLimit => KnobSpec::new("Limit Level", -24.0..=0.0, 0.0, 0.1)
+            .value_label(|v| format!("{v:.1} dB"))
+            .format(|v| format!("{v:.1} dB"))
+            .endpoint_labels("−24", "0"),
+        Parameter::HarmonicDrive => percent("Drive", 0.0),
+        Parameter::HarmonicPush => percent("Push", 0.0),
         Parameter::ChorusDelay => KnobSpec::new("Delay", 5.0..=30.0, 15.0, 0.1)
             .value_label(|v| format!("{v:.1} ms"))
             .format(|v| format!("{v:.1} ms"))
@@ -401,7 +411,7 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
                 |v| format!("{v:+.0}°"),
                 ["−180", "+180"],
             ),
-            Parameter::ChorusDepth => (
+            Parameter::HarmonicDrive | Parameter::HarmonicPush | Parameter::ChorusDepth => (
                 AmountMapping::Offset {
                     origin: 0.0,
                     direction: 1.0,
@@ -474,7 +484,9 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
                 |v| format!("{v:+.2}"),
                 ["−2", "+2"],
             ),
-            Parameter::OttLowInput
+            Parameter::HarmonicInput
+            | Parameter::HarmonicLimit
+            | Parameter::OttLowInput
             | Parameter::OttMidInput
             | Parameter::OttHighInput
             | Parameter::OttLowOutput
@@ -671,4 +683,23 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
     } else {
         spec
     }
+}
+
+/// Fixed harmonic branch roles share their physical ranges across hosts.
+pub fn harmonic_frequency(index: usize) -> KnobSpec {
+    let [min, max] = daw_unit_core::HARMONIC_FREQUENCY_RANGES[index];
+    KnobSpec::new(
+        "Frequency",
+        min..=max,
+        daw_unit_core::HARMONIC_FREQUENCY_DEFAULTS[index],
+        1.0,
+    )
+    .value_label(knobs::format_frequency)
+    .format(knobs::format_frequency)
+}
+pub fn harmonic_gain() -> KnobSpec {
+    KnobSpec::new("Gain", 0.0..=24.0, 0.0, 0.1)
+        .value_label(|v| format!("{v:.1} dB"))
+        .format(|v| format!("{v:.1} dB"))
+        .endpoint_labels("0", "+24")
 }

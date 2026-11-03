@@ -188,7 +188,9 @@ fn effect_meters(
         .filter(|effect| {
             matches!(
                 effect.unit,
-                daw_core::EffectSettings::Compressor(_) | daw_core::EffectSettings::Limiter(_)
+                daw_core::EffectSettings::HarmonicLift(_)
+                    | daw_core::EffectSettings::Compressor(_)
+                    | daw_core::EffectSettings::Limiter(_)
             )
         })
         .map(|effect| {
@@ -252,6 +254,7 @@ fn band_meters(
                     | daw_core::EffectSettings::Filter(_)
                     | daw_core::EffectSettings::AutoFilter(_)
                     | daw_core::EffectSettings::MultibandEq(_)
+                    | daw_core::EffectSettings::HarmonicLift(_)
                     | daw_core::EffectSettings::Exciter(_)
             )
             .then_some(ModulationTarget::Effect(effect.id));
@@ -292,6 +295,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::DriveV2(_)
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::MultibandEq(_)
+                    | daw_core::EffectSettings::HarmonicLift(_)
                     | daw_core::EffectSettings::Exciter(_)
                     | daw_core::EffectSettings::Compressor(_)
                     | daw_core::EffectSettings::Limiter(_)

@@ -168,6 +168,8 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
                 && matches!(parameter.info().key, "shape" | "clip_mode"))
                 || (daw_drive_plugin::IDENTITY.product == "Drive v2"
                     && parameter.info().key == "clip")
+                || (daw_drive_plugin::IDENTITY.product == "Harmonic Lift"
+                    && parameter.info().key == "quality")
             {
                 continue;
             }

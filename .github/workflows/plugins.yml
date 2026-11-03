@@ -32,6 +32,7 @@ jobs:
           - { slug: equalizer, name: 3-band EQ, library: daw_equalizer }
           - { slug: filter, name: Filter, library: daw_filter }
           - { slug: auto-filter, name: Auto-filter, library: daw_auto_filter }
+          - { slug: harmonic-lift, name: Harmonic Lift, library: daw_harmonic_lift }
           - { slug: compressor, name: Compressor, library: daw_compressor }
           - { slug: limiter, name: Limiter, library: daw_limiter }
           - { slug: direction-mixer, name: Direction Mixer, library: daw_direction_mixer }

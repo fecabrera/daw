@@ -8,6 +8,7 @@ use crate::{DIRECTION_MIXER_STATE_VERSION, DIRECTION_MIXER_TYPE_ID, DirectionMix
 use crate::{DRIVE_V2_STATE_VERSION, DRIVE_V2_TYPE_ID, DriveV2Settings};
 use crate::{EXCITER_STATE_VERSION, EXCITER_TYPE_ID, ExciterSettings};
 use crate::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
+use crate::{HARMONIC_LIFT_STATE_VERSION, HARMONIC_LIFT_TYPE_ID, HarmonicLiftSettings};
 use crate::{LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterSettings};
 use crate::{MULTIBAND_EQ_STATE_VERSION, MULTIBAND_EQ_TYPE_ID, MultibandEqSettings};
 use crate::{OTT_STATE_VERSION, OTT_TYPE_ID, OttSettings};
@@ -80,6 +81,7 @@ pub enum EffectSettings {
     Eq3(EqSettings),
     MultibandEq(MultibandEqSettings),
     Exciter(ExciterSettings),
+    HarmonicLift(HarmonicLiftSettings),
     Drive(DriveSettings),
     DriveV2(DriveV2Settings),
     AutoFilter(AutoFilterSettings),
@@ -105,6 +107,10 @@ struct StoredEffect {
 impl Serialize for EffectSettings {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let stored = match self {
+            Self::HarmonicLift(settings) => StoredEffect {
+                type_id: HARMONIC_LIFT_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
             Self::Exciter(settings) => StoredEffect {
                 type_id: EXCITER_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
@@ -176,7 +182,17 @@ impl Serialize for EffectSettings {
 impl<'de> Deserialize<'de> for EffectSettings {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let stored = StoredEffect::deserialize(deserializer)?;
-        if stored.type_id == EXCITER_TYPE_ID
+        if stored.type_id == HARMONIC_LIFT_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|v| v <= u64::from(HARMONIC_LIFT_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::HarmonicLift)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == EXCITER_TYPE_ID
             && stored
                 .state
                 .get("version")
@@ -337,12 +353,20 @@ impl<'de> Deserialize<'de> for EffectSettings {
 impl EffectSettings {
     /// Stable child identities for repeated-band controls and prepared telemetry.
     pub fn band_ids(&self) -> impl Iterator<Item = uuid::Uuid> + '_ {
-        let (eq, exciter): (&[crate::MultibandEqBand], &[crate::ExciterBand]) = match self {
-            Self::MultibandEq(s) => (s.bands.as_slice(), &[]),
-            Self::Exciter(s) => (&[], s.bands.as_slice()),
-            _ => (&[], &[]),
+        let (eq, exciter, harmonic): (
+            &[crate::MultibandEqBand],
+            &[crate::ExciterBand],
+            &[crate::HarmonicBand],
+        ) = match self {
+            Self::MultibandEq(s) => (s.bands.as_slice(), &[], &[]),
+            Self::Exciter(s) => (&[], s.bands.as_slice(), &[]),
+            Self::HarmonicLift(s) => (&[], &[], &s.bands),
+            _ => (&[], &[], &[]),
         };
-        eq.iter().map(|b| b.id).chain(exciter.iter().map(|b| b.id))
+        eq.iter()
+            .map(|b| b.id)
+            .chain(exciter.iter().map(|b| b.id))
+            .chain(harmonic.iter().map(|b| b.id))
     }
     /// Destination-owned routes; all current effect destinations require shared sources.
     pub fn modulations(&self) -> &[crate::Modulation] {
@@ -352,6 +376,7 @@ impl EffectSettings {
             Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::DriveV2(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::MultibandEq(s) => &s.modulations,
+            Self::HarmonicLift(s) => &s.modulations,
             Self::Exciter(s) => &s.modulations,
             Self::Eq3(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Compressor(s) => crate::ModulationDestinationSettings::modulations(s),
@@ -374,6 +399,7 @@ impl EffectSettings {
             Self::Drive(s) => &mut s.modulations,
             Self::DriveV2(s) => &mut s.modulations,
             Self::MultibandEq(s) => &mut s.modulations,
+            Self::HarmonicLift(s) => &mut s.modulations,
             Self::Exciter(s) => &mut s.modulations,
             Self::Eq3(s) => &mut s.modulations,
             Self::Compressor(s) => &mut s.modulations,
@@ -391,6 +417,7 @@ impl EffectSettings {
     pub fn valid(&self) -> bool {
         match self {
             Self::MultibandEq(eq) => eq.valid(),
+            Self::HarmonicLift(s) => s.valid(),
             Self::Exciter(s) => s.valid(),
             Self::Eq3(eq) => eq.valid(),
             Self::Drive(drive) => drive.valid(),
@@ -408,6 +435,7 @@ impl EffectSettings {
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
                     MULTIBAND_EQ_TYPE_ID => Some(MULTIBAND_EQ_STATE_VERSION),
+                    HARMONIC_LIFT_TYPE_ID => Some(HARMONIC_LIFT_STATE_VERSION),
                     EXCITER_TYPE_ID => Some(EXCITER_STATE_VERSION),
                     EQ_TYPE_ID => Some(EQ_STATE_VERSION),
                     DRIVE_TYPE_ID => Some(DRIVE_STATE_VERSION),
@@ -469,7 +497,24 @@ impl EffectInstance {
                 }
             }
         }
+        if let EffectSettings::HarmonicLift(s) = &mut copy.unit {
+            for band in &mut s.bands {
+                let old = band.id;
+                band.id = uuid::Uuid::new_v4();
+                for route in &mut s.modulations {
+                    if route.target == Some(old) {
+                        route.target = Some(band.id);
+                    }
+                }
+            }
+        }
         copy
+    }
+    pub fn harmonic_lift() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::HarmonicLift(HarmonicLiftSettings::default()),
+        }
     }
     pub fn exciter() -> Self {
         Self {

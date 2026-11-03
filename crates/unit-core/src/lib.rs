@@ -884,3 +884,6 @@ mod oscillator_output_pitch_tests {
 
 mod multiband_eq;
 pub use multiband_eq::*;
+
+mod harmonic_lift;
+pub use harmonic_lift::*;

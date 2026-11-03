@@ -3,7 +3,6 @@ pub mod crossover;
 use daw_unit_core::{
     EffectUnit, FILTER_TYPE_ID, FilterSettings, PortKind, ProcessingContext, UnitDescriptor,
 };
-use fundsp::svf::SvfCoefs;
 #[derive(Clone, Copy)]
 struct Ramp {
     value: f64,
@@ -36,36 +35,8 @@ impl Ramp {
         self.remaining = 0;
     }
 }
-#[derive(Default, Clone)]
-struct StateVariableFilter {
-    ic1: f64,
-    ic2: f64,
-    coefs: SvfCoefs<f64>,
-    configured: Option<(f64, f64)>,
-}
-impl StateVariableFilter {
-    fn sample(&mut self, input: f64, frequency: f64, q: f64, rate: f64, weights: [f64; 4]) -> f64 {
-        if self.configured != Some((frequency, q)) {
-            self.coefs = SvfCoefs::lowpass(rate, frequency, q);
-            self.configured = Some((frequency, q));
-        }
-        // Trapezoidal state-variable integration (Simper); see FunDSP's svf.rs.
-        let c = &self.coefs;
-        let v3 = input - self.ic2;
-        let band = c.a1 * self.ic1 + c.a2 * v3;
-        let low = self.ic2 + c.a2 * self.ic1 + c.a3 * v3;
-        self.ic1 = 2.0 * band - self.ic1;
-        self.ic2 = 2.0 * low - self.ic2;
-        let normalized_band = band / q;
-        let high = input - normalized_band - low;
-        let notch = input - normalized_band;
-        [low, high, normalized_band, notch]
-            .into_iter()
-            .zip(weights)
-            .map(|(value, weight)| value * weight)
-            .sum()
-    }
-}
+pub mod svf;
+use svf::StateVariableFilter;
 fn weights<const N: usize>(index: usize) -> [Ramp; N] {
     std::array::from_fn(|i| Ramp::new(f64::from(i == index)))
 }
