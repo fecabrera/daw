@@ -415,6 +415,9 @@ impl Renderer {
                     daw_core::EffectSettings::MultibandEq(_) => {
                         daw_unit_core::MULTIBAND_EQ_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::Loudness(_) => {
+                        daw_unit_core::LOUDNESS_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::Eq3(_) => daw_unit_core::EQ_TYPE_ID.hash(&mut hash),
                     daw_core::EffectSettings::DriveV2(_) => {
                         daw_unit_core::DRIVE_V2_TYPE_ID.hash(&mut hash)
@@ -678,7 +681,21 @@ impl Renderer {
             effects.set_meter(id, &meter);
         }
     }
-    /// Bind dynamics output monitoring independently of reduction and signed band meters.
+    /// Attach the prepared analysis handle outside the audio callback.
+    pub fn set_loudness_meter(
+        &mut self,
+        id: Id,
+        meter: std::sync::Arc<daw_unit_core::LoudnessMeter>,
+    ) {
+        self.master_effects.set_loudness_meter(id, &meter);
+        for midi in self.midi.iter_mut().flatten() {
+            midi.set_loudness_meter(id, &meter);
+        }
+        for chain in &mut self.effects {
+            chain.set_loudness_meter(id, &meter);
+        }
+    }
+    /// Bind output monitoring independently of reduction and signed band meters.
     pub fn set_effect_output_peak_meter(
         &mut self,
         id: Id,
@@ -832,12 +849,15 @@ impl Renderer {
         let history = self.needs_processing_history();
         if history {
             let block = u64::from(self.plan.project.buffer_size_frames.max(1));
+            self.suspend_analysis(true);
             for frame in 0..state.frame {
                 if frame % block == 0 && cancelled() {
+                    self.suspend_analysis(false);
                     return false;
                 }
                 self.offline_frame(frame, self.playing || self.paused, false);
             }
+            self.suspend_analysis(false);
         }
         if cancelled() {
             return false;
@@ -851,6 +871,24 @@ impl Renderer {
         self.previous = old.previous;
         self.transition_from = old.previous;
         self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
+    }
+    /// Preserve continuous analysis across prepared seeks without taking audio history.
+    pub fn inherit_analysis(&mut self, old: &mut Self) {
+        if self.plan.project.sample_rate_hz != old.plan.project.sample_rate_hz {
+            return;
+        }
+        self.master_effects
+            .inherit_analysis(&mut old.master_effects);
+        for (index, track) in self.plan.project.tracks.iter().enumerate() {
+            if let Some(&previous) = old.track_index.get(&track.id) {
+                self.effects[index].inherit_analysis(&mut old.effects[previous]);
+                if let (Some(next), Some(previous)) =
+                    (&mut self.midi[index], &mut old.midi[previous])
+                {
+                    next.inherit_analysis(previous);
+                }
+            }
+        }
     }
     /// Resume an already prepared paused transport without resetting its history.
     pub fn resume(&mut self) {
@@ -1012,6 +1050,15 @@ impl Renderer {
             runtime.reset();
         }
     }
+    fn suspend_analysis(&mut self, value: bool) {
+        self.master_effects.suspend_analysis(value);
+        for chain in &mut self.effects {
+            chain.suspend_analysis(value);
+        }
+        for midi in self.midi.iter_mut().flatten() {
+            midi.suspend_analysis(value);
+        }
+    }
     fn prime_latency(&mut self, live: bool, realtime: bool) {
         self.alignment.live = live;
         if self.alignment.total == 0 {
@@ -1025,15 +1072,18 @@ impl Renderer {
             start = first;
         }
         self.prime_pending = true;
+        self.suspend_analysis(true);
         for offset in self.prime_offset..self.alignment.total {
             let future = latency::advanced_frame(start, offset, self.loop_region(live));
             if realtime && !self.streaming_ready(future, self.loop_region(live)) {
                 self.prime_offset = offset;
+                self.suspend_analysis(false);
                 return;
             }
             let frame = self.feed_frame(future, live);
             self.offline_frame(frame, live, realtime);
         }
+        self.suspend_analysis(false);
         self.prime_pending = false;
         self.prime_offset = 0;
     }
@@ -1088,9 +1138,14 @@ impl Renderer {
             self.seek(0);
         }
         let mut scratch = [[0.0; 2]; 512];
-        while self.playhead < start {
-            let count = (start - self.playhead).min(scratch.len() as u64) as usize;
-            self.render_offline(&mut scratch[..count]);
+        if self.playhead < start {
+            self.render_offline(&mut []);
+            self.suspend_analysis(true);
+            while self.playhead < start {
+                let count = (start - self.playhead).min(scratch.len() as u64) as usize;
+                self.render_offline(&mut scratch[..count]);
+            }
+            self.suspend_analysis(false);
         }
         self.render_offline(out);
     }
@@ -1216,9 +1271,15 @@ impl Renderer {
                     self.playhead
                 };
                 let loop_region = self.loop_region(true);
+                if !self.playing {
+                    self.suspend_analysis(true);
+                }
                 self.sample_tracks(frame, loop_region, self.playing, true, true);
                 mix = self.sample_buses(frame, loop_region, true);
                 mix = self.sample_master(mix, frame, loop_region);
+                if !self.playing {
+                    self.suspend_analysis(false);
+                }
                 self.latent_held_mix = mix;
             }
             if self.playing {

@@ -11,6 +11,7 @@ use crate::{EXCITER_STATE_VERSION, EXCITER_TYPE_ID, ExciterSettings};
 use crate::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
 use crate::{HARMONIC_LIFT_STATE_VERSION, HARMONIC_LIFT_TYPE_ID, HarmonicLiftSettings};
 use crate::{LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterSettings};
+use crate::{LOUDNESS_STATE_VERSION, LOUDNESS_TYPE_ID, LoudnessSettings};
 use crate::{MULTIBAND_EQ_STATE_VERSION, MULTIBAND_EQ_TYPE_ID, MultibandEqSettings};
 use crate::{OTT_STATE_VERSION, OTT_TYPE_ID, OttSettings};
 use crate::{PLATE_REVERB_STATE_VERSION, PLATE_REVERB_TYPE_ID, PlateReverbSettings};
@@ -81,6 +82,7 @@ impl EqSettings {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectSettings {
     Eq3(EqSettings),
+    Loudness(LoudnessSettings),
     MultibandEq(MultibandEqSettings),
     Exciter(ExciterSettings),
     HarmonicLift(HarmonicLiftSettings),
@@ -111,6 +113,10 @@ struct StoredEffect {
 impl Serialize for EffectSettings {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let stored = match self {
+            Self::Loudness(settings) => StoredEffect {
+                type_id: LOUDNESS_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
             Self::HarmonicLift(settings) => StoredEffect {
                 type_id: HARMONIC_LIFT_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
@@ -194,7 +200,17 @@ impl Serialize for EffectSettings {
 impl<'de> Deserialize<'de> for EffectSettings {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let stored = StoredEffect::deserialize(deserializer)?;
-        if stored.type_id == HARMONIC_LIFT_TYPE_ID
+        if stored.type_id == LOUDNESS_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|v| v <= u64::from(LOUDNESS_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::Loudness)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == HARMONIC_LIFT_TYPE_ID
             && stored
                 .state
                 .get("version")
@@ -461,6 +477,7 @@ impl EffectSettings {
 
     pub fn valid(&self) -> bool {
         match self {
+            Self::Loudness(s) => s.valid(),
             Self::MultibandEq(eq) => eq.valid(),
             Self::HarmonicLift(s) => s.valid(),
             Self::Exciter(s) => s.valid(),
@@ -481,6 +498,7 @@ impl EffectSettings {
             Self::PlateReverb(settings) => settings.valid(),
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
+                    LOUDNESS_TYPE_ID => Some(LOUDNESS_STATE_VERSION),
                     MULTIBAND_EQ_TYPE_ID => Some(MULTIBAND_EQ_STATE_VERSION),
                     HARMONIC_LIFT_TYPE_ID => Some(HARMONIC_LIFT_STATE_VERSION),
                     EXCITER_TYPE_ID => Some(EXCITER_STATE_VERSION),
@@ -518,6 +536,12 @@ pub struct EffectInstance {
     pub unit: EffectSettings,
 }
 impl EffectInstance {
+    pub fn loudness() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::Loudness(LoudnessSettings::default()),
+        }
+    }
     pub fn duplicate(&self) -> Self {
         let mut copy = self.clone();
         copy.id = uuid::Uuid::new_v4();

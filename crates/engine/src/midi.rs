@@ -1510,6 +1510,31 @@ impl MidiTrackRuntime {
             bus.chain.set_band_level_meter(effect, band, meter);
         }
     }
+    pub fn set_loudness_meter(
+        &mut self,
+        id: Id,
+        meter: &std::sync::Arc<daw_unit_core::LoudnessMeter>,
+    ) {
+        for bus in &mut self.layer_effects {
+            bus.chain.set_loudness_meter(id, meter);
+        }
+    }
+    pub fn inherit_analysis(&mut self, previous: &mut Self) {
+        for next in &mut self.layer_effects {
+            if let Some(old) = previous
+                .layer_effects
+                .iter_mut()
+                .find(|old| old.id == next.id)
+            {
+                next.chain.inherit_analysis(&mut old.chain);
+            }
+        }
+    }
+    pub fn suspend_analysis(&mut self, value: bool) {
+        for bus in &mut self.layer_effects {
+            bus.chain.suspend_analysis(value);
+        }
+    }
     pub fn set_effect_output_meter(
         &mut self,
         id: Id,

@@ -1733,6 +1733,7 @@ dependencies = [
  "daw-harmonic-lift",
  "daw-lfo",
  "daw-limiter",
+ "daw-loudness",
  "daw-macro",
  "daw-media",
  "daw-noise",
@@ -2010,6 +2011,66 @@ dependencies = [
  "daw-limiter",
  "daw-limiter-editor",
  "daw-limiter-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-loudness"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
+ "rtrb",
+]
+
+[[package]]
+name = "daw-loudness-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-loudness",
+ "daw-loudness-editor",
+ "daw-loudness-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-loudness-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-loudness-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-loudness-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-loudness",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-loudness-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-loudness",
+ "daw-loudness-editor",
+ "daw-loudness-plugin",
  "daw-plugin-vst3",
  "daw-plugin-window",
  "daw-unit-core",

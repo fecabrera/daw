@@ -46,6 +46,7 @@ pub(crate) struct EffectsUiBounds {
     pub bitcrusher_entry: Rect,
     pub chorus_entry: Rect,
     pub ambient_reverb_entry: Rect,
+    pub loudness_entry: Rect,
     pub plate_reverb_entry: Rect,
     pub lane_toolbar: Rect,
     pub lane_compact: Rect,
@@ -67,6 +68,7 @@ pub(crate) struct EffectsUiBounds {
     pub bitcrusher_units: Vec<crate::bitcrusher_panel::Bounds>,
     pub chorus_units: Vec<crate::chorus_panel::Bounds>,
     pub ambient_reverb_units: Vec<crate::ambient_reverb_panel::Bounds>,
+    pub loudness_units: Vec<crate::loudness_panel::Bounds>,
     pub plate_reverb_units: Vec<crate::plate_reverb_panel::Bounds>,
     pub exciter_units: Vec<crate::exciter_panel::Bounds>,
 }
@@ -104,6 +106,7 @@ impl Default for EffectsUiBounds {
             bitcrusher_entry: Rect::NOTHING,
             chorus_entry: Rect::NOTHING,
             ambient_reverb_entry: Rect::NOTHING,
+            loudness_entry: Rect::NOTHING,
             plate_reverb_entry: Rect::NOTHING,
             lane_toolbar: Rect::NOTHING,
             lane_compact: Rect::NOTHING,
@@ -125,6 +128,7 @@ impl Default for EffectsUiBounds {
             bitcrusher_units: vec![],
             chorus_units: vec![],
             ambient_reverb_units: vec![],
+            loudness_units: vec![],
             plate_reverb_units: vec![],
             exciter_units: vec![],
         }
@@ -283,6 +287,7 @@ impl DawUi {
             self.effects_bounds.bitcrusher_units.clear();
             self.effects_bounds.chorus_units.clear();
             self.effects_bounds.ambient_reverb_units.clear();
+            self.effects_bounds.loudness_units.clear();
             self.effects_bounds.plate_reverb_units.clear();
             self.effects_bounds.exciter_units.clear();
         }
@@ -345,6 +350,7 @@ impl DawUi {
             self.effects_bounds.chorus_entry = Rect::NOTHING;
             self.effects_bounds.plate_reverb_entry = Rect::NOTHING;
             self.effects_bounds.ambient_reverb_entry = Rect::NOTHING;
+            self.effects_bounds.loudness_entry = Rect::NOTHING;
         }
         ui.horizontal_top(|ui| {
             if let Some(library) = library.as_ref() {
@@ -452,6 +458,9 @@ impl DawUi {
                                     }
                                     daw_core::CHORUS_TYPE_ID => {
                                         self.effects_bounds.chorus_entry = response.rect;
+                                    }
+                                    daw_core::LOUDNESS_TYPE_ID => {
+                                        self.effects_bounds.loudness_entry = response.rect
                                     }
                                     daw_core::AMBIENT_REVERB_TYPE_ID => {
                                         self.effects_bounds.ambient_reverb_entry = response.rect;
@@ -1149,6 +1158,21 @@ impl DawUi {
                                     let power = bounds.power;
                                     #[cfg(test)]
                                     self.effects_bounds.chorus_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Loudness(settings) => {
+                                    let (bounds, header) = crate::loudness_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        self.output
+                                            .as_ref()
+                                            .and_then(|o| o.loudness_meter(effect.id)),
+                                        output_level,
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.loudness_units.push(bounds);
                                     (header, power)
                                 }
                                 daw_core::EffectSettings::AmbientReverb(settings) => {

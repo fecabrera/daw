@@ -214,6 +214,7 @@ fn test_parameter() -> P {
     P::ALL
         .into_iter()
         .find(|p| *p != P::Bypass && p.info().steps == 0)
+        .or_else(|| P::ALL.into_iter().find(|p| *p != P::Bypass))
         .unwrap()
 }
 fn test_value(value: f64) -> f64 {

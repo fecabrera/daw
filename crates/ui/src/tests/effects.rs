@@ -429,6 +429,8 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             None,
             Some(entries[16]),
             Some(entries[17]),
+            None,
+            Some(entries[18]),
         ];
         let mut steps = vec![
             (egui::Key::ArrowDown, false, vec![entries[12]]),
@@ -514,6 +516,9 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         click(&mut app, &ctx, reverb);
         frame(&mut app, &ctx, vec![]);
         assert!(!app.effects_bounds.ambient_reverb_entry.is_positive());
+        let analysis = app.effects_bounds.folders[5].center();
+        click(&mut app, &ctx, analysis);
+        frame(&mut app, &ctx, vec![]);
         let point = app.effects_bounds.entry.center();
         click(&mut app, &ctx, point);
         library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
@@ -524,7 +529,7 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         let blank = Rect::from_min_max(
             Pos2::new(
                 app.effects_bounds.library.left(),
-                app.effects_bounds.folders[4].bottom(),
+                app.effects_bounds.folders.last().unwrap().bottom(),
             ),
             app.effects_bounds.library.max,
         );
@@ -563,6 +568,11 @@ fn effects_library_empty_click_respects_input_guards_and_other_catalog_controls(
         click(&mut app, &ctx, folder);
         frame(&mut app, &ctx, vec![]);
         assert!(!app.effects_bounds.stereo_spread_entry.is_positive());
+        for category in [4, 5] {
+            let folder = app.effects_bounds.folders[category].center();
+            click(&mut app, &ctx, folder);
+            frame(&mut app, &ctx, vec![]);
+        }
         let entry = app.effects_bounds.entry.center();
         click(&mut app, &ctx, entry);
         let selected = app.effects_catalog.selection.clone();
@@ -7059,6 +7069,35 @@ fn workspace_top_separator_remains_visible_across_rail_catalog_and_content_in_ev
                     );
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn loudness_catalog_body_and_power_work_on_track_master_and_instrument() {
+    for target in ["track", "master", "instrument"] {
+        for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+            let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+            scroll_effects_catalog(&mut app, &ctx, -300.0);
+            let entry = app.effects_bounds.loudness_entry;
+            assert!(entry.is_positive());
+            click(&mut app, &ctx, entry.center());
+            library_key(&mut app, &ctx, egui::Key::Enter, false);
+            frame(&mut app, &ctx, vec![]);
+            let owner = app.effects_target().unwrap();
+            assert!(matches!(
+                app.effect_chain(owner).unwrap().0[0].unit,
+                daw_core::EffectSettings::Loudness(_)
+            ));
+            let bounds = &app.effects_bounds.loudness_units[0];
+            assert_eq!(bounds.sections.len(), 7);
+            assert!((bounds.sections[5].width() - 180.0).abs() < 0.1);
+            let power = bounds.power;
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, power.center());
+            assert!(
+                matches!(&app.effect_chain(owner).unwrap().0[0].unit,daw_core::EffectSettings::Loudness(s) if !s.enabled)
+            );
         }
     }
 }

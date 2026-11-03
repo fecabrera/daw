@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+daw-loudness.workspace=true
 daw-plate-reverb.workspace = true
 daw-ambient-reverb.workspace = true
 daw-harmonic-lift.workspace = true

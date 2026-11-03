@@ -4,6 +4,44 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Loudness Meter and history — 2026-11-03
+
+Added the transparent stereo analyzer, bounded worker statistics, three-minute
+M/S history, shared DAW/plugin body, typed state and independent CLAP/VST3 products.
+Continuous analysis survives prepared seek handoffs. Transport analysis excludes
+reconstruction, latency priming and synthetic pause/stop fades. Hold and Reset
+remain outside project edits and automation. The History selector uses the shared
+small text, and full standard row heights align every footer at the bottom.
+
+Completed checks:
+
+- `cargo check --workspace --all-targets` passed.
+- Portable analyzer, typed plugin, editor, unit-core and unit-ui tests passed.
+  Coverage includes six-rate sine calibration, opposed stereo polarity, startup
+  windows, gates/LRA, intersample peak estimation, reset epochs, bypass/Hold,
+  deterministic queue overrun, state fixtures and scalar telemetry.
+- Shared editor geometry and primitive parity passed in three appearances at
+  1×, 1.5× and 2× scale, including active history, bypass and incomplete readings.
+  Button gestures stay outside host parameter edits. A footer regression checks
+  the common bottom baseline for all seven strips at each appearance and scale.
+- DAW effect UI regressions passed (97 tests), including catalog navigation,
+  track/Master/instrument installation, power and the new Analysis category.
+- Output library regressions passed (59 tests), including analysis handle reuse,
+  callback-safe inheritance, prepared continuous handoff and preroll exclusion.
+  Engine effect regressions passed (35 tests).
+- Both native plugin formats built with `allocation-check`. Loaded-library host
+  tests passed for all six rates, irregular/in-place buffers, dense automation,
+  reset, state recall and reported geometry without callback heap work.
+- Plugin packaging tests passed (15 tests), including manifest discovery,
+  distinct identities, both format targets, CI registration and archive notices.
+- Focused all-target clippy passed with warnings denied. Formatting, diff
+  whitespace and documentation file-link checks passed.
+
+Native editor attachment, live audio-device checks, Windows/Linux execution,
+external-host transport behavior and broadcast conformance remain unverified.
+True peak is an estimate; this record does not claim Youlean equivalence or
+broadcast certification. See the [specification](../effects/loudness-meter.md).
+
 ## Plate Options strip — 2026-11-03
 
 Plate now has five fixed strips: Reverb, Filters, Drive, Options and Out.

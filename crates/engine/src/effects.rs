@@ -11,6 +11,7 @@ use daw_exciter::Exciter;
 use daw_filter::Filter;
 use daw_harmonic_lift::HarmonicLift;
 use daw_limiter::Limiter;
+use daw_loudness::Loudness;
 use daw_ott::Ott;
 use daw_plate_reverb::PlateReverb;
 use daw_saturator::Saturator;
@@ -20,6 +21,7 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 enum RuntimeEffect {
+    Loudness(Box<Loudness>),
     MultibandEq(Box<MultibandEq>),
     Exciter(Box<Exciter>),
     HarmonicLift(Box<HarmonicLift>),
@@ -43,6 +45,7 @@ enum RuntimeEffect {
 impl RuntimeEffect {
     fn heap_bytes(&self) -> u64 {
         match self {
+            Self::Loudness(unit) => std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes(),
             Self::HarmonicLift(unit) => {
                 std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes()
             }
@@ -132,6 +135,7 @@ impl RuntimeEffect {
     // retain their fixed delay, and each downstream clock must follow it.
     fn latency_frames(&self) -> u32 {
         match self {
+            Self::Loudness(unit) => unit.latency_frames(),
             Self::MultibandEq(unit) => unit.latency_frames(),
             Self::HarmonicLift(unit) => unit.latency_frames(),
             Self::Exciter(unit) => unit.latency_frames(),
@@ -164,6 +168,7 @@ impl RuntimeEffect {
         ),
     ) -> [f32; 2] {
         match self {
+            Self::Loudness(unit) => unit.process_at(input, frame),
             Self::HarmonicLift(unit) => unit.process_at(
                 input,
                 values,
@@ -393,6 +398,7 @@ impl RuntimeEffect {
     }
     fn reset(&mut self) {
         match self {
+            Self::Loudness(unit) => unit.reset(),
             Self::MultibandEq(unit) => unit.reset(),
             Self::HarmonicLift(unit) => unit.reset(),
             Self::Exciter(unit) => unit.reset(),
@@ -491,6 +497,7 @@ impl RuntimeEffect {
     }
     fn retarget(&mut self, settings: &EffectSettings) -> bool {
         match (self, settings) {
+            (Self::Loudness(unit), EffectSettings::Loudness(s)) => unit.retarget(s),
             (Self::HarmonicLift(unit), EffectSettings::HarmonicLift(settings)) => {
                 return unit.retarget(settings);
             }
@@ -694,6 +701,9 @@ impl EffectChain {
                                     .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
                                     .collect(),
                             )),
+                            EffectSettings::Loudness(s) => {
+                                Some(RuntimeEffect::Loudness(Box::new(Loudness::new(context, s))))
+                            }
                             EffectSettings::AmbientReverb(settings) => {
                                 Some(RuntimeEffect::AmbientReverb(
                                     Box::new(AmbientReverb::new(context, settings)),
@@ -913,6 +923,32 @@ impl EffectChain {
             _ => None,
         }
     }
+    pub fn set_loudness_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::LoudnessMeter>) {
+        if let Some((_, Some(RuntimeEffect::Loudness(unit)))) =
+            self.units.iter_mut().find(|(effect, _)| *effect == id)
+        {
+            unit.set_loudness_meter(meter.clone());
+        }
+    }
+    pub fn inherit_analysis(&mut self, previous: &mut Self) {
+        for (id, next) in &mut self.units {
+            if let Some(RuntimeEffect::Loudness(next)) = next
+                && let Some((_, Some(RuntimeEffect::Loudness(old)))) = previous
+                    .index
+                    .get(id)
+                    .and_then(|&i| previous.units.get_mut(i))
+            {
+                next.inherit_analysis(old);
+            }
+        }
+    }
+    pub fn suspend_analysis(&mut self, value: bool) {
+        for (_, unit) in &mut self.units {
+            if let Some(RuntimeEffect::Loudness(unit)) = unit {
+                unit.suspend(value);
+            }
+        }
+    }
     pub fn set_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::PeakMeter>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
             Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
@@ -941,6 +977,9 @@ impl EffectChain {
     }
     pub fn set_output_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::BandMeter<3>>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
+            Some((_, Some(RuntimeEffect::Loudness(unit)))) => {
+                unit.set_output_peak_meter(meter.clone())
+            }
             Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
                 unit.set_output_peak_meter(meter.clone())
             }

@@ -1,6 +1,7 @@
 //! Effect registration and the shared categorized catalog adapter.
 #[derive(Clone, Copy, PartialEq)]
 enum Category {
+    Analysis,
     EqAndFilters,
     Dynamics,
     Distortion,
@@ -8,16 +9,18 @@ enum Category {
     Reverb,
 }
 impl Category {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::EqAndFilters,
         Self::Dynamics,
         Self::Distortion,
         Self::Imaging,
         Self::Reverb,
+        Self::Analysis,
     ];
 
     fn name(self) -> &'static str {
         match self {
+            Self::Analysis => "Analysis",
             Self::EqAndFilters => "EQ & Filters",
             Self::Dynamics => "Dynamics",
             Self::Distortion => "Distortion",
@@ -53,7 +56,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 18] = [
+pub(super) const ENTRIES: [Entry; 19] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -161,6 +164,12 @@ pub(super) const ENTRIES: [Entry; 18] = [
         "Ambient Reverb",
         Category::Reverb,
         daw_core::EffectInstance::ambient_reverb,
+    ),
+    Entry::new(
+        daw_core::LOUDNESS_TYPE_ID,
+        "Loudness Meter",
+        Category::Analysis,
+        daw_core::EffectInstance::loudness,
     ),
 ];
 

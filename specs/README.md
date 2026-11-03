@@ -59,6 +59,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 ## Effects
 
+- [Loudness Meter](effects/loudness-meter.md): stereo analysis, history, lifecycle and plugin delivery.
+
 - [3-band EQ](effects/equalizer.md)
 - [Multiband EQ](effects/multiband-eq.md)
 - [Drive](effects/drive.md)

@@ -187,6 +187,18 @@ impl TransportCache {
         to: u64,
         cancelled: &mut impl FnMut() -> bool,
     ) -> bool {
+        renderer.suspend_analysis(true);
+        let completed = self.replay_inner(renderer, from, to, cancelled);
+        renderer.suspend_analysis(false);
+        completed
+    }
+    fn replay_inner(
+        &mut self,
+        renderer: &mut Renderer,
+        from: u64,
+        to: u64,
+        cancelled: &mut impl FnMut() -> bool,
+    ) -> bool {
         let block = u64::from(renderer.plan.project.buffer_size_frames.max(1));
         let mut frame = from;
         while frame < to {

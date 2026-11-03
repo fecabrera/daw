@@ -62,3 +62,11 @@ to match checkout conversion. A temporary-index regression exercises
 Notices can be included conservatively on targets that do not
 link a component. This inventory closes those omissions; it is not a complete
 license or corresponding-source audit of every dependency and deliverable.
+
+## Loudness Meter
+
+The stereo analyzer adds an independent typed contract, shared editor and CLAP/VST3
+products. Both editors use the 720-point shared history body. The product has four
+discrete parameters, zero audio latency/tail, bounded worker analysis and transient
+Hold/Reset actions outside automation. Its extended control-thread telemetry and
+measurement limits are defined in the [meter specification](../effects/loudness-meter.md).

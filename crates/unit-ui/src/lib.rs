@@ -38,3 +38,5 @@ pub mod multiband_eq;
 
 pub mod drag;
 pub mod strip_reorder;
+
+pub mod loudness;

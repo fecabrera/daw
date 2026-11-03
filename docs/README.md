@@ -33,6 +33,8 @@ Knob tooltips show only the parameter name on the left and the current value on 
 
 ## Effects
 
+- [Loudness Meter](effects/loudness-meter.md)
+
 - [Standard unit output meters and held peaks](effects/output-meter.md)
 - [Saturator and Bitcrusher CLAP/VST3 previews](effects/distortion-plugins.md)
 

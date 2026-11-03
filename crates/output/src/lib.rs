@@ -210,6 +210,24 @@ fn bind_effect_meters(
     }
 }
 // Dynamics have separate output and reduction/band readings. Keep their handles independent.
+fn loudness_meters(
+    plan: &RenderPlan,
+    previous: &HashMap<Id, Arc<daw_unit_core::LoudnessMeter>>,
+) -> HashMap<Id, Arc<daw_unit_core::LoudnessMeter>> {
+    plan.project
+        .all_effects()
+        .filter(|e| matches!(e.unit, daw_core::EffectSettings::Loudness(_)))
+        .map(|e| (e.id, previous.get(&e.id).cloned().unwrap_or_default()))
+        .collect()
+}
+fn bind_loudness_meters(
+    renderer: &mut Renderer,
+    meters: &HashMap<Id, Arc<daw_unit_core::LoudnessMeter>>,
+) {
+    for (id, meter) in meters {
+        renderer.set_loudness_meter(*id, meter.clone());
+    }
+}
 fn output_meters(
     plan: &RenderPlan,
     previous: &HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
@@ -222,6 +240,7 @@ fn output_meters(
                 daw_core::EffectSettings::Compressor(_)
                     | daw_core::EffectSettings::Limiter(_)
                     | daw_core::EffectSettings::Ott(_)
+                    | daw_core::EffectSettings::Loudness(_)
             )
         })
         .map(|e| (e.id, previous.get(&e.id).cloned().unwrap_or_default()))
@@ -473,6 +492,7 @@ pub struct AudioOutput {
     effect_meters: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
     exciter_solos: effect_audition::Solos,
     output_meters: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
+    loudness_meters: HashMap<Id, Arc<daw_unit_core::LoudnessMeter>>,
     source_meters: source_meters::Sources,
     band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
@@ -572,6 +592,7 @@ impl AudioOutput {
             effects: reductions,
             exciter_solos,
             outputs,
+            loudness,
             sources,
             bands: changes,
             modulation,
@@ -587,6 +608,7 @@ impl AudioOutput {
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_band_meters(&mut state.renderer, &changes);
             bind_output_meters(&mut state.renderer, &outputs);
+            bind_loudness_meters(&mut state.renderer, &loudness);
             source_meters::bind(&mut state.renderer, &sources);
             state.renderer.layer_meters = layers.clone();
             state.renderer.bind_modulation(&modulation);
@@ -661,6 +683,7 @@ impl AudioOutput {
             exciter_solos,
             band_meters: changes,
             output_meters: outputs,
+            loudness_meters: loudness,
             source_meters: sources,
             modulation_meters: modulation,
             live_pitches,
@@ -690,6 +713,7 @@ impl AudioOutput {
             exciter_solos: self.exciter_solos.clone(),
             bands: self.band_meters.clone(),
             outputs: self.output_meters.clone(),
+            loudness: self.loudness_meters.clone(),
             sources: self.source_meters.clone(),
             modulation: self.modulation_meters.clone(),
             live_pitches: self.live_pitches.clone(),
@@ -852,6 +876,9 @@ impl AudioOutput {
         self.source_meters.get(&target).map(|m| &m.boost_peaks()[0])
     }
     /// Held effect output peak, retained while paused/stopped and resettable by the UI.
+    pub fn loudness_meter(&self, id: Id) -> Option<&daw_unit_core::LoudnessMeter> {
+        self.loudness_meters.get(&id).map(AsRef::as_ref)
+    }
     pub fn effect_output_peak(&self, id: Id) -> Option<&daw_unit_core::PeakHold> {
         self.output_meters
             .get(&id)
@@ -998,6 +1025,7 @@ impl AudioOutput {
                     self.exciter_solos = ready.bindings.exciter_solos;
                     self.band_meters = ready.bindings.bands;
                     self.output_meters = ready.bindings.outputs;
+                    self.loudness_meters = ready.bindings.loudness;
                     self.source_meters = ready.bindings.sources;
                     self.modulation_meters = ready.bindings.modulation;
                     self.live_pitches = ready.bindings.live_pitches;
@@ -1147,6 +1175,7 @@ impl Callback {
                     }
                     if next.prepared_transport {
                         next.activate_transport(&self.renderer);
+                        next.inherit_analysis(&mut self.renderer);
                         // The initial stopped renderer contributes only silence. Its
                         // converted buffer can contain active audition audio, which
                         // must survive publication of a stopped project renderer.
@@ -1261,6 +1290,7 @@ impl Callback {
             let _ = self.retired.push(next);
         } else {
             next.activate_transport(&self.renderer);
+            next.inherit_analysis(&mut self.renderer);
             self.install(next);
         }
     }
@@ -2518,5 +2548,167 @@ mod multiband_meter_tests {
         assert!(!pruned.contains_key(&first_key));
         assert!(pruned.contains_key(&second_key));
         assert!(pruned.contains_key(&last_key));
+    }
+}
+
+#[cfg(test)]
+mod loudness_tests {
+    use super::*;
+    fn wait(m: &daw_unit_core::LoudnessMeter, seconds: f32) -> daw_unit_core::LoudnessReading {
+        let start = std::time::Instant::now();
+        loop {
+            let r = m.reading();
+            if r.values[12] >= seconds {
+                return r;
+            }
+            assert!(start.elapsed().as_secs() < 5);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
+    #[test]
+    fn loudness_handles_follow_ids_and_callback_inheritance_preserves_measurements() {
+        for master in [false, true] {
+            let mut plan = crate::tests::transport_plan();
+            let effect = daw_core::EffectInstance::loudness();
+            let id = effect.id;
+            effect_test_chain(&mut plan, master).push(effect);
+            let handles = loudness_meters(&plan, &HashMap::new());
+            let meter = &handles[&id];
+            let mut old = Renderer::new(plan.clone());
+            bind_loudness_meters(&mut old, &handles);
+            old.play();
+            crate::preparation_tests::realtime(|| {
+                for _ in 0..4800 {
+                    old.next_sample();
+                }
+            });
+            let before = wait(meter, 0.1);
+            let epoch = meter.epoch();
+            if let daw_core::EffectSettings::Loudness(s) =
+                &mut effect_test_chain(&mut plan, master)[0].unit
+            {
+                s.target = 2;
+            }
+            let next_handles = loudness_meters(&plan, &handles);
+            assert!(Arc::ptr_eq(meter, &next_handles[&id]));
+            let mut next = Renderer::new(plan.clone());
+            bind_loudness_meters(&mut next, &next_handles);
+            crate::preparation_tests::realtime(|| next.inherit(&mut old));
+            assert_eq!(meter.epoch(), epoch);
+            assert_eq!(meter.reading(), before);
+            crate::preparation_tests::realtime(|| {
+                next.pause();
+                for _ in 0..512 {
+                    next.next_sample();
+                }
+            });
+            assert_eq!(meter.epoch(), epoch);
+            assert_eq!(meter.reading(), before);
+            crate::preparation_tests::realtime(|| {
+                next.stop();
+                for _ in 0..512 {
+                    next.next_sample();
+                }
+            });
+            assert_eq!(meter.reading(), before);
+            crate::preparation_tests::realtime(|| {
+                next.play();
+                next.next_sample();
+            });
+            assert_ne!(meter.epoch(), epoch);
+            assert_eq!(meter.reading(), Default::default());
+            effect_test_chain(&mut plan, master).clear();
+            assert!(loudness_meters(&plan, &handles).is_empty());
+        }
+    }
+    #[test]
+    fn seek_replay_latency_priming_and_offline_range_skips_do_not_enter_analysis() {
+        let mut plan = crate::tests::transport_plan();
+        plan.project
+            .master
+            .effects
+            .push(daw_core::EffectInstance::plate_reverb());
+        plan.project
+            .master
+            .effects
+            .push(daw_core::EffectInstance::limiter());
+        let meter_effect = daw_core::EffectInstance::loudness();
+        let id = meter_effect.id;
+        plan.project.master.effects.push(meter_effect);
+        let mut renderer = Renderer::new(plan);
+        let meter = Arc::new(daw_unit_core::LoudnessMeter::default());
+        renderer.set_loudness_meter(id, meter.clone());
+        renderer.prepare_transport(TransportState {
+            frame: 24000,
+            playing: true,
+            paused: false,
+            playback_start: Some(0),
+        });
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        assert_eq!(meter.reading(), Default::default());
+        for _ in 0..4800 {
+            renderer.next_sample();
+        }
+        wait(&meter, 0.1);
+        assert_eq!(meter.reading().values[12], 0.1);
+        meter.reset();
+        renderer.render_offline_at(40000, &mut [[0.0; 2]; 4800]);
+        wait(&meter, 0.1);
+        assert_eq!(meter.reading().values[12], 0.1);
+    }
+}
+
+#[cfg(test)]
+mod loudness_prepared_transport_tests {
+    use super::*;
+    #[test]
+    fn prepared_seek_handoff_preserves_continuous_analysis_and_restarts_transport_analysis() {
+        for continuous in [false, true] {
+            let mut plan = crate::tests::transport_plan();
+            let mut effect = daw_core::EffectInstance::loudness();
+            let id = effect.id;
+            if let daw_core::EffectSettings::Loudness(s) = &mut effect.unit {
+                s.continuous = continuous;
+            }
+            plan.project.master.effects.push(effect);
+            let handles = loudness_meters(&plan, &HashMap::new());
+            let meter = &handles[&id];
+            let mut old = Renderer::new(plan.clone());
+            bind_loudness_meters(&mut old, &handles);
+            old.play();
+            for _ in 0..4800 {
+                old.next_sample();
+            }
+            let start = std::time::Instant::now();
+            while meter.reading().values[12] < 0.1 {
+                assert!(start.elapsed().as_secs() < 5);
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            let epoch = meter.epoch();
+            let before = meter.reading();
+            let mut next = Renderer::new(plan);
+            next.prepare_transport(TransportState {
+                frame: 24000,
+                playing: true,
+                paused: false,
+                playback_start: Some(0),
+            });
+            bind_loudness_meters(&mut next, &handles);
+            crate::preparation_tests::realtime(|| {
+                next.activate_transport(&old);
+                next.inherit_analysis(&mut old);
+            });
+            assert_eq!(meter.reading(), before);
+            crate::preparation_tests::realtime(|| {
+                next.next_sample();
+            });
+            if continuous {
+                assert_eq!(meter.epoch(), epoch);
+                assert_eq!(meter.reading(), before);
+            } else {
+                assert_ne!(meter.epoch(), epoch);
+                assert_eq!(meter.reading(), Default::default());
+            }
+        }
     }
 }
