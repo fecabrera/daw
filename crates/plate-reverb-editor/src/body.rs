@@ -2,11 +2,11 @@ use daw_drive_plugin::Parameter as P;
 use daw_unit_ui::{control_capture, layout::*, meters};
 use egui::{Response, Ui, Vec2};
 pub const SIZE: Vec2 = Vec2::new(
-    4.0 * UNIT_STRIP_WIDTH,
+    daw_unit_ui::plate_reverb::STRIP_COUNT as f32 * UNIT_STRIP_WIDTH,
     unit_control_height() + 2.0 * PANEL_MARGIN as f32,
 );
 pub struct Bounds {
-    pub sections: [egui::Rect; 4],
+    pub sections: [egui::Rect; daw_unit_ui::plate_reverb::STRIP_COUNT],
     pub controls: [Option<Response>; P::COUNT - 1],
     pub readouts: Vec<(u32, Response)>,
 }

@@ -61,7 +61,7 @@ pub fn show(
                                     b.controls[1] = r.rect;
                                     r
                                 }
-                                (0, 2) => {
+                                (2, 0) => {
                                     let r = crate::reverb_controls::switch(
                                         ui,
                                         &mut s.hq,
@@ -97,17 +97,11 @@ pub fn show(
                                     b.controls[3] = r.rect;
                                     r
                                 }
-                                (1, 2) => {
-                                    let r = crate::reverb_controls::power(
-                                        ui,
-                                        &mut s.highpass_enabled,
-                                        "High-pass",
-                                        "Toggle High-pass",
-                                    );
-                                    b.controls[8] = r.rect;
-                                    r
-                                }
-                                (2, 0) => {
+                                (1, 2) => ui.allocate_response(
+                                    egui::vec2(ui.available_width(), knobs::CHOICE_SIZE),
+                                    egui::Sense::hover(),
+                                ),
+                                (0, 2) => {
                                     let r = ui.add_enabled(
                                         true,
                                         Knob::new(
@@ -145,7 +139,7 @@ pub fn show(
                                 }
                                 _ => unreachable!(),
                             };
-                            if matches!((section, row), (0, 2) | (1, 2)) {
+                            if matches!((section, row), (2, 0) | (1, 2)) {
                                 control(ui, s);
                             } else {
                                 knobs::row(ui, s, knobs::CHOICE_SIZE, control);
@@ -159,7 +153,24 @@ pub fn show(
                         } else {
                             panels::COMPACT_BUTTON_SIZE
                         },
-                        |ui| rows::unit_label(ui, ["Reverb", "Texture", "Out"][section]),
+                        |ui| {
+                            if section == 1 {
+                                let mut response = rows::power_label(
+                                    ui,
+                                    "Hi-Pass",
+                                    "Toggle Hi-Pass",
+                                    s.highpass_enabled,
+                                );
+                                b.controls[8] = response.rect;
+                                if response.clicked() {
+                                    s.highpass_enabled = !s.highpass_enabled;
+                                    response.mark_changed();
+                                }
+                                response
+                            } else {
+                                rows::unit_label(ui, ["Reverb", "", "Out"][section])
+                            }
+                        },
                     );
                 })
                 .response

@@ -4,6 +4,63 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Plate Options strip — 2026-11-03
+
+Plate now has five fixed strips: Reverb, Filters, Drive, Options and Out.
+Options groups Quality, Tail and Color from top to bottom. Width moved below
+Decay in Reverb. Drive gain starts at the top, and Out starts with Level followed
+by Dry/Wet. Drive retains its power/label footer. The output
+rail and DAW modulation divider follow the final Out strip. The standalone
+body grew from 360 to 450 logical points. Public parameter IDs and saved values
+remain unchanged; the shared body and checked product manifest agree.
+
+Completed checks:
+
+- Shared controls, Plate editor and typed plugin tests passed, including all
+  parameter response bindings, frozen state, geometry and theme/scale parity.
+- All seventeen editor library suites passed.
+- The DAW reverb catalog/control test passed on track, Master and instrument
+  targets, including saved parameter edits and power controls.
+- Focused clippy checks passed with `-D warnings`. Formatting and diff checks passed.
+- The strip reorder and top-alignment follow-up passed the same shared-control,
+  Plate editor/plugin, seventeen-editor and DAW control tests plus focused clippy.
+  Windows previews and plugin archives were rebuilt for this final arrangement;
+  the separate desktop preview copy matches the build's SHA-256.
+- Plate CLAP/VST3 release host tests passed, including reported editor geometry,
+  automation, state recall, six-rate DSP parity and callback heap checks.
+- Windows desktop and all four reverb plugin targets rebuilt. Updated preview
+  packages were generated. A separate Options-layout executable was copied
+  beside the current application and verified against the build by SHA-256.
+
+Native GUI attachment and device checks remain open. This entry supersedes
+Plate's four-strip layout in the earlier footer arrangement record below.
+
+## Reverb footer and control arrangement — 2026-11-03
+
+Ambient's Hi-Pass power/label now occupies the strip footer, replacing Texture.
+Tone and Modulation remain active when Hi-Pass is off. Width moved below Bloom,
+and Quality moved to the top of Out. Plate's Quality moved to the top of its
+third strip, above Drive gain; power/Drive replaces the Character footer.
+Both footer controls remain available in compact mode. Reserved empty rows keep
+all footer baselines aligned with the standard three-row units.
+
+Shared bodies, typed panel bindings and product manifests describe the same
+arrangement. Public parameter IDs, ordering, values and frozen state stay unchanged.
+
+Completed checks:
+
+- `daw-unit-ui`, both reverb editor suites and both typed plugin suites passed,
+  including theme/scale parity, parameter bindings, gestures and frozen fixtures.
+- All seventeen editor library suites passed.
+- Focused clippy checks for the shared controls, both editors and both typed
+  plugin models passed with `-D warnings`. Formatting and diff checks passed.
+- The Windows desktop and four CLAP/VST3 products rebuilt together for
+  `x86_64-pc-windows-msvc`. Both plugin products were repackaged. A separate
+  desktop layout preview was copied beside the original, with a matching SHA-256;
+  the running application was not replaced or closed.
+
+Native UI/host verification remains separate from the automated checks.
+
 ## Reverb control consistency and Bloom drag — 2026-11-03
 
 Plate's filter readouts now reuse Drive v2's frequency formatter and range labels:

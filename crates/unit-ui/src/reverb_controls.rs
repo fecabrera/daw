@@ -2,18 +2,6 @@
 use crate::{control_capture, layout, menus::Dropdown, rows};
 use egui::{Response, RichText, Ui, WidgetInfo, WidgetType};
 
-pub(crate) fn power(ui: &mut Ui, value: &mut bool, label: &str, name: &str) -> Response {
-    rows::centered(ui, crate::knobs::CHOICE_SIZE, |ui| {
-        let mut response = rows::power_label(ui, label, name, *value);
-        if response.clicked() {
-            *value = !*value;
-            response.mark_changed();
-        }
-        response
-    })
-    .inner
-}
-
 pub(crate) fn switch(
     ui: &mut Ui,
     value: &mut bool,
@@ -82,7 +70,15 @@ mod tests {
                     egui::RawInput {
                         screen_rect: Some(Rect::from_min_size(
                             Pos2::ZERO,
-                            Vec2::new(if plate { 360.0 } else { 270.0 }, 218.0),
+                            Vec2::new(
+                                if plate {
+                                    crate::plate_reverb::STRIP_COUNT as f32
+                                        * layout::UNIT_STRIP_WIDTH
+                                } else {
+                                    270.0
+                                },
+                                218.0,
+                            ),
                         )),
                         ..Default::default()
                     },

@@ -190,21 +190,20 @@ pub(crate) const STRIP_BINDINGS: [StripBinding; 3] = [
         &[
             (Parameter::Decay, "scalar", "Scalar"),
             (Parameter::Bloom, "percent", "Percent"),
-            (Parameter::Quality, "mode", "Mode"),
+            (Parameter::Width, "percent", "Percent"),
         ],
     ),
     (
-        "Texture",
+        "Hi-Pass",
         &[
             (Parameter::Tone, "percent", "Percent"),
             (Parameter::Motion, "percent", "Percent"),
-            (Parameter::HighPassEnabled, "mode", "Mode"),
         ],
     ),
     (
         "Out",
         &[
-            (Parameter::Width, "percent", "Percent"),
+            (Parameter::Quality, "mode", "Mode"),
             (Parameter::Level, "gain", "Gain"),
             (Parameter::DryWet, "percent", "Percent"),
         ],
@@ -220,6 +219,6 @@ pub(crate) fn diagram_binding(_: Parameter) -> Option<&'static str> {
     None
 }
 #[allow(dead_code)]
-pub(crate) fn footer_power(_: usize) -> Option<Parameter> {
-    None
+pub(crate) fn footer_power(index: usize) -> Option<Parameter> {
+    (index == 1).then_some(Parameter::HighPassEnabled)
 }

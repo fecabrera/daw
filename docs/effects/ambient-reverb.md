@@ -8,19 +8,20 @@ tracks, groups, instrument layers and buses, beat instruments, and Master.
 | --- | --- | --- | --- |
 | Reverb | Decay | 1–60 s | 7.5 s |
 | Reverb | Bloom | 0–100% | 50% |
-| Reverb | Quality | ECO / HQ | ECO |
-| Texture | Tone | 0–100% | 50% |
-| Texture | Modulation | 0–100% | 49.75% |
-| Texture | High-pass | Off / On | Off |
-| Out | Width | 0–100% | 100% |
+| Reverb | Width | 0–100% | 100% |
+| Hi-Pass | Tone | 0–100% | 50% |
+| Hi-Pass | Modulation | 0–100% | 49.75% |
+| Hi-Pass | Hi-Pass | Off / On | Off |
+| Out | Quality | ECO / HQ | ECO |
 | Out | Level | Exact silence to +12 dB | 0 dB |
 | Out | Dry/Wet | 0–100% | 50% |
 
 Decay sets the feedback decay target. Bloom increases diffusion delays and changes
 the buildup; it is not a simple pre-delay. Modulation moves the diffusion delays.
 Tone adjusts brightness and damping, and also changes the low-frequency cut when
-High-pass is on. HQ uses the longer convolution span. Both quality modes retain
-stereo input information. Use the power button beside **High-pass** to toggle it.
+Hi-Pass is on. HQ uses the longer convolution span. Both quality modes retain
+stereo input information. Use the **Hi-Pass** power button in the strip footer to
+toggle the filter. Tone and Modulation remain available when Hi-Pass is off.
 
 Width affects only the wet signal. Dry/Wet uses a curved blend. Level drives the
 output transformer model, which processes the complete blend. Consequently,
@@ -28,7 +29,7 @@ output transformer model, which processes the complete blend. Consequently,
 Level at exact silence remains silent even with modulation.
 
 All knobs accept shared modulation through the standard connection strips.
-Quality and High-pass remain discrete. The unit uses the standard knob reset,
+Quality and Hi-Pass remain discrete. The unit uses the standard knob reset,
 Shift fine adjustment, power, collapse, selection, and effect-chain gestures.
 The Out rail measures final sample peaks. Click it to reset the held peak.
 

@@ -18,24 +18,30 @@ readouts and value editing. Show standard range labels below each knob: `20` / `
 for High-pass and `500` / `15k` for Low-pass. Keep this in the shared body for DAW
 and standalone editor parity.
 
-| Plate row | Reverb | Filters | Character | Out |
-| --- | --- | --- | --- | --- |
-| Top | Pre-delay | High-pass | Drive | Width |
-| Middle | Decay | Low-pass | Drive power + label | Level |
-| Bottom | Normal/Gated | Color | ECO/HQ | Dry/Wet |
+| Plate row | Reverb | Filters | Drive | Options | Out |
+| --- | --- | --- | --- | --- | --- |
+| Top | Pre-delay | High-pass | Drive | ECO/HQ | Level |
+| Middle | Decay | Low-pass | Empty | Normal/Gated | Dry/Wet |
+| Bottom | Width | Empty | Empty | Bright/Dark | Empty |
 
-| Ambient row | Reverb | Texture | Out |
+| Ambient row | Reverb | Hi-Pass | Out |
 | --- | --- | --- | --- |
-| Top | Decay | Tone | Width |
+| Top | Decay | Tone | ECO/HQ |
 | Middle | Bloom | Modulation | Level |
-| Bottom | ECO/HQ | High-pass power + label | Dry/Wet |
+| Bottom | Width | Empty | Dry/Wet |
 
 Gate selects a short algorithm, not a level-triggered gate. Disable the Quality
 control while gated, retaining its saved choice. Drive power disables only the
 Drive amount control. Confirm Color's bright/dark mapping before freezing labels.
 
-Drive and High-pass power use `rows::power_label`, centered in the existing
-control row. Keep their host parameter identities and response bindings unchanged.
+Plate has five strips and a 450-point standalone body. Its Options strip groups
+Quality, Tail and Color; Width is below Decay in Reverb. Drive power uses
+`rows::power_label` in the Drive strip footer, with gain at the top. Options is
+between Drive and Out. Out starts with Level, then Dry/Wet. Ambient's
+`Hi-Pass` power/label replaces the Texture footer and aligns with the other strip
+footers, including compact mode. Its third control row remains reserved so knob
+and footer alignment matches Drive v2. Hi-Pass does not disable Tone or Modulation.
+Keep the host parameter identity and response binding unchanged.
 
 ## Processing ownership
 

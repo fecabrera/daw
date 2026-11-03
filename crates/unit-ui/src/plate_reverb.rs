@@ -4,9 +4,10 @@ use crate::{
 };
 use daw_unit_core::{ModulationParameter as P, PlateReverbSettings as Settings};
 use egui::{Rect, Ui};
+pub const STRIP_COUNT: usize = 5;
 pub struct Bounds {
     pub power: Rect,
-    pub sections: [Rect; 4],
+    pub sections: [Rect; STRIP_COUNT],
     pub controls: [Rect; 12],
     pub meter: Rect,
 }
@@ -14,7 +15,7 @@ impl Default for Bounds {
     fn default() -> Self {
         Self {
             power: Rect::NOTHING,
-            sections: [Rect::NOTHING; 4],
+            sections: [Rect::NOTHING; STRIP_COUNT],
             controls: [Rect::NOTHING; 12],
             meter: Rect::NOTHING,
         }
@@ -31,7 +32,7 @@ pub fn show(
     let mut b = Bounds::default();
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(0.0, f32::from(crate::theme::TOOLBAR_PADDING));
-        for section in 0..4 {
+        for section in 0..STRIP_COUNT {
             let strip =
                 panels::unit_strip(ui, height, egui::UiBuilder::new().id_salt(section), |ui| {
                     if !compact {
@@ -61,7 +62,7 @@ pub fn show(
                                     b.controls[1] = r.rect;
                                     r
                                 }
-                                (0, 2) => {
+                                (3, 1) => {
                                     let r = crate::reverb_controls::switch(
                                         ui,
                                         &mut s.gated,
@@ -97,7 +98,7 @@ pub fn show(
                                     b.controls[3] = r.rect;
                                     r
                                 }
-                                (1, 2) => {
+                                (3, 2) => {
                                     let r = crate::reverb_controls::switch(
                                         ui,
                                         &mut s.dark,
@@ -121,17 +122,11 @@ pub fn show(
                                     b.controls[4] = r.rect;
                                     r
                                 }
-                                (2, 1) => {
-                                    let r = crate::reverb_controls::power(
-                                        ui,
-                                        &mut s.drive_enabled,
-                                        "Drive",
-                                        "Toggle Drive",
-                                    );
-                                    b.controls[10] = r.rect;
-                                    r
-                                }
-                                (2, 2) => {
+                                (1, 2) | (2, 1) | (2, 2) | (4, 2) => ui.allocate_response(
+                                    egui::vec2(ui.available_width(), knobs::CHOICE_SIZE),
+                                    egui::Sense::hover(),
+                                ),
+                                (3, 0) => {
                                     let r = crate::reverb_controls::switch(
                                         ui,
                                         &mut s.hq,
@@ -143,7 +138,7 @@ pub fn show(
                                     b.controls[11] = r.rect;
                                     r
                                 }
-                                (3, 0) => {
+                                (0, 2) => {
                                     let r = ui.add_enabled(
                                         true,
                                         Knob::new(
@@ -155,7 +150,7 @@ pub fn show(
                                     b.controls[5] = r.rect;
                                     r
                                 }
-                                (3, 1) => {
+                                (4, 0) => {
                                     let r = ui.add_enabled(
                                         true,
                                         Knob::new(
@@ -167,7 +162,7 @@ pub fn show(
                                     b.controls[6] = r.rect;
                                     r
                                 }
-                                (3, 2) => {
+                                (4, 1) => {
                                     let r = ui.add_enabled(
                                         true,
                                         Knob::new(
@@ -181,7 +176,9 @@ pub fn show(
                                 }
                                 _ => unreachable!(),
                             };
-                            if matches!((section, row), (0, 2) | (1, 2) | (2, 1) | (2, 2)) {
+                            if section == 3
+                                || matches!((section, row), (1, 2) | (2, 1) | (2, 2) | (4, 2))
+                            {
                                 control(ui, s);
                             } else {
                                 knobs::row(ui, s, knobs::CHOICE_SIZE, control);
@@ -196,7 +193,21 @@ pub fn show(
                             panels::COMPACT_BUTTON_SIZE
                         },
                         |ui| {
-                            rows::unit_label(ui, ["Reverb", "Filters", "Character", "Out"][section])
+                            if section == 2 {
+                                let mut response =
+                                    rows::power_label(ui, "Drive", "Toggle Drive", s.drive_enabled);
+                                b.controls[10] = response.rect;
+                                if response.clicked() {
+                                    s.drive_enabled = !s.drive_enabled;
+                                    response.mark_changed();
+                                }
+                                response
+                            } else {
+                                rows::unit_label(
+                                    ui,
+                                    ["Reverb", "Filters", "", "Options", "Out"][section],
+                                )
+                            }
                         },
                     );
                 })
@@ -205,7 +216,7 @@ pub fn show(
             if section > 0 {
                 panels::unit_divider(ui, strip.left(), strip.y_range().into());
             }
-            if section == 3 && !compact {
+            if section == 4 && !compact {
                 b.meter =
                     meters::effect_output_level(ui, strip, panels::PANEL_MARGIN, level, s.enabled);
             }

@@ -231,13 +231,13 @@ type StripBinding = (
     &'static [(Parameter, &'static str, &'static str)],
 );
 #[allow(dead_code)]
-pub(crate) const STRIP_BINDINGS: [StripBinding; 4] = [
+pub(crate) const STRIP_BINDINGS: [StripBinding; 5] = [
     (
         "Reverb",
         &[
             (Parameter::PreDelay, "scalar", "Scalar"),
             (Parameter::Decay, "scalar", "Scalar"),
-            (Parameter::Gate, "mode", "Mode"),
+            (Parameter::Width, "percent", "Percent"),
         ],
     ),
     (
@@ -245,21 +245,20 @@ pub(crate) const STRIP_BINDINGS: [StripBinding; 4] = [
         &[
             (Parameter::HighPass, "scalar", "Scalar"),
             (Parameter::LowPass, "scalar", "Scalar"),
-            (Parameter::Color, "mode", "Mode"),
         ],
     ),
+    ("Drive", &[(Parameter::Drive, "db", "Db")]),
     (
-        "Character",
+        "Options",
         &[
-            (Parameter::Drive, "db", "Db"),
-            (Parameter::DriveEnabled, "mode", "Mode"),
             (Parameter::Quality, "mode", "Mode"),
+            (Parameter::Gate, "mode", "Mode"),
+            (Parameter::Color, "mode", "Mode"),
         ],
     ),
     (
         "Out",
         &[
-            (Parameter::Width, "percent", "Percent"),
             (Parameter::Level, "gain", "Gain"),
             (Parameter::DryWet, "percent", "Percent"),
         ],
@@ -278,6 +277,6 @@ pub(crate) fn diagram_binding(_: Parameter) -> Option<&'static str> {
     None
 }
 #[allow(dead_code)]
-pub(crate) fn footer_power(_: usize) -> Option<Parameter> {
-    None
+pub(crate) fn footer_power(index: usize) -> Option<Parameter> {
+    (index == 2).then_some(Parameter::DriveEnabled)
 }

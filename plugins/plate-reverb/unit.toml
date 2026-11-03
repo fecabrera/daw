@@ -118,29 +118,34 @@ footer="Reverb"
 controls=[
 {parameter="predelay_ms",control="scalar"},
 {parameter="decay_seconds",control="scalar"},
-{parameter="gated",control="mode"}
+{parameter="width",control="percent"}
 ]
 
 [[strips]]
 footer="Filters"
 controls=[
 {parameter="highpass_hz",control="scalar"},
-{parameter="lowpass_hz",control="scalar"},
-{parameter="dark",control="mode"}
+{parameter="lowpass_hz",control="scalar"}
 ]
 
 [[strips]]
-footer="Character"
+footer="Drive"
+power="drive_enabled"
 controls=[
-{parameter="drive_db",control="db",enabled_by="drive_enabled"},
-{parameter="drive_enabled",control="mode"},
-{parameter="hq",control="mode"}
+{parameter="drive_db",control="db",enabled_by="drive_enabled"}
+]
+
+[[strips]]
+footer="Options"
+controls=[
+{parameter="hq",control="mode"},
+{parameter="gated",control="mode"},
+{parameter="dark",control="mode"}
 ]
 
 [[strips]]
 footer="Out"
 controls=[
-{parameter="width",control="percent"},
 {parameter="level_db",control="gain"},
 {parameter="dry_wet",control="percent"}
 ]

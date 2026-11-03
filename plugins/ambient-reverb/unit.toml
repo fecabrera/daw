@@ -94,21 +94,21 @@ footer="Reverb"
 controls=[
 {parameter="decay_seconds",control="scalar"},
 {parameter="bloom",control="percent"},
-{parameter="hq",control="mode"}
+{parameter="width",control="percent"}
 ]
 
 [[strips]]
-footer="Texture"
+footer="Hi-Pass"
+power="highpass_enabled"
 controls=[
 {parameter="tone",control="percent"},
-{parameter="motion",control="percent"},
-{parameter="highpass_enabled",control="mode"}
+{parameter="motion",control="percent"}
 ]
 
 [[strips]]
 footer="Out"
 controls=[
-{parameter="width",control="percent"},
+{parameter="hq",control="mode"},
 {parameter="level_db",control="gain"},
 {parameter="dry_wet",control="percent"}
 ]
