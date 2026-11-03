@@ -178,6 +178,7 @@ fn granular_sample_preparation_storage_copy_rate_export_and_failures_share_sessi
 #[test]
 fn switching_to_granular_drops_unused_offline_pitches_and_reuses_the_root_buffer() {
     let source = daw_media::AudioData {
+        disk: None,
         sample_rate_hz: 48000,
         samples: Arc::new(vec![[0.1, -0.1]; 4800]),
         peaks: Default::default(),

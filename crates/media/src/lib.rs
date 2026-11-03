@@ -42,11 +42,18 @@ use symphonia::core::{
 pub struct Error(pub String);
 pub type Result<T> = std::result::Result<T, Error>;
 
+mod disk_audio;
+mod stream_decode;
+pub use disk_audio::{DiskAudio, DiskAudioWriter, FrameReader, ReadAhead, STREAM_CHUNK_FRAMES};
+pub use stream_decode::STREAM_PCM_THRESHOLD_BYTES;
+
 #[derive(Clone)]
 pub struct AudioData {
     /// Rate of the prepared samples; metadata retains the original source rate.
     pub sample_rate_hz: u32,
     pub samples: Arc<Vec<[f32; 2]>>,
+    /// Immutable streamed PCM. Resident samples are empty for this storage mode.
+    pub disk: Option<Arc<DiskAudio>>,
     pub metadata: SourceMetadata,
     pub peaks: Arc<Vec<[[f32; 2]; 2]>>,
 }
@@ -106,6 +113,9 @@ pub fn decode_wav_cancellable(
         )));
     }
     let target_frames = resampled_frames(declared_frames as u64, spec.sample_rate, sample_rate_hz)?;
+    if stream_decode::should_stream(target_frames) {
+        return stream_decode::decode_wav(reader, sample_rate_hz, cancelled);
+    }
     let scratch = if spec.sample_rate == sample_rate_hz {
         0
     } else {
@@ -208,6 +218,7 @@ pub fn decode_wav_cancellable(
     let audio = AudioData {
         sample_rate_hz,
         samples: Arc::new(samples),
+        disk: None,
         metadata,
         peaks: Arc::new(peaks),
     };
@@ -290,12 +301,88 @@ fn convert_samples(
 }
 
 impl AudioData {
+    pub fn frame_count(&self) -> u64 {
+        self.disk
+            .as_ref()
+            .map_or(self.samples.len() as u64, |disk| disk.frame_count())
+    }
+    /// Worker-only range read; storage-independent and bounded by the output slice.
+    pub fn read_frames(
+        &self,
+        start: u64,
+        out: &mut [[f32; 2]],
+        raw: &mut Vec<u8>,
+    ) -> Result<usize> {
+        if let Some(disk) = &self.disk {
+            return disk.read(start, out, raw);
+        }
+        let start = usize::try_from(start)
+            .unwrap_or(usize::MAX)
+            .min(self.samples.len());
+        let count = out.len().min(self.samples.len() - start);
+        out[..count].copy_from_slice(&self.samples[start..start + count]);
+        Ok(count)
+    }
+    pub fn preview_sample(&self, frame: u64) -> Option<[f32; 2]> {
+        self.disk.as_ref().map_or_else(
+            || {
+                usize::try_from(frame)
+                    .ok()
+                    .and_then(|frame| self.samples.get(frame).copied())
+            },
+            |disk| disk.preview(frame),
+        )
+    }
+    /// Required by portable source/transform DSP that needs contiguous resident PCM.
+    /// Call only on a preparation worker. The normal shared admission limit applies.
+    pub fn materialized(&self, cancelled: &impl Fn() -> bool) -> Result<Self> {
+        if cancelled() {
+            return Err(Error("Audio preparation cancelled".into()));
+        }
+        if self.disk.is_none() {
+            return Ok(self.clone());
+        }
+        let frames = self.frame_count();
+        let _memory = AudioReservation::new(frames, (STREAM_CHUNK_FRAMES * 16) as u64)?;
+        let frames = usize::try_from(frames)
+            .map_err(|_| Error("Audio length exceeds supported bounds".into()))?;
+        let mut samples = Vec::new();
+        samples
+            .try_reserve_exact(frames)
+            .map_err(|e| Error(format!("Cannot prepare resident audio: {e}")))?;
+        let mut block = vec![[0.; 2]; STREAM_CHUNK_FRAMES];
+        let mut raw = Vec::with_capacity(STREAM_CHUNK_FRAMES * 8);
+        while samples.len() < frames {
+            if cancelled() {
+                return Err(Error("Audio preparation cancelled".into()));
+            }
+            let count = self.read_frames(samples.len() as u64, &mut block, &mut raw)?;
+            if count == 0 {
+                return Err(Error("Disk audio ended before its prepared length".into()));
+            }
+            samples.extend_from_slice(&block[..count]);
+        }
+        let result = Self {
+            sample_rate_hz: self.sample_rate_hz,
+            metadata: self.metadata.clone(),
+            samples: Arc::new(samples),
+            peaks: self.peaks.clone(),
+            disk: None,
+        };
+        register_audio(&result);
+        Ok(result)
+    }
+
     pub fn at_sample_rate(&self, sample_rate_hz: u32) -> Result<Self> {
         if self.sample_rate_hz == sample_rate_hz {
             return Ok(self.clone());
         }
         if self.sample_rate_hz == 0 || !daw_core::SAMPLE_RATES.contains(&sample_rate_hz) {
             return Err(Error("Unsupported processing sample rate".into()));
+        }
+        let target = resampled_frames(self.frame_count(), self.sample_rate_hz, sample_rate_hz)?;
+        if self.disk.is_some() || stream_decode::should_stream(target) {
+            return stream_decode::resample_audio(self, sample_rate_hz, &|| false);
         }
         register_audio(self);
         let target = (self.samples.len() as u64)
@@ -313,6 +400,7 @@ impl AudioData {
         let audio = Self {
             sample_rate_hz,
             samples: Arc::new(samples),
+            disk: None,
             metadata: self.metadata.clone(),
             peaks: Arc::new(peaks),
         };

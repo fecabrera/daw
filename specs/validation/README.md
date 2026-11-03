@@ -6,6 +6,65 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Disk-backed stem audio and output report — 2026-11-03
+
+Large WAV and compressed sources use private disk PCM with bounded read-ahead,
+worker-only offline reads and shared waveform peaks. Stem normalization writes
+bounded blocks and releases arranged model input before importing outputs. The
+status report replaces Destination with three lines: the separator and stem
+count, the stem names, and stereo float32 WAV quality at the project rate.
+The dialog and status bar share phase text, including cancellation. Disabled
+clips retain the neutral background at 50% opacity so the grid remains visible;
+headers, waveforms and selection strokes retain their own colors. Stereo channel
+painting does not apply a second translucent fill over the body.
+
+Completed checks:
+
+- `cargo test -p daw-media --lib` passed. Checks cover exact streamed/resident
+  samples, metadata and peaks for PCM16, PCM24 and float32 across all six output
+  rates; private PCM reads;
+  incremental packet storage; cancellation; truncation errors; and pinned and
+  unpinned read-ahead. The unpinned case caught and fixed empty-slot starvation.
+- `cargo test -p daw-engine --test streaming` passed. Live/offline output matches
+  resident PCM exactly at all six rates with seeks, loops and effect latency.
+  The live seek/play/sample paths allocate no heap storage.
+- `cargo test -p daw-output --lib disk_audio_worker_cache` passed. Worker cache
+  handoff prepares independent live readers; callback checks count both heap
+  allocation and retirement. The activation-clock regression also verifies that
+  disk holds cannot advance a scheduled renderer ahead of transport/DSP state.
+- `cargo test -p daw-media --lib local_long_compressed_source -- --ignored`
+  passed with a user-provided local AAC/M4A. Decoding preserves 48,669,696 frames
+  at 44.1 kHz; conversion to 48 kHz preserves the checked ceiling-rounded count.
+  Both results use disk storage. Private audio and paths are not fixtures.
+- `cargo test -p daw-media -p daw-engine -p daw-project -p daw-output -p daw-ui -p daw-cli`
+  passed after the read-ahead fix. The later focused project separation run
+  passed, including strict unavailable-source rejection before inference.
+  Existing checks retain cancellation, rollback, exact rate conversion,
+  Save As and Undo/Redo coverage.
+- `cargo test -p daw-ui` passed after the presentation refinements. Checks cover
+  the exact three-line details in three themes and multiple rates/states,
+  matching dialog/status-bar phases, both Cancel buttons, and translucent clip
+  bodies with visible grid lines in Timeline and Editor. The stereo body uses
+  one fill, and neutral foregrounds and the selection outline remain visible.
+- Strict workspace/all-target Clippy passed. Formatting, whitespace and changed
+  documentation link checks passed. The macOS debug bundle rebuilt.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` passed.
+
+The explicit `cargo test -p daw-project --lib six_long_stems -- --ignored`
+resource test passed. Generated 18m23s silence produces six stems above 2 GiB
+combined PCM without resident sample vectors. The workflow checks peak storage
+below 64 MiB, Undo/Redo, Save As, reopen and rendering at the end of the source.
+`cargo test --workspace` passed, including all doctests. Later focused media,
+output and UI runs cover the final decoder-format, activation-clock and
+presentation refinements. Strict workspace/all-target Clippy, formatting,
+whitespace, CLI smoke checks and the macOS debug package passed after the
+applicable code changes.
+
+Native device listening,
+visual inspection of the dialog, Windows/Linux execution and a full inference
+run on the long recording have not run. Model memory, arranged inference input,
+contiguous transforms, disk space and disk speed remain practical limits.
+
 ## Saturator Tube Clip — 2026-11-02
 
 Tube Clip adds a fourth final-clip choice through the existing shared dropdown

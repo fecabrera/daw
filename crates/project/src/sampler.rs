@@ -84,7 +84,7 @@ impl Session {
         let data = data
             .at_sample_rate(self.project.sample_rate_hz)
             .map_err(error)?;
-        if data.samples.is_empty() {
+        if data.frame_count() == 0 {
             return Err(error("The sample is empty"));
         }
         let mut next = self.clone();
@@ -94,7 +94,7 @@ impl Session {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        let length_frames = data.samples.len() as u64;
+        let length_frames = data.frame_count();
         next.project.assets.push(Asset {
             id,
             name: name.clone(),

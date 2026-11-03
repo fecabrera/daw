@@ -79,7 +79,7 @@ impl Batch {
                 {
                     return false;
                 }
-                let (sample, mono) = processor.sample(frame, self.tempo, self.region, true);
+                let (sample, mono) = processor.sample(frame, self.tempo, self.region, true, false);
                 let base = if mono { 0 } else { 2 };
                 *output = std::array::from_fn(|ch| sample[ch] * work.gains[base + ch]);
             }

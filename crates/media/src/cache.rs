@@ -16,6 +16,7 @@ struct Cached {
     revision: Revision,
     content: crate::SourceRevision,
     samples: Weak<Vec<[f32; 2]>>,
+    disk: Option<Weak<crate::DiskAudio>>,
     peaks: Weak<Vec<[[f32; 2]; 2]>>,
     metadata: daw_core::SourceMetadata,
 }
@@ -54,9 +55,14 @@ pub fn decode_audio_cached(
             .get(&key)
             .filter(|c| c.revision == before && c.content == receipt)
             && let Some((samples, peaks)) = cached.samples.upgrade().zip(cached.peaks.upgrade())
+            && let Some(disk) = cached
+                .disk
+                .as_ref()
+                .map_or(Some(None), |disk| disk.upgrade().map(Some))
         {
             crate::preparation_cache::record_live_hit();
             return Ok(AudioData {
+                disk,
                 sample_rate_hz: rate,
                 samples,
                 peaks,
@@ -68,7 +74,7 @@ pub fn decode_audio_cached(
         b"decoded-verified-v2",
         &[&receipt.sha256, &rate.to_le_bytes()],
     );
-    let audio = crate::preparation_cache::cached_audio(disk_key, cancelled, || {
+    let build = || {
         let snapshot = crate::source_revision::SourceSnapshot::read(&key.0, cancelled)?;
         if snapshot.revision != receipt {
             return Err(Error(
@@ -83,7 +89,14 @@ pub fn decode_audio_cached(
             ));
         }
         Ok(audio)
-    })?;
+    };
+    // Large WAVs are already disk-backed. Do not load a legacy whole-buffer
+    // preparation entry or persist an empty resident placeholder.
+    let audio = if crate::stream_decode::large_wav(&key.0, rate) {
+        build()?
+    } else {
+        crate::preparation_cache::cached_audio(disk_key, cancelled, build)?
+    };
     if before != revision(&key.0)? || receipt != crate::SourceRevision::read(&key.0, cancelled)? {
         return Err(Error(
             "Source changed during audio preparation; try again".into(),
@@ -95,6 +108,7 @@ pub fn decode_audio_cached(
             revision: before,
             content: receipt,
             samples: Arc::downgrade(&audio.samples),
+            disk: audio.disk.as_ref().map(Arc::downgrade),
             peaks: Arc::downgrade(&audio.peaks),
             metadata: audio.metadata.clone(),
         },

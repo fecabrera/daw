@@ -89,6 +89,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         audio: HashMap::from([(
             id,
             AudioData {
+                disk: None,
                 sample_rate_hz: rate,
                 metadata,
                 samples: Arc::new(samples),

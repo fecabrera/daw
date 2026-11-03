@@ -14,6 +14,11 @@ pub(super) fn paint(
     if !body.intersect(painter.clip_rect()).is_positive() {
         return;
     }
+    if audio.disk.is_some() && frames_per_pixel < 256. {
+        painter
+            .ctx()
+            .request_repaint_after(std::time::Duration::from_millis(50));
+    }
     let channels = usize::from(audio.metadata.channels).clamp(1, 2);
     let height = body.height() / channels as f32;
     let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));
@@ -21,11 +26,15 @@ pub(super) fn paint(
         let top = body.top() + height * channel as f32;
         let center = top + height * 0.5;
         if channel == 1 {
-            painter.rect_filled(
-                egui::Rect::from_min_max(egui::pos2(body.left(), top), body.max),
-                0.0,
-                colors.channel,
-            );
+            // Equal surfaces already have the body fill. Do not compound alpha
+            // over the second channel of a disabled clip.
+            if colors.channel != colors.body {
+                painter.rect_filled(
+                    egui::Rect::from_min_max(egui::pos2(body.left(), top), body.max),
+                    0.0,
+                    colors.channel,
+                );
+            }
             painter.hline(body.x_range(), top, egui::Stroke::new(1.0, colors.header));
         }
         for pixel in body.left().max(painter.clip_rect().left()) as i32
@@ -106,8 +115,8 @@ pub fn preview_extrema(
 }
 
 fn source_extrema(audio: &AudioData, start: u64, count: u64, channel: usize) -> [f32; 2] {
-    let end = start.saturating_add(count).min(audio.samples.len() as u64) as usize;
-    let mut position = start.min(audio.samples.len() as u64) as usize;
+    let end = start.saturating_add(count).min(audio.frame_count()) as usize;
+    let mut position = start.min(audio.frame_count()) as usize;
     let mut result = [0.0_f32; 2];
     while position < end {
         // Cache full 256-frame blocks; inspect partial boundary blocks exactly.
@@ -119,9 +128,13 @@ fn source_extrema(audio: &AudioData, start: u64, count: u64, channel: usize) -> 
             result[1] = result[1].max(peak[channel][1]);
             position += 256;
         } else {
-            let sample = audio.samples[position][channel];
-            result[0] = result[0].min(sample);
-            result[1] = result[1].max(sample);
+            if let Some(sample) = audio.preview_sample(position as u64) {
+                result[0] = result[0].min(sample[channel]);
+                result[1] = result[1].max(sample[channel]);
+            } else if let Some(peak) = audio.peaks.get(position / 256) {
+                result[0] = result[0].min(peak[channel][0]);
+                result[1] = result[1].max(peak[channel][1]);
+            }
             position += 1;
         }
     }
@@ -149,6 +162,7 @@ mod tests {
             })
             .collect();
         AudioData {
+            disk: None,
             sample_rate_hz: daw_core::SAMPLE_RATE,
             samples: Arc::new(samples),
             peaks: Arc::new(peaks),

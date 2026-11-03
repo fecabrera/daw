@@ -16,6 +16,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Drive plugin Phase 4: shared editor](architecture/drive-plugin-phase4.md).
 - [Saturator and Bitcrusher plugin builds](architecture/saturator-bitcrusher-plugin-builds.md).
 - [Drive v2 plugin builds](architecture/drive-v2-plugin-builds.md): separate CLAP/VST3 products, shared three-strip editor, state contract and local validation.
+- [Disk-backed audio](architecture/disk-backed-audio.md): bounded source preparation, callback read-ahead, offline reads, ownership and failure behavior.
 - [Prepared rendering and performance](architecture/performance.md).
 - [Saved audio caches and background preparation](architecture/background-audio-preparation.md): staged plan for persistent media caches, early editor loading, nonblocking MIDI edits, and bounded background work.
 - [Stem-separation native dependency audit](audio/stem-native-dependencies.md): pinned native components, advisories, licenses and platform packaging.

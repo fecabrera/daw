@@ -16,6 +16,7 @@ impl TrackProcessor<'_> {
         tempo: f32,
         region: Option<(u64, u64)>,
         advancing: bool,
+        realtime: bool,
     ) -> ([f32; 2], bool) {
         let (source, mono) = if let Some(runtime) = self.midi.as_mut() {
             (
@@ -27,7 +28,7 @@ impl TrackProcessor<'_> {
                 Some(true),
             )
         } else {
-            self.audio.sample(self.clips, frame)
+            self.audio.sample(self.clips, frame, realtime)
         };
         let source = self.effects.sample(
             source,

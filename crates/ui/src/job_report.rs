@@ -17,7 +17,7 @@ pub struct Report<'a> {
     pub complete_text: &'a str,
     pub failed_text: &'a str,
     pub detail: &'a str,
-    pub path: &'a Path,
+    pub path: Option<&'a Path>,
     pub progress: Option<f32>,
     pub warnings: &'a [String],
     pub cancel: Option<&'a AtomicBool>,
@@ -71,8 +71,10 @@ impl Report<'_> {
                     .max_height(300.0)
                     .show(ui, |ui| {
                         ui.add(egui::Label::new(self.detail).wrap());
-                        ui.label("Destination");
-                        ui.add(egui::Label::new(self.path.display().to_string()).wrap());
+                        if let Some(path) = self.path {
+                            ui.label("Destination");
+                            ui.add(egui::Label::new(path.display().to_string()).wrap());
+                        }
                         if let State::Failed(error) = self.state {
                             ui.colored_label(crate::theme::palette(ctx).error, "Error");
                             ui.add(egui::Label::new(error).wrap());

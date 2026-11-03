@@ -121,7 +121,7 @@ impl DawUi {
         painter.rect_filled(
             block,
             2.0,
-            if missing {
+            if missing && !clip.muted {
                 theme::palette(painter.ctx()).missing
             } else {
                 colors.body

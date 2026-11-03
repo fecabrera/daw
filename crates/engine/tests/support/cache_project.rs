@@ -95,6 +95,7 @@ pub fn add_audio(plan: &mut RenderPlan, count: usize, fx: usize, mono: bool) -> 
     plan.audio.insert(
         asset,
         daw_media::AudioData {
+            disk: None,
             samples: std::sync::Arc::new(samples),
             peaks: Default::default(),
             metadata,

@@ -1,0 +1,27 @@
+# Disk-backed audio
+
+## Accepted storage policy
+
+Prepared stereo float PCM at or above 64 MiB uses private disk storage. WAV decoding selects this path from the checked output frame count. Compressed decoding does not trust duration metadata for allocation: it spills accumulated packets to disk at the threshold, then appends bounded packet blocks. Rate conversion uses the same Rubato configuration, output-delay removal, and ceiling-rounded frame count as resident preparation. An upsampled result can select disk storage even when its input is below the threshold.
+
+`media::AudioData` carries either resident `samples` or immutable `DiskAudio`, plus original source metadata and shared 256-frame waveform peaks. `frame_count`, worker `read_frames`, and nonblocking `preview_sample` hide this distinction from consumers. Never interpret an empty resident vector as an empty streamed source. The content digest includes the PCM bytes; empty placeholders cannot identify cache content. Large legacy persistent PCM cache entries rebuild through the decoder. Disk-backed results are not written as empty resident cache entries.
+
+The spool is an exclusively created temporary file. Unix unlinks it immediately; Windows uses delete-on-close. Shared owners retain its open file independently of recording paths, generated WAV relocation, Save As, and Undo/Redo. No project schema changes or private paths are persisted. Cancellation or failure drops unpublished owners. Source recordings remain unchanged. Peak storage, read-ahead buffers, and worker scratch participate in the existing 2 GiB shared PCM admission. This budget is not a process resident-memory limit. Model inference and contiguous transform/source preparation retain their separate practical limits.
+
+## Playback and offline reads
+
+Each track deduplicates readers for clips that share one disk source. A prepared live reader owns eight 32,768-frame atomic slots. One background worker fills the requested page, two following pages, and the loop-start page. Its fixed PCM and byte scratch buffers remain reserved for the worker lifetime. A separate four-slot cache serves nonblocking waveform detail requests; prepared peaks remain visible until samples arrive. Immutable offline reader blocks share ownership across renderer checkpoints and are replaced only on workers.
+
+The callback requests frames and reads atomic payloads. Generation checks reject an overlapping publication without spinning. Sequentially consistent generation and payload operations prevent torn stereo frames and data races. Stage each required input sample before advancing any DSP or transport state. If a required page is unavailable, output silence and hold the transport, DSP clock and monotonic project activation clock. Device output continues. A scheduled replacement must not jump ahead by counting held output samples as project progress. Resume latency pre-roll from its saved offset when data arrives. Loop wrapping retains the existing source/effect-tail behavior. Each published renderer receives its own live request caches; worker checkpoint replay uses synchronous offline blocks and cannot redirect the active callback's requests.
+
+File reads, cache admission, allocation, registration, error text, and final-owner destruction stay outside the callback. Renderer publication and retirement retain the existing output queues. Worker activation catch-up waits for missing pages without counting them as rendered project frames. Cancellation remains available while waiting. A worker-latched file failure stops live playback through atomic status; the control side retrieves the error text. Offline export checks the same failure after every block and discards its unpublished output.
+
+## Integration and limits
+
+Project import/open, clip lengths, rate changes, separation normalization, waveform display, source verification, rendering, and export use storage-independent frame access. Sampler region selection reads bounded input blocks on its preparation worker. Transforms that need contiguous input explicitly materialize it under normal admission, and preserve the original source identity for reuse. These transforms can still fail for insufficient memory. Separation still builds a contiguous arranged model input, so disk-backed output does not imply unlimited inference input duration.
+
+Saved projects retain their source and generated WAV files. Reopening rebuilds disposable private PCM. Disk capacity, disk speed, waveform peak memory, model memory, and remaining contiguous work bound usable duration. This change does not introduce project recovery or a permanent streaming cache. A slow disk can cause a temporary playback hold; no project samples are skipped.
+
+## Validation
+
+Run the media, engine, project, output and UI tests, then the required workspace, CLI and native package checks. The explicit `six_long_stems_exceed_pcm_budget_without_resident_buffers` project test generates sparse silence with the reported 18m23s frame count, creates six stems above 2 GiB combined PCM, checks bounded resident data, Undo/Redo, Save As and reopen. It is ignored in ordinary test runs because it writes several GiB of temporary data. No recording or model weights are test fixtures. Record executed results and remaining device/platform checks in the [validation record](../validation/README.md).

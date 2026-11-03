@@ -61,7 +61,7 @@ impl Status {
                 "Source collection failed"
             },
             detail: &self.detail,
-            path: &self.path,
+            path: Some(&self.path),
             progress: None,
             warnings: &self.warnings,
             cancel: None,

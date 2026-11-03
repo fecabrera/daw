@@ -399,6 +399,7 @@ mod tests {
         session.audio.insert(
             daw_core::Id::new_v4(),
             daw_media::AudioData {
+                disk: None,
                 samples,
                 peaks: std::sync::Arc::new(Vec::new()),
                 sample_rate_hz: 48_000,

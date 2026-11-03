@@ -1,0 +1,105 @@
+use daw_core::*;
+use daw_engine::{RenderPlan, Renderer};
+use daw_media::{DiskAudioWriter, STREAM_CHUNK_FRAMES};
+use std::{
+    alloc::{GlobalAlloc, Layout, System},
+    cell::Cell,
+    time::{Duration, Instant},
+};
+#[path = "support/cache_project.rs"]
+mod support;
+thread_local! { static COUNT: Cell<Option<usize>> = const { Cell::new(None) }; }
+struct Allocator;
+// SAFETY: Allocations are forwarded to System with unchanged pointers/layouts.
+unsafe impl GlobalAlloc for Allocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        COUNT.with(|c| {
+            if let Some(n) = c.get() {
+                c.set(Some(n + 1));
+            }
+        });
+        unsafe { System.alloc(layout) }
+    }
+    unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(p, layout) }
+    }
+    unsafe fn realloc(&self, p: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+        COUNT.with(|c| {
+            if let Some(n) = c.get() {
+                c.set(Some(n + 1));
+            }
+        });
+        unsafe { System.realloc(p, layout, size) }
+    }
+}
+#[global_allocator]
+static ALLOCATOR: Allocator = Allocator;
+fn plan(rate: u32, effects: usize) -> (RenderPlan, RenderPlan) {
+    let mut resident = support::midi_project(rate, 0, 0);
+    let id = support::add_audio(&mut resident, 1, effects, false);
+    resident.project.tracks[0].clips[0].repeat = None;
+    let mut streamed = resident.clone();
+    let audio = &resident.audio[&id];
+    let mut writer = DiskAudioWriter::new(audio.frame_count()).unwrap();
+    writer.write(&audio.samples).unwrap();
+    streamed
+        .audio
+        .insert(id, writer.finish(rate, audio.metadata.clone()).unwrap());
+    (resident, streamed)
+}
+#[test]
+fn disk_pcm_matches_resident_offline_and_live_with_seeks_loops_and_latency() {
+    for rate in SAMPLE_RATES {
+        for effects in [0, 1] {
+            let (mut resident, mut streamed) = plan(rate, effects);
+            for start in [0, STREAM_CHUNK_FRAMES as u64 - 19, 509, u64::from(rate)] {
+                let mut a = Renderer::new(resident.clone());
+                let mut b = Renderer::new(streamed.clone());
+                let mut expected = vec![[0.; 2]; 1024];
+                let mut actual = expected.clone();
+                a.render_offline_at(start, &mut expected);
+                b.render_offline_at(start, &mut actual);
+                assert_eq!(actual, expected, "offline {rate} {effects} {start}");
+                assert!(b.source_error().is_none());
+            }
+            let region = Loop {
+                enabled: true,
+                start_frame: 513,
+                end_frame: u64::from(rate) + 3000,
+            };
+            resident.project.transport.r#loop = region.clone();
+            streamed.project.transport.r#loop = region;
+            let mut expected = Renderer::new(resident);
+            let mut actual = Renderer::new(streamed);
+            actual.prepare_streaming().unwrap();
+            for start in [0, u64::from(rate) - 10, 400] {
+                COUNT.with(|c| c.set(Some(0)));
+                actual.seek(start);
+                actual.play();
+                assert_eq!(COUNT.with(|c| c.replace(None)), Some(0));
+                expected.seek(start);
+                expected.play();
+                let deadline = Instant::now() + Duration::from_secs(15);
+                for _ in 0..rate / 2 + 5000 {
+                    let sample = loop {
+                        COUNT.with(|c| c.set(Some(0)));
+                        let sample = actual.next_sample();
+                        assert_eq!(COUNT.with(|c| c.replace(None)), Some(0));
+                        if !actual.buffering() {
+                            break sample;
+                        }
+                        assert!(Instant::now() < deadline, "disk read did not complete");
+                        std::thread::sleep(Duration::from_millis(1));
+                    };
+                    assert_eq!(
+                        sample,
+                        expected.next_sample(),
+                        "live {rate} {effects} at {}",
+                        actual.playhead
+                    );
+                    assert_eq!(actual.playhead, expected.playhead);
+                }
+            }
+        }
+    }
+}

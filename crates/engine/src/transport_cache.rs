@@ -236,7 +236,7 @@ impl TransportCache {
                     if sample_frame.is_multiple_of(block) && cancelled() {
                         return false;
                     }
-                    renderer.offline_frame(sample_frame, self.live);
+                    renderer.offline_frame(sample_frame, self.live, false);
                 }
             }
             if self.checkpoint_limit > 0
@@ -280,7 +280,7 @@ impl TransportCache {
         renderer.playing = state.playing && renderer.end_frame > 0;
         renderer.paused = state.paused;
         renderer.playback_start = state.playback_start;
-        renderer.prime_latency(live);
+        renderer.prime_latency(live, false);
         Some(renderer)
     }
     pub fn memory_usage(&self) -> TransportCacheMemory {

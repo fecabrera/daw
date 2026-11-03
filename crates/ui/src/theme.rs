@@ -12,13 +12,13 @@ pub struct ClipColors {
 
 impl ClipColors {
     /// Match disabled units with a neutral header and secondary foregrounds.
-    /// Painter opacity would let the timeline grid show through the clip.
+    /// Translucent body/channel surfaces retain the underlying musical grid.
     pub fn dimmed(self, ctx: &Context) -> Self {
         let colors = palette(ctx);
         Self {
-            body: colors.panel,
+            body: colors.panel.gamma_multiply(0.5),
             header: unit_header_fill(ctx, false),
-            channel: colors.panel,
+            channel: colors.panel.gamma_multiply(0.5),
             waveform: colors.secondary,
             text: colors.secondary,
         }

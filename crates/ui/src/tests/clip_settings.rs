@@ -461,6 +461,7 @@ fn prepared_audio_fixture(engine: daw_core::StretchEngine) -> (DawUi, egui::Cont
     let asset = &mut app.session.project.assets[0];
     asset.decoded_frame_count = 24000;
     let audio = daw_media::AudioData {
+        disk: None,
         samples: std::sync::Arc::new(
             (0..24000)
                 .map(|frame| {

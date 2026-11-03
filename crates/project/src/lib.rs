@@ -294,13 +294,13 @@ impl Session {
             let data =
                 daw_media::decode_audio_cached(&path, session.project.sample_rate_hz, cancelled)
                     .map_err(error)?;
-            if (data.samples.len() as u64) < asset.decoded_frame_count {
+            if (data.frame_count()) < asset.decoded_frame_count {
                 session.warnings.push(format!("Source {} is shorter than saved metadata; unavailable ranges render as silence",path.display()));
             } else if data.metadata.sample_rate_hz != asset.source_metadata.sample_rate_hz
                 || data.metadata.channels != asset.source_metadata.channels
                 || data.metadata.bits_per_sample != asset.source_metadata.bits_per_sample
                 || data.metadata.sample_format != asset.source_metadata.sample_format
-                || data.samples.len() as u64 != asset.decoded_frame_count
+                || data.frame_count() != asset.decoded_frame_count
             {
                 session
                     .warnings
@@ -426,7 +426,7 @@ impl Session {
             color: None,
             start_frame: start,
             source_offset_frame: 0,
-            length_frames: data.samples.len() as u64,
+            length_frames: data.frame_count(),
             repeat: None,
             gain_db: 0.0,
             transpose: 0,
@@ -443,7 +443,7 @@ impl Session {
                 path_kind: "absolute".into(),
             },
             source_metadata: data.metadata.clone(),
-            decoded_frame_count: data.samples.len() as u64,
+            decoded_frame_count: data.frame_count(),
         });
         if overwrite {
             next.edit(daw_core::Edit::OverwriteClips(vec![
@@ -551,6 +551,9 @@ impl Session {
             while position < end {
                 let count = (end - position).min(block_size as u64) as usize;
                 renderer.render_offline(&mut block[..count]);
+                if let Some(message) = renderer.source_error() {
+                    return Err(error(message));
+                }
                 encoder.write_frames(&block[..count]).map_err(error)?;
                 position += count as u64;
                 progress(position, end);

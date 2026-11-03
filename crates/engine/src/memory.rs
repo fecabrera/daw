@@ -160,6 +160,7 @@ mod tests {
         a.audio.insert(
             id,
             AudioData {
+                disk: None,
                 sample_rate_hz: 48_000,
                 samples: std::sync::Arc::new(vec![[0.0; 2]; 4]),
                 peaks: Default::default(),

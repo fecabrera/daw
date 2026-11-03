@@ -1052,3 +1052,95 @@ fn public_stop_rejects_a_full_queue_without_changing_transport_intent() {
     realtime(|| callback.update());
     assert!(callback.renderer.playing);
 }
+
+#[test]
+fn disk_audio_worker_cache_handoff_keeps_live_reads_prepared_and_callback_heap_free() {
+    let resident = tests::transport_plan();
+    let mut plan = resident.clone();
+    let id = plan.project.assets[0].id;
+    let audio = &resident.audio[&id];
+    let mut writer = daw_media::DiskAudioWriter::new(audio.frame_count()).unwrap();
+    writer.write(&audio.samples).unwrap();
+    plan.audio.insert(
+        id,
+        writer
+            .finish(audio.sample_rate_hz, audio.metadata.clone())
+            .unwrap(),
+    );
+    let status = Arc::new(Status::default());
+    let worker = preparation::Worker::new(status).unwrap();
+    let bindings = preparation::Bindings {
+        tracks: track_meters(&plan, &HashMap::new()),
+        ..Default::default()
+    };
+    let state = TransportState {
+        frame: 35_000,
+        playing: true,
+        paused: false,
+        playback_start: Some(4800),
+    };
+    worker.submit(plan, bindings, Some(state));
+    let mut prepared = ready(&worker).renderer;
+    let mut expected = Renderer::new(resident);
+    expected.prepare_transport(state);
+    let deadline = Instant::now() + Duration::from_secs(15);
+    for _ in 0..1024 {
+        let sample = loop {
+            let sample = realtime(|| prepared.next_sample());
+            if !prepared.buffering() {
+                break sample;
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        assert_eq!(sample, expected.next_sample());
+        assert_eq!(prepared.playhead, expected.playhead);
+    }
+    assert!(prepared.source_error().is_none());
+}
+
+#[test]
+fn disk_buffering_holds_the_worker_activation_clock_with_the_transport() {
+    let mut plan = tests::transport_plan();
+    let id = plan.project.assets[0].id;
+    let audio = &plan.audio[&id];
+    let mut writer = daw_media::DiskAudioWriter::new(audio.frame_count()).unwrap();
+    writer.write(&audio.samples).unwrap();
+    let disk = writer
+        .finish(audio.sample_rate_hz, audio.metadata.clone())
+        .unwrap();
+    let meters = track_meters(&plan, &HashMap::new());
+    let (_producer, consumer) = RingBuffer::new(4);
+    let (retire, _retired) = RingBuffer::new(8);
+    let mut callback = Callback::new(
+        plan.clone(),
+        &meters,
+        consumer,
+        retire,
+        Arc::new(Status::default()),
+        48_000,
+    )
+    .unwrap();
+    plan.audio.insert(id, disk);
+    // Withhold live preparation to make missing disk pages deterministic.
+    let mut renderer = Renderer::new(plan);
+    renderer.play();
+    callback.renderer.renderer = renderer;
+    let state = callback.renderer.transport_state();
+    let clock = callback.rendered_frames;
+    for _ in 0..512 {
+        realtime(|| callback.next_project_sample());
+    }
+    assert!(callback.renderer.buffering());
+    assert_eq!(callback.renderer.transport_state(), state);
+    assert_eq!(callback.rendered_frames, clock);
+    callback.renderer.prepare_streaming().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while callback.rendered_frames == clock {
+        realtime(|| callback.next_project_sample());
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(callback.rendered_frames, clock + 1);
+    assert_eq!(callback.renderer.playhead, state.frame + 1);
+}

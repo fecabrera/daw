@@ -151,6 +151,9 @@ impl Session {
         let audio = self
             .audio_for_clip(&clip)
             .ok_or_else(|| error("Prepared audio is missing; separation requires an audio clip"))?;
+        let _input_memory =
+            daw_media::AudioReservation::new(clip.length_frames, 0).map_err(error)?;
+        let mut reader = daw_media::FrameReader::new(audio);
         let mut input = Vec::new();
         input
             .try_reserve_exact(usize::try_from(clip.length_frames).map_err(error)?)
@@ -160,22 +163,24 @@ impl Session {
                 progress.check().map_err(error)?;
             }
             let source = clip.source_frame(local);
+            if source >= audio.frame_count() {
+                return Err(error("Clip source range is unavailable"));
+            }
             let fade = daw_engine::clip_repeat_fade(&clip, source, self.project.sample_rate_hz);
-            input.push(
-                audio
-                    .samples
-                    .get(source as usize)
-                    .ok_or_else(|| error("Clip source range is unavailable"))?
-                    .map(|v| v * fade),
-            );
+            input.push(reader.sample(source).map_err(error)?.map(|v| v * fade));
         }
-        let input = daw_media::resample_cancellable(
+        let resampled = daw_media::resample_cancellable(
             &input,
             self.project.sample_rate_hz,
             daw_separation::MODEL_RATE,
             &|| progress.cancel.load(Ordering::Relaxed),
         )
         .map_err(error)?;
+        drop(input);
+        drop(_input_memory);
+        let input = resampled;
+        let input_memory =
+            daw_media::AudioReservation::new(input.len() as u64, 0).map_err(error)?;
         let temporary = self
             .folder
             .is_none()
@@ -194,7 +199,10 @@ impl Session {
             warnings: Vec::new(),
             stems: SeparationStemSet::Four,
         };
+        let model_frames = input.len() as u64;
         let output = run(&input, &directory)?;
+        drop(input);
+        drop(input_memory);
         prepared.stems = output.stems;
         prepared.warnings = output.warnings;
         progress.check().map_err(error)?;
@@ -208,7 +216,7 @@ impl Session {
             let path = directory.join(format!("{name}.wav"));
             let data = prepare_stem(
                 &path,
-                input.len() as u64,
+                model_frames,
                 clip.length_frames,
                 self.project.sample_rate_hz,
                 &|| progress.cancel.load(Ordering::Relaxed),
@@ -276,24 +284,30 @@ fn prepare_stem(
             .map_err(error)?;
     if data.metadata.channels != 2
         || data.metadata.sample_rate_hz != daw_separation::MODEL_RATE
-        || data.samples.len() as u64 != expected
+        || data.frame_count() != expected
         || expected < clip_frames
     {
         return Err(error(
             "Stem duration or format does not match the model output",
         ));
     }
-    let mut samples = (*data.samples).clone();
-    samples.truncate(usize::try_from(clip_frames).map_err(error)?);
+    let mut block = vec![[0.; 2]; 8192];
+    let mut raw = Vec::new();
     let mut encoder =
         WavEncoder::at_sample_rate(path, WavCodec::Float32, sample_rate_hz).map_err(error)?;
-    for block in samples.chunks(8192) {
+    let mut start = 0;
+    while start < clip_frames {
         if cancelled() {
             return Err(error("Stem separation cancelled"));
         }
-        encoder.write_frames(block).map_err(error)?;
+        let count = (clip_frames - start).min(block.len() as u64) as usize;
+        data.read_frames(start, &mut block[..count], &mut raw)
+            .map_err(error)?;
+        encoder.write_frames(&block[..count]).map_err(error)?;
+        start += count as u64;
     }
     encoder.finish().map_err(error)?;
+    drop(data);
     daw_media::decode_wav_cancellable(path, sample_rate_hz, cancelled).map_err(error)
 }
 
@@ -982,6 +996,22 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_source_range_fails_before_inference_without_edits() {
+        let (_fixture, mut session, clip) = Fixture::new();
+        let before = session.project.clone();
+        let audio = session.audio.values_mut().next().unwrap();
+        audio.samples = std::sync::Arc::new(vec![[0.; 2]; 10]);
+        let failure = session
+            .separate_clip_with(clip, &SeparationProgress::default(), |_, _| {
+                panic!("Unavailable source must not reach inference")
+            })
+            .err()
+            .unwrap();
+        assert!(failure.to_string().contains("source range is unavailable"));
+        assert_eq!(session.project, before);
+    }
+
+    #[test]
     fn failed_cancelled_and_discarded_jobs_leave_no_stems_or_edits() {
         let (_fixture, session, clip) = Fixture::new();
         let before = session.project.clone();
@@ -1086,6 +1116,85 @@ mod tests {
             assert!(!directory.exists());
             assert_eq!(session.project, before);
         }
+    }
+
+    /// Resource regression uses generated silence, never model weights or private media.
+    #[test]
+    #[ignore = "writes several GiB of temporary PCM; run explicitly for disk-streaming changes"]
+    fn six_long_stems_exceed_pcm_budget_without_resident_buffers() {
+        use std::io::Write;
+        fn sparse_wav(path: &Path, frames: u64) {
+            let bytes = u32::try_from(frames * 8).unwrap();
+            let mut header = Vec::new();
+            header.extend_from_slice(b"RIFF");
+            header.extend_from_slice(&(bytes + 36).to_le_bytes());
+            header.extend_from_slice(b"WAVEfmt ");
+            header.extend_from_slice(&16_u32.to_le_bytes());
+            header.extend_from_slice(&3_u16.to_le_bytes());
+            header.extend_from_slice(&2_u16.to_le_bytes());
+            header.extend_from_slice(&44_100_u32.to_le_bytes());
+            header.extend_from_slice(&(44_100_u32 * 8).to_le_bytes());
+            header.extend_from_slice(&8_u16.to_le_bytes());
+            header.extend_from_slice(&32_u16.to_le_bytes());
+            header.extend_from_slice(b"data");
+            header.extend_from_slice(&bytes.to_le_bytes());
+            let mut file = fs::File::create(path).unwrap();
+            file.write_all(&header).unwrap();
+            file.set_len(u64::from(bytes) + 44).unwrap();
+        }
+        let root = std::env::temp_dir().join(format!("daw-long-stems-{}", Id::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let fixture = Fixture(root.clone());
+        let frames = 48_669_696_u64;
+        assert!(frames * 8 * 6 > daw_media::AUDIO_MEMORY_BUDGET_BYTES);
+        let source = root.join("generated-silence.wav");
+        sparse_wav(&source, frames);
+        let mut session = Session::default().with_audio_settings(44_100, 512).unwrap();
+        session.save(&root.join("project")).unwrap();
+        let clip = session.import(&source, None, 0).unwrap();
+        let mut history = crate::SessionHistory::new(&session, false).unwrap();
+        let prepared = session
+            .separate_clip_with(clip, &SeparationProgress::default(), |input, path| {
+                assert_eq!(input.len() as u64, frames);
+                for name in SeparationStemSet::Six.names() {
+                    sparse_wav(&path.join(format!("{}.wav", name.to_lowercase())), frames);
+                }
+                Ok(daw_separation::Output {
+                    stems: SeparationStemSet::Six,
+                    warnings: Vec::new(),
+                })
+            })
+            .unwrap();
+        let mut next = prepared.publish();
+        assert_eq!(next.project.tracks.len(), 8);
+        assert!(next.audio.values().all(|audio| audio.disk.is_some()
+            && audio.samples.is_empty()
+            && audio.frame_count() == frames));
+        let mut usage = daw_media::AudioMemoryUsage::default();
+        for audio in next.audio.values() {
+            usage.audio(audio);
+        }
+        assert!(usage.bytes < 64 * 1024 * 1024);
+        history.record(&next).unwrap();
+        let undone = history.undo(&next).unwrap();
+        assert_eq!(undone.project.tracks.len(), 1);
+        let redone = history.redo(&undone).unwrap();
+        assert_eq!(redone.project.tracks.len(), 8);
+        next.save(&root.join("copy")).unwrap();
+        let reopened = Session::open(&root.join("copy")).unwrap();
+        assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
+        assert_eq!(reopened.project.tracks.len(), 8);
+        assert!(
+            reopened
+                .audio
+                .values()
+                .all(|audio| audio.disk.is_some() && audio.frame_count() == frames)
+        );
+        let mut renderer = daw_engine::Renderer::new(reopened.plan());
+        renderer.seek(frames - 512);
+        renderer.render_offline(&mut [[0.; 2]; 512]);
+        assert!(renderer.source_error().is_none());
+        drop(fixture);
     }
 
     #[test]

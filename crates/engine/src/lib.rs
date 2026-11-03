@@ -17,6 +17,7 @@ pub use source_meters::SourceOutputTarget;
 mod modulation;
 mod parallel_tracks;
 mod schedule;
+mod streaming;
 mod track_processing;
 pub use parallel_tracks::{PreparationMode, PreparationStats};
 mod transport_cache;
@@ -46,7 +47,12 @@ impl RenderPlan {
         )
     }
     fn needs_stateful_render(&self) -> bool {
-        self.project.all_effects().next().is_some()
+        self.audio.values().any(|audio| audio.disk.is_some())
+            || self
+                .stretched_audio
+                .values()
+                .any(|audio| audio.audio.disk.is_some())
+            || self.project.all_effects().next().is_some()
             || self
                 .project
                 .tracks
@@ -227,6 +233,9 @@ pub struct Renderer {
     previous: [f32; 2],
     latent_held_mix: [f32; 2],
     source_fingerprint: u64,
+    prime_offset: u64,
+    prime_pending: bool,
+    buffering: bool,
 }
 /// Coherent transport metadata for worker preparation; no DSP ownership crosses threads here.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -470,8 +479,11 @@ impl Renderer {
             previous: [0.0; 2],
             latent_held_mix: [0.0; 2],
             source_fingerprint,
+            prime_offset: 0,
+            prime_pending: false,
+            buffering: false,
         };
-        renderer.prime_latency(false);
+        renderer.prime_latency(false, false);
         renderer
     }
     /// Read the last processed parameters without advancing DSP or allocating.
@@ -811,13 +823,13 @@ impl Renderer {
                 if frame % block == 0 && cancelled() {
                     return false;
                 }
-                self.offline_frame(frame, self.playing || self.paused);
+                self.offline_frame(frame, self.playing || self.paused, false);
             }
         }
         if cancelled() {
             return false;
         }
-        self.prime_latency(self.playing || self.paused);
+        self.prime_latency(self.playing || self.paused, false);
         true
     }
     /// Bounded activation of a worker-prepared transport, retaining the output fade.
@@ -900,7 +912,7 @@ impl Renderer {
         }
         if !aligned {
             self.reset_processing();
-            self.prime_latency(self.playing || self.paused);
+            self.prime_latency(self.playing || self.paused, true);
         }
     }
     /// Bind transient editor inputs after worker preparation, never during offline rendering.
@@ -923,7 +935,7 @@ impl Renderer {
         {
             runtime.begin_note_audition(pitch);
         }
-        self.prime_latency(false);
+        self.prime_latency(false, false);
     }
 
     /// Send note-off through normal per-note and shared release stages.
@@ -942,7 +954,7 @@ impl Renderer {
         {
             runtime.begin_beat_audition();
         }
-        self.prime_latency(false);
+        self.prime_latency(false, false);
     }
 
     /// Includes silent attacks and normal per-note/shared release ownership.
@@ -976,6 +988,8 @@ impl Renderer {
         frame
     }
     fn reset_processing(&mut self) {
+        self.prime_offset = 0;
+        self.prime_pending = true;
         self.alignment.reset();
         self.master_effects.reset();
         for effects in &mut self.effects {
@@ -985,9 +999,10 @@ impl Renderer {
             runtime.reset();
         }
     }
-    fn prime_latency(&mut self, live: bool) {
+    fn prime_latency(&mut self, live: bool, realtime: bool) {
         self.alignment.live = live;
         if self.alignment.total == 0 {
+            self.prime_pending = false;
             return;
         }
         let mut start = self.playhead;
@@ -996,16 +1011,23 @@ impl Renderer {
         {
             start = first;
         }
-        for offset in 0..self.alignment.total {
+        self.prime_pending = true;
+        for offset in self.prime_offset..self.alignment.total {
             let future = latency::advanced_frame(start, offset, self.loop_region(live));
+            if realtime && !self.streaming_ready(future, self.loop_region(live)) {
+                self.prime_offset = offset;
+                return;
+            }
             let frame = self.feed_frame(future, live);
-            self.offline_frame(frame, live);
+            self.offline_frame(frame, live, realtime);
         }
+        self.prime_pending = false;
+        self.prime_offset = 0;
     }
     pub fn seek(&mut self, frame: u64) {
         self.reset_processing();
         self.playhead = frame;
-        self.prime_latency(self.playing || self.paused);
+        self.prime_latency(self.playing || self.paused, true);
         self.transition_from = self.previous;
         self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
     }
@@ -1016,7 +1038,7 @@ impl Renderer {
             }
             if !self.paused && self.alignment.total > 0 {
                 self.reset_processing();
-                self.prime_latency(true);
+                self.prime_latency(true, true);
             }
             self.paused = false;
             self.playing = true;
@@ -1060,19 +1082,19 @@ impl Renderer {
         self.render_offline(out);
     }
     pub fn render_offline(&mut self, out: &mut [[f32; 2]]) {
-        if self.alignment.live && self.alignment.total > 0 {
+        if self.prime_pending || (self.alignment.live && self.alignment.total > 0) {
             self.reset_processing();
-            self.prime_latency(false);
+            self.prime_latency(false, false);
         }
         for sample in out {
             let frame = self.feed_frame(self.playhead.saturating_add(self.alignment.total), false);
-            *sample = self.offline_frame(frame, false);
+            *sample = self.offline_frame(frame, false, false);
             self.playhead = self.playhead.saturating_add(1);
         }
     }
-    fn offline_frame(&mut self, frame: u64, live: bool) -> [f32; 2] {
+    fn offline_frame(&mut self, frame: u64, live: bool, realtime: bool) -> [f32; 2] {
         let loop_region = self.loop_region(live);
-        self.sample_tracks(frame, loop_region, true, false);
+        self.sample_tracks(frame, loop_region, true, false, realtime);
         let mix = self.sample_buses(frame, loop_region, false);
         self.sample_master(mix, frame, loop_region)
             .map(|value| value * self.master_target)
@@ -1123,6 +1145,24 @@ impl Renderer {
             })
     }
     pub fn next_sample(&mut self) -> [f32; 2] {
+        if self.playing {
+            if self.prime_pending {
+                self.prime_latency(true, true);
+            }
+            let future = latency::advanced_frame(
+                self.playhead,
+                self.alignment.total,
+                self.loop_region(true),
+            );
+            self.buffering =
+                self.prime_pending || !self.streaming_ready(future, self.loop_region(true));
+            if self.buffering {
+                return [0.; 2];
+            }
+        } else {
+            self.buffering = false;
+        }
+
         let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1) as f32;
         let target = if self.playing { 1.0 } else { 0.0 };
         self.ramp = if self.ramp < target {
@@ -1163,7 +1203,7 @@ impl Renderer {
                     self.playhead
                 };
                 let loop_region = self.loop_region(true);
-                self.sample_tracks(frame, loop_region, self.playing, true);
+                self.sample_tracks(frame, loop_region, self.playing, true, true);
                 mix = self.sample_buses(frame, loop_region, true);
                 mix = self.sample_master(mix, frame, loop_region);
                 self.latent_held_mix = mix;
@@ -1217,7 +1257,7 @@ mod tests {
         let louder = plan.sample_at(1000);
         assert!((louder[0] / unity[0] - 10.0_f32.powf(6.0 / 20.0)).abs() < 1e-4);
         let mut track = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
-        let (scheduled, _) = track.sample(&plan.project.tracks[0].clips, 1000);
+        let (scheduled, _) = track.sample(&plan.project.tracks[0].clips, 1000, false);
         assert!((scheduled[0] - louder[0]).abs() < 1e-5);
         plan.project.tracks[0].clips[0].gain_db = daw_core::SILENT_GAIN_DB;
         assert_eq!(plan.sample_at(1000), [0.0, 0.0]);
@@ -1236,7 +1276,7 @@ mod tests {
         assert_eq!(plan.sample_at(1000), [0.0; 2]);
         let mut track = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
         assert_eq!(
-            track.sample(&plan.project.tracks[0].clips, 1000).0,
+            track.sample(&plan.project.tracks[0].clips, 1000, false).0,
             [0.0; 2]
         );
         plan.project
@@ -1295,6 +1335,7 @@ mod tests {
             audio: HashMap::from([(
                 id,
                 AudioData {
+                    disk: None,
                     sample_rate_hz: daw_core::SAMPLE_RATE,
                     samples: Arc::new(vec![[0.25, -0.25]; 2000]),
                     metadata,

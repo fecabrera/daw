@@ -66,7 +66,7 @@ impl ExportStatus {
                 self.settings.format.label(),
                 self.sample_rate_hz as f32 / 1000.0
             ),
-            path: &self.path,
+            path: Some(&self.path),
             progress: Some(frames as f32 / self.total.max(1) as f32),
             warnings: &self.warnings,
             cancel: None,

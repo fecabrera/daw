@@ -230,17 +230,12 @@ impl PreparedSampler {
                 .try_reserve_exact(usize::try_from(count).map_err(|e| Error(e.to_string()))?)
                 .map_err(|e| Error(e.to_string()))?;
             let clip = Clip::from(input);
+            let mut reader = crate::FrameReader::new(source);
             for local in settings.start_frame..settings.end_frame {
                 if local % 4096 == 0 {
                     check()?;
                 }
-                samples.push(
-                    source
-                        .samples
-                        .get(clip.source_frame(local) as usize)
-                        .copied()
-                        .unwrap_or_default(),
-                );
+                samples.push(reader.sample(clip.source_frame(local))?);
             }
             prepared_audio(source, samples)
         };

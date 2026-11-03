@@ -78,6 +78,7 @@ pub fn decode_audio_cancellable(
     let mut source_spec = None;
     let mut samples = Vec::new();
     let mut admitted = 0;
+    let mut disk: Option<DiskAudioWriter> = None;
     loop {
         if cancelled() {
             return Err(Error("Audio preparation cancelled".into()));
@@ -123,7 +124,20 @@ pub fn decode_audio_cancellable(
             .len()
             .checked_add(audio.frames())
             .ok_or_else(|| err(&"Audio length overflow"))?;
-        if required > admitted {
+        if disk.is_none() && crate::stream_decode::should_stream(required as u64) {
+            let mut writer = DiskAudioWriter::incremental()?;
+            for block in samples.chunks(8192) {
+                if cancelled() {
+                    return Err(Error("Audio preparation cancelled".into()));
+                }
+                writer.write(block)?;
+            }
+            samples = Vec::new();
+            reservations.clear();
+            reservations.push(AudioReservation::new(0, 1024 * 1024)?);
+            disk = Some(writer);
+        }
+        if disk.is_none() && required > admitted {
             let additional = (required - admitted).max(admitted).max(16_384);
             reservations.push(AudioReservation::new(
                 resampled_frames(additional as u64, source_rate, rate)?,
@@ -153,6 +167,7 @@ pub fn decode_audio_cancellable(
             .checked_sub(trim_start)
             .and_then(|n| n.checked_sub(trim_end))
             .ok_or_else(|| err(&"Invalid encoder delay or padding"))?;
+        let mut packet_frames = Vec::with_capacity(keep);
         for frame in buffer
             .samples()
             .chunks_exact(channels)
@@ -164,13 +179,20 @@ pub fn decode_audio_cancellable(
             if !l.is_finite() || !r.is_finite() {
                 return Err(err(&"Source contains non-finite samples"));
             }
-            samples.push([l, r]);
+            if disk.is_some() {
+                packet_frames.push([l, r]);
+            } else {
+                samples.push([l, r]);
+            }
+        }
+        if let Some(writer) = &mut disk {
+            writer.write(&packet_frames)?;
         }
     }
     if expected_end.is_some_and(|end| packet_end < end) {
         return Err(err(&"Incomplete compressed audio data"));
     }
-    if samples.is_empty() {
+    if disk.is_none() && samples.is_empty() {
         return Err(err(&"Source contains no audio samples"));
     }
     let (source_rate, channels) =
@@ -182,11 +204,34 @@ pub fn decode_audio_cancellable(
         // Lossy bitstreams do not have a PCM bit depth.
         bits_per_sample: 0,
     };
+    if let Some(writer) = disk {
+        let audio = writer.finish(source_rate, metadata)?;
+        return if source_rate == rate {
+            Ok(audio)
+        } else {
+            crate::stream_decode::resample_audio(&audio, rate, cancelled)
+        };
+    }
+    if crate::stream_decode::should_stream(resampled_frames(
+        samples.len() as u64,
+        source_rate,
+        rate,
+    )?) {
+        let source = AudioData {
+            disk: None,
+            sample_rate_hz: source_rate,
+            samples: Arc::new(samples),
+            peaks: Default::default(),
+            metadata,
+        };
+        return crate::stream_decode::resample_audio(&source, rate, cancelled);
+    }
     if source_rate != rate {
         samples = convert_samples(&samples, source_rate, rate, cancelled)?;
     }
     let peaks = prepare_peaks(&samples, cancelled)?;
     let audio = AudioData {
+        disk: None,
         sample_rate_hz: rate,
         samples: Arc::new(samples),
         metadata,

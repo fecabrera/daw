@@ -83,6 +83,9 @@ impl PreparationCache {
         })
     }
     fn remember(&self, key: Key, audio: &AudioData) {
+        if audio.disk.is_some() {
+            return;
+        }
         crate::register_audio(audio);
         let bytes = audio.samples.capacity() as u64 * 8 + audio.peaks.capacity() as u64 * 16;
         if bytes > MEMORY_BYTES {
@@ -162,7 +165,7 @@ impl PreparationCache {
         self.counters.builds.fetch_add(1, Ordering::Relaxed);
         let audio = build()?;
         check(cancelled)?;
-        if let Some(path) = self.path(key) {
+        if let Some(path) = self.path(key).filter(|_| audio.disk.is_none()) {
             // A cache is optional: permission, quota, or concurrent cleanup failures
             // cannot turn successful audio preparation into a project failure.
             let _ = write(&path, key, &audio, cancelled);
@@ -291,6 +294,9 @@ fn read(path: &Path, key: Key, cancelled: &impl Fn() -> bool) -> Result<AudioDat
     if expected != length {
         return Err(io("Invalid audio cache size"));
     }
+    if crate::stream_decode::should_stream(frames) {
+        return Err(io("Large PCM cache entry requires streamed preparation"));
+    }
     let _reservation = AudioReservation::new(frames, 0)?;
     let mut format = vec![0; text_len];
     reader.read_exact(&mut format).map_err(io)?;
@@ -358,6 +364,7 @@ fn read(path: &Path, key: Key, cancelled: &impl Fn() -> bool) -> Result<AudioDat
     }
     check(cancelled)?;
     let audio = AudioData {
+        disk: None,
         sample_rate_hz: rate,
         samples: Arc::new(samples),
         peaks: Arc::new(waveform),
@@ -528,6 +535,9 @@ pub(crate) fn audio_key(audio: &AudioData, cancelled: &impl Fn() -> bool) -> Res
     hash.update(audio.metadata.bits_per_sample.to_le_bytes());
     hash.update(audio.metadata.sample_format.as_bytes());
     let mut buffer = [0; 32768];
+    if let Some(disk) = &audio.disk {
+        hash.update(disk.content_hash());
+    }
     for chunk in audio.samples.chunks(4096) {
         check(cancelled)?;
         for (value, bytes) in chunk.iter().flatten().zip(buffer.chunks_exact_mut(4)) {
@@ -586,6 +596,7 @@ mod tests {
     }
     fn audio() -> AudioData {
         let source = AudioData {
+            disk: None,
             sample_rate_hz: 48000,
             samples: Arc::new(vec![]),
             peaks: Arc::new(vec![]),

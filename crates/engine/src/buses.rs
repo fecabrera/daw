@@ -91,6 +91,7 @@ impl Renderer {
         region: Option<(u64, u64)>,
         playing: bool,
         live: bool,
+        realtime: bool,
     ) {
         for (index, track) in self.plan.project.tracks.iter().enumerate() {
             if track.kind == TrackKind::Group {
@@ -103,7 +104,13 @@ impl Renderer {
                 delay: &mut self.alignment.tracks[index],
                 clips: &track.clips,
             }
-            .sample(frame, self.plan.project.tempo_bpm, region, playing);
+            .sample(
+                frame,
+                self.plan.project.tempo_bpm,
+                region,
+                playing,
+                realtime,
+            );
             self.buses.output[index] = self.gains[index].apply(sample, mono, live, self.ramp);
         }
     }

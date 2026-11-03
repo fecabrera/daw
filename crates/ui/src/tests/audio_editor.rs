@@ -13,6 +13,7 @@ fn audio_fixture() -> (DawUi, egui::Context, Id, Id) {
     app.session.audio.insert(
         asset.id,
         daw_media::AudioData {
+            disk: None,
             samples: std::sync::Arc::new(samples),
             peaks: Default::default(),
             metadata: asset.source_metadata.clone(),

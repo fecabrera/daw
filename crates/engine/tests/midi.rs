@@ -3436,6 +3436,7 @@ fn sampler_plan(rate: u32, trigger: SamplerTrigger) -> RenderPlan {
         beat_pattern: None,
     });
     let audio = daw_media::AudioData {
+        disk: None,
         sample_rate_hz: rate,
         samples: std::sync::Arc::new(vec![[0.4, -0.2]; length as usize]),
         peaks: Default::default(),

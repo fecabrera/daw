@@ -5,31 +5,51 @@ pub(super) struct Status {
     pub stems: Option<daw_project::SeparationStemSet>,
     pub state: job_report::State,
     pub warnings: Vec<String>,
-    pub(super) path: PathBuf,
+    pub sample_rate_hz: u32,
 }
 impl Status {
+    pub fn running_text(&self) -> &'static str {
+        use std::sync::atomic::Ordering;
+        if self.progress.cancel.load(Ordering::Relaxed) {
+            return "Cancelling…";
+        }
+        let total = self.progress.total.load(Ordering::Relaxed);
+        let done = self.progress.done.load(Ordering::Relaxed);
+        if total == 0 {
+            "Preparing audio and loading model…"
+        } else if done >= total {
+            "Preparing stem tracks…"
+        } else {
+            "Separating audio…"
+        }
+    }
     pub fn show(&self, ctx: &egui::Context) -> bool {
         use std::sync::atomic::Ordering;
         let total = self.progress.total.load(Ordering::Relaxed);
         let done = self.progress.done.load(Ordering::Relaxed);
-        let detail = self
+        let stems = self
             .stems
-            .map(|stems| format!("Charon · HTDemucs · Stereo · {}", stems.description()))
-            .unwrap_or_else(|| "Charon · HTDemucs · Stereo".into());
+            .map(|stems| {
+                format!(
+                    "Charon · HTDemucs · {} stems\n{}",
+                    stems.names().len(),
+                    stems.description()
+                )
+            })
+            .unwrap_or_else(|| "Charon · HTDemucs\nStem details pending".into());
+        let detail = format!(
+            "{stems}\nWAV · {} · Stereo · {} kHz",
+            daw_media::WavCodec::Float32.label(),
+            self.sample_rate_hz as f32 / 1000.0
+        );
         job_report::Report {
             title: "Stem-separation status",
             state: &self.state,
-            running_text: if total == 0 {
-                "Preparing audio and loading model…"
-            } else if done >= total {
-                "Preparing stem tracks…"
-            } else {
-                "Separating audio…"
-            },
+            running_text: self.running_text(),
             complete_text: "Stem separation complete",
             failed_text: "Stem separation failed",
             detail: &detail,
-            path: &self.path,
+            path: None,
             progress: (total > 0).then_some(done as f32 / total.max(1) as f32),
             warnings: &self.warnings,
             cancel: Some(&self.progress.cancel),
@@ -73,17 +93,19 @@ impl DawUi {
                 .map_err(|e| e.to_string())
         });
         self.settings_cancel = Some(progress.cancel.clone());
+        use daw_project::SeparationModelKind as Kind;
+        let primary = Kind::ALL.into_iter().find(|kind| {
+            kind.available() && self.separation_models.validated.path(*kind).is_some()
+        });
+        let stems = primary
+            .and_then(|kind| self.separation_models.info.get(&kind))
+            .map(|info| info.stems);
         self.separation_status = Some(Status {
-            stems: None,
+            stems,
+            sample_rate_hz: self.session.project.sample_rate_hz,
             progress,
             state: job_report::State::Running,
             warnings: Vec::new(),
-            path: self
-                .session
-                .folder
-                .clone()
-                .map(|folder| folder.join("stems"))
-                .unwrap_or_else(std::env::temp_dir),
         });
     }
 }
@@ -131,8 +153,8 @@ mod tests {
         app.separate_clip(Id::new_v4());
         assert!(app.separation_status.is_some());
         assert_eq!(
-            app.separation_status.as_ref().unwrap().path,
-            std::env::temp_dir()
+            app.separation_status.as_ref().unwrap().sample_rate_hz,
+            app.session.project.sample_rate_hz
         );
         assert!(!app.file_action_enabled(FileAction::Save));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);

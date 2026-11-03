@@ -1331,7 +1331,7 @@ impl DawUi {
             let at = placement_start(
                 &session.project,
                 i128::from(at),
-                audio.samples.len() as u64,
+                audio.frame_count(),
                 track,
                 None,
                 snap_zoom,
@@ -1518,7 +1518,6 @@ impl DawUi {
                             status.state = job_report::State::Cancelled;
                         } else {
                             status.stems = Some(prepared.stems);
-                            status.path = prepared.directory().to_owned();
                             status.warnings = prepared.warnings.clone();
                             status.state = job_report::State::Complete;
                             let mut session = prepared.publish();
@@ -2201,7 +2200,12 @@ impl DawUi {
                 self.error = Some(error);
             }
             self.session.project.transport.playhead_frame = output.displayed_frame();
-            if output.status.failed.load(Ordering::Relaxed) {
+            if output.status.source_failed.load(Ordering::Relaxed) {
+                self.error = Some(output.source_error().unwrap_or_else(|| {
+                    "Cannot read prepared disk audio. Playback stopped.".into()
+                }));
+                self.output = None;
+            } else if output.status.failed.load(Ordering::Relaxed) {
                 self.error=Some("Audio output failed or disconnected. Playback stopped. Editing and export remain available.".into());
                 self.output = None;
             }
@@ -2265,6 +2269,11 @@ impl DawUi {
                     ui.spinner();
                     ui.label(
                         self.collection_status_text()
+                            .or_else(|| {
+                                self.separation_status
+                                    .as_ref()
+                                    .map(|status| status.running_text().to_owned())
+                            })
                             .unwrap_or_else(|| self.busy.clone()),
                     );
                     if self.settings_cancel.is_some() && ui.button("Cancel").clicked() {
@@ -5023,7 +5032,7 @@ impl DawUi {
         target.start = placement_start(
             &self.session.project,
             i128::from(target.raw_start),
-            audio.map_or(0, |audio| audio.samples.len() as u64),
+            audio.map_or(0, |audio| audio.frame_count()),
             target.track,
             None,
             target.snap_zoom,
@@ -5039,7 +5048,7 @@ impl DawUi {
             source_offset_frame: 0,
             length_frames: audio.map_or_else(
                 || self.session.project.frames(120.0 / f64::from(self.zoom)),
-                |audio| audio.samples.len() as u64,
+                |audio| audio.frame_count(),
             ),
             repeat: None,
             gain_db: 0.0,
@@ -5909,6 +5918,7 @@ mod tests {
                 app.session.audio.insert(
                     clip.asset_id,
                     daw_media::AudioData {
+                        disk: None,
                         sample_rate_hz: daw_core::SAMPLE_RATE,
                         samples: samples.clone(),
                         peaks: std::sync::Arc::new(vec![[[-0.2, 0.2]; 2]; 375]),
@@ -6086,6 +6096,7 @@ mod tests {
             app.session.audio.insert(
                 clip.asset_id,
                 daw_media::AudioData {
+                    disk: None,
                     sample_rate_hz: daw_core::SAMPLE_RATE,
                     samples: std::sync::Arc::new(vec![[f32::NAN; 2]; 24000]),
                     peaks: std::sync::Arc::new(vec![]),
@@ -12034,11 +12045,15 @@ mod tests {
         app.session.project.validate().unwrap();
     }
     #[test]
-    fn disabled_clips_use_opaque_dimmed_palettes_and_keep_selection_visible() {
+    fn disabled_clips_reveal_the_grid_and_keep_neutral_foregrounds_and_selection() {
         let source = TestWav::new();
         let mut audio = daw_media::decode_wav(&source.0).unwrap();
         audio.metadata.channels = 2;
-        for appearance in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for appearance in [
+            settings::ColorTheme::Dark,
+            settings::ColorTheme::Light,
+            settings::ColorTheme::Mist,
+        ] {
             for custom in [
                 None,
                 Some(daw_core::RgbColor {
@@ -12047,48 +12062,67 @@ mod tests {
                     b: 35,
                 }),
             ] {
-                let (mut app, track) = fixture();
-                let clip = &mut app.session.project.tracks[0].clips[0];
-                clip.muted = true;
-                clip.color = custom;
-                clip.length_frames = 48_000;
-                let id = clip.id;
-                app.session.audio.insert(clip.asset_id, audio.clone());
-                app.select_clip(id, track, false);
-                let ctx = context();
-                app.set_settings(
-                    &ctx,
-                    settings::AppSettings {
-                        theme: appearance,
-                        ..Default::default()
-                    },
-                );
-                let base = theme::clip_colors(app.session.project.tracks[0].color, custom);
-                let colors = base.dimmed(&ctx);
-                assert_ne!(base, colors);
-                let palette = theme::palette(&ctx);
-                assert_eq!(colors.header, theme::unit_header_fill(&ctx, false));
-                assert_eq!(colors.body, palette.panel);
-                assert_eq!(colors.channel, palette.panel);
-                assert_eq!(colors.text, palette.secondary);
-                assert_eq!(colors.waveform, palette.secondary);
-                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-                for fill in [colors.body, colors.header, colors.channel] {
-                    assert_eq!(fill.a(), 255);
+                for view in [ViewMode::Timeline, ViewMode::Edit] {
+                    let (mut app, track) = fixture();
+                    let clip = &mut app.session.project.tracks[0].clips[0];
+                    clip.muted = true;
+                    clip.color = custom;
+                    clip.length_frames = 48_000;
+                    let id = clip.id;
+                    app.session.audio.insert(clip.asset_id, audio.clone());
+                    app.select_clip(id, track, false);
+                    app.view_mode = view;
+                    let ctx = context();
+                    app.set_settings(
+                        &ctx,
+                        settings::AppSettings {
+                            theme: appearance,
+                            ..Default::default()
+                        },
+                    );
+                    let colors = theme::clip_colors(app.session.project.tracks[0].color, custom)
+                        .dimmed(&ctx);
+                    let palette = theme::palette(&ctx);
+                    assert_eq!(colors.header, theme::unit_header_fill(&ctx, false));
+                    assert_eq!(colors.header.a(), 255);
+                    assert_eq!(colors.body, palette.panel.gamma_multiply(0.5));
+                    assert_eq!(colors.channel, colors.body);
+                    assert_eq!(colors.text, palette.secondary);
+                    assert_eq!(colors.waveform, palette.secondary);
+                    frame(&mut app, &ctx, vec![]);
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    assert!(shapes.iter().any(
+                        |s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == colors.header)
+                    ));
+                    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == colors.waveform)));
+                    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == colors.text)));
+                    let lane = if view == ViewMode::Edit {
+                        app.midi_editor.content.bounds
+                    } else {
+                        app.lane_bounds[&track]
+                    };
+                    app.midi_editor.content_active = view == ViewMode::Edit;
+                    let block = app.clip_block(lane, &app.session.project.tracks[0].clips[0], 0);
+                    app.midi_editor.content_active = false;
+                    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == block && r.stroke == theme::selection_outline(&ctx))));
+                    assert!(colors.body.a() > 0 && colors.body.a() < 255);
+                    let grid_index = shapes.iter().rposition(|s| matches!(&s.shape, egui::Shape::LineSegment { points, stroke } if points[0].x == points[1].x && points[0].x > block.left() && points[0].x < block.right() && points[0].y <= block.top() && points[1].y >= block.bottom() && [palette.grid, palette.grid_subdivision, palette.border].contains(&stroke.color))).expect("Grid crosses the disabled clip");
+                    let egui::Shape::LineSegment { points, .. } = &shapes[grid_index].shape else {
+                        unreachable!()
+                    };
+                    let body_point =
+                        Pos2::new(points[0].x, block.bottom() - (block.height() - 22.0) * 0.1);
+                    let opaque: Vec<_> = shapes[grid_index + 1..].iter().filter(|s| matches!(&s.shape, egui::Shape::Rect(r) if s.clip_rect.contains(body_point) && r.rect.contains(body_point) && r.fill.a() == 255)).collect();
                     assert!(
-                        shapes
-                            .iter()
-                            .any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == fill))
+                        opaque.is_empty(),
+                        "{view:?} {block:?} {body_point:?}: {opaque:?}"
+                    );
+                    let fills = shapes[grid_index + 1..].iter().filter(|s| matches!(&s.shape, egui::Shape::Rect(r) if s.clip_rect.contains(body_point) && r.rect.contains(body_point) && r.fill == colors.body)).count();
+                    assert_eq!(
+                        fills, 1,
+                        "Retain the background color without doubling channel opacity"
                     );
                 }
-                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == colors.waveform)));
-                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == colors.text)));
-                let block = app.clip_block(
-                    app.lane_bounds[&track],
-                    &app.session.project.tracks[0].clips[0],
-                    0,
-                );
-                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == block && r.stroke == theme::selection_outline(&ctx))));
             }
         }
     }

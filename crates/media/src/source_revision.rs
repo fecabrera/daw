@@ -201,19 +201,19 @@ pub fn check_prepared_source(
     let current =
         crate::decode_audio_cancellable(&snapshot.path, prepared.sample_rate_hz, cancelled)?;
     let mut matches =
-        prepared.metadata == current.metadata && prepared.samples.len() == current.samples.len();
-    if matches {
-        for (old, new) in prepared
-            .samples
-            .chunks(4096)
-            .zip(current.samples.chunks(4096))
-        {
-            check_cancelled(cancelled)?;
-            if !old
-                .iter()
-                .zip(new)
-                .all(|(a, b)| a[0].to_bits() == b[0].to_bits() && a[1].to_bits() == b[1].to_bits())
-            {
+        prepared.metadata == current.metadata && prepared.frame_count() == current.frame_count();
+    if matches && let Some((a, b)) = prepared.disk.as_ref().zip(current.disk.as_ref()) {
+        matches = a.content_hash() == b.content_hash();
+    } else if matches {
+        let mut old = crate::FrameReader::new(prepared);
+        let mut new = crate::FrameReader::new(&current);
+        for frame in 0..prepared.frame_count() {
+            if frame % 4096 == 0 {
+                check_cancelled(cancelled)?;
+            }
+            let a = old.sample(frame)?;
+            let b = new.sample(frame)?;
+            if a.map(f32::to_bits) != b.map(f32::to_bits) {
                 matches = false;
                 break;
             }

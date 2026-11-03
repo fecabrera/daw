@@ -297,6 +297,10 @@ impl Worker {
                         };
                         status.performance.cache(cache.memory_usage());
                         renderer.renderer = prepared;
+                        if let Err(error) = renderer.prepare_streaming() {
+                            publish_error(&worker, revision, error);
+                            continue;
+                        }
                         renderer.prepared_transport = true;
                     }
                     if let Some(anchor) = anchor.filter(|a| a.transport.playing) {
@@ -308,7 +312,7 @@ impl Worker {
                             .max(u64::from(renderer.plan.project.sample_rate_hz) / 10);
                         renderer.preparation_lead = lead;
                         let mut clock = anchor.clock;
-                        loop {
+                        'catch_up: loop {
                             let target = status
                                 .rendered_frames
                                 .load(Ordering::Acquire)
@@ -323,6 +327,19 @@ impl Worker {
                                     }
                                 }
                                 renderer.next_sample();
+                                if renderer.buffering() {
+                                    if let Some(error) = renderer.source_error() {
+                                        publish_error(&worker, revision, error);
+                                        break 'catch_up;
+                                    }
+                                    let state = worker.0.lock().unwrap();
+                                    if state.closed || state.revision != revision {
+                                        break;
+                                    }
+                                    drop(state);
+                                    std::thread::sleep(std::time::Duration::from_millis(1));
+                                    continue;
+                                }
                                 clock += 1;
                             }
                             let state = worker.0.lock().unwrap();
@@ -344,6 +361,10 @@ impl Worker {
                         if renderer.activate_at.is_none() {
                             continue;
                         }
+                    }
+                    if let Some(error) = renderer.source_error() {
+                        publish_error(&worker, revision, error);
+                        continue;
                     }
                     renderer.reset_track_peaks();
                     effect_audition::bind(&mut renderer, &bindings.exciter_solos);

@@ -46,6 +46,8 @@ pub struct Status {
     pub playing: AtomicBool,
     pub can_return_to_playback_start: AtomicBool,
     pub failed: AtomicBool,
+    pub source_failed: AtomicBool,
+    pub buffering: AtomicBool,
     pub meter: StereoMeter,
 }
 impl Status {
@@ -111,7 +113,8 @@ impl PreparedRenderer {
             .iter()
             .map(|t| meters[&t.id].clone())
             .collect();
-        let renderer = Renderer::new(plan);
+        let mut renderer = Renderer::new(plan);
+        renderer.prepare_streaming()?;
         let memory =
             performance::RendererMemoryLease::try_new(renderer.memory_usage().owned_bytes())?;
         Ok(Self {
@@ -703,6 +706,18 @@ impl AudioOutput {
     pub fn configure_cache(&self, profile: daw_engine::CacheProfile, editing: bool) {
         self.preparation.configure_cache(profile, editing);
     }
+    /// Control-thread access to worker-latched disk failures.
+    pub fn source_error(&self) -> Option<String> {
+        self.plan
+            .project
+            .tracks
+            .iter()
+            .flat_map(|track| &track.clips)
+            .filter(|clip| !clip.muted)
+            .filter_map(|clip| self.plan.audio_for_clip(clip))
+            .filter_map(|audio| audio.disk.as_ref())
+            .find_map(|disk| disk.error())
+    }
     pub fn take_preparation_error(&mut self) -> Option<String> {
         let error = self.preparation.take_error()?;
         if self
@@ -1244,8 +1259,19 @@ impl Callback {
     fn next_project_sample(&mut self) -> [f32; 2] {
         self.activate_scheduled();
         let sample = self.renderer.next_sample();
+        self.status
+            .buffering
+            .store(self.renderer.buffering(), Ordering::Relaxed);
+        if self.renderer.buffering() && self.renderer.source_failed() {
+            self.renderer.playing = false;
+            self.status.source_failed.store(true, Ordering::Relaxed);
+        }
         let audition = self.audition.next();
-        self.rendered_frames += 1;
+        // Worker activation deadlines use the project sample clock. A disk
+        // hold must not move that clock ahead of the transport/DSP state.
+        if !self.renderer.buffering() {
+            self.rendered_frames += 1;
+        }
         [sample[0] + audition[0], sample[1] + audition[1]]
     }
     fn discard_buffered_output(&mut self) {
@@ -1412,6 +1438,7 @@ mod tests {
             audio: HashMap::from([(
                 id,
                 daw_media::AudioData {
+                    disk: None,
                     sample_rate_hz: daw_core::SAMPLE_RATE,
                     samples: Arc::new(vec![[0.25, -0.25]; 48_000]),
                     metadata,

@@ -147,6 +147,13 @@ fn transform_audio(
     if !ratio.valid() {
         return Err(Error("Unsupported clip stretch ratio".into()));
     }
+    if audio.disk.is_some() {
+        if ratio.source_frames == ratio.output_frames && pitch == timestretch::Pitch::UNISON {
+            return Ok(audio.clone());
+        }
+        let resident = audio.materialized(cancelled)?;
+        return transform_audio(&resident, ratio, engine, pitch, cancelled);
+    }
     if engine.id == StretchEngineId::RubberBand && pitch.stages().len() > 1 {
         let mut prepared = audio.clone();
         for (index, stage) in pitch.stages().enumerate() {
@@ -378,6 +385,7 @@ pub fn prepared_audio(audio: &AudioData, samples: Vec<[f32; 2]>) -> AudioData {
         })
         .collect();
     let prepared = AudioData {
+        disk: None,
         sample_rate_hz: audio.sample_rate_hz,
         samples: Arc::new(samples),
         peaks: Arc::new(peaks),
@@ -393,6 +401,7 @@ mod tests {
     #[test]
     fn r3_changes_duration_without_changing_pitch_or_stereo_relationship() {
         let audio = AudioData {
+            disk: None,
             sample_rate_hz: daw_core::SAMPLE_RATE,
             samples: Arc::new(
                 (0..SAMPLE_RATE * 2)
