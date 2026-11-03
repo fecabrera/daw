@@ -8,7 +8,7 @@ use daw_unit_core::{
 #[derive(Clone)]
 pub struct AmbientReverb {
     core: Reverb,
-    offsets: ModulationSmoother<7>,
+    offsets: ModulationSmoother<8>,
 }
 fn parameters(s: &Settings) -> Parameters {
     Parameters {
@@ -16,7 +16,7 @@ fn parameters(s: &Settings) -> Parameters {
             s.decay_seconds,
             0.0,
             20.0,
-            15000.0,
+            s.lowpass_hz,
             0.0,
             s.bloom,
             s.tone,
@@ -30,7 +30,11 @@ fn parameters(s: &Settings) -> Parameters {
         gated: false,
         dark: false,
         drive_enabled: false,
+        drive_mode: Default::default(),
         highpass_enabled: s.highpass_enabled,
+        lowpass_enabled: s.lowpass_enabled,
+        highpass_slope: s.highpass_slope,
+        lowpass_slope: s.lowpass_slope,
     }
 }
 impl AmbientReverb {
@@ -52,16 +56,16 @@ impl AmbientReverb {
     pub fn set_output_peak_meter(&mut self, m: std::sync::Arc<daw_unit_core::BandMeter<3>>) {
         self.core.set_output_peak_meter(m);
     }
-    pub fn effective_parameters(&self) -> [f32; 7] {
+    pub fn effective_parameters(&self) -> [f32; 8] {
         let v = self.core.effective();
-        [v[0], v[5], v[6], v[7], v[8], v[9], v[10]]
+        [v[0], v[5], v[6], v[7], v[8], v[9], v[10], v[3]]
     }
     pub fn process_modulated_at(
         &mut self,
         input: [f32; 2],
         _: u64,
         _: f32,
-        offsets: [f32; 7],
+        offsets: [f32; 8],
     ) -> [f32; 2] {
         let o = self.offsets.process(offsets);
         let mut offsets = [0.0; 12];
@@ -72,6 +76,7 @@ impl AmbientReverb {
         offsets[8] = o[4];
         offsets[9] = o[5];
         offsets[10] = o[6];
+        offsets[3] = o[7];
         self.core.sample(input, offsets)
     }
 }
@@ -96,7 +101,7 @@ impl EffectUnit for AmbientReverb {
         self.offsets.reset();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        self.process_modulated_at(input, 0, 120.0, [0.0; 7])
+        self.process_modulated_at(input, 0, 120.0, [0.0; 8])
     }
 }
 impl ModulationDestination for AmbientReverb {

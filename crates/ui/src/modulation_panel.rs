@@ -660,9 +660,11 @@ pub(super) fn marker(
             offsets.map(|o| base * 2.0_f32.powf(o).clamp(20.0, 1000.0))
         }
         ModulationParameter::PlateLowPass => {
-            offsets.map(|o| base * 2.0_f32.powf(o).clamp(500.0, 15000.0))
+            offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(500.0, 15000.0))
         }
-        ModulationParameter::PlateDrive => offsets.map(|o| base + o.clamp(-12.0, 12.0)),
+        ModulationParameter::PlateDrive => {
+            offsets.map(|o| (base + o.clamp(-24.0, 24.0)).clamp(0.0, 12.0))
+        }
         ModulationParameter::ReverbWidth => offsets.map(|o| base + o.clamp(0.0, 1.0)),
         ModulationParameter::AmbientDecay => {
             offsets.map(|o| base * 2.0_f32.powf(o).clamp(1.0, 60.0))
@@ -798,11 +800,11 @@ pub(super) fn marker(
         ModulationParameter::PlateDecay => format!("{:.2} s", value),
         ModulationParameter::PlateHighPass => format!("{:.2} Hz", value),
         ModulationParameter::PlateLowPass => format!("{:.2} Hz", value),
-        ModulationParameter::PlateDrive => format!("{:.2} dB", value),
+        ModulationParameter::PlateDrive => format!("{:.0}%", value / 12.0 * 100.0),
         ModulationParameter::ReverbWidth => format!("{:.2} %", value * 100.0),
         ModulationParameter::AmbientDecay => format!("{:.2} s", value),
         ModulationParameter::AmbientBloom => format!("{:.2} %", value * 100.0),
-        ModulationParameter::AmbientTone => format!("{:.2} %", value * 100.0),
+        ModulationParameter::AmbientTone => knobs::format_frequency(20.0 + 100.0 * value),
         ModulationParameter::AmbientMotion => format!("{:.2} %", value * 100.0),
         ModulationParameter::ChorusDelay => format!("{value:.1} ms"),
         ModulationParameter::ChorusRate => format!("{value:.2} Hz"),
@@ -1185,6 +1187,9 @@ mod tests {
             ),
             (DriveGain, 0.2, 1.0, [0.2, 1.0]),
             (Tone, 0.5, -1.0, [0.0, 0.5]),
+            (PlateDrive, 2.4, -24.0, [0.0, 2.4]),
+            (PlateDrive, 2.4, 24.0, [2.4, 12.0]),
+            (PlateLowPass, 5000.0, -1.0, [2500.0, 5000.0]),
             (ColorStrength, 0.5, 1.0, [0.5, 1.0]),
             (ColorFrequency, 750.0, 3.0, [750.0, 2000.0]),
         ] {

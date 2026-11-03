@@ -67,7 +67,14 @@ pub fn generate(input: &str) -> Result<String> {
     )?;
     for (key, expected) in [
         ("schema_version", 1),
-        ("state_version", 1),
+        (
+            "state_version",
+            match MANIFEST_TYPE_ID {
+                daw_unit_core::PLATE_REVERB_TYPE_ID => 5,
+                daw_unit_core::AMBIENT_REVERB_TYPE_ID => 3,
+                _ => 1,
+            },
+        ),
         ("settings_version", i64::from(SETTINGS_VERSION)),
     ] {
         if root.get(key).and_then(Item::as_integer) != Some(expected) {

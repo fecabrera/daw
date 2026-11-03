@@ -7,7 +7,16 @@ use std::{
     io::{Read, Write},
 };
 
-pub const STATE_VERSION: u32 = 1;
+// Reverb states append discrete controls; other products retain their envelope.
+const AMBIENT_STATE: bool = matches!(MAGIC, b"DAWAMBI1");
+const PLATE_STATE: bool = matches!(MAGIC, b"DAWPLAT1");
+pub const STATE_VERSION: u32 = if PLATE_STATE {
+    5
+} else if AMBIENT_STATE {
+    3
+} else {
+    1
+};
 pub const MAX_STATE_BYTES: usize = 16 + 8 * Parameter::COUNT;
 
 /// A validated, copyable snapshot. State I/O runs outside the audio callback.
@@ -106,11 +115,21 @@ impl PluginState {
         bytes
     }
     pub fn decode(bytes: &[u8]) -> Result<Self, StateError> {
-        if bytes.len() != MAX_STATE_BYTES || &bytes[..8] != MAGIC {
+        // Only known older reverb payloads may omit appended controls.
+        let version = match bytes.len() {
+            n if n == MAX_STATE_BYTES => STATE_VERSION,
+            n if AMBIENT_STATE && n == 16 + 8 * 10 => 1,
+            n if AMBIENT_STATE && n == 16 + 8 * 11 => 2,
+            n if PLATE_STATE && n == 16 + 8 * 13 => 1,
+            n if PLATE_STATE && n == 16 + 8 * 15 => 2,
+            n if PLATE_STATE && n == 16 + 8 * 17 => 3,
+            n if PLATE_STATE && n == 16 + 8 * 18 => 4,
+            _ => return Err(StateError::InvalidEnvelope),
+        };
+        if &bytes[..8] != MAGIC {
             return Err(StateError::InvalidEnvelope);
         }
-        if bytes[8..12] != STATE_VERSION.to_le_bytes()
-            || bytes[12..16] != SETTINGS_VERSION.to_le_bytes()
+        if bytes[8..12] != version.to_le_bytes() || bytes[12..16] != SETTINGS_VERSION.to_le_bytes()
         {
             return Err(StateError::UnsupportedVersion);
         }
@@ -118,7 +137,25 @@ impl PluginState {
         for (parameter, chunk) in Parameter::ALL.into_iter().zip(bytes[16..].chunks_exact(8)) {
             let mut word = [0; 8];
             word.copy_from_slice(chunk);
-            state.set(parameter, f64::from_le_bytes(word))?;
+            let value = f64::from_le_bytes(word);
+            let value = if PLATE_STATE
+                && version < 5
+                && parameter.info().key == "drive_db"
+                && (-12.0..0.0).contains(&value)
+            {
+                0.0
+            } else {
+                value
+            };
+            state.set(parameter, value)?;
+        }
+        if AMBIENT_STATE
+            && version < 3
+            && let Some(parameter) = Parameter::ALL
+                .into_iter()
+                .find(|p| p.info().key == "lowpass_enabled")
+        {
+            state.set(parameter, 0.0)?;
         }
         Ok(state)
     }

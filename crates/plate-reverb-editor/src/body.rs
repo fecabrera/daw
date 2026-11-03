@@ -24,7 +24,7 @@ pub fn render(
             s,
             false,
             unit_control_height(),
-            &std::array::from_fn::<_, 8, _>(|_| None),
+            &std::array::from_fn::<_, 9, _>(|_| None),
             level,
         )
     });

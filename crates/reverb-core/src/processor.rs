@@ -15,7 +15,11 @@ pub struct Parameters {
     pub gated: bool,
     pub dark: bool,
     pub drive_enabled: bool,
+    pub drive_mode: daw_unit_core::PlateDriveMode,
     pub highpass_enabled: bool,
+    pub lowpass_enabled: bool,
+    pub highpass_slope: daw_unit_core::ReverbFilterSlope,
+    pub lowpass_slope: daw_unit_core::ReverbFilterSlope,
 }
 #[derive(Clone, Copy, Default)]
 struct Complex {
@@ -313,6 +317,7 @@ pub struct Reverb {
     cross: [f64; 2],
     low: [f64; 2],
     high: [f64; 2],
+    ambient_highpass: crate::filters::SlopeFilter,
     damping: [f64; 2],
     detector: f64,
     previous_shaper: [f64; 2],
@@ -320,11 +325,14 @@ pub struct Reverb {
     monitor: LevelMonitor<3>,
     effective: [f32; 12],
     mode_weight: ModulationRamp,
-    switches: [ModulationRamp; 4],
+    switches: [ModulationRamp; 5],
+    drive_modes: [ModulationRamp; 3],
+    drive_tone: [HighShelf; 2],
+    drive_tone_value: f64,
     bloom_transition: BloomTransition,
     control_countdown: u8,
-    input_low: [StateVariableFilter; 2],
-    input_high: [StateVariableFilter; 2],
+    input_low: crate::filters::SlopeFilter,
+    input_high: crate::filters::SlopeFilter,
     detector_high: [StateVariableFilter; 2],
     detector_shelf: [HighShelf; 2],
 }
@@ -370,6 +378,11 @@ impl Reverb {
             cross: [0.; 2],
             low: [0.; 2],
             high: [0.; 2],
+            ambient_highpass: crate::filters::SlopeFilter::new(
+                context.sample_rate_hz,
+                p.highpass_slope,
+                true,
+            ),
             damping: [0.; 2],
             detector: 0.,
             previous_shaper: [0.; 2],
@@ -377,12 +390,37 @@ impl Reverb {
             monitor: LevelMonitor::new(context.sample_rate_hz, p.values[11] != 0.),
             effective: p.values,
             mode_weight: ModulationRamp::new(if p.hq && !p.gated { 1. } else { 0. }),
-            switches: [p.gated, p.dark, p.drive_enabled, p.highpass_enabled]
-                .map(|b| ModulationRamp::new(f32::from(b))),
+            switches: [
+                p.gated,
+                p.dark,
+                p.drive_enabled,
+                p.highpass_enabled,
+                p.lowpass_enabled,
+            ]
+            .map(|b| ModulationRamp::new(f32::from(b))),
+            drive_modes: daw_unit_core::PlateDriveMode::ALL
+                .map(|mode| ModulationRamp::new(f32::from(mode == p.drive_mode))),
+            drive_tone: std::array::from_fn(|_| {
+                HighShelf::new(
+                    f64::from(context.sample_rate_hz),
+                    2500.0,
+                    std::f64::consts::FRAC_1_SQRT_2,
+                    (f64::from(p.values[6]) - 0.5) * 24.0,
+                )
+            }),
+            drive_tone_value: f64::from(p.values[6]),
             bloom_transition: BloomTransition::new(context.sample_rate_hz),
             control_countdown: 0,
-            input_low: std::array::from_fn(|_| StateVariableFilter::default()),
-            input_high: std::array::from_fn(|_| StateVariableFilter::default()),
+            input_low: crate::filters::SlopeFilter::new(
+                context.sample_rate_hz,
+                p.lowpass_slope,
+                false,
+            ),
+            input_high: crate::filters::SlopeFilter::new(
+                context.sample_rate_hz,
+                p.highpass_slope,
+                true,
+            ),
             detector_high: std::array::from_fn(|_| StateVariableFilter::default()),
             detector_shelf: std::array::from_fn(|_| {
                 HighShelf::new(f64::from(context.sample_rate_hz), 2500.0, 0.707, 12.0)
@@ -400,13 +438,25 @@ impl Reverb {
             (self.rate / 200.) as u32,
         );
         self.monitor.set_enabled(p.values[11] != 0.);
-        for (r, b) in
-            self.switches
-                .iter_mut()
-                .zip([p.gated, p.dark, p.drive_enabled, p.highpass_enabled])
-        {
+        for (r, b) in self.switches.iter_mut().zip([
+            p.gated,
+            p.dark,
+            p.drive_enabled,
+            p.highpass_enabled,
+            p.lowpass_enabled,
+        ]) {
             r.set(f32::from(b), (self.rate / 200.0) as u32);
         }
+        for (ramp, mode) in self
+            .drive_modes
+            .iter_mut()
+            .zip(daw_unit_core::PlateDriveMode::ALL)
+        {
+            ramp.set(f32::from(mode == p.drive_mode), (self.rate / 200.0) as u32);
+        }
+        self.ambient_highpass.retarget(p.highpass_slope);
+        self.input_high.retarget(p.highpass_slope);
+        self.input_low.retarget(p.lowpass_slope);
         self.flags = p;
     }
     pub fn heap_bytes(&self) -> u64 {
@@ -441,6 +491,7 @@ impl Reverb {
         self.cross = [0.; 2];
         self.low = [0.; 2];
         self.high = [0.; 2];
+        self.ambient_highpass.reset();
         self.damping = [0.; 2];
         self.detector = 0.;
         self.previous_shaper = [0.; 2];
@@ -450,17 +501,20 @@ impl Reverb {
             r.reset();
         }
         self.mode_weight.reset();
+        for filter in &mut self.drive_tone {
+            filter.reset();
+        }
+        for ramp in &mut self.drive_modes {
+            ramp.reset();
+        }
         for r in &mut self.switches {
             r.reset();
         }
         self.control_countdown = 0;
         self.bloom_transition.reset();
-        for f in self
-            .input_low
-            .iter_mut()
-            .chain(self.input_high.iter_mut())
-            .chain(self.detector_high.iter_mut())
-        {
+        self.input_low.reset();
+        self.input_high.reset();
+        for f in &mut self.detector_high {
             f.reset();
         }
         for f in &mut self.detector_shelf {
@@ -486,7 +540,7 @@ impl Reverb {
         v[1] = v[1].clamp(0., 300.);
         v[2] = v[2].clamp(20., 1000.);
         v[3] = v[3].clamp(500., 15000.);
-        v[4] = v[4].clamp(-12., 12.);
+        v[4] = v[4].clamp(0., 12.);
         for i in [5, 6, 7, 8, 10] {
             v[i] = v[i].clamp(0., 1.);
         }
@@ -499,7 +553,7 @@ impl Reverb {
         };
         let dry = input.map(|x| if x.is_finite() { f64::from(x) } else { 0. });
         let hq = f64::from(self.mode_weight.next_value());
-        let [gate, dark, drive_enabled, highpass_enabled] = self
+        let [gate, dark, drive_enabled, highpass_enabled, lowpass_enabled] = self
             .switches
             .each_mut()
             .map(ModulationRamp::next_value)
@@ -513,20 +567,39 @@ impl Reverb {
         let hp = if self.plate { v[2] } else { 20. + 100. * v[6] };
         let lc = 1. - (-std::f64::consts::TAU * lp.min(self.rate * 0.45) / self.rate).exp();
         let hc = 1. - (-std::f64::consts::TAU * hp / self.rate).exp();
+        let slope_weights = self.ambient_highpass.weights();
+        let high_weights = self.input_high.weights();
+        let low_weights = self.input_low.weights();
         for (ch, sample) in wet.iter_mut().enumerate() {
             self.low[ch] += lc * (*sample - self.low[ch]);
             self.high[ch] += hc * (self.low[ch] - self.high[ch]);
             *sample = if self.plate {
-                let low = self.input_low[ch].sample(
+                let low = self.input_low.sample_input(
+                    ch,
                     *sample,
                     lp.min(self.rate * 0.45),
-                    std::f64::consts::FRAC_1_SQRT_2,
                     self.rate,
-                    [1.0, 0.0, 0.0, 0.0],
+                    low_weights,
                 );
-                self.input_high[ch].high(low, hp, std::f64::consts::FRAC_1_SQRT_2, self.rate)
+                let low = low * lowpass_enabled + *sample * (1.0 - lowpass_enabled);
+                let high = self
+                    .input_high
+                    .sample_input(ch, low, hp, self.rate, high_weights);
+                high * highpass_enabled + low * (1.0 - highpass_enabled)
             } else {
-                self.low[ch] - self.high[ch] * highpass_enabled
+                let filtered = self.ambient_highpass.sample(
+                    ch,
+                    self.low[ch],
+                    self.low[ch] - self.high[ch],
+                    hp,
+                    self.rate,
+                    slope_weights,
+                );
+                let high = self.low[ch] * (1.0 - highpass_enabled) + filtered * highpass_enabled;
+                let low = self
+                    .input_low
+                    .sample_input(ch, high, v[3], self.rate, low_weights);
+                low * lowpass_enabled + high * (1.0 - lowpass_enabled)
             };
         }
         if self.plate {
@@ -628,19 +701,30 @@ impl Reverb {
             self.damping[ch] += c * (*convolved - self.damping[ch]);
         }
         wet = wet_width(self.damping, v[8]);
+        let drive_weights = crate::drive::weights(&mut self.drive_modes);
+        if self.plate {
+            if v[6] != self.drive_tone_value {
+                for filter in &mut self.drive_tone {
+                    filter.configure(
+                        self.rate,
+                        2500.0,
+                        std::f64::consts::FRAC_1_SQRT_2,
+                        (v[6] - 0.5) * 24.0,
+                    );
+                }
+                self.drive_tone_value = v[6];
+            }
+            let drive = 10_f64.powf(v[4] / 20.);
+            for (ch, sample) in wet.iter_mut().enumerate() {
+                let shaped =
+                    crate::drive::shape(*sample * drive, drive_weights) / drive.sqrt().max(0.1);
+                let toned = self.drive_tone[ch].sample(shaped);
+                *sample = *sample * (1.0 - drive_enabled) + toned * drive_enabled;
+            }
+        }
         let [gd, gw] = mix_gains(v[10], self.plate);
         let mut result = std::array::from_fn::<_, 2, _>(|ch| dry[ch] * gd + wet[ch] * gw);
         if self.plate {
-            if drive_enabled > 0.0 {
-                let drive = 10_f64.powf(v[4] / 20.);
-                result = result.map(|x| {
-                    let y = x * drive;
-                    let z = y * y;
-                    let shaped = y * (((z + 378.0) * z + 17325.0) * z + 135135.0)
-                        / (((28.0 * z + 3150.0) * z + 62370.0) * z + 135135.0);
-                    x * (1.0 - drive_enabled) + shaped / drive.sqrt().max(0.1) * drive_enabled
-                });
-            }
             result = result.map(|x| x * v[9]);
         } else {
             let detector = (0..2)

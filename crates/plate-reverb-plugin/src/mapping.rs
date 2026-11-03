@@ -6,16 +6,22 @@ pub fn update_settings(s: &PluginState, t: &mut Settings) {
     t.decay_seconds = s.get(P::Decay) as f32;
     t.highpass_hz = s.get(P::HighPass) as f32;
     t.lowpass_hz = s.get(P::LowPass) as f32;
+    t.drive_tone = s.get(P::Tone) as f32;
     t.drive_db = s.get(P::Drive) as f32;
     t.width = s.get(P::Width) as f32;
     t.level_db = daw_unit_core::gain::to_db_f32(s.get(P::Level));
     t.dry_wet = s.get(P::DryWet) as f32;
     t.gated = s.get(P::Gate) != 0.0;
     t.dark = s.get(P::Color) != 0.0;
+    t.drive_mode = daw_unit_core::PlateDriveMode::ALL[s.get(P::DriveMode) as usize];
     t.drive_enabled = s.get(P::DriveEnabled) != 0.0;
+    t.highpass_enabled = s.get(P::HighPassEnabled) != 0.0;
+    t.lowpass_enabled = s.get(P::LowPassEnabled) != 0.0;
+    t.highpass_slope = daw_unit_core::ReverbFilterSlope::ALL[s.get(P::HighPassSlope) as usize];
+    t.lowpass_slope = daw_unit_core::ReverbFilterSlope::ALL[s.get(P::LowPassSlope) as usize];
     t.hq = s.get(P::Quality) != 0.0;
 }
-pub fn values(s: &Settings) -> [f64; 13] {
+pub fn values(s: &Settings) -> [f64; 19] {
     [
         f64::from(!s.enabled),
         f64::from(s.predelay_ms),
@@ -30,6 +36,12 @@ pub fn values(s: &Settings) -> [f64; 13] {
         f64::from(s.dark),
         f64::from(s.drive_enabled),
         f64::from(s.hq),
+        f64::from(s.highpass_enabled),
+        f64::from(s.lowpass_enabled),
+        s.highpass_slope as u8 as f64,
+        s.lowpass_slope as u8 as f64,
+        s.drive_mode as u8 as f64,
+        f64::from(s.drive_tone),
     ]
 }
 

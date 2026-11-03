@@ -139,18 +139,11 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
         );
         out.textures_delta.clear();
     }
-    for note_mode in [false, true] {
+    for drive_enabled in [false, true] {
         let mut state = PluginState::default();
-        if note_mode {
-            if let Some(p) = Parameter::ALL
-                .into_iter()
-                .find(|p| p.info().key == "rate_mode")
-            {
-                state.set(p, 1.0).unwrap();
-            } else {
-                continue;
-            }
-        }
+        state
+            .set(Parameter::DriveEnabled, f64::from(drive_enabled))
+            .unwrap();
         let probe = context(0, 1.0);
         let mut settings = state.to_settings();
         let mut controls = vec![];
@@ -158,7 +151,7 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
             controls = super::probe_controls(ui, &mut settings)
         });
         for (parameter, rect) in controls {
-            if parameter.info().steps > 0 && parameter.info().key != "drive_enabled" {
+            if parameter.info().steps > 0 && !parameter.info().key.ends_with("_enabled") {
                 continue;
             }
             let screen =
@@ -242,4 +235,228 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
 #[test]
 fn new_plugin_defaults_match_builtin_defaults() {
     super::assert_builtin_defaults();
+}
+
+#[test]
+fn plate_strip_order_and_independent_filter_power() {
+    for highpass_enabled in [false, true] {
+        for lowpass_enabled in [false, true] {
+            let ctx = context(0, 1.0);
+            let mut settings = daw_unit_core::PlateReverbSettings {
+                highpass_enabled,
+                lowpass_enabled,
+                ..Default::default()
+            };
+            paint(&ctx, |ui| {
+                let b = body::render(ui, &mut settings, 0.0.into(), 0.0.into(), [0.0; 3].into());
+                let control = |p: Parameter| {
+                    b.controls[Parameter::ALL.iter().position(|v| *v == p).unwrap() - 1]
+                        .as_ref()
+                        .unwrap()
+                };
+                for (strip, parameters) in [
+                    (
+                        0,
+                        &[Parameter::Quality, Parameter::Gate, Parameter::Color][..],
+                    ),
+                    (1, &[Parameter::PreDelay, Parameter::Decay][..]),
+                    (
+                        2,
+                        &[
+                            Parameter::HighPass,
+                            Parameter::HighPassSlope,
+                            Parameter::HighPassEnabled,
+                        ][..],
+                    ),
+                    (
+                        3,
+                        &[
+                            Parameter::LowPass,
+                            Parameter::LowPassSlope,
+                            Parameter::LowPassEnabled,
+                        ][..],
+                    ),
+                    (
+                        4,
+                        &[
+                            Parameter::Drive,
+                            Parameter::DriveMode,
+                            Parameter::DriveEnabled,
+                            Parameter::Tone,
+                        ][..],
+                    ),
+                    (
+                        5,
+                        &[Parameter::Width, Parameter::Level, Parameter::DryWet][..],
+                    ),
+                ] {
+                    for p in parameters {
+                        assert!(b.sections[strip].contains_rect(control(*p).rect), "{p:?}");
+                    }
+                }
+                assert!(
+                    control(Parameter::Level).rect.bottom() < control(Parameter::Width).rect.top()
+                );
+                assert!(
+                    control(Parameter::Width).rect.bottom() < control(Parameter::DryWet).rect.top()
+                );
+                assert_eq!(
+                    control(Parameter::HighPassSlope).enabled(),
+                    highpass_enabled
+                );
+                assert_eq!(control(Parameter::LowPassSlope).enabled(), lowpass_enabled);
+                assert!(
+                    control(Parameter::HighPass).rect.bottom()
+                        < control(Parameter::HighPassSlope).rect.top()
+                );
+                assert!(
+                    control(Parameter::LowPass).rect.bottom()
+                        < control(Parameter::LowPassSlope).rect.top()
+                );
+                assert!(
+                    control(Parameter::HighPassSlope).rect.top()
+                        > control(Parameter::Width).rect.bottom()
+                );
+                assert!(
+                    (control(Parameter::HighPassSlope).rect.top()
+                        - control(Parameter::LowPassSlope).rect.top())
+                    .abs()
+                        < 0.5
+                );
+                assert_eq!(control(Parameter::HighPass).enabled(), highpass_enabled);
+                assert_eq!(control(Parameter::LowPass).enabled(), lowpass_enabled);
+                assert!(!control(Parameter::DriveMode).enabled());
+                assert!(!control(Parameter::Tone).enabled());
+                assert!(
+                    control(Parameter::Drive).rect.bottom() < control(Parameter::Tone).rect.top()
+                );
+                assert!(
+                    control(Parameter::DriveMode).rect.bottom()
+                        < control(Parameter::Drive).rect.top()
+                );
+                assert!(
+                    (control(Parameter::DriveMode).rect.top()
+                        - control(Parameter::Quality).rect.top())
+                    .abs()
+                        < 0.5
+                );
+                assert!(control(Parameter::HighPassEnabled).enabled());
+                assert!(control(Parameter::LowPassEnabled).enabled());
+                assert!(
+                    (control(Parameter::HighPassEnabled).rect.center().y
+                        - control(Parameter::LowPassEnabled).rect.center().y)
+                        .abs()
+                        < 0.5
+                );
+            });
+        }
+    }
+}
+
+#[test]
+fn plate_mode_dropdowns_publish_only_their_host_parameter() {
+    fn frame(
+        ctx: &egui::Context,
+        editor: &mut Editor,
+        events: Vec<Event>,
+    ) -> Vec<egui::epaint::ClippedShape> {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(WIDTH as f32, HEIGHT as f32),
+                )),
+                focused: true,
+                events,
+                ..Default::default()
+            },
+            |ui| editor.show(ui),
+        );
+        output.textures_delta.clear();
+        output.shapes
+    }
+    fn button(pos: egui::Pos2, pressed: bool) -> Event {
+        Event::PointerButton {
+            pos,
+            pressed,
+            button: egui::PointerButton::Primary,
+            modifiers: Default::default(),
+        }
+    }
+    fn find_label(shape: &egui::Shape, name: &str) -> Option<egui::Pos2> {
+        match shape {
+            egui::Shape::Text(t) if t.galley.text() == name => {
+                Some(t.pos + t.galley.rect.center().to_vec2())
+            }
+            egui::Shape::Vec(shapes) => shapes.iter().find_map(|s| find_label(s, name)),
+            _ => None,
+        }
+    }
+    for parameter in [
+        Parameter::HighPassSlope,
+        Parameter::LowPassSlope,
+        Parameter::DriveMode,
+    ] {
+        let mut state = PluginState::default();
+        state.set(Parameter::HighPassEnabled, 1.0).unwrap();
+        state.set(Parameter::DriveEnabled, 1.0).unwrap();
+        let probe = context(0, 1.0);
+        let mut rect = Rect::NOTHING;
+        paint(&probe, |ui| {
+            let b = body::render(
+                ui,
+                &mut state.to_settings(),
+                0.0.into(),
+                0.0.into(),
+                [0.0; 3].into(),
+            );
+            rect = b.controls[Parameter::ALL.iter().position(|p| *p == parameter).unwrap() - 1]
+                .as_ref()
+                .unwrap()
+                .rect;
+        });
+        let model = Arc::new(Model::default());
+        model.publish(state);
+        let ctx = context(0, 1.0);
+        let mut editor = Editor::new(model.clone(), || {});
+        frame(&ctx, &mut editor, vec![]);
+        let pos = rect.center();
+        frame(
+            &ctx,
+            &mut editor,
+            vec![Event::PointerMoved(pos), button(pos, true)],
+        );
+        frame(&ctx, &mut editor, vec![button(pos, false)]);
+        let shapes = frame(&ctx, &mut editor, vec![]);
+        let target = shapes
+            .iter()
+            .find_map(|s| {
+                find_label(
+                    &s.shape,
+                    if parameter == Parameter::DriveMode {
+                        "Tube"
+                    } else {
+                        "24 dB/oct"
+                    },
+                )
+            })
+            .expect("slope menu option");
+        frame(
+            &ctx,
+            &mut editor,
+            vec![Event::PointerMoved(target), button(target, true)],
+        );
+        frame(&ctx, &mut editor, vec![button(target, false)]);
+        let mut edits = vec![];
+        while let Some(edit) = model.pop() {
+            edits.push(edit);
+        }
+        assert_eq!(edits.len(), 3);
+        assert!(matches!(edits[0], Edit::Begin(p) if p == parameter));
+        assert!(matches!(
+            edits[1],
+            Edit::Value(p, 2.0) if p == parameter
+        ));
+        assert!(matches!(edits[2], Edit::End(p) if p == parameter));
+    }
 }

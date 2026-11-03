@@ -29,7 +29,7 @@ fn show_inner(
 ) -> (Bounds, egui::Response) {
     let (compact, height) = dimensions;
     let bases = s.values();
-    let markers: [_; 7] = std::array::from_fn(|i| {
+    let markers: [_; 8] = std::array::from_fn(|i| {
         crate::modulation_panel::marker(
             &s.modulations,
             sources,
@@ -51,7 +51,7 @@ fn show_inner(
  ui.spacing_mut().item_spacing = egui::Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
  b = daw_unit_ui::ambient_reverb::show(ui, s, compact, crate::envelope_panel::body_height(compact), &markers, level);
 if open {
- let last = b.sections[2];
+ let last = b.sections[daw_unit_ui::ambient_reverb::STRIP_COUNT - 1];
                     panels::unit_divider(ui, last.right(), last.y_range().into());
                     crate::modulation_panel::body(ui, &mut s.modulations, sources, &P::AMBIENT_REVERB, <AmbientReverbSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
                 }

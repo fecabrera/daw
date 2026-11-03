@@ -4,11 +4,11 @@ use crate::{
 };
 use daw_unit_core::{ModulationParameter as P, PlateReverbSettings as Settings};
 use egui::{Rect, Ui};
-pub const STRIP_COUNT: usize = 5;
+pub const STRIP_COUNT: usize = 6;
 pub struct Bounds {
     pub power: Rect,
     pub sections: [Rect; STRIP_COUNT],
-    pub controls: [Rect; 12],
+    pub controls: [Rect; 18],
     pub meter: Rect,
 }
 impl Default for Bounds {
@@ -16,7 +16,7 @@ impl Default for Bounds {
         Self {
             power: Rect::NOTHING,
             sections: [Rect::NOTHING; STRIP_COUNT],
-            controls: [Rect::NOTHING; 12],
+            controls: [Rect::NOTHING; 18],
             meter: Rect::NOTHING,
         }
     }
@@ -26,7 +26,7 @@ pub fn show(
     s: &mut Settings,
     compact: bool,
     height: f32,
-    markers: &[Option<ModulationMarker>; 8],
+    markers: &[Option<ModulationMarker>; 9],
     level: meters::OutputLevel<'_>,
 ) -> Bounds {
     let mut b = Bounds::default();
@@ -38,7 +38,7 @@ pub fn show(
                     if !compact {
                         for row in 0..3 {
                             let mut control = |ui: &mut Ui, s: &mut Settings| match (section, row) {
-                                (0, 0) => {
+                                (1, 0) => {
                                     let r = ui.add_enabled(
                                         true,
                                         Knob::new(
@@ -50,7 +50,7 @@ pub fn show(
                                     b.controls[0] = r.rect;
                                     r
                                 }
-                                (0, 1) => {
+                                (1, 1) => {
                                     let r = ui.add_enabled(
                                         true,
                                         Knob::new(
@@ -62,7 +62,7 @@ pub fn show(
                                     b.controls[1] = r.rect;
                                     r
                                 }
-                                (3, 1) => {
+                                (0, 1) => {
                                     let r = crate::reverb_controls::switch(
                                         ui,
                                         &mut s.gated,
@@ -74,9 +74,9 @@ pub fn show(
                                     b.controls[8] = r.rect;
                                     r
                                 }
-                                (1, 0) => {
+                                (2, 0) => {
                                     let r = ui.add_enabled(
-                                        true,
+                                        s.highpass_enabled,
                                         Knob::new(
                                             &mut s.highpass_hz,
                                             parameter_knobs::destination(P::PlateHighPass),
@@ -86,9 +86,9 @@ pub fn show(
                                     b.controls[2] = r.rect;
                                     r
                                 }
-                                (1, 1) => {
+                                (3, 0) => {
                                     let r = ui.add_enabled(
-                                        true,
+                                        s.lowpass_enabled,
                                         Knob::new(
                                             &mut s.lowpass_hz,
                                             parameter_knobs::destination(P::PlateLowPass),
@@ -98,7 +98,7 @@ pub fn show(
                                     b.controls[3] = r.rect;
                                     r
                                 }
-                                (3, 2) => {
+                                (0, 2) => {
                                     let r = crate::reverb_controls::switch(
                                         ui,
                                         &mut s.dark,
@@ -110,7 +110,7 @@ pub fn show(
                                     b.controls[9] = r.rect;
                                     r
                                 }
-                                (2, 0) => {
+                                (4, 1) => {
                                     let r = ui.add_enabled(
                                         s.drive_enabled,
                                         Knob::new(
@@ -122,11 +122,52 @@ pub fn show(
                                     b.controls[4] = r.rect;
                                     r
                                 }
-                                (1, 2) | (2, 1) | (2, 2) | (4, 2) => ui.allocate_response(
+                                (2, 2) => {
+                                    let r = crate::reverb_controls::filter_slope(
+                                        ui,
+                                        &mut s.highpass_slope,
+                                        s.highpass_enabled,
+                                        "High-pass slope",
+                                    );
+                                    b.controls[14] = r.rect;
+                                    r
+                                }
+                                (3, 2) => {
+                                    let r = crate::reverb_controls::filter_slope(
+                                        ui,
+                                        &mut s.lowpass_slope,
+                                        s.lowpass_enabled,
+                                        "Low-pass slope",
+                                    );
+                                    b.controls[15] = r.rect;
+                                    r
+                                }
+                                (4, 0) => {
+                                    let r = crate::reverb_controls::plate_drive_mode(
+                                        ui,
+                                        &mut s.drive_mode,
+                                        s.drive_enabled,
+                                    );
+                                    b.controls[16] = r.rect;
+                                    r
+                                }
+                                (4, 2) => {
+                                    let r = ui.add_enabled(
+                                        s.drive_enabled,
+                                        Knob::new(
+                                            &mut s.drive_tone,
+                                            parameter_knobs::destination(P::Tone),
+                                        )
+                                        .modulated(markers[8].as_ref(), &mut s.modulation_open),
+                                    );
+                                    b.controls[17] = r.rect;
+                                    r
+                                }
+                                (1, 2) | (2, 1) | (3, 1) => ui.allocate_response(
                                     egui::vec2(ui.available_width(), knobs::CHOICE_SIZE),
                                     egui::Sense::hover(),
                                 ),
-                                (3, 0) => {
+                                (0, 0) => {
                                     let r = crate::reverb_controls::switch(
                                         ui,
                                         &mut s.hq,
@@ -138,7 +179,7 @@ pub fn show(
                                     b.controls[11] = r.rect;
                                     r
                                 }
-                                (0, 2) => {
+                                (5, 1) => {
                                     let r = ui.add_enabled(
                                         true,
                                         Knob::new(
@@ -150,7 +191,7 @@ pub fn show(
                                     b.controls[5] = r.rect;
                                     r
                                 }
-                                (4, 0) => {
+                                (5, 0) => {
                                     let r = ui.add_enabled(
                                         true,
                                         Knob::new(
@@ -162,7 +203,7 @@ pub fn show(
                                     b.controls[6] = r.rect;
                                     r
                                 }
-                                (4, 1) => {
+                                (5, 2) => {
                                     let r = ui.add_enabled(
                                         true,
                                         Knob::new(
@@ -176,8 +217,11 @@ pub fn show(
                                 }
                                 _ => unreachable!(),
                             };
-                            if section == 3
-                                || matches!((section, row), (1, 2) | (2, 1) | (2, 2) | (4, 2))
+                            if section == 0
+                                || matches!(
+                                    (section, row),
+                                    (1, 2) | (2, 1) | (2, 2) | (3, 1) | (3, 2) | (4, 0)
+                                )
                             {
                                 control(ui, s);
                             } else {
@@ -193,19 +237,28 @@ pub fn show(
                             panels::COMPACT_BUTTON_SIZE
                         },
                         |ui| {
-                            if section == 2 {
-                                let mut response =
-                                    rows::power_label(ui, "Drive", "Toggle Drive", s.drive_enabled);
-                                b.controls[10] = response.rect;
+                            let power = match section {
+                                2 => {
+                                    Some(("Hi-Pass", "Toggle Hi-Pass", &mut s.highpass_enabled, 12))
+                                }
+                                3 => {
+                                    Some(("Lo-Pass", "Toggle Lo-Pass", &mut s.lowpass_enabled, 13))
+                                }
+                                4 => Some(("Drive", "Toggle Drive", &mut s.drive_enabled, 10)),
+                                _ => None,
+                            };
+                            if let Some((label, tooltip, enabled, slot)) = power {
+                                let mut response = rows::power_label(ui, label, tooltip, *enabled);
+                                b.controls[slot] = response.rect;
                                 if response.clicked() {
-                                    s.drive_enabled = !s.drive_enabled;
+                                    *enabled = !*enabled;
                                     response.mark_changed();
                                 }
                                 response
                             } else {
                                 rows::unit_label(
                                     ui,
-                                    ["Reverb", "Filters", "", "Options", "Out"][section],
+                                    ["Options", "Reverb", "", "", "", "Out"][section],
                                 )
                             }
                         },
@@ -216,7 +269,7 @@ pub fn show(
             if section > 0 {
                 panels::unit_divider(ui, strip.left(), strip.y_range().into());
             }
-            if section == 4 && !compact {
+            if section == 5 && !compact {
                 b.meter =
                     meters::effect_output_level(ui, strip, panels::PANEL_MARGIN, level, s.enabled);
             }

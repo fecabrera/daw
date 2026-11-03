@@ -18,30 +18,71 @@ readouts and value editing. Show standard range labels below each knob: `20` / `
 for High-pass and `500` / `15k` for Low-pass. Keep this in the shared body for DAW
 and standalone editor parity.
 
-| Plate row | Reverb | Filters | Drive | Options | Out |
-| --- | --- | --- | --- | --- | --- |
-| Top | Pre-delay | High-pass | Drive | ECO/HQ | Level |
-| Middle | Decay | Low-pass | Empty | Normal/Gated | Dry/Wet |
-| Bottom | Width | Empty | Empty | Bright/Dark | Empty |
+| Plate row | Options | Reverb | Hi-Pass | Lo-Pass | Drive | Out |
+| --- | --- | --- | --- | --- | --- | --- |
+| Top | ECO/HQ | Pre-delay | High-pass | Low-pass | Mode | Level |
+| Middle | Normal/Gated | Decay | Empty | Empty | Drive | Width |
+| Bottom | Bright/Dark | Empty | Slope | Slope | Tone | Dry/Wet |
 
-| Ambient row | Reverb | Hi-Pass | Out |
-| --- | --- | --- | --- |
-| Top | Decay | Tone | ECO/HQ |
-| Middle | Bloom | Modulation | Level |
-| Bottom | Width | Empty | Dry/Wet |
+| Ambient row | Options | Reverb | Hi-Pass | Lo-Pass | Out |
+| --- | --- | --- | --- | --- | --- |
+| Top | ECO/HQ | Decay | Frequency | Low-pass | Level |
+| Middle | Empty | Bloom | Empty | Empty | Width |
+| Bottom | Empty | Modulation | Slope | Slope | Dry/Wet |
 
 Gate selects a short algorithm, not a level-triggered gate. Disable the Quality
-control while gated, retaining its saved choice. Drive power disables only the
-Drive amount control. Confirm Color's bright/dark mapping before freezing labels.
+control while gated, retaining its saved choice. Drive power disables Mode, Drive and Tone, retaining their saved values. Confirm Color's bright/dark mapping before freezing labels.
 
-Plate has five strips and a 450-point standalone body. Its Options strip groups
-Quality, Tail and Color; Width is below Decay in Reverb. Drive power uses
-`rows::power_label` in the Drive strip footer, with gain at the top. Options is
-between Drive and Out. Out starts with Level, then Dry/Wet. Ambient's
+Plate has six strips and a 540-point standalone body. Options is first and groups
+Quality, Tail and Color. Reverb holds Pre-delay and Decay. Hi-Pass and Lo-Pass
+have independent `rows::power_label` footers and top-row frequency knobs; disable
+each knob and its bottom Slope dropdown while its filter is off, retaining the
+saved values. Each Slope selector offers 6/12/24 dB/oct, defaulting to 12.
+Use first-, second- and fourth-order Butterworth responses with approximately
+−3 dB at cutoff and no resonance boost. Retain the original 12 dB path; keep all
+slope paths warm and crossfade changes over 5 ms through the shared transition
+logic. Drive uses the same footer component. Out holds Level, Width and Dry/Wet.
+Both filters default on, including when loading legacy project settings. Keep
+both filter histories warm and ramp their wet-input bypass over 5 ms without
+clearing the reverb tail. Append plugin parameters 113/114 for Hi-Pass/Lo-Pass
+power. Append parameters 115/116 for the discrete Hi-Pass/Lo-Pass slope choices
+0/1/2. Plate's v3 state decoder accepts v1/v2 states with 12 dB/oct slopes;
+v1 states also default both filters to enabled. Missing project slope fields
+default to 12 dB/oct. Slopes remain unmodulated and use the shared Ambient-style
+selector in both editors.
+Plate Drive adds an unmodulated top-row Mode selector: Soft/Hard/Tube, default
+Soft. Retain the original rational soft transfer function, add a symmetric ±1
+hard ceiling and biased asymmetric tanh Tube curve with exact silence and unity
+small-signal slope. Retain shared input gain, partial gain compensation, power
+ramps and processing of only the wet branch before the dry/wet blend.
+At 0% wet, Drive amount, mode and power must not alter the dry signal. Level
+continues to apply after the blend. Crossfade modes over
+5 ms with normalized shared ramps, including interrupted changes, without clearing
+reverb history. Append plugin parameter 117 (0/1/2); Plate v4 accepts v1/v2/v3
+states with Soft as the missing-mode default. Missing project fields also use Soft.
+Ambient's
 `Hi-Pass` power/label replaces the Texture footer and aligns with the other strip
-footers, including compact mode. Its third control row remains reserved so knob
-and footer alignment matches Drive v2. Hi-Pass does not disable Tone or Modulation.
-Keep the host parameter identity and response binding unchanged.
+footers, including compact mode. Reverb holds Decay, Bloom and Modulation.
+Hi-Pass holds Frequency at the top and Slope at the bottom. Ambient has five strips and a 450-point
+standalone body. Hi-Pass disables Frequency and Slope when off, retaining their
+saved values. Modulation remains enabled independently of Hi-Pass.
+Frequency uses the shared frequency formatter, logarithmic knob travel and 20/120 Hz
+endpoint labels, with a 70 Hz reset. Retain the normalized `tone` field and host
+parameter identity; convert it to Hz as `20 + 100 * tone` for presentation.
+Keep existing response bindings unchanged; append Slope as a discrete selector.
+Slope choices are 6, 12 and 24 dB/oct, defaulting to 6. The 6 dB path retains the
+legacy one-pole filter. The higher slopes use second/fourth-order Butterworth
+filters with approximately −3 dB at cutoff and no resonance boost. Keep all paths
+warm, crossfade their outputs over 5 ms with shared ramps, and retain the reverb
+tail on edits. Do not allocate or reset filter histories on slope changes.
+Persist `highpass_slope`; absent legacy fields default to 6 dB/oct. Plugin parameter
+110 stores 0/1/2, preserving prior IDs. Ambient's v3 envelope reads v1/v2 states. Parameters 111/112/113 append Lo-Pass
+frequency/power/slope. The new independent wet-input Lo-Pass uses Plate's shared
+500–15000 Hz frequency control, bottom 6/12/24 dB/oct slope selector and power
+footer. New instances default to 15 kHz, On and 12 dB/oct; legacy projects/states
+load it Off to preserve prior audio. Keep the existing brightness/damping path.
+Reuse the prepared low-pass bank, 5 ms power/slope ramps, shared modulation and
+telemetry. Append the shared low-pass destination to Ambient's parameter list.
 
 ## Processing ownership
 
@@ -49,8 +90,8 @@ Keep the host parameter identity and response binding unchanged.
 own the two processing chains. `unit-core` owns versioned settings and
 typed shared modulation. Backend types must stay private.
 
-Plate: wet LP/HP/Color filters, stereo preparation, tank, wet width, curved mix,
-optional amplifier, Level. Ambient: wet HP, diffusion, tank, wet width, curved mix,
+Plate: wet LP/HP/Color filters, stereo preparation, tank, wet width, optional
+amplifier, curved mix, Level. Ambient: wet HP, diffusion, tank, wet width, curved mix,
 Level, transformer. The Ambient detector consumes the previous sample's shaper
 output. Preserve a continuously generated kernel stream; a fixed impulse response
 does not define the analyzed primitive.
@@ -70,7 +111,14 @@ state; loops retain tails. External host suspension is a separate lifecycle even
 
 Plate Decay is 0.3–15 s, default 3 s; pre-delay is 0–300 ms, default zero.
 High-pass is 20–1000 Hz, default 20 Hz; low-pass is 500–15000 Hz, default 15000 Hz.
-Drive is −12..+12 dB, default zero and disabled. Ambient Decay is 1–60 s, default
+Drive is 0–100% (0–12 dB internally), default 20% (2.4 dB) and disabled.
+Tone uses the shared Drive Tone control and a post-shaping 2.5 kHz high shelf,
+−12..+12 dB, default 50%/neutral. It remains on the wet branch inside Drive bypass.
+Reuse the shared Tone modulation parameter, routing, smoothing and telemetry;
+append Tone to Plate's destination list without moving prior snapshot positions.
+Negative legacy base gains map to zero; retain positive saved gains. Plate plugin
+v5 appends Tone parameter 118, defaults older states to neutral Tone and migrates
+old negative Drive values. Current base Drive validation rejects negative values. Ambient Decay is 1–60 s, default
 7.5 s. Bloom and Tone default to 0.5; Modulation defaults to the captured 0.4975.
 Both default to ECO, 100% width, 50% mix, and unity Level. Level uses the common
 exact-silence..+12 dB scale, deliberately extending the reference attenuation bound.
@@ -84,8 +132,8 @@ discrete modes remain unmodulated.
 
 Each product needs its own manifest, typed plugin model and editor, CLAP and VST3
 targets over shared format sources. Freeze distinct public identities and explicit
-parameter IDs before release. Plate has 13 parameters including Bypass; Ambient
-has 10. Appearance and meters remain outside audio parameter state. Reuse bounded
+parameter IDs before release. Plate has 19 parameters including Bypass; Ambient
+has 14. Appearance and meters remain outside audio parameter state. Reuse bounded
 state publication, real widget gesture capture, native child windows, packaging
 and platform CI. Both hosts call the same body renderers.
 

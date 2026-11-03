@@ -7174,3 +7174,139 @@ Executed locally on macOS arm64:
 Native Windows execution and an updated GitHub CI run remain required to confirm that the reported crash is resolved. No native Windows runtime result is claimed. Hardware format negotiation, repeated actual Settings refresh and live playback/device switching remain separate device checks.
 
 - [Harmonic Lift](harmonic-lift.md): native six-branch enhancement and CLAP/VST3 validation.
+
+## Ambient Reverb Hi-Pass slope selector — 2026-11-03
+
+Added the shared Frequency/Slope/Modulation rows, with discrete 6/12/24 dB/oct
+choices. Hi-Pass power disables all three controls while retaining their values.
+The 6 dB path retains the legacy filter. The higher slopes use Butterworth
+filters. Warm parallel paths crossfade over 5 ms; interrupted transitions restart
+all weights together without clearing the tail. Legacy project fields and
+version-1 plugin states default to 6 dB/oct. Ambient plugin state version 2 appends
+parameter 110 without changing prior IDs or other products' state versions.
+
+Executed locally on macOS:
+
+- `cargo test -p daw-reverb-core -p daw-ambient-reverb -p daw-ambient-reverb-plugin -p daw-ambient-reverb-editor -p daw-unit-ui -p daw-unit-core -p daw-plate-reverb -p daw-plate-reverb-plugin -p daw-saturator-plugin -p daw-drive-plugin -p daw-ambient-reverb-clap -p daw-ambient-reverb-vst3 --lib --tests --features allocation-check --offline`: 163 passed. The explicit release-only performance probe remains ignored. Coverage includes six-rate cutoff/attenuation, interrupted transitions, reset, tail retention, legacy state migration, shared editor meshes and dropdown gestures, and CLAP/VST3 processing/automation without callback heap work.
+- `cargo test -p daw-ui reverbs_use_shared_catalog_controls_on_track_master_and_instrument --lib --offline`: passed.
+- `cargo test -p daw-project --test reverbs --offline`: passed, including save/reopen/export with the 24 dB/oct setting.
+- `cargo test -p daw-ambient-reverb-clap -p daw-ambient-reverb-vst3 --doc --features allocation-check --offline`: passed. An earlier concurrent build's rustdoc dependency lookup failed; the isolated retry passed.
+- Strict all-target Clippy passed for `daw-reverb-core`, `daw-ambient-reverb`, `daw-ambient-reverb-plugin`, `daw-ambient-reverb-editor` and `daw-unit-ui`. Changed Rust files passed rustfmt; `git diff --check` passed.
+
+Native external-host attachment, listening, hardware playback and device deadline
+checks were not run. Synthetic host checks do not establish those results.
+
+## Plate Reverb filter strips and power — 2026-11-03
+
+Plate now uses six shared strips: Options, Reverb, Hi-Pass, Lo-Pass, Drive and Out.
+Out holds Width, Level and Dry/Wet. The two filter strips reuse the shared power
+footer; each button disables its knob, retains its frequency and ramps only its
+own wet-input filter over 5 ms. Filter histories and the reverb tail remain live.
+Both filters default on for new and legacy projects. Plugin v2 adds parameters
+113/114 and accepts v1 states with both filters on; existing IDs remain unchanged.
+
+Executed locally on macOS:
+
+- `cargo test -p daw-plate-reverb-editor -p daw-plate-reverb-plugin -p daw-plate-reverb -p daw-reverb-core -p daw-unit-ui -p daw-unit-core --lib --tests --offline`: passed, including six-strip geometry, shared editor meshes, independent power enablement and gestures, and legacy settings/state migration. The release-only timing probe remains ignored.
+- `cargo test -p daw-plate-reverb -p daw-plate-reverb-plugin -p daw-ambient-reverb -p daw-ambient-reverb-plugin -p daw-saturator-plugin --lib --tests --offline`: passed, including independent filter audio, bypassed-frequency invariance, tail retention and shared-state regressions.
+- `cargo test -p daw-plate-reverb-clap -p daw-plate-reverb-vst3 --lib --tests --features allocation-check --offline`: 15 passed, including six-rate processing, timed automation and callback heap checks. Both products' documentation builds also passed.
+- The targeted DAW track/Master/instrument catalog test passed. `cargo test -p daw-project --test reverbs --offline` passed, including save/reopen/export with Plate Hi-Pass disabled.
+- Strict all-target Clippy passed for `daw-reverb-core`, `daw-plate-reverb`, `daw-plate-reverb-plugin`, `daw-plate-reverb-editor` and `daw-unit-ui`. Changed Rust files passed rustfmt; `git diff --check` passed.
+
+Native external-host attachment, listening, hardware playback and device deadline
+checks were not run. Synthetic host checks do not establish those results.
+
+## Plate Reverb Hi-Pass and Lo-Pass slopes — 2026-11-03
+
+Both filter strips now have bottom-row Slope dropdowns with 6/12/24 dB/oct
+choices and 12 dB/oct defaults. Out holds Level, Width and Dry/Wet. The shared
+selector and warm parallel filter paths serve both reverbs; Ambient retains its
+original 6 dB path and saved defaults. Plate retains its original 12 dB path and
+uses bilinear first-order and fourth-order Butterworth alternatives. Slope changes
+crossfade over 5 ms without clearing the tail. Power disables each frequency knob
+and slope selector while retaining their values. Missing project slope fields
+and plugin v1/v2 states default to 12 dB/oct; v2 filter power settings survive.
+Plate v3 appends parameters 115/116 without changing prior IDs.
+
+Executed locally on macOS:
+
+- The targeted shared core/UI, Plate and Ambient DSP/editor/plugin, and Saturator state regression command passed 148 tests. Coverage includes six-rate high/low frequency responses against Butterworth equations, cutoff alignment, all nine Plate slope combinations, tail retention, independent selector bindings, rendering parity, legacy state migration and saved defaults.
+- `cargo test -p daw-plate-reverb-clap -p daw-plate-reverb-vst3 --lib --tests --features allocation-check --offline`: 15 passed. All choices matched portable DSP at all six rates; timed automation and processing passed callback heap checks.
+- After caching the new one-pole coefficients, the complete `daw-reverb-core` and `daw-plate-reverb` library/integration tests passed again. The CLAP/VST3 dense-automation callback checks also passed again.
+- The targeted DAW track/Master/instrument catalog test passed. `cargo test -p daw-project --test reverbs --offline` passed, including independent 6/24 dB/oct saved slope settings and export.
+- Strict all-target Clippy passed for `daw-reverb-core`, `daw-plate-reverb`, `daw-plate-reverb-plugin`, `daw-plate-reverb-editor` and `daw-unit-ui`. Changed Rust files passed rustfmt; `git diff --check` passed. The explicit release-only timing probe remains ignored.
+
+Native external-host attachment, listening, hardware playback and device deadline
+checks were not run. Synthetic host checks do not establish those results.
+
+## Plate Reverb Drive modes — 2026-11-03
+
+Drive now starts with Mode (Soft/Hard/Tube), followed by the amount knob. Both
+editors use the shared body and dropdown conventions. Drive power disables both
+controls and retains their values. Soft preserves the original rational transfer;
+Hard clips at ±1 before gain compensation; Tube uses biased asymmetric tanh with
+exact silence and unity small-signal slope. All modes share the existing input
+gain, partial compensation and complete-blend position before Level. Mode changes
+crossfade over 5 ms with normalized shared ramps and do not clear reverb history.
+Missing project fields and plugin v1/v2/v3 states default to Soft. Plate v4 appends
+parameter 117 without changing existing identities or parameter IDs.
+
+Executed locally on macOS:
+
+- Targeted Reverb core, Plate DSP/editor/plugin, unit settings/UI, Ambient plugin and Saturator state regressions: 142 passed. Coverage includes curve symmetry/asymmetry, hard ceilings, silence, small-signal gain, interrupted fades, six-rate mode distinctions, bypass invariance, reset, legacy state migration and editor parity.
+- The final `daw-plate-reverb-editor` and `daw-plate-reverb-plugin` library/integration run passed 13 tests after moving Mode above the amount knob. It includes the actual Tube menu gesture and parameter binding, disabled controls and top-row alignment.
+- `cargo test -p daw-plate-reverb-clap -p daw-plate-reverb-vst3 --lib --tests --features allocation-check --offline`: 15 passed, including six-rate direct-DSP comparisons and dense timed automation without callback heap work. Both products' documentation builds passed.
+- The targeted DAW track/Master/instrument catalog test passed. `cargo test -p daw-project --test reverbs --offline` passed, including saving, reopening and exporting with Tube selected.
+- Strict all-target Clippy passed for `daw-reverb-core`, `daw-plate-reverb`, `daw-plate-reverb-plugin`, `daw-plate-reverb-editor` and `daw-unit-ui`. Changed Rust files passed rustfmt; `git diff --check` passed. The release-only timing probe remains ignored.
+
+Native external-host attachment, listening, hardware playback and device deadline
+checks were not run. Synthetic host checks do not establish those results.
+
+## Plate Reverb wet-only Drive — 2026-11-03
+
+Moved Plate Drive after wet Width and before the curved dry/wet blend. Soft,
+Hard and Tube now affect only the wet branch. Drive amount, mode, power ramps
+and gain compensation use the existing paths. Out Level still applies after the
+blend. This changes enabled Drive behavior for existing settings at partial mix;
+no state fields or parameter identities changed.
+
+Executed locally on macOS:
+
+- `cargo test -p daw-plate-reverb -p daw-reverb-core -p daw-plate-reverb-plugin -p daw-ambient-reverb --lib --tests --offline`: 31 passed. New six-rate tests verify exact dry preservation at 0% wet for every mode and the independent dry-plus-driven-wet composition at 50% mix. Tests also cover dry preservation during amount/mode/power changes, distinct driven wet outputs and reset. The release-only timing probe remains ignored.
+- `cargo test -p daw-plate-reverb-clap -p daw-plate-reverb-vst3 --lib --tests --features allocation-check --offline`: 15 passed, including all choices at six rates, direct-DSP comparisons, timed automation, state recall and callback heap checks.
+- `cargo test -p daw-project --test reverbs --offline`: passed, including save/reopen/export with Drive enabled and Tube selected.
+- Strict all-target Clippy passed for `daw-reverb-core`, `daw-plate-reverb` and `daw-plate-reverb-plugin`. Changed Rust files passed rustfmt; `git diff --check` passed.
+
+Native listening, hardware playback and external-host attachment checks were not
+run. Synthetic host checks do not establish those results.
+
+## Plate Drive percentage/Tone and Ambient Lo-Pass — 2026-11-03
+
+Plate Drive now displays 0–100%, maps to 0–12 dB, and defaults/resets to 20%
+(2.4 dB). Its strip is Mode, Drive, Tone. Tone reuses the shared centered Tone
+knob and modulation destination, with 50% neutral and a post-shaping 2.5 kHz
+high shelf spanning −12..+12 dB. Coefficients update through the shared shelf API
+without clearing history. Drive power disables all three controls; processing
+stays on the wet branch. Old negative base gains migrate to zero; saved nonnegative
+gains are retained. Plate v5 appends Tone parameter 118; old states use neutral
+Tone. Plate's modulation/snapshot list appends Tone without moving prior entries.
+
+Ambient now has Options, Reverb, Hi-Pass, Lo-Pass and Out strips. The new independent
+wet-input Lo-Pass reuses Plate's frequency knob (500–15000 Hz), bottom slope
+selector (6/12/24 dB/oct) and power footer. New units default to On, 15 kHz and
+12 dB/oct; legacy projects and v1/v2 states load it Off to preserve their sound.
+Ambient v3 appends parameters 111–113. The shared low-pass modulation destination
+is appended to its existing list. Both filter banks retain their warm paths,
+5 ms power/slope ramps and reset/history behavior.
+
+Executed locally on macOS:
+
+- The targeted portable DSP, settings, shared UI, editor, plugin contract, Filter and Saturator state regressions passed 161 tests. Coverage includes Tone brightness/silence at six rates, legacy gain/Tone/Lo-Pass migration, Lo-Pass slope/power processing and bypass, percentage defaults/text, settings bounds and shared editor parity. The release-only timing probe remains ignored.
+- The final editor/plugin binding run passed 27 tests, including Tone/Drive gestures with Drive on, both Ambient slope menus, independent Lo-Pass power enablement and strip geometry.
+- Plate and Ambient CLAP/VST3 library/host runs each passed 15 tests with `allocation-check`, covering all choices at all six rates, state recall, timed automation and processing without callback heap work. Documentation builds passed for all four products.
+- `cargo test -p daw-engine reverb_shared_modulation --offline`: both track/layer/Main routing, live/export parity, roundtrip, telemetry and callback-allocation tests passed. Ambient starts the probe at 5 kHz so its modulation is observed below the upper bound.
+- The targeted DAW track/Master/instrument catalog test and shared Drive/Lo-Pass marker-range test passed. The Lo-Pass marker now clamps the resulting frequency rather than the octave multiplier. The project save/reopen/export test passed with non-neutral Plate Tone and custom Ambient Lo-Pass settings.
+- Strict all-target Clippy passed for Reverb core, Filter, both portable reverbs, both plugin contracts/editors, unit UI and DAW UI. Changed Rust files passed rustfmt; `git diff --check` passed.
+
+Native external-host attachment, listening, hardware playback and device deadline
+checks were not run. Synthetic host checks do not establish those results.

@@ -16,6 +16,12 @@ pub enum Parameter {
     Color = 110,
     DriveEnabled = 111,
     Quality = 112,
+    HighPassEnabled = 113,
+    LowPassEnabled = 114,
+    HighPassSlope = 115,
+    LowPassSlope = 116,
+    DriveMode = 117,
+    Tone = 118,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scale {
@@ -45,7 +51,7 @@ impl fmt::Display for ParameterError {
 }
 impl std::error::Error for ParameterError {}
 impl Parameter {
-    pub const COUNT: usize = 13;
+    pub const COUNT: usize = 19;
     pub const ALL: [Self; Self::COUNT] = [
         Self::Bypass,
         Self::PreDelay,
@@ -60,6 +66,12 @@ impl Parameter {
         Self::Color,
         Self::DriveEnabled,
         Self::Quality,
+        Self::HighPassEnabled,
+        Self::LowPassEnabled,
+        Self::HighPassSlope,
+        Self::LowPassSlope,
+        Self::DriveMode,
+        Self::Tone,
     ];
     pub fn from_id(id: u32) -> Result<Self, ParameterError> {
         Self::ALL
@@ -109,13 +121,51 @@ impl Parameter {
                 Scale::Logarithmic,
                 0,
             ),
-            Self::Drive => ("drive_db", "Drive", -12.0, 12.0, 0.0, Scale::Linear, 0),
+            Self::Drive => ("drive_db", "Drive", 0.0, 12.0, 2.4, Scale::Linear, 0),
             Self::Width => ("width", "Width", 0.0, 1.0, 1.0, Scale::Linear, 0),
             Self::Level => ("level_db", "Level", -1000.0, 12.0, 0.0, Scale::Gain, 0),
             Self::DryWet => ("dry_wet", "Dry/Wet", 0.0, 1.0, 0.5, Scale::Linear, 0),
             Self::Gate => ("gated", "Tail", 0.0, 1.0, 0.0, Scale::Choice, 1),
             Self::Color => ("dark", "Color", 0.0, 1.0, 0.0, Scale::Choice, 1),
             Self::DriveEnabled => ("drive_enabled", "Drive", 0.0, 1.0, 0.0, Scale::Choice, 1),
+            Self::Tone => ("drive_tone", "Tone", 0.0, 1.0, 0.5, Scale::Linear, 0),
+            Self::DriveMode => ("drive_mode", "Drive mode", 0.0, 2.0, 0.0, Scale::Choice, 2),
+            Self::HighPassSlope => (
+                "highpass_slope",
+                "Hi-Pass slope",
+                0.0,
+                2.0,
+                1.0,
+                Scale::Choice,
+                2,
+            ),
+            Self::LowPassSlope => (
+                "lowpass_slope",
+                "Lo-Pass slope",
+                0.0,
+                2.0,
+                1.0,
+                Scale::Choice,
+                2,
+            ),
+            Self::HighPassEnabled => (
+                "highpass_enabled",
+                "Hi-Pass",
+                0.0,
+                1.0,
+                1.0,
+                Scale::Boolean,
+                1,
+            ),
+            Self::LowPassEnabled => (
+                "lowpass_enabled",
+                "Lo-Pass",
+                0.0,
+                1.0,
+                1.0,
+                Scale::Boolean,
+                1,
+            ),
             Self::Quality => ("hq", "Quality", 0.0, 1.0, 0.0, Scale::Choice, 1),
         };
         ParameterInfo {
@@ -135,7 +185,7 @@ impl Parameter {
             Self::Decay => "s",
             Self::HighPass => "Hz",
             Self::LowPass => "Hz",
-            Self::Drive => "dB",
+            Self::Drive | Self::Tone => "%",
             Self::Width => "%",
             Self::Level => "dB",
             Self::DryWet => "%",
@@ -148,14 +198,24 @@ impl Parameter {
             Self::Bypass => if value == 0.0 { "Off" } else { "On" }.into(),
             Self::Gate => if value == 0.0 { "Normal" } else { "Gated" }.into(),
             Self::Color => if value == 0.0 { "Bright" } else { "Dark" }.into(),
-            Self::DriveEnabled => if value == 0.0 { "Off" } else { "On" }.into(),
+            Self::DriveEnabled | Self::HighPassEnabled | Self::LowPassEnabled => {
+                if value == 0.0 { "Off" } else { "On" }.into()
+            }
             Self::Quality => if value == 0.0 { "ECO" } else { "HQ" }.into(),
+            Self::HighPassSlope | Self::LowPassSlope => daw_unit_core::ReverbFilterSlope::ALL
+                [value as usize]
+                .label()
+                .into(),
+            Self::DriveMode => daw_unit_core::PlateDriveMode::ALL[value as usize]
+                .label()
+                .into(),
             Self::Level => format!("{} dB", gain::format_db(value)),
             Self::PreDelay => format!("{:.2} ms", value),
             Self::Decay => format!("{:.2} s", value),
             Self::HighPass => format!("{:.2} Hz", value),
             Self::LowPass => format!("{:.2} Hz", value),
-            Self::Drive => format!("{:.2} dB", value),
+            Self::Drive => format!("{:.2} %", value / 12.0 * 100.0),
+            Self::Tone => format!("{:.2} %", value * 100.0),
             Self::Width => format!("{:.2} %", value * 100.0),
             Self::DryWet => format!("{:.2} %", value * 100.0),
         })
@@ -164,6 +224,34 @@ impl Parameter {
         let text = text.trim();
         let value = match self {
             Self::Level => gain::parse_db(text).ok_or(ParameterError)?,
+            Self::Drive => {
+                text.trim_end_matches('%')
+                    .trim()
+                    .parse::<f64>()
+                    .map_err(|_| ParameterError)?
+                    / 100.0
+                    * 12.0
+            }
+            Self::DriveMode => {
+                if let Some(i) = daw_unit_core::PlateDriveMode::ALL
+                    .iter()
+                    .position(|m| m.label().eq_ignore_ascii_case(text))
+                {
+                    i as f64
+                } else {
+                    text.parse().map_err(|_| ParameterError)?
+                }
+            }
+            Self::HighPassSlope | Self::LowPassSlope => {
+                if let Some(i) = daw_unit_core::ReverbFilterSlope::ALL
+                    .iter()
+                    .position(|s| s.label().eq_ignore_ascii_case(text))
+                {
+                    i as f64
+                } else {
+                    text.parse().map_err(|_| ParameterError)?
+                }
+            }
             Self::Bypass => {
                 if text.eq_ignore_ascii_case("Off") {
                     0.0
@@ -191,7 +279,7 @@ impl Parameter {
                     text.parse().map_err(|_| ParameterError)?
                 }
             }
-            Self::DriveEnabled => {
+            Self::DriveEnabled | Self::HighPassEnabled | Self::LowPassEnabled => {
                 if text.eq_ignore_ascii_case("Off") {
                     0.0
                 } else if text.eq_ignore_ascii_case("On") {
@@ -231,23 +319,7 @@ type StripBinding = (
     &'static [(Parameter, &'static str, &'static str)],
 );
 #[allow(dead_code)]
-pub(crate) const STRIP_BINDINGS: [StripBinding; 5] = [
-    (
-        "Reverb",
-        &[
-            (Parameter::PreDelay, "scalar", "Scalar"),
-            (Parameter::Decay, "scalar", "Scalar"),
-            (Parameter::Width, "percent", "Percent"),
-        ],
-    ),
-    (
-        "Filters",
-        &[
-            (Parameter::HighPass, "scalar", "Scalar"),
-            (Parameter::LowPass, "scalar", "Scalar"),
-        ],
-    ),
-    ("Drive", &[(Parameter::Drive, "db", "Db")]),
+pub(crate) const STRIP_BINDINGS: [StripBinding; 6] = [
     (
         "Options",
         &[
@@ -257,19 +329,50 @@ pub(crate) const STRIP_BINDINGS: [StripBinding; 5] = [
         ],
     ),
     (
+        "Reverb",
+        &[
+            (Parameter::PreDelay, "scalar", "Scalar"),
+            (Parameter::Decay, "scalar", "Scalar"),
+        ],
+    ),
+    (
+        "Hi-Pass",
+        &[
+            (Parameter::HighPass, "frequency", "Frequency"),
+            (Parameter::HighPassSlope, "mode", "Mode"),
+        ],
+    ),
+    (
+        "Lo-Pass",
+        &[
+            (Parameter::LowPass, "frequency", "Frequency"),
+            (Parameter::LowPassSlope, "mode", "Mode"),
+        ],
+    ),
+    (
+        "Drive",
+        &[
+            (Parameter::DriveMode, "mode", "Mode"),
+            (Parameter::Drive, "percent", "Percent"),
+            (Parameter::Tone, "percent", "Percent"),
+        ],
+    ),
+    (
         "Out",
         &[
             (Parameter::Level, "gain", "Gain"),
+            (Parameter::Width, "percent", "Percent"),
             (Parameter::DryWet, "percent", "Percent"),
         ],
     ),
 ];
 #[allow(dead_code)]
 pub(crate) fn enable_binding(p: Parameter) -> Option<Parameter> {
-    if p == Parameter::Drive {
-        Some(Parameter::DriveEnabled)
-    } else {
-        None
+    match p {
+        Parameter::HighPass | Parameter::HighPassSlope => Some(Parameter::HighPassEnabled),
+        Parameter::LowPass | Parameter::LowPassSlope => Some(Parameter::LowPassEnabled),
+        Parameter::Drive | Parameter::DriveMode | Parameter::Tone => Some(Parameter::DriveEnabled),
+        _ => None,
     }
 }
 #[allow(dead_code)]
@@ -278,5 +381,10 @@ pub(crate) fn diagram_binding(_: Parameter) -> Option<&'static str> {
 }
 #[allow(dead_code)]
 pub(crate) fn footer_power(index: usize) -> Option<Parameter> {
-    (index == 2).then_some(Parameter::DriveEnabled)
+    match index {
+        2 => Some(Parameter::HighPassEnabled),
+        3 => Some(Parameter::LowPassEnabled),
+        4 => Some(Parameter::DriveEnabled),
+        _ => None,
+    }
 }

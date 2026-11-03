@@ -29,7 +29,7 @@ fn show_inner(
 ) -> (Bounds, egui::Response) {
     let (compact, height) = dimensions;
     let bases = s.values();
-    let markers: [_; 8] = std::array::from_fn(|i| {
+    let markers: [_; 9] = std::array::from_fn(|i| {
         crate::modulation_panel::marker(
             &s.modulations,
             sources,

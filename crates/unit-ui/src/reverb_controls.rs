@@ -39,6 +39,73 @@ pub(crate) fn switch(
     .inner
 }
 
+pub(crate) fn filter_slope(
+    ui: &mut Ui,
+    value: &mut daw_unit_core::ReverbFilterSlope,
+    enabled: bool,
+    tooltip: &'static str,
+) -> Response {
+    ui.add_enabled_ui(enabled, |ui| {
+        rows::selector_row(ui, "Slope", |ui| {
+            let before = *value;
+            let mut response = Dropdown::from_id_salt("filter-slope")
+                .small_items()
+                .truncate()
+                .selected_text(RichText::new(value.label()).size(layout::HEADER_FONT_SIZE))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for slope in daw_unit_core::ReverbFilterSlope::ALL {
+                        ui.selectable_value(value, slope, slope.label());
+                    }
+                })
+                .response
+                .on_hover_text(tooltip);
+            if before != *value {
+                response.mark_changed();
+            }
+            response.widget_info(|| {
+                WidgetInfo::selected(WidgetType::ComboBox, ui.is_enabled(), true, "Slope")
+            });
+            control_capture::record(ui, &response);
+            response
+        })
+    })
+    .inner
+}
+
+pub(crate) fn plate_drive_mode(
+    ui: &mut Ui,
+    value: &mut daw_unit_core::PlateDriveMode,
+    enabled: bool,
+) -> Response {
+    ui.add_enabled_ui(enabled, |ui| {
+        rows::selector_row(ui, "Mode", |ui| {
+            let before = *value;
+            let mut response = Dropdown::from_id_salt("plate-drive-mode")
+                .small_items()
+                .truncate()
+                .selected_text(RichText::new(value.label()).size(layout::HEADER_FONT_SIZE))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for mode in daw_unit_core::PlateDriveMode::ALL {
+                        ui.selectable_value(value, mode, mode.label());
+                    }
+                })
+                .response
+                .on_hover_text("Drive mode");
+            if before != *value {
+                response.mark_changed();
+            }
+            response.widget_info(|| {
+                WidgetInfo::selected(WidgetType::ComboBox, ui.is_enabled(), true, "Mode")
+            });
+            control_capture::record(ui, &response);
+            response
+        })
+    })
+    .inner
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,7 +142,8 @@ mod tests {
                                     crate::plate_reverb::STRIP_COUNT as f32
                                         * layout::UNIT_STRIP_WIDTH
                                 } else {
-                                    270.0
+                                    crate::ambient_reverb::STRIP_COUNT as f32
+                                        * layout::UNIT_STRIP_WIDTH
                                 },
                                 218.0,
                             ),
@@ -93,7 +161,14 @@ mod tests {
                                 &std::array::from_fn(|_| None),
                                 0.0.into(),
                             );
-                            for (slot, label) in [(8, "Tail"), (9, "Color"), (11, "Quality")] {
+                            for (slot, label) in [
+                                (8, "Tail"),
+                                (9, "Color"),
+                                (11, "Quality"),
+                                (14, "Slope"),
+                                (15, "Slope"),
+                                (16, "Mode"),
+                            ] {
                                 controls.push((label, b.controls[slot]));
                             }
                         } else {
@@ -107,6 +182,7 @@ mod tests {
                                 0.0.into(),
                             );
                             controls.push(("Quality", b.controls[7]));
+                            controls.push(("Slope", b.controls[9]));
                         }
                     },
                 );

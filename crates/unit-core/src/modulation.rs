@@ -182,7 +182,7 @@ pub enum ModulationParameter {
     AmbientMotion,
 }
 impl ModulationParameter {
-    pub const PLATE_REVERB: [Self; 8] = [
+    pub const PLATE_REVERB: [Self; 9] = [
         Self::PlatePreDelay,
         Self::PlateDecay,
         Self::PlateHighPass,
@@ -191,8 +191,9 @@ impl ModulationParameter {
         Self::ReverbWidth,
         Self::Level,
         Self::DryWet,
+        Self::Tone,
     ];
-    pub const AMBIENT_REVERB: [Self; 7] = [
+    pub const AMBIENT_REVERB: [Self; 8] = [
         Self::AmbientDecay,
         Self::AmbientBloom,
         Self::AmbientTone,
@@ -200,6 +201,7 @@ impl ModulationParameter {
         Self::ReverbWidth,
         Self::Level,
         Self::DryWet,
+        Self::PlateLowPass,
     ];
     pub const HARMONIC_LIFT: [Self; 6] = [
         Self::HarmonicInput,
@@ -350,7 +352,7 @@ impl ModulationParameter {
             Self::ReverbWidth => "Width",
             Self::AmbientDecay => "Decay",
             Self::AmbientBloom => "Bloom",
-            Self::AmbientTone => "Tone",
+            Self::AmbientTone => "Frequency",
             Self::AmbientMotion => "Modulation",
             Self::ChorusDelay => "Delay",
             Self::ChorusDepth => "Depth",
@@ -531,7 +533,7 @@ impl ModulationParameter {
             Self::PlateDecay => "oct",
             Self::PlateHighPass => "oct",
             Self::PlateLowPass => "oct",
-            Self::PlateDrive => "dB",
+            Self::PlateDrive => "%",
             Self::ReverbWidth => "%",
             Self::AmbientDecay => "oct",
             Self::AmbientBloom => "%",

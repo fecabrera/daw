@@ -126,3 +126,73 @@ fn bloom_drag_keeps_the_wet_signal_free_of_read_head_clicks() {
         difference_energy / energy
     );
 }
+
+#[test]
+fn slope_edits_preserve_the_existing_delayed_tail() {
+    let mut settings = Settings {
+        highpass_enabled: true,
+        dry_wet: 1.0,
+        ..Default::default()
+    };
+    let mut warm = unit(48000, &settings);
+    for i in 0..4096 {
+        warm.process_sample(if i == 0 { [0.2, -0.1] } else { [0.0; 2] });
+    }
+    let mut baseline = warm.clone();
+    let expected: Vec<_> = (0..512)
+        .map(|_| baseline.process_sample([0.0; 2]))
+        .collect();
+    assert!(expected.iter().flatten().any(|v| v.abs() > 1e-8));
+    for slope in daw_unit_core::AmbientHighPassSlope::ALL {
+        let mut changed = warm.clone();
+        settings.highpass_slope = slope;
+        changed.retarget(&settings);
+        // The next half-hop comes from existing convolution history, which an edit must retain.
+        for sample in &expected {
+            assert_eq!(changed.process_sample([0.0; 2]), *sample);
+        }
+    }
+}
+
+#[test]
+fn lowpass_choices_change_wet_audio_and_bypass_retains_the_legacy_path() {
+    let input = |i| if i == 0 { [0.2, -0.1] } else { [0.0; 2] };
+    let mut a = unit(
+        48000,
+        &Settings {
+            lowpass_enabled: false,
+            ..Default::default()
+        },
+    );
+    let mut b = unit(
+        48000,
+        &Settings {
+            lowpass_enabled: false,
+            lowpass_hz: 500.0,
+            lowpass_slope: daw_unit_core::ReverbFilterSlope::Db24,
+            ..Default::default()
+        },
+    );
+    let mut legacy = Vec::new();
+    for i in 0..8192 {
+        let y = a.process_sample(input(i));
+        assert_eq!(y, b.process_sample(input(i)));
+        legacy.push(y);
+    }
+    let mut outputs = Vec::new();
+    for slope in daw_unit_core::ReverbFilterSlope::ALL {
+        let mut u = unit(
+            48000,
+            &Settings {
+                lowpass_hz: 500.0,
+                lowpass_slope: slope,
+                ..Default::default()
+            },
+        );
+        let result: Vec<_> = (0..8192).map(|i| u.process_sample(input(i))).collect();
+        assert_ne!(result, legacy);
+        outputs.push(result);
+    }
+    assert_ne!(outputs[0], outputs[1]);
+    assert_ne!(outputs[1], outputs[2]);
+}

@@ -1,22 +1,28 @@
 # Plate Reverb
 
 Plate Reverb adds a dense stereo tail, with input filtering, a gated option and an
-optional output amplifier. Add it from **Reverb** in the Effects catalog. It works
+optional Drive stage on the wet signal. Add it from **Reverb** in the Effects catalog. It works
 on tracks, groups, instrument layers and buses, beat instruments, and Master.
 
 | Strip | Control | Range | Default |
 | --- | --- | --- | --- |
-| Reverb | Pre-delay | 0–300 ms | 0 ms |
-| Reverb | Decay | 0.3–15 s | 3 s |
-| Reverb | Width | 0–100% | 100% |
-| Filters | High-pass | 20–1000 Hz | 20 Hz |
-| Filters | Low-pass | 500 Hz–15 kHz | 15 kHz |
-| Drive | Drive | −12 to +12 dB | 0 dB |
-| Drive | Drive power | Off / On | Off |
 | Options | Quality | ECO / HQ | ECO |
 | Options | Tail | Normal / Gated | Normal |
 | Options | Color | Bright / Dark | Bright |
+| Reverb | Pre-delay | 0–300 ms | 0 ms |
+| Reverb | Decay | 0.3–15 s | 3 s |
+| Hi-Pass | High-pass | 20–1000 Hz | 20 Hz |
+| Hi-Pass | Slope | 6 / 12 / 24 dB/oct | 12 dB/oct |
+| Hi-Pass | Hi-Pass power | Off / On | On |
+| Lo-Pass | Low-pass | 500 Hz–15 kHz | 15 kHz |
+| Lo-Pass | Slope | 6 / 12 / 24 dB/oct | 12 dB/oct |
+| Lo-Pass | Lo-Pass power | Off / On | On |
+| Drive | Mode | Soft / Hard / Tube | Soft |
+| Drive | Drive | 0–100% | 20% |
+| Drive | Tone | 0–100% | 50% |
+| Drive | Drive power | Off / On | Off |
 | Out | Level | Exact silence to +12 dB | 0 dB |
+| Out | Width | 0–100% | 100% |
 | Out | Dry/Wet | 0–100% | 50% |
 
 Pre-delay separates the source from the reverb onset. Decay sets the feedback
@@ -31,10 +37,27 @@ not a half-amplitude linear mix.
 
 Filter frequency readouts use whole Hz below 1 kHz and one decimal place in kHz
 from 1 kHz upward. The labels below each frequency knob show its range.
+Use each filter strip's power button to bypass that filter. Its frequency knob
+and bottom Slope dropdown are disabled while off; their saved values remain
+unchanged. Each Slope selector offers 6, 12 and 24 dB/oct, with 12 as the default.
+The filters use Butterworth responses, approximately −3 dB at cutoff, without a
+resonance boost. Power and slope changes use 5 ms ramps and retain the reverb
+tail. Existing projects keep both filters on with 12 dB/oct selected.
 
-Drive processes the complete dry/wet blend. It can therefore change the sound at
-0% wet. Use the **Drive** power button in the strip footer to enable it. The
-**Options** strip groups Quality, Tail, and Color. Level follows Drive.
+Drive processes only the wet signal before the dry/wet blend. At 0% wet, Drive
+has no effect on the dry signal. Out Level still applies to the complete blend.
+
+Use the **Drive** power button in the strip footer to enable it. The **Mode**
+selector at the top of the strip chooses Soft (the original symmetric saturation),
+Hard (clipping at a fixed ceiling), or Tube (asymmetric saturation). Drive applies
+input gain and partial output gain compensation in every mode. Drive maps
+0–100% to 0–12 dB of input gain. Tone reuses the shared centered control: 50% is
+neutral, lower values darken the wet signal and higher values brighten it through
+a 2.5 kHz high shelf (−12 to +12 dB). Mode changes
+crossfade over 5 ms. Drive power disables Mode, Drive and Tone
+while retaining their saved values. Projects without a saved mode load Soft. Older negative Drive settings load at
+0%; saved positive gain values remain unchanged. Older projects load neutral Tone.
+The **Options** strip groups Quality, Tail, and Color. Level follows Drive.
 Header power bypasses the complete unit while keeping
 its internal history running. The Out rail shows final sample peaks; click it to
 reset the held peak. Double-click a knob to reset it and hold Shift for fine drag.

@@ -56,6 +56,10 @@ impl HighShelf {
             state: [0.; 2],
         }
     }
+    /// Update shelf coefficients without clearing the prepared filter history.
+    pub fn configure(&mut self, rate: f64, f: f64, q: f64, gain_db: f64) {
+        self.coefs = SvfCoefs::highshelf(rate, f, q, 10_f64.powf(gain_db / 20.));
+    }
     pub fn sample(&mut self, x: f64) -> f64 {
         let [low, band] = tick(x, &self.coefs, &mut self.state);
         self.coefs.m0 * x + self.coefs.m1 * band + self.coefs.m2 * low

@@ -59,10 +59,11 @@ fn plate_reverb_shared_modulation_reaches_track_layer_and_main_and_roundtrips() 
                     .clamp(20.0, 1000.0),
                 (bases[3] * 2.0_f32.powf(ModulationParameter::PlateLowPass.limit() / 100.0))
                     .clamp(500.0, 15000.0),
-                (bases[4] + ModulationParameter::PlateDrive.limit() / 100.0).clamp(-12.0, 12.0),
+                (bases[4] + ModulationParameter::PlateDrive.limit() / 100.0).clamp(0.0, 12.0),
                 (bases[5] + ModulationParameter::ReverbWidth.limit() / 100.0).clamp(0.0, 1.0),
                 (bases[6] + ModulationParameter::Level.limit() / 100.0).clamp(-1000.0, 12.0),
                 (bases[7] + ModulationParameter::DryWet.limit() / 100.0).clamp(0.0, 1.0),
+                (bases[8] + ModulationParameter::Tone.limit() / 100.0).clamp(0.0, 1.0),
             ]) {
                 assert!(
                     (actual - expected).abs() < 0.001,

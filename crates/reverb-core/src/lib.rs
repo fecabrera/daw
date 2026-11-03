@@ -2,6 +2,8 @@
 //!
 //! Equations follow the supplied behavioral reports. This is original Rust code;
 //! no captured machine code, decompiled functions, or runtime tables are embedded.
+mod drive;
+mod filters;
 mod processor;
 pub use processor::{Parameters, Reverb};
 

@@ -137,9 +137,10 @@ pub fn destination(parameter: Parameter) -> KnobSpec {
             .value_label(knobs::format_frequency)
             .format(knobs::format_frequency)
             .endpoint_labels("500", "15k"),
-        Parameter::PlateDrive => KnobSpec::new("Drive", -12.0..=12.0, 0.0, 0.1)
-            .value_label(|v| format!("{v:.2} dB"))
-            .format(|v| format!("{v:.2} dB")),
+        Parameter::PlateDrive => KnobSpec::new("Drive", 0.0..=12.0, 2.4, 0.12)
+            .value_label(|v| format!("{:.0}%", v / 12.0 * 100.0))
+            .format(|v| format!("{:.0}%", v / 12.0 * 100.0))
+            .endpoint_labels("0", "100"),
         Parameter::ReverbWidth => KnobSpec::new("Width", 0.0..=1.0, 1.0, 0.01)
             .value_label(|v| format!("{:.0}%", v * 100.0))
             .format(|v| format!("{:.0}%", v * 100.0)),
@@ -154,9 +155,16 @@ pub fn destination(parameter: Parameter) -> KnobSpec {
         Parameter::AmbientBloom => KnobSpec::new("Bloom", 0.0..=1.0, 0.5, 0.01)
             .value_label(|v| format!("{:.0}%", v * 100.0))
             .format(|v| format!("{:.0}%", v * 100.0)),
-        Parameter::AmbientTone => KnobSpec::new("Tone", 0.0..=1.0, 0.5, 0.01)
-            .value_label(|v| format!("{:.0}%", v * 100.0))
-            .format(|v| format!("{:.0}%", v * 100.0)),
+        // Keep the persisted Tone value normalized while presenting its cutoff in Hz.
+        Parameter::AmbientTone => KnobSpec::new("Frequency", 0.0..=1.0, 0.5, 1.0)
+            .scale(
+                |v| ((20.0 + 100.0 * v) / 20.0).ln() / 6.0_f32.ln(),
+                |p| (20.0 * 6.0_f32.powf(p) - 20.0) / 100.0,
+                |v, d| ((20.0 + 100.0 * v) * 2.0_f32.powf(d / 24.0) - 20.0) / 100.0,
+            )
+            .value_label(|v| knobs::format_frequency(20.0 + 100.0 * v))
+            .format(|v| knobs::format_frequency(20.0 + 100.0 * v))
+            .endpoint_labels("20", "120"),
         Parameter::AmbientMotion => KnobSpec::new("Modulation", 0.0..=1.0, 0.4975, 0.01)
             .value_label(|v| format!("{:.0}%", v * 100.0))
             .format(|v| format!("{:.0}%", v * 100.0)),
@@ -467,11 +475,11 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
             Parameter::PlateLowPass => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
             Parameter::PlateDrive => (
                 AmountMapping::Offset {
-                    origin: -12.0,
+                    origin: 0.0,
                     direction: 1.0,
                 },
-                |v| format!("{v:+.1} dB"),
-                ["−24", "+24"],
+                |v| format!("{:+.0}%", v / 12.0 * 100.0),
+                ["−200", "+200"],
             ),
             Parameter::ReverbWidth => (
                 AmountMapping::Offset {

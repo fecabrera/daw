@@ -59,7 +59,7 @@ fn paint_reference(ui: &mut egui::Ui, s: &mut daw_unit_core::PlateReverbSettings
         s,
         false,
         daw_unit_ui::layout::unit_control_height(),
-        &std::array::from_fn::<_, 8, _>(|_| None),
+        &std::array::from_fn::<_, 9, _>(|_| None),
         level,
     );
 }

@@ -139,18 +139,11 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
         );
         out.textures_delta.clear();
     }
-    for note_mode in [false, true] {
+    for highpass_enabled in [false, true] {
         let mut state = PluginState::default();
-        if note_mode {
-            if let Some(p) = Parameter::ALL
-                .into_iter()
-                .find(|p| p.info().key == "rate_mode")
-            {
-                state.set(p, 1.0).unwrap();
-            } else {
-                continue;
-            }
-        }
+        state
+            .set(Parameter::HighPassEnabled, f64::from(highpass_enabled))
+            .unwrap();
         let probe = context(0, 1.0);
         let mut settings = state.to_settings();
         let mut controls = vec![];
@@ -158,7 +151,7 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
             controls = super::probe_controls(ui, &mut settings)
         });
         for (parameter, rect) in controls {
-            if parameter.info().steps > 0 && parameter.info().key != "highpass_enabled" {
+            if parameter.info().steps > 0 && !parameter.info().key.ends_with("_enabled") {
                 continue;
             }
             let screen =
@@ -242,4 +235,195 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
 #[test]
 fn new_plugin_defaults_match_builtin_defaults() {
     super::assert_builtin_defaults();
+}
+
+#[test]
+fn ambient_strip_order_and_highpass_control_enablement() {
+    for highpass_enabled in [false, true] {
+        let ctx = context(0, 1.0);
+        let mut settings = daw_unit_core::AmbientReverbSettings {
+            highpass_enabled,
+            ..Default::default()
+        };
+        let original = settings.clone();
+        paint(&ctx, |ui| {
+            let bounds = body::render(ui, &mut settings, 0.0.into(), 0.0.into(), [0.0; 3].into());
+            let control = |p: Parameter| {
+                bounds.controls[Parameter::ALL.iter().position(|v| *v == p).unwrap() - 1]
+                    .as_ref()
+                    .unwrap()
+            };
+            for (strip, parameters) in [
+                (0, &[Parameter::Quality][..]),
+                (
+                    1,
+                    &[Parameter::Decay, Parameter::Bloom, Parameter::Motion][..],
+                ),
+                (
+                    2,
+                    &[
+                        Parameter::Tone,
+                        Parameter::HighPassSlope,
+                        Parameter::HighPassEnabled,
+                    ][..],
+                ),
+                (
+                    4,
+                    &[Parameter::Level, Parameter::Width, Parameter::DryWet][..],
+                ),
+            ] {
+                for p in parameters {
+                    assert!(
+                        bounds.sections[strip].contains_rect(control(*p).rect),
+                        "{p:?}"
+                    );
+                }
+            }
+            assert!(
+                control(Parameter::Bloom).rect.bottom() < control(Parameter::Motion).rect.top()
+            );
+            assert!(
+                control(Parameter::Tone).rect.bottom()
+                    < control(Parameter::HighPassSlope).rect.top()
+            );
+            assert!(control(Parameter::Level).rect.bottom() < control(Parameter::Width).rect.top());
+            assert!(
+                control(Parameter::Width).rect.bottom() < control(Parameter::DryWet).rect.top()
+            );
+            for p in [Parameter::Tone, Parameter::HighPassSlope] {
+                assert_eq!(control(p).enabled(), highpass_enabled, "{p:?}");
+            }
+            for p in [
+                Parameter::HighPassEnabled,
+                Parameter::Motion,
+                Parameter::Level,
+                Parameter::Width,
+                Parameter::DryWet,
+            ] {
+                assert!(control(p).enabled(), "{p:?}");
+            }
+        });
+        assert_eq!(settings, original, "painting must retain saved values");
+    }
+}
+
+#[test]
+fn slope_dropdown_publishes_only_its_host_parameter() {
+    fn frame(
+        ctx: &egui::Context,
+        editor: &mut Editor,
+        events: Vec<Event>,
+    ) -> Vec<egui::epaint::ClippedShape> {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(WIDTH as f32, HEIGHT as f32),
+                )),
+                focused: true,
+                events,
+                ..Default::default()
+            },
+            |ui| editor.show(ui),
+        );
+        output.textures_delta.clear();
+        output.shapes
+    }
+    fn button(pos: egui::Pos2, pressed: bool) -> Event {
+        Event::PointerButton {
+            pos,
+            pressed,
+            button: egui::PointerButton::Primary,
+            modifiers: Default::default(),
+        }
+    }
+    fn find_label(shape: &egui::Shape, name: &str) -> Option<egui::Pos2> {
+        match shape {
+            egui::Shape::Text(t) if t.galley.text() == name => {
+                Some(t.pos + t.galley.rect.center().to_vec2())
+            }
+            egui::Shape::Vec(shapes) => shapes.iter().find_map(|s| find_label(s, name)),
+            _ => None,
+        }
+    }
+    for (parameter, slot) in [(Parameter::HighPassSlope, 9), (Parameter::LowPassSlope, 12)] {
+        let mut state = PluginState::default();
+        state.set(Parameter::HighPassEnabled, 1.0).unwrap();
+        let probe = context(0, 1.0);
+        let mut rect = Rect::NOTHING;
+        paint(&probe, |ui| {
+            let b = body::render(
+                ui,
+                &mut state.to_settings(),
+                0.0.into(),
+                0.0.into(),
+                [0.0; 3].into(),
+            );
+            rect = b.controls[slot].as_ref().unwrap().rect;
+        });
+        let model = Arc::new(Model::default());
+        model.publish(state);
+        let ctx = context(0, 1.0);
+        let mut editor = Editor::new(model.clone(), || {});
+        frame(&ctx, &mut editor, vec![]);
+        let pos = rect.center();
+        frame(
+            &ctx,
+            &mut editor,
+            vec![Event::PointerMoved(pos), button(pos, true)],
+        );
+        frame(&ctx, &mut editor, vec![button(pos, false)]);
+        let shapes = frame(&ctx, &mut editor, vec![]);
+        let target = shapes
+            .iter()
+            .find_map(|s| find_label(&s.shape, "24 dB/oct"))
+            .expect("slope menu option");
+        frame(
+            &ctx,
+            &mut editor,
+            vec![Event::PointerMoved(target), button(target, true)],
+        );
+        frame(&ctx, &mut editor, vec![button(target, false)]);
+        let mut edits = vec![];
+        while let Some(edit) = model.pop() {
+            edits.push(edit);
+        }
+        assert_eq!(edits.len(), 3);
+        assert!(matches!(edits[0], Edit::Begin(p) if p == parameter));
+        assert!(matches!(
+            edits[1],
+            Edit::Value(p, 2.0) if p == parameter
+        ));
+        assert!(matches!(edits[2], Edit::End(p) if p == parameter));
+    }
+}
+
+#[test]
+fn lowpass_uses_its_own_strip_and_power_and_slope() {
+    for enabled in [false, true] {
+        let ctx = context(0, 1.0);
+        let mut settings = daw_unit_core::AmbientReverbSettings {
+            lowpass_enabled: enabled,
+            ..Default::default()
+        };
+        paint(&ctx, |ui| {
+            let b = body::render(ui, &mut settings, 0.0.into(), 0.0.into(), [0.0; 3].into());
+            for slot in [10, 11, 12] {
+                assert!(b.sections[3].contains_rect(b.controls[slot].as_ref().unwrap().rect));
+            }
+            assert_eq!(b.controls[10].as_ref().unwrap().enabled(), enabled);
+            assert_eq!(b.controls[12].as_ref().unwrap().enabled(), enabled);
+            assert!(b.controls[11].as_ref().unwrap().enabled());
+            assert!(
+                b.controls[10].as_ref().unwrap().rect.bottom()
+                    < b.controls[12].as_ref().unwrap().rect.top()
+            );
+            assert!(
+                (b.controls[9].as_ref().unwrap().rect.top()
+                    - b.controls[12].as_ref().unwrap().rect.top())
+                .abs()
+                    < 0.5
+            );
+        });
+    }
 }

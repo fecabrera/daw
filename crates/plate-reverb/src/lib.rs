@@ -8,7 +8,7 @@ use daw_unit_core::{
 #[derive(Clone)]
 pub struct PlateReverb {
     core: Reverb,
-    offsets: ModulationSmoother<8>,
+    offsets: ModulationSmoother<9>,
 }
 fn parameters(s: &Settings) -> Parameters {
     Parameters {
@@ -19,7 +19,7 @@ fn parameters(s: &Settings) -> Parameters {
             s.lowpass_hz,
             s.drive_db,
             0.0,
-            0.5,
+            s.drive_tone,
             0.0,
             s.width,
             s.level_db,
@@ -30,7 +30,11 @@ fn parameters(s: &Settings) -> Parameters {
         gated: s.gated,
         dark: s.dark,
         drive_enabled: s.drive_enabled,
-        highpass_enabled: true,
+        drive_mode: s.drive_mode,
+        highpass_enabled: s.highpass_enabled,
+        lowpass_enabled: s.lowpass_enabled,
+        highpass_slope: s.highpass_slope,
+        lowpass_slope: s.lowpass_slope,
     }
 }
 impl PlateReverb {
@@ -52,16 +56,16 @@ impl PlateReverb {
     pub fn set_output_peak_meter(&mut self, m: std::sync::Arc<daw_unit_core::BandMeter<3>>) {
         self.core.set_output_peak_meter(m);
     }
-    pub fn effective_parameters(&self) -> [f32; 8] {
+    pub fn effective_parameters(&self) -> [f32; 9] {
         let v = self.core.effective();
-        [v[1], v[0], v[2], v[3], v[4], v[8], v[9], v[10]]
+        [v[1], v[0], v[2], v[3], v[4], v[8], v[9], v[10], v[6]]
     }
     pub fn process_modulated_at(
         &mut self,
         input: [f32; 2],
         _: u64,
         _: f32,
-        offsets: [f32; 8],
+        offsets: [f32; 9],
     ) -> [f32; 2] {
         let o = self.offsets.process(offsets);
         let mut offsets = [0.0; 12];
@@ -73,6 +77,7 @@ impl PlateReverb {
         offsets[8] = o[5];
         offsets[9] = o[6];
         offsets[10] = o[7];
+        offsets[6] = o[8];
         self.core.sample(input, offsets)
     }
 }
@@ -97,7 +102,7 @@ impl EffectUnit for PlateReverb {
         self.offsets.reset();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        self.process_modulated_at(input, 0, 120.0, [0.0; 8])
+        self.process_modulated_at(input, 0, 120.0, [0.0; 9])
     }
 }
 impl ModulationDestination for PlateReverb {

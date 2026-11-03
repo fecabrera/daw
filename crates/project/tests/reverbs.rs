@@ -31,10 +31,24 @@ fn reverbs_save_reopen_and_export_the_same_capped_tail_on_track_and_master() {
         wav.write_sample(0.0_f32).unwrap();
     }
     wav.finalize().unwrap();
-    for (index, master, effect) in [
+    for (index, master, mut effect) in [
         (0, false, EffectInstance::plate_reverb()),
         (1, true, EffectInstance::ambient_reverb()),
     ] {
+        if let daw_core::EffectSettings::PlateReverb(settings) = &mut effect.unit {
+            settings.highpass_enabled = false;
+            settings.drive_enabled = true;
+            settings.drive_tone = 0.8;
+            settings.drive_mode = daw_core::PlateDriveMode::Tube;
+            settings.highpass_slope = daw_core::ReverbFilterSlope::Db6;
+            settings.lowpass_slope = daw_core::ReverbFilterSlope::Db24;
+        }
+        if let daw_core::EffectSettings::AmbientReverb(settings) = &mut effect.unit {
+            settings.highpass_enabled = true;
+            settings.highpass_slope = daw_core::AmbientHighPassSlope::Db24;
+            settings.lowpass_hz = 1000.0;
+            settings.lowpass_slope = daw_core::ReverbFilterSlope::Db24;
+        }
         let mut session = Session::default();
         session.import(&source, None, 0).unwrap();
         if master {

@@ -32,7 +32,11 @@ fn callback_timing_at_default_and_minimum_buffers() {
                 gated: false,
                 dark: false,
                 drive_enabled: true,
+                drive_mode: Default::default(),
                 highpass_enabled: true,
+                lowpass_enabled: true,
+                highpass_slope: daw_unit_core::ReverbFilterSlope::Db12,
+                lowpass_slope: daw_unit_core::ReverbFilterSlope::Db12,
             };
             let mut unit = Reverb::new(
                 ProcessingContext {

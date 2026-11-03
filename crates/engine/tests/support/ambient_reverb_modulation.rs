@@ -16,6 +16,7 @@ fn ambient_reverb_shared_modulation_reaches_track_layer_and_main_and_roundtrips(
             let EffectSettings::AmbientReverb(settings) = &mut effect.unit else {
                 panic!()
             };
+            settings.lowpass_hz = 5000.0;
             let bases = settings.values();
             settings.modulations = ModulationParameter::AMBIENT_REVERB
                 .into_iter()
@@ -60,6 +61,8 @@ fn ambient_reverb_shared_modulation_reaches_track_layer_and_main_and_roundtrips(
                 (bases[4] + ModulationParameter::ReverbWidth.limit() / 100.0).clamp(0.0, 1.0),
                 (bases[5] + ModulationParameter::Level.limit() / 100.0).clamp(-1000.0, 12.0),
                 (bases[6] + ModulationParameter::DryWet.limit() / 100.0).clamp(0.0, 1.0),
+                (bases[7] * 2.0_f32.powf(ModulationParameter::PlateLowPass.limit() / 100.0))
+                    .clamp(500.0, 15000.0),
             ]) {
                 assert!(
                     (actual - expected).abs() < 0.001,

@@ -9,10 +9,14 @@ pub fn update_settings(s: &PluginState, t: &mut Settings) {
     t.width = s.get(P::Width) as f32;
     t.level_db = daw_unit_core::gain::to_db_f32(s.get(P::Level));
     t.dry_wet = s.get(P::DryWet) as f32;
+    t.lowpass_hz = s.get(P::LowPass) as f32;
+    t.lowpass_enabled = s.get(P::LowPassEnabled) != 0.0;
+    t.lowpass_slope = daw_unit_core::ReverbFilterSlope::ALL[s.get(P::LowPassSlope) as usize];
     t.hq = s.get(P::Quality) != 0.0;
+    t.highpass_slope = daw_unit_core::AmbientHighPassSlope::ALL[s.get(P::HighPassSlope) as usize];
     t.highpass_enabled = s.get(P::HighPassEnabled) != 0.0;
 }
-pub fn values(s: &Settings) -> [f64; 10] {
+pub fn values(s: &Settings) -> [f64; 14] {
     [
         f64::from(!s.enabled),
         f64::from(s.decay_seconds),
@@ -24,6 +28,10 @@ pub fn values(s: &Settings) -> [f64; 10] {
         f64::from(s.dry_wet),
         f64::from(s.hq),
         f64::from(s.highpass_enabled),
+        s.highpass_slope as u32 as f64,
+        f64::from(s.lowpass_hz),
+        f64::from(s.lowpass_enabled),
+        s.lowpass_slope as u8 as f64,
     ]
 }
 

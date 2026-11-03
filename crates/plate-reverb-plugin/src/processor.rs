@@ -87,7 +87,7 @@ impl Processor {
     pub fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
         let output = self
             .drive
-            .process_modulated_at(input, self.frame, self.tempo, [0.0; 8]);
+            .process_modulated_at(input, self.frame, self.tempo, [0.0; 9]);
         self.frame = self.frame.saturating_add(1);
         output
     }

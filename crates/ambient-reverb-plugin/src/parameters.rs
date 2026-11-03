@@ -13,6 +13,10 @@ pub enum Parameter {
     DryWet = 107,
     Quality = 108,
     HighPassEnabled = 109,
+    HighPassSlope = 110,
+    LowPass = 111,
+    LowPassEnabled = 112,
+    LowPassSlope = 113,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scale {
@@ -42,7 +46,7 @@ impl fmt::Display for ParameterError {
 }
 impl std::error::Error for ParameterError {}
 impl Parameter {
-    pub const COUNT: usize = 10;
+    pub const COUNT: usize = 14;
     pub const ALL: [Self; Self::COUNT] = [
         Self::Bypass,
         Self::Decay,
@@ -54,6 +58,10 @@ impl Parameter {
         Self::DryWet,
         Self::Quality,
         Self::HighPassEnabled,
+        Self::HighPassSlope,
+        Self::LowPass,
+        Self::LowPassEnabled,
+        Self::LowPassSlope,
     ];
     pub fn from_id(id: u32) -> Result<Self, ParameterError> {
         Self::ALL
@@ -77,12 +85,40 @@ impl Parameter {
                 0,
             ),
             Self::Bloom => ("bloom", "Bloom", 0.0, 1.0, 0.5, Scale::Linear, 0),
-            Self::Tone => ("tone", "Tone", 0.0, 1.0, 0.5, Scale::Linear, 0),
+            Self::Tone => ("tone", "Frequency", 0.0, 1.0, 0.5, Scale::Linear, 0),
             Self::Motion => ("motion", "Modulation", 0.0, 1.0, 0.4975, Scale::Linear, 0),
             Self::Width => ("width", "Width", 0.0, 1.0, 1.0, Scale::Linear, 0),
             Self::Level => ("level_db", "Level", -1000.0, 12.0, 0.0, Scale::Gain, 0),
             Self::DryWet => ("dry_wet", "Dry/Wet", 0.0, 1.0, 0.5, Scale::Linear, 0),
             Self::Quality => ("hq", "Quality", 0.0, 1.0, 0.0, Scale::Choice, 1),
+            Self::LowPass => (
+                "lowpass_hz",
+                "Low-pass",
+                500.0,
+                15000.0,
+                15000.0,
+                Scale::Logarithmic,
+                0,
+            ),
+            Self::LowPassEnabled => (
+                "lowpass_enabled",
+                "Lo-Pass",
+                0.0,
+                1.0,
+                1.0,
+                Scale::Boolean,
+                1,
+            ),
+            Self::LowPassSlope => (
+                "lowpass_slope",
+                "Lo-Pass slope",
+                0.0,
+                2.0,
+                1.0,
+                Scale::Choice,
+                2,
+            ),
+            Self::HighPassSlope => ("highpass_slope", "Slope", 0.0, 2.0, 0.0, Scale::Choice, 2),
             Self::HighPassEnabled => (
                 "highpass_enabled",
                 "High-pass",
@@ -108,7 +144,7 @@ impl Parameter {
         match self {
             Self::Decay => "s",
             Self::Bloom => "%",
-            Self::Tone => "%",
+            Self::Tone | Self::LowPass => "Hz",
             Self::Motion => "%",
             Self::Width => "%",
             Self::Level => "dB",
@@ -121,11 +157,18 @@ impl Parameter {
         Ok(match self {
             Self::Bypass => if value == 0.0 { "Off" } else { "On" }.into(),
             Self::Quality => if value == 0.0 { "ECO" } else { "HQ" }.into(),
-            Self::HighPassEnabled => if value == 0.0 { "Off" } else { "On" }.into(),
+            Self::HighPassEnabled | Self::LowPassEnabled => {
+                if value == 0.0 { "Off" } else { "On" }.into()
+            }
+            Self::HighPassSlope | Self::LowPassSlope => daw_unit_core::AmbientHighPassSlope::ALL
+                [value as usize]
+                .label()
+                .into(),
             Self::Level => format!("{} dB", gain::format_db(value)),
             Self::Decay => format!("{:.2} s", value),
             Self::Bloom => format!("{:.2} %", value * 100.0),
-            Self::Tone => format!("{:.2} %", value * 100.0),
+            Self::LowPass => format!("{value:.2} Hz"),
+            Self::Tone => format!("{:.2} Hz", 20.0 + value * 100.0),
             Self::Motion => format!("{:.2} %", value * 100.0),
             Self::Width => format!("{:.2} %", value * 100.0),
             Self::DryWet => format!("{:.2} %", value * 100.0),
@@ -144,6 +187,24 @@ impl Parameter {
                     text.parse().map_err(|_| ParameterError)?
                 }
             }
+            Self::HighPassSlope | Self::LowPassSlope => {
+                if let Some(i) = daw_unit_core::AmbientHighPassSlope::ALL
+                    .iter()
+                    .position(|s| s.label().eq_ignore_ascii_case(text))
+                {
+                    i as f64
+                } else {
+                    text.parse().map_err(|_| ParameterError)?
+                }
+            }
+            Self::Tone => {
+                let hz = text
+                    .trim_end_matches("Hz")
+                    .trim()
+                    .parse::<f64>()
+                    .map_err(|_| ParameterError)?;
+                (hz - 20.0) / 100.0
+            }
             Self::Quality => {
                 if text.eq_ignore_ascii_case("ECO") {
                     0.0
@@ -153,7 +214,7 @@ impl Parameter {
                     text.parse().map_err(|_| ParameterError)?
                 }
             }
-            Self::HighPassEnabled => {
+            Self::HighPassEnabled | Self::LowPassEnabled => {
                 if text.eq_ignore_ascii_case("Off") {
                     0.0
                 } else if text.eq_ignore_ascii_case("On") {
@@ -184,35 +245,46 @@ type StripBinding = (
     &'static [(Parameter, &'static str, &'static str)],
 );
 #[allow(dead_code)]
-pub(crate) const STRIP_BINDINGS: [StripBinding; 3] = [
+pub(crate) const STRIP_BINDINGS: [StripBinding; 5] = [
+    ("Options", &[(Parameter::Quality, "mode", "Mode")]),
     (
         "Reverb",
         &[
             (Parameter::Decay, "scalar", "Scalar"),
             (Parameter::Bloom, "percent", "Percent"),
-            (Parameter::Width, "percent", "Percent"),
+            (Parameter::Motion, "percent", "Percent"),
         ],
     ),
     (
         "Hi-Pass",
         &[
-            (Parameter::Tone, "percent", "Percent"),
-            (Parameter::Motion, "percent", "Percent"),
+            (Parameter::Tone, "frequency", "Frequency"),
+            (Parameter::HighPassSlope, "mode", "Mode"),
+        ],
+    ),
+    (
+        "Lo-Pass",
+        &[
+            (Parameter::LowPass, "frequency", "Frequency"),
+            (Parameter::LowPassSlope, "mode", "Mode"),
         ],
     ),
     (
         "Out",
         &[
-            (Parameter::Quality, "mode", "Mode"),
             (Parameter::Level, "gain", "Gain"),
+            (Parameter::Width, "percent", "Percent"),
             (Parameter::DryWet, "percent", "Percent"),
         ],
     ),
 ];
 #[allow(dead_code)]
 pub(crate) fn enable_binding(p: Parameter) -> Option<Parameter> {
-    let _ = p;
-    None
+    match p {
+        Parameter::Tone | Parameter::HighPassSlope => Some(Parameter::HighPassEnabled),
+        Parameter::LowPass | Parameter::LowPassSlope => Some(Parameter::LowPassEnabled),
+        _ => None,
+    }
 }
 #[allow(dead_code)]
 pub(crate) fn diagram_binding(_: Parameter) -> Option<&'static str> {
@@ -220,5 +292,9 @@ pub(crate) fn diagram_binding(_: Parameter) -> Option<&'static str> {
 }
 #[allow(dead_code)]
 pub(crate) fn footer_power(index: usize) -> Option<Parameter> {
-    (index == 1).then_some(Parameter::HighPassEnabled)
+    match index {
+        2 => Some(Parameter::HighPassEnabled),
+        3 => Some(Parameter::LowPassEnabled),
+        _ => None,
+    }
 }
