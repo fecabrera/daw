@@ -50,6 +50,13 @@ fn clip(mode: SaturatorClipMode, x: f64) -> f64 {
         SaturatorClipMode::NoClip => x,
         SaturatorClipMode::SoftClip => knee(x, 0.5, 1.0),
         SaturatorClipMode::HardClip => x.clamp(-1.0, 1.0),
+        SaturatorClipMode::TubeClip => {
+            // Biased tanh adds even harmonics. Remove the static bias so silence
+            // stays exact; retain unity slope at zero and a maximum excursion of one.
+            let bias = 0.3_f64.tanh();
+            let scale = 1.0 / (1.0 - bias);
+            ((x * scale + 0.3).tanh() - bias) / (1.0 + bias)
+        }
     }
 }
 // Rapid retargets can leave independent ramps with different remaining lengths.
@@ -69,7 +76,7 @@ pub struct Saturator {
     // Drive dB, output amplitude, wet proportion, enabled proportion.
     parameters: [ModulationRamp; 4],
     shapes: [ModulationRamp; 5],
-    clips: [ModulationRamp; 3],
+    clips: [ModulationRamp; 4],
     external: ModulationSmoother<3>,
     effective: [f32; 3],
     fade_frames: u32,

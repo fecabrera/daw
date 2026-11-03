@@ -1563,7 +1563,7 @@ fn saturator_track_master_live_offline_blocks_and_compatible_updates_share_clock
                 };
                 s.drive_db = 6.0;
                 s.shape = SaturatorShape::SoftSine;
-                s.clip_mode = SaturatorClipMode::SoftClip;
+                s.clip_mode = SaturatorClipMode::TubeClip;
                 s.level_db = -3.0;
                 s.dry_wet = 0.6;
                 let id = effect.id;

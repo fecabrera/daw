@@ -22,10 +22,17 @@ The manifests and synthetic identity/default-state fixtures freeze each product'
 | 101 | level / exact silence through +12 dB / 0 dB | level / exact silence through +12 dB / 0 dB |
 | 102 | drive / −36–+36 dB / 0 dB | drive / 0–24 dB / 0 dB |
 | 103 | shape / 0–4 / Analog Clip (0) | resolution / 1–24 bits / 24 |
-| 104 | clip_mode / 0–2 / No Clip (0) | downsampling / 1–40× / 1 |
+| 104 | clip_mode / 0–3 / No Clip (0) | downsampling / 1–40× / 1 |
 | 105 | dry_wet / 0–1 / 1 | dry_wet / 0–1 / 1 |
 
-Choice orders follow the portable enums: Saturator Shape is Analog Clip, Soft Sine, Bass Shaper, Medium Curve, Hard Curve; Clip Mode is No Clip, Soft Clip, Hard Clip. Bypass maps to inverse `enabled`. Level reuses the shared exact-silence gain mapping and finite −1000 dB sentinel. Drive uses linear dB; Dry/Wet uses a linear ratio. Host text uses each control's native units. CLAP truncates stepped plain values; VST3 rounds normalized choices after mapping their full ranges.
+Choice orders follow the portable enums: Saturator Shape is Analog Clip, Soft Sine, Bass Shaper, Medium Curve, Hard Curve; Clip Mode plain order is No Clip, Soft Clip, Hard Clip, Tube Clip. Bypass maps to inverse `enabled`. Level reuses the shared exact-silence gain mapping and finite −1000 dB sentinel. Drive uses linear dB; Dry/Wet uses a linear ratio. Host text uses each control's native units. CLAP truncates stepped plain values; VST3 rounds ordinary normalized choices after mapping their full ranges. Saturator Clip Mode uses the compatibility mapping below.
+
+Saturator Tube Clip appends plain value 3 and retains old state values 0/1/2.
+Its VST3 grid is No Clip=0, Soft Clip=1/3, Tube Clip=2/3, Hard Clip=1, with
+three steps. The old Soft Clip value 0.5 still decodes to Soft Clip. Old endpoint
+selections and saved plain states retain their sound; intermediate normalized
+automation can now select Tube. Parameter IDs, product identities, state/settings
+versions and default-state fixture bytes do not change.
 
 State envelopes are 64 bytes: eight-byte ASCII magic (`DAWSAT1!` or `DAWBCR1!`), little-endian u32 state version 1, little-endian u32 settings version 1, and six little-endian f64 plain values in ID order. Validate length, magic, both versions, finite bounds and integer choices before publication. Reject foreign/future/corrupt states without changing current state. Appearance, meters and peak reset do not enter saved state or the host parameter list.
 

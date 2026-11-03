@@ -16,7 +16,7 @@ Dropdowns reuse the labeled rows, captions, widths, fonts, and interaction used 
 | Control | Range/options | Default | Meaning |
 | --- | --- | --- | --- |
 | Shape | Analog Clip, Soft Sine, Bass Shaper, Medium Curve, Hard Curve | Analog Clip | Primary nonlinear transfer curve. |
-| Clip Mode | No Clip, Soft Clip, Hard Clip | No Clip | Final clipping on the processed path after the selected Shape. |
+| Clip Mode | No Clip, Soft Clip, Hard Clip, Tube Clip | No Clip | Final clipping on the processed path after the selected Shape. |
 | Drive | −36 to +36 dB | 0 dB | Input gain before shaping; negative values reduce saturation. |
 | Level | Exact silence to +12 dB | 0 dB | Processed-path gain after the final clip stage. |
 | Dry/Wet | 0–100% | 100% | Linear balance of original and processed audio. |
@@ -38,7 +38,7 @@ input ──┬── Drive → Shape → Clip Mode → Level ──┬── Dr
 
 The independent curves have unity small-signal gain, symmetric positive/negative response, and output headroom above ±1 so post-clipping has a distinct effect. Listening and native-device validation remain separate from the automated harmonic checks.
 
-No Clip bypasses only the final clip stage; the selected Shape still saturates. Soft Clip rounds processed peaks; Hard Clip clamps processed samples at ±1 before Level. Soft Clip should have the same ±1 processed-sample ceiling. Level can subsequently raise the processed signal above that ceiling. Dry/Wet blends after Level, and the dry contribution is not clipped by the processed-path clipper. These are sample-peak controls, not a true-peak limiter. At 0% wet, output is the original audio with the fixed processing delay; Level does not affect it.
+No Clip bypasses only the final clip stage; the selected Shape still saturates. Soft Clip rounds processed peaks; Hard Clip clamps processed samples at ±1 before Level. Soft Clip and Tube Clip have the same ±1 processed-sample ceiling. Tube Clip uses an asymmetric soft curve to add even harmonics; the static bias subtraction preserves silence but does not remove signal-dependent rectification DC. Level can subsequently raise the processed signal above that ceiling. Dry/Wet blends after Level, and the dry contribution is not clipped by the processed-path clipper. These are sample-peak controls, not a true-peak limiter. At 0% wet, output is the original audio with the fixed processing delay; Level does not affect it.
 
 Do not add automatic gain compensation: Drive and Level have separate, predictable roles. At 0 dB Drive, a hot input can still saturate. Header power uses the shared click-free bypass and meter lifecycle.
 
@@ -78,7 +78,14 @@ For signed input `x`, the rounded-knee function is linear to magnitude `k`, then
 | Medium Curve | `y − y^3/(3 × 1.65^2)`, with `y=clamp(x, −1.65, 1.65)`; ceiling ±1.1 and zero slope at the plateau. |
 | Hard Curve | `clamp(x, −1.2, 1.2)`; linear center and abrupt knee. |
 
-Soft Clip applies a rounded knee with `k=0.5`, `c=1`. Hard Clip clamps to ±1. After decimation, apply a sample-peak guard at ±1 once the No Clip transition weight reaches zero, preventing reconstruction overshoot from violating the post-clip sample ceiling. Output Level follows this guard; dry/bypass remain independent of that ceiling. During selector transitions, crossfade the old/new nonlinear contributions with shared ramps. Normalize their weights each frame to avoid gain dips after rapid retargets with different remaining ramp lengths. All branches share the same FIR clock/history.
+Soft Clip applies a rounded knee with `k=0.5`, `c=1`. Hard Clip clamps to ±1.
+Tube Clip uses `b=tanh(0.3)`, `a=1/(1−b)` and
+`(tanh(a×x+0.3)−b)/(1+b)`. This gives exact zero at zero input, unity
+small-signal slope, monotonic asymmetric compression, a negative asymptote of −1
+and a positive asymptote of `exp(−0.6)`. It is a fixed transfer curve, not a circuit
+simulation, automatic level compensation or DC-blocking filter. Keep the shared
+post-decimation ±1 guard, routing, fixed 32-frame latency and meter lifecycle.
+ After decimation, apply a sample-peak guard at ±1 once the No Clip transition weight reaches zero, preventing reconstruction overshoot from violating the post-clip sample ceiling. Output Level follows this guard; dry/bypass remain independent of that ceiling. During selector transitions, crossfade the old/new nonlinear contributions with shared ramps. Normalize their weights each frame to avoid gain dips after rapid retargets with different remaining ramp lengths. All branches share the same FIR clock/history.
 
 Drive dB, output amplitude, blend, bypass, and selector weights use the existing 5 ms `ModulationRamp`; offset resolution uses the shared 1 ms `ModulationSmoother<3>`. Compatible retargeting preserves FIR history, delay cursors, route ramps, and in-flight transitions. Presentation-only edits do not restart ramps. Nonfinite input samples become zero. Use f64 internal sums and clamp the final finite conversion to f32 range. No callback allocation or final-owner retirement is introduced.
 
@@ -95,3 +102,20 @@ A processed coherent sine-triad regression at +10 dB Drive requires more than 2.
 Use the [standard effect Out-strip meter](../architecture/modular-audio-units.md#standard-effect-out-strip-meter) for final linked-stereo level, shared held-peak capture/reset, bypass masking, and allocation-free prepared meter binding. Retain audio DSP, latency, saved settings and existing modulation behavior.
 
 Separate [CLAP/VST3 plugin builds](../architecture/saturator-bitcrusher-plugin-builds.md) reuse this portable processor and the shared headerless body.
+
+## Tube Clip compatibility
+
+Append `TubeClip` to the version-1 clip enum and four-way crossfade bank. Keep
+serialized `no_clip`, `soft_clip` and `hard_clip` identities unchanged; serialize
+the new mode as `tube_clip`. All five primary Shapes retain their existing curves.
+The shared body discovers the fourth dropdown option through the enum inventory.
+Built-in and standalone editors keep their two-strip geometry and shared controls.
+
+Plugin plain values remain No Clip=0, Soft Clip=1 and Hard Clip=2; append Tube Clip=3.
+Keep parameter ID 104, the six-parameter state envelope, product identities and
+frozen default bytes. Use three normalized steps with No Clip=0, Soft Clip=1/3,
+Tube Clip=2/3 and Hard Clip=1. Accept the legacy Soft Clip normalized value 0.5
+as Soft Clip, preserving all three old discrete selections. Values above 0.5 and
+below 5/6 select Tube; intermediate automation can therefore change behavior.
+Scope the nonuniform plain/normalized mapping to Saturator in the shared converter;
+other products retain their mappings. Test state/text roundtrips and legacy points.

@@ -5568,8 +5568,8 @@ fn saturator_reuses_catalog_selectors_knobs_modulation_and_unit_actions() {
             let clip = app.effects_bounds.saturator_units[0].controls[1].center();
             click(&mut app, &ctx, clip);
             let output = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let hard = super::envelope_units::label(&output, "Hard Clip");
-            click(&mut app, &ctx, hard);
+            let tube = super::envelope_units::label(&output, "Tube Clip");
+            click(&mut app, &ctx, tube);
             end_click_sequence(&mut app, &ctx);
             let drive = app.effects_bounds.saturator_units[0].controls[2].center();
             click(&mut app, &ctx, drive);
@@ -5579,7 +5579,7 @@ fn saturator_reuses_catalog_selectors_knobs_modulation_and_unit_actions() {
             else {
                 unreachable!()
             };
-            assert_eq!(s.clip_mode, daw_core::SaturatorClipMode::HardClip);
+            assert_eq!(s.clip_mode, daw_core::SaturatorClipMode::TubeClip);
             assert!(s.drive_db > 0.0);
             let header = app.effects_bounds.saturator_units[0].header;
             click(

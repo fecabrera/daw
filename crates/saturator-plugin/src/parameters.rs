@@ -89,7 +89,7 @@ impl Parameter {
                 0,
             ),
             Self::Shape => ("shape", "Shape", 0.0, 4.0, 0.0, Scale::Choice, 4),
-            Self::ClipMode => ("clip_mode", "Clip mode", 0.0, 2.0, 0.0, Scale::Choice, 2),
+            Self::ClipMode => ("clip_mode", "Clip mode", 0.0, 3.0, 0.0, Scale::Choice, 3),
             Self::DryWet => (
                 "dry_wet",
                 "Dry/Wet",

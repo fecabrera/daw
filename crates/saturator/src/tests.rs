@@ -247,7 +247,7 @@ fn rapid_selector_retargets_preserve_small_signal_level() {
     }
     for n in 0..2000 {
         s.shape = SaturatorShape::ALL[n % 5];
-        s.clip_mode = SaturatorClipMode::ALL[n % 3];
+        s.clip_mode = SaturatorClipMode::ALL[n % SaturatorClipMode::ALL.len()];
         unit.retarget(&s);
         let y = unit.process_sample([0.0001; 2]);
         assert!((y[0] - 0.0001).abs() < 1e-7, "{n} {y:?}");
@@ -335,4 +335,62 @@ fn sine_and_medium_separate_low_order_color_while_hard_curve_adds_upper_harmonic
     assert!(medium[1] > 4.0 * sine[1]);
     assert!(hard[2..].iter().map(|x| x * x).sum::<f64>() > 0.0001);
     assert!(medium[2..].iter().all(|x| *x < 0.00001));
+}
+
+#[test]
+fn tube_clip_is_asymmetric_monotonic_bounded_and_preserves_silence_and_small_signals() {
+    let mode = SaturatorClipMode::TubeClip;
+    assert_eq!(clip(mode, 0.0), 0.0);
+    assert!((clip(mode, 1e-7) / 1e-7 - 1.0).abs() < 1e-6);
+    let mut previous = -1.0;
+    for i in -10000..=10000 {
+        let y = clip(mode, i as f64 / 1000.0);
+        assert!(y.is_finite() && (-1.0..=1.0).contains(&y) && y >= previous);
+        previous = y;
+    }
+    assert!((clip(mode, 2.0) + clip(mode, -2.0)).abs() > 0.2);
+    assert_ne!(clip(mode, 1.0), clip(SaturatorClipMode::SoftClip, 1.0));
+    assert_ne!(clip(mode, 1.0), clip(SaturatorClipMode::HardClip, 1.0));
+}
+
+#[test]
+fn processed_tube_adds_even_harmonics_at_every_rate_without_changing_latency_or_sample_ceiling() {
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        let mut second = Vec::new();
+        for clip_mode in [
+            SaturatorClipMode::SoftClip,
+            SaturatorClipMode::HardClip,
+            SaturatorClipMode::TubeClip,
+        ] {
+            let mut unit = Saturator::new(
+                context(rate),
+                &SaturatorSettings {
+                    clip_mode,
+                    drive_db: 12.0,
+                    ..Default::default()
+                },
+            );
+            assert_eq!(unit.latency_frames(), 32);
+            let mut harmonic = [0.0_f64; 2];
+            let mut dc = 0.0_f64;
+            for n in 0..8192 {
+                let phase = std::f64::consts::TAU * n as f64 / 256.0;
+                let y = unit.process_sample([(phase.sin() * 0.8) as f32, 0.0]);
+                assert!(y[0].abs() <= 1.0 && y[1] == 0.0);
+                if n >= 4096 {
+                    harmonic[0] += f64::from(y[0]) * (2.0 * phase).sin();
+                    harmonic[1] += f64::from(y[0]) * (2.0 * phase).cos();
+                    dc += f64::from(y[0]);
+                }
+            }
+            second.push(harmonic[0].hypot(harmonic[1]) / 4096.0);
+            if clip_mode == SaturatorClipMode::TubeClip {
+                assert!(dc / 4096.0 < -0.01);
+            }
+        }
+        assert!(
+            second[2] > 0.01 && second[2] > 100.0 * second[0] && second[2] > 100.0 * second[1],
+            "{rate} {second:?}"
+        );
+    }
 }

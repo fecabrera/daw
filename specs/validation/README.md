@@ -6,6 +6,44 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Saturator Tube Clip — 2026-11-02
+
+Tube Clip adds a fourth final-clip choice through the existing shared dropdown
+and four-way five-millisecond clip crossfade. The biased tanh transfer preserves
+silence, has unity small-signal slope and adds even harmonics. It retains the
+4× FIR path, post-decimation ±1 guard before Level, dry/bypass alignment, 32-frame
+latency and standard monitoring. Its asymmetry can produce rectification DC.
+
+Completed checks:
+
+- `cargo test --offline --locked -p daw-saturator -p daw-saturator-plugin -p daw-saturator-editor`
+  passed. DSP checks cover monotonic bounded asymmetry, silence/small-signal gain,
+  processed even harmonics and sample ceilings at all six rates, channel isolation,
+  routing, reset/modulation and rapid selector changes. Typed plugin checks cover
+  Tube state/text roundtrips, preserved old plain values/normalized selections,
+  frozen identities/default bytes and processor parity.
+- `cargo test --offline --locked -p daw-saturator-clap -p daw-saturator-vst3`
+  passed, retaining existing ignored release CPU cases.
+- DAW Saturator selector/actions tests passed in both themes across track, Master
+  and instrument placement. The standalone editor's balanced dropdown-gesture
+  test now selects Tube Clip and passed.
+- The engine Saturator test passed with Tube Clip at all six rates: mono/stereo,
+  track/Master, live/export parity, irregular blocks, seeking and allocation-free
+  compatible renderer updates.
+- Strict workspace/all-target Clippy, formatting, local documentation links and
+  whitespace checks passed. The macOS debug app rebuilt successfully.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`
+  passed.
+- `cargo test --offline --locked --workspace` passed, including all doctests.
+  Existing release-only acceptance and CPU cases retain their ignores.
+
+Plugin plain values 0/1/2 and parameter ID 104 retain their old meanings; Tube is
+plain 3. VST3 emits No Clip=0, Soft Clip=1/3, Tube Clip=2/3 and Hard Clip=1, and
+still accepts old Soft Clip=0.5 as Soft Clip. Intermediate selector automation can
+now choose Tube. Other effect products retain their shared-converter mappings.
+
+Native editor/host, device listening and Windows/Linux checks have not run.
+
 ## Noise source — 2026-11-02
 
 Noise adds White/Pink/Brown generation, Color, Width and Level, three shared

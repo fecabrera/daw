@@ -162,11 +162,7 @@ mod selector_gestures {
                     .unwrap()
                     .label()
             } else {
-                daw_unit_core::SaturatorClipMode::ALL
-                    .into_iter()
-                    .find(|v| *v != settings.clip_mode)
-                    .unwrap()
-                    .label()
+                daw_unit_core::SaturatorClipMode::TubeClip.label()
             };
             let opened = frame(&ctx, &mut editor, vec![]);
             let point = opened

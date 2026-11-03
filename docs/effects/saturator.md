@@ -7,7 +7,7 @@ Saturator changes the shape of a signal to add harmonics and control peaks. Add 
 | Control | Range/options | Default | Behavior |
 | --- | --- | --- | --- |
 | Shape | Analog Clip, Soft Sine, Bass Shaper, Medium Curve, Hard Curve | Analog Clip | Select the main saturation curve. |
-| Clip Mode | No Clip, Soft Clip, Hard Clip | No Clip | Select the final clipping stage on the processed signal. |
+| Clip Mode | No Clip, Soft Clip, Hard Clip, Tube Clip | No Clip | Select the final clipping stage on the processed signal. |
 | Drive | −36 to +36 dB | 0 dB | Raise or lower the input level before saturation. |
 | Level | Exact silence to +12 dB | 0 dB | Adjust the processed level after clipping. |
 | Dry/Wet | 0–100% | 100% | Blend the original and processed signals. |
@@ -19,11 +19,11 @@ The retuned modes apply to existing projects with their saved settings; Analog C
 ## Set the saturation
 
 1. Choose a Shape and raise Drive until the signal has the desired distortion. Negative Drive reduces saturation; a hot signal can still saturate at 0 dB Drive.
-2. Select No Clip to retain the main curve's output headroom. Soft Clip rounds peaks, while Hard Clip clamps them. No Clip still applies the selected Shape.
+2. Select No Clip to retain the main curve's output headroom. Soft Clip rounds peaks, Hard Clip clamps them, and Tube Clip adds asymmetric soft compression and even harmonics. No Clip still applies the selected Shape.
 3. Adjust Level to balance the processed sound against the original. Drive has no automatic level compensation.
 4. Reduce Dry/Wet to mix in the original signal. At 0%, the output is the original signal; Level affects only the processed path.
 
-The clipping stage precedes Level and Dry/Wet. Raising Level can lift the output above 0 dBFS, and the dry contribution remains unclipped. Clip modes control sample peaks; they do not provide true-peak limiting. Use the [Limiter](limiter.md) when that is needed.
+The clipping stage precedes Level and Dry/Wet. Raising Level can lift the output above 0 dBFS, and the dry contribution remains unclipped. Tube Clip uses a simplified asymmetric transfer curve. It can introduce a DC component; use a [high-pass Filter](filter.md) if you need to remove it. Clip modes control sample peaks; they do not provide true-peak limiting. Use the [Limiter](limiter.md) when that is needed.
 
 Header power bypasses saturation while retaining its settings. The two selectors and numeric controls change smoothly. Power and Dry/Wet changes retain time alignment with other tracks and layers.
 
@@ -40,3 +40,8 @@ The effect uses 4× oversampling to reduce aliasing. Its filters roll off the hi
 The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.
 
 Separate [CLAP and VST3 plugin previews](distortion-plugins.md) provide these controls in an external host.
+
+Tube Clip is also available in the plugin previews. Existing saved No Clip, Soft
+Clip and Hard Clip settings retain their modes. VST3 keeps the old No Clip (0),
+Soft Clip (0.5) and Hard Clip (1) automation selections valid. New selections use
+the four-mode grid, so intermediate automation values can now select Tube Clip.

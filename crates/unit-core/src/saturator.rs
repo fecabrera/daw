@@ -36,14 +36,16 @@ pub enum SaturatorClipMode {
     NoClip,
     SoftClip,
     HardClip,
+    TubeClip,
 }
 impl SaturatorClipMode {
-    pub const ALL: [Self; 3] = [Self::NoClip, Self::SoftClip, Self::HardClip];
+    pub const ALL: [Self; 4] = [Self::NoClip, Self::SoftClip, Self::HardClip, Self::TubeClip];
     pub fn label(self) -> &'static str {
         match self {
             Self::NoClip => "No Clip",
             Self::SoftClip => "Soft Clip",
             Self::HardClip => "Hard Clip",
+            Self::TubeClip => "Tube Clip",
         }
     }
 }
