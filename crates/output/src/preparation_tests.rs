@@ -65,6 +65,58 @@ pub(super) fn ready(worker: &preparation::Worker) -> preparation::Ready {
     }
 }
 #[test]
+fn reverb_playback_preparation_advances_and_restart_remains_audible() {
+    for effect in [
+        daw_core::EffectInstance::plate_reverb(),
+        daw_core::EffectInstance::ambient_reverb(),
+    ] {
+        let mut plan = tests::transport_plan();
+        plan.project.tracks[0].effects.push(effect);
+        let status = Arc::new(Status::default());
+        let bindings = preparation::Bindings::prepare(&plan, &Default::default());
+        let worker = preparation::Worker::new(status.clone()).unwrap();
+        let (mut producer, consumer) = RingBuffer::new(4);
+        let (retire, mut retired) = RingBuffer::new(8);
+        let mut callback = Callback::new(
+            preparation::initial_plan(&plan),
+            &bindings.tracks,
+            consumer,
+            retire,
+            status.clone(),
+            44_100,
+        )
+        .unwrap();
+        for frame in [4800, 24_000] {
+            let state = TransportState {
+                frame,
+                playing: true,
+                paused: false,
+                playback_start: Some(frame),
+            };
+            let revision = worker.submit(plan.clone(), bindings.clone(), Some(state));
+            status.requested_revision.store(revision, Ordering::Release);
+            producer
+                .push(Command::Plan(ready(&worker).renderer))
+                .unwrap();
+            realtime(|| callback.update());
+            let before = callback.renderer.playhead;
+            let mut audible = false;
+            for _ in 0..4096 {
+                let sample = realtime(|| callback.next());
+                assert!(sample.iter().all(|value| value.is_finite()));
+                audible |= sample.iter().any(|value| value.abs() > 0.01);
+            }
+            assert!(audible);
+            assert!(callback.renderer.playhead > before);
+            assert!(callback.renderer.playing);
+            assert_eq!(status.applied_revision.load(Ordering::Acquire), revision);
+            assert!(!status.failed.load(Ordering::Relaxed));
+            assert!(!status.source_failed.load(Ordering::Relaxed));
+            while retired.pop().is_ok() {}
+        }
+    }
+}
+#[test]
 fn worker_transport_activates_only_latest_revision_and_preserves_pause_resume_start() {
     let mut plan = tests::transport_plan();
     plan.project.tracks[0]

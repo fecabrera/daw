@@ -5497,3 +5497,9 @@ fn midi_loop_wrap_retains_one_shots_and_envelope_releases() {
 
 #[path = "support/noise.rs"]
 mod noise;
+
+#[path = "support/plate_reverb_modulation.rs"]
+mod plate_reverb_modulation;
+
+#[path = "support/ambient_reverb_modulation.rs"]
+mod ambient_reverb_modulation;

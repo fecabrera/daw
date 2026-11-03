@@ -654,6 +654,22 @@ pub(super) fn marker(
         ModulationParameter::SaturatorDrive => offsets.map(|o| (base + o).clamp(-36.0, 36.0)),
         ModulationParameter::NoiseColor => offsets.map(|o| (base + o).clamp(-1.0, 1.0)),
         ModulationParameter::NoiseWidth => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
+        ModulationParameter::PlatePreDelay => offsets.map(|o| base + o.clamp(0.0, 300.0)),
+        ModulationParameter::PlateDecay => offsets.map(|o| base * 2.0_f32.powf(o).clamp(0.3, 15.0)),
+        ModulationParameter::PlateHighPass => {
+            offsets.map(|o| base * 2.0_f32.powf(o).clamp(20.0, 1000.0))
+        }
+        ModulationParameter::PlateLowPass => {
+            offsets.map(|o| base * 2.0_f32.powf(o).clamp(500.0, 15000.0))
+        }
+        ModulationParameter::PlateDrive => offsets.map(|o| base + o.clamp(-12.0, 12.0)),
+        ModulationParameter::ReverbWidth => offsets.map(|o| base + o.clamp(0.0, 1.0)),
+        ModulationParameter::AmbientDecay => {
+            offsets.map(|o| base * 2.0_f32.powf(o).clamp(1.0, 60.0))
+        }
+        ModulationParameter::AmbientBloom => offsets.map(|o| base + o.clamp(0.0, 1.0)),
+        ModulationParameter::AmbientTone => offsets.map(|o| base + o.clamp(0.0, 1.0)),
+        ModulationParameter::AmbientMotion => offsets.map(|o| base + o.clamp(0.0, 1.0)),
         ModulationParameter::ChorusDelay => offsets.map(|o| (base + o).clamp(5.0, 30.0)),
         ModulationParameter::ChorusDepth => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::ChorusFeedback => offsets.map(|o| (base + o).clamp(-0.8, 0.8)),
@@ -778,6 +794,16 @@ pub(super) fn marker(
         ModulationParameter::SaturatorDrive | ModulationParameter::BitcrusherDrive => {
             format!("{value:.1} dB")
         }
+        ModulationParameter::PlatePreDelay => format!("{:.2} ms", value),
+        ModulationParameter::PlateDecay => format!("{:.2} s", value),
+        ModulationParameter::PlateHighPass => format!("{:.2} Hz", value),
+        ModulationParameter::PlateLowPass => format!("{:.2} Hz", value),
+        ModulationParameter::PlateDrive => format!("{:.2} dB", value),
+        ModulationParameter::ReverbWidth => format!("{:.2} %", value * 100.0),
+        ModulationParameter::AmbientDecay => format!("{:.2} s", value),
+        ModulationParameter::AmbientBloom => format!("{:.2} %", value * 100.0),
+        ModulationParameter::AmbientTone => format!("{:.2} %", value * 100.0),
+        ModulationParameter::AmbientMotion => format!("{:.2} %", value * 100.0),
         ModulationParameter::ChorusDelay => format!("{value:.1} ms"),
         ModulationParameter::ChorusRate => format!("{value:.2} Hz"),
         ModulationParameter::ChorusPhase => format!("{value:.0}°"),

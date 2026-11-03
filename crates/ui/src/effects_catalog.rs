@@ -5,13 +5,15 @@ enum Category {
     Dynamics,
     Distortion,
     Imaging,
+    Reverb,
 }
 impl Category {
-    const ALL: [Self; 4] = [
+    const ALL: [Self; 5] = [
         Self::EqAndFilters,
         Self::Dynamics,
         Self::Distortion,
         Self::Imaging,
+        Self::Reverb,
     ];
 
     fn name(self) -> &'static str {
@@ -20,6 +22,7 @@ impl Category {
             Self::Dynamics => "Dynamics",
             Self::Distortion => "Distortion",
             Self::Imaging => "Imaging",
+            Self::Reverb => "Reverb",
         }
     }
 }
@@ -50,7 +53,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 16] = [
+pub(super) const ENTRIES: [Entry; 18] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -146,6 +149,18 @@ pub(super) const ENTRIES: [Entry; 16] = [
         "Harmonic Lift",
         Category::Distortion,
         daw_core::EffectInstance::harmonic_lift,
+    ),
+    Entry::new(
+        daw_core::PLATE_REVERB_TYPE_ID,
+        "Plate Reverb",
+        Category::Reverb,
+        daw_core::EffectInstance::plate_reverb,
+    ),
+    Entry::new(
+        daw_core::AMBIENT_REVERB_TYPE_ID,
+        "Ambient Reverb",
+        Category::Reverb,
+        daw_core::EffectInstance::ambient_reverb,
     ),
 ];
 

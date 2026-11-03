@@ -54,6 +54,8 @@ Knob tooltips show only the parameter name on the left and the current value on 
 - [Direction Mixer](effects/direction-mixer.md)
 - [Stereo Spread](effects/stereo-spread.md)
 - [Chorus](effects/chorus.md)
+- [Plate Reverb](effects/plate-reverb.md)
+- [Ambient Reverb](effects/ambient-reverb.md)
 
 ## Workflows and limits
 

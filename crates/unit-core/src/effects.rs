@@ -1,3 +1,4 @@
+use crate::{AMBIENT_REVERB_STATE_VERSION, AMBIENT_REVERB_TYPE_ID, AmbientReverbSettings};
 use crate::{
     AUTO_FILTER_STATE_VERSION, AUTO_FILTER_TYPE_ID, AutoFilterSettings, COMPRESSOR_STATE_VERSION,
     COMPRESSOR_TYPE_ID, CompressorSettings, DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveSettings,
@@ -12,6 +13,7 @@ use crate::{HARMONIC_LIFT_STATE_VERSION, HARMONIC_LIFT_TYPE_ID, HarmonicLiftSett
 use crate::{LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterSettings};
 use crate::{MULTIBAND_EQ_STATE_VERSION, MULTIBAND_EQ_TYPE_ID, MultibandEqSettings};
 use crate::{OTT_STATE_VERSION, OTT_TYPE_ID, OttSettings};
+use crate::{PLATE_REVERB_STATE_VERSION, PLATE_REVERB_TYPE_ID, PlateReverbSettings};
 use crate::{SATURATOR_STATE_VERSION, SATURATOR_TYPE_ID, SaturatorSettings};
 use crate::{STEREO_SPREAD_STATE_VERSION, STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
 use serde::{Deserialize, Serialize};
@@ -94,6 +96,8 @@ pub enum EffectSettings {
     Saturator(SaturatorSettings),
     Bitcrusher(BitcrusherSettings),
     Chorus(ChorusSettings),
+    AmbientReverb(AmbientReverbSettings),
+    PlateReverb(PlateReverbSettings),
     Missing {
         type_id: String,
         state: serde_json::Value,
@@ -129,6 +133,14 @@ impl Serialize for EffectSettings {
             },
             Self::Chorus(settings) => StoredEffect {
                 type_id: CHORUS_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::AmbientReverb(settings) => StoredEffect {
+                type_id: AMBIENT_REVERB_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::PlateReverb(settings) => StoredEffect {
+                type_id: PLATE_REVERB_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
             },
             Self::DirectionMixer(settings) => StoredEffect {
@@ -231,6 +243,26 @@ impl<'de> Deserialize<'de> for EffectSettings {
         {
             serde_json::from_value(stored.state)
                 .map(Self::Chorus)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == AMBIENT_REVERB_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|version| version <= u64::from(AMBIENT_REVERB_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::AmbientReverb)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == PLATE_REVERB_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|version| version <= u64::from(PLATE_REVERB_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::PlateReverb)
                 .map_err(serde::de::Error::custom)
         } else if stored.type_id == STEREO_SPREAD_TYPE_ID
             && stored
@@ -351,6 +383,15 @@ impl<'de> Deserialize<'de> for EffectSettings {
     }
 }
 impl EffectSettings {
+    /// Conservative tail budget, in project-rate frames. Unknown units retain
+    /// their existing bypass behavior; this does not add dry alignment latency.
+    pub fn tail_frames(&self, sample_rate_hz: u32) -> u64 {
+        match self {
+            Self::PlateReverb(s) => s.tail_frames(sample_rate_hz),
+            Self::AmbientReverb(s) => s.tail_frames(sample_rate_hz),
+            _ => 0,
+        }
+    }
     /// Stable child identities for repeated-band controls and prepared telemetry.
     pub fn band_ids(&self) -> impl Iterator<Item = uuid::Uuid> + '_ {
         let (eq, exciter, harmonic): (
@@ -386,6 +427,8 @@ impl EffectSettings {
             Self::Saturator(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Bitcrusher(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Chorus(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::AmbientReverb(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::PlateReverb(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Ott(s) => crate::ModulationDestinationSettings::modulations(s),
             _ => &[],
         }
@@ -409,6 +452,8 @@ impl EffectSettings {
             Self::Saturator(s) => &mut s.modulations,
             Self::Bitcrusher(s) => &mut s.modulations,
             Self::Chorus(s) => &mut s.modulations,
+            Self::AmbientReverb(s) => &mut s.modulations,
+            Self::PlateReverb(s) => &mut s.modulations,
             Self::Ott(s) => &mut s.modulations,
             _ => &mut [],
         }
@@ -432,6 +477,8 @@ impl EffectSettings {
             Self::Saturator(settings) => settings.valid(),
             Self::Bitcrusher(settings) => settings.valid(),
             Self::Chorus(settings) => settings.valid(),
+            Self::AmbientReverb(settings) => settings.valid(),
+            Self::PlateReverb(settings) => settings.valid(),
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
                     MULTIBAND_EQ_TYPE_ID => Some(MULTIBAND_EQ_STATE_VERSION),
@@ -450,6 +497,8 @@ impl EffectSettings {
                     SATURATOR_TYPE_ID => Some(SATURATOR_STATE_VERSION),
                     BITCRUSHER_TYPE_ID => Some(BITCRUSHER_STATE_VERSION),
                     CHORUS_TYPE_ID => Some(CHORUS_STATE_VERSION),
+                    AMBIENT_REVERB_TYPE_ID => Some(AMBIENT_REVERB_STATE_VERSION),
+                    PLATE_REVERB_TYPE_ID => Some(PLATE_REVERB_STATE_VERSION),
                     _ => None,
                 };
                 !type_id.trim().is_empty()
@@ -551,6 +600,18 @@ impl EffectInstance {
         Self {
             id: uuid::Uuid::new_v4(),
             unit: EffectSettings::Chorus(ChorusSettings::default()),
+        }
+    }
+    pub fn ambient_reverb() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::AmbientReverb(AmbientReverbSettings::default()),
+        }
+    }
+    pub fn plate_reverb() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::PlateReverb(PlateReverbSettings::default()),
         }
     }
     pub fn direction_mixer() -> Self {

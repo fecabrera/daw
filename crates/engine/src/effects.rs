@@ -1,3 +1,4 @@
+use daw_ambient_reverb::AmbientReverb;
 use daw_auto_filter::AutoFilter;
 use daw_bitcrusher::Bitcrusher;
 use daw_chorus::Chorus;
@@ -11,6 +12,7 @@ use daw_filter::Filter;
 use daw_harmonic_lift::HarmonicLift;
 use daw_limiter::Limiter;
 use daw_ott::Ott;
+use daw_plate_reverb::PlateReverb;
 use daw_saturator::Saturator;
 use daw_stereo_spread::StereoSpread;
 use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_modulation};
@@ -34,6 +36,8 @@ enum RuntimeEffect {
     Saturator(Box<Saturator>, Vec<super::modulation::Route>),
     Bitcrusher(Box<Bitcrusher>, Vec<super::modulation::Route>),
     Chorus(Box<Chorus>, Vec<super::modulation::Route>),
+    AmbientReverb(Box<AmbientReverb>, Vec<super::modulation::Route>),
+    PlateReverb(Box<PlateReverb>, Vec<super::modulation::Route>),
 }
 
 impl RuntimeEffect {
@@ -111,6 +115,16 @@ impl RuntimeEffect {
                     + unit.heap_bytes()
                     + daw_unit_core::memory::vec_bytes(routes)
             }
+            Self::AmbientReverb(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::PlateReverb(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
         }
     }
 
@@ -134,6 +148,8 @@ impl RuntimeEffect {
             Self::Saturator(unit, _) => unit.latency_frames(),
             Self::Bitcrusher(unit, _) => unit.latency_frames(),
             Self::Chorus(unit, _) => unit.latency_frames(),
+            Self::AmbientReverb(unit, _) => unit.latency_frames(),
+            Self::PlateReverb(unit, _) => unit.latency_frames(),
         }
     }
 
@@ -334,6 +350,32 @@ impl RuntimeEffect {
                     ..Default::default()
                 },
             ),
+            Self::AmbientReverb(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
+            Self::PlateReverb(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::DirectionMixer(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -427,6 +469,18 @@ impl RuntimeEffect {
                     route.reset();
                 }
             }
+            Self::AmbientReverb(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
+            Self::PlateReverb(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
             Self::DirectionMixer(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -456,6 +510,12 @@ impl RuntimeEffect {
                 unit.retarget(settings)
             }
             (Self::Chorus(unit, _), EffectSettings::Chorus(settings)) => unit.retarget(settings),
+            (Self::AmbientReverb(unit, _), EffectSettings::AmbientReverb(settings)) => {
+                unit.retarget(settings)
+            }
+            (Self::PlateReverb(unit, _), EffectSettings::PlateReverb(settings)) => {
+                unit.retarget(settings)
+            }
             (Self::DirectionMixer(unit, _), EffectSettings::DirectionMixer(settings)) => {
                 unit.retarget(settings)
             }
@@ -634,6 +694,26 @@ impl EffectChain {
                                     .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
                                     .collect(),
                             )),
+                            EffectSettings::AmbientReverb(settings) => {
+                                Some(RuntimeEffect::AmbientReverb(
+                                    Box::new(AmbientReverb::new(context, settings)),
+                                    settings
+                                        .modulations
+                                        .iter()
+                                        .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                        .collect(),
+                                ))
+                            }
+                            EffectSettings::PlateReverb(settings) => {
+                                Some(RuntimeEffect::PlateReverb(
+                                    Box::new(PlateReverb::new(context, settings)),
+                                    settings
+                                        .modulations
+                                        .iter()
+                                        .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                        .collect(),
+                                ))
+                            }
                             EffectSettings::DirectionMixer(settings) => {
                                 Some(RuntimeEffect::DirectionMixer(
                                     Box::new(DirectionMixer::new(context, settings)),
@@ -730,6 +810,14 @@ impl EffectChain {
                 | (
                     RuntimeEffect::Chorus(_, old_routes),
                     RuntimeEffect::Chorus(_, new_routes),
+                )
+                | (
+                    RuntimeEffect::AmbientReverb(_, old_routes),
+                    RuntimeEffect::AmbientReverb(_, new_routes),
+                )
+                | (
+                    RuntimeEffect::PlateReverb(_, old_routes),
+                    RuntimeEffect::PlateReverb(_, new_routes),
                 ) = (&mut *previous, &mut *next)
                 {
                     daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
@@ -810,6 +898,12 @@ impl EffectChain {
             Some((_, Some(RuntimeEffect::Chorus(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
+            Some((_, Some(RuntimeEffect::AmbientReverb(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::PlateReverb(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
             Some((_, Some(RuntimeEffect::DirectionMixer(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
@@ -868,6 +962,12 @@ impl EffectChain {
                 unit.set_band_level_meter(meter.current().clone())
             }
             Some((_, Some(RuntimeEffect::Chorus(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::AmbientReverb(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::PlateReverb(unit, _)))) => {
                 unit.set_output_peak_meter(meter.clone());
             }
             Some((_, Some(RuntimeEffect::Drive(unit, _)))) => {

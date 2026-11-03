@@ -1,3 +1,5 @@
+pub use daw_unit_core::{AMBIENT_REVERB_TYPE_ID, AmbientReverbSettings};
+pub use daw_unit_core::{PLATE_REVERB_TYPE_ID, PlateReverbSettings};
 mod effect_owners;
 pub use daw_unit_core::{
     HARMONIC_BAND_NAMES, HARMONIC_FREQUENCY_DEFAULTS, HARMONIC_FREQUENCY_RANGES,

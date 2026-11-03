@@ -69,6 +69,8 @@ pub(super) fn effect_enabled(settings: &mut EffectSettings) -> Option<&mut bool>
         EffectSettings::Saturator(s) => Some(&mut s.enabled),
         EffectSettings::Bitcrusher(s) => Some(&mut s.enabled),
         EffectSettings::Chorus(s) => Some(&mut s.enabled),
+        EffectSettings::AmbientReverb(s) => Some(&mut s.enabled),
+        EffectSettings::PlateReverb(s) => Some(&mut s.enabled),
         EffectSettings::Missing { .. } => None,
     }
 }

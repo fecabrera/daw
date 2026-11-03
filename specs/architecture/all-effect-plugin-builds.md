@@ -4,11 +4,11 @@ Status: development previews. Native host and release acceptance remain open.
 
 ## Products and ownership
 
-The fifteen standalone effect products each have a `plugins/<unit>/unit.toml` manifest and independent `daw-<unit>-plugin`, `daw-<unit>-editor`, `daw-<unit>-clap`, and `daw-<unit>-vst3` packages. The [user plugin table](../../docs/effects/plugins.md) defines product names, slugs, and exposed controls. The original four products retain their public identities and binary state formats. The later [Multiband Exciter](../effects/exciter.md) is built-in only and does not add a product to the packager or CI matrix.
+The registered standalone effect products each have a `plugins/<unit>/unit.toml` manifest and independent `daw-<unit>-plugin`, `daw-<unit>-editor`, `daw-<unit>-clap`, and `daw-<unit>-vst3` packages. The [user plugin table](../../docs/effects/plugins.md) defines product names, slugs, and exposed controls. The original four products retain their public identities and binary state formats. The later [Multiband Exciter](../effects/exciter.md) is built-in only and does not add a product to the packager or CI matrix.
 
 The later plugin models map explicit parameter IDs to portable settings. IDs start at 100 (Bypass), remain contiguous, and follow each checked manifest. Never regenerate class IDs or reorder IDs after publication. Identity/default-state fixtures freeze each contract. State uses an eight-byte product magic, two little-endian u32 versions, and one little-endian f64 per parameter in ID order. Reject foreign magic, future versions, invalid values, truncation, and trailing data before publication.
 
-The original Drive CLAP/VST3 adapters compile against each concrete product through dependency aliases. Shared bounded state exchange, binary I/O, normalized mappings, gestures, native window lifetime, and format boundary handling remain in their existing owners. No plugin depends on DAW engine, project, device, or application UI crates. All fifteen plugin editors and their built-in counterparts call the same effect body renderers in `unit-ui`. DAW shells, editing transactions and modulation discovery remain in `ui`; SDK automation bindings remain in each editor crate.
+The original Drive CLAP/VST3 adapters compile against each concrete product through dependency aliases. Shared bounded state exchange, binary I/O, normalized mappings, gestures, native window lifetime, and format boundary handling remain in their existing owners. No plugin depends on DAW engine, project, device, or application UI crates. All registered plugin editors and their built-in counterparts call the same effect body renderers in `unit-ui`. DAW shells, editing transactions and modulation discovery remain in `ui`; SDK automation bindings remain in each editor crate.
 
 DSP preparation allocates delay storage, settings, meters, and fixed queues before activation. Parameter automation updates prepared settings and retargets the portable DSP without heap work, locks, I/O, serialization, SDK calls, or final-owner retirement. Portable units retain their own bounds and ramps. OTT applies upper-crossover precedence with at least a 1 Hz gap; Stereo Spread uses its existing constrained-frequency helper. Host base values remain unchanged when effective crossover bounds constrain the DSP.
 
@@ -20,7 +20,7 @@ The shared layout uses 90-point single strips and 161-point two-column strips, w
 
 Plugin adapters use `control_capture::scope` to collect actual widget responses and map their rectangles to frozen parameter IDs. The collection is scoped to UI painting and releases response ownership on return or unwinding. It is never accessed by the audio callback. Captured meter clicks send reset requests, not parameter edits.
 
-All fifteen editors have paired tessellated rendering comparisons against their portable built-in bodies in Dark, Light and Mist, at 1×, 1.5× and 2× scale, with defaults and two changed parameter snapshots. Compare clips, textures, triangles, vertex positions and colors. Separate gesture checks verify parameter identity and balanced host gestures, including both rate modes; Saturator dropdowns have dedicated selection checks. Geometry checks cover control containment and contiguous strip order. Native host attachment and display scaling still require platform checks.
+All registered editors have paired tessellated rendering comparisons against their portable built-in bodies in Dark, Light and Mist, at 1×, 1.5× and 2× scale, with defaults and two changed parameter snapshots. Compare clips, textures, triangles, vertex positions and colors. Separate gesture checks verify parameter identity and balanced host gestures, including both rate modes; Saturator dropdowns have dedicated selection checks. Geometry checks cover control containment and contiguous strip order. Native host attachment and display scaling still require platform checks.
 
 ## Timing, latency, and monitoring
 
@@ -42,9 +42,9 @@ Standalone Multiband EQ uses the shared release-only strip gesture lifecycle. It
 
 ## Packaging, CI, and checks
 
-The manifest-discovered packager requires no product allowlist. `--units all` now selects fifteen units. Test fixture libraries cover all products on each supported archive layout and retain transactional publication after later-unit/signing failures.
+The manifest-discovered packager requires no product allowlist. `--units all` selects every manifest-registered product. Test fixture libraries cover all products on each supported archive layout and retain transactional publication after later-unit/signing failures.
 
-The plugin workflow runs fifteen products across three platforms (45 jobs), with both formats, typed model/editor and ABI tests, packaging, separate artifacts, checksums, and logs. Existing library-path environment variables retain `DRIVE_*` names for shared host tests.
+The plugin workflow runs registered products across three platforms (one job per product and platform), with both formats, typed model/editor and ABI tests, packaging, separate artifacts, checksums, and logs. Existing library-path environment variables retain `DRIVE_*` names for shared host tests.
 
 ABI tests cover native metadata, latency at all rates, every parameter, choices, dense automation, legal in-place/irregular buffers, zero-frame flushes, state corruption and active recall. Product tests freeze identities and default state, validate mappings/text conversions, compare portable DSP and wrappers, and check bypass meter clearing. Platform-native editor/device and external-host checks remain separate from automated tests. Record executed checks and remaining limits in [validation history](../validation/README.md).
 

@@ -4,7 +4,139 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Reverb control consistency and Bloom drag — 2026-11-03
 
+Plate's filter readouts now reuse Drive v2's frequency formatter and range labels:
+whole Hz below 1 kHz and one decimal place in kHz above it. Drive and Ambient's
+High-pass now use the shared power/label row. Their public parameter identities
+and values remain unchanged. Editor gesture checks now exercise both buttons.
+
+Bloom previously replaced prime delay lengths every 128 samples, abruptly moving
+read heads in both feedback networks. Both paths now crossfade stationary taps
+over 50 ms. Repeated requests update one pending target without restarting the
+active fade. Reset and compatible renderer updates preserve the intended lifecycle.
+
+Completed checks:
+
+- All seventeen editor library suites and `daw-unit-ui` passed, including paired
+  body rendering across themes/scales and balanced host edits for both power buttons.
+- A 48 kHz fully wet 220 Hz tone, with continuous Bloom drags after one second of
+  warmup, measured first-difference/signal energy of 0.0128604 before the fix and
+  0.0008553 afterward. The regression rejects ratios at or above 0.002. This
+  measures drag discontinuities, not perceptual noise or reference equivalence.
+- A six-rate adversarial tap test passed continuity, queued rapid targets,
+  eventual settling, and reset checks.
+- Release tests for `daw-reverb-core`, both portable products, both typed plugin
+  models, and all four reverb format targets passed. Dense automation/reset heap
+  checks remain allocation-free. Explicit performance tests stay ignored.
+- `cargo test -p daw-engine --release --offline --test effects --test midi reverb`
+  passed all four selected tests: track/Master/export/seek/history and shared
+  track/layer/Main modulation for both products across the supported rates.
+- Focused clippy checks passed for the changed DSP, portable Ambient processor,
+  shared controls and both editors. Formatting and diff whitespace checks passed.
+- Both Windows plugin formats rebuilt and packaged for both reverbs. The Windows
+  desktop built with an explicit target. Replacement of the original executable
+  returned access denied; a separate preview copy was prepared and its SHA-256
+  verified against that build. The running application was not closed.
+
+Native listening and editor/device checks were not performed for these changes.
+The earlier 192 kHz/32-frame deadline limitation remains open; the Bloom crossfade
+does not remove the FFT burst workload.
+
+## Reverb integration and playback repair — 2026-11-03
+
+Plate Reverb and Ambient Reverb now have portable processing, shared built-in
+and standalone bodies, catalog entries, modulation, meters, persistence, capped
+export tails, typed plugin state and independent CLAP/VST3 products. Canonical
+selector rows replace the narrow, truncated fields shown in the initial UI.
+
+The initial integration read modulation indices 95–104 from storage with only
+95 entries. This panicked during processing even without connected routes.
+The storage now contains 105 entries. A neutral-input regression covers every
+reverb destination. A worker/output regression covers preparation, audible
+playback, advancing transport and restart for both effects, with 48 kHz project
+audio resampled to 44.1 kHz output. Callback allocation/retirement checks pass.
+
+Completed checks:
+
+- `cargo test --workspace --offline` passed the packages before `daw-ui`,
+  including reverb ABI, DSP, engine, output and project/export checks, then found
+  three catalog fixture failures. The fixtures assumed Imaging was last and
+  omitted the new entries from keyboard expectations; new test-only reverb
+  bounds also retained stale rectangles after collapse. Those fixtures and
+  bounds were corrected. The full `daw-ui` rerun passed 852 tests (three ignored).
+  This was split-run workspace validation, not a single final all-green command.
+- The remaining packages ran with `cargo test -p daw-ui -p daw-unit-core
+  -p daw-unit-ui -p timestretch -p timestretch-cli --no-fail-fast --offline`.
+  All active tests passed except standalone manifest extraction, because TEMP
+  inside `work/` made the extracted crate inherit the DAW workspace. Rerunning
+  `cargo test -p timestretch-cli --test standalone --offline` with a normal
+  temporary directory passed. This completes active workspace test coverage.
+  The timestretch packages also passed their active release DSP/CLI tests;
+  the same isolated manifest rerun passed in release. Explicit acceptance,
+  large-PCM and benchmark tests remain ignored unless listed separately here.
+- `cargo test --workspace --doc --offline` passed all workspace doc tests.
+- `cargo test -p daw-output --lib reverb_playback_preparation --offline` passed.
+- `cargo test -p daw-unit-ui reverb_selectors --offline` passed. Selector width,
+  centered labels above fields and scaling at 1/1.5/2 match the shared layout.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings` passed.
+  Incremental-cache hard-link fallback messages remain environmental warnings.
+- `cargo fmt --all --check` and `git diff --check` passed.
+- The four reverb CLAP/VST3 release targets built for
+  `x86_64-pc-windows-msvc`. `tools/package_plugins.py` produced all four preview
+  ZIPs and both checksum files. The packaging test suite passed (one native
+  platform-specific case skipped on Windows).
+- The Windows desktop release and CLI debug build passed. `tools/check_cli.py`
+  passed source collection, codecs, deterministic exports and exit-code checks.
+  Spawned CLI tests required normal filesystem access after sandbox access-denied
+  failures. CLI export fixtures and the audio cache used ignored `work/`; the
+  standalone isolation probe used a normal temporary directory outside the
+  workspace and removed its fixtures on completion.
+- `cargo test -p daw-reverb-core --release --target x86_64-pc-windows-msvc
+  --test performance --offline -- --ignored --nocapture` passed its explicit
+  measurement. At 192 kHz/HQ with 32-frame blocks, Plate measured 21.6% average
+  utilization and a 531 us maximum block; Ambient measured 23.7% and 498 us.
+  Both exceeded the 167 us block period during bursts. Prepared storage was
+  22,757,312 bytes per unit. This probe ran alongside other checks; it does not
+  establish isolated device performance, and small-buffer deadline acceptance
+  remains open.
+- The timing probe was extended to 48 kHz/512-frame blocks, matching the project
+  settings in the playback report. HQ Plate measured 4.87% average utilization
+  and a 1.05 ms maximum block; Ambient measured 4.81% and 0.68 ms, within the
+  10.67 ms period in this run. Prepared storage was 13,810,112 bytes per unit.
+  A second 192 kHz/32-frame run still exceeded its deadline (306/315 us maxima).
+  These are direct-DSP measurements, not a CPAL/device acceptance test.
+
+Native device playback, external-host editor attachment, platform validators,
+macOS/Linux builds, listening and reference-plugin equivalence were not checked.
+The processors are original algorithm-family adaptations, not verified
+sample-identical reference emulations.
+
+## Reverb primitives — 2026-11-03 (historical foundation)
+
+The integration entry above supersedes the availability status below. The
+following checks describe the earlier primitive-only snapshot.
+
+Implementation is incomplete: only `daw-reverb-core` primitives and the
+[implementation contract](../effects/reverbs.md) are present. Plate Reverb,
+Ambient Reverb, their shared bodies and standalone products are not available.
+
+`cargo test -p daw-reverb-core --offline` passed five tests covering reference
+control-map anchors and mix gains, the sixteen cached Bloom delays, six-rate
+endpoint bounds, stereo delay interpolation/wrap/reset, repeatable noise and
+wet-only width. `cargo clippy -p daw-reverb-core --all-targets --offline -- -D warnings`
+and `cargo fmt --all --check` passed. These are primitive tests, not full-effect
+reference comparisons, callback deadline measurements or native host acceptance.
+
+`cargo clippy --workspace --all-targets --offline -- -D warnings` passed after
+correcting the deliberately rounded diffusion coefficient and a prime-generator
+lint. The compiler reported incremental-cache hard-link fallback warnings.
+`cargo test --workspace --offline` failed in the existing CLI beat integration
+test at `apps/cli/tests/beat.rs:39`: session save returned Windows access denied
+(OS error 5). A repeat with TEMP/TMP redirected into `work/reverb-test-temp` passed
+that save and failed at line 49 when the spawned CLI returned access denied.
+This does not establish a passing workspace suite.
+`git diff --check` passed. Native UI/device/host checks were not performed.
 
 ## Runtime notice checkout bytes — 2026-11-03
 

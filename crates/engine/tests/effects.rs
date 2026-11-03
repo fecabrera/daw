@@ -2078,3 +2078,9 @@ fn audio_transport_loop_repeats_only_looped_pcm_and_retains_effect_tail() {
     }
     assert!(tail > 0.01, "effect tail was lost at the loop boundary");
 }
+
+#[path = "support/plate_reverb.rs"]
+mod plate_reverb;
+
+#[path = "support/ambient_reverb.rs"]
+mod ambient_reverb;

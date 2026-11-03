@@ -246,6 +246,8 @@ fn band_meters(
                 effect.unit,
                 daw_core::EffectSettings::Ott(_)
                     | daw_core::EffectSettings::Eq3(_)
+                    | daw_core::EffectSettings::PlateReverb(_)
+                    | daw_core::EffectSettings::AmbientReverb(_)
                     | daw_core::EffectSettings::Chorus(_)
                     | daw_core::EffectSettings::Drive(_)
                     | daw_core::EffectSettings::DriveV2(_)
@@ -303,6 +305,8 @@ fn modulation_meters(
                     | daw_core::EffectSettings::StereoSpread(_)
                     | daw_core::EffectSettings::Saturator(_)
                     | daw_core::EffectSettings::Bitcrusher(_)
+                    | daw_core::EffectSettings::PlateReverb(_)
+                    | daw_core::EffectSettings::AmbientReverb(_)
                     | daw_core::EffectSettings::Chorus(_)
                     | daw_core::EffectSettings::Ott(_)
             )
@@ -2022,6 +2026,8 @@ mod band_meter_tests {
                         daw_core::EffectSettings::MultibandEq(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Eq3(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Chorus(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::AmbientReverb(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::PlateReverb(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Drive(s) => s.enabled = enabled,
                         daw_core::EffectSettings::DriveV2(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Bitcrusher(s) => s.enabled = enabled,

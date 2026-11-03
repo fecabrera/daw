@@ -37,6 +37,8 @@ jobs:
           - { slug: limiter, name: Limiter, library: daw_limiter }
           - { slug: direction-mixer, name: Direction Mixer, library: daw_direction_mixer }
           - { slug: stereo-spread, name: Stereo Spread, library: daw_stereo_spread }
+          - { slug: plate-reverb, name: Plate-Reverb, library: daw_plate_reverb }
+          - { slug: ambient-reverb, name: Ambient-Reverb, library: daw_ambient_reverb }
           - { slug: chorus, name: Chorus, library: daw_chorus }
           - { slug: ott, name: OTT, library: daw_ott }
           - { slug: multiband-eq, name: Multiband EQ, library: daw_multiband_eq }

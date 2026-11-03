@@ -447,6 +447,12 @@ impl Renderer {
                     daw_core::EffectSettings::Chorus(_) => {
                         daw_unit_core::CHORUS_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::AmbientReverb(_) => {
+                        daw_unit_core::AMBIENT_REVERB_TYPE_ID.hash(&mut hash)
+                    }
+                    daw_core::EffectSettings::PlateReverb(_) => {
+                        daw_unit_core::PLATE_REVERB_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::DirectionMixer(_) => {
                         daw_unit_core::DIRECTION_MIXER_TYPE_ID.hash(&mut hash)
                     }
@@ -790,7 +796,10 @@ impl Renderer {
         self.plan.project.all_effects().any(|e| {
             matches!(
                 e.unit,
-                daw_core::EffectSettings::Chorus(_) | daw_core::EffectSettings::HarmonicLift(_)
+                daw_core::EffectSettings::PlateReverb(_)
+                    | daw_core::EffectSettings::AmbientReverb(_)
+                    | daw_core::EffectSettings::Chorus(_)
+                    | daw_core::EffectSettings::HarmonicLift(_)
             )
         }) || self
             .midi

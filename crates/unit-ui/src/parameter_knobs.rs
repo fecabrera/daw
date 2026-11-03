@@ -108,6 +108,58 @@ pub fn destination(parameter: Parameter) -> KnobSpec {
             .value_label(|v| format!("{v:.1} ms"))
             .format(|v| format!("{v:.1} ms"))
             .endpoint_labels("5", "30"),
+        Parameter::PlatePreDelay => KnobSpec::new("Pre-delay", 0.0..=300.0, 0.0, 0.1)
+            .value_label(time)
+            .format(time),
+        Parameter::PlateDecay => KnobSpec::new("Decay", 0.3..=15.0, 3.0, 1.0 / 24.0)
+            .scale(
+                |v| (v / 0.3).ln() / (50.0_f32).ln(),
+                |p| 0.3 * (50.0_f32).powf(p),
+                |v, d| v * 2.0_f32.powf(d),
+            )
+            .value_label(|v| format!("{v:.2} s"))
+            .format(|v| format!("{v:.2} s")),
+        Parameter::PlateHighPass => KnobSpec::new("High-pass", 20.0..=1000.0, 20.0, 1.0 / 24.0)
+            .scale(
+                |v| (v / 20.0).ln() / (50.0_f32).ln(),
+                |p| 20.0 * (50.0_f32).powf(p),
+                |v, d| v * 2.0_f32.powf(d),
+            )
+            .value_label(knobs::format_frequency)
+            .format(knobs::format_frequency)
+            .endpoint_labels("20", "1k"),
+        Parameter::PlateLowPass => KnobSpec::new("Low-pass", 500.0..=15000.0, 15000.0, 1.0 / 24.0)
+            .scale(
+                |v| (v / 500.0).ln() / (30.0_f32).ln(),
+                |p| 500.0 * (30.0_f32).powf(p),
+                |v, d| v * 2.0_f32.powf(d),
+            )
+            .value_label(knobs::format_frequency)
+            .format(knobs::format_frequency)
+            .endpoint_labels("500", "15k"),
+        Parameter::PlateDrive => KnobSpec::new("Drive", -12.0..=12.0, 0.0, 0.1)
+            .value_label(|v| format!("{v:.2} dB"))
+            .format(|v| format!("{v:.2} dB")),
+        Parameter::ReverbWidth => KnobSpec::new("Width", 0.0..=1.0, 1.0, 0.01)
+            .value_label(|v| format!("{:.0}%", v * 100.0))
+            .format(|v| format!("{:.0}%", v * 100.0)),
+        Parameter::AmbientDecay => KnobSpec::new("Decay", 1.0..=60.0, 7.5, 1.0 / 24.0)
+            .scale(
+                |v| (v / 1.0).ln() / (60.0_f32).ln(),
+                |p| 1.0 * (60.0_f32).powf(p),
+                |v, d| v * 2.0_f32.powf(d),
+            )
+            .value_label(|v| format!("{v:.2} s"))
+            .format(|v| format!("{v:.2} s")),
+        Parameter::AmbientBloom => KnobSpec::new("Bloom", 0.0..=1.0, 0.5, 0.01)
+            .value_label(|v| format!("{:.0}%", v * 100.0))
+            .format(|v| format!("{:.0}%", v * 100.0)),
+        Parameter::AmbientTone => KnobSpec::new("Tone", 0.0..=1.0, 0.5, 0.01)
+            .value_label(|v| format!("{:.0}%", v * 100.0))
+            .format(|v| format!("{:.0}%", v * 100.0)),
+        Parameter::AmbientMotion => KnobSpec::new("Modulation", 0.0..=1.0, 0.4975, 0.01)
+            .value_label(|v| format!("{:.0}%", v * 100.0))
+            .format(|v| format!("{:.0}%", v * 100.0)),
         Parameter::ChorusDepth => percent("Depth", 0.25),
         Parameter::ChorusFeedback => KnobSpec::new("Feedback", -0.8..=0.8, 0.0, 0.01)
             .centered(0.0)
@@ -401,6 +453,58 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
                 },
                 |v| format!("{v:+.1} ms"),
                 ["−25", "+25"],
+            ),
+            Parameter::PlatePreDelay => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.1} ms"),
+                ["−300", "+300"],
+            ),
+            Parameter::PlateDecay => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
+            Parameter::PlateHighPass => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
+            Parameter::PlateLowPass => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
+            Parameter::PlateDrive => (
+                AmountMapping::Offset {
+                    origin: -12.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.1} dB"),
+                ["−24", "+24"],
+            ),
+            Parameter::ReverbWidth => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_percent,
+                ["−100", "+100"],
+            ),
+            Parameter::AmbientDecay => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
+            Parameter::AmbientBloom => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_percent,
+                ["−100", "+100"],
+            ),
+            Parameter::AmbientTone => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_percent,
+                ["−100", "+100"],
+            ),
+            Parameter::AmbientMotion => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_percent,
+                ["−100", "+100"],
             ),
             Parameter::ChorusRate => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
             Parameter::ChorusPhase => (

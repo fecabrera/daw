@@ -1,4 +1,5 @@
 //! Portable unit controls and presentation. No project, device, or host dependencies.
+pub mod ambient_reverb;
 pub mod drive;
 pub mod drive_v2;
 pub mod fonts;
@@ -10,6 +11,8 @@ pub mod lfo_controls;
 pub mod menus;
 pub mod meters;
 pub mod parameter_knobs;
+pub mod plate_reverb;
+mod reverb_controls;
 pub mod rows;
 pub mod theme;
 

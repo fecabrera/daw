@@ -1,4 +1,8 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+mod plate_reverb;
+pub use plate_reverb::*;
+mod ambient_reverb;
+pub use ambient_reverb::*;
 pub mod gain;
 pub mod memory;
 mod meter;
@@ -719,6 +723,10 @@ pub trait StereoSourceUnit: Send {
 
 /// A prepared stereo effect. All callback methods must be allocation-free and nonblocking.
 pub trait EffectUnit: Send {
+    /// Conservative audible-tail budget. Musical onset is not alignment delay.
+    fn tail_frames(&self) -> u64 {
+        0
+    }
     /// Owned dynamic processor storage, excluding inline state and shared media.
     /// Hosts query this on a worker when budgeting renderer snapshots.
     fn heap_bytes(&self) -> u64 {

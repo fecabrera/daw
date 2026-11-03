@@ -1,6 +1,6 @@
 # Effect plugins
 
-Fourteen built-in effects have separate CLAP and VST3 development previews. [Multiband Exciter](exciter.md) is currently available inside the DAW only. Each uses its portable DAW processor. Host bypass, automation, and presets work independently for each instance. Plugin editors use the same control bodies as the built-in effects, including strip layout, labels, footers and meters.
+The registered built-in effects have separate CLAP and VST3 development previews. [Multiband Exciter](exciter.md) is currently available inside the DAW only. Each uses its portable DAW processor. Host bypass, automation, and presets work independently for each instance. Plugin editors use the same control bodies as the built-in effects, including strip layout, labels, footers and meters.
 
 | Product | Unit slug | Controls |
 | --- | --- | --- |
@@ -18,6 +18,8 @@ Fourteen built-in effects have separate CLAP and VST3 development previews. [Mul
 | Direction Mixer | `direction-mixer` | L/R or M/S input, Direction, Spread |
 | Stereo Spread | `stereo-spread` | Lower/Upper Intensity and Frequency, Order |
 | Harmonic Lift | `harmonic-lift` | Wet Input, Normal/HQ 2×; six branch Power/Frequency/Gain controls; Drive, Push, Limit Level, Level, Dry/Wet |
+| [Plate Reverb](plate-reverb.md) | `plate-reverb` | Pre-delay, Decay, Gate, filters, Color, Drive, Quality, Width, Level, Dry/Wet |
+| [Ambient Reverb](ambient-reverb.md) | `ambient-reverb` | Decay, Bloom, Tone, Modulation, High-pass, Quality, Width, Level, Dry/Wet |
 | Chorus | `chorus` | Delay, Depth, Feedback, Voices, Hz/Note rate, Stereo Phase, Width, Level, Dry/Wet |
 
 [Build, package, and download instructions](../development/plugins.md) apply to all products. The packager accepts one slug, a comma-separated list, or `--units all`. Build both formats for all selected units first. Extract the downloaded ZIP and keep the included licenses beside the plugin. Close your host before replacing or removing it.

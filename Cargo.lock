@@ -1195,6 +1195,66 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
+name = "daw-ambient-reverb"
+version = "0.1.0"
+dependencies = [
+ "daw-reverb-core",
+ "daw-unit-core",
+]
+
+[[package]]
+name = "daw-ambient-reverb-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-ambient-reverb",
+ "daw-ambient-reverb-editor",
+ "daw-ambient-reverb-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-ambient-reverb-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-ambient-reverb-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-ambient-reverb-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-ambient-reverb",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-ambient-reverb-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-ambient-reverb",
+ "daw-ambient-reverb-editor",
+ "daw-ambient-reverb-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-amplitude"
 version = "0.1.0"
 dependencies = [
@@ -1657,6 +1717,7 @@ dependencies = [
 name = "daw-engine"
 version = "0.1.0"
 dependencies = [
+ "daw-ambient-reverb",
  "daw-amplitude",
  "daw-auto-filter",
  "daw-bitcrusher",
@@ -1677,6 +1738,7 @@ dependencies = [
  "daw-noise",
  "daw-oscillator",
  "daw-ott",
+ "daw-plate-reverb",
  "daw-sampler",
  "daw-saturator",
  "daw-stereo-spread",
@@ -2124,6 +2186,66 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-plate-reverb"
+version = "0.1.0"
+dependencies = [
+ "daw-reverb-core",
+ "daw-unit-core",
+]
+
+[[package]]
+name = "daw-plate-reverb-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-plate-reverb",
+ "daw-plate-reverb-editor",
+ "daw-plate-reverb-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-plate-reverb-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-plate-reverb-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-plate-reverb-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-plate-reverb",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-plate-reverb-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-plate-reverb",
+ "daw-plate-reverb-editor",
+ "daw-plate-reverb-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-plugin-clap"
 version = "0.1.0"
 dependencies = [
@@ -2165,6 +2287,14 @@ dependencies = [
  "symphonia",
  "thiserror 2.0.21",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "daw-reverb-core"
+version = "0.1.0"
+dependencies = [
+ "daw-filter",
+ "daw-unit-core",
 ]
 
 [[package]]

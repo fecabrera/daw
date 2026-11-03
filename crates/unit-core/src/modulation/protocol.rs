@@ -391,3 +391,15 @@ destination_settings!(
 destination_settings!(crate::ChorusSettings, &ModulationParameter::CHORUS, Shared);
 
 destination_settings!(crate::NoiseSettings, &ModulationParameter::NOISE, PerNote);
+
+destination_settings!(
+    crate::PlateReverbSettings,
+    &ModulationParameter::PLATE_REVERB,
+    Shared
+);
+
+destination_settings!(
+    crate::AmbientReverbSettings,
+    &ModulationParameter::AMBIENT_REVERB,
+    Shared
+);

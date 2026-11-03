@@ -16,7 +16,7 @@ All standalone effect editors use the shared level-meter colors, rail and peak m
 
 | Units | Meter placement |
 | --- | --- |
-| Bitcrusher, Drive v2, Saturator, Chorus, Filter, Auto-filter, Multiband EQ, Multiband Exciter, Compressor, OTT and Limiter | Existing Out/Output strip. |
+| Bitcrusher, Drive v2, Saturator, Chorus, Plate Reverb, Ambient Reverb, Filter, Auto-filter, Multiband EQ, Multiband Exciter, Compressor, OTT and Limiter | Existing Out/Output strip. |
 | Original Drive | Existing Volume control in its Drive strip. |
 | Oscillator | Out strip, after summing all oscillator sources and notes. |
 | Granulizer | Out strip, after summing stereo grains across notes. |

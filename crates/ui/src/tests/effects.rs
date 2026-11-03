@@ -19,6 +19,55 @@ fn scroll_effects_catalog(app: &mut DawUi, ctx: &egui::Context, delta: f32) {
 
 use super::*;
 
+#[test]
+fn reverbs_use_shared_catalog_controls_on_track_master_and_instrument() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            for plate in [true, false] {
+                let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+                scroll_effects_catalog(&mut app, &ctx, -240.0);
+                let entry = if plate {
+                    app.effects_bounds.plate_reverb_entry
+                } else {
+                    app.effects_bounds.ambient_reverb_entry
+                };
+                assert!(entry.is_positive());
+                click(&mut app, &ctx, entry.center());
+                library_key(&mut app, &ctx, egui::Key::Enter, false);
+                frame(&mut app, &ctx, vec![]);
+                let owner = app.effects_target().unwrap();
+                let chain = app.effect_chain(owner).unwrap().0;
+                assert_eq!(chain.len(), 1);
+                assert!(if plate {
+                    matches!(chain[0].unit, daw_core::EffectSettings::PlateReverb(_))
+                } else {
+                    matches!(chain[0].unit, daw_core::EffectSettings::AmbientReverb(_))
+                });
+                let (control, power) = if plate {
+                    let b = &app.effects_bounds.plate_reverb_units[0];
+                    (b.controls[1], b.power)
+                } else {
+                    let b = &app.effects_bounds.ambient_reverb_units[0];
+                    (b.controls[0], b.power)
+                };
+                drag_control(&mut app, &ctx, control.center(), Vec2::new(0.0, -18.0));
+                match &app.effect_chain(owner).unwrap().0[0].unit {
+                    daw_core::EffectSettings::PlateReverb(s) => assert!(s.decay_seconds > 3.0),
+                    daw_core::EffectSettings::AmbientReverb(s) => assert!(s.decay_seconds > 7.5),
+                    _ => unreachable!(),
+                }
+                end_click_sequence(&mut app, &ctx);
+                click(&mut app, &ctx, power.center());
+                match &app.effect_chain(owner).unwrap().0[0].unit {
+                    daw_core::EffectSettings::PlateReverb(s) => assert!(!s.enabled),
+                    daw_core::EffectSettings::AmbientReverb(s) => assert!(!s.enabled),
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+}
+
 fn categorized_catalog_fixture(
     theme: settings::ColorTheme,
     target: &str,
@@ -281,7 +330,7 @@ fn effect_category_scrolling_keeps_selection_and_the_header_fixed() {
                 size,
             );
         }
-        assert!(library.contains_rect(app.effects_bounds.stereo_spread_entry));
+        assert!(library.contains_rect(app.effects_bounds.ambient_reverb_entry));
         assert_eq!(app.effects_bounds.header, header);
         assert_eq!(
             app.effects_catalog.selection,
@@ -377,6 +426,9 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             Some(entries[7]),
             Some(entries[8]),
             Some(entries[13]),
+            None,
+            Some(entries[16]),
+            Some(entries[17]),
         ];
         let mut steps = vec![
             (egui::Key::ArrowDown, false, vec![entries[12]]),
@@ -457,6 +509,11 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         click(&mut app, &ctx, folder);
         frame(&mut app, &ctx, vec![]);
         assert!(!app.effects_bounds.stereo_spread_entry.is_positive());
+        end_click_sequence(&mut app, &ctx);
+        let reverb = app.effects_bounds.folders[4].center();
+        click(&mut app, &ctx, reverb);
+        frame(&mut app, &ctx, vec![]);
+        assert!(!app.effects_bounds.ambient_reverb_entry.is_positive());
         let point = app.effects_bounds.entry.center();
         click(&mut app, &ctx, point);
         library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
@@ -467,7 +524,7 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         let blank = Rect::from_min_max(
             Pos2::new(
                 app.effects_bounds.library.left(),
-                app.effects_bounds.folders[3].bottom(),
+                app.effects_bounds.folders[4].bottom(),
             ),
             app.effects_bounds.library.max,
         );

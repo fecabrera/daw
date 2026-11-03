@@ -508,10 +508,19 @@ impl Session {
         mut progress: impl FnMut(u64, u64),
     ) -> Result<Vec<String>> {
         self.project.validate().map_err(error)?;
-        let end = self.project.end();
-        if end == 0 {
+        let arranged_end = self.project.end();
+        if arranged_end == 0 {
             return Err(error("Cannot export a project with no clips"));
         }
+        // Summing every bus is conservative for both serial and parallel chains.
+        // The common export policy caps appended tails at ten seconds.
+        let requested_tail = self.project.all_effects().fold(0_u64, |sum, effect| {
+            sum.saturating_add(effect.unit.tail_frames(self.project.sample_rate_hz))
+        });
+        let tail_cap = u64::from(self.project.sample_rate_hz) * 10;
+        let end = arranged_end
+            .checked_add(requested_tail.min(tail_cap))
+            .ok_or_else(|| error("Export duration exceeds the supported frame range"))?;
         progress(0, end);
         let path = absolute(path)?;
         for asset in &self.project.assets {
@@ -566,6 +575,9 @@ impl Session {
                 file_publish::create(&temp, &path).map_err(error)?;
             }
             let mut warnings = self.warnings.clone();
+            if requested_tail > tail_cap {
+                warnings.push("Reverb tail limited to 10 seconds after the arrangement; the remaining tail was truncated".into());
+            }
             if clipped {
                 warnings.push(
                     if settings.format == ExportFormat::Wav

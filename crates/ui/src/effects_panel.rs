@@ -45,6 +45,8 @@ pub(crate) struct EffectsUiBounds {
     pub saturator_entry: Rect,
     pub bitcrusher_entry: Rect,
     pub chorus_entry: Rect,
+    pub ambient_reverb_entry: Rect,
+    pub plate_reverb_entry: Rect,
     pub lane_toolbar: Rect,
     pub lane_compact: Rect,
     pub chain: Vec<(Id, Rect)>,
@@ -64,6 +66,8 @@ pub(crate) struct EffectsUiBounds {
     pub saturator_units: Vec<crate::saturator_panel::Bounds>,
     pub bitcrusher_units: Vec<crate::bitcrusher_panel::Bounds>,
     pub chorus_units: Vec<crate::chorus_panel::Bounds>,
+    pub ambient_reverb_units: Vec<crate::ambient_reverb_panel::Bounds>,
+    pub plate_reverb_units: Vec<crate::plate_reverb_panel::Bounds>,
     pub exciter_units: Vec<crate::exciter_panel::Bounds>,
 }
 
@@ -99,6 +103,8 @@ impl Default for EffectsUiBounds {
             saturator_entry: Rect::NOTHING,
             bitcrusher_entry: Rect::NOTHING,
             chorus_entry: Rect::NOTHING,
+            ambient_reverb_entry: Rect::NOTHING,
+            plate_reverb_entry: Rect::NOTHING,
             lane_toolbar: Rect::NOTHING,
             lane_compact: Rect::NOTHING,
             chain: vec![],
@@ -118,6 +124,8 @@ impl Default for EffectsUiBounds {
             saturator_units: vec![],
             bitcrusher_units: vec![],
             chorus_units: vec![],
+            ambient_reverb_units: vec![],
+            plate_reverb_units: vec![],
             exciter_units: vec![],
         }
     }
@@ -274,6 +282,8 @@ impl DawUi {
             self.effects_bounds.saturator_units.clear();
             self.effects_bounds.bitcrusher_units.clear();
             self.effects_bounds.chorus_units.clear();
+            self.effects_bounds.ambient_reverb_units.clear();
+            self.effects_bounds.plate_reverb_units.clear();
             self.effects_bounds.exciter_units.clear();
         }
         // Keep child fills below the workspace's shared top separator.
@@ -333,6 +343,8 @@ impl DawUi {
             self.effects_bounds.saturator_entry = Rect::NOTHING;
             self.effects_bounds.bitcrusher_entry = Rect::NOTHING;
             self.effects_bounds.chorus_entry = Rect::NOTHING;
+            self.effects_bounds.plate_reverb_entry = Rect::NOTHING;
+            self.effects_bounds.ambient_reverb_entry = Rect::NOTHING;
         }
         ui.horizontal_top(|ui| {
             if let Some(library) = library.as_ref() {
@@ -440,6 +452,12 @@ impl DawUi {
                                     }
                                     daw_core::CHORUS_TYPE_ID => {
                                         self.effects_bounds.chorus_entry = response.rect;
+                                    }
+                                    daw_core::AMBIENT_REVERB_TYPE_ID => {
+                                        self.effects_bounds.ambient_reverb_entry = response.rect;
+                                    }
+                                    daw_core::PLATE_REVERB_TYPE_ID => {
+                                        self.effects_bounds.plate_reverb_entry = response.rect;
                                     }
                                     daw_core::DIRECTION_MIXER_TYPE_ID => {
                                         self.effects_bounds.direction_mixer_entry = response.rect;
@@ -1131,6 +1149,44 @@ impl DawUi {
                                     let power = bounds.power;
                                     #[cfg(test)]
                                     self.effects_bounds.chorus_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::AmbientReverb(settings) => {
+                                    let (bounds, header) = crate::ambient_reverb_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        output_level,
+                                        self.session.project.tempo_bpm,
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.ambient_reverb_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::PlateReverb(settings) => {
+                                    let (bounds, header) = crate::plate_reverb_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        output_level,
+                                        self.session.project.tempo_bpm,
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.plate_reverb_units.push(bounds);
                                     (header, power)
                                 }
                                 daw_core::EffectSettings::DirectionMixer(settings) => {
