@@ -7970,3 +7970,99 @@ fn drawing_at_pattern_edges_disables_clip_edge_drags() {
         );
     }
 }
+
+#[test]
+fn noise_catalog_controls_layout_power_and_collapse_follow_source_conventions() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track, _, _) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        let mut instrument = app.session.project.tracks[0].instrument.clone().unwrap();
+        let owner = instrument.layers[0].id;
+        crate::instrument_catalog::add_components(&mut instrument, owner, &["daw.noise"]);
+        assert!(
+            instrument.layers[0].noise.is_some() && instrument.layers[0].oscillators.is_empty()
+        );
+        let main = instrument.main.id;
+        crate::instrument_catalog::add_components(&mut instrument, main, &["daw.noise"]);
+        assert!(
+            instrument
+                .main
+                .visible_components()
+                .iter()
+                .all(|c| !c.is_source())
+        );
+        app.edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        });
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 800.0));
+        let bounds = app.instrument_ui.noises[0].clone();
+        assert!((bounds.strips[0].width() - 90.0).abs() < 0.1);
+        assert!((bounds.strips[1].width() - 90.0).abs() < 0.1);
+        assert!(bounds.panel.contains_rect(bounds.spectrum));
+        assert!(bounds.controls.iter().all(|r| r.is_positive()));
+        assert!((bounds.controls[1].center().y - bounds.controls[3].center().y).abs() < 0.1);
+        assert!(bounds.controls[0].bottom() < bounds.controls[1].top());
+        click_note_or_lane(&mut app, &ctx, bounds.controls[0].center());
+        let popup = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 800.0));
+        let pink = popup
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == "Pink" => {
+                    Some(t.galley.rect.translate(t.pos.to_vec2()).center())
+                }
+                _ => None,
+            })
+            .unwrap();
+        click_note_or_lane(&mut app, &ctx, pink);
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .noise
+                .as_ref()
+                .unwrap()
+                .kind,
+            daw_core::NoiseType::Pink
+        );
+        click_note_or_lane(&mut app, &ctx, bounds.power.center());
+        assert!(
+            !app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .noise
+                .as_ref()
+                .unwrap()
+                .enabled
+        );
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 800.0));
+        assert!(shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Path(p) if p.points.len()==65 && p.stroke.color==egui::epaint::ColorMode::Solid(theme::palette(&ctx).secondary))));
+        assert!(bounds.header.is_positive());
+        let mut instrument = app.session.project.tracks[0].instrument.clone().unwrap();
+        instrument.layers[0].collapsed = true;
+        app.edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        });
+        frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 800.0));
+        assert!(!app.instrument_ui.noises[0].spectrum.is_positive());
+        assert!(
+            app.instrument_ui.noises[0]
+                .controls
+                .iter()
+                .all(|r| !r.is_positive())
+        );
+    }
+}

@@ -389,3 +389,5 @@ destination_settings!(
 );
 
 destination_settings!(crate::ChorusSettings, &ModulationParameter::CHORUS, Shared);
+
+destination_settings!(crate::NoiseSettings, &ModulationParameter::NOISE, PerNote);

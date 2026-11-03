@@ -11,7 +11,9 @@ pub struct SourceOutputTarget {
 }
 impl SourceOutputTarget {
     pub fn for_layer(track: Id, layer: &InstrumentLayerSettings) -> Option<(Self, bool)> {
-        let (unit, enabled) = if let Some(s) = &layer.sampler {
+        let (unit, enabled) = if let Some(n) = &layer.noise {
+            (n.id, n.enabled)
+        } else if let Some(s) = &layer.sampler {
             // Regular Sampler has a Sample strip, so it needs no Out-strip publication.
             s.granulizer.as_ref()?;
             (s.id, s.enabled)

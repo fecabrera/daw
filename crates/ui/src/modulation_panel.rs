@@ -647,6 +647,8 @@ pub(super) fn marker(
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
         ModulationParameter::SaturatorDrive => offsets.map(|o| (base + o).clamp(-36.0, 36.0)),
+        ModulationParameter::NoiseColor => offsets.map(|o| (base + o).clamp(-1.0, 1.0)),
+        ModulationParameter::NoiseWidth => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::ChorusDelay => offsets.map(|o| (base + o).clamp(5.0, 30.0)),
         ModulationParameter::ChorusDepth => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::ChorusFeedback => offsets.map(|o| (base + o).clamp(-0.8, 0.8)),
@@ -680,6 +682,7 @@ pub(super) fn marker(
         ModulationParameter::DriveInput
         | ModulationParameter::OscillatorGain
         | ModulationParameter::SamplerGain
+        | ModulationParameter::NoiseLevel
         | ModulationParameter::Level
         | ModulationParameter::Volume => {
             if base <= daw_core::SILENT_GAIN_DB {
@@ -831,6 +834,7 @@ pub(super) fn marker(
         | ModulationParameter::DriveInput
         | ModulationParameter::OscillatorGain
         | ModulationParameter::SamplerGain
+        | ModulationParameter::NoiseLevel
         | ModulationParameter::Level
         | ModulationParameter::Volume => {
             if value <= daw_core::SILENT_GAIN_DB {
@@ -839,7 +843,9 @@ pub(super) fn marker(
                 format!("{value:.1} dB")
             }
         }
-        ModulationParameter::StereoSpreadLowerIntensity
+        ModulationParameter::NoiseColor
+        | ModulationParameter::NoiseWidth
+        | ModulationParameter::StereoSpreadLowerIntensity
         | ModulationParameter::StereoSpreadUpperIntensity
         | ModulationParameter::OttLowDepth
         | ModulationParameter::OttMidDepth

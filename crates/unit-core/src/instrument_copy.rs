@@ -64,6 +64,9 @@ impl InstrumentLayerSettings {
         if let Some(sampler) = &mut copy.sampler {
             sampler.id = Uuid::new_v4();
         }
+        if let Some(noise) = &mut copy.noise {
+            noise.id = Uuid::new_v4();
+        }
         for route in &mut copy.oscillator_modulations {
             route.target = route.target.map(|id| *oscillators.get(&id).unwrap_or(&id));
         }
@@ -131,6 +134,7 @@ fn routes(
         .oscillator_modulations
         .iter_mut()
         .chain(layer.sampler.iter_mut().flat_map(|s| &mut s.modulations))
+        .chain(layer.noise.iter_mut().flat_map(|n| &mut n.modulations))
         .chain(&mut layer.amplitude.modulations)
         .chain(&mut layer.macro_module.modulations)
         .chain(layer.envelopes.iter_mut().flat_map(|e| &mut e.modulations))

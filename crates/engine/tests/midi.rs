@@ -5493,3 +5493,6 @@ fn midi_loop_wrap_retains_one_shots_and_envelope_releases() {
         }
     }
 }
+
+#[path = "support/noise.rs"]
+mod noise;

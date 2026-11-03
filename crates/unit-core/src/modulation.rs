@@ -148,6 +148,9 @@ pub enum ModulationParameter {
     LimiterLookahead,
     LimiterCeiling,
     SamplerGain,
+    NoiseColor,
+    NoiseWidth,
+    NoiseLevel,
     GrainSize,
     GrainOverlap,
     GrainPosition,
@@ -165,6 +168,7 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    pub const NOISE: [Self; 3] = [Self::NoiseColor, Self::NoiseWidth, Self::NoiseLevel];
     pub const EQ_BAND: [Self; 3] = [Self::EqBandGain, Self::EqBandFrequency, Self::EqBandQ];
     pub const GRANULIZER: [Self; 9] = [
         Self::SamplerGain,
@@ -349,6 +353,9 @@ impl ModulationParameter {
             Self::GrainPitchJitter => "Pitch jitter",
             Self::GrainPan => "Pan randomness",
             Self::SamplerGain | Self::OscillatorGain => "Gain",
+            Self::NoiseColor => "Color",
+            Self::NoiseWidth => "Width",
+            Self::NoiseLevel => "Level",
             Self::CompressorThreshold => "Threshold",
             Self::CompressorRatio => "Ratio",
             Self::CompressorAttack => "Attack",
@@ -441,6 +448,7 @@ impl ModulationParameter {
             Self::DriveInput
             | Self::OscillatorGain
             | Self::SamplerGain
+            | Self::NoiseLevel
             | Self::Level
             | Self::Volume
             | Self::EqBandGain
@@ -504,6 +512,7 @@ impl ModulationParameter {
             Self::DriveInput
             | Self::OscillatorGain
             | Self::SamplerGain
+            | Self::NoiseLevel
             | Self::Level
             | Self::Volume
             | Self::EqBandGain

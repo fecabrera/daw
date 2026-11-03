@@ -1673,6 +1673,7 @@ dependencies = [
  "daw-limiter",
  "daw-macro",
  "daw-media",
+ "daw-noise",
  "daw-oscillator",
  "daw-ott",
  "daw-sampler",
@@ -1968,6 +1969,13 @@ dependencies = [
  "daw-unit-core",
  "libloading",
  "serde_json",
+]
+
+[[package]]
+name = "daw-noise"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
 ]
 
 [[package]]

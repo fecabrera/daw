@@ -22,6 +22,7 @@ Knob tooltips show only the parameter name on the left and the current value on 
 
 - [Oscillator](instruments/oscillator.md)
 - [Granulizer](instruments/granulizer.md)
+- [Noise](instruments/noise.md)
 - [Sampler](instruments/sampler.md)
 - [Envelope](instruments/envelope.md)
 - [LFO](instruments/lfo.md)

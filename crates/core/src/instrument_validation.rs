@@ -14,6 +14,7 @@ pub(crate) fn validate_routes(
                 .iter()
                 .chain(&l.oscillator_modulations)
                 .chain(l.sampler.iter().flat_map(|s| &s.modulations))
+                .chain(l.noise.iter().flat_map(|n| &n.modulations))
         })
     {
         if route

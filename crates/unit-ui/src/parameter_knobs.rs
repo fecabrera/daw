@@ -287,6 +287,14 @@ pub fn destination(parameter: Parameter) -> KnobSpec {
         Parameter::Amplitude => knobs::marked_gain_spec(),
         Parameter::OscillatorGain => knobs::marked_gain_spec().named("Oscillator gain"),
         Parameter::SamplerGain => knobs::marked_gain_spec().named("Gain"),
+        Parameter::NoiseLevel => knobs::marked_gain_spec()
+            .named("Noise level")
+            .reset_to(-12.0),
+        Parameter::NoiseWidth => percent("Width", 0.0),
+        Parameter::NoiseColor => KnobSpec::new("Color", -1.0..=1.0, 0.0, 0.01)
+            .value_label(|v| format!("{:+.0}%", v * 100.0))
+            .format(|v| format!("{:+.0}%", v * 100.0))
+            .endpoint_labels("Dark", "Bright"),
         Parameter::Level => knobs::marked_gain_spec().named("Filter output level"),
         Parameter::Volume => knobs::marked_gain_spec().named("Drive volume"),
         Parameter::DriveInput => knobs::marked_gain_spec().named("Input gain"),
@@ -548,7 +556,11 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
                 |v| format!("{v:+.2}×"),
                 ["−4", "+4"],
             ),
-            Parameter::GrainPosition | Parameter::GrainPositionJitter | Parameter::GrainPan => (
+            Parameter::NoiseColor
+            | Parameter::NoiseWidth
+            | Parameter::GrainPosition
+            | Parameter::GrainPositionJitter
+            | Parameter::GrainPan => (
                 AmountMapping::Offset {
                     origin: 0.0,
                     direction: 1.0,
@@ -584,6 +596,7 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
             Parameter::DriveInput
             | Parameter::OscillatorGain
             | Parameter::SamplerGain
+            | Parameter::NoiseLevel
             | Parameter::Level
             | Parameter::Volume => (
                 AmountMapping::Offset {

@@ -3,11 +3,13 @@ pub use daw_unit_core::{DRIVE_V2_TYPE_ID, DriveV2Clip, DriveV2ColorShape, DriveV
 pub use daw_unit_core::{EXCITER_TYPE_ID, ExciterBand, ExciterMode, ExciterSettings};
 pub use daw_unit_core::{EqBandMode, MULTIBAND_EQ_TYPE_ID, MultibandEqBand, MultibandEqSettings};
 pub use daw_unit_core::{GrainWindow, GranulizerSettings};
+pub use daw_unit_core::{NoiseSettings, NoiseType};
 pub use daw_unit_core::{SATURATOR_TYPE_ID, SaturatorClipMode, SaturatorSettings, SaturatorShape};
 mod instrument_validation;
 mod memory;
 mod source_storage;
 pub use source_storage::{SourceStorage, validate_included_source_path};
+mod noise;
 mod sampler;
 pub use daw_unit_core::{BITCRUSHER_TYPE_ID, BitcrusherSettings};
 pub use daw_unit_core::{CHORUS_TYPE_ID, ChorusSettings};
@@ -595,6 +597,7 @@ impl Project {
                 ));
             }
             self.validate_samplers(t)?;
+            self.validate_noises(t)?;
             instrument_validation::validate_routes(t.instrument.as_ref(), &t.effects)?;
             for clip in &t.clips {
                 self.validate_beat_destination(t.id, clip.asset_id)?;

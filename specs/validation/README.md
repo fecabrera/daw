@@ -6,6 +6,49 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Noise source — 2026-11-02
+
+Noise adds White/Pink/Brown generation, Color, Width and Level, three shared
+per-note modulation destinations, two standard strips, a static spectral preview
+and source-output metering. MIDI layers and beat subtracks share rendering,
+Amplitude, history, source replacement, identity and persistence behavior.
+
+Completed checks:
+
+- `cargo test --offline --locked -p daw-noise`: four tests passed. Coverage includes
+  all six rates, deterministic independent notes, mono/stereo correlation, reference
+  RMS, spectral ordering, Type/control/power transitions, shared modulation,
+  exact silence and finite/bounded direct-host controls. Statistical tests use a
+  fixed source identity. This suite was rerun after direct-host input hardening.
+- Unit-core Noise settings roundtrip/conflict/copy checks and core Noise component
+  transfer/conflict checks passed.
+- The Noise UI test passed in Dark/Light: catalog replacement, source restriction,
+  two-strip geometry, aligned rows, Type selection, power and compact presentation.
+- Engine Noise integration passed at all six rates for MIDI and beat sources:
+  live/export equality after the standard transport start ramp, seek equality,
+  passive pre-Amplitude metering, shared Macro routes, processed telemetry and
+  allocation-free playback/compatible renderer updates.
+- The project integration test passed: save/reopen and float WAV export retain the
+  same signal without imported media.
+- Strict workspace/all-target Clippy passed. Focused Noise Clippy also passed after
+  direct-host input hardening. Formatting, local documentation link targets and
+  whitespace checks passed.
+- `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app` after hardening.
+  `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py` passed.
+
+- `cargo test --offline --locked --workspace` passed every package preceding
+  `daw-ui`, then stopped at a catalog navigation assertion that still expected
+  Granulizer as the last source. Updating the expected order to include Noise
+  required no production change. The remaining complete package suites passed
+  with `cargo test --offline --locked -p daw-ui -p daw-unit-core -p daw-unit-ui -p timestretch -p timestretch-cli`.
+  This completed workspace coverage: the UI rerun passed 843 tests with three
+  ignored, unit-core passed 56 and unit-ui passed 33. Timestretch/CLI checks and
+  doctests passed; release-only acceptance cases retain their existing ignores.
+- Final UI/all-target Clippy passed after the navigation-test update.
+
+Native UI/gesture, audio-device and Windows/Linux checks have not run. The preview
+shows approximate relative base-settings spectral balance, not live analysis.
+
 ## Oscillator waveform display — 2026-11-02
 
 Each source replaces its Waveform knob with a one-cycle phase-domain preview and

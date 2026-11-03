@@ -103,7 +103,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 7] = [
+pub(super) const ENTRIES: [Entry; 8] = [
     Entry::layer("daw.oscillator", "Oscillator", Category::Sources, |l| {
         l.oscillators.push(Default::default())
     })
@@ -130,6 +130,10 @@ pub(super) const ENTRIES: [Entry; 7] = [
     .source(),
     Entry::layer("daw.granulizer", "Granulizer", Category::Sources, |l| {
         l.sampler = Some(daw_core::SamplerSettings::granular())
+    })
+    .source(),
+    Entry::layer("daw.noise", "Noise", Category::Sources, |l| {
+        l.noise = Some(Default::default());
     })
     .source(),
 ];

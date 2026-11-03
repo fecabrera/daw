@@ -1,6 +1,6 @@
 # Unit output meters
 
-Every audio unit with an **Out** or **Output** strip uses the standard level meter and held-peak indicator. For effects, it measures final stereo output after level and Dry/Wet. For Oscillator and Granulizer, it measures the combined source output after the unit's Level/Gain and note velocity, before Amplitude and downstream processing. It uses the larger absolute sample from the two channels. It measures sample peaks, not loudness or True Peak.
+Every audio unit with an **Out** or **Output** strip uses the standard level meter and held-peak indicator. For effects, it measures final stereo output after level and Dry/Wet. For Oscillator, Granulizer and Noise, it measures the combined source output after the unit's Level/Gain and note velocity, before Amplitude and downstream processing. It uses the larger absolute sample from the two channels. It measures sample peaks, not loudness or True Peak.
 
 The thin horizontal rail sits above the output controls. Its display spans −60 to 0 dBFS. The fill uses the same theme palette as track level meters: green at or below 0 dBFS and red above 0 dBFS. Changing the accent color does not change level meter colors. The level rises immediately and falls with a 300 ms release. Hover over it to read the current level and held peak, including values above the display limit.
 
@@ -20,6 +20,7 @@ All standalone effect editors use the shared level-meter colors, rail and peak m
 | Original Drive | Existing Volume control in its Drive strip. |
 | Oscillator | Out strip, after summing all oscillator sources and notes. |
 | Granulizer | Out strip, after summing stereo grains across notes. |
+| Noise | Out strip, after Color, Width, Level and note velocity, summed across notes. |
 | Instrument Output layer | Existing track-style stereo meter in its layer header. |
 
 Source meters can show a signal while Amplitude, a layer fader, or a later bus silences playback. They measure the source at its own Out strip. Their current level hides when playback stops or pauses; the held peak remains until reset or unit power-off. Compact and collapsed units hide the rail while capture continues.

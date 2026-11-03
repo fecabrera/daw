@@ -97,6 +97,7 @@ impl InstrumentSettings {
                         + effect_settings_bytes(&l.effects)
                         + vec_bytes(&l.oscillators)
                         + vec_bytes(&l.oscillator_modulations)
+                        + l.noise.as_ref().map_or(0, |n| vec_bytes(&n.modulations))
                         + vec_bytes(&l.amplitude.modulations)
                         + l.sampler.as_ref().map_or(0, |s| {
                             vec_bytes(&s.modulations)

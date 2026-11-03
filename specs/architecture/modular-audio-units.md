@@ -562,7 +562,7 @@ Drive, Drive v2, Saturator, and Bitcrusher plugin editors embed their shared bod
 
 The Out-strip audit finds all effect Out/Output strips already covered. Oscillator and Granulizer now use the same painter and peak indicator. Original Drive retains its existing Volume placement. The Instrument Output layer already has a track-style stereo meter. Regular Sampler's Sample strip and units without an Out strip are outside this placement rule. See the [coverage table](../../docs/effects/output-meter.md#out-strip-coverage).
 
-Tap Oscillator after its source sum and modulated unit Level; tap Granulizer after its modulated Gain/power stage. Include note velocity and sum stereo samples across prepared voices before taking the linked peak. Measure before Amplitude, clip gain/fades, layer effects/mixing, Output and track/Master processing. Downstream mute, level and effect changes must not enter this reading. Monitoring never changes the audio sum or scheduling.
+Tap Oscillator after its source sum and modulated unit Level; tap Granulizer after its modulated Gain/power stage; tap Noise after its modulated Color/Width/Level and power stage. Include note velocity and sum stereo samples across prepared voices before taking the linked peak. Measure before Amplitude, clip gain/fades, layer effects/mixing, Output and track/Master processing. Downstream mute, level and effect changes must not enter this reading. Monitoring never changes the audio sum or scheduling.
 
 `engine::SourceOutputTarget` scopes handles by track, layer and source identity. Oscillator's container uses its layer UUID; Granulizer uses its source UUID. `source_meters` prepares and binds shared `LevelMonitor<3>`/`UnitMeter` handles outside the callback. MIDI layer buses aggregate the per-voice tap and publish through the standard monitor. Keep slot zero for linked level and its boost hold; reserve the other cells. Regular Sampler has no Out strip and receives no Out-strip publication handle.
 
@@ -666,3 +666,14 @@ loop range; do not play recording content beyond that range. Keep seek/stop rese
 nonlooping clip boundaries and five-millisecond de-clicking unchanged. Prepare all
 state outside the callback and retain the latency-compensated wrap path. See the
 [loop-tail implementation contract](../views/beat-model.md#live-transport-loop-tails).
+
+## Procedural Noise source
+
+[Noise](../instruments/noise.md) adds a third regular-layer source family beside
+Oscillator and Sampler/Granulizer. One-source exclusivity, replacement, copying,
+source pinning and Main/modulation-lane restrictions apply to all three families.
+The new optional settings field is absent in legacy manifests. `daw-noise` owns
+portable fixed-state stereo generation; the host shares note scheduling,
+Amplitude, effects, source-output monitoring, history and memory accounting.
+Noise has standard Noise/Out strips and an approximate spectral preview. Its
+Color, Width and Level use the shared per-note modulation contract.

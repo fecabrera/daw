@@ -625,3 +625,34 @@ fn beat_choke_finishes_across_transport_wrap_without_recovering_gain() {
     assert_eq!(actual.next_sample(), [0.0; 2]);
     assert_eq!(expected.next_sample(), [0.0; 2]);
 }
+
+#[test]
+fn beat_noise_sources_render_repeatably_with_stereo_and_seek_parity() {
+    for rate in SAMPLE_RATES {
+        let mut p = beat_plan(rate, false, false);
+        let layer = &mut p.project.tracks[0].beat.as_mut().unwrap().subtracks[0]
+            .instrument
+            .layers[0];
+        layer.clear_sources();
+        layer.noise = Some(NoiseSettings {
+            width: 1.0,
+            ..Default::default()
+        });
+        let p = p.prepare_beats();
+        let mut expected = vec![[0.0; 2]; 4096];
+        Renderer::new(p.clone()).render_offline(&mut expected);
+        assert!(expected.iter().any(|s| s[0].abs() > 0.001));
+        assert!(expected.iter().any(|s| s[0] != s[1]));
+        let mut live = Renderer::new(p.clone());
+        live.play();
+        for (frame, sample) in expected.iter().enumerate() {
+            let actual = live.next_sample();
+            if frame >= (rate / 200) as usize {
+                assert_eq!(*sample, actual);
+            }
+        }
+        let mut range = vec![[0.0; 2]; 128];
+        p.render(1024, &mut range);
+        assert_eq!(range, expected[1024..1152]);
+    }
+}

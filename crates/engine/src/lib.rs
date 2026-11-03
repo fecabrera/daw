@@ -154,6 +154,10 @@ fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
 /// Stable identity for UI parameter telemetry. Layer IDs are scoped to their track.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModulationTarget {
+    Noise {
+        track: Id,
+        layer: Id,
+    },
     Envelope {
         track: Id,
         layer: Id,
@@ -491,6 +495,13 @@ impl Renderer {
                     .envelope_snapshot(daw_core::ModulationSourceId { layer, unit })
             }
 
+            ModulationTarget::Noise { track, layer } => {
+                let index = *self.track_index.get(&track)?;
+                self.midi[index]
+                    .as_ref()?
+                    .noise_snapshot(layer)
+                    .map(parameter_snapshot)
+            }
             ModulationTarget::Sampler { track, layer } => {
                 let index = *self.track_index.get(&track)?;
                 let midi = self.midi[index].as_ref()?;

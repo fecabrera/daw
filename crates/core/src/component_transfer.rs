@@ -99,6 +99,28 @@ fn transfer(
         InstrumentComponent::Effect(_) => {
             return Err(Error("Effects use the effect-chain transfer API".into()));
         }
+        InstrumentComponent::Noise => {
+            let from = instrument
+                .layers
+                .iter_mut()
+                .find(|l| l.id == source)
+                .unwrap();
+            let mut noise = if duplicate {
+                from.noise.clone().unwrap()
+            } else {
+                from.noise.take().unwrap()
+            };
+            if duplicate {
+                noise.id = Id::new_v4();
+                fresh_routes(&mut noise.modulations);
+            }
+            instrument
+                .layers
+                .iter_mut()
+                .find(|l| l.id == destination)
+                .unwrap()
+                .noise = Some(noise);
+        }
         InstrumentComponent::Sampler => {
             let from = instrument
                 .layers
@@ -267,17 +289,25 @@ pub(super) fn eligible(
     }
     match c {
         InstrumentComponent::Effect(_) => false,
+        InstrumentComponent::Noise => {
+            source.is_some_and(|l| l.noise.is_some())
+                && destination.is_some_and(|l| {
+                    l.noise.is_none() && l.sampler.is_none() && l.oscillators.is_empty()
+                })
+        }
         InstrumentComponent::Sampler => {
             source.is_some_and(|l| l.sampler.is_some())
-                && destination.is_some_and(|l| l.sampler.is_none() && l.oscillators.is_empty())
+                && destination.is_some_and(|l| {
+                    l.sampler.is_none() && l.noise.is_none() && l.oscillators.is_empty()
+                })
         }
         InstrumentComponent::Oscillators => {
             source.is_some_and(|l| !l.oscillators.is_empty())
-                && destination.is_some_and(|l| l.sampler.is_none())
+                && destination.is_some_and(|l| l.sampler.is_none() && l.noise.is_none())
         }
         InstrumentComponent::Oscillator(id) => {
             source.is_some_and(|l| l.oscillators.iter().any(|s| s.id == id))
-                && destination.is_some_and(|l| l.sampler.is_none())
+                && destination.is_some_and(|l| l.sampler.is_none() && l.noise.is_none())
         }
         InstrumentComponent::Macros => {
             let m = source.map_or_else(|| &i.bus(from).unwrap().macro_module, |l| &l.macro_module);

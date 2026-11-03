@@ -22,6 +22,8 @@ pub(super) struct InstrumentUi {
     drag: Option<LayerDrag>,
     pub(super) oscillator_slots: Vec<(Id, Id, Rect)>,
     pub(super) samplers: Vec<crate::sampler_panel::Bounds>,
+    #[cfg(test)]
+    pub(super) noises: Vec<crate::noise_panel::Bounds>,
     pub(super) source_drop_rows: Vec<(Id, Rect)>,
     pub(super) component_slots: Vec<(Id, daw_core::InstrumentComponent, Rect)>,
     #[cfg(test)]
@@ -88,6 +90,8 @@ impl InstrumentUi {
     pub(super) fn clear_layout(&mut self) {
         self.oscillator_slots.clear();
         self.samplers.clear();
+        #[cfg(test)]
+        self.noises.clear();
         self.source_drop_rows.clear();
         self.component_slots.clear();
         self.effect_slots.clear();
@@ -106,6 +110,8 @@ impl InstrumentUi {
         self.macro_name_edit = None;
         self.drag = None;
         self.samplers.clear();
+        #[cfg(test)]
+        self.noises.clear();
     }
     pub(super) fn dragging(&self) -> bool {
         self.drag.as_ref().is_some_and(|drag| drag.active)
@@ -251,6 +257,8 @@ impl DawUi {
     pub(super) fn instrument_view(&mut self, ui: &mut egui::Ui) {
         self.instrument_ui.oscillator_slots.clear();
         self.instrument_ui.samplers.clear();
+        #[cfg(test)]
+        self.instrument_ui.noises.clear();
         self.instrument_ui.source_drop_rows.clear();
         self.instrument_ui.component_slots.clear();
         self.instrument_ui.effect_slots.clear();
@@ -616,6 +624,7 @@ impl DawUi {
                                                                     let effect=layer.effects.iter_mut().find(|e|e.id==id).unwrap();
                                                                     Some(self.inline_layer_effect(ui,track.id,layer.id,effect,(height,compact),&modulation_sources))
                                                                 }
+                                                                daw_core::InstrumentComponent::Noise => Some(self.noise_unit(ui, track.id, layer, &modulation_sources, height, compact)),
                                                                 daw_core::InstrumentComponent::Sampler => Some(self.sampler_unit(ui, &track, layer, &modulation_sources, height, compact)),
                                                                 daw_core::InstrumentComponent::Oscillators => {
                                                                     let (rect, header, power) = self.oscillator_unit(ui, track.id, layer, height, compact, &modulation_sources);

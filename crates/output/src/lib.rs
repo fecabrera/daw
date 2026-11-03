@@ -306,6 +306,17 @@ fn modulation_meters(
             .band_ids()
             .map(move |band| ModulationTarget::EffectBand { effect: e.id, band })
     });
+    let noises = plan.project.tracks.iter().flat_map(|track| {
+        track.instrument.iter().flat_map(move |i| {
+            i.layers
+                .iter()
+                .filter(|l| l.noise.is_some())
+                .map(move |l| ModulationTarget::Noise {
+                    track: track.id,
+                    layer: l.id,
+                })
+        })
+    });
     let samplers = plan.project.tracks.iter().flat_map(|track| {
         track.instrument.iter().flat_map(move |i| {
             i.layers
@@ -398,6 +409,7 @@ fn modulation_meters(
         .chain(envelopes)
         .chain(amplitudes)
         .chain(samplers)
+        .chain(noises)
         .chain(oscillators)
         .chain(oscillator_levels)
         .map(|key| {

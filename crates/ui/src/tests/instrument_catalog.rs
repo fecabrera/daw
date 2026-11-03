@@ -149,7 +149,10 @@ fn both_catalogs_start_collapsed_and_retain_independent_expansion_choices() {
                     .iter()
                     .all(Rect::is_positive)
             );
-            assert_eq!(app.instrument_catalog_bounds.entries, [Rect::NOTHING; 7]);
+            assert_eq!(
+                app.instrument_catalog_bounds.entries,
+                [Rect::NOTHING; crate::instrument_catalog::ENTRIES.len()]
+            );
             let sources = app.instrument_catalog_bounds.folders[0].center();
             click(&mut app, &ctx, sources, false);
             assert!(app.instrument_catalog_bounds.entries[0].is_positive());
@@ -408,6 +411,11 @@ fn component_double_click_adds_once_and_catalog_focus_and_selection_follow_share
     assert_eq!(app.instrument_catalog.selection.len(), 2);
     key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
     assert!(app.instrument_catalog.selection.is_empty()); // Modulators folder.
+    key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+    assert_eq!(
+        app.instrument_catalog.selection,
+        HashSet::from(["daw.noise"])
+    );
     key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
     assert_eq!(
         app.instrument_catalog.selection,

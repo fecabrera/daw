@@ -37,6 +37,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 - [MIDI patterns, Oscillator, Envelope, and rendering](instruments/midi-patterns.md).
 - [Granulizer](instruments/granulizer.md)
+- [Noise](instruments/noise.md).
 - [Sampler](instruments/sampler.md).
 - [Envelope inputs](instruments/envelope.md).
 - [LFO](instruments/lfo.md).

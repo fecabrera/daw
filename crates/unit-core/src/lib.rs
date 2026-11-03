@@ -9,6 +9,8 @@ mod audio_range;
 pub use audio_range::{ClipLoop, ClipStretch};
 mod granulizer;
 pub use granulizer::{GrainWindow, GranulizerSettings};
+mod noise;
+pub use noise::{NoiseSettings, NoiseType};
 mod sampler;
 pub use sampler::{SamplerInput, SamplerMode, SamplerSettings, SamplerTrigger};
 mod instrument_bus;
@@ -123,6 +125,8 @@ pub struct InstrumentLayerSettings {
     pub pan: f32,
     pub oscillators: Vec<OscillatorSettings>,
     pub sampler: Option<SamplerSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub noise: Option<NoiseSettings>,
     /// Unit enable states retain individual source switches and envelope settings.
     pub oscillator_enabled: bool,
     /// Gain after summing oscillator sources, before per-note Amplitude.
@@ -151,6 +155,7 @@ impl Default for InstrumentLayerSettings {
             pan: 0.0,
             oscillators: Vec::new(),
             sampler: None,
+            noise: None,
             oscillator_enabled: true,
             oscillator_level_db: 0.0,
             oscillator_pitch_semitones: 0.0,
@@ -180,7 +185,11 @@ impl InstrumentLayerSettings {
             && self
                 .sampler
                 .as_ref()
-                .is_none_or(|s| s.valid() && self.oscillators.is_empty())
+                .is_none_or(|s| s.valid() && self.oscillators.is_empty() && self.noise.is_none())
+            && self
+                .noise
+                .as_ref()
+                .is_none_or(|n| n.valid() && self.oscillators.is_empty() && self.sampler.is_none())
             && self.oscillator_pitch_semitones.is_finite()
             && (-48.0..=48.0).contains(&self.oscillator_pitch_semitones)
             && self.oscillator_level_db.is_finite()
@@ -256,6 +265,8 @@ struct SavedLayer {
     oscillators: Vec<OscillatorSettings>,
     #[serde(default)]
     sampler: Option<SamplerSettings>,
+    #[serde(default)]
+    noise: Option<NoiseSettings>,
     #[serde(default = "default_unit_enabled")]
     oscillator_enabled: bool,
     #[serde(default)]
@@ -324,6 +335,7 @@ impl SavedLayer {
             pan: self.pan,
             oscillators: self.oscillators,
             sampler: self.sampler,
+            noise: self.noise,
             oscillator_enabled: self.oscillator_enabled,
             oscillator_level_db: self.oscillator_level_db,
             oscillator_pitch_semitones: self.oscillator_pitch_semitones,

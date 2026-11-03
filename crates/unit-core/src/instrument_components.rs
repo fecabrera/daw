@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub enum InstrumentComponent {
     Oscillators,
     Sampler,
+    Noise,
     /// An individual source strip can transfer, but is not a component unit in this order.
     Oscillator(Uuid),
     Envelope(Uuid),
@@ -21,7 +22,7 @@ impl InstrumentComponent {
     pub fn is_source(self) -> bool {
         matches!(
             self,
-            Self::Oscillators | Self::Sampler | Self::Oscillator(_)
+            Self::Oscillators | Self::Sampler | Self::Noise | Self::Oscillator(_)
         )
     }
 }
@@ -144,7 +145,8 @@ fn remove_providers(
                 lfos.iter_mut().find(|l| l.id == id).unwrap().present = false
             }
             InstrumentComponent::Macros => macros.present = false,
-            InstrumentComponent::Sampler
+            InstrumentComponent::Noise
+            | InstrumentComponent::Sampler
             | InstrumentComponent::Oscillators
             | InstrumentComponent::Oscillator(_)
             | InstrumentComponent::Amplitude
@@ -157,6 +159,7 @@ impl InstrumentLayerSettings {
     fn component_inventory(&self) -> Vec<InstrumentComponent> {
         std::iter::once(InstrumentComponent::Oscillators)
             .chain(self.sampler.as_ref().map(|_| InstrumentComponent::Sampler))
+            .chain(self.noise.as_ref().map(|_| InstrumentComponent::Noise))
             .chain(
                 self.envelopes
                     .iter()
@@ -174,6 +177,7 @@ impl InstrumentLayerSettings {
     pub fn has_component(&self, unit: InstrumentComponent) -> bool {
         match unit {
             InstrumentComponent::Sampler => self.sampler.is_some(),
+            InstrumentComponent::Noise => self.noise.is_some(),
             InstrumentComponent::Oscillators => !self.oscillators.is_empty(),
             InstrumentComponent::Envelope(id) => {
                 self.envelopes.iter().any(|e| e.id == id && e.present)
@@ -209,6 +213,7 @@ impl InstrumentLayerSettings {
         self.oscillators.clear();
         self.oscillator_modulations.clear();
         self.sampler = None;
+        self.noise = None;
         self.prune_component_order();
     }
     /// Remove installed units together. Retained providers/stages keep their IDs and settings.
@@ -233,6 +238,10 @@ impl InstrumentLayerSettings {
         }
         if units.contains(&InstrumentComponent::Sampler) {
             self.sampler = None;
+            self.prune_component_order();
+        }
+        if units.contains(&InstrumentComponent::Noise) {
+            self.noise = None;
             self.prune_component_order();
         }
         if units.contains(&InstrumentComponent::Amplitude) {

@@ -44,6 +44,8 @@ struct LayerVoice {
     sources: Vec<OscillatorVoice>,
     oscillator_level: daw_oscillator::OscillatorOutput,
     oscillator_level_routes: Vec<Route>,
+    noise: Option<Box<daw_noise::Noise>>,
+    noise_routes: Vec<Route>,
     sampler: Option<daw_sampler::Sampler>,
     sampler_routes: Vec<Route>,
     one_shot: bool,
@@ -141,6 +143,12 @@ impl Voice {
                 route.reset();
             }
             layer.gate.note_on();
+            if let Some(noise) = &mut layer.noise {
+                noise.trigger(id.as_u128());
+                for route in &mut layer.noise_routes {
+                    route.reset();
+                }
+            }
             if let Some(s) = &mut layer.sampler {
                 s.note_on_at(pitch);
                 for route in &mut layer.sampler_routes {
@@ -197,6 +205,12 @@ impl Voice {
             layer.source_output = [0.0; 2];
             layer.mixed_output = [0.0; 2];
             layer.gate.reset();
+            if let Some(noise) = &mut layer.noise {
+                daw_unit_core::StereoSourceUnit::reset(noise.as_mut());
+            }
+            for route in &mut layer.noise_routes {
+                route.reset();
+            }
             if let Some(s) = &mut layer.sampler {
                 s.reset();
             }
@@ -407,6 +421,16 @@ impl LayerVoice {
                 context,
             )
         });
+        if let Some(noise) = &mut self.noise {
+            stereo = process_modulation(
+                noise.as_mut(),
+                &mut self.noise_routes,
+                [0.0; 2],
+                local,
+                shared,
+                context,
+            );
+        }
         self.source_output = stereo;
         let shaped = process_modulation(
             &mut self.amplitude,
@@ -426,7 +450,7 @@ impl LayerVoice {
 /// Center is unity per channel so legacy instruments retain their original gain and track pan.
 /// Muted and solo-excluded layers continue advancing all sources/envelopes with zero output.
 fn layer_gains(layer: &daw_core::InstrumentLayerSettings, any_solo: bool) -> [f32; 2] {
-    if (layer.sampler.is_none() && !layer.oscillator_enabled)
+    if (layer.sampler.is_none() && layer.noise.is_none() && !layer.oscillator_enabled)
         || !daw_core::mix_audible(layer.muted, layer.soloed, any_solo)
     {
         return [0.0; 2];
@@ -533,6 +557,10 @@ impl MidiTrackRuntime {
                             .map(|l| {
                                 vec_bytes(&l.routes)
                                     + vec_bytes(&l.sampler_routes)
+                                    + vec_bytes(&l.noise_routes)
+                                    + l.noise.as_ref().map_or(0, |_| {
+                                        std::mem::size_of::<daw_noise::Noise>() as u64
+                                    })
                                     + vec_bytes(&l.oscillator_level_routes)
                                     + l.sampler.as_ref().map_or(0, |s| s.heap_bytes())
                                     + vec_bytes(&l.sources)
@@ -743,6 +771,7 @@ impl MidiTrackRuntime {
         // Stable layer IDs preserve independent controls and identify topology changes.
         for layer in &layers {
             layer.id.hash(&mut hash);
+            layer.noise.as_ref().map(|n| n.id).hash(&mut hash);
             if let Some(s) = &layer.sampler {
                 s.id.hash(&mut hash);
                 s.root_note.hash(&mut hash);
@@ -891,6 +920,21 @@ impl MidiTrackRuntime {
                             previous: [0.0; 2],
                             transition_from: [0.0; 2],
                             output: [0.0; 2],
+                            noise: layer.noise.as_ref().map(|n| {
+                                Box::new(daw_noise::Noise::new(
+                                    n,
+                                    ProcessingContext {
+                                        sample_rate_hz: project.sample_rate_hz,
+                                        max_block_frames: project.buffer_size_frames,
+                                    },
+                                ))
+                            }),
+                            noise_routes: layer
+                                .noise
+                                .iter()
+                                .flat_map(|n| &n.modulations)
+                                .map(|r| Route::new(*r, project.sample_rate_hz))
+                                .collect(),
                             sampler: layer.sampler.as_ref().map(|s| {
                                 daw_sampler::Sampler::with_bank(
                                     ProcessingContext {
@@ -1204,6 +1248,15 @@ impl MidiTrackRuntime {
                     &mut layer.sampler_routes,
                     &mut next_layer.sampler_routes,
                 );
+                daw_unit_core::retarget_modulation_routes(
+                    &mut layer.noise_routes,
+                    &mut next_layer.noise_routes,
+                );
+                if let (Some(noise), Some(next)) = (&mut layer.noise, &next_layer.noise)
+                    && noise.compatible(next)
+                {
+                    noise.retarget(next);
+                }
                 layer.amplitude.retarget(&next_layer.amplitude);
                 layer
                     .oscillator_level
@@ -1641,6 +1694,28 @@ impl MidiTrackRuntime {
             }
         }
         range.map(|v| if v.is_finite() { v } else { f32::NAN })
+    }
+    pub fn noise_snapshot(&self, layer: Id) -> Option<[f32; 6]> {
+        let index = *self.layer_index.get(&layer)?;
+        let mut values = [
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+        ];
+        let mut found = false;
+        for voice in self.voices.iter().filter(|v| v.active_last_sample) {
+            if let Some(noise) = &voice.layers[index].noise {
+                found = true;
+                for (i, value) in noise.values().into_iter().enumerate() {
+                    values[2 * i] = values[2 * i].min(value);
+                    values[2 * i + 1] = values[2 * i + 1].max(value);
+                }
+            }
+        }
+        found.then_some(values)
     }
     /// Active Sampler gain extrema in dB. Exclude velocity, boundary fades and Amplitude.
     pub fn sampler_gain(&self, layer: Id) -> [f32; 2] {
