@@ -54,6 +54,11 @@ ABI tests cover native metadata, latency at all rates, every parameter, choices,
 tracing-subscriber, libloading, ashpd, alsa-sys and ICU4X notice omissions. Their
 texts live in `crates/ui/assets/licenses`, already copied by all desktop and plugin
 packagers. Archive tests compare the staged bytes with this inventory for each
-format and target. Notices can be included conservatively on targets that do not
+format and target. `.gitattributes` disables Git text conversion for all files in
+`crates/ui/assets/licenses`, preserving upstream LF and CRLF bytes under Windows
+checkout settings. Do not normalize notice files or regenerate inventory hashes
+to match checkout conversion. A temporary-index regression exercises
+`core.autocrlf=true` and `core.eol=crlf` without creating a commit.
+Notices can be included conservatively on targets that do not
 link a component. This inventory closes those omissions; it is not a complete
 license or corresponding-source audit of every dependency and deliverable.

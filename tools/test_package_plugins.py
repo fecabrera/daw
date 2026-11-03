@@ -24,6 +24,35 @@ class PackagingTests(unittest.TestCase):
                         "import check_drive_clap; import check_drive_vst3"],
                        cwd=ROOT / "tools", check=True, capture_output=True)
 
+    @unittest.skipUnless(shutil.which("git"), "requires Git checkout support")
+    def test_runtime_notice_bytes_survive_crlf_checkout(self):
+        inventory = json.loads((ROOT / "tools/runtime_notices.json").read_text())
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            checkout = base / "checkout"
+            checkout.mkdir()
+            (checkout / ".gitattributes").write_bytes((ROOT / ".gitattributes").read_bytes())
+            paths = [".gitattributes"]
+            for entry in inventory["notices"]:
+                target = checkout / entry["notice"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT / entry["notice"]).read_bytes())
+                paths.append(entry["notice"])
+            # Exercise actual Git conversion without a commit or a Windows host.
+            git = ["git", "-c", "core.autocrlf=true", "-c", "core.eol=crlf",
+                   "-c", "core.safecrlf=false"]
+            def run(*args):
+                subprocess.run(git + list(args), cwd=checkout, check=True, capture_output=True)
+            run("init", "--quiet", "--template=")
+            run("add", "--", *paths)
+            exported = base / "exported"
+            run("checkout-index", "--all", "--prefix=" + exported.as_posix() + "/")
+            for entry in inventory["notices"]:
+                with self.subTest(notice=entry["notice"]):
+                    actual = (exported / entry["notice"]).read_bytes()
+                    self.assertEqual(actual, (ROOT / entry["notice"]).read_bytes())
+                    self.assertEqual(hashlib.sha256(actual).hexdigest(), entry["sha256"])
+
     def test_platform_archives(self):
         for target, (system, architecture, pattern) in TARGETS.items():
             with self.subTest(target=target), tempfile.TemporaryDirectory() as temporary:
@@ -77,7 +106,7 @@ class PackagingTests(unittest.TestCase):
                         for entry in inventory["notices"]:
                             source = ROOT / entry["notice"]
                             expected = source.read_bytes()
-                            self.assertEqual(hashlib.sha256(expected).hexdigest(),entry["sha256"])
+                            self.assertEqual(hashlib.sha256(expected).hexdigest(), entry["sha256"], entry["notice"])
                             self.assertEqual(zipped.read(license_prefix + "ui/" + source.name), expected)
                         self.assertIn("README.txt", zipped.namelist())
                         if system == "macos":

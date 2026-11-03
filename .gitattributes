@@ -1,2 +1,3 @@
-# Preserve the upstream notice bytes used by tools/runtime_notices.json.
-crates/ui/assets/licenses/nu-ansi-term-0.50.3-LICENSE.txt -text
+# Preserve upstream notice bytes, including original LF or CRLF line endings.
+# Runtime inventory hashes must remain valid with core.autocrlf enabled.
+crates/ui/assets/licenses/* -text

@@ -6,6 +6,28 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 
 
+## Runtime notice checkout bytes — 2026-11-03
+
+Windows Git text conversion changed LF notice bytes to CRLF and invalidated the
+runtime inventory hashes. The reported `alsa-sys` mismatch is exactly the hash of
+its CRLF-converted text. `.gitattributes` now disables text conversion for the
+common UI notice directory, retaining original LF and CRLF files. Notice contents
+and inventory hashes remain unchanged.
+
+Completed checks:
+
+- A new temporary-index regression with `core.autocrlf=true` and `core.eol=crlf`
+  reproduced byte mismatches in eleven inventory notices before the fix. It
+  passes after the attribute change, including the original CRLF `nu-ansi-term`
+  notice. The test does not create commits.
+- `python3 -m unittest discover -s tools -p test_package_plugins.py -v` passed
+  all fifteen tests on macOS. This includes all target archive layouts, notice
+  retention, transactional failures and native macOS signature/resource checks.
+- `git diff --check` passed. The edited specification links resolve.
+
+Native Windows CI has not been rerun locally. No Rust or application runtime
+code changes are part of this fix.
+
 ## Disk-backed stem audio and output report — 2026-11-03
 
 Large WAV and compressed sources use private disk PCM with bounded read-ahead,
