@@ -1396,6 +1396,7 @@ impl DawUi {
             session.warnings.clone(),
         );
         let progress = status.frames.clone();
+        let total = status.total.clone();
         self.export_status = Some(status);
         self.run_job(
             &format!("Exporting stereo {}", settings.format.label()),
@@ -1404,7 +1405,8 @@ impl DawUi {
                     .prepare_project_audio(&|| false, &|_, _| {})
                     .map_err(|e| e.to_string())?;
                 session
-                    .export_with_progress(&path, overwrite, settings, |frames, _| {
+                    .export_with_progress(&path, overwrite, settings, |frames, export_total| {
+                        total.store(export_total, Ordering::Release);
                         progress.store(frames, Ordering::Relaxed);
                     })
                     .map(Job::Exported)

@@ -190,3 +190,5 @@ Full reference comparisons, native external-host GUI attachment, listening, and 
 
 Paired rendering tests must cover all shared themes and scales. Listening, native
 UI/device tests and external host acceptance remain separate from headless checks.
+
+Export status uses the total supplied by shared export, including capped tail frames. Rendering/encoding remains the active phase until that total is reached; publication still controls successful completion.

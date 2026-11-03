@@ -4,6 +4,19 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Export tail progress and guide corrections — 2026-11-03
+
+F001: desktop export status now receives the shared export total, including capped
+effect tails, before publishing completed frames. Rendering/encoding remains active
+through the tail; reaching the total enters finalization and does not mark success.
+F002: the project guide now describes enabled tails, the ten-second cap, bypass
+behavior, truncation warnings and extending the arrangement for longer fades.
+
+`cargo test -p daw-ui export --lib` passed all eight selected tests, including
+short-arrangement/long-tail progress, finalization without premature success,
+worker failure, overwrite and pending-audio preparation. Formatting and diff
+whitespace checks passed. Native UI/device checks were not run.
+
 ## Loudness Meter and history — 2026-11-03
 
 Added the transparent stereo analyzer, bounded worker statistics, three-minute
