@@ -5,6 +5,8 @@ mod pitch;
 mod tank;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod transition_tests;
 mod vowel;
 use daw_unit_core::{ShimmerReverbSettings as Settings, *};
 use delay::Diffuser;
@@ -32,8 +34,7 @@ pub struct ShimmerReverb {
     monitor: LevelMonitor<3>,
     counter: u64,
     warm_alpha: f64,
-    predelay_frames: ModulationRamp,
-    predelay_initialized: bool,
+    predelay_transition: daw_reverb_core::TapTransition<1>,
     injection: ModulationRamp,
 }
 impl ShimmerReverb {
@@ -72,16 +73,8 @@ impl ShimmerReverb {
             counter: 0,
             warm_alpha: 1.0
                 - (-std::f64::consts::TAU * 5000.0 / f64::from(context.sample_rate_hz)).exp(),
-            predelay_frames: ModulationRamp::new(
-                if s.sync {
-                    500.0 * Settings::NOTE_BEATS[usize::from(s.note.min(15))]
-                } else {
-                    s.predelay_ms
-                } * context.sample_rate_hz as f32
-                    * 0.001,
-            ),
+            predelay_transition: daw_reverb_core::TapTransition::new(context.sample_rate_hz),
             injection: ModulationRamp::new(if s.pitch_1 == s.pitch_2 { 0.5 } else { 1.0 }),
-            predelay_initialized: false,
         }
     }
     pub fn retarget(&mut self, s: &Settings) {
@@ -161,24 +154,20 @@ impl ShimmerReverb {
             }
         });
         let dry = input.map(|x| if x.is_finite() { f64::from(x) } else { 0.0 });
-        // Smooth tap travel separately; zero pre-delay uses the immediate input.
-        let target_frames = (v[1] * f64::from(self.context.sample_rate_hz) * 0.001) as f32;
-        if self.predelay_initialized {
-            self.predelay_frames
-                .set(target_frames, (self.context.sample_rate_hz / 200).max(1));
-        } else {
-            // Initial/reset timing uses the first valid host tempo. Do not ramp
-            // from a construction-time fallback or a stale pre-reset read head.
-            self.predelay_frames = ModulationRamp::new(target_frames);
-            self.predelay_initialized = true;
-        }
-        let delay_frames = f64::from(self.predelay_frames.next_value());
-        let delayed = self.predelay.read(delay_frames);
+        // Keep both read positions fixed during a fade. The latest pending target
+        // follows knob, modulation and tempo changes without scrubbing history.
+        self.predelay_transition
+            .target([v[1] * f64::from(self.context.sample_rate_hz) * 0.001]);
+        let weight = self.predelay_transition.advance();
+        let delayed: [f64; 2] = self
+            .predelay_transition
+            .read_with(0, 0.0, weight, |frames| {
+                let read = self.predelay.read(frames);
+                let blend = frames.clamp(0.0, 1.0);
+                std::array::from_fn(|ch| dry[ch] * (1.0 - blend) + read[ch] * blend)
+            });
         self.predelay.write(dry);
-        let blend = delay_frames.clamp(0.0, 1.0);
-        let early = std::array::from_fn(|ch| {
-            self.early[ch].sample(dry[ch] * (1.0 - blend) + delayed[ch] * blend)
-        });
+        let early = std::array::from_fn(|ch| self.early[ch].sample(delayed[ch]));
         if self.counter.is_multiple_of(32) {
             self.vowel.retarget(v[2] as f32);
         }
@@ -240,8 +229,7 @@ impl EffectUnit for ShimmerReverb {
     }
     fn reset(&mut self) {
         self.predelay.reset();
-        self.predelay_frames.reset();
-        self.predelay_initialized = false;
+        self.predelay_transition.reset();
         self.injection.reset();
         for d in &mut self.early {
             d.reset();

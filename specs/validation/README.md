@@ -7699,3 +7699,46 @@ The macOS app packager requires committed sources and rejected this dirty tree;
 the existing app bundle was retained. Source changes remain uncommitted. Native
 listening, device deadlines, external-host attachment and Windows/Linux runtime
 checks were not run. Receipts are retained in ignored `work/reverb-makeup/`.
+
+### Shimmer Size and Pre-delay drag noise — 2026-11-04
+
+Reproduced the reported noise with a steady 1 kHz input, Motion and pitch voices
+off, and 120 Hz control updates at all six project rates. Moving Size delay reads
+and the separately ramped Pre-delay read changed playback speed through stored
+audio. A 5 ms parameter ramp did not remove that artifact.
+
+Extracted Plate/Ambient's stationary-tap policy into the shared inline
+`reverb-core::TapTransition`. Shimmer now uses its 50 ms cubic crossfades for Size
+and Pre-delay. Active positions stay fixed; new requests replace only the pending
+target. Zero and fractional Pre-delay positions, first-host-tempo initialization,
+reset, cloning and compatible retargets retain their timing/history behavior.
+Intentional Motion offsets and the existing bounded feedback gain remain active.
+No rings are cleared or allocated during a drag. Settings, IDs, latency and wet
+makeup are unchanged. The user guide and both implementation specifications were
+updated separately.
+
+Executed locally on macOS:
+
+- The tone regression failed before the fix for Size, Pre-delay and modulated
+  Pre-delay at all six rates. At 48 kHz the rate-normalized second-order tone
+  residual was about `7.0e-5` for Size and `2.95e-3` for Pre-delay. The final
+  regression passes 30 cases covering both knobs, both modulation destinations
+  and synced tempo changes, with residuals around `4e-8` to `5.3e-8`.
+- Fifteen shared reverb-core and seven Shimmer unit tests passed, including
+  fixed-position continuity, latest-target coalescing, fractional/zero positions,
+  reset, clone history, first host tempo, bypass and extreme automation.
+- Release libraries with `allocation-check` passed all 90 native CLAP/VST3,
+  contract and editor tests across Shimmer, Plate and Ambient. Callback heap guards,
+  direct-DSP parity, dense automation, state recall and reset passed.
+- Shimmer's explicit 120-second six-rate stability test passed with maximum
+  regeneration and both frozen and automated Motion/Size.
+- `cargo test --release --locked --offline --workspace` passed, including the wet
+  calibration/headroom regressions and documentation tests. Explicit manual
+  performance/acceptance cases remain ignored unless listed above.
+- Strict workspace all-target Clippy, rustfmt and diff whitespace checks passed.
+  Desktop/CLI builds and `python3 tools/check_cli.py` passed.
+
+Native listening, device deadlines, external-host attachment and Windows/Linux
+runtime checks were not run. The desktop executable was rebuilt; the app bundle
+was not refreshed because its source packager requires a committed tree. Changes
+remain uncommitted. Receipts are retained in ignored `work/shimmer-delay-transitions/`.

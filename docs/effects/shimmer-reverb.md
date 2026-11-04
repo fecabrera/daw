@@ -31,6 +31,11 @@ readout. Rate, Depth, Position, Amount, Size and both damping controls range fro
 0% to 100%. Low Damp reduces low-frequency energy inside the tail. High Damp
 reduces high-frequency energy there. Warm softens the wet output independently.
 
+Size and Pre-delay changes use short crossfades to reduce noise during drags.
+Rapid knob, modulation or tempo changes keep the latest requested value while
+the current fade finishes. The tail remains active. Motion still adds its
+intentional movement to the tail.
+
 In Time mode, Pre-delay ranges from 0 to 1000 ms. In Sync mode, select a musical
 division from 1/64 to dotted 1/2; T means triplet and D means dotted. The retained
 initial division is dotted 1/16. Sync follows project tempo, or host tempo in a

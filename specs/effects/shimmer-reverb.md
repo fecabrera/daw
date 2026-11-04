@@ -33,7 +33,8 @@ rate-aware one-pole at 5 kHz. The reference's fixed-coefficient biquad is not us
 | `shimmer-reverb-plugin` / `shimmer-reverb-editor` | Typed host state, mappings, manifest validation and editor gestures |
 | `plugins/shimmer-reverb{,-clap,-vst3}` | Checked manifest and independent exports through existing narrow format sources |
 
-Reuse `reverb-core::Delay` for the stereo pre-delay. Other internal delay reads
+Reuse `reverb-core::Delay` for the stereo pre-delay and the shared
+`reverb-core::TapTransition` for stationary-position crossfades. Other internal delay reads
 use prepared scalar rings. Do not extend the Plate/Ambient processor with product
 flags. There is no new third-party dependency or copied native implementation.
 
@@ -168,9 +169,24 @@ Prepare all rings and meter handles before processing. Retarget, reset, sampling
 and modulation must not allocate, lock, perform I/O or release final owners.
 Resets invalidate rings in constant time. Base controls, power, ratio and mode
 transitions use 5 ms ramps; additive offsets use the shared 1 ms smoother.
-Pre-delay tap travel also ramps over 5 ms. Initial/reset timing uses the first
-host tempo without ramping from a stale read head. Reset after an unprocessed
-retarget must match construction with the new parameters. Musical delay changes can bend pitch.
+Size and Pre-delay use the shared 50 ms cubic stationary-tap transition. Do not
+move either active position to follow the 5 ms parameter ramp: doing so scrubs
+stored audio and produces Doppler/zipper noise. Finish the current fade before
+starting the latest pending target; intermediate requests do not restart a fade.
+Pre-delay positions use fractional frames, including zero (immediate dry input).
+Size positions use normalized Size, mapped through each line's existing delay
+formula. All eight lines share one transition weight. Update Size targets with
+the existing 32-sample control tick. Keep the intentional Motion offset active
+on both taps, and retain the existing smoothed Size feedback coefficient.
+
+Initial/reset timing selects the first actual target immediately, including the
+first host tempo, without fading from a fallback or stale read head. Clone and
+compatible retarget preserve active and pending positions, fade progress and
+delay history. Reset after an unprocessed retarget must match construction with
+the new parameters. All new state is inline; both reads use prepared history and
+convex weights, preserving the existing infinity-norm stability bound. Do not
+allocate, clear buffers or retire owners while changing delay positions. Saved
+settings, parameter IDs, wet makeup, reported latency and tail limits are unchanged.
 Continue all histories during silence and bypass. Host suspension is separate.
 
 The fixed 120-second tail declaration is a conservative processing budget, not

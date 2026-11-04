@@ -6,7 +6,9 @@ mod drive;
 mod filters;
 mod makeup;
 mod processor;
+mod tap_transition;
 pub use processor::{Parameters, Reverb};
+pub use tap_transition::TapTransition;
 
 /// A monotonic three-point control map: endpoints `a`, `b`, midpoint `c`.
 pub fn rational_map(u: f64, a: f64, c: f64, b: f64) -> f64 {

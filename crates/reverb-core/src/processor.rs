@@ -244,62 +244,7 @@ impl Convolution {
                 * size_of::<[f64; 2]>()
     }
 }
-/// Fade between stationary read heads instead of jumping between prime delays.
-/// Retain only the latest request while a fade runs; never restart an active fade.
-#[derive(Clone)]
-struct BloomTransition {
-    from: [u32; 16],
-    to: [u32; 16],
-    pending: [u32; 16],
-    position: u32,
-    frames: u32,
-    initialized: bool,
-}
-impl BloomTransition {
-    fn new(rate: u32) -> Self {
-        Self {
-            from: [1; 16],
-            to: [1; 16],
-            pending: [1; 16],
-            position: (rate / 20).max(1),
-            frames: (rate / 20).max(1),
-            initialized: false,
-        }
-    }
-    fn target(&mut self, delays: [u32; 16]) {
-        self.pending = delays;
-        if !self.initialized {
-            self.from = delays;
-            self.to = delays;
-            self.initialized = true;
-        }
-    }
-    fn advance(&mut self) -> f64 {
-        if self.position == self.frames && self.pending != self.to {
-            self.from = self.to;
-            self.to = self.pending;
-            self.position = 0;
-        }
-        self.position = self.position.saturating_add(1).min(self.frames);
-        let t = f64::from(self.position) / f64::from(self.frames);
-        t * t * (3.0 - 2.0 * t)
-    }
-    fn delay(&self, index: usize, weight: f64) -> f64 {
-        f64::from(self.from[index]) * (1.0 - weight) + f64::from(self.to[index]) * weight
-    }
-    fn read(&self, line: &Delay, index: usize, movement: f64, weight: f64) -> [f64; 2] {
-        let to = line.read(f64::from(self.to[index]) + movement);
-        if weight == 1.0 || self.from[index] == self.to[index] {
-            return to;
-        }
-        let from = line.read(f64::from(self.from[index]) + movement);
-        std::array::from_fn(|ch| from[ch] * (1.0 - weight) + to[ch] * weight)
-    }
-    fn reset(&mut self) {
-        self.position = self.frames;
-        self.initialized = false;
-    }
-}
+type BloomTransition = crate::TapTransition<16>;
 
 #[derive(Clone)]
 pub struct Reverb {
@@ -788,50 +733,5 @@ fn gain(db: f32) -> f32 {
         0.
     } else {
         10_f32.powf(db / 20.)
-    }
-}
-
-#[cfg(test)]
-mod bloom_tests {
-    use super::*;
-
-    #[test]
-    fn rapid_targets_preserve_continuity_and_reset_selects_the_current_taps() {
-        let mut line = Delay::new(1024);
-        for frame in 0..1024 {
-            line.write(if frame % 128 < 64 {
-                [1.0, -1.0]
-            } else {
-                [-1.0, 1.0]
-            });
-        }
-        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
-            let mut transition = BloomTransition::new(rate);
-            transition.target([32; 16]);
-            let weight = transition.advance();
-            let mut previous = transition.read(&line, 0, 0.0, weight);
-            for frame in 0..transition.frames * 4 {
-                if frame % 128 == 0 {
-                    transition.target([if frame % 256 == 0 { 96 } else { 32 }; 16]);
-                }
-                let weight = transition.advance();
-                let sample = transition.read(&line, 0, 0.0, weight);
-                for ch in 0..2 {
-                    assert!(
-                        (sample[ch] - previous[ch]).abs() <= 4.0 / f64::from(transition.frames)
-                    );
-                }
-                previous = sample;
-            }
-            transition.target([96; 16]);
-            for _ in 0..transition.frames * 2 {
-                transition.advance();
-            }
-            assert_eq!(transition.read(&line, 0, 0.0, 1.0), line.read(96.0));
-            transition.reset();
-            transition.target([32; 16]);
-            let weight = transition.advance();
-            assert_eq!(transition.read(&line, 0, 0.0, weight), line.read(32.0));
-        }
     }
 }

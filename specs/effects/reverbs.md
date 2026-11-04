@@ -193,6 +193,10 @@ smoothstep. Requests during a fade replace only the pending target, preserving
 continuity. Do not interpolate the delay address itself or restart an active
 fade on each drag update. Reset selects the current target without a stale fade.
 The transition uses fixed arrays and preserves state during compatible retargets.
+`reverb-core::TapTransition` owns this shared policy. Shimmer uses the same
+transition for Size and Pre-delay with caller-defined read positions, including
+fractional and immediate-input positions. Plate/Ambient retain their prime-delay
+targets, update cadence, cubic weights and pending-target behavior.
 
 These are original algorithm-family adaptations, not ports of captured functions. Partition scheduling, excitation, coefficient generation, diffusion and amplifier behavior are not sample-identical reconstructions. No complete reference-plugin null test has passed, and reference emulation is not claimed.
 

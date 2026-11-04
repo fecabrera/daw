@@ -13,6 +13,7 @@ pub(crate) struct Tank {
     motion_step: [f64; 8],
     coefficients: [f64; 2],
     tick: u8,
+    size_transition: daw_reverb_core::TapTransition<1>,
 }
 impl Tank {
     pub fn new(rate: u32) -> Self {
@@ -29,6 +30,7 @@ impl Tank {
                 1.0 - (-std::f64::consts::TAU * 400.0 / f64::from(rate)).exp(),
             ],
             tick: 0,
+            size_transition: daw_reverb_core::TapTransition::new(rate),
         }
     }
     pub fn sample(
@@ -44,6 +46,7 @@ impl Tank {
             0.0437, 0.0571, 0.0713, 0.0899, 0.1093, 0.1319, 0.1571, 0.1811,
         ];
         if self.tick == 0 {
+            self.size_transition.target([size]);
             self.coefficients[0] = 1.0
                 - (-std::f64::consts::TAU * (18000.0 * (800.0f64 / 18000.0).powf(high))
                     / self.rate)
@@ -55,9 +58,12 @@ impl Tank {
             });
         }
         let [lp, hp] = self.coefficients;
+        let size_weight = self.size_transition.advance();
         let taps: [f64; 8] = std::array::from_fn(|i| {
             self.motion[i] += self.motion_step[i];
-            let q = self.delay[i].read(self.rate * (TIMES[i] * (0.3 + size) + self.motion[i]));
+            let q = self.size_transition.read_with(0, 0.0, size_weight, |size| {
+                [self.delay[i].read(self.rate * (TIMES[i] * (0.3 + size) + self.motion[i]))]
+            })[0];
             self.low[i] += lp * (q - self.low[i]);
             self.dc[i] += hp * (self.low[i] - self.dc[i]);
             // Both low and dc are bounded by the input history supremum.
@@ -93,6 +99,7 @@ impl Tank {
         self.motion = [0.0; 8];
         self.motion_step = [0.0; 8];
         self.tick = 0;
+        self.size_transition.reset();
     }
     pub fn heap_bytes(&self) -> u64 {
         self.delay.iter().map(Delay::heap_bytes).sum()
