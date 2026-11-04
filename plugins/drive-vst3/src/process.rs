@@ -1,4 +1,5 @@
 use crate::{component::Component, queues::Queues};
+use daw_drive_plugin::BandAudition;
 use daw_plugin_vst3::sys::Steinberg::{Vst::*, *};
 use std::{ptr, sync::atomic::Ordering};
 /// # Safety
@@ -11,6 +12,9 @@ pub(crate) unsafe fn process(component: &Component, data: *mut ProcessData) -> t
     if data.numSamples < 0 || data.symbolicSampleSize != 0 || !(0..=2).contains(&data.processMode) {
         return kInvalidArgument;
     }
+    component
+        .output_meter
+        .set_audition_allowed(data.processMode != 2);
     let frames = data.numSamples;
     if frames > 0
         && (!component.active.load(Ordering::Acquire)

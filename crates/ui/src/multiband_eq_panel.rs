@@ -13,16 +13,19 @@ use daw_unit_ui::multiband_eq::CONTROL_SIZE;
 pub(super) struct Bounds {
     #[cfg(test)]
     pub output_meter: Rect,
+    pub solo_changed: bool,
     pub header: Rect,
     pub power: Rect,
     pub bands: Vec<Rect>,
     pub knobs: Vec<[Rect; 4]>,
     pub band_power: Vec<Rect>,
+    pub band_solo: Vec<Rect>,
     pub meters: Vec<Rect>,
     pub add: Rect,
     pub output: Rect,
 }
 
+#[cfg(test)]
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut MultibandEqSettings,
@@ -32,15 +35,45 @@ pub(super) fn show(
     levels: impl Fn(Id) -> f32,
     level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
+    show_audition(
+        ui,
+        settings,
+        dimensions,
+        sources,
+        live,
+        |id| levels(id).into(),
+        level,
+        (Id::nil(), &mut Default::default()),
+    )
+}
+#[allow(clippy::too_many_arguments)]
+pub(super) fn show_audition<'a>(
+    ui: &mut Ui,
+    settings: &mut MultibandEqSettings,
+    dimensions: (bool, f32),
+    sources: &[Source],
+    live: impl Fn(Option<Id>) -> Option<daw_engine::ModulationSnapshot>,
+    levels: impl Fn(Id) -> meters::OutputLevel<'a>,
+    level: meters::OutputLevel<'a>,
+    audition: (Id, &mut std::collections::HashSet<(Id, Id)>),
+) -> (Bounds, egui::Response) {
+    let (effect, solos) = audition;
+    let ids: Vec<_> = settings.bands.iter().map(|b| b.id).collect();
+    let mut selected: Vec<_> = ids
+        .iter()
+        .map(|id| solos.contains(&(effect, *id)))
+        .collect();
     let (compact, height) = dimensions;
     let mut bounds = Bounds {
         #[cfg(test)]
         output_meter: Rect::NOTHING,
+        solo_changed: false,
         header: Rect::NOTHING,
         power: Rect::NOTHING,
         bands: Vec::new(),
         knobs: Vec::new(),
         band_power: Vec::new(),
+        band_solo: Vec::new(),
         meters: Vec::new(),
         add: Rect::NOTHING,
         output: Rect::NOTHING,
@@ -58,7 +91,16 @@ pub(super) fn show(
         &mut enabled,
         &mut collapsed,
         |ui| {
-            body(ui, settings, compact, sources, &live, &levels, &mut bounds);
+            body(
+                ui,
+                settings,
+                compact,
+                sources,
+                &live,
+                &levels,
+                &mut bounds,
+                &mut selected,
+            );
             if !compact {
                 let rail = meters::effect_output_level(
                     ui,
@@ -76,6 +118,16 @@ pub(super) fn show(
             }
         },
     );
+    for (id, selected) in ids.into_iter().zip(selected) {
+        bounds.solo_changed |= if selected && enabled {
+            solos.insert((effect, id))
+        } else {
+            solos.remove(&(effect, id))
+        };
+    }
+    if !enabled {
+        solos.retain(|(e, _)| *e != effect);
+    }
     settings.enabled = enabled;
     settings.collapsed = collapsed;
     modulation_panel::toggle(
@@ -88,14 +140,16 @@ pub(super) fn show(
     bounds.power = result.power.rect;
     (bounds, result.header)
 }
-fn body(
+#[allow(clippy::too_many_arguments)]
+fn body<'a>(
     ui: &mut Ui,
     settings: &mut MultibandEqSettings,
     compact: bool,
     sources: &[Source],
     live: &impl Fn(Option<Id>) -> Option<daw_engine::ModulationSnapshot>,
-    levels: &impl Fn(Id) -> f32,
+    levels: &impl Fn(Id) -> meters::OutputLevel<'a>,
     bounds: &mut Bounds,
+    selected: &mut [bool],
 ) {
     let body_height = crate::envelope_panel::body_height(compact);
     let markers: Vec<_> = settings
@@ -147,6 +201,7 @@ fn body(
                     settings,
                     (compact, body_height),
                     daw_unit_ui::multiband_eq::Controls {
+                        solos: selected,
                         add_enabled: true,
                         markers: &markers,
                         levels: &band_levels,
@@ -159,7 +214,10 @@ fn body(
         for (index, (band, response)) in original.iter().zip(&shared.band_responses).enumerate() {
             // Click-only Power can pass drag sensing to its parent, as in Oscillator.
             let control_press = ui.input(|i| i.pointer.press_origin()).is_some_and(|p| {
-                shared.power[index].contains(p) || shared.knobs[index].iter().any(|r| r.contains(p))
+                shared.meters.get(index).is_some_and(|r| r.contains(p))
+                    || shared.solo[index].contains(p)
+                    || shared.power[index].contains(p)
+                    || shared.knobs[index].iter().any(|r| r.contains(p))
             });
             if !control_press {
                 crate::strip_reorder::arm_bands(ui, owner, response, band.id, &original);
@@ -174,6 +232,7 @@ fn body(
             add = button.clicked();
         }
         bounds.band_power = shared.power;
+        bounds.band_solo = shared.solo;
         bounds.meters = shared.meters;
         bounds.bands = shared.bands;
         bounds.knobs = shared.knobs;

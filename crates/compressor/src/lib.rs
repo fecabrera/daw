@@ -123,6 +123,11 @@ impl Compressor {
             parameter.retarget(target, self.fade_frames);
         }
     }
+    /// Control monitor publication independently of the audio bypass ramp.
+    pub fn set_monitoring_enabled(&mut self, enabled: bool) {
+        self.meter.set_enabled(enabled);
+        self.output_monitor.set_enabled(enabled);
+    }
     /// Optional lock-free monitoring handle. Attach on a control thread.
     pub fn set_gain_reduction_meter(&mut self, meter: Arc<AtomicU32>) {
         self.set_gain_reduction_peak_meter(Arc::new(PeakMeter::new(meter)));

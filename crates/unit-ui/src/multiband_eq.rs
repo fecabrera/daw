@@ -1,20 +1,12 @@
 use crate::{
     knobs::{self, Knob, KnobSpec},
-    layout as panels, meters, parameter_knobs, rows,
+    layout as panels, menus, meters, parameter_knobs, rows,
 };
 use daw_unit_core::{EqBandMode, ModulationParameter as P};
 use egui::{Rect, Ui, Vec2};
 pub const CONTROL_SIZE: f32 = 42.0;
 const CONTROL_SCALE: f32 = CONTROL_SIZE / knobs::CHOICE_SIZE;
 pub const CONTROL_GAP: f32 = 3.0;
-fn remove_menu(response: &egui::Response, remove: &mut bool) {
-    crate::menus::ContextMenu::new(response).show(|ui| {
-        if ui.button("Remove band").clicked() {
-            *remove = true;
-            ui.close();
-        }
-    });
-}
 pub fn diagram(value: f32) -> Vec<Vec2> {
     let mode = EqBandMode::ALL[value.round() as usize];
     (0..=24)
@@ -40,6 +32,8 @@ pub fn band_controls(
     markers: &[Option<knobs::ModulationMarker>; 3],
     open: &mut bool,
     remove: &mut bool,
+    solo: &mut bool,
+    unit_enabled: bool,
 ) -> [Rect; 4] {
     std::array::from_fn(|row| {
         let response = knobs::row(ui, band, CONTROL_SIZE, |ui, band| {
@@ -78,7 +72,14 @@ pub fn band_controls(
             })
             .inner
         });
-        remove_menu(&response, remove);
+        menus::band_context_menu(
+            &response,
+            &mut band.enabled,
+            solo,
+            remove,
+            true,
+            unit_enabled,
+        );
         response.rect
     })
 }
@@ -87,6 +88,7 @@ pub struct BandBounds {
     pub section: Rect,
     pub controls: [Rect; 4],
     pub power: Rect,
+    pub solo: Rect,
     pub meter: Rect,
     pub remove: bool,
 }
@@ -97,11 +99,13 @@ pub fn band(
     dimensions: (bool, f32),
     markers: &[Option<knobs::ModulationMarker>; 3],
     open: &mut bool,
-    level: f32,
+    audition: (meters::OutputLevel<'_>, &mut bool, bool),
 ) -> BandBounds {
+    let (level, solo, unit_enabled) = audition;
     let (compact, height) = dimensions;
     let mut controls = [Rect::NOTHING; 4];
     let mut power = Rect::NOTHING;
+    let mut solo_rect = Rect::NOTHING;
     let mut remove = false;
     let strip = ui.scope_builder(
         egui::UiBuilder::new().sense(egui::Sense::click_and_drag()),
@@ -109,7 +113,8 @@ pub fn band(
             panels::unit_strip(ui, height, egui::UiBuilder::new(), |ui| {
                 ui.spacing_mut().item_spacing.y = CONTROL_GAP;
                 if !compact {
-                    controls = band_controls(ui, band, markers, open, &mut remove);
+                    controls =
+                        band_controls(ui, band, markers, open, &mut remove, solo, unit_enabled);
                 }
                 rows::centered(
                     ui,
@@ -119,39 +124,87 @@ pub fn band(
                         crate::layout::COMPACT_BUTTON_SIZE
                     },
                     |ui| {
-                        let response = rows::power_label(
-                            ui,
-                            &format!("Band {}", index + 1),
-                            &format!("Toggle EQ band {}", index + 1),
-                            band.enabled,
-                        )
-                        .on_hover_text("Off bypasses this band. Right-click to remove it.");
+                        let width =
+                            (ui.available_width() - crate::layout::COMPACT_BUTTON_SIZE - 4.0)
+                                .max(0.0);
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let response = ui
+                            .allocate_ui_with_layout(
+                                Vec2::new(width, crate::layout::COMPACT_BUTTON_SIZE),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    rows::power_label(
+                                        ui,
+                                        &format!("B{}", index + 1),
+                                        &format!("Toggle EQ band {}", index + 1),
+                                        band.enabled,
+                                    )
+                                },
+                            )
+                            .inner
+                            .on_hover_text("Off bypasses this band. Right-click for band actions.");
                         if response.clicked() {
                             band.enabled = !band.enabled;
                         }
                         power = response.rect;
-                        remove_menu(&response, &mut remove);
+                        menus::band_context_menu(
+                            &response,
+                            &mut band.enabled,
+                            solo,
+                            &mut remove,
+                            true,
+                            unit_enabled,
+                        );
+                        let response =
+                            rows::band_solo(ui, &format!("Solo EQ band {}", index + 1), solo);
+                        solo_rect = response.rect;
+                        menus::band_context_menu(
+                            &response,
+                            &mut band.enabled,
+                            solo,
+                            &mut remove,
+                            true,
+                            unit_enabled,
+                        );
                     },
                 );
             })
         },
+    );
+    menus::band_context_menu(
+        &strip.response,
+        &mut band.enabled,
+        solo,
+        &mut remove,
+        true,
+        unit_enabled,
     );
     let mut b = BandBounds {
         section: strip.response.rect,
         response: strip.response,
         controls,
         power,
+        solo: solo_rect,
         meter: Rect::NOTHING,
         remove,
     };
     if !compact {
         b.meter = meters::unit_monitor_rail(b.section, crate::layout::PANEL_MARGIN);
-        meters::band_level_rail(
+        let response = meters::band_output_level(
             ui,
             b.meter,
-            &format!("Band {}", index + 1),
             level,
+            unit_enabled,
             band.enabled,
+            &format!("Band {} output", index + 1),
+        );
+        menus::band_context_menu(
+            &response,
+            &mut band.enabled,
+            solo,
+            &mut b.remove,
+            true,
+            unit_enabled,
         );
     }
     b
@@ -216,9 +269,10 @@ pub fn output(
 }
 
 pub struct Controls<'a> {
+    pub solos: &'a mut [bool],
     pub add_enabled: bool,
     pub markers: &'a [[Option<knobs::ModulationMarker>; 3]],
-    pub levels: &'a [f32],
+    pub levels: &'a [meters::OutputLevel<'a>],
     pub output_marker: Option<&'a knobs::ModulationMarker>,
     pub output_level: Option<meters::OutputLevel<'a>>,
 }
@@ -228,6 +282,7 @@ pub struct Bounds {
     pub band_responses: Vec<egui::Response>,
     pub knobs: Vec<[Rect; 4]>,
     pub power: Vec<Rect>,
+    pub solo: Vec<Rect>,
     pub meters: Vec<Rect>,
     pub add: Option<egui::Response>,
     pub output: Rect,
@@ -248,6 +303,7 @@ pub fn show(
         band_responses: vec![],
         knobs: vec![],
         power: vec![],
+        solo: vec![],
         meters: vec![],
         add: None,
         output: Rect::NOTHING,
@@ -258,6 +314,7 @@ pub fn show(
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(crate::theme::TOOLBAR_PADDING));
         for (i, band) in settings.bands.iter_mut().enumerate() {
+            let mut unused = false;
             let empty = std::array::from_fn(|_| None);
             let b = ui
                 .push_id(band.id, |ui| {
@@ -268,10 +325,11 @@ pub fn show(
                         dimensions,
                         controls.markers.get(i).unwrap_or(&empty),
                         &mut settings.modulation_open,
-                        meters::unit_reading(
+                        (
+                            controls.levels.get(i).copied().unwrap_or(0.0.into()),
+                            controls.solos.get_mut(i).unwrap_or(&mut unused),
                             settings.enabled,
-                            [controls.levels.get(i).copied().unwrap_or(0.0)],
-                        )[0],
+                        ),
                     )
                 })
                 .inner;
@@ -286,6 +344,7 @@ pub fn show(
             bounds.band_responses.push(b.response);
             bounds.knobs.push(b.controls);
             bounds.power.push(b.power);
+            bounds.solo.push(b.solo);
             if !dimensions.0 {
                 bounds.meters.push(b.meter);
             }

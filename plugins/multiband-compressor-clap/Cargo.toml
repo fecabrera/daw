@@ -1,0 +1,27 @@
+[package]
+name = "daw-multiband-compressor-clap"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[features]
+allocation-check = []
+
+[lib]
+path = "../drive-clap/src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+daw-drive-editor = { package = "daw-multiband-compressor-editor", path = "../../crates/multiband-compressor-editor" }
+daw-plugin-window.workspace = true
+rtrb.workspace = true
+daw-drive-plugin = { package = "daw-multiband-compressor-plugin", path = "../../crates/multiband-compressor-plugin" }
+daw-plugin-clap.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+libloading.workspace = true
+daw-multiband-compressor.workspace = true
+daw-unit-core.workspace = true

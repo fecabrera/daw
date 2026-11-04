@@ -5,14 +5,18 @@ pub(super) type Solos = HashMap<ModulationTarget, Arc<AtomicBool>>;
 pub(super) fn prepare(plan: &RenderPlan, previous: &Solos) -> Solos {
     plan.project
         .all_effects()
-        .filter_map(|e| match &e.unit {
-            daw_core::EffectSettings::Exciter(s) => Some((e.id, s)),
-            _ => None,
+        .filter(|e| {
+            matches!(
+                &e.unit,
+                daw_core::EffectSettings::Exciter(_)
+                    | daw_core::EffectSettings::MultibandEq(_)
+                    | daw_core::EffectSettings::MultibandCompressor(_)
+            )
         })
-        .flat_map(|(effect, s)| {
-            s.bands
-                .iter()
-                .map(move |b| ModulationTarget::EffectBand { effect, band: b.id })
+        .flat_map(|e| {
+            e.unit
+                .band_ids()
+                .map(move |band| ModulationTarget::EffectBand { effect: e.id, band })
         })
         .map(|key| (key, previous.get(&key).cloned().unwrap_or_default()))
         .collect()

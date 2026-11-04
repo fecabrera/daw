@@ -1,4 +1,5 @@
 use crate::CONTROLLER_ID;
+use daw_drive_plugin::BandAudition;
 use daw_drive_plugin::{Parameter, PluginState, Processor, SUPPORTED_RATES, StateExchange};
 use daw_plugin_vst3::{
     Stream, boundary,
@@ -362,6 +363,35 @@ impl IConnectionPointTrait for Component {
                 return kInvalidArgument;
             };
             match kind {
+                crate::telemetry::Kind::BandReset => {
+                    if values[0].fract() != 0.0
+                        || values[0] < 0.0
+                        || values[0] >= 64.0
+                        || ![0.0, 1.0].contains(&values[1])
+                    {
+                        return kInvalidArgument;
+                    }
+                    let reset = if values[1] == 1.0 {
+                        self.output_meter.reset_band_level_peak(values[0] as usize)
+                    } else {
+                        self.output_meter.reset_band_peak(values[0] as usize)
+                    };
+                    if reset { kResultOk } else { kInvalidArgument }
+                }
+                crate::telemetry::Kind::Solo => {
+                    if values[0].fract() != 0.0
+                        || values[0] < 0.0
+                        || values[0] >= 64.0
+                        || ![0.0, 1.0].contains(&values[1])
+                    {
+                        return kInvalidArgument;
+                    }
+                    let Some(flag) = self.output_meter.band_solos().get(values[0] as usize) else {
+                        return kInvalidArgument;
+                    };
+                    flag.store(values[1] == 1.0, Ordering::Relaxed);
+                    kResultOk
+                }
                 crate::telemetry::Kind::Reset => {
                     daw_drive_plugin::reset_meter(
                         &self.output_meter,

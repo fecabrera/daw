@@ -12,6 +12,7 @@ use daw_filter::Filter;
 use daw_harmonic_lift::HarmonicLift;
 use daw_limiter::Limiter;
 use daw_loudness::Loudness;
+use daw_multiband_compressor::MultibandCompressor;
 use daw_ott::Ott;
 use daw_plate_reverb::PlateReverb;
 use daw_saturator::Saturator;
@@ -24,6 +25,7 @@ enum RuntimeEffect {
     Loudness(Box<Loudness>),
     MultibandEq(Box<MultibandEq>),
     Exciter(Box<Exciter>),
+    MultibandCompressor(Box<MultibandCompressor>),
     HarmonicLift(Box<HarmonicLift>),
     Eq3(Box<Equalizer>, Vec<super::modulation::Route>),
     Drive(Box<Drive>, Vec<super::modulation::Route>),
@@ -47,6 +49,9 @@ impl RuntimeEffect {
         match self {
             Self::Loudness(unit) => std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes(),
             Self::HarmonicLift(unit) => {
+                std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes()
+            }
+            Self::MultibandCompressor(unit) => {
                 std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes()
             }
             Self::Exciter(unit) => std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes(),
@@ -138,6 +143,7 @@ impl RuntimeEffect {
             Self::Loudness(unit) => unit.latency_frames(),
             Self::MultibandEq(unit) => unit.latency_frames(),
             Self::HarmonicLift(unit) => unit.latency_frames(),
+            Self::MultibandCompressor(unit) => unit.latency_frames(),
             Self::Exciter(unit) => unit.latency_frames(),
             Self::Eq3(unit, _) => unit.latency_frames(),
             Self::Drive(unit, _) => unit.latency_frames(),
@@ -170,6 +176,16 @@ impl RuntimeEffect {
         match self {
             Self::Loudness(unit) => unit.process_at(input, frame),
             Self::HarmonicLift(unit) => unit.process_at(
+                input,
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
+            Self::MultibandCompressor(unit) => unit.process_at(
                 input,
                 values,
                 ModulationContext {
@@ -401,6 +417,7 @@ impl RuntimeEffect {
             Self::Loudness(unit) => unit.reset(),
             Self::MultibandEq(unit) => unit.reset(),
             Self::HarmonicLift(unit) => unit.reset(),
+            Self::MultibandCompressor(unit) => unit.reset(),
             Self::Exciter(unit) => unit.reset(),
             Self::Eq3(unit, routes) => {
                 unit.reset();
@@ -501,6 +518,9 @@ impl RuntimeEffect {
             (Self::HarmonicLift(unit), EffectSettings::HarmonicLift(settings)) => {
                 return unit.retarget(settings);
             }
+            (Self::MultibandCompressor(unit), EffectSettings::MultibandCompressor(settings)) => {
+                return unit.retarget(settings);
+            }
             (Self::Exciter(unit), EffectSettings::Exciter(settings)) => {
                 return unit.retarget(settings);
             }
@@ -591,6 +611,11 @@ impl EffectChain {
                                 Some(RuntimeEffect::HarmonicLift(Box::new(HarmonicLift::new(
                                     context, settings,
                                 ))))
+                            }
+                            EffectSettings::MultibandCompressor(settings) => {
+                                Some(RuntimeEffect::MultibandCompressor(Box::new(
+                                    MultibandCompressor::new(context, settings),
+                                )))
                             }
                             EffectSettings::Exciter(settings) => Some(RuntimeEffect::Exciter(
                                 Box::new(Exciter::new(context, settings)),
@@ -766,6 +791,14 @@ impl EffectChain {
                     next.inherit(previous);
                     continue;
                 }
+                if let (
+                    RuntimeEffect::MultibandCompressor(next),
+                    RuntimeEffect::MultibandCompressor(previous),
+                ) = (&mut *next, &mut *previous)
+                {
+                    next.inherit(previous);
+                    continue;
+                }
                 if let (RuntimeEffect::Exciter(next), RuntimeEffect::Exciter(previous)) =
                     (&mut *next, &mut *previous)
                 {
@@ -846,6 +879,9 @@ impl EffectChain {
             (_, Some(RuntimeEffect::HarmonicLift(unit))) => {
                 unit.band_parameters(band).map(super::parameter_snapshot)
             }
+            (_, Some(RuntimeEffect::MultibandCompressor(unit))) => {
+                unit.band_parameters(band).map(super::parameter_snapshot)
+            }
             (_, Some(RuntimeEffect::Exciter(unit))) => {
                 unit.band_parameters(band).map(super::parameter_snapshot)
             }
@@ -858,12 +894,18 @@ impl EffectChain {
         band: Id,
         solo: &Arc<std::sync::atomic::AtomicBool>,
     ) {
-        if let Some((_, Some(RuntimeEffect::Exciter(unit)))) =
-            self.index.get(&effect).and_then(|&i| self.units.get_mut(i))
-        {
-            unit.set_band_solo(band, solo.clone());
+        match self.index.get(&effect).and_then(|&i| self.units.get_mut(i)) {
+            Some((_, Some(RuntimeEffect::Exciter(unit)))) => unit.set_band_solo(band, solo.clone()),
+            Some((_, Some(RuntimeEffect::MultibandEq(unit)))) => {
+                unit.set_band_solo(band, solo.clone())
+            }
+            Some((_, Some(RuntimeEffect::MultibandCompressor(unit)))) => {
+                unit.set_band_solo(band, solo.clone())
+            }
+            _ => {}
         }
     }
+
     pub fn modulation_values(&self, id: Id) -> Option<super::ModulationSnapshot> {
         match self.index.get(&id).and_then(|&i| self.units.get(i)) {
             Some((_, Some(RuntimeEffect::AutoFilter(unit, _)))) => {
@@ -879,6 +921,9 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::HarmonicLift(unit)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::MultibandCompressor(unit)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Exciter(unit)))) => {
@@ -969,10 +1014,14 @@ impl EffectChain {
         band: Id,
         meter: &Arc<daw_unit_core::BandMeter<3>>,
     ) {
-        if let Some((_, Some(RuntimeEffect::MultibandEq(unit)))) =
-            self.index.get(&effect).and_then(|&i| self.units.get_mut(i))
-        {
-            unit.set_band_level_meter(band, meter.current().clone());
+        match self.index.get(&effect).and_then(|&i| self.units.get_mut(i)) {
+            Some((_, Some(RuntimeEffect::MultibandEq(unit)))) => {
+                unit.set_band_peak_meter(band, meter.clone())
+            }
+            Some((_, Some(RuntimeEffect::MultibandCompressor(unit)))) => {
+                unit.set_band_level_meter(band, meter.clone())
+            }
+            _ => {}
         }
     }
     pub fn set_output_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::BandMeter<3>>) {
@@ -1019,6 +1068,9 @@ impl EffectChain {
                 unit.set_output_peak_meter(meter.clone());
             }
             Some((_, Some(RuntimeEffect::HarmonicLift(unit)))) => {
+                unit.set_output_peak_meter(meter.clone())
+            }
+            Some((_, Some(RuntimeEffect::MultibandCompressor(unit)))) => {
                 unit.set_output_peak_meter(meter.clone())
             }
             Some((_, Some(RuntimeEffect::Exciter(unit)))) => {

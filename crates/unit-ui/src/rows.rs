@@ -127,3 +127,26 @@ pub fn square_toggle(ui: &mut Ui, label: &str, selected: bool) -> egui::Response
     })
     .inner
 }
+
+/// Temporary band audition control; this response is never a parameter edit.
+pub fn band_solo(ui: &mut egui::Ui, label: &str, selected: &mut bool) -> egui::Response {
+    let response = ui
+        .scope(|ui| {
+            ui.spacing_mut().interact_size.y = crate::layout::COMPACT_BUTTON_SIZE;
+            ui.spacing_mut().button_padding = egui::vec2(3.0, 0.0);
+            ui.add(
+                egui::Button::new(egui::RichText::new("S").small())
+                    .selected(*selected)
+                    .min_size(egui::Vec2::splat(crate::layout::COMPACT_BUTTON_SIZE)),
+            )
+        })
+        .inner
+        .on_hover_text("Audition this frequency region without changing saved settings.");
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), *selected, label)
+    });
+    if response.clicked() {
+        *selected = !*selected;
+    }
+    response
+}

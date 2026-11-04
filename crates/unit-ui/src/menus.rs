@@ -224,6 +224,50 @@ impl Dropdown {
     }
 }
 
+/// Shared band power, temporary Solo and removal actions. Hosts own settings/history.
+pub fn band_context_menu(
+    response: &egui::Response,
+    power: &mut bool,
+    solo: &mut bool,
+    remove: &mut bool,
+    removable: bool,
+    unit_enabled: bool,
+) {
+    if !response.enabled() || !response.ctx.input(|i| i.focused) {
+        egui::Popup::close_id(&response.ctx, egui::Popup::default_response_id(response));
+        return;
+    }
+    ContextMenu::new(response).show(|ui| {
+        if ui
+            .button(if *power {
+                "Disable band"
+            } else {
+                "Enable band"
+            })
+            .clicked()
+        {
+            *power = !*power;
+            ui.close();
+        }
+        if ui
+            .add_enabled_ui(unit_enabled, |ui| checked_button(ui, *solo, "Solo", ""))
+            .inner
+            .clicked()
+        {
+            *solo = !*solo;
+            ui.close();
+        }
+        separator(ui);
+        if ui
+            .add_enabled(removable, egui::Button::new("Remove band"))
+            .clicked()
+        {
+            *remove = true;
+            ui.close();
+        }
+    });
+}
+
 #[cfg(test)]
 #[path = "menus/context_menu_tests.rs"]
 mod context_menu_tests;

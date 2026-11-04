@@ -32,7 +32,7 @@ Tail declarations use each product's fixed host bound. The original four product
 
 All added products include standard output current/held sample-peak telemetry. Compressor/Limiter also attach their portable reduction peak meters; OTT attaches its signed band meter. Portable `UnitMeter`/`LevelMonitor` owns enable clearing and publication. The shared body places only the meters present in its built-in counterpart. Equalizer uses per-band levels; Multiband EQ uses per-band levels and an output rail. Direction Mixer and Stereo Spread retain their built-in controls without an extra output rail. Shared meter painters live in `unit-ui`.
 
-CLAP shares prepared atomics with the editor. VST3 exchanges copied scalar snapshots only on the control thread. The original output-only products retain two wire values (`current`, `peak`); nine of the new products carry thirteen values: output current/hold, reduction current/hold, three signed band currents, three reduction holds, and three boost holds. Multiband EQ appends 64 linear band readings for 77 values total. Equalizer uses the existing three band-current fields for its linear band readings. Extra attributes use `meter.<index>`. Reset masks select independent held readings. Meter messages, appearance, and resets never enter parameter/state payloads.
+CLAP shares prepared atomics with the editor. VST3 exchanges copied scalar snapshots only on the control thread. The original output-only products retain two wire values (`current`, `peak`); nine of the new products carry thirteen values: output current/hold, reduction current/hold, three signed band currents, three reduction holds, and three boost holds. Multiband EQ appends 64 linear band readings and 64 held sample peaks for 141 values total, with independent per-band peak reset requests. Equalizer uses the existing three band-current fields for its linear band readings. Extra attributes use `meter.<index>`. Reset masks select independent held readings. Meter messages, appearance, and resets never enter parameter/state payloads.
 
 ## Multiband EQ prepared bank
 
@@ -110,3 +110,16 @@ VCS subpath and notice SHA-256 before copying the supplemental text. It writes
 Common desktop/plugin notice inputs retain the same grant conservatively. These
 checks cover source-only optional packages too; metadata resolution alone does
 not prove notice completeness. They do not modify the pinned native ONNX runtime.
+
+## Multiband Compressor and band audition
+
+[Multiband Compressor](../effects/multiband-compressor.md) adds an independent
+643-parameter, 64-slot adjacent-range product with zero alignment latency and
+a conservative four-second plugin tail bound. It shares the built-in body, portable Compressor DSP and LR4
+crossovers. Its state retains inactive slots and a visual permutation.
+
+Multiband EQ and Multiband Compressor share temporary S controls. Solo flags are
+outside parameters, presets and state publication. VST3 transports per-slot
+index/boolean messages on the control thread; CLAP shares prepared atomics.
+VST3 offline processing and the CLAP render extension gate audition out of audio.
+Native host validation is still separate from automated adapter/editor tests.

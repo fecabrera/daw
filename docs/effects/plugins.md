@@ -12,6 +12,7 @@ The registered built-in effects have separate CLAP and VST3 development previews
 | [Multiband EQ](multiband-eq.md) | `multiband-eq` | 64 band slots with power, mode, frequency, gain, Q; output Level |
 | [Filter](filter.md) | `filter` | Shape, Frequency, Q, Level, Dry/Wet |
 | [Auto-filter](auto-filter.md) | `auto-filter` | Filter controls, LFO power/wave, Hz/Note rate, Strength, Sync/Stereo Phase |
+| [Multiband Compressor](multiband-compressor.md) | `multiband-compressor` | 64 adjacent band slots, crossover frequency, compression controls, temporary Solo, Level and Dry/Wet |
 | [Compressor](compressor.md) | `compressor` | Threshold, Ratio, Detection, Attack, Release, Knee, Level, Dry/Wet |
 | [OTT](ott.md) | `ott` | Crossovers; per-band power, Depth, Input, Output, Attack, Release; Detection, Level, Dry/Wet |
 | [Limiter](limiter.md) | `limiter` | Input, Release, Lookahead, Ceiling, Peak/True Peak, L/R or M/S |
@@ -34,3 +35,5 @@ Multiband EQ starts with one band. Click Plus to add bands, up to 64. Use the ba
 These previews accept stereo planar 32-bit floating-point audio at 44.1, 48, 88.2, 96, 176.4, and 192 kHz. They do not include MIDI, sidechain inputs, DAW modulation routes, or DAW project data. Logic Pro requires Audio Units and cannot load these formats. VST3 meter delivery requires a processor/controller connection.
 
 macOS bundles use ad-hoc signing without notarization. Windows/Linux builds are unsigned. Native editor attachment, external hosts, accessibility, and clean-machine release acceptance still need platform checks.
+
+Multiband EQ and Multiband Compressor have temporary S buttons for band audition. Solo is excluded from presets and automation. Offline mode in VST3 and the CLAP render extension suppress Solo; a host that records in real time captures the audition output.

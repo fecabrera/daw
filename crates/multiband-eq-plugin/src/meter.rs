@@ -2,6 +2,9 @@
 use daw_unit_core::{BandMeter, MeterStorage, PeakHold, PeakMeter};
 use std::sync::Arc;
 pub struct OutputMeter {
+    pub band_level_resets: std::sync::atomic::AtomicU64,
+    pub audition_allowed: Arc<std::sync::atomic::AtomicBool>,
+    pub solos: [Arc<std::sync::atomic::AtomicBool>; 64],
     pub output: Arc<BandMeter<3>>,
     pub reduction: Arc<PeakMeter>,
     pub bands: Arc<BandMeter<3>>,
@@ -10,6 +13,9 @@ pub struct OutputMeter {
 impl Default for OutputMeter {
     fn default() -> Self {
         Self {
+            band_level_resets: std::sync::atomic::AtomicU64::new(0),
+            audition_allowed: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            solos: std::array::from_fn(|_| Arc::default()),
             output: Arc::default(),
             reduction: Arc::default(),
             bands: Arc::default(),
@@ -28,7 +34,7 @@ impl OutputMeter {
         self.output.boost_peaks()
     }
 }
-pub const METER_VALUES: usize = 77;
+pub const METER_VALUES: usize = 141;
 pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
     let mut v = [0.0; METER_VALUES];
     v[0] = f64::from(m.readings()[0]);
@@ -41,6 +47,7 @@ pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
         v[10 + i] = f64::from(m.bands.boost_peaks()[i].peak());
     }
     for i in 0..64 {
+        v[77 + i] = f64::from(m.eq_bands[i].boost_peaks()[0].peak());
         v[13 + i] = f64::from(m.eq_bands[i].readings()[0]);
     }
     v
@@ -57,6 +64,8 @@ pub fn receive_meter(m: &OutputMeter, v: [f32; METER_VALUES]) {
     m.bands.store(std::array::from_fn(|i| v[10 + i]));
     m.bands.initialize(std::array::from_fn(|i| v[4 + i]));
     for i in 0..64 {
+        m.eq_bands[i].clear();
+        m.eq_bands[i].store([v[77 + i], 0.0, 0.0]);
         m.eq_bands[i].initialize([v[13 + i], 0.0, 0.0]);
     }
 }
@@ -92,5 +101,26 @@ impl MeterStorage for OutputMeter {
         for band in &self.eq_bands {
             band.clear();
         }
+    }
+}
+
+impl daw_unit_core::BandAudition for OutputMeter {
+    fn band_level_reset_requests(&self) -> Option<&std::sync::atomic::AtomicU64> {
+        Some(&self.band_level_resets)
+    }
+    fn reset_band_level_peak(&self, index: usize) -> bool {
+        if let Some(m) = self.eq_bands.get(index) {
+            m.boost_peaks()[0].reset_peak();
+            true
+        } else {
+            false
+        }
+    }
+    fn set_audition_allowed(&self, allowed: bool) {
+        self.audition_allowed
+            .store(allowed, std::sync::atomic::Ordering::Relaxed);
+    }
+    fn band_solos(&self) -> &[Arc<std::sync::atomic::AtomicBool>] {
+        &self.solos
     }
 }

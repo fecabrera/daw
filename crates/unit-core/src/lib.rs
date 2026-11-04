@@ -1,4 +1,6 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+mod multiband_compressor;
+pub use multiband_compressor::*;
 mod plate_reverb;
 pub use plate_reverb::*;
 mod ambient_reverb;
@@ -8,7 +10,9 @@ mod loudness;
 pub mod memory;
 pub use loudness::*;
 mod meter;
-pub use meter::{BandMeter, LevelMonitor, MeterStorage, PeakHold, PeakMeter, UnitMeter};
+pub use meter::{
+    BandAudition, BandMeter, LevelMonitor, MeterStorage, PeakHold, PeakMeter, UnitMeter,
+};
 mod note_name;
 pub use note_name::{natural_note, note_name};
 mod audio_range;

@@ -51,6 +51,7 @@ Knob tooltips show only the parameter name on the left and the current value on 
 - [Filter](effects/filter.md)
 - [Auto-filter](effects/auto-filter.md)
 - [Compressor](effects/compressor.md)
+- [Multiband Compressor](effects/multiband-compressor.md)
 - [OTT](effects/ott.md)
 - [Limiter](effects/limiter.md)
 - [Direction Mixer](effects/direction-mixer.md)

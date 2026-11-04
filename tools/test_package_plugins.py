@@ -197,7 +197,7 @@ class PackagingTests(unittest.TestCase):
     def test_selection_rejects_invalid_names_and_deduplicates(self):
         self.assertEqual(select_units(" drive-v2,drive,drive-v2 "), ["drive-v2", "drive"])
         self.assertEqual(select_units("all"), sorted(available_units()))
-        self.assertEqual(len(select_units("all")),18)
+        self.assertEqual(len(select_units("all")),19)
         for value in ("", "drive,", ",drive", "drive,,drive-v2", "unknown", "all,drive", "../drive"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 select_units(value)

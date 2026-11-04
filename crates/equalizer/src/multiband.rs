@@ -97,10 +97,80 @@ fn weights(s: &MultibandEqBand) -> [f32; 6] {
 fn values(s: &MultibandEqBand) -> [f32; 3] {
     [s.gain_db, s.frequency_hz, s.q]
 }
+/// Audition owns separate filter histories. Clones detach live host controls.
+struct Solo {
+    flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    weight: Ramp<1>,
+    eq: [[Filter; 2]; 6],
+    reject: [[Filter; 2]; 3],
+    region: Ramp<3>,
+}
+impl Clone for Solo {
+    fn clone(&self) -> Self {
+        Self {
+            flag: None,
+            weight: Ramp::new([0.0]),
+            eq: self.eq.clone(),
+            reject: self.reject.clone(),
+            region: self.region.clone(),
+        }
+    }
+}
+fn region(mode: EqBandMode) -> [f32; 3] {
+    let selected = match mode {
+        EqBandMode::Bell | EqBandMode::Notch => 0,
+        EqBandMode::LowShelf | EqBandMode::LowPass => 1,
+        _ => 2,
+    };
+    std::array::from_fn(|i| f32::from(i == selected))
+}
+impl Solo {
+    fn selected(&self) -> bool {
+        self.flag
+            .as_ref()
+            .is_some_and(|f| f.load(std::sync::atomic::Ordering::Relaxed))
+    }
+    fn clear(&self) {
+        if let Some(f) = &self.flag {
+            f.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    fn configure(&mut self, values: [f32; 3]) {
+        for f in self.eq.iter_mut().chain(self.reject.iter_mut()).flatten() {
+            f.configure(values);
+        }
+    }
+    fn equalize(&mut self, input: [f32; 2], weights: [f32; 6], mix: f32) -> [f32; 2] {
+        let mut out = input;
+        for (filters, w) in self.eq.iter_mut().zip(weights) {
+            for ch in 0..2 {
+                let wet = filters[ch].sample(input[ch]);
+                out[ch] += (wet - input[ch]) * w * mix;
+            }
+        }
+        out
+    }
+    fn rejected(&mut self, input: [f32; 2]) -> [f32; 2] {
+        let outputs: [[f32; 2]; 3] = self
+            .reject
+            .each_mut()
+            .map(|filters| std::array::from_fn(|ch| filters[ch].sample(input[ch])));
+        let weights = self.region.advance();
+        std::array::from_fn(|ch| outputs.iter().zip(weights).map(|(v, w)| v[ch] * w).sum())
+    }
+    fn reset(&mut self) {
+        for f in self.eq.iter_mut().chain(self.reject.iter_mut()).flatten() {
+            f.reset();
+        }
+        self.weight.reset();
+        self.region.reset();
+    }
+}
 #[derive(Clone)]
 struct Band {
     id: ModulationTargetId,
     fixed_slot: bool,
+    solo: Solo,
     filters: [[Filter; 2]; 6],
     parameters: Ramp<3>,
     weights: Ramp<6>,
@@ -122,6 +192,14 @@ impl Band {
         Self {
             id: s.id,
             fixed_slot: false,
+            solo: Solo {
+                flag: None,
+                weight: Ramp::new([0.0]),
+                region: Ramp::new(region(s.mode)),
+                eq: EqBandMode::ALL.map(|mode| std::array::from_fn(|_| Filter::new(mode, &params))),
+                reject: [EqBandMode::Notch, EqBandMode::HighPass, EqBandMode::LowPass]
+                    .map(|mode| std::array::from_fn(|_| Filter::new(mode, &params))),
+            },
             filters: EqBandMode::ALL
                 .map(|mode| std::array::from_fn(|_| Filter::new(mode, &params))),
             parameters: Ramp::new(effective),
@@ -134,11 +212,13 @@ impl Band {
         }
     }
     fn retarget(&mut self, settings: &MultibandEqBand, frames: u32) {
+        self.solo.region.set(region(settings.mode), frames);
         self.parameters.set(values(settings), frames);
         self.weights.set(weights(settings), frames);
     }
     fn reset(&mut self) {
         self.monitor.reset();
+        self.solo.reset();
         self.parameters.reset();
         self.weights.reset();
         self.external.reset();
@@ -151,7 +231,15 @@ impl Band {
         let enabled = self.monitor.is_enabled();
         let parameters = self.parameters.target;
         let weights = self.weights.target;
+        std::mem::swap(&mut self.solo.flag, &mut previous.solo.flag);
+        let region = self.solo.region.target;
         std::mem::swap(self, previous);
+        self.solo.region.set(region, frames);
+        // Restore detached history into the host's prepared publication handles.
+        // Keep legacy bindings when the caller did not prepare replacement handles.
+        if previous.monitor.is_connected() {
+            self.monitor.retarget(&mut previous.monitor);
+        }
         self.monitor.set_enabled(enabled);
         self.parameters.set(parameters, frames);
         self.weights.set(weights, frames);
@@ -172,7 +260,12 @@ impl ModulationDestination for Band {
     ) -> [f32; 2] {
         // Prepared plugin slots may sleep after their bypass ramp. Ordinary DAW
         // bands keep their existing warm-history behavior.
-        if self.fixed_slot && self.weights.remaining == 0 && self.weights.target == [0.0; 6] {
+        if self.fixed_slot
+            && !self.solo.selected()
+            && self.solo.weight.current[0] == 0.0
+            && self.weights.remaining == 0
+            && self.weights.target == [0.0; 6]
+        {
             self.monitor.sample_output(input);
             return input;
         }
@@ -190,6 +283,7 @@ impl ModulationDestination for Band {
             for f in self.filters.iter_mut().flatten() {
                 f.configure(self.effective);
             }
+            self.solo.configure(self.effective);
             self.configured = self.effective;
         }
         let weights = self.weights.advance();
@@ -235,17 +329,32 @@ impl ModulationDestination for Output {
         input.map(|v| v * linear(self.effective))
     }
 }
-#[derive(Clone)]
 pub struct MultibandEq {
+    audition_allowed: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     output_monitor: daw_unit_core::LevelMonitor<3>,
     bands: Vec<RoutedDestination<Band>>,
     output: RoutedDestination<Output>,
+    audition: Ramp<1>,
     bypass: Ramp<1>,
     fade_frames: u32,
+}
+impl Clone for MultibandEq {
+    fn clone(&self) -> Self {
+        Self {
+            audition_allowed: None,
+            output_monitor: self.output_monitor.clone(),
+            bands: self.bands.clone(),
+            output: self.output.clone(),
+            bypass: self.bypass.clone(),
+            audition: Ramp::new([0.0]),
+            fade_frames: self.fade_frames,
+        }
+    }
 }
 impl MultibandEq {
     pub fn new(c: ProcessingContext, s: &MultibandEqSettings) -> Self {
         Self {
+            audition_allowed: None,
             output_monitor: daw_unit_core::LevelMonitor::new(c.sample_rate_hz, s.enabled),
             bands: s
                 .bands
@@ -267,6 +376,7 @@ impl MultibandEq {
                 &s.modulations,
                 c.sample_rate_hz,
             ),
+            audition: Ramp::new([0.0]),
             bypass: Ramp::new([if s.enabled { 1.0 } else { 0.0 }]),
             fade_frames: (c.sample_rate_hz / 200).max(1),
         }
@@ -319,14 +429,40 @@ impl MultibandEq {
     pub fn retarget_enabled(&mut self, enabled: bool) {
         for band in &mut self.bands {
             band.destination.monitor.set_enabled(enabled);
+            if !enabled {
+                band.destination.solo.clear();
+            }
         }
         self.bypass.set([f32::from(enabled)], self.fade_frames);
         self.output_monitor.set_enabled(enabled);
+    }
+    pub fn set_audition_gate(&mut self, allowed: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        self.audition_allowed = Some(allowed);
+    }
+    /// Live host-only band audition. Never attach these handles to export processors.
+    pub fn set_band_solo(
+        &mut self,
+        id: ModulationTargetId,
+        flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        if let Some(b) = self.bands.iter_mut().find(|b| b.destination.id == id) {
+            b.destination.solo.flag = Some(flag);
+        }
     }
     /// Attach the final unit output monitor, independently of per-band analysis.
     /// Prepare and attach on the control thread; retain the handle until retirement.
     pub fn set_output_peak_meter(&mut self, meter: std::sync::Arc<daw_unit_core::BandMeter<3>>) {
         self.output_monitor.attach_peak(meter);
+    }
+    /// Attach prepared current/held band levels without changing the audio path.
+    pub fn set_band_peak_meter(
+        &mut self,
+        id: ModulationTargetId,
+        meter: std::sync::Arc<daw_unit_core::BandMeter<3>>,
+    ) {
+        if let Some(band) = self.bands.iter_mut().find(|b| b.destination.id == id) {
+            band.destination.monitor.attach_peak(meter);
+        }
     }
     /// Attach a prepared level handle to one stable band. Remaining cells are reserved.
     pub fn set_band_level_meter(
@@ -340,6 +476,7 @@ impl MultibandEq {
     }
     /// Transfer histories into a prepared topology. Removed owners stay in the retired processor.
     pub fn inherit(&mut self, previous: &mut Self) {
+        self.audition = previous.audition.clone();
         let enabled = self.output_monitor.is_enabled();
         std::mem::swap(&mut self.output_monitor, &mut previous.output_monitor);
         self.output_monitor.set_enabled(enabled);
@@ -352,6 +489,11 @@ impl MultibandEq {
                 band.inherit_routes(old);
                 band.destination
                     .inherit(&mut old.destination, self.fade_frames);
+            }
+        }
+        if !enabled {
+            for b in &self.bands {
+                b.destination.solo.clear();
             }
         }
         self.output.inherit_routes(&mut previous.output);
@@ -372,6 +514,44 @@ impl MultibandEq {
         context: ModulationContext,
     ) -> [f32; 2] {
         let wet = process_modulation_chain(&mut self.bands, input, shared, context);
+        let allowed = self
+            .audition_allowed
+            .as_ref()
+            .is_none_or(|g| g.load(std::sync::atomic::Ordering::Relaxed));
+        if !allowed {
+            self.audition = Ramp::new([0.0]);
+        }
+        let any = allowed
+            && self.bypass.target[0] != 0.0
+            && self.bands.iter().any(|b| b.destination.solo.selected());
+        self.audition.set([f32::from(any)], self.fade_frames);
+        let amount = self.audition.advance()[0];
+        let mut audition = input;
+        if any || amount > 0.0 {
+            for band in &mut self.bands {
+                let b = &mut band.destination;
+                b.solo
+                    .weight
+                    .set([f32::from(any && b.solo.selected())], self.fade_frames);
+                let weight = b.solo.weight.advance()[0];
+                if weight > 0.0 {
+                    audition = b.solo.equalize(audition, b.weights.current, weight);
+                }
+            }
+            let mut rejected = audition;
+            for band in &mut self.bands {
+                let b = &mut band.destination;
+                let weight = b.solo.weight.current[0];
+                if weight > 0.0 {
+                    let filtered = b.solo.rejected(rejected);
+                    rejected = std::array::from_fn(|ch| {
+                        rejected[ch] + (filtered[ch] - rejected[ch]) * weight
+                    });
+                }
+            }
+            audition = std::array::from_fn(|ch| audition[ch] - rejected[ch]);
+        }
+        let wet = std::array::from_fn(|ch| wet[ch] + (audition[ch] - wet[ch]) * amount);
         let wet = self.output.process(wet, shared, context);
         let mix = self.bypass.advance()[0];
         let output = std::array::from_fn(|ch| input[ch] + (wet[ch] - input[ch]) * mix);
@@ -410,6 +590,7 @@ impl EffectUnit for MultibandEq {
         self.output.reset_routes();
         self.output.destination.gain.reset();
         self.output.destination.external.reset();
+        self.audition.reset();
         self.bypass.reset();
     }
     fn heap_bytes(&self) -> u64 {
@@ -761,5 +942,160 @@ mod prepared_meter_tests {
         assert_eq!(meter[0].load(Ordering::Relaxed), 0);
         processor.process_sample([1.0; 2]);
         assert_eq!(meter[0].load(Ordering::Relaxed), 0);
+    }
+}
+
+#[cfg(test)]
+mod audition_tests {
+    use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    fn energy(mode: EqBandMode, hz: f32, enabled: bool, gain: f32, count: usize) -> f64 {
+        let mut s = MultibandEqSettings::default();
+        s.bands[0].mode = mode;
+        s.bands[0].enabled = enabled;
+        s.bands[0].gain_db = gain;
+        for _ in 1..count {
+            let mut b = s.bands[0].clone();
+            b.id = daw_unit_core::MultibandEqBand::default().id;
+            s.bands.push(b);
+        }
+        let mut p = MultibandEq::new(
+            ProcessingContext {
+                sample_rate_hz: 48000,
+                max_block_frames: 512,
+            },
+            &s,
+        );
+        for b in &s.bands {
+            p.set_band_solo(b.id, Arc::new(AtomicBool::new(true)));
+        }
+        let mut e = [0.0f64; 2];
+        for i in 0..9600 {
+            let x = (i as f32 * hz * std::f32::consts::TAU / 48000.0).sin() * 0.01;
+            let y = p.process_sample([x, -x]);
+            assert!((y[0] + y[1]).abs() < 1e-6);
+            if i > 4800 {
+                e[0] += f64::from(x).powi(2);
+                e[1] += f64::from(y[0]).powi(2);
+            }
+        }
+        10.0 * (e[1] / e[0]).log10()
+    }
+    #[test]
+    fn solo_isolates_mode_frequency_regions_and_overlaps_do_not_double_audio() {
+        assert!(energy(EqBandMode::Bell, 1000.0, false, 12.0, 1).abs() < 0.03);
+        assert!((energy(EqBandMode::Bell, 1000.0, true, 6.0, 1) - 6.0).abs() < 0.03);
+        assert!(energy(EqBandMode::Bell, 50.0, false, 0.0, 1) < -20.0);
+        assert!(energy(EqBandMode::Notch, 1000.0, true, 0.0, 1) < -60.0);
+        for mode in [EqBandMode::LowShelf, EqBandMode::LowPass] {
+            assert!(energy(mode, 100.0, false, 0.0, 1).abs() < 0.3);
+            assert!(energy(mode, 15000.0, false, 0.0, 1) < -20.0);
+        }
+        for mode in [EqBandMode::HighShelf, EqBandMode::HighPass] {
+            assert!(energy(mode, 15000.0, false, 0.0, 1).abs() < 0.3);
+            assert!(energy(mode, 50.0, false, 0.0, 1) < -20.0);
+        }
+        assert!(energy(EqBandMode::Bell, 1000.0, false, 0.0, 2).abs() < 0.03);
+    }
+    #[test]
+    fn normal_histories_survive_solo_and_clones_detach_live_controls_at_all_rates() {
+        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+            let mut s = MultibandEqSettings::default();
+            s.bands[0].gain_db = 6.0;
+            let c = ProcessingContext {
+                sample_rate_hz: rate,
+                max_block_frames: 512,
+            };
+            let mut live = MultibandEq::new(c, &s);
+            let mut reference = live.clone();
+            let flag = Arc::new(AtomicBool::new(true));
+            live.set_band_solo(s.bands[0].id, flag.clone());
+            for i in 0..4096 {
+                let input = [(i as f32 * 0.23).sin() * 0.01; 2];
+                live.process_sample(input);
+                reference.process_sample(input);
+            }
+            let mut detached = live.clone();
+            for i in 0..1024 {
+                let input = [(i as f32 * 0.17).sin() * 0.01; 2];
+                assert_eq!(
+                    detached.process_sample(input),
+                    reference.process_sample(input)
+                );
+            }
+            s.enabled = false;
+            live.retarget(&s);
+            assert!(!flag.load(Ordering::Relaxed));
+        }
+    }
+}
+
+#[cfg(test)]
+mod band_hold_tests {
+    use super::*;
+    use std::sync::Arc;
+    #[test]
+    fn prepared_band_holds_capture_each_sample_retain_identity_and_clear_on_unit_bypass() {
+        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+            let mut s = MultibandEqSettings::default();
+            s.bands[0].enabled = false;
+            s.bands.push(MultibandEqBand {
+                enabled: false,
+                ..Default::default()
+            });
+            let c = ProcessingContext {
+                sample_rate_hz: rate,
+                max_block_frames: 512,
+            };
+            let mut current = MultibandEq::new(c, &s);
+            let mut reference = current.clone();
+            let meters: [Arc<daw_unit_core::BandMeter<3>>; 2] =
+                std::array::from_fn(|_| Arc::default());
+            for (band, meter) in s.bands.iter().zip(&meters) {
+                current.set_band_peak_meter(band.id, meter.clone());
+            }
+            assert_eq!(
+                current.process_sample([0.7, -0.9]),
+                reference.process_sample([0.7, -0.9])
+            );
+            for _ in 0..rate / 200 {
+                assert_eq!(
+                    current.process_sample([0.0; 2]),
+                    reference.process_sample([0.0; 2])
+                );
+            }
+            assert_eq!(meters[0].boost_peaks()[0].peak(), 0.9);
+            assert_eq!(meters[1].boost_peaks()[0].peak(), 0.9);
+            meters[0].boost_peaks()[0].reset_peak();
+            s.bands.swap(0, 1);
+            let mut next = MultibandEq::new(c, &s);
+            for (band, meter) in s.bands.iter().zip(meters.iter().rev()) {
+                next.set_band_peak_meter(band.id, meter.clone());
+            }
+            next.inherit(&mut current);
+            next.process_sample([0.0; 2]);
+            assert_eq!(meters[0].boost_peaks()[0].peak(), 0.0);
+            assert_eq!(meters[1].boost_peaks()[0].peak(), 0.9);
+            next.reset();
+            assert_eq!(meters[1].boost_peaks()[0].peak(), 0.9);
+            let mut history = next.clone();
+            let mut rebound = MultibandEq::new(c, &s);
+            for (band, meter) in s.bands.iter().zip(meters.iter().rev()) {
+                rebound.set_band_peak_meter(band.id, meter.clone());
+            }
+            rebound.inherit(&mut history);
+            rebound.process_sample([0.2, -0.1]);
+            assert_eq!(meters[0].boost_peaks()[0].peak(), 0.2);
+            s.enabled = false;
+            rebound.retarget(&s);
+            assert!(
+                meters
+                    .iter()
+                    .all(|m| m.boost_peaks()[0].peak() == 0.0 && m.readings() == [0.0; 3])
+            );
+        }
     }
 }

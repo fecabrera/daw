@@ -409,6 +409,9 @@ impl Renderer {
                     daw_core::EffectSettings::HarmonicLift(_) => {
                         daw_unit_core::HARMONIC_LIFT_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::MultibandCompressor(_) => {
+                        daw_unit_core::MULTIBAND_COMPRESSOR_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::Exciter(_) => {
                         daw_unit_core::EXCITER_TYPE_ID.hash(&mut hash)
                     }

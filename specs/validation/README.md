@@ -7475,3 +7475,82 @@ Executed locally on macOS:
 
 Native external-host attachment, listening, hardware playback and device deadline
 checks were not run. Synthetic host checks do not establish those results.
+
+## Multiband Compressor and EQ Solo — 2026-11-04
+
+Added the adjacent-range Multiband Compressor, its shared body, DAW integration
+and independent CLAP/VST3 products. Multiband EQ now has live-only frequency-region
+Solo. Both units retain Solo outside project/plugin state and gate it out of
+host-declared offline rendering.
+
+Executed checks:
+
+- Strict workspace Clippy with all targets, rustfmt and diff whitespace checks.
+- Six-rate compressor crossover recombination and adjacent-band isolation.
+  Additional DSP tests cover compression, power, bypass, multiple Solo, dry
+  exclusion and detached clones at 48 kHz. EQ checks cover frequency-region
+  isolation at 48 kHz and normal-history retention at all six rates.
+- Four typed plugin contract tests, including 643 parameter mappings, the bounded
+  state envelope, inactive-slot visual order, malformed settings, dense automation,
+  presence changes, reset and zero callback allocations/retirements.
+- Five compressor editor tests, including shared-body tessellation in three themes
+  at 1×/1.5×/2×, bound gestures, geometry, Add, persistent order and drag cancellation.
+- DAW interaction checks for shared geometry, Solo without project edits, band and
+  unit power, plus four engine checks covering track/layer/Main/Master audition,
+  targeted routes, playback/export/seek parity and allocation-free inheritance.
+- Ten native macOS arm64 ABI host cases using compiled CLAP/VST3 libraries with
+  allocation counters; two final metadata checks cover the conservative plugin
+  tail bound. SDK tests also cover transient Solo messages, rejected indices and
+  independent band peak resets.
+- Forty Python tooling tests; release builds and macOS CLAP/VST3 packaging with
+  retained notices and checksums.
+
+Additional workspace regression packages were exercised in staged runs. Receipts
+in ignored `work/multiband-compressor/validation` retain intermediate failures and
+the passing corrected engine/editor reruns. The unchanged `timestretch` and
+`timestretch-cli` test packages were excluded. Native GUI attachment, device
+listening, external-host operation and Windows/Linux runtime acceptance remain
+open; headless rendering and ABI checks do not certify those paths.
+
+### Multiband Compressor band menus and held peaks — 2026-11-04
+
+Band context menus now expose power, checked Solo and guarded removal in the
+shared body. Band level rails use the shared held-peak indicator and independent
+click reset. VST3 carries 269 meter values and separate level/reduction reset
+requests; settings and automation IDs are unchanged.
+
+Automated checks passed: 35 shared-control tests, three focused DAW interaction
+tests, five typed plugin contract tests, two SDK message tests, and 107 tests
+across all 19 standalone editors. These include menu parameter bindings,
+nonpersistent Solo, last-band removal guards, held peaks captured between UI
+reads, independent resets, disabled-band colors and theme/scale rendering parity.
+Strict workspace Clippy with all targets, rustfmt and diff whitespace checks also
+passed. Native GUI/device checks were not repeated for this presentation change.
+
+### Multiband EQ band context menu — 2026-11-04
+
+Multiband EQ and Multiband Compressor now use one shared band context-menu helper
+for power, checked Solo and removal. EQ retains its empty-band behavior. Automated
+checks passed: four focused DAW interaction tests, nine EQ editor tests, six
+compressor editor tests and 35 shared-control tests. They cover saved power edits,
+nonpersistent Solo, removal of the last EQ band, stable plugin slot bindings and
+shared rendering. Targeted all-target Clippy, rustfmt and whitespace checks passed.
+No audio processing or saved format changed.
+
+### Multiband EQ held band peaks — 2026-11-04
+
+Each EQ band output rail now uses the shared held-peak indicator and independent
+click reset in the DAW and standalone editors. DSP captures sample peaks between
+UI reads. Holds follow band identity across reordering and prepared-history
+inheritance; unit bypass clears them. VST3 transports 141 meter values, including
+all 64 band holds. Saved settings and parameter IDs are unchanged.
+
+Automated checks passed: 10 portable multiband EQ tests, seven plugin contract
+tests, 10 EQ editor tests, 13 focused DAW multiband tests, 35 shared-control tests
+and two EQ/compressor SDK reset-message tests. Dense automation also passed its
+callback allocation check; the release-only timing probe remains ignored. Checks
+cover independent reset at slots 0 and 63, no reset-induced strip drag, output
+meter isolation, bypass clearing and shared rendering across themes and scales.
+Strict all-target Clippy passed for the affected DSP, engine, UI, EQ plugin/editor
+and EQ/compressor VST3 crates. Rustfmt and diff whitespace checks passed. Native
+GUI, external-host and device checks were not run for this change.

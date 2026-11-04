@@ -12,7 +12,7 @@ fn show_body(
     let mut visible = model
         .visible_band_slots
         .load(std::sync::atomic::Ordering::Relaxed);
-    let result = body::render(
+    let result = body::render_audition(
         ui,
         settings,
         daw_unit_ui::meters::OutputLevel::new(
@@ -21,7 +21,12 @@ fn show_body(
         )
         .with_reset_request(&model.output_reset),
         &mut visible,
-        &std::array::from_fn(|i| model.output_meter.eq_bands[i].readings()[0]),
+        &std::array::from_fn(|i| {
+            let m = &model.output_meter.eq_bands[i];
+            daw_unit_ui::meters::OutputLevel::new(m.readings()[0], Some(&m.boost_peaks()[0]))
+                .with_reset_mask(&model.output_meter.band_level_resets, 1_u64 << i)
+        }),
+        &model.output_meter.solos,
     );
     model
         .visible_band_slots
@@ -127,7 +132,11 @@ fn paint_reference(
     let (mut view, indices) = body::view(settings, slots);
     let levels: Vec<_> = indices
         .iter()
-        .map(|i| model.output_meter.eq_bands[*i].readings()[0])
+        .map(|i| {
+            let m = &model.output_meter.eq_bands[*i];
+            daw_unit_ui::meters::OutputLevel::new(m.readings()[0], Some(&m.boost_peaks()[0]))
+                .with_reset_mask(&model.output_meter.band_level_resets, 1_u64 << i)
+        })
         .collect();
     egui::ScrollArea::horizontal()
         .id_salt("bands")
@@ -137,6 +146,7 @@ fn paint_reference(
                 &mut view,
                 (false, daw_unit_ui::layout::unit_control_height()),
                 daw_unit_ui::multiband_eq::Controls {
+                    solos: &mut [],
                     add_enabled: indices.len() < 64,
                     markers: &[],
                     levels: &levels,
@@ -400,5 +410,241 @@ mod order_tests {
             assert_eq!(model.current(), Some(after));
             assert_eq!(PluginState::decode(&after.encode()).unwrap(), after);
         }
+    }
+}
+
+#[cfg(test)]
+mod band_menu_tests {
+    use super::*;
+    use daw_drive_plugin::{Parameter as P, PluginState};
+    use daw_unit_core::MultibandEqSettings as Settings;
+    fn frame(
+        ctx: &egui::Context,
+        s: &mut Settings,
+        model: &Model,
+        events: Vec<egui::Event>,
+    ) -> (body::Bounds, Vec<egui::epaint::ClippedShape>) {
+        let mut result = None;
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, body::SIZE)),
+                focused: true,
+                events,
+                ..Default::default()
+            },
+            |ui| {
+                let mut visible = model
+                    .visible_band_slots
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                result = Some(body::render_audition(
+                    ui,
+                    s,
+                    0.0.into(),
+                    &mut visible,
+                    &[0.0.into(); 64],
+                    &model.output_meter.solos,
+                ));
+                model
+                    .visible_band_slots
+                    .store(visible, std::sync::atomic::Ordering::Relaxed);
+            },
+        );
+        out.textures_delta.clear();
+        (result.unwrap(), out.shapes)
+    }
+    fn action(
+        ctx: &egui::Context,
+        s: &mut Settings,
+        model: &Model,
+        point: egui::Pos2,
+        label: &str,
+    ) -> body::Bounds {
+        let button = |pos, button, pressed| egui::Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers: Default::default(),
+        };
+        for pressed in [true, false] {
+            frame(
+                ctx,
+                s,
+                model,
+                vec![
+                    egui::Event::PointerMoved(point),
+                    button(point, egui::PointerButton::Secondary, pressed),
+                ],
+            );
+        }
+        let (_, shapes) = frame(ctx, s, model, vec![]);
+        let point = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == label => {
+                    Some(t.pos + t.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing {label}; visible text: {:?}",
+                    shapes
+                        .iter()
+                        .filter_map(|s| match &s.shape {
+                            egui::Shape::Text(t) => Some(t.galley.text()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                )
+            });
+        frame(
+            ctx,
+            s,
+            model,
+            vec![
+                egui::Event::PointerMoved(point),
+                button(point, egui::PointerButton::Primary, true),
+            ],
+        );
+        let result = frame(
+            ctx,
+            s,
+            model,
+            vec![button(point, egui::PointerButton::Primary, false)],
+        )
+        .0;
+        frame(ctx, s, model, vec![]);
+        result
+    }
+    #[test]
+    fn context_actions_bind_to_the_band_slot_and_solo_stays_out_of_parameter_state() {
+        let ctx = egui::Context::default();
+        daw_unit_ui::theme::configure(&ctx);
+        daw_unit_ui::fonts::configure(&ctx);
+        let model = Model::default();
+        let mut s = PluginState::default().to_settings();
+        let (b, _) = frame(&ctx, &mut s, &model, vec![]);
+        let point = b.sections[0].left_top() + egui::vec2(3.0, 40.0);
+        let b = action(&ctx, &mut s, &model, point, "Disable band");
+        assert_eq!(
+            PluginState::from_settings(&s).unwrap().get(P::Band1Enabled),
+            0.0
+        );
+        assert!(
+            b.controls[P::Band1Enabled as usize - 101]
+                .as_ref()
+                .unwrap()
+                .changed()
+        );
+        action(&ctx, &mut s, &model, point, "Enable band");
+        assert_eq!(
+            PluginState::from_settings(&s).unwrap().get(P::Band1Enabled),
+            1.0
+        );
+        let before = PluginState::from_settings(&s).unwrap();
+        action(&ctx, &mut s, &model, point, "Solo");
+        assert!(model.output_meter.solos[0].load(std::sync::atomic::Ordering::Relaxed));
+        assert_eq!(PluginState::from_settings(&s).unwrap(), before);
+        let b = action(&ctx, &mut s, &model, point, "Remove band");
+        assert_eq!(
+            PluginState::from_settings(&s).unwrap().get(P::Band1Enabled),
+            0.0
+        );
+        assert!(
+            b.controls[P::Band1Enabled as usize - 101]
+                .as_ref()
+                .unwrap()
+                .changed()
+        );
+        assert_eq!(
+            model
+                .visible_band_slots
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert_eq!(s.bands.len(), 64);
+        assert!(!model.output_meter.solos[0].load(std::sync::atomic::Ordering::Relaxed));
+    }
+}
+
+#[cfg(test)]
+mod band_peak_tests {
+    use super::*;
+    use daw_unit_core::MeterStorage;
+    use std::sync::atomic::Ordering;
+    #[test]
+    fn visible_band_peak_reset_targets_its_fixed_slot_without_edits_or_strip_drag() {
+        let ctx = egui::Context::default();
+        daw_unit_ui::theme::configure(&ctx);
+        daw_unit_ui::fonts::configure(&ctx);
+        let model = Model::default();
+        let mut state = daw_drive_plugin::PluginState::default();
+        state
+            .set(daw_drive_plugin::Parameter::Band1Enabled, 0.0)
+            .unwrap();
+        state
+            .set(daw_drive_plugin::Parameter::ALL[1 + 5 * 63], 1.0)
+            .unwrap();
+        let mut settings = state.to_settings();
+        model
+            .visible_band_slots
+            .store(1_u64 << 63, Ordering::Relaxed);
+        model.output_meter.eq_bands[63].store([0.8, 0.0, 0.0]);
+        model.output_meter.eq_bands[63].initialize([0.1, 0.0, 0.0]);
+        model.output_meter.eq_bands[0].store([0.6, 0.0, 0.0]);
+        model.output_meter.output.store([0.7, 0.0, 0.0]);
+        let mut frame = |events| {
+            let mut b = None;
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, body::SIZE)),
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    b = Some(show_body(ui, &mut settings, &model));
+                },
+            );
+            out.textures_delta.clear();
+            (
+                b.unwrap(),
+                daw_drive_plugin::PluginState::from_settings(&settings).unwrap(),
+            )
+        };
+        let (bounds, before) = frame(vec![]);
+        let rail = daw_unit_ui::meters::unit_monitor_rail(
+            bounds.sections[0],
+            daw_unit_ui::layout::PANEL_MARGIN,
+        );
+        let pos = rail.center();
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        frame(vec![egui::Event::PointerMoved(pos), button(pos, true)]);
+        let (_, after) = frame(vec![button(pos, false)]);
+        assert_eq!(before, after);
+        assert_eq!(model.output_meter.eq_bands[63].boost_peaks()[0].peak(), 0.0);
+        assert_eq!(
+            model
+                .output_meter
+                .band_level_resets
+                .swap(0, Ordering::Relaxed),
+            1_u64 << 63
+        );
+        assert_eq!(model.output_meter.eq_bands[0].boost_peaks()[0].peak(), 0.6);
+        assert_eq!(model.output_meter.boost_peaks()[0].peak(), 0.7);
+        assert_eq!(model.output_meter.eq_bands[63].readings()[0], 0.1);
+        frame(vec![]);
+        frame(vec![egui::Event::PointerMoved(pos), button(pos, true)]);
+        frame(vec![egui::Event::PointerMoved(
+            pos + egui::vec2(30.0, 30.0),
+        )]);
+        let (_, after) = frame(vec![button(pos + egui::vec2(30.0, 30.0), false)]);
+        assert_eq!(before, after);
+        assert!(model.pop().is_none());
     }
 }

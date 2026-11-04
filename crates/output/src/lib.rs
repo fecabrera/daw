@@ -276,19 +276,27 @@ fn band_meters(
                     | daw_core::EffectSettings::AutoFilter(_)
                     | daw_core::EffectSettings::MultibandEq(_)
                     | daw_core::EffectSettings::HarmonicLift(_)
+                    | daw_core::EffectSettings::MultibandCompressor(_)
                     | daw_core::EffectSettings::Exciter(_)
             )
             .then_some(ModulationTarget::Effect(effect.id));
-            let bands = match &effect.unit {
-                daw_core::EffectSettings::MultibandEq(s) => s.bands.as_slice(),
-                _ => &[],
-            };
+            let individual = matches!(
+                effect.unit,
+                daw_core::EffectSettings::MultibandEq(_)
+                    | daw_core::EffectSettings::MultibandCompressor(_)
+            );
             group
                 .into_iter()
-                .chain(bands.iter().map(move |band| ModulationTarget::EffectBand {
-                    effect: effect.id,
-                    band: band.id,
-                }))
+                .chain(
+                    effect
+                        .unit
+                        .band_ids()
+                        .filter(move |_| individual)
+                        .map(move |band| ModulationTarget::EffectBand {
+                            effect: effect.id,
+                            band,
+                        }),
+                )
         })
         .map(|key| (key, previous.get(&key).cloned().unwrap_or_default()))
         .collect()
@@ -317,6 +325,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::MultibandEq(_)
                     | daw_core::EffectSettings::HarmonicLift(_)
+                    | daw_core::EffectSettings::MultibandCompressor(_)
                     | daw_core::EffectSettings::Exciter(_)
                     | daw_core::EffectSettings::Compressor(_)
                     | daw_core::EffectSettings::Limiter(_)
@@ -905,6 +914,28 @@ impl AudioOutput {
         self.band_meters
             .get(&ModulationTarget::EffectBand { effect, band })
             .map_or(0.0, |m| m.readings()[0])
+    }
+    pub fn individual_band_level_peak(
+        &self,
+        effect: Id,
+        band: Id,
+    ) -> Option<&daw_unit_core::PeakHold> {
+        self.band_meters
+            .get(&ModulationTarget::EffectBand { effect, band })
+            .map(|m| &m.boost_peaks()[0])
+    }
+    pub fn individual_band_peak(&self, effect: Id, band: Id) -> Option<&daw_unit_core::PeakHold> {
+        self.band_meters
+            .get(&ModulationTarget::EffectBand { effect, band })
+            .map(|m| &m.boost_peaks()[1])
+    }
+    pub fn multiband_compressor_reduction(&self, effect: Id, band: Id) -> f32 {
+        if !self.status.playing.load(Ordering::Relaxed) {
+            return 0.0;
+        }
+        self.band_meters
+            .get(&ModulationTarget::EffectBand { effect, band })
+            .map_or(0.0, |m| m.readings()[1])
     }
     fn band_monitor_values(&self, id: Id) -> [f32; 3] {
         if !self.status.playing.load(Ordering::Relaxed) {

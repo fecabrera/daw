@@ -74,3 +74,5 @@ pub fn tail_frames(rate: u32) -> u32 {
 pub const CLAP_FEATURE: &std::ffi::CStr = c"analyzer";
 pub const VST3_CATEGORIES: &str = "Fx|Analyzer|Stereo";
 pub const USES_TRANSPORT: bool = true;
+
+pub use daw_unit_core::BandAudition;

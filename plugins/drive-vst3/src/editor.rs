@@ -1,5 +1,6 @@
 //! COM view ownership. Host parameter callbacks stay on the host UI thread.
 use daw_drive_editor::{Edit, Editor, HEIGHT, Model, WIDTH};
+use daw_drive_plugin::BandAudition;
 use daw_drive_plugin::PluginState;
 #[cfg(target_os = "linux")]
 use daw_plugin_vst3::sys::Steinberg::Linux::IRunLoopTrait;
@@ -22,6 +23,7 @@ pub(crate) struct ControllerData {
     pub meter_connection: crate::telemetry::Connection,
     pub state: Cell<PluginState>,
     attached: Cell<bool>,
+    sent_solos: Cell<u64>,
     pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
     pub model: Arc<Model>,
 }
@@ -72,6 +74,61 @@ impl ControllerData {
             }
         }
         self.model.publish(self.state.get());
+        let mut sent = self.sent_solos.get();
+        for (index, flag) in self
+            .model
+            .output_meter
+            .band_solos()
+            .iter()
+            .enumerate()
+            .take(64)
+        {
+            if self.state.get().get(daw_drive_plugin::Parameter::Bypass) != 0.0 {
+                flag.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+            let selected = flag.load(std::sync::atomic::Ordering::Relaxed);
+            if selected != (sent & (1_u64 << index) != 0) {
+                let mut values = [0.0; daw_drive_plugin::METER_VALUES];
+                values[0] = index as f64;
+                values[1] = f64::from(selected);
+                if self
+                    .meter_connection
+                    .send(crate::telemetry::Kind::Solo, values)
+                    == kResultOk
+                {
+                    if selected {
+                        sent |= 1_u64 << index;
+                    } else {
+                        sent &= !(1_u64 << index);
+                    }
+                }
+            }
+        }
+        self.sent_solos.set(sent);
+        for (requests, kind) in [
+            (self.model.output_meter.band_reset_requests(), 0.0),
+            (self.model.output_meter.band_level_reset_requests(), 1.0),
+        ] {
+            if let Some(requests) = requests {
+                let mut pending = requests.swap(0, std::sync::atomic::Ordering::AcqRel);
+                while pending != 0 {
+                    let index = pending.trailing_zeros();
+                    let bit = 1_u64 << index;
+                    let mut values = [0.0; daw_drive_plugin::METER_VALUES];
+                    values[0] = f64::from(index);
+                    values[1] = kind;
+                    if self
+                        .meter_connection
+                        .send(crate::telemetry::Kind::BandReset, values)
+                        != kResultOk
+                    {
+                        requests.fetch_or(pending, std::sync::atomic::Ordering::Release);
+                        break;
+                    }
+                    pending &= !bit;
+                }
+            }
+        }
         let mask = self
             .model
             .meter_reset
@@ -366,5 +423,117 @@ impl Linux::ITimerHandlerTrait for Timer {
                 window.host_main_thread_callback();
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod audition_tests {
+    use super::*;
+    #[test]
+    fn solo_messages_reach_prepared_band_flags_without_parameters_and_reject_invalid_slots() {
+        use std::sync::atomic::Ordering;
+        let component = crate::component::Component::default();
+        let meter = component.output_meter.clone();
+        if meter.band_solos().is_empty() {
+            return;
+        }
+        let peer = ComWrapper::new(component)
+            .to_com_ptr::<IConnectionPoint>()
+            .unwrap();
+        let data = ControllerData::default();
+        assert_eq!(
+            unsafe { data.meter_connection.connect(peer.as_ptr()) },
+            kResultOk
+        );
+        let before = data.state.get();
+        for slot in [0, 31, 63] {
+            data.model.output_meter.band_solos()[slot].store(true, Ordering::Relaxed);
+        }
+        data.main();
+        for slot in [0, 31, 63] {
+            assert!(meter.band_solos()[slot].load(Ordering::Relaxed));
+        }
+        assert_eq!(data.state.get(), before);
+        let mut invalid = [0.0; daw_drive_plugin::METER_VALUES];
+        invalid[0] = 64.0;
+        invalid[1] = 1.0;
+        assert_eq!(
+            data.meter_connection
+                .send(crate::telemetry::Kind::Solo, invalid),
+            kInvalidArgument
+        );
+        invalid[0] = 0.5;
+        assert_eq!(
+            data.meter_connection
+                .send(crate::telemetry::Kind::Solo, invalid),
+            kInvalidArgument
+        );
+        invalid[0] = 0.0;
+        invalid[1] = 0.5;
+        assert_eq!(
+            data.meter_connection
+                .send(crate::telemetry::Kind::Solo, invalid),
+            kInvalidArgument
+        );
+        if let Some(requests) = data.model.output_meter.band_reset_requests() {
+            let mut values = [0.0; daw_drive_plugin::METER_VALUES];
+            values[0] = 0.2;
+            values[1] = 0.7;
+            for index in [0, 63] {
+                *values.get_mut(77 + index).unwrap() = 3.0;
+                *values.get_mut(141 + index).unwrap() = 6.0;
+            }
+            daw_drive_plugin::receive_meter(&meter, values);
+            requests.fetch_or(1 | (1_u64 << 63), Ordering::Release);
+            data.main();
+            let values = daw_drive_plugin::meter_values(&meter);
+            for index in [0, 63] {
+                assert_eq!(*values.get(77 + index).unwrap(), 3.0);
+                assert_eq!(*values.get(141 + index).unwrap(), 0.0);
+            }
+            assert!((values[1] - 0.7).abs() < 1e-6);
+        }
+        if let Some(requests) = data.model.output_meter.band_level_reset_requests() {
+            let level_offset = if daw_drive_plugin::METER_VALUES == 141 {
+                77
+            } else {
+                205
+            };
+            let has_reduction = data.model.output_meter.band_reset_requests().is_some();
+            let mut values = [0.0; daw_drive_plugin::METER_VALUES];
+            values[0] = 0.2;
+            values[1] = 0.7;
+            for index in [0, 63] {
+                *values.get_mut(13 + index).unwrap() = 0.1;
+                *values.get_mut(level_offset + index).unwrap() = 0.8;
+                if has_reduction {
+                    *values.get_mut(141 + index).unwrap() = 6.0;
+                }
+            }
+            daw_drive_plugin::receive_meter(&meter, values);
+            requests.fetch_or(1 | (1_u64 << 63), Ordering::Release);
+            data.main();
+            let values = daw_drive_plugin::meter_values(&meter);
+            for index in [0, 63] {
+                assert_eq!(*values.get(level_offset + index).unwrap(), 0.0);
+                assert!((*values.get(13 + index).unwrap() - 0.1).abs() < 1e-6);
+                if has_reduction {
+                    assert_eq!(*values.get(141 + index).unwrap(), 6.0);
+                }
+            }
+            assert!((values[1] - 0.7).abs() < 1e-6);
+        }
+        let mut bypass = before;
+        bypass
+            .set(daw_drive_plugin::Parameter::Bypass, 1.0)
+            .unwrap();
+        data.state.set(bypass);
+        data.main();
+        assert!(
+            meter
+                .band_solos()
+                .iter()
+                .all(|f| !f.load(Ordering::Relaxed))
+        );
     }
 }

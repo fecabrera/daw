@@ -75,3 +75,5 @@ impl MeterStorage for OutputMeter {
         self.bands.clear();
     }
 }
+
+impl daw_unit_core::BandAudition for OutputMeter {}

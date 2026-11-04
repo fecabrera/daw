@@ -11,6 +11,7 @@ daw-ambient-reverb.workspace = true
 daw-harmonic-lift.workspace = true
 daw-noise.workspace = true
 daw-exciter.workspace = true
+daw-multiband-compressor.workspace = true
 daw-chorus.workspace = true
 serde.workspace = true
 daw-saturator.workspace = true

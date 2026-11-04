@@ -1,0 +1,6127 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.multiband-compressor"
+vendor = "Sie"
+version = "0.1.0"
+product = "Multiband Compressor"
+clap_id = "io.github.fecabrera.daw.multiband-compressor"
+processor_id = "58cb468bc5e75feea07203c9650b90f4"
+controller_id = "bb72eede9c3d50bfa67560bbae231c04"
+
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "band_1_present"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 102
+key = "band_1_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 103
+key = "band_1_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 200.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 104
+key = "band_1_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 105
+key = "band_1_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 106
+key = "band_1_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 107
+key = "band_1_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 108
+key = "band_1_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 109
+key = "band_1_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 110
+key = "band_1_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 111
+key = "band_2_present"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 112
+key = "band_2_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 113
+key = "band_2_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 2000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 114
+key = "band_2_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 115
+key = "band_2_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 116
+key = "band_2_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 117
+key = "band_2_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 118
+key = "band_2_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 119
+key = "band_2_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 120
+key = "band_2_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 121
+key = "band_3_present"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 122
+key = "band_3_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 123
+key = "band_3_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 124
+key = "band_3_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 125
+key = "band_3_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 126
+key = "band_3_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 127
+key = "band_3_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 128
+key = "band_3_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 129
+key = "band_3_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 130
+key = "band_3_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 131
+key = "band_4_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 132
+key = "band_4_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 133
+key = "band_4_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 134
+key = "band_4_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 135
+key = "band_4_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 136
+key = "band_4_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 137
+key = "band_4_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 138
+key = "band_4_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 139
+key = "band_4_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 140
+key = "band_4_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 141
+key = "band_5_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 142
+key = "band_5_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 143
+key = "band_5_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 144
+key = "band_5_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 145
+key = "band_5_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 146
+key = "band_5_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 147
+key = "band_5_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 148
+key = "band_5_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 149
+key = "band_5_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 150
+key = "band_5_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 151
+key = "band_6_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 152
+key = "band_6_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 153
+key = "band_6_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 154
+key = "band_6_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 155
+key = "band_6_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 156
+key = "band_6_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 157
+key = "band_6_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 158
+key = "band_6_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 159
+key = "band_6_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 160
+key = "band_6_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 161
+key = "band_7_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 162
+key = "band_7_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 163
+key = "band_7_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 164
+key = "band_7_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 165
+key = "band_7_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 166
+key = "band_7_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 167
+key = "band_7_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 168
+key = "band_7_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 169
+key = "band_7_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 170
+key = "band_7_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 171
+key = "band_8_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 172
+key = "band_8_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 173
+key = "band_8_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 174
+key = "band_8_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 175
+key = "band_8_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 176
+key = "band_8_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 177
+key = "band_8_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 178
+key = "band_8_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 179
+key = "band_8_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 180
+key = "band_8_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 181
+key = "band_9_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 182
+key = "band_9_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 183
+key = "band_9_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 184
+key = "band_9_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 185
+key = "band_9_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 186
+key = "band_9_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 187
+key = "band_9_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 188
+key = "band_9_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 189
+key = "band_9_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 190
+key = "band_9_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 191
+key = "band_10_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 192
+key = "band_10_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 193
+key = "band_10_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 194
+key = "band_10_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 195
+key = "band_10_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 196
+key = "band_10_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 197
+key = "band_10_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 198
+key = "band_10_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 199
+key = "band_10_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 200
+key = "band_10_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 201
+key = "band_11_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 202
+key = "band_11_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 203
+key = "band_11_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 204
+key = "band_11_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 205
+key = "band_11_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 206
+key = "band_11_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 207
+key = "band_11_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 208
+key = "band_11_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 209
+key = "band_11_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 210
+key = "band_11_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 211
+key = "band_12_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 212
+key = "band_12_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 213
+key = "band_12_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 214
+key = "band_12_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 215
+key = "band_12_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 216
+key = "band_12_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 217
+key = "band_12_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 218
+key = "band_12_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 219
+key = "band_12_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 220
+key = "band_12_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 221
+key = "band_13_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 222
+key = "band_13_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 223
+key = "band_13_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 224
+key = "band_13_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 225
+key = "band_13_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 226
+key = "band_13_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 227
+key = "band_13_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 228
+key = "band_13_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 229
+key = "band_13_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 230
+key = "band_13_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 231
+key = "band_14_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 232
+key = "band_14_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 233
+key = "band_14_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 234
+key = "band_14_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 235
+key = "band_14_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 236
+key = "band_14_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 237
+key = "band_14_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 238
+key = "band_14_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 239
+key = "band_14_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 240
+key = "band_14_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 241
+key = "band_15_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 242
+key = "band_15_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 243
+key = "band_15_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 244
+key = "band_15_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 245
+key = "band_15_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 246
+key = "band_15_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 247
+key = "band_15_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 248
+key = "band_15_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 249
+key = "band_15_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 250
+key = "band_15_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 251
+key = "band_16_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 252
+key = "band_16_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 253
+key = "band_16_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 254
+key = "band_16_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 255
+key = "band_16_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 256
+key = "band_16_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 257
+key = "band_16_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 258
+key = "band_16_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 259
+key = "band_16_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 260
+key = "band_16_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 261
+key = "band_17_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 262
+key = "band_17_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 263
+key = "band_17_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 264
+key = "band_17_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 265
+key = "band_17_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 266
+key = "band_17_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 267
+key = "band_17_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 268
+key = "band_17_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 269
+key = "band_17_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 270
+key = "band_17_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 271
+key = "band_18_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 272
+key = "band_18_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 273
+key = "band_18_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 274
+key = "band_18_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 275
+key = "band_18_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 276
+key = "band_18_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 277
+key = "band_18_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 278
+key = "band_18_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 279
+key = "band_18_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 280
+key = "band_18_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 281
+key = "band_19_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 282
+key = "band_19_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 283
+key = "band_19_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 284
+key = "band_19_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 285
+key = "band_19_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 286
+key = "band_19_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 287
+key = "band_19_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 288
+key = "band_19_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 289
+key = "band_19_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 290
+key = "band_19_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 291
+key = "band_20_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 292
+key = "band_20_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 293
+key = "band_20_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 294
+key = "band_20_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 295
+key = "band_20_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 296
+key = "band_20_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 297
+key = "band_20_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 298
+key = "band_20_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 299
+key = "band_20_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 300
+key = "band_20_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 301
+key = "band_21_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 302
+key = "band_21_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 303
+key = "band_21_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 304
+key = "band_21_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 305
+key = "band_21_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 306
+key = "band_21_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 307
+key = "band_21_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 308
+key = "band_21_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 309
+key = "band_21_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 310
+key = "band_21_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 311
+key = "band_22_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 312
+key = "band_22_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 313
+key = "band_22_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 314
+key = "band_22_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 315
+key = "band_22_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 316
+key = "band_22_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 317
+key = "band_22_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 318
+key = "band_22_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 319
+key = "band_22_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 320
+key = "band_22_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 321
+key = "band_23_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 322
+key = "band_23_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 323
+key = "band_23_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 324
+key = "band_23_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 325
+key = "band_23_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 326
+key = "band_23_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 327
+key = "band_23_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 328
+key = "band_23_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 329
+key = "band_23_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 330
+key = "band_23_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 331
+key = "band_24_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 332
+key = "band_24_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 333
+key = "band_24_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 334
+key = "band_24_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 335
+key = "band_24_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 336
+key = "band_24_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 337
+key = "band_24_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 338
+key = "band_24_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 339
+key = "band_24_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 340
+key = "band_24_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 341
+key = "band_25_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 342
+key = "band_25_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 343
+key = "band_25_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 344
+key = "band_25_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 345
+key = "band_25_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 346
+key = "band_25_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 347
+key = "band_25_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 348
+key = "band_25_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 349
+key = "band_25_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 350
+key = "band_25_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 351
+key = "band_26_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 352
+key = "band_26_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 353
+key = "band_26_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 354
+key = "band_26_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 355
+key = "band_26_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 356
+key = "band_26_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 357
+key = "band_26_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 358
+key = "band_26_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 359
+key = "band_26_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 360
+key = "band_26_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 361
+key = "band_27_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 362
+key = "band_27_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 363
+key = "band_27_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 364
+key = "band_27_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 365
+key = "band_27_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 366
+key = "band_27_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 367
+key = "band_27_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 368
+key = "band_27_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 369
+key = "band_27_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 370
+key = "band_27_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 371
+key = "band_28_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 372
+key = "band_28_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 373
+key = "band_28_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 374
+key = "band_28_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 375
+key = "band_28_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 376
+key = "band_28_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 377
+key = "band_28_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 378
+key = "band_28_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 379
+key = "band_28_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 380
+key = "band_28_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 381
+key = "band_29_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 382
+key = "band_29_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 383
+key = "band_29_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 384
+key = "band_29_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 385
+key = "band_29_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 386
+key = "band_29_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 387
+key = "band_29_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 388
+key = "band_29_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 389
+key = "band_29_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 390
+key = "band_29_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 391
+key = "band_30_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 392
+key = "band_30_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 393
+key = "band_30_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 394
+key = "band_30_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 395
+key = "band_30_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 396
+key = "band_30_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 397
+key = "band_30_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 398
+key = "band_30_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 399
+key = "band_30_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 400
+key = "band_30_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 401
+key = "band_31_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 402
+key = "band_31_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 403
+key = "band_31_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 404
+key = "band_31_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 405
+key = "band_31_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 406
+key = "band_31_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 407
+key = "band_31_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 408
+key = "band_31_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 409
+key = "band_31_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 410
+key = "band_31_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 411
+key = "band_32_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 412
+key = "band_32_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 413
+key = "band_32_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 414
+key = "band_32_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 415
+key = "band_32_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 416
+key = "band_32_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 417
+key = "band_32_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 418
+key = "band_32_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 419
+key = "band_32_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 420
+key = "band_32_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 421
+key = "band_33_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 422
+key = "band_33_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 423
+key = "band_33_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 424
+key = "band_33_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 425
+key = "band_33_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 426
+key = "band_33_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 427
+key = "band_33_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 428
+key = "band_33_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 429
+key = "band_33_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 430
+key = "band_33_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 431
+key = "band_34_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 432
+key = "band_34_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 433
+key = "band_34_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 434
+key = "band_34_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 435
+key = "band_34_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 436
+key = "band_34_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 437
+key = "band_34_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 438
+key = "band_34_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 439
+key = "band_34_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 440
+key = "band_34_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 441
+key = "band_35_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 442
+key = "band_35_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 443
+key = "band_35_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 444
+key = "band_35_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 445
+key = "band_35_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 446
+key = "band_35_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 447
+key = "band_35_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 448
+key = "band_35_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 449
+key = "band_35_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 450
+key = "band_35_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 451
+key = "band_36_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 452
+key = "band_36_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 453
+key = "band_36_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 454
+key = "band_36_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 455
+key = "band_36_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 456
+key = "band_36_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 457
+key = "band_36_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 458
+key = "band_36_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 459
+key = "band_36_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 460
+key = "band_36_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 461
+key = "band_37_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 462
+key = "band_37_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 463
+key = "band_37_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 464
+key = "band_37_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 465
+key = "band_37_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 466
+key = "band_37_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 467
+key = "band_37_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 468
+key = "band_37_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 469
+key = "band_37_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 470
+key = "band_37_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 471
+key = "band_38_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 472
+key = "band_38_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 473
+key = "band_38_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 474
+key = "band_38_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 475
+key = "band_38_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 476
+key = "band_38_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 477
+key = "band_38_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 478
+key = "band_38_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 479
+key = "band_38_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 480
+key = "band_38_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 481
+key = "band_39_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 482
+key = "band_39_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 483
+key = "band_39_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 484
+key = "band_39_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 485
+key = "band_39_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 486
+key = "band_39_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 487
+key = "band_39_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 488
+key = "band_39_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 489
+key = "band_39_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 490
+key = "band_39_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 491
+key = "band_40_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 492
+key = "band_40_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 493
+key = "band_40_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 494
+key = "band_40_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 495
+key = "band_40_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 496
+key = "band_40_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 497
+key = "band_40_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 498
+key = "band_40_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 499
+key = "band_40_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 500
+key = "band_40_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 501
+key = "band_41_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 502
+key = "band_41_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 503
+key = "band_41_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 504
+key = "band_41_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 505
+key = "band_41_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 506
+key = "band_41_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 507
+key = "band_41_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 508
+key = "band_41_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 509
+key = "band_41_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 510
+key = "band_41_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 511
+key = "band_42_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 512
+key = "band_42_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 513
+key = "band_42_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 514
+key = "band_42_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 515
+key = "band_42_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 516
+key = "band_42_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 517
+key = "band_42_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 518
+key = "band_42_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 519
+key = "band_42_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 520
+key = "band_42_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 521
+key = "band_43_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 522
+key = "band_43_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 523
+key = "band_43_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 524
+key = "band_43_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 525
+key = "band_43_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 526
+key = "band_43_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 527
+key = "band_43_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 528
+key = "band_43_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 529
+key = "band_43_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 530
+key = "band_43_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 531
+key = "band_44_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 532
+key = "band_44_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 533
+key = "band_44_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 534
+key = "band_44_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 535
+key = "band_44_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 536
+key = "band_44_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 537
+key = "band_44_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 538
+key = "band_44_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 539
+key = "band_44_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 540
+key = "band_44_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 541
+key = "band_45_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 542
+key = "band_45_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 543
+key = "band_45_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 544
+key = "band_45_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 545
+key = "band_45_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 546
+key = "band_45_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 547
+key = "band_45_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 548
+key = "band_45_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 549
+key = "band_45_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 550
+key = "band_45_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 551
+key = "band_46_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 552
+key = "band_46_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 553
+key = "band_46_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 554
+key = "band_46_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 555
+key = "band_46_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 556
+key = "band_46_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 557
+key = "band_46_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 558
+key = "band_46_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 559
+key = "band_46_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 560
+key = "band_46_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 561
+key = "band_47_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 562
+key = "band_47_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 563
+key = "band_47_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 564
+key = "band_47_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 565
+key = "band_47_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 566
+key = "band_47_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 567
+key = "band_47_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 568
+key = "band_47_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 569
+key = "band_47_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 570
+key = "band_47_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 571
+key = "band_48_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 572
+key = "band_48_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 573
+key = "band_48_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 574
+key = "band_48_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 575
+key = "band_48_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 576
+key = "band_48_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 577
+key = "band_48_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 578
+key = "band_48_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 579
+key = "band_48_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 580
+key = "band_48_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 581
+key = "band_49_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 582
+key = "band_49_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 583
+key = "band_49_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 584
+key = "band_49_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 585
+key = "band_49_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 586
+key = "band_49_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 587
+key = "band_49_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 588
+key = "band_49_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 589
+key = "band_49_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 590
+key = "band_49_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 591
+key = "band_50_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 592
+key = "band_50_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 593
+key = "band_50_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 594
+key = "band_50_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 595
+key = "band_50_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 596
+key = "band_50_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 597
+key = "band_50_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 598
+key = "band_50_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 599
+key = "band_50_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 600
+key = "band_50_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 601
+key = "band_51_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 602
+key = "band_51_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 603
+key = "band_51_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 604
+key = "band_51_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 605
+key = "band_51_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 606
+key = "band_51_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 607
+key = "band_51_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 608
+key = "band_51_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 609
+key = "band_51_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 610
+key = "band_51_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 611
+key = "band_52_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 612
+key = "band_52_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 613
+key = "band_52_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 614
+key = "band_52_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 615
+key = "band_52_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 616
+key = "band_52_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 617
+key = "band_52_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 618
+key = "band_52_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 619
+key = "band_52_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 620
+key = "band_52_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 621
+key = "band_53_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 622
+key = "band_53_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 623
+key = "band_53_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 624
+key = "band_53_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 625
+key = "band_53_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 626
+key = "band_53_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 627
+key = "band_53_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 628
+key = "band_53_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 629
+key = "band_53_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 630
+key = "band_53_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 631
+key = "band_54_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 632
+key = "band_54_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 633
+key = "band_54_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 634
+key = "band_54_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 635
+key = "band_54_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 636
+key = "band_54_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 637
+key = "band_54_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 638
+key = "band_54_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 639
+key = "band_54_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 640
+key = "band_54_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 641
+key = "band_55_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 642
+key = "band_55_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 643
+key = "band_55_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 644
+key = "band_55_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 645
+key = "band_55_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 646
+key = "band_55_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 647
+key = "band_55_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 648
+key = "band_55_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 649
+key = "band_55_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 650
+key = "band_55_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 651
+key = "band_56_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 652
+key = "band_56_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 653
+key = "band_56_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 654
+key = "band_56_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 655
+key = "band_56_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 656
+key = "band_56_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 657
+key = "band_56_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 658
+key = "band_56_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 659
+key = "band_56_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 660
+key = "band_56_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 661
+key = "band_57_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 662
+key = "band_57_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 663
+key = "band_57_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 664
+key = "band_57_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 665
+key = "band_57_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 666
+key = "band_57_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 667
+key = "band_57_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 668
+key = "band_57_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 669
+key = "band_57_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 670
+key = "band_57_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 671
+key = "band_58_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 672
+key = "band_58_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 673
+key = "band_58_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 674
+key = "band_58_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 675
+key = "band_58_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 676
+key = "band_58_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 677
+key = "band_58_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 678
+key = "band_58_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 679
+key = "band_58_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 680
+key = "band_58_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 681
+key = "band_59_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 682
+key = "band_59_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 683
+key = "band_59_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 684
+key = "band_59_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 685
+key = "band_59_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 686
+key = "band_59_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 687
+key = "band_59_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 688
+key = "band_59_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 689
+key = "band_59_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 690
+key = "band_59_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 691
+key = "band_60_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 692
+key = "band_60_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 693
+key = "band_60_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 694
+key = "band_60_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 695
+key = "band_60_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 696
+key = "band_60_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 697
+key = "band_60_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 698
+key = "band_60_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 699
+key = "band_60_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 700
+key = "band_60_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 701
+key = "band_61_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 702
+key = "band_61_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 703
+key = "band_61_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 704
+key = "band_61_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 705
+key = "band_61_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 706
+key = "band_61_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 707
+key = "band_61_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 708
+key = "band_61_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 709
+key = "band_61_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 710
+key = "band_61_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 711
+key = "band_62_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 712
+key = "band_62_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 713
+key = "band_62_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 714
+key = "band_62_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 715
+key = "band_62_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 716
+key = "band_62_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 717
+key = "band_62_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 718
+key = "band_62_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 719
+key = "band_62_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 720
+key = "band_62_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 721
+key = "band_63_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 722
+key = "band_63_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 723
+key = "band_63_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 724
+key = "band_63_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 725
+key = "band_63_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 726
+key = "band_63_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 727
+key = "band_63_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 728
+key = "band_63_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 729
+key = "band_63_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 730
+key = "band_63_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 731
+key = "band_64_present"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 732
+key = "band_64_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 733
+key = "band_64_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 734
+key = "band_64_threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 735
+key = "band_64_ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 736
+key = "band_64_attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 737
+key = "band_64_release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 738
+key = "band_64_knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 739
+key = "band_64_makeup"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 740
+key = "band_64_detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 741
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 742
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[strips]]
+footer = "Split"
+controls = [
+{ parameter = "band_1_frequency", control = "frequency" },
+{ parameter = "band_2_frequency", control = "frequency" },
+{ parameter = "band_3_frequency", control = "frequency" },
+{ parameter = "band_4_frequency", control = "frequency" },
+{ parameter = "band_5_frequency", control = "frequency" },
+{ parameter = "band_6_frequency", control = "frequency" },
+{ parameter = "band_7_frequency", control = "frequency" },
+{ parameter = "band_8_frequency", control = "frequency" },
+{ parameter = "band_9_frequency", control = "frequency" },
+{ parameter = "band_10_frequency", control = "frequency" },
+{ parameter = "band_11_frequency", control = "frequency" },
+{ parameter = "band_12_frequency", control = "frequency" },
+{ parameter = "band_13_frequency", control = "frequency" },
+{ parameter = "band_14_frequency", control = "frequency" },
+{ parameter = "band_15_frequency", control = "frequency" },
+{ parameter = "band_16_frequency", control = "frequency" },
+{ parameter = "band_17_frequency", control = "frequency" },
+{ parameter = "band_18_frequency", control = "frequency" },
+{ parameter = "band_19_frequency", control = "frequency" },
+{ parameter = "band_20_frequency", control = "frequency" },
+{ parameter = "band_21_frequency", control = "frequency" },
+{ parameter = "band_22_frequency", control = "frequency" },
+{ parameter = "band_23_frequency", control = "frequency" },
+{ parameter = "band_24_frequency", control = "frequency" },
+{ parameter = "band_25_frequency", control = "frequency" },
+{ parameter = "band_26_frequency", control = "frequency" },
+{ parameter = "band_27_frequency", control = "frequency" },
+{ parameter = "band_28_frequency", control = "frequency" },
+{ parameter = "band_29_frequency", control = "frequency" },
+{ parameter = "band_30_frequency", control = "frequency" },
+{ parameter = "band_31_frequency", control = "frequency" },
+{ parameter = "band_32_frequency", control = "frequency" },
+{ parameter = "band_33_frequency", control = "frequency" },
+{ parameter = "band_34_frequency", control = "frequency" },
+{ parameter = "band_35_frequency", control = "frequency" },
+{ parameter = "band_36_frequency", control = "frequency" },
+{ parameter = "band_37_frequency", control = "frequency" },
+{ parameter = "band_38_frequency", control = "frequency" },
+{ parameter = "band_39_frequency", control = "frequency" },
+{ parameter = "band_40_frequency", control = "frequency" },
+{ parameter = "band_41_frequency", control = "frequency" },
+{ parameter = "band_42_frequency", control = "frequency" },
+{ parameter = "band_43_frequency", control = "frequency" },
+{ parameter = "band_44_frequency", control = "frequency" },
+{ parameter = "band_45_frequency", control = "frequency" },
+{ parameter = "band_46_frequency", control = "frequency" },
+{ parameter = "band_47_frequency", control = "frequency" },
+{ parameter = "band_48_frequency", control = "frequency" },
+{ parameter = "band_49_frequency", control = "frequency" },
+{ parameter = "band_50_frequency", control = "frequency" },
+{ parameter = "band_51_frequency", control = "frequency" },
+{ parameter = "band_52_frequency", control = "frequency" },
+{ parameter = "band_53_frequency", control = "frequency" },
+{ parameter = "band_54_frequency", control = "frequency" },
+{ parameter = "band_55_frequency", control = "frequency" },
+{ parameter = "band_56_frequency", control = "frequency" },
+{ parameter = "band_57_frequency", control = "frequency" },
+{ parameter = "band_58_frequency", control = "frequency" },
+{ parameter = "band_59_frequency", control = "frequency" },
+{ parameter = "band_60_frequency", control = "frequency" },
+{ parameter = "band_61_frequency", control = "frequency" },
+{ parameter = "band_62_frequency", control = "frequency" },
+{ parameter = "band_63_frequency", control = "frequency" },
+{ parameter = "band_64_frequency", control = "frequency" },
+]
+
+[[strips]]
+footer = "Band 1"
+power = "band_1_enabled"
+controls = [
+{ parameter = "band_1_present", control = "mode" },
+{ parameter = "band_1_threshold", control = "db" },
+{ parameter = "band_1_ratio", control = "scalar" },
+{ parameter = "band_1_attack", control = "scalar" },
+{ parameter = "band_1_release", control = "scalar" },
+{ parameter = "band_1_knee", control = "db" },
+{ parameter = "band_1_makeup", control = "gain" },
+{ parameter = "band_1_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 2"
+power = "band_2_enabled"
+controls = [
+{ parameter = "band_2_present", control = "mode" },
+{ parameter = "band_2_threshold", control = "db" },
+{ parameter = "band_2_ratio", control = "scalar" },
+{ parameter = "band_2_attack", control = "scalar" },
+{ parameter = "band_2_release", control = "scalar" },
+{ parameter = "band_2_knee", control = "db" },
+{ parameter = "band_2_makeup", control = "gain" },
+{ parameter = "band_2_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 3"
+power = "band_3_enabled"
+controls = [
+{ parameter = "band_3_present", control = "mode" },
+{ parameter = "band_3_threshold", control = "db" },
+{ parameter = "band_3_ratio", control = "scalar" },
+{ parameter = "band_3_attack", control = "scalar" },
+{ parameter = "band_3_release", control = "scalar" },
+{ parameter = "band_3_knee", control = "db" },
+{ parameter = "band_3_makeup", control = "gain" },
+{ parameter = "band_3_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 4"
+power = "band_4_enabled"
+controls = [
+{ parameter = "band_4_present", control = "mode" },
+{ parameter = "band_4_threshold", control = "db" },
+{ parameter = "band_4_ratio", control = "scalar" },
+{ parameter = "band_4_attack", control = "scalar" },
+{ parameter = "band_4_release", control = "scalar" },
+{ parameter = "band_4_knee", control = "db" },
+{ parameter = "band_4_makeup", control = "gain" },
+{ parameter = "band_4_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 5"
+power = "band_5_enabled"
+controls = [
+{ parameter = "band_5_present", control = "mode" },
+{ parameter = "band_5_threshold", control = "db" },
+{ parameter = "band_5_ratio", control = "scalar" },
+{ parameter = "band_5_attack", control = "scalar" },
+{ parameter = "band_5_release", control = "scalar" },
+{ parameter = "band_5_knee", control = "db" },
+{ parameter = "band_5_makeup", control = "gain" },
+{ parameter = "band_5_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 6"
+power = "band_6_enabled"
+controls = [
+{ parameter = "band_6_present", control = "mode" },
+{ parameter = "band_6_threshold", control = "db" },
+{ parameter = "band_6_ratio", control = "scalar" },
+{ parameter = "band_6_attack", control = "scalar" },
+{ parameter = "band_6_release", control = "scalar" },
+{ parameter = "band_6_knee", control = "db" },
+{ parameter = "band_6_makeup", control = "gain" },
+{ parameter = "band_6_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 7"
+power = "band_7_enabled"
+controls = [
+{ parameter = "band_7_present", control = "mode" },
+{ parameter = "band_7_threshold", control = "db" },
+{ parameter = "band_7_ratio", control = "scalar" },
+{ parameter = "band_7_attack", control = "scalar" },
+{ parameter = "band_7_release", control = "scalar" },
+{ parameter = "band_7_knee", control = "db" },
+{ parameter = "band_7_makeup", control = "gain" },
+{ parameter = "band_7_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 8"
+power = "band_8_enabled"
+controls = [
+{ parameter = "band_8_present", control = "mode" },
+{ parameter = "band_8_threshold", control = "db" },
+{ parameter = "band_8_ratio", control = "scalar" },
+{ parameter = "band_8_attack", control = "scalar" },
+{ parameter = "band_8_release", control = "scalar" },
+{ parameter = "band_8_knee", control = "db" },
+{ parameter = "band_8_makeup", control = "gain" },
+{ parameter = "band_8_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 9"
+power = "band_9_enabled"
+controls = [
+{ parameter = "band_9_present", control = "mode" },
+{ parameter = "band_9_threshold", control = "db" },
+{ parameter = "band_9_ratio", control = "scalar" },
+{ parameter = "band_9_attack", control = "scalar" },
+{ parameter = "band_9_release", control = "scalar" },
+{ parameter = "band_9_knee", control = "db" },
+{ parameter = "band_9_makeup", control = "gain" },
+{ parameter = "band_9_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 10"
+power = "band_10_enabled"
+controls = [
+{ parameter = "band_10_present", control = "mode" },
+{ parameter = "band_10_threshold", control = "db" },
+{ parameter = "band_10_ratio", control = "scalar" },
+{ parameter = "band_10_attack", control = "scalar" },
+{ parameter = "band_10_release", control = "scalar" },
+{ parameter = "band_10_knee", control = "db" },
+{ parameter = "band_10_makeup", control = "gain" },
+{ parameter = "band_10_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 11"
+power = "band_11_enabled"
+controls = [
+{ parameter = "band_11_present", control = "mode" },
+{ parameter = "band_11_threshold", control = "db" },
+{ parameter = "band_11_ratio", control = "scalar" },
+{ parameter = "band_11_attack", control = "scalar" },
+{ parameter = "band_11_release", control = "scalar" },
+{ parameter = "band_11_knee", control = "db" },
+{ parameter = "band_11_makeup", control = "gain" },
+{ parameter = "band_11_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 12"
+power = "band_12_enabled"
+controls = [
+{ parameter = "band_12_present", control = "mode" },
+{ parameter = "band_12_threshold", control = "db" },
+{ parameter = "band_12_ratio", control = "scalar" },
+{ parameter = "band_12_attack", control = "scalar" },
+{ parameter = "band_12_release", control = "scalar" },
+{ parameter = "band_12_knee", control = "db" },
+{ parameter = "band_12_makeup", control = "gain" },
+{ parameter = "band_12_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 13"
+power = "band_13_enabled"
+controls = [
+{ parameter = "band_13_present", control = "mode" },
+{ parameter = "band_13_threshold", control = "db" },
+{ parameter = "band_13_ratio", control = "scalar" },
+{ parameter = "band_13_attack", control = "scalar" },
+{ parameter = "band_13_release", control = "scalar" },
+{ parameter = "band_13_knee", control = "db" },
+{ parameter = "band_13_makeup", control = "gain" },
+{ parameter = "band_13_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 14"
+power = "band_14_enabled"
+controls = [
+{ parameter = "band_14_present", control = "mode" },
+{ parameter = "band_14_threshold", control = "db" },
+{ parameter = "band_14_ratio", control = "scalar" },
+{ parameter = "band_14_attack", control = "scalar" },
+{ parameter = "band_14_release", control = "scalar" },
+{ parameter = "band_14_knee", control = "db" },
+{ parameter = "band_14_makeup", control = "gain" },
+{ parameter = "band_14_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 15"
+power = "band_15_enabled"
+controls = [
+{ parameter = "band_15_present", control = "mode" },
+{ parameter = "band_15_threshold", control = "db" },
+{ parameter = "band_15_ratio", control = "scalar" },
+{ parameter = "band_15_attack", control = "scalar" },
+{ parameter = "band_15_release", control = "scalar" },
+{ parameter = "band_15_knee", control = "db" },
+{ parameter = "band_15_makeup", control = "gain" },
+{ parameter = "band_15_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 16"
+power = "band_16_enabled"
+controls = [
+{ parameter = "band_16_present", control = "mode" },
+{ parameter = "band_16_threshold", control = "db" },
+{ parameter = "band_16_ratio", control = "scalar" },
+{ parameter = "band_16_attack", control = "scalar" },
+{ parameter = "band_16_release", control = "scalar" },
+{ parameter = "band_16_knee", control = "db" },
+{ parameter = "band_16_makeup", control = "gain" },
+{ parameter = "band_16_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 17"
+power = "band_17_enabled"
+controls = [
+{ parameter = "band_17_present", control = "mode" },
+{ parameter = "band_17_threshold", control = "db" },
+{ parameter = "band_17_ratio", control = "scalar" },
+{ parameter = "band_17_attack", control = "scalar" },
+{ parameter = "band_17_release", control = "scalar" },
+{ parameter = "band_17_knee", control = "db" },
+{ parameter = "band_17_makeup", control = "gain" },
+{ parameter = "band_17_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 18"
+power = "band_18_enabled"
+controls = [
+{ parameter = "band_18_present", control = "mode" },
+{ parameter = "band_18_threshold", control = "db" },
+{ parameter = "band_18_ratio", control = "scalar" },
+{ parameter = "band_18_attack", control = "scalar" },
+{ parameter = "band_18_release", control = "scalar" },
+{ parameter = "band_18_knee", control = "db" },
+{ parameter = "band_18_makeup", control = "gain" },
+{ parameter = "band_18_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 19"
+power = "band_19_enabled"
+controls = [
+{ parameter = "band_19_present", control = "mode" },
+{ parameter = "band_19_threshold", control = "db" },
+{ parameter = "band_19_ratio", control = "scalar" },
+{ parameter = "band_19_attack", control = "scalar" },
+{ parameter = "band_19_release", control = "scalar" },
+{ parameter = "band_19_knee", control = "db" },
+{ parameter = "band_19_makeup", control = "gain" },
+{ parameter = "band_19_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 20"
+power = "band_20_enabled"
+controls = [
+{ parameter = "band_20_present", control = "mode" },
+{ parameter = "band_20_threshold", control = "db" },
+{ parameter = "band_20_ratio", control = "scalar" },
+{ parameter = "band_20_attack", control = "scalar" },
+{ parameter = "band_20_release", control = "scalar" },
+{ parameter = "band_20_knee", control = "db" },
+{ parameter = "band_20_makeup", control = "gain" },
+{ parameter = "band_20_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 21"
+power = "band_21_enabled"
+controls = [
+{ parameter = "band_21_present", control = "mode" },
+{ parameter = "band_21_threshold", control = "db" },
+{ parameter = "band_21_ratio", control = "scalar" },
+{ parameter = "band_21_attack", control = "scalar" },
+{ parameter = "band_21_release", control = "scalar" },
+{ parameter = "band_21_knee", control = "db" },
+{ parameter = "band_21_makeup", control = "gain" },
+{ parameter = "band_21_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 22"
+power = "band_22_enabled"
+controls = [
+{ parameter = "band_22_present", control = "mode" },
+{ parameter = "band_22_threshold", control = "db" },
+{ parameter = "band_22_ratio", control = "scalar" },
+{ parameter = "band_22_attack", control = "scalar" },
+{ parameter = "band_22_release", control = "scalar" },
+{ parameter = "band_22_knee", control = "db" },
+{ parameter = "band_22_makeup", control = "gain" },
+{ parameter = "band_22_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 23"
+power = "band_23_enabled"
+controls = [
+{ parameter = "band_23_present", control = "mode" },
+{ parameter = "band_23_threshold", control = "db" },
+{ parameter = "band_23_ratio", control = "scalar" },
+{ parameter = "band_23_attack", control = "scalar" },
+{ parameter = "band_23_release", control = "scalar" },
+{ parameter = "band_23_knee", control = "db" },
+{ parameter = "band_23_makeup", control = "gain" },
+{ parameter = "band_23_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 24"
+power = "band_24_enabled"
+controls = [
+{ parameter = "band_24_present", control = "mode" },
+{ parameter = "band_24_threshold", control = "db" },
+{ parameter = "band_24_ratio", control = "scalar" },
+{ parameter = "band_24_attack", control = "scalar" },
+{ parameter = "band_24_release", control = "scalar" },
+{ parameter = "band_24_knee", control = "db" },
+{ parameter = "band_24_makeup", control = "gain" },
+{ parameter = "band_24_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 25"
+power = "band_25_enabled"
+controls = [
+{ parameter = "band_25_present", control = "mode" },
+{ parameter = "band_25_threshold", control = "db" },
+{ parameter = "band_25_ratio", control = "scalar" },
+{ parameter = "band_25_attack", control = "scalar" },
+{ parameter = "band_25_release", control = "scalar" },
+{ parameter = "band_25_knee", control = "db" },
+{ parameter = "band_25_makeup", control = "gain" },
+{ parameter = "band_25_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 26"
+power = "band_26_enabled"
+controls = [
+{ parameter = "band_26_present", control = "mode" },
+{ parameter = "band_26_threshold", control = "db" },
+{ parameter = "band_26_ratio", control = "scalar" },
+{ parameter = "band_26_attack", control = "scalar" },
+{ parameter = "band_26_release", control = "scalar" },
+{ parameter = "band_26_knee", control = "db" },
+{ parameter = "band_26_makeup", control = "gain" },
+{ parameter = "band_26_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 27"
+power = "band_27_enabled"
+controls = [
+{ parameter = "band_27_present", control = "mode" },
+{ parameter = "band_27_threshold", control = "db" },
+{ parameter = "band_27_ratio", control = "scalar" },
+{ parameter = "band_27_attack", control = "scalar" },
+{ parameter = "band_27_release", control = "scalar" },
+{ parameter = "band_27_knee", control = "db" },
+{ parameter = "band_27_makeup", control = "gain" },
+{ parameter = "band_27_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 28"
+power = "band_28_enabled"
+controls = [
+{ parameter = "band_28_present", control = "mode" },
+{ parameter = "band_28_threshold", control = "db" },
+{ parameter = "band_28_ratio", control = "scalar" },
+{ parameter = "band_28_attack", control = "scalar" },
+{ parameter = "band_28_release", control = "scalar" },
+{ parameter = "band_28_knee", control = "db" },
+{ parameter = "band_28_makeup", control = "gain" },
+{ parameter = "band_28_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 29"
+power = "band_29_enabled"
+controls = [
+{ parameter = "band_29_present", control = "mode" },
+{ parameter = "band_29_threshold", control = "db" },
+{ parameter = "band_29_ratio", control = "scalar" },
+{ parameter = "band_29_attack", control = "scalar" },
+{ parameter = "band_29_release", control = "scalar" },
+{ parameter = "band_29_knee", control = "db" },
+{ parameter = "band_29_makeup", control = "gain" },
+{ parameter = "band_29_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 30"
+power = "band_30_enabled"
+controls = [
+{ parameter = "band_30_present", control = "mode" },
+{ parameter = "band_30_threshold", control = "db" },
+{ parameter = "band_30_ratio", control = "scalar" },
+{ parameter = "band_30_attack", control = "scalar" },
+{ parameter = "band_30_release", control = "scalar" },
+{ parameter = "band_30_knee", control = "db" },
+{ parameter = "band_30_makeup", control = "gain" },
+{ parameter = "band_30_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 31"
+power = "band_31_enabled"
+controls = [
+{ parameter = "band_31_present", control = "mode" },
+{ parameter = "band_31_threshold", control = "db" },
+{ parameter = "band_31_ratio", control = "scalar" },
+{ parameter = "band_31_attack", control = "scalar" },
+{ parameter = "band_31_release", control = "scalar" },
+{ parameter = "band_31_knee", control = "db" },
+{ parameter = "band_31_makeup", control = "gain" },
+{ parameter = "band_31_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 32"
+power = "band_32_enabled"
+controls = [
+{ parameter = "band_32_present", control = "mode" },
+{ parameter = "band_32_threshold", control = "db" },
+{ parameter = "band_32_ratio", control = "scalar" },
+{ parameter = "band_32_attack", control = "scalar" },
+{ parameter = "band_32_release", control = "scalar" },
+{ parameter = "band_32_knee", control = "db" },
+{ parameter = "band_32_makeup", control = "gain" },
+{ parameter = "band_32_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 33"
+power = "band_33_enabled"
+controls = [
+{ parameter = "band_33_present", control = "mode" },
+{ parameter = "band_33_threshold", control = "db" },
+{ parameter = "band_33_ratio", control = "scalar" },
+{ parameter = "band_33_attack", control = "scalar" },
+{ parameter = "band_33_release", control = "scalar" },
+{ parameter = "band_33_knee", control = "db" },
+{ parameter = "band_33_makeup", control = "gain" },
+{ parameter = "band_33_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 34"
+power = "band_34_enabled"
+controls = [
+{ parameter = "band_34_present", control = "mode" },
+{ parameter = "band_34_threshold", control = "db" },
+{ parameter = "band_34_ratio", control = "scalar" },
+{ parameter = "band_34_attack", control = "scalar" },
+{ parameter = "band_34_release", control = "scalar" },
+{ parameter = "band_34_knee", control = "db" },
+{ parameter = "band_34_makeup", control = "gain" },
+{ parameter = "band_34_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 35"
+power = "band_35_enabled"
+controls = [
+{ parameter = "band_35_present", control = "mode" },
+{ parameter = "band_35_threshold", control = "db" },
+{ parameter = "band_35_ratio", control = "scalar" },
+{ parameter = "band_35_attack", control = "scalar" },
+{ parameter = "band_35_release", control = "scalar" },
+{ parameter = "band_35_knee", control = "db" },
+{ parameter = "band_35_makeup", control = "gain" },
+{ parameter = "band_35_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 36"
+power = "band_36_enabled"
+controls = [
+{ parameter = "band_36_present", control = "mode" },
+{ parameter = "band_36_threshold", control = "db" },
+{ parameter = "band_36_ratio", control = "scalar" },
+{ parameter = "band_36_attack", control = "scalar" },
+{ parameter = "band_36_release", control = "scalar" },
+{ parameter = "band_36_knee", control = "db" },
+{ parameter = "band_36_makeup", control = "gain" },
+{ parameter = "band_36_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 37"
+power = "band_37_enabled"
+controls = [
+{ parameter = "band_37_present", control = "mode" },
+{ parameter = "band_37_threshold", control = "db" },
+{ parameter = "band_37_ratio", control = "scalar" },
+{ parameter = "band_37_attack", control = "scalar" },
+{ parameter = "band_37_release", control = "scalar" },
+{ parameter = "band_37_knee", control = "db" },
+{ parameter = "band_37_makeup", control = "gain" },
+{ parameter = "band_37_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 38"
+power = "band_38_enabled"
+controls = [
+{ parameter = "band_38_present", control = "mode" },
+{ parameter = "band_38_threshold", control = "db" },
+{ parameter = "band_38_ratio", control = "scalar" },
+{ parameter = "band_38_attack", control = "scalar" },
+{ parameter = "band_38_release", control = "scalar" },
+{ parameter = "band_38_knee", control = "db" },
+{ parameter = "band_38_makeup", control = "gain" },
+{ parameter = "band_38_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 39"
+power = "band_39_enabled"
+controls = [
+{ parameter = "band_39_present", control = "mode" },
+{ parameter = "band_39_threshold", control = "db" },
+{ parameter = "band_39_ratio", control = "scalar" },
+{ parameter = "band_39_attack", control = "scalar" },
+{ parameter = "band_39_release", control = "scalar" },
+{ parameter = "band_39_knee", control = "db" },
+{ parameter = "band_39_makeup", control = "gain" },
+{ parameter = "band_39_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 40"
+power = "band_40_enabled"
+controls = [
+{ parameter = "band_40_present", control = "mode" },
+{ parameter = "band_40_threshold", control = "db" },
+{ parameter = "band_40_ratio", control = "scalar" },
+{ parameter = "band_40_attack", control = "scalar" },
+{ parameter = "band_40_release", control = "scalar" },
+{ parameter = "band_40_knee", control = "db" },
+{ parameter = "band_40_makeup", control = "gain" },
+{ parameter = "band_40_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 41"
+power = "band_41_enabled"
+controls = [
+{ parameter = "band_41_present", control = "mode" },
+{ parameter = "band_41_threshold", control = "db" },
+{ parameter = "band_41_ratio", control = "scalar" },
+{ parameter = "band_41_attack", control = "scalar" },
+{ parameter = "band_41_release", control = "scalar" },
+{ parameter = "band_41_knee", control = "db" },
+{ parameter = "band_41_makeup", control = "gain" },
+{ parameter = "band_41_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 42"
+power = "band_42_enabled"
+controls = [
+{ parameter = "band_42_present", control = "mode" },
+{ parameter = "band_42_threshold", control = "db" },
+{ parameter = "band_42_ratio", control = "scalar" },
+{ parameter = "band_42_attack", control = "scalar" },
+{ parameter = "band_42_release", control = "scalar" },
+{ parameter = "band_42_knee", control = "db" },
+{ parameter = "band_42_makeup", control = "gain" },
+{ parameter = "band_42_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 43"
+power = "band_43_enabled"
+controls = [
+{ parameter = "band_43_present", control = "mode" },
+{ parameter = "band_43_threshold", control = "db" },
+{ parameter = "band_43_ratio", control = "scalar" },
+{ parameter = "band_43_attack", control = "scalar" },
+{ parameter = "band_43_release", control = "scalar" },
+{ parameter = "band_43_knee", control = "db" },
+{ parameter = "band_43_makeup", control = "gain" },
+{ parameter = "band_43_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 44"
+power = "band_44_enabled"
+controls = [
+{ parameter = "band_44_present", control = "mode" },
+{ parameter = "band_44_threshold", control = "db" },
+{ parameter = "band_44_ratio", control = "scalar" },
+{ parameter = "band_44_attack", control = "scalar" },
+{ parameter = "band_44_release", control = "scalar" },
+{ parameter = "band_44_knee", control = "db" },
+{ parameter = "band_44_makeup", control = "gain" },
+{ parameter = "band_44_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 45"
+power = "band_45_enabled"
+controls = [
+{ parameter = "band_45_present", control = "mode" },
+{ parameter = "band_45_threshold", control = "db" },
+{ parameter = "band_45_ratio", control = "scalar" },
+{ parameter = "band_45_attack", control = "scalar" },
+{ parameter = "band_45_release", control = "scalar" },
+{ parameter = "band_45_knee", control = "db" },
+{ parameter = "band_45_makeup", control = "gain" },
+{ parameter = "band_45_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 46"
+power = "band_46_enabled"
+controls = [
+{ parameter = "band_46_present", control = "mode" },
+{ parameter = "band_46_threshold", control = "db" },
+{ parameter = "band_46_ratio", control = "scalar" },
+{ parameter = "band_46_attack", control = "scalar" },
+{ parameter = "band_46_release", control = "scalar" },
+{ parameter = "band_46_knee", control = "db" },
+{ parameter = "band_46_makeup", control = "gain" },
+{ parameter = "band_46_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 47"
+power = "band_47_enabled"
+controls = [
+{ parameter = "band_47_present", control = "mode" },
+{ parameter = "band_47_threshold", control = "db" },
+{ parameter = "band_47_ratio", control = "scalar" },
+{ parameter = "band_47_attack", control = "scalar" },
+{ parameter = "band_47_release", control = "scalar" },
+{ parameter = "band_47_knee", control = "db" },
+{ parameter = "band_47_makeup", control = "gain" },
+{ parameter = "band_47_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 48"
+power = "band_48_enabled"
+controls = [
+{ parameter = "band_48_present", control = "mode" },
+{ parameter = "band_48_threshold", control = "db" },
+{ parameter = "band_48_ratio", control = "scalar" },
+{ parameter = "band_48_attack", control = "scalar" },
+{ parameter = "band_48_release", control = "scalar" },
+{ parameter = "band_48_knee", control = "db" },
+{ parameter = "band_48_makeup", control = "gain" },
+{ parameter = "band_48_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 49"
+power = "band_49_enabled"
+controls = [
+{ parameter = "band_49_present", control = "mode" },
+{ parameter = "band_49_threshold", control = "db" },
+{ parameter = "band_49_ratio", control = "scalar" },
+{ parameter = "band_49_attack", control = "scalar" },
+{ parameter = "band_49_release", control = "scalar" },
+{ parameter = "band_49_knee", control = "db" },
+{ parameter = "band_49_makeup", control = "gain" },
+{ parameter = "band_49_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 50"
+power = "band_50_enabled"
+controls = [
+{ parameter = "band_50_present", control = "mode" },
+{ parameter = "band_50_threshold", control = "db" },
+{ parameter = "band_50_ratio", control = "scalar" },
+{ parameter = "band_50_attack", control = "scalar" },
+{ parameter = "band_50_release", control = "scalar" },
+{ parameter = "band_50_knee", control = "db" },
+{ parameter = "band_50_makeup", control = "gain" },
+{ parameter = "band_50_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 51"
+power = "band_51_enabled"
+controls = [
+{ parameter = "band_51_present", control = "mode" },
+{ parameter = "band_51_threshold", control = "db" },
+{ parameter = "band_51_ratio", control = "scalar" },
+{ parameter = "band_51_attack", control = "scalar" },
+{ parameter = "band_51_release", control = "scalar" },
+{ parameter = "band_51_knee", control = "db" },
+{ parameter = "band_51_makeup", control = "gain" },
+{ parameter = "band_51_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 52"
+power = "band_52_enabled"
+controls = [
+{ parameter = "band_52_present", control = "mode" },
+{ parameter = "band_52_threshold", control = "db" },
+{ parameter = "band_52_ratio", control = "scalar" },
+{ parameter = "band_52_attack", control = "scalar" },
+{ parameter = "band_52_release", control = "scalar" },
+{ parameter = "band_52_knee", control = "db" },
+{ parameter = "band_52_makeup", control = "gain" },
+{ parameter = "band_52_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 53"
+power = "band_53_enabled"
+controls = [
+{ parameter = "band_53_present", control = "mode" },
+{ parameter = "band_53_threshold", control = "db" },
+{ parameter = "band_53_ratio", control = "scalar" },
+{ parameter = "band_53_attack", control = "scalar" },
+{ parameter = "band_53_release", control = "scalar" },
+{ parameter = "band_53_knee", control = "db" },
+{ parameter = "band_53_makeup", control = "gain" },
+{ parameter = "band_53_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 54"
+power = "band_54_enabled"
+controls = [
+{ parameter = "band_54_present", control = "mode" },
+{ parameter = "band_54_threshold", control = "db" },
+{ parameter = "band_54_ratio", control = "scalar" },
+{ parameter = "band_54_attack", control = "scalar" },
+{ parameter = "band_54_release", control = "scalar" },
+{ parameter = "band_54_knee", control = "db" },
+{ parameter = "band_54_makeup", control = "gain" },
+{ parameter = "band_54_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 55"
+power = "band_55_enabled"
+controls = [
+{ parameter = "band_55_present", control = "mode" },
+{ parameter = "band_55_threshold", control = "db" },
+{ parameter = "band_55_ratio", control = "scalar" },
+{ parameter = "band_55_attack", control = "scalar" },
+{ parameter = "band_55_release", control = "scalar" },
+{ parameter = "band_55_knee", control = "db" },
+{ parameter = "band_55_makeup", control = "gain" },
+{ parameter = "band_55_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 56"
+power = "band_56_enabled"
+controls = [
+{ parameter = "band_56_present", control = "mode" },
+{ parameter = "band_56_threshold", control = "db" },
+{ parameter = "band_56_ratio", control = "scalar" },
+{ parameter = "band_56_attack", control = "scalar" },
+{ parameter = "band_56_release", control = "scalar" },
+{ parameter = "band_56_knee", control = "db" },
+{ parameter = "band_56_makeup", control = "gain" },
+{ parameter = "band_56_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 57"
+power = "band_57_enabled"
+controls = [
+{ parameter = "band_57_present", control = "mode" },
+{ parameter = "band_57_threshold", control = "db" },
+{ parameter = "band_57_ratio", control = "scalar" },
+{ parameter = "band_57_attack", control = "scalar" },
+{ parameter = "band_57_release", control = "scalar" },
+{ parameter = "band_57_knee", control = "db" },
+{ parameter = "band_57_makeup", control = "gain" },
+{ parameter = "band_57_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 58"
+power = "band_58_enabled"
+controls = [
+{ parameter = "band_58_present", control = "mode" },
+{ parameter = "band_58_threshold", control = "db" },
+{ parameter = "band_58_ratio", control = "scalar" },
+{ parameter = "band_58_attack", control = "scalar" },
+{ parameter = "band_58_release", control = "scalar" },
+{ parameter = "band_58_knee", control = "db" },
+{ parameter = "band_58_makeup", control = "gain" },
+{ parameter = "band_58_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 59"
+power = "band_59_enabled"
+controls = [
+{ parameter = "band_59_present", control = "mode" },
+{ parameter = "band_59_threshold", control = "db" },
+{ parameter = "band_59_ratio", control = "scalar" },
+{ parameter = "band_59_attack", control = "scalar" },
+{ parameter = "band_59_release", control = "scalar" },
+{ parameter = "band_59_knee", control = "db" },
+{ parameter = "band_59_makeup", control = "gain" },
+{ parameter = "band_59_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 60"
+power = "band_60_enabled"
+controls = [
+{ parameter = "band_60_present", control = "mode" },
+{ parameter = "band_60_threshold", control = "db" },
+{ parameter = "band_60_ratio", control = "scalar" },
+{ parameter = "band_60_attack", control = "scalar" },
+{ parameter = "band_60_release", control = "scalar" },
+{ parameter = "band_60_knee", control = "db" },
+{ parameter = "band_60_makeup", control = "gain" },
+{ parameter = "band_60_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 61"
+power = "band_61_enabled"
+controls = [
+{ parameter = "band_61_present", control = "mode" },
+{ parameter = "band_61_threshold", control = "db" },
+{ parameter = "band_61_ratio", control = "scalar" },
+{ parameter = "band_61_attack", control = "scalar" },
+{ parameter = "band_61_release", control = "scalar" },
+{ parameter = "band_61_knee", control = "db" },
+{ parameter = "band_61_makeup", control = "gain" },
+{ parameter = "band_61_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 62"
+power = "band_62_enabled"
+controls = [
+{ parameter = "band_62_present", control = "mode" },
+{ parameter = "band_62_threshold", control = "db" },
+{ parameter = "band_62_ratio", control = "scalar" },
+{ parameter = "band_62_attack", control = "scalar" },
+{ parameter = "band_62_release", control = "scalar" },
+{ parameter = "band_62_knee", control = "db" },
+{ parameter = "band_62_makeup", control = "gain" },
+{ parameter = "band_62_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 63"
+power = "band_63_enabled"
+controls = [
+{ parameter = "band_63_present", control = "mode" },
+{ parameter = "band_63_threshold", control = "db" },
+{ parameter = "band_63_ratio", control = "scalar" },
+{ parameter = "band_63_attack", control = "scalar" },
+{ parameter = "band_63_release", control = "scalar" },
+{ parameter = "band_63_knee", control = "db" },
+{ parameter = "band_63_makeup", control = "gain" },
+{ parameter = "band_63_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Band 64"
+power = "band_64_enabled"
+controls = [
+{ parameter = "band_64_present", control = "mode" },
+{ parameter = "band_64_threshold", control = "db" },
+{ parameter = "band_64_ratio", control = "scalar" },
+{ parameter = "band_64_attack", control = "scalar" },
+{ parameter = "band_64_release", control = "scalar" },
+{ parameter = "band_64_knee", control = "db" },
+{ parameter = "band_64_makeup", control = "gain" },
+{ parameter = "band_64_detection", control = "mode" },
+]
+
+[[strips]]
+footer = "Out"
+controls = [
+{ parameter = "level", control = "gain" },
+{ parameter = "dry_wet", control = "percent" },
+]

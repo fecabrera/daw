@@ -250,6 +250,8 @@ unsafe extern "C" fn extension(plugin: *const clap_plugin, id: *const c_char) ->
             (&crate::audio::PORTS as *const clap_plugin_audio_ports).cast()
         } else if id == CLAP_EXT_LATENCY {
             (&LATENCY as *const clap_plugin_latency).cast()
+        } else if id == daw_plugin_clap::sys::ext::render::CLAP_EXT_RENDER {
+            (&RENDER as *const daw_plugin_clap::sys::ext::render::clap_plugin_render).cast()
         } else if id == CLAP_EXT_TAIL {
             (&TAIL as *const clap_plugin_tail).cast()
         } else {
@@ -280,3 +282,25 @@ unsafe extern "C" fn tail(plugin: *const clap_plugin) -> u32 {
 }
 static LATENCY: clap_plugin_latency = clap_plugin_latency { get: Some(latency) };
 static TAIL: clap_plugin_tail = clap_plugin_tail { get: Some(tail) };
+
+unsafe extern "C" fn hard_realtime(_: *const clap_plugin) -> bool {
+    false
+}
+unsafe extern "C" fn render_mode(plugin: *const clap_plugin, mode: i32) -> bool {
+    use daw_drive_plugin::BandAudition;
+    boundary(false, || {
+        let Some(i) = (unsafe { instance(plugin) }) else {
+            return false;
+        };
+        if !(0..=1).contains(&mode) {
+            return false;
+        }
+        i.editor.model.output_meter.set_audition_allowed(mode == 0);
+        true
+    })
+}
+static RENDER: daw_plugin_clap::sys::ext::render::clap_plugin_render =
+    daw_plugin_clap::sys::ext::render::clap_plugin_render {
+        has_hard_realtime_requirement: Some(hard_realtime),
+        set: Some(render_mode),
+    };

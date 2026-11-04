@@ -44,6 +44,9 @@ impl EffectSettings {
         match self {
             Self::MultibandEq(s) => vec_bytes(&s.bands) + vec_bytes(&s.modulations),
             Self::HarmonicLift(s) => vec_bytes(&s.modulations),
+            Self::MultibandCompressor(s) => {
+                vec_bytes(&s.bands) + vec_bytes(&s.modulations) + vec_bytes(&s.presentation)
+            }
             Self::Exciter(s) => vec_bytes(&s.bands) + vec_bytes(&s.modulations),
             Self::Eq3(s) => vec_bytes(&s.modulations),
             Self::Drive(s) => vec_bytes(&s.modulations),

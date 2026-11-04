@@ -70,6 +70,7 @@ pub(crate) struct EffectsUiBounds {
     pub ambient_reverb_units: Vec<crate::ambient_reverb_panel::Bounds>,
     pub loudness_units: Vec<crate::loudness_panel::Bounds>,
     pub plate_reverb_units: Vec<crate::plate_reverb_panel::Bounds>,
+    pub multiband_compressor_units: Vec<crate::multiband_compressor_panel::Bounds>,
     pub exciter_units: Vec<crate::exciter_panel::Bounds>,
 }
 
@@ -130,6 +131,7 @@ impl Default for EffectsUiBounds {
             ambient_reverb_units: vec![],
             loudness_units: vec![],
             plate_reverb_units: vec![],
+            multiband_compressor_units: vec![],
             exciter_units: vec![],
         }
     }
@@ -289,6 +291,7 @@ impl DawUi {
             self.effects_bounds.ambient_reverb_units.clear();
             self.effects_bounds.loudness_units.clear();
             self.effects_bounds.plate_reverb_units.clear();
+            self.effects_bounds.multiband_compressor_units.clear();
             self.effects_bounds.exciter_units.clear();
         }
         // Keep child fills below the workspace's shared top separator.
@@ -870,6 +873,56 @@ impl DawUi {
                                     .and_then(|o| o.effect_output_peak(effect.id)),
                             );
                             match &mut effect.unit {
+                                daw_core::EffectSettings::MultibandCompressor(settings) => {
+                                    let (bounds, header) = crate::multiband_compressor_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        |band| {
+                                            self.output.as_ref().and_then(|o| {
+                                                o.modulation_snapshot(band.map_or(
+                                                    daw_engine::ModulationTarget::Effect(effect.id),
+                                                    |band| {
+                                                        daw_engine::ModulationTarget::EffectBand {
+                                                            effect: effect.id,
+                                                            band,
+                                                        }
+                                                    },
+                                                ))
+                                            })
+                                        },
+                                        (effect.id, &mut self.exciter_audition.solos),
+                                        output_level,
+                                        |band| {
+                                            self.output.as_ref().map_or(0.0.into(), |o| {
+                                                meters::OutputLevel::new(
+                                                    o.eq_individual_band_level(effect.id, band),
+                                                    o.individual_band_level_peak(effect.id, band),
+                                                )
+                                            })
+                                        },
+                                        |band| {
+                                            self.output.as_ref().map_or(0.0.into(), |o| {
+                                                meters::GainReduction::from(
+                                                    o.multiband_compressor_reduction(
+                                                        effect.id, band,
+                                                    ),
+                                                )
+                                                .with_peak(o.individual_band_peak(effect.id, band))
+                                            })
+                                        },
+                                    );
+                                    if bounds.solo_changed
+                                        && let Some(output) = &self.output
+                                    {
+                                        output.set_exciter_solos(&self.exciter_audition.solos);
+                                    }
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.multiband_compressor_units.push(bounds);
+                                    (header, power)
+                                }
                                 daw_core::EffectSettings::Exciter(settings) => {
                                     let (bounds, header) = crate::exciter_panel::show(
                                         ui,
@@ -903,7 +956,7 @@ impl DawUi {
                                     (header, power)
                                 }
                                 daw_core::EffectSettings::MultibandEq(settings) => {
-                                    let (bounds, header) = crate::multiband_eq_panel::show(
+                                    let (bounds, header) = crate::multiband_eq_panel::show_audition(
                                         ui,
                                         settings,
                                         (compact, height),
@@ -924,12 +977,21 @@ impl DawUi {
                                             })
                                         },
                                         |band| {
-                                            self.output.as_ref().map_or(0.0, |o| {
-                                                o.eq_individual_band_level(effect.id, band)
+                                            self.output.as_ref().map_or(0.0.into(), |o| {
+                                                meters::OutputLevel::new(
+                                                    o.eq_individual_band_level(effect.id, band),
+                                                    o.individual_band_level_peak(effect.id, band),
+                                                )
                                             })
                                         },
                                         output_level,
+                                        (effect.id, &mut self.exciter_audition.solos),
                                     );
+                                    if bounds.solo_changed
+                                        && let Some(output) = &self.output
+                                    {
+                                        output.set_exciter_solos(&self.exciter_audition.solos);
+                                    }
                                     let power = bounds.power;
                                     #[cfg(test)]
                                     self.effects_bounds.multiband_eq_units.push(bounds);

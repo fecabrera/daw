@@ -56,7 +56,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 19] = [
+pub(super) const ENTRIES: [Entry; 20] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -170,6 +170,12 @@ pub(super) const ENTRIES: [Entry; 19] = [
         "Loudness Meter",
         Category::Analysis,
         daw_core::EffectInstance::loudness,
+    ),
+    Entry::new(
+        daw_core::MULTIBAND_COMPRESSOR_TYPE_ID,
+        "Multiband Compressor",
+        Category::Dynamics,
+        daw_core::EffectInstance::multiband_compressor,
     ),
 ];
 

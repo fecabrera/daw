@@ -107,10 +107,15 @@ pub struct OutputLevel<'a> {
     current: f32,
     peak: Option<&'a daw_unit_core::PeakHold>,
     reset_request: Option<&'a std::sync::atomic::AtomicBool>,
+    reset_mask: Option<(&'a std::sync::atomic::AtomicU64, u64)>,
 }
 impl<'a> OutputLevel<'a> {
     pub fn with_reset_request(mut self, request: &'a std::sync::atomic::AtomicBool) -> Self {
         self.reset_request = Some(request);
+        self
+    }
+    pub fn with_reset_mask(mut self, request: &'a std::sync::atomic::AtomicU64, mask: u64) -> Self {
+        self.reset_mask = Some((request, mask));
         self
     }
     pub fn new(current: f32, peak: Option<&'a daw_unit_core::PeakHold>) -> Self {
@@ -118,6 +123,7 @@ impl<'a> OutputLevel<'a> {
             current,
             peak,
             reset_request: None,
+            reset_mask: None,
         }
     }
 }
@@ -145,7 +151,19 @@ pub fn effect_output_level<'a>(
     reading: impl Into<OutputLevel<'a>>,
     enabled: bool,
 ) -> Rect {
-    let reading = reading.into();
+    let rail = unit_monitor_rail(strip, margin);
+    band_output_level(ui, rail, reading.into(), enabled, true, "Output");
+    rail
+}
+/// The standard level rail and held peak, with inactive-band colors independent of unit power.
+pub fn band_output_level(
+    ui: &mut Ui,
+    rail: Rect,
+    reading: OutputLevel<'_>,
+    enabled: bool,
+    band_enabled: bool,
+    name: &str,
+) -> Response {
     if !enabled && let Some(peak) = reading.peak {
         peak.reset_peak();
     }
@@ -156,17 +174,20 @@ pub fn effect_output_level<'a>(
         0.0
     };
     let held = unit_reading(enabled, reading.peak.map_or(0.0, |p| p.peak()));
-    let rail = unit_monitor_rail(strip, margin);
     let palette = theme::palette(ui.ctx());
     horizontal_rail(
         ui,
         rail,
         position_for_peak(current),
-        if current > 1.0 {
-            palette.error
-        } else {
-            palette.meter
-        },
+        band_color(
+            ui,
+            band_enabled,
+            if current > 1.0 {
+                palette.error
+            } else {
+                palette.meter
+            },
+        ),
     );
     if held > 0.0 {
         peak_marker(
@@ -175,7 +196,11 @@ pub fn effect_output_level<'a>(
             rail.left() + rail.width() * position_for_peak(held),
         );
     }
-    let response = ui.interact(rail, ui.id().with("effect-output-level"), Sense::click());
+    let response = ui.interact(
+        rail,
+        ui.id().with(("effect-output-level", name)),
+        Sense::click(),
+    );
     if enabled
         && response.clicked_by(egui::PointerButton::Primary)
         && ui.is_enabled()
@@ -187,6 +212,9 @@ pub fn effect_output_level<'a>(
         if let Some(request) = reading.reset_request {
             request.store(true, std::sync::atomic::Ordering::Release);
         }
+        if let Some((request, mask)) = reading.reset_mask {
+            request.fetch_or(mask, std::sync::atomic::Ordering::Release);
+        }
         ui.ctx().request_repaint();
     }
     let level = peak_text(current);
@@ -195,15 +223,14 @@ pub fn effect_output_level<'a>(
         let mut info = egui::WidgetInfo::labeled(
             egui::WidgetType::Button,
             ui.is_enabled(),
-            format!("Output level: {level} dBFS. Held peak: {peak} dBFS. Click to reset peak"),
+            format!("{name} level: {level} dBFS. Held peak: {peak} dBFS. Click to reset peak"),
         );
         if current > 0.0 {
             info.value = Some(f64::from(20.0 * current.log10()));
         }
         info
     });
-    response.on_hover_text(format!("Output level: {level} dBFS. Held peak: {peak} dBFS. Click to reset peak. Display range −60 to 0 dBFS."));
-    rail
+    response.on_hover_text(format!("{name} level: {level} dBFS. Held peak: {peak} dBFS. Click to reset peak. Display range −60 to 0 dBFS."))
 }
 
 #[cfg(test)]
@@ -428,6 +455,11 @@ impl<'a> GainReduction<'a> {
             enabled: true,
         }
     }
+    /// Use a held reading from a repeated-band telemetry cell.
+    pub fn with_peak(mut self, peak: Option<&'a daw_unit_core::PeakHold>) -> Self {
+        self.peak = peak;
+        self
+    }
     pub fn for_unit(mut self, enabled: bool) -> Self {
         self.current_db = unit_reading(enabled, self.current_db);
         self.enabled = enabled;
@@ -542,9 +574,12 @@ impl From<f32> for GainReduction<'_> {
 
 /// Compression before Dry/Wet. Click resets only the held maximum.
 pub fn gain_reduction(ui: &mut Ui, reading: GainReduction<'_>) -> Response {
+    gain_reduction_sized(ui, reading, crate::knobs::CHOICE_SIZE)
+}
+/// Shared reduction monitor with the compact control footprint.
+pub fn gain_reduction_sized(ui: &mut Ui, reading: GainReduction<'_>, size: f32) -> Response {
     let db = reading.current();
-    let (rect, response) =
-        ui.allocate_exact_size(Vec2::splat(crate::knobs::CHOICE_SIZE), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     let response = reading.interact(ui, response, "Gain reduction before Dry/Wet");
     let palette = theme::palette(ui.ctx());
     let painter = ui.painter();
@@ -566,7 +601,7 @@ pub fn gain_reduction(ui: &mut Ui, reading: GainReduction<'_>) -> Response {
         } else {
             "0.0 dB".into()
         },
-        crate::fonts::numeric(9.0),
+        crate::fonts::numeric(9.0 * size / crate::knobs::CHOICE_SIZE),
         palette.text,
     );
     for (position, align, label) in [
@@ -578,7 +613,7 @@ pub fn gain_reduction(ui: &mut Ui, reading: GainReduction<'_>) -> Response {
             position,
             align,
             label,
-            crate::fonts::numeric(9.0),
+            crate::fonts::numeric(9.0 * size / crate::knobs::CHOICE_SIZE),
             palette.secondary,
         );
     }
@@ -593,4 +628,65 @@ pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reading: GainReduction<'_>) 
     horizontal_rail(ui, rail, (db / 24.0).min(1.0), theme::accent(ui.ctx()));
     reading.paint_peak(ui, rail, rail.left(), rail.width());
     response
+}
+
+#[cfg(test)]
+mod band_output_tests {
+    use super::*;
+    use daw_unit_core::{BandMeter, MeterStorage};
+    #[test]
+    fn band_level_hold_uses_shared_marker_grey_disabled_color_and_independent_click_reset() {
+        let ctx = egui::Context::default();
+        crate::fonts::configure(&ctx);
+        theme::configure(&ctx);
+        let meter = BandMeter::<3>::default();
+        meter.store([0.8, 6.0, 0.0]);
+        meter.initialize([0.1, 3.0, 0.0]);
+        let requests = std::sync::atomic::AtomicU64::new(0);
+        let rail = Rect::from_min_size(egui::pos2(8.0, 2.0), egui::vec2(145.0, 4.0));
+        for phase in 0..3 {
+            let events = if phase == 0 {
+                vec![]
+            } else {
+                vec![
+                    egui::Event::PointerMoved(rail.center()),
+                    egui::Event::PointerButton {
+                        pos: rail.center(),
+                        button: egui::PointerButton::Primary,
+                        pressed: phase == 1,
+                        modifiers: Default::default(),
+                    },
+                ]
+            };
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(200.0, 100.0))),
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    band_output_level(
+                        ui,
+                        rail,
+                        OutputLevel::new(meter.readings()[0], Some(&meter.boost_peaks()[0]))
+                            .with_reset_mask(&requests, 1 << 63),
+                        true,
+                        false,
+                        "Band 64",
+                    );
+                },
+            );
+            if phase == 0 {
+                let expected = rail.left() + rail.width() * position_for_peak(0.8);
+                assert!(out.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::LineSegment{points,stroke} if (points[0].x-expected).abs()<0.01 && stroke.color==theme::palette(&ctx).secondary)));
+                assert!(out.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.fill==theme::palette(&ctx).secondary)));
+            }
+            out.textures_delta.clear();
+        }
+        assert_eq!(meter.boost_peaks()[0].peak(), 0.0);
+        assert_eq!(meter.readings(), [0.1, 3.0, 0.0]);
+        assert_eq!(meter.boost_peaks()[1].peak(), 6.0);
+        assert_eq!(requests.load(std::sync::atomic::Ordering::Relaxed), 1 << 63);
+    }
 }

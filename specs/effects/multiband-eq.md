@@ -8,7 +8,7 @@ Multiband EQ is a separate effect registered once in `effects_catalog::ENTRIES` 
 
 Each band has a stable UUID, power, Mode, Frequency, Gain, and Q. There is no fixed band limit. Empty band lists are valid. Defaults are one enabled Bell band at 1 kHz, 0 dB, Q = 1/√2, with unit power on and Output Gain at 0 dB. Band Gain spans −24…+24 dB, Frequency 20…20,000 Hz, and Q 0.1…10. Output Gain uses the shared silence…+12 dB control. Band power bypasses its filter; it does not cut a frequency range.
 
-Each band occupies one 90-point strip, following the Oscillator layout. Mode, Frequency, Gain, and Q run vertically. Their 42-point knob faces use the shared knob's display scale, including diagrams, text, value arcs, and modulation markers. Three-point vertical gaps keep all four controls and the standard centered Power/“Band N” footer inside the existing expanded lane height. Scaling changes painting and allocated bounds while retaining shared drag, keyboard, reset, focus, and accessibility behavior. Mode uses `KnobSpec::diagrams` with six filter-response diagrams and the accent highlight on the selected response. Gain is disabled for Low pass, High pass, and Notch while retaining its value. Right-click a knob or footer power button for Remove band. The shared Oscillator Plus strip follows the bands: an 18-point circular control with the shared panel margin on both sides, for 34 points total at the current margin. The final audio strip is Out, with the normal output gain knob; shared modulation connection strips follow it when open. Oscillator and Multiband EQ use the same `panels::unit_strip` and `panels::unit_add_strip` containers, padding, widths, and add-strip interaction. Band footers use `rows::power_label`; Out uses `rows::unit_label`. Dividers and compact controls retain the shared panel design.
+Each band occupies one 90-point strip, following the Oscillator layout. Mode, Frequency, Gain, and Q run vertically. Their 42-point knob faces use the shared knob's display scale, including diagrams, text, value arcs, and modulation markers. Three-point vertical gaps keep all four controls and the standard centered Power/“Band N” footer inside the existing expanded lane height. Scaling changes painting and allocated bounds while retaining shared drag, keyboard, reset, focus, and accessibility behavior. Mode uses `KnobSpec::diagrams` with six filter-response diagrams and the accent highlight on the selected response. Gain is disabled for Low pass, High pass, and Notch while retaining its value. Right-click a band or its controls for Enable band/Disable band, checked Solo, and Remove band. Reuse `menus::band_context_menu` with Multiband Compressor, retaining EQ’s ability to remove its last band. The shared Oscillator Plus strip follows the bands: an 18-point circular control with the shared panel margin on both sides, for 34 points total at the current margin. The final audio strip is Out, with the normal output gain knob; shared modulation connection strips follow it when open. Oscillator and Multiband EQ use the same `panels::unit_strip` and `panels::unit_add_strip` containers, padding, widths, and add-strip interaction. Band footers use `rows::power_label`; Out uses `rows::unit_label`. Dividers and compact controls retain the shared panel design.
 
 Band addition and removal edit cloned settings through the existing effect-chain transaction. Undo/redo, failed preparation, and cancellation follow session history and worker publication. Removing a band removes only its targeted routes. Duplication assigns fresh effect, band, and route IDs and remaps each copied route to its copied band.
 
@@ -47,3 +47,37 @@ Use the [standard effect Out-strip meter](../architecture/modular-audio-units.md
 ## Plugin delivery
 
 This unit also has independent CLAP/VST3 previews. The [shared build contract](../architecture/all-effect-plugin-builds.md) defines identity, state, automation, timing, meters, packaging, CI, and acceptance limits.
+
+## Temporary band Solo
+
+Reuse `rows::band_solo` beside the bottom band power label, matching Multiband
+Compressor. Compact 90-point EQ footers use B1, B2, etc. to fit the power and S
+buttons without changing lane height. The accessibility labels retain Band N.
+The live-only binding and offline-mode rules follow [Multiband Compressor](multiband-compressor.md#temporary-solo).
+
+Solo uses separate EQ and rejection histories. Bell/Notch reject a notch at the
+effective Frequency/Q; low-frequency modes reject a high-pass response, and
+high-frequency modes reject a low-pass response. Apply the selected bands' EQ
+responses, then subtract the serial complementary rejection result to audition
+the union. Band power bypasses its EQ response without disabling isolation.
+Unselected EQ responses do not enter the audition path. Output gain still applies.
+Use effective modulated Frequency/Q and the existing mode/power weights. Fade
+selection and whole audition over 5 ms. Normal serial histories continue running.
+No Solo handles enter project state, plugin parameters, presets, export processors
+or detached clones. Preserve the existing fixed-slot suspension when Solo is idle.
+
+## Held band output peaks
+
+Bind each band's `LevelMonitor` to a prepared `BandMeter<3>` peak handle by its
+stable effect/band key. Retain the raw-current attachment API for existing users.
+Capture held peaks from actual samples, independent of the 300 ms current-level
+release. Use `meters::band_output_level` for shared marker painting, readout,
+accessibility, click reset, unit bypass masking and disabled-band colors. Keep
+rail geometry unchanged and exclude meter presses from strip reordering. Holds
+remain monitor state, outside presets and project/history edits.
+
+Native buses and CLAP share the prepared handles. VST3 appends 64 held values to
+the previous 77-value telemetry, for 141 values, and reuses the shared per-band
+level reset requests. Resetting one band must leave other bands and Out unchanged;
+unit bypass clears all band readings and holds. Preparation, inheritance and
+current-level release must not create held peaks.

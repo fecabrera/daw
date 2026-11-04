@@ -5618,6 +5618,7 @@ mod tests {
     mod midi_pattern_gestures;
     mod mixer;
     mod modulation_lanes;
+    mod multiband_compressor;
     mod multiband_eq_reorder;
     mod placement_overwrite;
     mod project_settings;
@@ -13174,4 +13175,5 @@ mod tests {
     }
 }
 
+mod multiband_compressor_panel;
 mod multiband_eq_panel;

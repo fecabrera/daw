@@ -22,10 +22,16 @@ impl DawUi {
             self.exciter_audition.project = Some(self.session.project.project_id);
         }
         self.exciter_audition.solos.retain(|(effect, band)| {
-            self.session
-                .project
-                .all_effects()
-                .any(|e| e.id == *effect && e.unit.band_ids().any(|b| b == *band))
+            self.session.project.all_effects().any(|e| {
+                e.id == *effect
+                    && e.unit.band_ids().any(|b| b == *band)
+                    && match &e.unit {
+                        daw_core::EffectSettings::MultibandEq(s) => s.enabled,
+                        daw_core::EffectSettings::MultibandCompressor(s) => s.enabled,
+                        daw_core::EffectSettings::Exciter(s) => s.enabled,
+                        _ => false,
+                    }
+            })
         });
         if let Some(output) = &self.output {
             output.set_exciter_solos(&self.exciter_audition.solos);

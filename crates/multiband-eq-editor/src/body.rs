@@ -74,6 +74,7 @@ pub fn show(
     ui.data_mut(|data| data.insert_temp(id, slots));
     result
 }
+#[cfg(test)]
 pub fn render(
     ui: &mut Ui,
     settings: &mut MultibandEqSettings,
@@ -81,11 +82,32 @@ pub fn render(
     slots: &mut u64,
     levels: &[f32; 64],
 ) -> Bounds {
+    render_audition(
+        ui,
+        settings,
+        level,
+        slots,
+        &levels.map(Into::into),
+        &std::array::from_fn(|_| Default::default()),
+    )
+}
+pub fn render_audition(
+    ui: &mut Ui,
+    settings: &mut MultibandEqSettings,
+    level: meters::OutputLevel<'_>,
+    slots: &mut u64,
+    levels: &[meters::OutputLevel<'_>; 64],
+    solos: &[std::sync::Arc<std::sync::atomic::AtomicBool>; 64],
+) -> Bounds {
     let owner = ui.make_persistent_id("eq-slot-order");
     let reordering = daw_unit_ui::strip_reorder::active(ui, owner);
     let before = PluginState::from_settings(settings).ok();
     *slots = visible(settings, *slots);
     let (mut view, indices) = self::view(settings, *slots);
+    let mut selected: Vec<_> = indices
+        .iter()
+        .map(|i| solos[*i].load(std::sync::atomic::Ordering::Relaxed))
+        .collect();
     let original = view.bands.clone();
     let active_levels: Vec<_> = indices.iter().map(|i| levels[*i]).collect();
     let (b, captured) = control_capture::scope(ui, |ui| {
@@ -99,6 +121,7 @@ pub fn render(
                         &mut view,
                         (false, unit_control_height()),
                         multiband_eq::Controls {
+                            solos: &mut selected,
                             add_enabled: indices.len() < 64,
                             markers: &[],
                             levels: &active_levels,
@@ -112,6 +135,10 @@ pub fn render(
             .inner
     });
     for (local, slot) in indices.iter().copied().enumerate() {
+        solos[slot].store(
+            selected[local] && settings.enabled,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         *settings
             .bands
             .iter_mut()
@@ -127,7 +154,10 @@ pub fn render(
         .collect();
     for (local, response) in b.band_responses.iter().enumerate() {
         let control = ui.input(|i| i.pointer.press_origin()).is_some_and(|p| {
-            b.power[local].contains(p) || b.knobs[local].iter().any(|r| r.contains(p))
+            b.meters.get(local).is_some_and(|r| r.contains(p))
+                || b.solo[local].contains(p)
+                || b.power[local].contains(p)
+                || b.knobs[local].iter().any(|r| r.contains(p))
         });
         if !control {
             daw_unit_ui::strip_reorder::arm(
@@ -171,6 +201,7 @@ pub fn render(
     if let Some(local) = b.remove {
         let slot = indices[local];
         *slots &= !(1 << slot);
+        solos[slot].store(false, std::sync::atomic::Ordering::Relaxed);
         let index = settings
             .bands
             .iter()

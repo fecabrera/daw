@@ -72,3 +72,5 @@ pub fn tail_frames(rate: u32) -> u32 {
 pub const CLAP_FEATURE: &std::ffi::CStr = c"reverb";
 pub const VST3_CATEGORIES: &str = "Fx|Reverb|Stereo";
 pub const USES_TRANSPORT: bool = false;
+
+pub use daw_unit_core::BandAudition;

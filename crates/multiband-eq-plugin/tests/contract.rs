@@ -17,7 +17,7 @@ fn all_fixed_band_levels_survive_meter_transport_and_clear_on_bypass() {
         processor.process_sample([v, -v]);
     }
     let values = plugin::meter_values(&meter);
-    assert_eq!(values.len(), 77);
+    assert_eq!(values.len(), 141);
     assert!(
         values[13] > 0.0 && values[13 + 63] > 0.0,
         "first and final band must publish levels"
@@ -88,4 +88,43 @@ fn prepared_slot_update_rejects_wrong_identity_or_index_without_changing_audio()
             expected.process_sample([0.2, -0.1])
         );
     }
+}
+
+#[test]
+fn band_holds_capture_raw_samples_and_reset_without_affecting_other_bands_or_out() {
+    use daw_unit_core::BandAudition;
+    use std::sync::Arc;
+    let state = plugin::PluginState::default();
+    let mut processor = plugin::Processor::new(48000.0, 1, 512, state).unwrap();
+    let meter = Arc::new(plugin::OutputMeter::default());
+    processor.set_output_meter(meter.clone());
+    processor.process_sample([0.8, -0.9]);
+    for _ in 0..64 {
+        processor.process_sample([0.0; 2]);
+    }
+    assert_eq!(meter.eq_bands[0].boost_peaks()[0].peak(), 0.9);
+    assert!(meter.eq_bands[0].readings()[0] < 0.9);
+    assert!(meter.reset_band_level_peak(0));
+    processor.process_sample([0.0; 2]);
+    assert_eq!(
+        meter.eq_bands[0].boost_peaks()[0].peak(),
+        0.0,
+        "release smoothing must not repopulate the hold"
+    );
+    assert_eq!(meter.eq_bands[63].boost_peaks()[0].peak(), 0.9);
+    assert_eq!(meter.boost_peaks()[0].peak(), 0.9);
+    let wire = plugin::meter_values(&meter);
+    let receiver = plugin::OutputMeter::default();
+    plugin::receive_meter(&receiver, wire.map(|v| v as f32));
+    assert_eq!(receiver.eq_bands[63].boost_peaks()[0].peak(), 0.9);
+    assert_eq!(receiver.eq_bands[0].boost_peaks()[0].peak(), 0.0);
+    assert!(!receiver.reset_band_level_peak(64));
+    processor.set(plugin::Parameter::Bypass, 1.0).unwrap();
+    assert!(
+        meter
+            .eq_bands
+            .iter()
+            .all(|m| m.boost_peaks()[0].peak() == 0.0)
+    );
+    assert_eq!(processor.state().get(plugin::Parameter::Bypass), 1.0);
 }

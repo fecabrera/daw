@@ -80,3 +80,5 @@ pub fn tail_frames(rate: u32) -> u32 {
 pub const CLAP_FEATURE: &std::ffi::CStr = c"distortion";
 pub const VST3_CATEGORIES: &str = "Fx|Distortion|Stereo";
 pub const USES_TRANSPORT: bool = false;
+
+pub use daw_unit_core::BandAudition;

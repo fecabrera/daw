@@ -18,12 +18,16 @@ pub(crate) enum Kind {
     Request,
     Reading,
     Reset,
+    Solo,
+    BandReset,
 }
 impl Kind {
     fn id(self) -> &'static CStr {
         match self {
             Self::Request => c"daw.output-meter.request.v1",
             Self::Reading => c"daw.output-meter.reading.v1",
+            Self::BandReset => c"daw.band-peak.reset.v1",
+            Self::Solo => c"daw.band-solo.v1",
             Self::Reset => c"daw.output-meter.reset.v1",
         }
     }
@@ -92,9 +96,15 @@ impl IMessageTrait for Message {
         }
         // SAFETY: SDK supplies a live NUL-terminated message ID.
         self.kind.set(
-            [Kind::Request, Kind::Reading, Kind::Reset]
-                .into_iter()
-                .find(|k| k.id() == unsafe { CStr::from_ptr(id) }),
+            [
+                Kind::Request,
+                Kind::Reading,
+                Kind::Reset,
+                Kind::Solo,
+                Kind::BandReset,
+            ]
+            .into_iter()
+            .find(|k| k.id() == unsafe { CStr::from_ptr(id) }),
         );
     }
     unsafe fn getAttributes(&self) -> *mut IAttributeList {
@@ -184,11 +194,18 @@ pub unsafe fn read(message: *mut IMessage) -> Option<(Kind, [f32; METER_VALUES])
     if id.is_null() {
         return None;
     }
-    let kind = [Kind::Request, Kind::Reading, Kind::Reset]
-        .into_iter()
-        .find(|k| k.id() == unsafe { CStr::from_ptr(id) })?;
+    let kind = [
+        Kind::Request,
+        Kind::Reading,
+        Kind::Reset,
+        Kind::Solo,
+        Kind::BandReset,
+    ]
+    .into_iter()
+    .find(|k| k.id() == unsafe { CStr::from_ptr(id) })?;
     let mut values = [0.0; METER_VALUES];
-    if kind == Kind::Reading || kind == Kind::Reset {
+    if kind == Kind::Reading || kind == Kind::Reset || kind == Kind::Solo || kind == Kind::BandReset
+    {
         let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }?;
         for (index, value) in values.iter_mut().enumerate() {
             let key = attribute_key(index);

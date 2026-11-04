@@ -593,3 +593,25 @@ mod prepared_level_binding_tests {
         assert_eq!(old.readings(), [0.0; 3]);
     }
 }
+
+/// Optional transient band audition controls shared by native plugin adapters.
+/// These atomics are not parameters and must never enter serialized state.
+pub trait BandAudition {
+    fn band_level_reset_requests(&self) -> Option<&std::sync::atomic::AtomicU64> {
+        None
+    }
+    fn reset_band_level_peak(&self, _index: usize) -> bool {
+        false
+    }
+    fn band_reset_requests(&self) -> Option<&std::sync::atomic::AtomicU64> {
+        None
+    }
+    fn reset_band_peak(&self, _index: usize) -> bool {
+        false
+    }
+    fn set_audition_allowed(&self, _allowed: bool) {}
+    fn band_solos(&self) -> &[Arc<std::sync::atomic::AtomicBool>] {
+        &[]
+    }
+}
+impl<const N: usize> BandAudition for BandMeter<N> {}

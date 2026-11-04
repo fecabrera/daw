@@ -42,6 +42,7 @@ jobs:
           - { slug: loudness, name: Loudness-Meter, library: daw_loudness }
           - { slug: chorus, name: Chorus, library: daw_chorus }
           - { slug: ott, name: OTT, library: daw_ott }
+          - { slug: multiband-compressor, name: Multiband Compressor, library: daw_multiband_compressor }
           - { slug: multiband-eq, name: Multiband EQ, library: daw_multiband_eq }
         platform: [Windows x64, macOS arm64, Linux x64]
         include:

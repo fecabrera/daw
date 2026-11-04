@@ -1736,6 +1736,7 @@ dependencies = [
  "daw-loudness",
  "daw-macro",
  "daw-media",
+ "daw-multiband-compressor",
  "daw-noise",
  "daw-oscillator",
  "daw-ott",
@@ -2100,6 +2101,68 @@ dependencies = [
  "symphonia",
  "thiserror 2.0.21",
  "timestretch",
+]
+
+[[package]]
+name = "daw-multiband-compressor"
+version = "0.1.0"
+dependencies = [
+ "daw-compressor",
+ "daw-filter",
+ "daw-unit-core",
+]
+
+[[package]]
+name = "daw-multiband-compressor-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-multiband-compressor",
+ "daw-multiband-compressor-editor",
+ "daw-multiband-compressor-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-multiband-compressor-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-multiband-compressor-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-multiband-compressor-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-multiband-compressor",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+ "uuid",
+]
+
+[[package]]
+name = "daw-multiband-compressor-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-multiband-compressor",
+ "daw-multiband-compressor-editor",
+ "daw-multiband-compressor-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]
