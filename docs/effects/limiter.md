@@ -2,6 +2,8 @@
 
 Limiter controls peaks toward a chosen output Ceiling. Add it to an audio/MIDI track or Master from Dynamics in the Effects catalog.
 
+Use **Limiter** to reduce peaks toward a chosen output ceiling, with sample-peak or true-peak control.
+
 ## Controls
 
 | Setting | Default | Accepted range/options |

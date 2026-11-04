@@ -2,6 +2,8 @@
 
 Harmonic Lift adds harmonics in six overlapping frequency regions, then applies global drive and linked stereo maximization. Add it from **Effects → Distortion → Harmonic Lift**. It is also available as a [CLAP or VST3 preview](plugins.md).
 
+Use **Harmonic Lift** for broad harmonic reinforcement, density and dynamics shaping in one unit.
+
 The panel has nine strips: Input, Low, Low Mid, Mid, High Mid, Presence, High, Maximizer, and Out. The six frequency regions have fixed roles. They cannot be added, removed, or reordered.
 
 ## Input and branches

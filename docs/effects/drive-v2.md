@@ -2,6 +2,8 @@
 
 Drive v2 adds separate input gain, a Color power button, Dry/Wet, and Soft, Hard and Tube clipping. Add it from Distortion in the Effects catalog. The original Drive remains available and existing projects keep it.
 
+Use **Drive v2** to choose between Soft, Hard and Tube distortion, shape its tone and blend it with the dry signal.
+
 ## Controls
 
 | Strip | Control | Range or choices | Default |

@@ -4,6 +4,8 @@ Add **Multiband Compressor** from Dynamics. It divides stereo audio into adjacen
 frequency ranges and compresses each range independently. It starts with three
 bands, split at 200 Hz and 2 kHz.
 
+Use **Multiband Compressor** to control dynamics in separate frequency ranges, with independent compression settings and band audition.
+
 **Split** sets the boundaries between ranges. The lowest range extends to DC;
 the highest extends to Nyquist. Boundaries cannot cross in the DAW. Scroll the
 Split strip vertically when it contains more controls than fit.

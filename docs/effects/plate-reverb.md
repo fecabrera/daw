@@ -4,6 +4,8 @@ Plate Reverb adds a dense stereo tail, with input filtering, a gated option and 
 optional Drive stage on the wet signal. Add it from **Reverb** in the Effects catalog. It works
 on tracks, groups, instrument layers and buses, beat instruments, and Master.
 
+Use **Plate Reverb** to add a dense stereo tail, give a sound depth or create a short gated reverb.
+
 | Strip | Control | Range | Default |
 | --- | --- | --- | --- |
 | Options | Quality | ECO / HQ | ECO |

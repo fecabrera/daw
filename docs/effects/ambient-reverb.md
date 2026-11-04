@@ -4,6 +4,8 @@ Ambient Reverb adds a diffuse stereo space with an evolving texture and long
 feedback decay. Add it from **Reverb** in the Effects catalog. It is available on
 tracks, groups, instrument layers and buses, beat instruments, and Master.
 
+Use **Ambient Reverb** for spacious, evolving textures and long reverb tails.
+
 | Strip | Control | Range | Default |
 | --- | --- | --- | --- |
 | Options | Quality | ECO / HQ | ECO |

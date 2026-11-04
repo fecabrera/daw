@@ -2,6 +2,8 @@
 
 Stereo Spread widens audio by distributing successive frequency bands toward alternating left and right channels. It works with mono and stereo recordings. Add it to an audio/MIDI track or Master from Imaging in the Effects catalog in Timeline or Instrument.
 
+Use **Stereo Spread** to widen mono or stereo audio across a chosen frequency range while retaining its mono sum.
+
 ## Controls
 
 | Strip | Control | Range | Default |

@@ -2,6 +2,8 @@
 
 Add **Multiband EQ** from **Effects > EQ & Filters** to a track, instrument layer, Output, or Master. It starts with one neutral Bell band. The existing 3-band EQ remains available separately.
 
+Use **Multiband EQ** for targeted tonal corrections, resonant cuts and boosts, and flexible frequency shaping.
+
 The band, **+**, and **Out** strips follow the Oscillator layout. Each band keeps its four smaller knobs in one column.
 
 Click **+** to add a band. Right-click a band or its controls for **Enable band**/**Disable band**, checked **Solo**, and **Remove band**. There is no fixed band-count limit; more bands use more processing time. You can remove every band and use only Output Gain.

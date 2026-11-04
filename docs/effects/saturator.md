@@ -2,6 +2,8 @@
 
 Saturator changes the shape of a signal to add harmonics and control peaks. Add it from **Distortion → Saturator** to a track, Master, instrument layer, or Output.
 
+Use **Saturator** to add harmonic color and reshape peaks with a choice of saturation curves and clipping modes.
+
 ## Controls
 
 | Control | Range/options | Default | Behavior |

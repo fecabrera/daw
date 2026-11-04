@@ -2,6 +2,8 @@
 
 Direction Mixer controls stereo direction and width and decodes Mid/Side recordings. Add it to an audio/MIDI track or Master from Imaging in the Effects catalog in Timeline or Instrument.
 
+Use **Direction Mixer** to position the stereo image, adjust its width or decode a Mid/Side recording.
+
 ## Controls
 
 | Control | Range/options | Default |

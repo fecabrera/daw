@@ -2,6 +2,8 @@
 
 Compressor reduces loud passages according to Threshold and Ratio. Add it to an audio/MIDI track or Master from Dynamics in the Effects catalog.
 
+Use **Compressor** to control loud passages, shape transients and adjust the dynamic range of the full signal.
+
 ## Controls
 
 | Control | Range | Default |

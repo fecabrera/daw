@@ -2,6 +2,8 @@
 
 Bitcrusher adds digital distortion by reducing amplitude precision and holding samples longer. Add it to an audio/MIDI track or Master from Distortion in the Effects catalog in Timeline or Instrument.
 
+Use **Bitcrusher** for coarse digital distortion, stepped textures and metallic aliasing.
+
 ## Controls
 
 | Strip | Control | Range | Default |

@@ -5,6 +5,8 @@ group, instrument bus or Master to measure the audio at that position in the
 chain. The meter passes audio through unchanged. It adds no audio delay or tail.
 It is also available as a stereo CLAP or VST3 plugin.
 
+Use **Loudness Meter** to check loudness, true peaks and dynamics, and see how loudness changes over time.
+
 | Strip | Readings or controls |
 | --- | --- |
 | Options | Target, TP quality and Clock |

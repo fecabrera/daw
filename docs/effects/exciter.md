@@ -2,6 +2,8 @@
 
 Multiband Exciter adds harmonics to selected frequency bands. Add it from **Distortion → Multiband Exciter** to a track, group, Master, instrument layer, or Output.
 
+Use **Multiband Exciter** when you need to isolate a range, choose its saturation character and balance it independently.
+
 ## Frequency ranges
 
 Four bands start at **below 150 Hz**, **150 Hz–2 kHz**, **2–6 kHz**, and **above 6 kHz**. The first band includes the lowest frequencies; the last extends to the project's Nyquist frequency, which is half its sample rate.

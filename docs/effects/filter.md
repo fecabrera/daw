@@ -4,6 +4,8 @@ Filter shapes stereo audio with a static cutoff. Add it from **EQ & Filters** in
 the Effects catalog to an audio/MIDI track, Master, or a MIDI instrument layer
 or Output. It has the same Cutoff and Out controls as Auto-filter.
 
+Use **Filter** to remove unwanted frequency ranges or emphasize a resonant cutoff.
+
 | Section | Control | Range or choices | Default |
 | --- | --- | --- | --- |
 | Cutoff | Shape | Low-pass, High-pass, Band-pass, Notch | Low-pass |

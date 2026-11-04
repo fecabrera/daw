@@ -2,6 +2,8 @@
 
 Drive adds soft-clipping saturation with adjustable tone and pre-clipping color. Add it to an audio/MIDI track or Master from Distortion in the Effects catalog.
 
+Use **Drive** for soft-clipping saturation with simple tone shaping and pre-clipping color.
+
 ## Controls
 
 | Control | Range | Default | Behavior |

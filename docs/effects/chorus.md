@@ -2,6 +2,8 @@
 
 Chorus thickens audio by mixing the original signal with short delays whose times move. Add it from **Imaging** in the Effects catalog. It works on audio/MIDI tracks, instrument layers, instrument Main and Master.
 
+Use **Chorus** to thicken a sound with moving, detuned layers and stereo width.
+
 Motion uses two columns with equal inner and outer spacing: Hz/Note and Rate occupy the left column; Stereo phase and Voices occupy the right column.
 
 | Strip | Control | Range | Default |
