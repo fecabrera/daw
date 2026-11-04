@@ -56,8 +56,10 @@ lost. Worker-start failure uses the same indication. The worker owns integrated
 gating, LRA and history reduction. It publishes through `UnitMeter` and a bounded
 atomic snapshot. Readers make at most three attempts. Writers try once; a
 contending publication is skipped. A snapshot generation masks results racing
-with Reset or header power. Worker retirement sets a stop flag without joining;
-queue and statistics cleanup happens on the worker after processor retirement.
+with Reset or header power. Worker retirement sets a stop flag and joins the
+worker outside audio processing, including when replacing its meter binding.
+Processor retirement must finish worker execution and thread-local cleanup before
+a host can unload the plugin library. This supersedes detached worker retirement.
 
 Prepared instances allocate outside audio processing. Renderer checkpoints detach
 publication and do not start analysis workers; binding a live handle prepares its

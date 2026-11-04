@@ -43,6 +43,7 @@ struct Observation {
 const WORKER_STACK: usize = 256 * 1024;
 struct Worker {
     stop: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
     queue: Producer<Observation>,
     failed: bool,
 }
@@ -86,6 +87,7 @@ impl Worker {
         }
         Self {
             stop,
+            thread: started.ok(),
             queue,
             failed,
         }
@@ -94,6 +96,11 @@ impl Worker {
 impl Drop for Worker {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
+        // Hosts retire processors outside audio processing. Finish all worker
+        // code and thread-local cleanup before they can unload the plugin library.
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 pub struct Loudness {
@@ -469,6 +476,40 @@ mod tests {
 }
 
 #[cfg(test)]
+mod retirement_tests {
+    use super::*;
+
+    #[test]
+    fn retirement_and_meter_rebinding_release_worker_owners_before_returning() {
+        for _ in 0..16 {
+            let mut unit = Loudness::new(
+                ProcessingContext {
+                    sample_rate_hz: 48000,
+                    max_block_frames: 512,
+                },
+                &LoudnessSettings::default(),
+            );
+            assert!(!unit.worker.as_ref().unwrap().failed);
+            let original = unit.meter();
+            let replacement = Arc::new(LoudnessMeter::default());
+            unit.set_loudness_meter(replacement.clone());
+            assert!(!unit.worker.as_ref().unwrap().failed);
+            assert_eq!(
+                Arc::strong_count(&original),
+                1,
+                "old worker must be retired"
+            );
+            drop(unit);
+            assert_eq!(
+                Arc::strong_count(&replacement),
+                1,
+                "worker must finish before the host can unload the plugin"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod overload_tests {
     use super::*;
     #[test]
@@ -483,6 +524,7 @@ mod overload_tests {
         let (queue, _consumer) = RingBuffer::new(1);
         unit.worker = Some(Worker {
             stop: Arc::new(AtomicBool::new(false)),
+            thread: None,
             queue,
             failed: false,
         });

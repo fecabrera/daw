@@ -7554,3 +7554,28 @@ meter isolation, bypass clearing and shared rendering across themes and scales.
 Strict all-target Clippy passed for the affected DSP, engine, UI, EQ plugin/editor
 and EQ/compressor VST3 crates. Rustfmt and diff whitespace checks passed. Native
 GUI, external-host and device checks were not run for this change.
+
+### Loudness analysis worker retirement — 2026-11-04
+
+The Windows CI native CLAP host test reported an access violation. Inspection
+found detached analysis workers could outlive processor destruction and execute
+after the host unloaded the plugin library. Worker retirement now signals stop
+and joins outside audio processing, including meter rebinding. The callback,
+measurement calculations, saved state and parameter IDs are unchanged.
+
+Executed locally on macOS:
+
+- The new ownership regression failed before the fix because the old worker still
+  retained its meter after rebinding. All nine portable loudness tests passed
+  after the fix, including rebinding and destruction ownership checks.
+- Release CLAP/VST3 libraries built with `allocation-check`. The four loudness
+  plugin/editor packages passed 31 tests with both native libraries loaded through
+  the ABI harness. Callback allocation guards and 32 repeated activation/unload
+  cycles per format passed.
+- `cargo test --locked --offline --workspace` passed, including documentation
+  tests. Explicit release-only and environment-dependent tests remain ignored.
+- Strict workspace all-target Clippy passed. Rustfmt and diff whitespace checks
+  passed. Receipts are retained in ignored `work/loudness-worker-retirement/`.
+
+The Windows access violation was not reproduced locally. Windows CI must confirm
+the reported failure is resolved; native GUI/device checks were not run.
