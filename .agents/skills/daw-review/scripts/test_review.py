@@ -101,7 +101,7 @@ class Reports(unittest.TestCase):
                 final = adjudication()
                 key = next(k for k in review.CRITERIA if k.startswith(category + "."))
                 final["coverage"][key] = {"status": "limited", "evidence": ["Read scope."], "limits": ["Required verification missing."]}
-                self.assertEqual(review.summary([], final, self.run)["total"]["status"], "FAIL")
+                self.assertEqual(review.summary([], final, self.run)["total"]["status"], "INCOMPLETE")
 
     def test_skipped_coverage_requires_unchanged_dependencies_and_no_findings(self):
         self.run["changed_files"] = ["docs/views/instrument.md"]
@@ -132,7 +132,7 @@ class Reports(unittest.TestCase):
                 self.assertEqual(scope["files"], [name])
                 final = adjudication()
                 final["coverage"]["deps.vulnerabilities"] = {"status": "limited", "evidence": ["Dependencies changed."], "limits": ["Current audit incomplete."]}
-                self.assertEqual(review.summary([], final, self.run)["deps"]["status"], "FAIL")
+                self.assertEqual(review.summary([], final, self.run)["deps"]["status"], "INCOMPLETE")
         self.assertTrue(review.dependency_scope({})["changed"])
 
     def test_documentation_only_skips_code_and_dependencies_without_masking_docs(self):
@@ -200,15 +200,60 @@ class Reports(unittest.TestCase):
         with self.assertRaises(ValueError):
             review.adjudicate(final, [report(findings=[finding()]), report("reviewer-2", [finding()])], self.run)
 
-    def test_limit_fails_category_without_inventing_a_finding(self):
+    def test_limit_marks_category_incomplete_without_inventing_a_finding(self):
         final = adjudication()
         final["coverage"]["deps.vulnerabilities"] = {"status": "limited", "evidence": ["Read lockfile."], "limits": ["Current advisories unavailable."]}
         review.validate_common(final, self.run)
         counts = review.summary([], final, self.run)
         self.assertEqual(counts["total"]["total"], 0)
-        self.assertEqual(counts["deps"]["status"], "FAIL")
+        self.assertEqual(counts["deps"]["status"], "INCOMPLETE")
         self.assertEqual(counts["code"]["status"], "PASS")
-        self.assertEqual(counts["total"]["status"], "FAIL")
+        self.assertEqual(counts["total"]["status"], "INCOMPLETE")
+
+    def test_incomplete_takes_precedence_and_preserves_blocking_findings(self):
+        # A complete failed category remains FAIL; unfinished work prevents an overall verdict.
+        final = adjudication()
+        final["coverage"]["docs.coverage"] = {
+            "status": "limited", "evidence": ["Mapped editing workflows."],
+            "limits": ["MIDI gesture/history requirement tracing remains unverified."]}
+        counts = review.summary([finding()], final, self.run)
+        self.assertEqual(counts["docs"]["status"], "INCOMPLETE")
+        self.assertEqual(counts["code"]["status"], "FAIL")
+        self.assertEqual(counts["total"]["status"], "INCOMPLETE")
+        self.assertEqual(counts["total"]["major"], 1)
+        # The same rule applies when the finding and gap are in one category.
+        counts = review.summary([finding(category="docs")], final, self.run)
+        self.assertEqual(counts["docs"]["status"], "INCOMPLETE")
+        self.assertEqual(counts["docs"]["major"], 1)
+        # Closing the gap restores a verdict based on findings alone.
+        final["coverage"] = coverage()
+        self.assertEqual(review.summary([finding()], final, self.run)["total"]["status"], "FAIL")
+        self.assertEqual(review.summary([], final, self.run)["total"]["status"], "PASS")
+
+    def test_render_incomplete_retains_findings_in_markdown_and_audit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "reports").mkdir()
+            review.write_json(root / "run.json", self.run)
+            review.write_json(root / "reports/reviewer-1.json", report(findings=[finding()]))
+            review.write_json(root / "reports/reviewer-2.json", report("reviewer-2"))
+            final = adjudication([decision(["reviewer-1:F01"])])
+            final["coverage"]["code.security"] = {
+                "status": "limited", "evidence": ["Inspected project parsing."],
+                "limits": ["Native model boundary inspection needs pinned runtime source."]}
+            review.write_json(root / "adjudication.json", final)
+            review.render(SimpleNamespace(run=tmp, adjudication=root / "adjudication.json",
+                                          coordinator_model="not exposed"))
+            text = (root / "report.md").read_text()
+            self.assertIn("**Verdict: INCOMPLETE**", text)
+            self.assertNotIn("**Verdict: FAIL**", text)
+            self.assertNotIn("**Verdict: PASS**", text)
+            self.assertIn("F001: Concrete issue", text)
+            self.assertIn("Native model boundary inspection", text)
+            audit = review.read_json(root / "audit.json")
+            self.assertEqual(audit["summary"]["total"]["status"], "INCOMPLETE")
+            self.assertEqual(audit["summary"]["total"]["major"], 1)
+            self.assertEqual(len(audit["accepted_findings"]), 1)
 
     def test_coverage_requires_all_criteria_and_honest_status(self):
         for change in ("missing", "empty", "contradiction", "unexplained"):
@@ -275,7 +320,7 @@ class Reports(unittest.TestCase):
                     review.validate_reviewer(invalid, self.run)
                 final = adjudication()
                 final["coverage"][key] = {"status": "limited", "evidence": ["Inspected snapshot."], "limits": ["Required area not verified."]}
-                self.assertEqual(review.summary([], final, self.run)["total"]["status"], "FAIL")
+                self.assertEqual(review.summary([], final, self.run)["total"]["status"], "INCOMPLETE")
         for category in ("code", "deps"):
             scope = review.code_scope if category == "code" else review.dependency_scope
             self.assertTrue(scope({"mode": "standalone"})["changed"])

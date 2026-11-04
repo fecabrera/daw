@@ -6,6 +6,10 @@ Read this repository's current `AGENTS.md`, the root README, `docs/README.md`, a
 
 **Comparison** reviews new, changed and affected behavior between pinned revisions. **Standalone** reviews the full committed branch snapshot without a baseline. In standalone mode, read "changed" or "affected" flow/feature below as every applicable flow/feature present at the pinned head. Inventory the full implementation and docs, include existing defects, and mark unreviewed required areas as limited coverage. Do not infer introduction history from the absence of a diff. Requirement violations need current evidence, not proof that a recent commit caused them.
 
+## Coverage completion
+
+Use the protocol's coverage plan to trace concrete in-scope features and boundaries through requirements, implementation, guidance and verification. Resolve feasible inspection/check gaps before finalizing. Broad sampling and repeated passing suites do not close named unreviewed areas. Equally, universal assurance is not required: explain why any missing platform run, benchmark or source check is necessary for a concrete requirement. If required evidence remains unresolved, mark the criterion limited and report INCOMPLETE, neither PASS nor FAIL. Confirmed defects remain severity-ranked findings.
+
 ## Documentation
 
 | Criterion | Review |
