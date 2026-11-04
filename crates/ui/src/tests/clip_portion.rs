@@ -250,3 +250,122 @@ fn option_drag_duplicates_the_range_and_editor_uses_the_same_gesture() {
     assert_eq!(app.portion.as_ref().unwrap().start_frame, frames(0.5));
     assert_eq!(app.portion.as_ref().unwrap().end_frame, frames(1.0));
 }
+
+#[test]
+fn range_overwrite_previews_match_release_and_escape_preserves_project() {
+    for duplicate in [false, true] {
+        for (start, length, expected) in [(4.0, 4.0, 2), (5.5, 2.0, 1), (5.0, 1.0, 0)] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.session.project.tracks[0].clips[0].length_frames = frames(3.0);
+            let mut neighbor = app.session.project.tracks[0].clips[0].clone();
+            neighbor.id = Id::new_v4();
+            neighbor.start_frame = frames(start);
+            neighbor.length_frames = frames(length);
+            let neighbor_id = neighbor.id;
+            app.session.project.tracks[0].clips.push(neighbor);
+            frame(&mut app, &ctx, vec![]);
+            app.portion = Some(super::super::portion::ClipPortion {
+                tracks: vec![track],
+                start_frame: frames(1.0),
+                end_frame: frames(2.0),
+            });
+            let lane = app.lane_bounds[&track];
+            let from = Pos2::new(x_at(&app, lane, frames(1.5)), lane.top() + 40.0);
+            let copy = egui::Modifiers {
+                alt: duplicate && cfg!(target_os = "macos"),
+                ctrl: duplicate && !cfg!(target_os = "macos"),
+                ..Default::default()
+            };
+            modifiers_frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(from), button(from, true)],
+                copy,
+            );
+            let to = Pos2::new(x_at(&app, lane, frames(5.5)), from.y);
+            modifiers_frame(&mut app, &ctx, vec![egui::Event::PointerMoved(to)], copy);
+            let drag = app.portion_drag.as_ref().unwrap();
+            let piece = app
+                .session
+                .project
+                .clip_range_slices(&[track], frames(1.0), frames(2.0))
+                .unwrap()
+                .remove(0)
+                .clip;
+            let incoming = vec![ClipPreview {
+                track,
+                track_index: 0,
+                clip: Clip {
+                    start_frame: frames(5.0),
+                    ..piece
+                },
+                valid: true,
+                removed: false,
+            }];
+            let display = app.portion_previews(drag, &incoming, duplicate);
+            assert!(display.iter().any(|p| p.clip.id == neighbor_id));
+            let survivors: Vec<_> = display
+                .iter()
+                .skip(1)
+                .filter(|p| !p.removed && p.clip.start_frame >= frames(4.0))
+                .collect();
+            assert_eq!(survivors.len(), expected);
+            let original = app.session.project.clone();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }],
+            );
+            modifiers_frame(&mut app, &ctx, vec![button(from, false)], copy);
+            assert_eq!(app.session.project, original);
+            assert!(!app.dirty);
+            app.portion = Some(super::super::portion::ClipPortion {
+                tracks: vec![track],
+                start_frame: frames(1.0),
+                end_frame: frames(2.0),
+            });
+            let to = Pos2::new(x_at(&app, lane, frames(5.5)), from.y);
+            modifiers_frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(from), button(from, true)],
+                copy,
+            );
+            modifiers_frame(&mut app, &ctx, vec![egui::Event::PointerMoved(to)], copy);
+            modifiers_frame(&mut app, &ctx, vec![button(to, false)], copy);
+            assert!(app.error.is_none(), "{:?}", app.error);
+            let retained: Vec<_> = app.session.project.tracks[0]
+                .clips
+                .iter()
+                .filter(|c| {
+                    c.start_frame >= frames(4.0)
+                        && !(c.start_frame == frames(5.0) && c.length_frames == frames(1.0))
+                })
+                .map(|c| (c.start_frame, c.length_frames, c.source_offset_frame))
+                .collect();
+            let painted: Vec<_> = survivors
+                .iter()
+                .map(|p| {
+                    (
+                        p.clip.start_frame,
+                        p.clip.length_frames,
+                        p.clip.source_offset_frame,
+                    )
+                })
+                .collect();
+            assert_eq!(
+                retained,
+                painted,
+                "duplicate={duplicate} neighbor={start}..{}",
+                start + length
+            );
+        }
+    }
+}

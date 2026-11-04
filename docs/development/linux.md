@@ -12,3 +12,10 @@ cargo run -p daw-desktop
 ```
 
 Create a portable ZIP with `sh tools/package_linux.sh release`. Use `debug` for a debug build. The archive is `target/<profile>/DAW-linux-x64.zip` on x64 or `DAW-linux-arm64.zip` on ARM64. Extract it and run `DAW/daw-desktop`. Keep `DAW/LICENSE.txt` and `DAW/licenses` with the executable. The archive preserves executable permissions and includes the same dependency notices as the other packages. It does not bundle system libraries: the destination needs compatible C/C++ runtime, ALSA, graphics libraries, and a desktop portal for dialogs.
+
+Desktop downloads also contain the exact [corresponding source and relinking
+materials](README.md#corresponding-source-in-desktop-packages). Packaging requires
+a clean committed tracked tree. Keep `SOURCE-ACCESS.txt`, `source-manifest.json`
+and `DAW-source.zip` with the binary and licenses; on macOS these are inside
+`DAW.app/Contents/Resources`. The source archive includes tracked repository demo
+fixtures, but excludes untracked user data and build caches.

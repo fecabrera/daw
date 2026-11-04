@@ -17,6 +17,8 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $stagingDirectory = $null
 Push-Location -LiteralPath $repositoryRoot
 try {
+    $sourceRevision = & python tools/package_sources.py --revision-only
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot identify a clean corresponding-source revision.' }
     $cargoArguments = @('build', '--locked', '-p', 'daw-desktop', '--message-format=json-render-diagnostics')
     if ($Profile -eq 'release') {
         $cargoArguments += '--release'
@@ -74,6 +76,10 @@ try {
             Copy-Item -LiteralPath $notice.FullName -Destination $licenseDirectory -Force
         }
     }
+
+    & python tools/package_sources.py --revision $sourceRevision --profile $Profile `
+        --destination $packageDirectory --binary (Join-Path $packageDirectory 'daw-desktop.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Corresponding-source packaging failed. The existing ZIP was not changed.' }
 
     Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
     $temporaryArchive = Join-Path $stagingDirectory 'DAW.zip'

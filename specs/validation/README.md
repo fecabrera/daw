@@ -4,6 +4,40 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Standalone review remediation — 2026-11-04
+
+Fixed F001–F006 from the standalone `087940e` review. F007 (native ONNX
+shape inference) remains unchanged at the user's request.
+
+- Noise state joins worker history admission. Direct prepared seeks and transport
+  cache reconstruction retain RNG/color-filter history, with no callback replay.
+- Plugin adapters pass host playback state independently of optional sample position
+  and refresh missing contexts each block. Explicit stopped blocks still suspend
+  Loudness Transport mode; missing timing and playing without position use its clock.
+- Time-range move/copy previews use the same removal/placement candidate as release
+  and reuse shared neighbor masking; no-op/cancel behavior retains the model.
+- Desktop packagers include commit-specific source, locked Rust dependency sources,
+  local patches and build/relink directions plus binary/source SHA-256 receipts.
+  A tracked dirty tree or source failure prevents publication of the new package.
+- Instrument placement and export-cancellation guidance now describe current behavior.
+
+Completed checks:
+
+- Noise seek/cache regression passed for White/Pink/Brown at all six supported rates;
+  compared direct/cached output after the standard ramp and checked callback allocation.
+- Loudness contract tests passed (6); CLAP and VST3 timing adapter regressions passed.
+- Time-range UI tests passed (3), including preview/release fragments, move/copy and
+  cancellation for split, partial and complete destination overwrite.
+- Python tooling tests passed (39), including source manifest/hash, relocated vendor
+  config, exclusion of untracked data and preservation of prior packages on failure.
+- Strict workspace Clippy passed. Real offline locked vendoring completed successfully.
+- Shell syntax and changed guide file-link checks passed.
+- Full workspace tests were started; the rerun review retains their final result.
+
+These checks do not certify native UI/device behavior, Windows PowerShell packaging,
+external plugin hosts or clean-machine installation. Source-archive relocation and dependency resolution are checked against the
+committed revision in the rerun evidence.
+
 ## Review documentation corrections — 2026-11-03
 
 Corrected F002, F003, F005 and F006 from the standalone main review:

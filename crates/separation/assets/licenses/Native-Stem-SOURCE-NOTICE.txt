@@ -48,3 +48,12 @@ build scripts, dependency source/patches and license materials required for the 
 Retain all existing media, UI, font, icon, oscillator, equalizer and timestretch notices. This notice does not replace them.
 
 No model weights are bundled or licensed by these notices.
+
+Desktop package source access:
+The standard desktop packagers include DAW-source.zip, SOURCE-ACCESS.txt and
+source-manifest.json with the executable (under DAW.app/Contents/Resources on
+macOS). They identify the exact combined application commit and binary/source
+hashes. The archive includes application source, local patches, locked Cargo
+sources, build/relink directions and this immutable native source inventory.
+Retain these source materials and the public native-source routes above when
+redistributing the binary; a source notice alone does not replace source access.

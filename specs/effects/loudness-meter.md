@@ -77,9 +77,9 @@ ignores clock discontinuities and processor resets but still obeys power and Res
 Seek reconstruction, transport-cache replay (serial and parallel), offline range
 skips, latency priming and synthetic pause/stop fades are excluded from analysis.
 
-Plugin adapters retain their existing optional frame clock. A supplied stopped
+Plugin adapters pass playback state separately from their optional frame clock on every block. A supplied stopped
 transport suspends Transport analysis; Continuous measures those blocks. Without
-host transport information, the processor's local clock advances. Hosts may not
+host transport information, or while playing without a sample position, the processor's local clock advances. Missing context clears any prior stopped suspension. Hosts may not
 distinguish Pause from Stop; a changed playback position or host processor reset
 starts the next pass. Native host behavior remains an acceptance check.
 

@@ -77,9 +77,19 @@ impl Processor {
         self.frame = 0;
         self.drive.reset();
     }
+    /// Legacy explicit-stop entry point; format adapters use independent play state.
     pub fn set_transport(&mut self, frame: Option<u64>, tempo: Option<f32>) {
+        self.set_transport_state(frame, tempo, Some(frame.is_some()));
+    }
+    /// Missing position or host context must not imply stopped transport.
+    pub fn set_transport_state(
+        &mut self,
+        frame: Option<u64>,
+        tempo: Option<f32>,
+        playing: Option<bool>,
+    ) {
         self.drive
-            .suspend(frame.is_none() && !self.settings.continuous);
+            .suspend(playing == Some(false) && !self.settings.continuous);
         if let Some(frame) = frame {
             self.frame = frame;
         }

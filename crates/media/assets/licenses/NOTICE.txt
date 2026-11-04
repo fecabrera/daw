@@ -10,4 +10,8 @@ Exact dependency source archives are available from crates.io:
 https://crates.io/api/v1/crates/mp3lame-encoder/0.2.5/download
 https://crates.io/api/v1/crates/mp3lame-sys/0.1.11/download
 The mp3lame-sys archive includes the LAME source.
-Cargo.lock records the exact versions. Build the DAW repository with Cargo to relink the application.
+Cargo.lock records the exact versions. Desktop packages include DAW-source.zip,
+SOURCE-ACCESS.txt and source-manifest.json beside the executable (under
+DAW.app/Contents/Resources on macOS). The source archive contains the exact
+application and vendored Cargo dependencies, including these LAME sources.
+Read SOURCE-BUILD.txt in the extracted DAW directory to rebuild/relink.

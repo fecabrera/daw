@@ -186,7 +186,13 @@ impl DawUi {
             .shifted(frame_delta, track_delta, &self.session.project);
         self.paint_portion(ui, Some(live));
         if !previews.is_empty() {
-            self.paint_preview_clips(ui, self.timeline_bounds, &previews);
+            let display = if frame_delta == 0 && track_delta == 0 {
+                previews.clone()
+            } else {
+                self.portion_previews(&drag, &previews, duplicate)
+            };
+            self.mask_neighbor_previews(ui, self.timeline_bounds, &display);
+            self.paint_preview_clips(ui, self.timeline_bounds, &display);
             ui.ctx().set_cursor_icon(if duplicate {
                 egui::CursorIcon::Copy
             } else {
@@ -370,40 +376,7 @@ impl DawUi {
             }
             return;
         }
-        let mut next = if duplicate {
-            self.session.project.clone()
-        } else {
-            match self.session.project.without_clip_range(
-                &drag.selection.tracks,
-                drag.selection.start_frame,
-                drag.selection.end_frame,
-            ) {
-                Ok(project) => project,
-                Err(error) => {
-                    self.fail(error);
-                    return;
-                }
-            }
-        };
-        if let Err(error) = self.prepare_placement_tracks(
-            &mut next,
-            &previews
-                .iter()
-                .map(|preview| (preview.track_index, &preview.clip))
-                .collect::<Vec<_>>(),
-            duplicate,
-        ) {
-            self.fail(error);
-            return;
-        }
-        let placements = previews
-            .iter()
-            .map(|preview| daw_core::ClipPlacement {
-                track_id: next.tracks[preview.track_index].id,
-                clip: preview.clip.clone(),
-            })
-            .collect::<Vec<_>>();
-        let project = match next.placed_clips(&placements) {
+        let project = match self.portion_project(drag, &previews, duplicate) {
             Ok(project) => project,
             Err(error) => {
                 self.fail(error);
@@ -438,6 +411,57 @@ impl DawUi {
         self.selected_clip = None;
         self.selected_clips.clear();
         self.publish_portion_project(project);
+    }
+
+    /// Preview and release resolve the same range removal and placement transaction.
+    fn portion_project(
+        &self,
+        drag: &PortionDrag,
+        previews: &[ClipPreview],
+        duplicate: bool,
+    ) -> daw_core::Result<daw_core::Project> {
+        let mut next = if duplicate {
+            self.session.project.clone()
+        } else {
+            self.session.project.without_clip_range(
+                &drag.selection.tracks,
+                drag.selection.start_frame,
+                drag.selection.end_frame,
+            )?
+        };
+        self.prepare_placement_tracks(
+            &mut next,
+            &previews
+                .iter()
+                .map(|p| (p.track_index, &p.clip))
+                .collect::<Vec<_>>(),
+            duplicate,
+        )?;
+        let placements = previews
+            .iter()
+            .map(|p| daw_core::ClipPlacement {
+                track_id: next.tracks[p.track_index].id,
+                clip: p.clip.clone(),
+            })
+            .collect::<Vec<_>>();
+        next.placed_clips(&placements)
+    }
+
+    pub(super) fn portion_previews(
+        &self,
+        drag: &PortionDrag,
+        incoming: &[ClipPreview],
+        duplicate: bool,
+    ) -> Vec<ClipPreview> {
+        let mut display = incoming.to_vec();
+        match self.portion_project(drag, incoming, duplicate) {
+            Ok(next) => {
+                let ids = incoming.iter().map(|p| p.clip.id).collect();
+                display.extend(self.placement_neighbors(&next, &ids));
+            }
+            Err(_) => display.iter_mut().for_each(|p| p.valid = false),
+        }
+        display
     }
 
     fn publish_portion_project(&mut self, project: daw_core::Project) {

@@ -76,6 +76,15 @@ impl Processor {
         self.frame = 0;
         self.drive.reset();
     }
+    /// Optional host playback state is independent of the sample-position clock.
+    pub fn set_transport_state(
+        &mut self,
+        frame: Option<u64>,
+        tempo: Option<f32>,
+        _playing: Option<bool>,
+    ) {
+        self.set_transport(frame, tempo);
+    }
     pub fn set_transport(&mut self, frame: Option<u64>, tempo: Option<f32>) {
         if let Some(frame) = frame {
             self.frame = frame;

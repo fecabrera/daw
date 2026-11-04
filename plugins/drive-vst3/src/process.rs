@@ -27,17 +27,11 @@ pub(crate) unsafe fn process(component: &Component, data: *mut ProcessData) -> t
     // concurrent with mutable UI-thread inactive lifecycle/state calls.
     let audio = unsafe { component.audio() };
     component.recall(audio);
-    if daw_drive_plugin::USES_TRANSPORT && !data.processContext.is_null() {
-        // SAFETY: the host retains its context for this block.
-        let context = unsafe { data.processContext.read() };
-        let playing: u32 = ProcessContext_::StatesAndFlags_::kPlaying as _;
-        let frame = (context.state & playing != 0 || data.processMode == 2)
-            .then_some(context.projectTimeSamples.max(0) as u64);
-        let tempo_flag: u32 = ProcessContext_::StatesAndFlags_::kTempoValid as _;
-        let tempo = (context.state & tempo_flag != 0).then_some(context.tempo as f32);
-        if let Some(processor) = &mut audio.processor {
-            processor.set_transport(frame, tempo);
-        }
+    if daw_drive_plugin::USES_TRANSPORT {
+        // SAFETY: the host retains a supplied context through this block.
+        let context =
+            (!data.processContext.is_null()).then(|| unsafe { data.processContext.read() });
+        transport(audio, context, data.processMode == 2);
     }
     let Ok(mut queues) =
         (unsafe { Queues::new(data.inputParameterChanges, audio.normalized, frames) })
@@ -142,4 +136,72 @@ pub(crate) unsafe fn process(component: &Component, data: *mut ProcessData) -> t
     }
     component.publish(audio);
     kResultOk
+}
+
+fn transport(audio: &mut crate::component::Audio, context: Option<ProcessContext>, offline: bool) {
+    let Some(processor) = &mut audio.processor else {
+        return;
+    };
+    if let Some(context) = context {
+        let playing_flag: u32 = ProcessContext_::StatesAndFlags_::kPlaying as _;
+        let tempo_flag: u32 = ProcessContext_::StatesAndFlags_::kTempoValid as _;
+        let playing = context.state & playing_flag != 0 || offline;
+        let tempo_valid = context.state & tempo_flag != 0;
+        processor.set_transport_state(
+            playing.then_some(context.projectTimeSamples.max(0) as u64),
+            tempo_valid.then_some(context.tempo as f32),
+            Some(playing),
+        );
+    } else {
+        processor.set_transport_state(None, None, None);
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+    #[test]
+    fn loudness_transport_recovers_from_stop_without_a_position_or_context() {
+        if daw_drive_plugin::IDENTITY.product != "Loudness Meter" {
+            return;
+        }
+        for missing in [false, true] {
+            let state = daw_drive_plugin::PluginState::default();
+            let meter = std::sync::Arc::new(daw_drive_plugin::OutputMeter::default());
+            let mut processor = daw_drive_plugin::Processor::new(48000.0, 1, 512, state).unwrap();
+            processor.set_output_meter(meter.clone());
+            let mut audio = crate::component::Audio {
+                processor: Some(processor),
+                ..Default::default()
+            };
+            // SAFETY: VST3 ProcessContext contains numeric fields only; zero is stopped.
+            let mut stopped: ProcessContext = unsafe { std::mem::zeroed() };
+            transport(&mut audio, Some(stopped), false);
+            for _ in 0..4800 {
+                audio.processor.as_mut().unwrap().process_sample([0.2; 2]);
+            }
+            assert_eq!(
+                daw_drive_plugin::meter_values(&meter).get(25).copied(),
+                Some(1000.0)
+            );
+            stopped.state = ProcessContext_::StatesAndFlags_::kPlaying as _;
+            transport(&mut audio, (!missing).then_some(stopped), false);
+            for _ in 0..4800 {
+                audio.processor.as_mut().unwrap().process_sample([0.2; 2]);
+            }
+            let start = std::time::Instant::now();
+            while daw_drive_plugin::meter_values(&meter)
+                .get(25)
+                .copied()
+                .unwrap_or(0.0)
+                < 1000.1
+            {
+                assert!(
+                    start.elapsed().as_secs() < 3,
+                    "analysis stayed suspended; missing={missing}"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        }
+    }
 }

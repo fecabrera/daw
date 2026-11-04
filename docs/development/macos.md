@@ -16,3 +16,10 @@ Create an app bundle with `sh tools/package_macos.sh debug`. Open `target/debug/
 Create a disk image with `sh tools/package_macos_dmg.sh release`. Use `debug` for a debug build. The image is `target/<profile>/DAW-macos-arm64.dmg` on Apple Silicon or `DAW-macos-x64.dmg` on Intel. Open the image and drag DAW to Applications. The app includes the project license and dependency notices in `Contents/Resources`. The image is unsigned and the app is not notarized.
 
 Stem separation requires Apple Silicon on macOS. Intel builds omit that backend and disable its controls; the other app features remain available.
+
+Desktop downloads also contain the exact [corresponding source and relinking
+materials](README.md#corresponding-source-in-desktop-packages). Packaging requires
+a clean committed tracked tree. Keep `SOURCE-ACCESS.txt`, `source-manifest.json`
+and `DAW-source.zip` with the binary and licenses; on macOS these are inside
+`DAW.app/Contents/Resources`. The source archive includes tracked repository demo
+fixtures, but excludes untracked user data and build caches.

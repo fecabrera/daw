@@ -112,13 +112,11 @@ pub(crate) unsafe extern "C" fn process(
             } // All output frames are written; no quietness assumption.
         }
         i.apply_pending(audio);
-        if daw_drive_plugin::USES_TRANSPORT && !process.transport.is_null() {
-            // SAFETY: the host retains the block transport through process.
-            transport(
-                audio,
-                unsafe { process.transport.read_unaligned() },
-                i.rate.load(Ordering::Acquire),
-            );
+        if daw_drive_plugin::USES_TRANSPORT {
+            // SAFETY: the host retains a supplied transport snapshot through process.
+            let event = (!process.transport.is_null())
+                .then(|| unsafe { process.transport.read_unaligned() });
+            transport(audio, event, i.rate.load(Ordering::Acquire));
         }
         unsafe {
             i.editor.flush(audio, process.out_events);
@@ -149,11 +147,11 @@ pub(crate) unsafe extern "C" fn process(
                 // SAFETY: the checked event extent contains one transport event.
                 transport(
                     audio,
-                    unsafe {
+                    Some(unsafe {
                         pointer
                             .cast::<daw_plugin_clap::sys::events::clap_event_transport>()
                             .read_unaligned()
-                    },
+                    }),
                     i.rate.load(Ordering::Acquire),
                 );
             } else {
@@ -202,10 +200,16 @@ unsafe fn sample(
 
 fn transport(
     audio: &mut crate::instance::Audio,
-    event: daw_plugin_clap::sys::events::clap_event_transport,
+    event: Option<daw_plugin_clap::sys::events::clap_event_transport>,
     rate: u32,
 ) {
     use daw_plugin_clap::sys::{events::*, fixedpoint::CLAP_SECTIME_FACTOR};
+    let Some(event) = event else {
+        if let Some(processor) = &mut audio.processor {
+            processor.set_transport_state(None, None, None);
+        }
+        return;
+    };
     let frame = (event.flags & CLAP_TRANSPORT_HAS_SECONDS_TIMELINE != 0
         && event.flags & CLAP_TRANSPORT_IS_PLAYING != 0)
         .then(|| {
@@ -215,6 +219,64 @@ fn transport(
         });
     let tempo = (event.flags & CLAP_TRANSPORT_HAS_TEMPO != 0).then_some(event.tempo as f32);
     if let Some(processor) = &mut audio.processor {
-        processor.set_transport(frame, tempo);
+        processor.set_transport_state(
+            frame,
+            tempo,
+            Some(event.flags & CLAP_TRANSPORT_IS_PLAYING != 0),
+        );
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+    #[test]
+    fn loudness_transport_recovers_from_stop_without_a_position_or_context() {
+        if daw_drive_plugin::IDENTITY.product != "Loudness Meter" {
+            return;
+        }
+        for missing in [false, true] {
+            let state = daw_drive_plugin::PluginState::default();
+            let meter = std::sync::Arc::new(daw_drive_plugin::OutputMeter::default());
+            let mut processor = daw_drive_plugin::Processor::new(48000.0, 1, 512, state).unwrap();
+            processor.set_output_meter(meter.clone());
+            let mut audio = crate::instance::Audio {
+                processor: Some(processor),
+                state,
+                applied: 0,
+                minimum: 1,
+                maximum: 512,
+            };
+            // SAFETY: CLAP transport contains numeric fields only; zero is a stopped snapshot.
+            let mut stopped: daw_plugin_clap::sys::events::clap_event_transport =
+                unsafe { std::mem::zeroed() };
+            transport(&mut audio, Some(stopped), 48000);
+            for _ in 0..4800 {
+                audio.processor.as_mut().unwrap().process_sample([0.2; 2]);
+            }
+            assert_eq!(
+                daw_drive_plugin::meter_values(&meter).get(25).copied(),
+                Some(1000.0)
+            );
+            stopped.flags = daw_plugin_clap::sys::events::CLAP_TRANSPORT_IS_PLAYING;
+            // No seconds timeline is supplied, despite explicit playing state.
+            transport(&mut audio, (!missing).then_some(stopped), 48000);
+            for _ in 0..4800 {
+                audio.processor.as_mut().unwrap().process_sample([0.2; 2]);
+            }
+            let start = std::time::Instant::now();
+            while daw_drive_plugin::meter_values(&meter)
+                .get(25)
+                .copied()
+                .unwrap_or(0.0)
+                < 1000.1
+            {
+                assert!(
+                    start.elapsed().as_secs() < 3,
+                    "analysis stayed suspended; missing={missing}"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        }
     }
 }

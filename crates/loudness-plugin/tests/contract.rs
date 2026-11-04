@@ -51,3 +51,29 @@ fn transport_mode_ignores_host_stopped_blocks_and_continuous_counts_them() {
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
 }
+
+#[test]
+fn playing_without_position_and_missing_context_resume_the_local_clock() {
+    for playing in [Some(true), None] {
+        let mut p = Processor::new(48000.0, 1, 512, PluginState::default()).unwrap();
+        let meter = std::sync::Arc::new(plugin::OutputMeter::default());
+        p.set_output_meter(meter.clone());
+        p.set_transport_state(None, None, Some(false));
+        for _ in 0..4800 {
+            p.process_sample([0.2; 2]);
+        }
+        assert_eq!(meter.loudness.reading().values[12], 0.0);
+        p.set_transport_state(None, Some(120.0), playing);
+        for _ in 0..4800 {
+            p.process_sample([0.2; 2]);
+        }
+        let start = std::time::Instant::now();
+        while meter.loudness.reading().values[12] < 0.1 {
+            assert!(
+                start.elapsed().as_secs() < 3,
+                "local clock stayed suspended: {playing:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
+}

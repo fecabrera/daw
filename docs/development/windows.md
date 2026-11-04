@@ -51,7 +51,7 @@ If you prefer to set libclang only for the current shell, use `set "LIBCLANG_PAT
 3. Take `target\release\DAW.zip` or `target\debug\DAW.zip`. If Cargo uses a different target directory or build target, the ZIP is placed beside the built executable. The script prints its full path.
 4. Extract the ZIP and run `DAW\daw-desktop.exe`. Both profiles launch as Windows GUI applications without opening a terminal. Keep `DAW\LICENSE.txt` and the `DAW\licenses` folder with the executable.
 
-The script builds the desktop with the lockfile, includes the same font, icon, UI, media, oscillator, and EQ notices as the macOS bundle, and replaces an existing ZIP only after packaging succeeds. It includes no CLI, projects, recordings, build cache, or debug symbols. The ZIP is unsigned. It does not include the Microsoft C++ runtime: destination PCs need the [Microsoft Visual C++ v14 Redistributable for x64](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) and an OpenGL-capable graphics driver. The selected native inference archive also imports system DirectML (`DMLCreateDevice1`) and Direct3D 12 even though separation uses CPU. Those Windows components are not included in the ZIP; older Windows installations must provide the required APIs. See the [native dependency audit](../../specs/audio/stem-native-dependencies.md) for the verified imports and deployment limits. Rust, LLVM, Rubber Band, and LAME installations are not needed to run it.
+The script builds the desktop with the lockfile, includes the same font, icon, UI, media, oscillator, and EQ notices as the macOS bundle, and replaces an existing ZIP only after packaging succeeds. It includes no CLI executable, user projects or recordings, build cache, or debug symbols. The ZIP is unsigned. It does not include the Microsoft C++ runtime: destination PCs need the [Microsoft Visual C++ v14 Redistributable for x64](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) and an OpenGL-capable graphics driver. The selected native inference archive also imports system DirectML (`DMLCreateDevice1`) and Direct3D 12 even though separation uses CPU. Those Windows components are not included in the ZIP; older Windows installations must provide the required APIs. See the [native dependency audit](../../specs/audio/stem-native-dependencies.md) for the verified imports and deployment limits. Rust, LLVM, Rubber Band, and LAME installations are not needed to run it.
 
 ## Troubleshoot build errors
 
@@ -61,3 +61,10 @@ The script builds the desktop with the lockfile, includes the same font, icon, U
 | `rubberband-sys`: `Unable to find libclang` | Check that `libclang.dll` exists and that `LIBCLANG_PATH` points to its containing folder. Install Windows x64 LLVM if the DLL is missing. Restart the build application after changing Windows environment variables. |
 
 The `CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG` suggestion adds backtrace detail; it does not fix missing build tools or libclang. Windows build, native UI, and audio-device verification remain separate from these setup instructions.
+
+Desktop downloads also contain the exact [corresponding source and relinking
+materials](README.md#corresponding-source-in-desktop-packages). Packaging requires
+a clean committed tracked tree. Keep `SOURCE-ACCESS.txt`, `source-manifest.json`
+and `DAW-source.zip` with the binary and licenses; on macOS these are inside
+`DAW.app/Contents/Resources`. The source archive includes tracked repository demo
+fixtures, but excludes untracked user data and build caches.

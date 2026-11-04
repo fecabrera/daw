@@ -94,3 +94,45 @@ fn noise_live_export_seek_modulation_and_output_meter_are_passive_and_allocation
         assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     }
 }
+
+#[test]
+fn noise_prepared_seek_and_cache_match_uninterrupted_history() {
+    for rate in SAMPLE_RATES {
+        for color in [0.0, 0.5, 1.0] {
+            let mut p = plan(Waveform::Sine, rate);
+            let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+            layer.clear_sources();
+            layer.noise = Some(NoiseSettings {
+                color,
+                width: 1.0,
+                ..Default::default()
+            });
+            p.project.validate().unwrap();
+            let seek = 4096;
+            let count = rate as usize / 200 + 512;
+            let mut expected = vec![[0.0; 2]; seek + count];
+            Renderer::new(p.clone()).render_offline(&mut expected);
+            let state = daw_engine::TransportState {
+                frame: seek as u64,
+                playing: true,
+                ..Default::default()
+            };
+            let mut direct = Renderer::new(p.clone());
+            direct.prepare_transport(state);
+            let mut cache = daw_engine::TransportCache::new(p);
+            let mut cached = cache.prepare(state, || false).unwrap();
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|n| n.set(true));
+            for offset in 0..count {
+                let a = direct.next_sample();
+                let b = cached.next_sample();
+                if offset > rate as usize / 200 {
+                    assert_eq!(a, expected[seek + offset], "rate={rate} color={color}");
+                    assert_eq!(b, a, "cache rate={rate} color={color}");
+                }
+            }
+            TRACK_ALLOCATIONS.with(|n| n.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        }
+    }
+}

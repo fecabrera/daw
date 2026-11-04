@@ -877,10 +877,12 @@ impl MidiTrackRuntime {
             layer_samples: vec![[0.0; 2]; layers.len()],
             effect_latency,
             envelope_history: layers.iter().any(|l| {
-                l.sampler.as_ref().is_some_and(|s| {
-                    s.granulizer.is_some()
-                        && audio.get(&s.id).is_some_and(|a| !a.samples.is_empty())
-                })
+                // Noise RNG and color-filter state need exact worker replay too.
+                l.noise.is_some()
+                    || l.sampler.as_ref().is_some_and(|s| {
+                        s.granulizer.is_some()
+                            && audio.get(&s.id).is_some_and(|a| !a.samples.is_empty())
+                    })
             }) || instrument.envelope_destinations().any(|(_, e)| {
                 e.modulations
                     .iter()

@@ -1,18 +1,22 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
+source_revision="$(python3 tools/package_sources.py --revision-only)"
 profile="${1:-debug}"
 case "$profile" in
   debug) cargo build --locked --target-dir "$PWD/target" -p daw-desktop ;;
   release) cargo build --locked --target-dir "$PWD/target" -p daw-desktop --release ;;
   *) echo "Usage: $0 [debug|release]" >&2; exit 2 ;;
 esac
-bundle="target/$profile/DAW.app"
+artifact="target/$profile/DAW.app"
+staging_directory="$(mktemp -d "$PWD/target/$profile/.daw-app.XXXXXX")"
+trap 'rm -rf "$staging_directory"' EXIT
+trap 'exit 1' HUP INT TERM
+bundle="$staging_directory/DAW.app"
 mkdir -p "$bundle/Contents/MacOS"
 mkdir -p "$bundle/Contents/Resources/licenses"
 # Publish a fresh inode so a running DAW instance can keep its mapped executable.
 temporary_executable="$(mktemp "$bundle/Contents/MacOS/.daw-desktop.XXXXXX")"
-trap 'rm -f "$temporary_executable"' EXIT
 cp "target/$profile/daw-desktop" "$temporary_executable"
 chmod 755 "$temporary_executable"
 mv -f "$temporary_executable" "$bundle/Contents/MacOS/daw-desktop"
@@ -41,4 +45,12 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-echo "$bundle"
+python3 tools/package_sources.py --revision "$source_revision" --profile "$profile" \
+  --destination "$bundle/Contents/Resources" --binary "$bundle/Contents/MacOS/daw-desktop"
+# A failed source/vendor step must not replace the previous complete application.
+if [ -e "$artifact" ]; then mv "$artifact" "$staging_directory/previous.app"; fi
+if ! mv "$bundle" "$artifact"; then
+  if [ -e "$staging_directory/previous.app" ]; then mv "$staging_directory/previous.app" "$artifact"; fi
+  exit 1
+fi
+echo "$artifact"

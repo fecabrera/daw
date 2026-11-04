@@ -24,3 +24,25 @@ python3 tools/benchmark_audio_preparation.py --runs 3 --seconds 58
 It builds the release example, generates temporary audio under ignored `work/audio-preparation`, and compares uncached, empty-cache, and new-process saved-cache runs. Results record the source hash, toolchain, timings, and cache hit/build counts. Use `--skip-build` only after rebuilding the example for the current source. This measures headless media preparation, not native presentation or device latency. See the [implementation plan and contracts](../../specs/architecture/background-audio-preparation.md).
 
 The macOS and Linux desktop packagers explicitly build into the repository's `target/` directory. They override `CARGO_TARGET_DIR` and Cargo `build.target-dir` so the packaged executable comes from that build.
+
+## Corresponding source in desktop packages
+
+Desktop packaging requires Python 3, Git, Cargo and a clean committed tracked tree.
+Untracked files, recordings, build outputs and caches are excluded. The packager
+builds that revision and includes `DAW-source.zip`, `SOURCE-ACCESS.txt` and
+`source-manifest.json` beside the executable (inside `DAW.app/Contents/Resources`
+on macOS). The manifest records the exact commit, profile and source/binary hashes.
+CI uploads these materials within the same desktop download.
+
+The source archive contains the committed application, local vendor patches,
+Cargo.lock and versioned registry/Git dependencies from `cargo vendor --locked`.
+Extract it and read `DAW/SOURCE-BUILD.txt`. Follow the platform prerequisites, then
+run `cargo build --locked -p daw-desktop --release` for a release build, or omit
+`--release` for debug. Rebuild with modified LGPL components to relink. Native ONNX
+inputs still use the pinned download adapter; the included native source inventory
+provides immutable source locations, revisions and hashes. Model weights are not
+needed or included. Keep the source materials with packages you redistribute.
+
+This supplies build/relink materials; it does not claim bit-identical builds across
+different compilers or operating systems. Native packaging and clean-machine checks
+remain separate from source-archive fixture tests.

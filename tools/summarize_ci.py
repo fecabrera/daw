@@ -41,6 +41,11 @@ def main():
     artifact_url = steps.get("logs", {}).get("outputs", {}).get("artifact-url")
     if artifact_url:
         lines.extend(["", f"[Download command logs]({artifact_url})"])
+    for step in ('windows_artifact', 'macos_artifact', 'linux_artifact'):
+        url = steps.get(step, {}).get('outputs', {}).get('artifact-url')
+        if url:
+            lines.extend(['', f'[Download desktop binary and corresponding source]({url})',
+                          'The package includes SOURCE-ACCESS.txt and DAW-source.zip; macOS keeps them in DAW.app/Contents/Resources.'])
     lines.extend(["", f"Raw runner logs: `gh run view {os.environ.get('GITHUB_RUN_ID', 'RUN_ID')} --log`."])
 
     if any(step.get("outcome") == "failure" for step in steps.values()):

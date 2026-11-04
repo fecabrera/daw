@@ -13,3 +13,10 @@ The [Test and build workflow](../../.github/workflows/build-and-test.yml) runs o
 Download artifacts from the workflow run's summary. Windows downloads as a ZIP containing the executable and licenses; it is not an installer. The disk image and Linux ZIP upload directly as files. These builds do not sign binaries, notarize the macOS app, or publish a GitHub release. The Linux package targets Ubuntu 24.04 and compatible systems; it is not a static binary for every distribution. Native UI and audio-device checks remain separate from CI.
 
 Workers also upload command logs as `logs-test-<OS>-<architecture>` and `logs-build-<OS>-<architecture>`, including failed jobs, with 14-day retention. Job summaries show step results, a download link, and the last command output on failure. These artifacts contain formatting, Clippy, test, CLI, or packaging output; checkout and external setup-action details remain in the raw runner logs. If the job page shows no steps, retrieve those logs with `gh run view <run-id> --log` from the repository ([GitHub log documentation](https://docs.github.com/en/actions/how-tos/monitor-workflows/use-workflow-run-logs)). A skipped build job has no worker or build logs.
+
+Desktop downloads also contain the exact [corresponding source and relinking
+materials](README.md#corresponding-source-in-desktop-packages). Packaging requires
+a clean committed tracked tree. Keep `SOURCE-ACCESS.txt`, `source-manifest.json`
+and `DAW-source.zip` with the binary and licenses; on macOS these are inside
+`DAW.app/Contents/Resources`. The source archive includes tracked repository demo
+fixtures, but excludes untracked user data and build caches.

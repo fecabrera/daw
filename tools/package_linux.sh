@@ -5,6 +5,7 @@ if [ "$(uname -s)" != Linux ]; then
   echo 'Run this packager on Linux.' >&2
   exit 2
 fi
+source_revision="$(python3 tools/package_sources.py --revision-only)"
 profile="${1:-debug}"
 case "$profile" in
   debug) cargo build --locked --target-dir "$PWD/target" -p daw-desktop ;;
@@ -33,6 +34,8 @@ for directory in crates/ui/assets/licenses crates/unit-ui/assets/licenses crates
   crates/oscillator/assets/licenses crates/equalizer/assets/licenses crates/timestretch/licenses crates/separation/assets/licenses; do
   cp "$directory"/*.txt "$package/licenses/"
 done
+python3 tools/package_sources.py --revision "$source_revision" --profile "$profile" \
+  --destination "$package" --binary "$package/daw-desktop"
 (cd "$staging_directory" && zip -qr "$staging_directory/DAW.zip" DAW)
 # Publish only a complete archive; failures retain the previous artifact.
 artifact="target/$profile/DAW-linux-$architecture.zip"
