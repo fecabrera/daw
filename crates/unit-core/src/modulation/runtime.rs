@@ -194,14 +194,14 @@ impl ModulationRoute {
 /// Amplitude uses the note gate with no routes. Resolve once for each destination sample.
 #[derive(Clone, Copy, Debug)]
 pub struct ModulationInputs {
-    offsets: [f32; 105],
+    offsets: [f32; 115],
     amplitude: f32,
 }
 impl ModulationInputs {
     #[inline]
     pub fn neutral(note_gate: f32) -> Self {
         Self {
-            offsets: [0.0; 105],
+            offsets: [0.0; 115],
             amplitude: note_gate,
         }
     }
@@ -310,6 +310,16 @@ impl ModulationParameter {
             Self::AmbientBloom => Some(102),
             Self::AmbientTone => Some(103),
             Self::AmbientMotion => Some(104),
+            Self::ShimmerSize => Some(105),
+            Self::ShimmerPreDelay => Some(106),
+            Self::ShimmerVowel => Some(107),
+            Self::ShimmerVowelAmount => Some(108),
+            Self::ShimmerAmount1 => Some(109),
+            Self::ShimmerAmount2 => Some(110),
+            Self::ShimmerRate => Some(111),
+            Self::ShimmerDepth => Some(112),
+            Self::ShimmerLowDamp => Some(113),
+            Self::ShimmerHighDamp => Some(114),
             Self::NoiseColor => Some(88),
             Self::NoiseWidth => Some(89),
             Self::NoiseLevel => Some(90),

@@ -4,6 +4,77 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Shimmer Reverb — 2026-11-04
+
+Implemented the [Shimmer Reverb contract](../effects/shimmer-reverb.md): original
+bounded DSP, the 611-point shared body, Reverb catalog integration, twelve shared
+modulation destinations, project persistence and separate 18-parameter CLAP/VST3
+products. The late network uses contractive scattering and convex interpolation;
+it does not reproduce the recovered Solaris feedback timing defect.
+
+Completed checks on Windows x64 with the pinned toolchain:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `cargo test -p daw-shimmer-reverb --offline`: dry/bypass/silence, meter clearing,
+  repeatable reset, finite extreme input and automation passed at all six rates.
+  Signed pitch-tone measurements and bounded synced delay checks passed at
+  48 kHz. A separate reset regression at 48/192 kHz compares a fresh processor
+  after an unprocessed parameter change, including first-host-tempo initialization.
+  A follow-up 48 kHz regression confirms that reset discards modulated pitch
+  amounts and unfinished amount ramps; all six DSP tests passed after this fix.
+- `cargo test --release -p daw-shimmer-reverb long_tail_stability --offline -- --ignored --nocapture`:
+  PASS. Twelve 120-second impulse cases cover all six rates, frozen motion and
+  automated motion, Size up to one and maximum two-voice regeneration. All output
+  remained finite and bounded; final ten-second f32 output peaks were zero.
+  Prepared heap storage was about 8.0 MB at 48 kHz and 32.0 MB at 192 kHz.
+- Focused engine/UI/core Shimmer tests: PASS. Track/Master playback versus export,
+  prepared seeks, compatible inheritance and track/layer/Main modulation agree;
+  callback sampling and inheritance recorded zero allocations. Catalog addition,
+  shared controls, power and future-state preservation passed.
+- Release plugin/editor contract tests against the actual Windows DLLs: PASS.
+  Both formats cover all choices and six rates, irregular/in-place buffers,
+  dense automation, state rejection and active recall. Editor meshes match the
+  built-in body in Dark/Light/Mist at 1×/1.5×/2×, at defaults and two changed
+  snapshots. Mode/note/Warm dropdowns and knob gestures publish balanced edits.
+- Rebuilt both DLLs with their `allocation-check` features. Set
+  `DRIVE_CLAP_TEST_LIBRARY`, `DRIVE_VST3_TEST_LIBRARY` and both corresponding
+  `*_REQUIRE_ALLOCATION_CHECK=1` variables, then ran both release host suites:
+  PASS. Positive controls detected heap operations; processing/reset/automation
+  paths recorded zero callback allocations and deallocations. Rebuilt normal
+  preview DLLs before packaging.
+- `cargo build -p daw-cli -p daw-desktop --locked --offline`: PASS.
+- Bundled Python `tools/check_cli.py`: PASS. Initial sandboxed child-process
+  attempts returned Windows access-denied errors. Normal Windows child-process
+  access passed the full smoke check and the isolated CLI Beat test. A concurrent
+  smoke process also temporarily held the CLI executable open during a rebuild;
+  the sequential retry passed.
+- Bundled Python `-m unittest discover -s tools -p test_package_plugins.py -v`:
+  PASS, with the native Mach-O signing check skipped on Windows. Manifest/CI
+  discovery, distinct identities, notices, failure preservation and archive
+  layouts include Shimmer Reverb. Temporary files used a writable workspace
+  directory after the default sandbox temporary directory denied cleanup.
+- `cargo build --release --locked --offline --target x86_64-pc-windows-msvc -p daw-shimmer-reverb-clap -p daw-shimmer-reverb-vst3 --lib`
+  and `tools/package_plugins.py --units shimmer-reverb --target x86_64-pc-windows-msvc --output-dir target/plugin-artifacts/shimmer-reverb`:
+  PASS. Both development ZIPs and checksums are under the ignored target tree.
+- `cargo test --workspace --offline --no-fail-fast`: all targets passed except
+  the standalone timestretch manifest-extraction test. Its temporary directory
+  was inside the repository, so Cargo treated the extracted manifests as workspace
+  members. The isolated retry with the normal Windows temporary directory passed.
+  The full UI suite passed after the catalog keyboard-range fixture included the
+  new Reverb entry. Strict workspace Clippy and both normal and allocation-checked
+  release plugin host suites passed again after the final pitch-reset correction.
+
+The ONNX build used its existing local library through `ORT_LIB_PATH` after a
+download failed in the restricted environment. Test cache and temporary files
+used task-owned directories through `DAW_AUDIO_CACHE`, `TEMP` and `TMP`. These
+are local validation settings, not repository prerequisites or saved paths. The
+standalone extraction retry used the normal temporary directory outside the
+workspace, as required by that test's manifest-isolation check.
+
+External DAW hosts, interactive native editor attachment/gestures, accessibility,
+listening, audio devices, native macOS/Linux builds and a named-machine deadline
+benchmark remain open. Headless mesh and ABI tests do not establish those checks.
+
 ## EQ automation and source notice remediation — 2026-11-04
 
 Fixed F001 and F002 from the standalone `8c9f1ef` review. F003 (native ONNX

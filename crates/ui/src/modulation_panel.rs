@@ -583,6 +583,16 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::ShimmerPreDelay => offsets.map(|o| (base + o).clamp(0.0, 1000.0)),
+        ModulationParameter::ShimmerSize
+        | ModulationParameter::ShimmerVowel
+        | ModulationParameter::ShimmerVowelAmount
+        | ModulationParameter::ShimmerAmount1
+        | ModulationParameter::ShimmerAmount2
+        | ModulationParameter::ShimmerRate
+        | ModulationParameter::ShimmerDepth
+        | ModulationParameter::ShimmerLowDamp
+        | ModulationParameter::ShimmerHighDamp => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::EnvelopeAttack
         | ModulationParameter::EnvelopeDecay
         | ModulationParameter::EnvelopeRelease => {
@@ -774,6 +784,16 @@ pub(super) fn marker(
         lines.push("Frequencies retain a 1 Hz gap; Lower is limited below Upper when modulated boundaries meet.".into());
     }
     let format_value = |value: f32| match parameter {
+        ModulationParameter::ShimmerPreDelay => format!("{value:.1} ms"),
+        ModulationParameter::ShimmerSize
+        | ModulationParameter::ShimmerVowel
+        | ModulationParameter::ShimmerVowelAmount
+        | ModulationParameter::ShimmerAmount1
+        | ModulationParameter::ShimmerAmount2
+        | ModulationParameter::ShimmerRate
+        | ModulationParameter::ShimmerDepth
+        | ModulationParameter::ShimmerLowDamp
+        | ModulationParameter::ShimmerHighDamp => format!("{:.0}%", value * 100.0),
         ModulationParameter::GrainSize => format!("{value:.1} ms"),
         ModulationParameter::GrainOverlap | ModulationParameter::GrainSpeed => {
             format!("{value:.2}×")

@@ -94,6 +94,19 @@ fn ott_frequency(low: bool) -> KnobSpec {
 }
 pub fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::ShimmerSize => percent("Size", 0.75),
+        Parameter::ShimmerVowel => percent("Position", 0.0),
+        Parameter::ShimmerVowelAmount => percent("Amount", 0.0),
+        Parameter::ShimmerAmount1 => percent("Amount", 0.0),
+        Parameter::ShimmerAmount2 => percent("Amount", 0.0),
+        Parameter::ShimmerRate => percent("Rate", 0.390625),
+        Parameter::ShimmerDepth => percent("Depth", 0.429688),
+        Parameter::ShimmerLowDamp => percent("Low Damp", 0.0),
+        Parameter::ShimmerHighDamp => percent("High Damp", 0.0),
+        Parameter::ShimmerPreDelay => KnobSpec::new("Pre-delay", 0.0..=1000.0, 0.0, 1.0)
+            .value_label(time)
+            .format(time)
+            .endpoint_labels("0", "1k"),
         Parameter::HarmonicInput => KnobSpec::new("Wet Input", -60.0..=12.0, 0.0, 0.1)
             .value_label(|v| format!("{v:.1} dB"))
             .format(|v| format!("{v:.1} dB"))
@@ -462,6 +475,14 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
                 |v| format!("{v:+.1} ms"),
                 ["−25", "+25"],
             ),
+            Parameter::ShimmerPreDelay => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.1} ms"),
+                ["−1k", "+1k"],
+            ),
             Parameter::PlatePreDelay => (
                 AmountMapping::Offset {
                     origin: 0.0,
@@ -506,7 +527,16 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
                 signed_percent,
                 ["−100", "+100"],
             ),
-            Parameter::AmbientMotion => (
+            Parameter::ShimmerSize
+            | Parameter::ShimmerVowel
+            | Parameter::ShimmerVowelAmount
+            | Parameter::ShimmerAmount1
+            | Parameter::ShimmerAmount2
+            | Parameter::ShimmerRate
+            | Parameter::ShimmerDepth
+            | Parameter::ShimmerLowDamp
+            | Parameter::ShimmerHighDamp
+            | Parameter::AmbientMotion => (
                 AmountMapping::Offset {
                     origin: 0.0,
                     direction: 1.0,

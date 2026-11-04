@@ -34,6 +34,8 @@ fn reverbs_save_reopen_and_export_the_same_capped_tail_on_track_and_master() {
     for (index, master, mut effect) in [
         (0, false, EffectInstance::plate_reverb()),
         (1, true, EffectInstance::ambient_reverb()),
+        (2, false, EffectInstance::shimmer_reverb()),
+        (3, true, EffectInstance::shimmer_reverb()),
     ] {
         if let daw_core::EffectSettings::PlateReverb(settings) = &mut effect.unit {
             settings.highpass_enabled = false;

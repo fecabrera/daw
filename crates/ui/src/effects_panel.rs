@@ -46,6 +46,7 @@ pub(crate) struct EffectsUiBounds {
     pub bitcrusher_entry: Rect,
     pub chorus_entry: Rect,
     pub ambient_reverb_entry: Rect,
+    pub shimmer_reverb_entry: Rect,
     pub loudness_entry: Rect,
     pub plate_reverb_entry: Rect,
     pub lane_toolbar: Rect,
@@ -68,6 +69,7 @@ pub(crate) struct EffectsUiBounds {
     pub bitcrusher_units: Vec<crate::bitcrusher_panel::Bounds>,
     pub chorus_units: Vec<crate::chorus_panel::Bounds>,
     pub ambient_reverb_units: Vec<crate::ambient_reverb_panel::Bounds>,
+    pub shimmer_reverb_units: Vec<crate::shimmer_reverb_panel::Bounds>,
     pub loudness_units: Vec<crate::loudness_panel::Bounds>,
     pub plate_reverb_units: Vec<crate::plate_reverb_panel::Bounds>,
     pub multiband_compressor_units: Vec<crate::multiband_compressor_panel::Bounds>,
@@ -107,6 +109,7 @@ impl Default for EffectsUiBounds {
             bitcrusher_entry: Rect::NOTHING,
             chorus_entry: Rect::NOTHING,
             ambient_reverb_entry: Rect::NOTHING,
+            shimmer_reverb_entry: Rect::NOTHING,
             loudness_entry: Rect::NOTHING,
             plate_reverb_entry: Rect::NOTHING,
             lane_toolbar: Rect::NOTHING,
@@ -129,6 +132,7 @@ impl Default for EffectsUiBounds {
             bitcrusher_units: vec![],
             chorus_units: vec![],
             ambient_reverb_units: vec![],
+            shimmer_reverb_units: vec![],
             loudness_units: vec![],
             plate_reverb_units: vec![],
             multiband_compressor_units: vec![],
@@ -289,6 +293,7 @@ impl DawUi {
             self.effects_bounds.bitcrusher_units.clear();
             self.effects_bounds.chorus_units.clear();
             self.effects_bounds.ambient_reverb_units.clear();
+            self.effects_bounds.shimmer_reverb_units.clear();
             self.effects_bounds.loudness_units.clear();
             self.effects_bounds.plate_reverb_units.clear();
             self.effects_bounds.multiband_compressor_units.clear();
@@ -353,6 +358,7 @@ impl DawUi {
             self.effects_bounds.chorus_entry = Rect::NOTHING;
             self.effects_bounds.plate_reverb_entry = Rect::NOTHING;
             self.effects_bounds.ambient_reverb_entry = Rect::NOTHING;
+            self.effects_bounds.shimmer_reverb_entry = Rect::NOTHING;
             self.effects_bounds.loudness_entry = Rect::NOTHING;
         }
         ui.horizontal_top(|ui| {
@@ -467,6 +473,9 @@ impl DawUi {
                                     }
                                     daw_core::AMBIENT_REVERB_TYPE_ID => {
                                         self.effects_bounds.ambient_reverb_entry = response.rect;
+                                    }
+                                    daw_core::SHIMMER_REVERB_TYPE_ID => {
+                                        self.effects_bounds.shimmer_reverb_entry = response.rect;
                                     }
                                     daw_core::PLATE_REVERB_TYPE_ID => {
                                         self.effects_bounds.plate_reverb_entry = response.rect;
@@ -1254,6 +1263,25 @@ impl DawUi {
                                     let power = bounds.power;
                                     #[cfg(test)]
                                     self.effects_bounds.ambient_reverb_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::ShimmerReverb(settings) => {
+                                    let (bounds, header) = crate::shimmer_reverb_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        output_level,
+                                        self.session.project.tempo_bpm,
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.shimmer_reverb_units.push(bounds);
                                     (header, power)
                                 }
                                 daw_core::EffectSettings::PlateReverb(settings) => {

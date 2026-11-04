@@ -53,6 +53,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/exciter` | Portable variable-band harmonic excitation, shared LR4 crossovers/oversampling, typed modulation and live-only band audition; no DAW, UI or device dependencies. |
 | `crates/chorus` | Portable stereo modulated delays, bounded feedback, phase-continuous sine voices, width and shared modulation/monitoring; no DAW, UI, media, or device dependencies. |
 | `crates/reverb-core`, `crates/plate-reverb`, `crates/ambient-reverb` | Prepared stereo reverb kernels, diffusion and feedback storage, product processing, shared modulation and output monitoring; no DAW, UI, media or device dependencies. |
+| `crates/shimmer-reverb` | Portable stereo vowel processing, bounded two-voice pitch regeneration and contractive late reverb tank, shared modulation and monitoring; no DAW, UI, media or device dependencies. |
 | `crates/bitcrusher` | Portable stereo quantization, whole-ratio sample holding, and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/stereo-spread` | Portable spectral stereo widening with private FunDSP filter banks and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/direction-mixer` | Portable stereo direction/width and M/S decoding through the shared effect and modulation APIs; no DAW, UI, or device dependencies. |

@@ -430,6 +430,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             None,
             Some(entries[16]),
             Some(entries[17]),
+            Some(entries[20]),
             None,
             Some(entries[18]),
         ];
@@ -7099,6 +7100,43 @@ fn loudness_catalog_body_and_power_work_on_track_master_and_instrument() {
             assert!(
                 matches!(&app.effect_chain(owner).unwrap().0[0].unit,daw_core::EffectSettings::Loudness(s) if !s.enabled)
             );
+        }
+    }
+}
+
+#[test]
+fn shimmer_reverb_uses_shared_catalog_controls_on_track_master_and_instrument() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            {
+                let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+                scroll_effects_catalog(&mut app, &ctx, -240.0);
+                let entry = app.effects_bounds.shimmer_reverb_entry;
+                assert!(entry.is_positive());
+                click(&mut app, &ctx, entry.center());
+                library_key(&mut app, &ctx, egui::Key::Enter, false);
+                frame(&mut app, &ctx, vec![]);
+                let owner = app.effects_target().unwrap();
+                let chain = app.effect_chain(owner).unwrap().0;
+                assert_eq!(chain.len(), 1);
+                assert!(matches!(
+                    chain[0].unit,
+                    daw_core::EffectSettings::ShimmerReverb(_)
+                ));
+                let b = &app.effects_bounds.shimmer_reverb_units[0];
+                let (control, power) = (b.controls[0], b.power);
+                drag_control(&mut app, &ctx, control.center(), Vec2::new(0.0, -18.0));
+                match &app.effect_chain(owner).unwrap().0[0].unit {
+                    daw_core::EffectSettings::ShimmerReverb(s) => assert!(s.size > 0.75),
+                    _ => unreachable!(),
+                }
+                end_click_sequence(&mut app, &ctx);
+                click(&mut app, &ctx, power.center());
+                match &app.effect_chain(owner).unwrap().0[0].unit {
+                    daw_core::EffectSettings::ShimmerReverb(s) => assert!(!s.enabled),
+                    _ => unreachable!(),
+                }
+            }
         }
     }
 }

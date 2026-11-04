@@ -10,7 +10,10 @@ fn body_binds_all_visible_parameters_and_fits_declared_viewport() {
         ctx.set_pixels_per_point(scale);
         for mode in 0..2 {
             let mut state = PluginState::default();
-            if let Some(p) = P::ALL.into_iter().find(|p| p.info().key == "rate_mode") {
+            if let Some(p) = P::ALL
+                .into_iter()
+                .find(|p| matches!(p.info().key, "rate_mode" | "sync"))
+            {
                 state.set(p, f64::from(mode)).unwrap();
             }
             if body::SCROLLABLE {

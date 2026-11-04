@@ -1,0 +1,59 @@
+use daw_drive_plugin::Parameter as P;
+use daw_unit_ui::{control_capture, layout::*, meters};
+use egui::{Response, Ui, Vec2};
+pub const SIZE: Vec2 = Vec2::new(
+    daw_unit_ui::shimmer_reverb::BODY_WIDTH,
+    unit_control_height() + 2.0 * PANEL_MARGIN as f32,
+);
+pub struct Bounds {
+    pub sections: [egui::Rect; 6],
+    pub controls: [Option<Response>; P::COUNT - 1],
+    pub readouts: Vec<(u32, Response)>,
+}
+pub fn render(
+    ui: &mut Ui,
+    s: &mut daw_unit_core::ShimmerReverbSettings,
+    level: meters::OutputLevel<'_>,
+    _: meters::GainReduction<'_>,
+    _: meters::BandGainChange<'_>,
+) -> Bounds {
+    let before = daw_drive_plugin::PluginState::from_settings(s).unwrap();
+    let (b, c) = control_capture::scope(ui, |ui| {
+        daw_unit_ui::shimmer_reverb::show(
+            ui,
+            s,
+            false,
+            unit_control_height(),
+            &std::array::from_fn(|_| None),
+            level,
+            120.0,
+        )
+    });
+    let after = daw_drive_plugin::PluginState::from_settings(s).unwrap();
+    Bounds {
+        sections: b.sections,
+        controls: std::array::from_fn(|i| {
+            control_capture::at(&c, b.controls[i]).map(|mut r| {
+                let p = P::ALL[i + 1];
+                if before.get(p) != after.get(p) {
+                    r.mark_changed();
+                }
+                r
+            })
+        }),
+        readouts: vec![],
+    }
+}
+#[cfg(test)]
+pub const SCROLLABLE: bool = false;
+#[cfg(test)]
+pub fn show(
+    ui: &mut Ui,
+    s: &mut daw_unit_core::ShimmerReverbSettings,
+    _: bool,
+    _: f32,
+    _: &[Option<daw_unit_ui::knobs::ModulationMarker>; P::COUNT - 1],
+    level: meters::OutputLevel<'_>,
+) -> Bounds {
+    render(ui, s, level, 0.0.into(), [0.0; 3].into())
+}

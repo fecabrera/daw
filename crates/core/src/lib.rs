@@ -6,6 +6,7 @@ pub use daw_unit_core::{
     MULTIBAND_COMPRESSOR_TYPE_ID, MultibandCompressorBand, MultibandCompressorSettings,
 };
 pub use daw_unit_core::{PLATE_REVERB_TYPE_ID, PlateDriveMode, PlateReverbSettings};
+pub use daw_unit_core::{SHIMMER_REVERB_TYPE_ID, ShimmerReverbSettings};
 mod effect_owners;
 pub use daw_unit_core::{
     HARMONIC_BAND_NAMES, HARMONIC_FREQUENCY_DEFAULTS, HARMONIC_FREQUENCY_RANGES,

@@ -39,6 +39,7 @@ jobs:
           - { slug: stereo-spread, name: Stereo Spread, library: daw_stereo_spread }
           - { slug: plate-reverb, name: Plate-Reverb, library: daw_plate_reverb }
           - { slug: ambient-reverb, name: Ambient-Reverb, library: daw_ambient_reverb }
+          - { slug: shimmer-reverb, name: Shimmer-Reverb, library: daw_shimmer_reverb }
           - { slug: loudness, name: Loudness-Meter, library: daw_loudness }
           - { slug: chorus, name: Chorus, library: daw_chorus }
           - { slug: ott, name: OTT, library: daw_ott }

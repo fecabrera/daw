@@ -106,4 +106,5 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Performance remediation — 2026-10-18](validation/performance-remediation-2026-10-18.md): implemented changes, before/after evidence, and remaining checks.
 
 - [All effect plugin builds](architecture/all-effect-plugin-builds.md): remaining ten products, fixed EQ bank, timing, meters, packaging, and CI.
+- [Shimmer Reverb](effects/shimmer-reverb.md): bounded pitch regeneration, shared editor, DSP stability and CLAP/VST3 products.
 - [Plate and Ambient Reverb](effects/reverbs.md): shared layouts, portable processing, standalone delivery, tails, and validation limits.

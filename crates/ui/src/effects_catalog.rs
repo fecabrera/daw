@@ -56,7 +56,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 20] = [
+pub(super) const ENTRIES: [Entry; 21] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -176,6 +176,12 @@ pub(super) const ENTRIES: [Entry; 20] = [
         "Multiband Compressor",
         Category::Dynamics,
         daw_core::EffectInstance::multiband_compressor,
+    ),
+    Entry::new(
+        daw_core::SHIMMER_REVERB_TYPE_ID,
+        "Shimmer Reverb",
+        Category::Reverb,
+        daw_core::EffectInstance::shimmer_reverb,
     ),
 ];
 

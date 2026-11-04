@@ -21,6 +21,7 @@ The registered built-in effects have separate CLAP and VST3 development previews
 | [Harmonic Lift](harmonic-lift.md) | `harmonic-lift` | Wet Input, Normal/HQ 2×; six branch Power/Frequency/Gain controls; Drive, Push, Limit Level, Level, Dry/Wet |
 | [Plate Reverb](plate-reverb.md) | `plate-reverb` | Pre-delay, Decay, Tail, Color, Quality; Hi-Pass and Lo-Pass power, Frequency, Slope; Drive power, Mode, Drive, Tone; Level, Width, Dry/Wet |
 | [Ambient Reverb](ambient-reverb.md) | `ambient-reverb` | Decay, Bloom, Modulation, Quality; Hi-Pass and Lo-Pass power, Frequency, Slope; Level, Width, Dry/Wet |
+| [Shimmer Reverb](shimmer-reverb.md) | `shimmer-reverb` | Size, Time/Sync pre-delay, Vowel, two Pitch/Amount voices, Motion, Damping, Warm, Level, Dry/Wet |
 | [Chorus](chorus.md) | `chorus` | Delay, Depth, Feedback, Voices, Hz/Note rate, Stereo Phase, Width, Level, Dry/Wet |
 | [Loudness Meter](loudness-meter.md) | `loudness` | Target, TP quality, Clock, History metric, Hold/Resume, Reset; loudness, maxima, range, dynamics and output readings |
 
@@ -37,3 +38,7 @@ These previews accept stereo planar 32-bit floating-point audio at 44.1, 48, 88.
 macOS bundles use ad-hoc signing without notarization. Windows/Linux builds are unsigned. Native editor attachment, external hosts, accessibility, and clean-machine release acceptance still need platform checks.
 
 Multiband EQ and Multiband Compressor have temporary S buttons for band audition. Solo is excluded from presets and automation. Offline mode in VST3 and the CLAP render extension suppress Solo; a host that records in real time captures the audition output.
+
+Shimmer Reverb follows host tempo for synced pre-delay and retains its last valid
+tempo when updates stop. Its musical delay is capped at eight seconds. It reports
+zero alignment latency and a conservative 120-second tail budget.

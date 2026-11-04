@@ -16,6 +16,7 @@ use daw_multiband_compressor::MultibandCompressor;
 use daw_ott::Ott;
 use daw_plate_reverb::PlateReverb;
 use daw_saturator::Saturator;
+use daw_shimmer_reverb::ShimmerReverb;
 use daw_stereo_spread::StereoSpread;
 use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_modulation};
 use std::sync::Arc;
@@ -41,6 +42,7 @@ enum RuntimeEffect {
     Bitcrusher(Box<Bitcrusher>, Vec<super::modulation::Route>),
     Chorus(Box<Chorus>, Vec<super::modulation::Route>),
     AmbientReverb(Box<AmbientReverb>, Vec<super::modulation::Route>),
+    ShimmerReverb(Box<ShimmerReverb>, Vec<super::modulation::Route>),
     PlateReverb(Box<PlateReverb>, Vec<super::modulation::Route>),
 }
 
@@ -128,6 +130,11 @@ impl RuntimeEffect {
                     + unit.heap_bytes()
                     + daw_unit_core::memory::vec_bytes(routes)
             }
+            Self::ShimmerReverb(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
             Self::PlateReverb(unit, routes) => {
                 std::mem::size_of_val(unit.as_ref()) as u64
                     + unit.heap_bytes()
@@ -159,6 +166,7 @@ impl RuntimeEffect {
             Self::Bitcrusher(unit, _) => unit.latency_frames(),
             Self::Chorus(unit, _) => unit.latency_frames(),
             Self::AmbientReverb(unit, _) => unit.latency_frames(),
+            Self::ShimmerReverb(unit, _) => unit.latency_frames(),
             Self::PlateReverb(unit, _) => unit.latency_frames(),
         }
     }
@@ -384,6 +392,19 @@ impl RuntimeEffect {
                     ..Default::default()
                 },
             ),
+            Self::ShimmerReverb(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::PlateReverb(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -498,6 +519,12 @@ impl RuntimeEffect {
                     route.reset();
                 }
             }
+            Self::ShimmerReverb(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
             Self::PlateReverb(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -538,6 +565,9 @@ impl RuntimeEffect {
             }
             (Self::Chorus(unit, _), EffectSettings::Chorus(settings)) => unit.retarget(settings),
             (Self::AmbientReverb(unit, _), EffectSettings::AmbientReverb(settings)) => {
+                unit.retarget(settings)
+            }
+            (Self::ShimmerReverb(unit, _), EffectSettings::ShimmerReverb(settings)) => {
                 unit.retarget(settings)
             }
             (Self::PlateReverb(unit, _), EffectSettings::PlateReverb(settings)) => {
@@ -739,6 +769,16 @@ impl EffectChain {
                                         .collect(),
                                 ))
                             }
+                            EffectSettings::ShimmerReverb(settings) => {
+                                Some(RuntimeEffect::ShimmerReverb(
+                                    Box::new(ShimmerReverb::new(context, settings)),
+                                    settings
+                                        .modulations
+                                        .iter()
+                                        .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                        .collect(),
+                                ))
+                            }
                             EffectSettings::PlateReverb(settings) => {
                                 Some(RuntimeEffect::PlateReverb(
                                     Box::new(PlateReverb::new(context, settings)),
@@ -859,6 +899,10 @@ impl EffectChain {
                     RuntimeEffect::AmbientReverb(_, new_routes),
                 )
                 | (
+                    RuntimeEffect::ShimmerReverb(_, old_routes),
+                    RuntimeEffect::ShimmerReverb(_, new_routes),
+                )
+                | (
                     RuntimeEffect::PlateReverb(_, old_routes),
                     RuntimeEffect::PlateReverb(_, new_routes),
                 ) = (&mut *previous, &mut *next)
@@ -954,6 +998,9 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::AmbientReverb(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::ShimmerReverb(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::PlateReverb(unit, _)))) => {
@@ -1053,6 +1100,9 @@ impl EffectChain {
                 unit.set_output_peak_meter(meter.clone());
             }
             Some((_, Some(RuntimeEffect::AmbientReverb(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::ShimmerReverb(unit, _)))) => {
                 unit.set_output_peak_meter(meter.clone());
             }
             Some((_, Some(RuntimeEffect::PlateReverb(unit, _)))) => {

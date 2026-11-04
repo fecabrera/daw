@@ -14,6 +14,7 @@ pub mod parameter_knobs;
 pub mod plate_reverb;
 mod reverb_controls;
 pub mod rows;
+pub mod shimmer_reverb;
 pub mod theme;
 
 pub mod bitcrusher;

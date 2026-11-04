@@ -1743,6 +1743,7 @@ dependencies = [
  "daw-plate-reverb",
  "daw-sampler",
  "daw-saturator",
+ "daw-shimmer-reverb",
  "daw-stereo-spread",
  "daw-unit-core",
  "serde",
@@ -2499,6 +2500,66 @@ dependencies = [
  "ort",
  "serde",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "daw-shimmer-reverb"
+version = "0.1.0"
+dependencies = [
+ "daw-reverb-core",
+ "daw-unit-core",
+]
+
+[[package]]
+name = "daw-shimmer-reverb-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-shimmer-reverb",
+ "daw-shimmer-reverb-editor",
+ "daw-shimmer-reverb-plugin",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-shimmer-reverb-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-shimmer-reverb-plugin",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-shimmer-reverb-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-support",
+ "daw-shimmer-reverb",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-shimmer-reverb-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-shimmer-reverb",
+ "daw-shimmer-reverb-editor",
+ "daw-shimmer-reverb-plugin",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]

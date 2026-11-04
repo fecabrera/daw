@@ -403,3 +403,9 @@ destination_settings!(
     &ModulationParameter::AMBIENT_REVERB,
     Shared
 );
+
+destination_settings!(
+    crate::ShimmerReverbSettings,
+    &ModulationParameter::SHIMMER_REVERB,
+    Shared
+);

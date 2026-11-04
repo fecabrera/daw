@@ -456,6 +456,9 @@ impl Renderer {
                     daw_core::EffectSettings::AmbientReverb(_) => {
                         daw_unit_core::AMBIENT_REVERB_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::ShimmerReverb(_) => {
+                        daw_unit_core::SHIMMER_REVERB_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::PlateReverb(_) => {
                         daw_unit_core::PLATE_REVERB_TYPE_ID.hash(&mut hash)
                     }
@@ -818,6 +821,7 @@ impl Renderer {
                 e.unit,
                 daw_core::EffectSettings::PlateReverb(_)
                     | daw_core::EffectSettings::AmbientReverb(_)
+                    | daw_core::EffectSettings::ShimmerReverb(_)
                     | daw_core::EffectSettings::Chorus(_)
                     | daw_core::EffectSettings::HarmonicLift(_)
             )

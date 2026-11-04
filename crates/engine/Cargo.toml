@@ -8,6 +8,7 @@ rust-version.workspace = true
 daw-loudness.workspace=true
 daw-plate-reverb.workspace = true
 daw-ambient-reverb.workspace = true
+daw-shimmer-reverb.workspace = true
 daw-harmonic-lift.workspace = true
 daw-noise.workspace = true
 daw-exciter.workspace = true

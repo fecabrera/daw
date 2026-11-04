@@ -633,6 +633,7 @@ mod effect_modulation_tests {
             EffectSettings::Bitcrusher(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Chorus(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::AmbientReverb(s) => (&mut s.modulation_open, &mut s.modulations),
+            EffectSettings::ShimmerReverb(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::PlateReverb(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Saturator(s) => (&mut s.modulation_open, &mut s.modulations),
             _ => unreachable!(),

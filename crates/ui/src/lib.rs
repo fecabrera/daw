@@ -1,6 +1,7 @@
 mod ambient_reverb_panel;
 mod loudness_panel;
 mod plate_reverb_panel;
+mod shimmer_reverb_panel;
 pub use daw_media::{configure_preparation_cache, preparation_cache_directory};
 mod background_audio;
 use daw_unit_ui::menus;

@@ -123,3 +123,11 @@ outside parameters, presets and state publication. VST3 transports per-slot
 index/boolean messages on the control thread; CLAP shares prepared atomics.
 VST3 offline processing and the CLAP render extension gate audition out of audio.
 Native host validation is still separate from automated adapter/editor tests.
+
+## Shimmer Reverb
+
+[Shimmer Reverb](../effects/shimmer-reverb.md) adds a checked 18-parameter product,
+a 611-point shared body, independent CLAP/VST3 identities and version 1 bounded
+state. Both formats receive transport tempo for synced pre-delay. It reports zero
+alignment latency and a fixed 120-second tail budget. The original portable DSP
+uses bounded pitch regeneration and a contractive eight-line late tank.

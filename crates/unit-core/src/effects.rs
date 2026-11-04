@@ -19,6 +19,7 @@ use crate::{MULTIBAND_EQ_STATE_VERSION, MULTIBAND_EQ_TYPE_ID, MultibandEqSetting
 use crate::{OTT_STATE_VERSION, OTT_TYPE_ID, OttSettings};
 use crate::{PLATE_REVERB_STATE_VERSION, PLATE_REVERB_TYPE_ID, PlateReverbSettings};
 use crate::{SATURATOR_STATE_VERSION, SATURATOR_TYPE_ID, SaturatorSettings};
+use crate::{SHIMMER_REVERB_STATE_VERSION, SHIMMER_REVERB_TYPE_ID, ShimmerReverbSettings};
 use crate::{STEREO_SPREAD_STATE_VERSION, STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
 use serde::{Deserialize, Serialize};
 
@@ -103,6 +104,7 @@ pub enum EffectSettings {
     Bitcrusher(BitcrusherSettings),
     Chorus(ChorusSettings),
     AmbientReverb(AmbientReverbSettings),
+    ShimmerReverb(ShimmerReverbSettings),
     PlateReverb(PlateReverbSettings),
     Missing {
         type_id: String,
@@ -151,6 +153,10 @@ impl Serialize for EffectSettings {
             },
             Self::AmbientReverb(settings) => StoredEffect {
                 type_id: AMBIENT_REVERB_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::ShimmerReverb(settings) => StoredEffect {
+                type_id: SHIMMER_REVERB_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
             },
             Self::PlateReverb(settings) => StoredEffect {
@@ -288,6 +294,16 @@ impl<'de> Deserialize<'de> for EffectSettings {
             serde_json::from_value(stored.state)
                 .map(Self::AmbientReverb)
                 .map_err(serde::de::Error::custom)
+        } else if stored.type_id == SHIMMER_REVERB_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|version| version <= u64::from(SHIMMER_REVERB_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::ShimmerReverb)
+                .map_err(serde::de::Error::custom)
         } else if stored.type_id == PLATE_REVERB_TYPE_ID
             && stored
                 .state
@@ -423,6 +439,7 @@ impl EffectSettings {
         match self {
             Self::PlateReverb(s) => s.tail_frames(sample_rate_hz),
             Self::AmbientReverb(s) => s.tail_frames(sample_rate_hz),
+            Self::ShimmerReverb(s) => s.tail_frames(sample_rate_hz),
             _ => 0,
         }
     }
@@ -468,6 +485,7 @@ impl EffectSettings {
             Self::Bitcrusher(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Chorus(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::AmbientReverb(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::ShimmerReverb(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::PlateReverb(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Ott(s) => crate::ModulationDestinationSettings::modulations(s),
             _ => &[],
@@ -494,6 +512,7 @@ impl EffectSettings {
             Self::Bitcrusher(s) => &mut s.modulations,
             Self::Chorus(s) => &mut s.modulations,
             Self::AmbientReverb(s) => &mut s.modulations,
+            Self::ShimmerReverb(s) => &mut s.modulations,
             Self::PlateReverb(s) => &mut s.modulations,
             Self::Ott(s) => &mut s.modulations,
             _ => &mut [],
@@ -521,6 +540,7 @@ impl EffectSettings {
             Self::Bitcrusher(settings) => settings.valid(),
             Self::Chorus(settings) => settings.valid(),
             Self::AmbientReverb(settings) => settings.valid(),
+            Self::ShimmerReverb(settings) => settings.valid(),
             Self::PlateReverb(settings) => settings.valid(),
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
@@ -543,6 +563,7 @@ impl EffectSettings {
                     BITCRUSHER_TYPE_ID => Some(BITCRUSHER_STATE_VERSION),
                     CHORUS_TYPE_ID => Some(CHORUS_STATE_VERSION),
                     AMBIENT_REVERB_TYPE_ID => Some(AMBIENT_REVERB_STATE_VERSION),
+                    SHIMMER_REVERB_TYPE_ID => Some(SHIMMER_REVERB_STATE_VERSION),
                     PLATE_REVERB_TYPE_ID => Some(PLATE_REVERB_STATE_VERSION),
                     _ => None,
                 };
@@ -679,6 +700,12 @@ impl EffectInstance {
         Self {
             id: uuid::Uuid::new_v4(),
             unit: EffectSettings::AmbientReverb(AmbientReverbSettings::default()),
+        }
+    }
+    pub fn shimmer_reverb() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::ShimmerReverb(ShimmerReverbSettings::default()),
         }
     }
     pub fn plate_reverb() -> Self {

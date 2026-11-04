@@ -62,6 +62,7 @@ impl EffectSettings {
             Self::Bitcrusher(s) => vec_bytes(&s.modulations),
             Self::Chorus(s) => vec_bytes(&s.modulations),
             Self::AmbientReverb(s) => vec_bytes(&s.modulations),
+            Self::ShimmerReverb(s) => vec_bytes(&s.modulations),
             Self::PlateReverb(s) => vec_bytes(&s.modulations),
             Self::Loudness(_) => 0,
             Self::Missing { type_id, state } => type_id.capacity() as u64 + json_bytes(state),

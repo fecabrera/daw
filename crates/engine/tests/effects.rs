@@ -2084,3 +2084,6 @@ mod plate_reverb;
 
 #[path = "support/ambient_reverb.rs"]
 mod ambient_reverb;
+
+#[path = "support/shimmer_reverb.rs"]
+mod shimmer_reverb;
