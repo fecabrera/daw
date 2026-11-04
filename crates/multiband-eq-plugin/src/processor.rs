@@ -67,8 +67,7 @@ impl Processor {
     /// Timed automation must not copy the complete state on every sample.
     pub fn apply_parameter(&mut self, parameter: Parameter, state: &PluginState) {
         self.state.copy_parameter_from(parameter, state);
-        crate::mapping::update_settings(&self.state, &mut self.settings);
-        self.drive.retarget(&self.settings);
+        self.retarget_parameter(parameter);
     }
     pub fn restore(&mut self, state: PluginState) {
         self.state = state;
@@ -77,9 +76,23 @@ impl Processor {
     }
     pub fn set(&mut self, parameter: Parameter, value: f64) -> Result<(), ParameterError> {
         self.state.set(parameter, value)?;
-        crate::mapping::update_settings(&self.state, &mut self.settings);
-        self.drive.retarget(&self.settings);
+        self.retarget_parameter(parameter);
         Ok(())
+    }
+    fn retarget_parameter(&mut self, parameter: Parameter) {
+        if let Some(slot) =
+            crate::mapping::update_parameter(&self.state, parameter, &mut self.settings)
+        {
+            let accepted = self
+                .drive
+                .retarget_prepared_band(slot, &self.settings.bands[slot]);
+            debug_assert!(accepted, "prepared canonical slot identity changed");
+        } else if parameter == Parameter::Bypass {
+            self.drive.retarget_enabled(self.settings.enabled);
+        } else {
+            self.drive
+                .retarget_output_gain(self.settings.output_gain_db);
+        }
     }
     pub fn reset(&mut self) {
         self.frame = 0;

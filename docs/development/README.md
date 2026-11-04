@@ -46,3 +46,8 @@ needed or included. Keep the source materials with packages you redistribute.
 This supplies build/relink materials; it does not claim bit-identical builds across
 different compilers or operating systems. Native packaging and clean-machine checks
 remain separate from source-archive fixture tests.
+
+Supplemental upstream notices omitted from published dependency archives are
+included in `DAW/SOURCE-LICENSES`, with a package/version/source/checksum index.
+Keep that directory with the sources when redistributing them. The packager
+rejects a mismatched package revision or notice hash.

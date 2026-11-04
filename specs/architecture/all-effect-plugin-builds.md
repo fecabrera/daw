@@ -38,6 +38,18 @@ The plugin prepares 64 stable band slots, each with Enabled, Mode, Frequency, Ga
 
 `MultibandEq::retarget` changes only same-ID/same-order prepared settings. Route/topology changes still require worker preparation and `inherit`. Reject mismatched topologies before changing any band. The plugin retains its settings vector through processing; automation must not reconstruct it. Editor and CLAP gesture queues scale to the fixed parameter count while remaining bounded. The editor starts with one band, the shared Add strip and Output. Add reveals and enables the next hidden slot; power bypass retains the visible strip. Remove resets and hides that slot while preserving its stable identity. Enabled or modified slots become visible after state recall. The visible-slot mask is instance UI state, separate from parameters and serialized presets. The bank scrolls horizontally as needed, and Add is disabled at 64 visible slots. These presentation rules do not change the fixed automation bank. Tests cover Add, power, Remove and identity preservation.
 
+Single-field automation resolves its canonical slot in constant time and calls
+`MultibandEq::retarget_prepared_band`. This entry point checks the slot index and
+stable UUID before changing any state. Output Level updates only the output ramp;
+Bypass updates the global ramp and all meter enable states. The full validated
+same-topology `retarget` path remains available for preset recall. Both paths use
+the same band ramps, including multiple targets at one sample timestamp; neither
+changes processing order or creates bands. Tests compare the per-field paths
+against full retargeting at all six rates, including reset, same-sample transient
+targets, meters, presentation order and callback heap operations. The explicit
+release cost regression compares 64-frequency and 322-field automation against
+the full-bank reference using a median ratio rather than a device deadline.
+
 Standalone Multiband EQ uses the shared release-only strip gesture lifecycle. Its version-2 state appends a validated 64-slot permutation; version-1 state loads with the original order. Published automation IDs and their slot bindings remain fixed. UI controls resolve slots by stable UUID, and the prepared DSP retains canonical slot order. Shared state exchanges publish the complete bounded state, including presentation fields. CLAP consumes order from its bounded editor queue on the control thread, saves it immediately without audio-event delivery, and marks non-parameter state dirty after releasing queue borrows. Order does not enter DSP processing. VST3 stores the order in controller state and calls the host dirty-state hook. The owning host controls native state undo; native undo/recall acceptance is not established by headless tests. The visible-slot mask remains instance-only UI state as described above.
 
 ## Packaging, CI, and checks
@@ -85,3 +97,14 @@ the supported package targets, verify the inventory hashes. The inventory is a
 bounded regression record; dependency/feature changes still require a fresh
 license-closure assessment. Corresponding-source/relink release obligations remain
 separate from notice retention.
+
+## Supplemental source grants — 2026-11-04
+
+The shared notice inventory retains the exact Valuable 0.1.1 MIT grant from upstream
+`9efc29b6e58cef28f6566a47aa7e142a55fead77`. Its registry source payload omits the grant.
+The source packager checks package name/version, registry checksum, VCS revision,
+VCS subpath and notice SHA-256 before copying the supplemental text. It writes
+`SOURCE-LICENSES/index.json` and the unmodified grant into the source archive.
+Common desktop/plugin notice inputs retain the same grant conservatively. These
+checks cover source-only optional packages too; metadata resolution alone does
+not prove notice completeness. They do not modify the pinned native ONNX runtime.

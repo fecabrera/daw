@@ -66,3 +66,26 @@ fn saved_band_order_preserves_slot_parameters_and_recalls_legacy_state() {
     invalid[length - 64] = invalid[length - 63];
     assert!(PluginState::decode(&invalid).is_err());
 }
+
+#[test]
+fn prepared_slot_update_rejects_wrong_identity_or_index_without_changing_audio() {
+    use daw_unit_core::{EffectUnit, ProcessingContext};
+    let settings = plugin::PluginState::default().to_settings();
+    let context = ProcessingContext {
+        sample_rate_hz: 48000,
+        max_block_frames: 512,
+    };
+    let mut actual = Direct::new(context, &settings);
+    let mut expected = Direct::new(context, &settings);
+    actual.prepare_fixed_band_slots();
+    expected.prepare_fixed_band_slots();
+    let wrong = &settings.bands[1];
+    assert!(!actual.retarget_prepared_band(0, wrong));
+    assert!(!actual.retarget_prepared_band(64, wrong));
+    for _ in 0..512 {
+        assert_eq!(
+            actual.process_sample([0.2, -0.1]),
+            expected.process_sample([0.2, -0.1])
+        );
+    }
+}

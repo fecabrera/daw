@@ -24,6 +24,7 @@ class DesktopPackagingTests(unittest.TestCase):
                         script = ROOT / 'tools' / f'package_{platform}.sh'
                         shutil.copy(script, root / 'tools' / script.name)
                         shutil.copy(ROOT / 'tools/package_sources.py', root / 'tools/package_sources.py')
+                        shutil.copy(ROOT / 'tools/runtime_notices.json', root / 'tools/runtime_notices.json')
                         shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
                         for directory in ('crates/unit-ui/assets/fonts', 'crates/ui/assets/icons', 'crates/ui/assets/licenses', 'crates/unit-ui/assets/licenses', 'crates/separation/assets/licenses', 'crates/media/assets/licenses', 'crates/timestretch/licenses', 'crates/oscillator/assets/licenses', 'crates/equalizer/assets/licenses'):
                             shutil.copytree(ROOT / directory, root / directory)

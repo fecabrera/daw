@@ -133,6 +133,10 @@ impl Band {
             max_frequency: (c.sample_rate_hz as f32 * 0.49).min(20_000.0),
         }
     }
+    fn retarget(&mut self, settings: &MultibandEqBand, frames: u32) {
+        self.parameters.set(values(settings), frames);
+        self.weights.set(weights(settings), frames);
+    }
     fn reset(&mut self) {
         self.monitor.reset();
         self.parameters.reset();
@@ -287,20 +291,37 @@ impl MultibandEq {
             return;
         }
         for (band, settings) in self.bands.iter_mut().zip(&s.bands) {
-            band.destination
-                .parameters
-                .set(values(settings), self.fade_frames);
-            band.destination
-                .weights
-                .set(weights(settings), self.fade_frames);
-            band.destination.monitor.set_enabled(s.enabled);
+            band.destination.retarget(settings, self.fade_frames);
         }
+        self.retarget_output_gain(s.output_gain_db);
+        self.retarget_enabled(s.enabled);
+    }
+    /// Update one validated prepared slot in constant time. A wrong index or ID
+    /// leaves the complete bank unchanged; this never creates or reorders bands.
+    pub fn retarget_prepared_band(&mut self, index: usize, settings: &MultibandEqBand) -> bool {
+        let Some(band) = self.bands.get_mut(index) else {
+            return false;
+        };
+        if band.destination.id != settings.id {
+            return false;
+        }
+        band.destination.retarget(settings, self.fade_frames);
+        true
+    }
+    /// Update validated output gain without visiting prepared bands.
+    pub fn retarget_output_gain(&mut self, gain_db: f32) {
         self.output
             .destination
             .gain
-            .set([s.output_gain_db], self.fade_frames);
-        self.bypass.set([f32::from(s.enabled)], self.fade_frames);
-        self.output_monitor.set_enabled(s.enabled);
+            .set([gain_db], self.fade_frames);
+    }
+    /// Global bypass must also update every band's meter lifecycle.
+    pub fn retarget_enabled(&mut self, enabled: bool) {
+        for band in &mut self.bands {
+            band.destination.monitor.set_enabled(enabled);
+        }
+        self.bypass.set([f32::from(enabled)], self.fade_frames);
+        self.output_monitor.set_enabled(enabled);
     }
     /// Attach the final unit output monitor, independently of per-band analysis.
     /// Prepare and attach on the control thread; retain the handle until retirement.

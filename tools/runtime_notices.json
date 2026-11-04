@@ -1,5 +1,5 @@
 {
-  "scope": "Confirmed runtime notice omissions from standalone reviews; not a complete licensing audit.",
+  "scope": "Selected confirmed runtime and source-distribution notice omissions; not a complete licensing audit.",
   "notices": [
     {
       "component": "alsa-sys-0.3.1",
@@ -311,6 +311,26 @@
         "plugins"
       ],
       "reason": "Runtime notice retained in the common UI notice inventory; unused target notices may be bundled conservatively."
+    },
+    {
+      "component": "valuable-0.1.1",
+      "notice": "crates/ui/assets/licenses/valuable-0.1.1-MIT.txt",
+      "sha256": "ed60d479b8fd1f64e9cbc3de449a16a53ac1b3d1b6aeb9bf9d190a8e93061b44",
+      "deliverables": [
+        "desktop",
+        "plugins",
+        "source"
+      ],
+      "reason": "Cargo vendor ships the full optional Valuable source, whose registry payload omits its upstream MIT notice. Shared binary notice inputs retain it conservatively.",
+      "source_package": {
+        "name": "valuable",
+        "version": "0.1.1",
+        "registry_checksum": "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65",
+        "git_revision": "9efc29b6e58cef28f6566a47aa7e142a55fead77",
+        "path_in_vcs": "valuable",
+        "license_url": "https://raw.githubusercontent.com/tokio-rs/valuable/9efc29b6e58cef28f6566a47aa7e142a55fead77/LICENSE",
+        "license_expression": "MIT"
+      }
     },
     {
       "component": "wayland-backend-0.3.17",

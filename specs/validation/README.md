@@ -4,6 +4,44 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## EQ automation and source notice remediation — 2026-11-04
+
+Fixed F001 and F002 from the standalone `8c9f1ef` review. F003 (native ONNX
+shape inference) remains unchanged at the user's request.
+
+The typed Multiband EQ processor updates only the affected canonical slot after a
+validated field change. The portable processor verifies slot/UUID identity and
+uses the same band ramps as full recall. Output gain avoids the band bank; global
+Bypass retains every band's shared meter lifecycle. No settings vector, UUID or
+serialized parameter/state contract changes during automation.
+
+The common notice inventory retains Valuable 0.1.1's exact upstream MIT bytes
+(SHA-256 `ed60d479b8fd1f64e9cbc3de449a16a53ac1b3d1b6aeb9bf9d190a8e93061b44`).
+Source packaging binds the grant to registry checksum, exact VCS revision and
+subpath, then includes a supplemental grant and package/source index. Binary
+notice staging retains the same text conservatively.
+
+Completed checks:
+
+- Six typed contract tests passed, including wrong-slot/UUID refusal and the frozen
+  identities/default state, presentation order and meter/bypass contracts.
+- Dense automation parity passed at all six rates for both parameter entry points,
+  same-sample transient targets, reset and meters. Tracked heap operations were zero.
+- The explicit release cost regression passed on local arm64 macOS at 48 kHz,
+  64 active bands and 4,800 frames (100 ms audio). Median 64-frequency automation
+  was 33.659 ms versus 126.164 ms for full-bank retargeting; 322-field automation
+  was 47.189 ms versus 494.616 ms. Baseline was 10.829 ms. Three trials per update
+  workload use a ratio gate; this is typed-processor profiling, not native-host
+  or device deadline certification.
+- Strict workspace Clippy passed. Python tooling tests passed (40), including full
+  source grant/hash/index checks and rejection of wrong source or notice inputs.
+- Actual locked vendored Valuable registry checksum/VCS/subpath and grant hash matched.
+- Full workspace tests were started; final results and committed source/native-package
+  integration are retained in the rerun review evidence.
+
+No native GUI/device or Windows/Linux execution is claimed by the focused tests.
+The ignored cost test requires an explicit release run without other CPU workloads.
+
 ## Standalone review remediation — 2026-11-04
 
 Fixed F001–F006 from the standalone `087940e` review. F007 (native ONNX

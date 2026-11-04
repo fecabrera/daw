@@ -29,15 +29,41 @@ pub fn update_settings(state: &PluginState, settings: &mut Settings) {
     settings.enabled = state.get(P::Bypass) == 0.0;
     settings.output_gain_db = daw_unit_core::gain::to_db_f32(state.get(P::Level));
     for band in settings.bands.iter_mut() {
-        let i = (band.id.as_u128() - 1) as usize;
-        let base = 1 + 5 * i;
-        band.enabled = state.get(P::ALL[base]) != 0.0;
-        band.mode = daw_unit_core::EqBandMode::ALL[state.get(P::ALL[base + 1]) as usize];
-        band.frequency_hz = state.get(P::ALL[base + 2]) as f32;
-        band.gain_db = state.get(P::ALL[base + 3]) as f32;
-        band.q = state.get(P::ALL[base + 4]) as f32;
+        update_band(state, band);
     }
 }
+fn update_band(state: &PluginState, band: &mut daw_unit_core::MultibandEqBand) {
+    let base = 1 + 5 * (band.id.as_u128() - 1) as usize;
+    band.enabled = state.get(P::ALL[base]) != 0.0;
+    band.mode = daw_unit_core::EqBandMode::ALL[state.get(P::ALL[base + 1]) as usize];
+    band.frequency_hz = state.get(P::ALL[base + 2]) as f32;
+    band.gain_db = state.get(P::ALL[base + 3]) as f32;
+    band.q = state.get(P::ALL[base + 4]) as f32;
+}
+/// Prepared plugin settings use canonical slot order regardless of UI order.
+/// Return the affected band, or None for the two global controls.
+pub fn update_parameter(
+    state: &PluginState,
+    parameter: P,
+    settings: &mut Settings,
+) -> Option<usize> {
+    match parameter {
+        P::Bypass => {
+            settings.enabled = state.get(P::Bypass) == 0.0;
+            None
+        }
+        P::Level => {
+            settings.output_gain_db = daw_unit_core::gain::to_db_f32(state.get(P::Level));
+            None
+        }
+        _ => {
+            let slot = (parameter.index() - 1) / 5;
+            update_band(state, &mut settings.bands[slot]);
+            Some(slot)
+        }
+    }
+}
+
 pub fn values(settings: &Settings) -> [f64; P::COUNT] {
     std::array::from_fn(|i| {
         if i == 0 {

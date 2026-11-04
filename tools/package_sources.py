@@ -23,6 +23,33 @@ def revision():
     return git('rev-parse', 'HEAD').decode().strip()
 
 
+def source_notices(vendor):
+    """Bind supplemental grants to the exact shipped package, not just its name."""
+    inventory = json.loads((ROOT/'tools/runtime_notices.json').read_text())
+    result = []
+    for entry in inventory['notices']:
+        if 'source' not in entry['deliverables']:
+            continue
+        package = entry['source_package']
+        directory = vendor / (package['name']+'-'+package['version'])
+        if not directory.exists():
+            continue
+        vcs = json.loads((directory/'.cargo_vcs_info.json').read_text())
+        checksum = json.loads((directory/'.cargo-checksum.json').read_text())
+        if (vcs['git']['sha1'] != package['git_revision']
+                or vcs['path_in_vcs'] != package['path_in_vcs']
+                or checksum['package'] != package['registry_checksum']):
+            raise RuntimeError('Supplemental license does not match shipped source: '+entry['component'])
+        notice = (ROOT/entry['notice']).resolve()
+        if not notice.is_relative_to(ROOT.resolve()):
+            raise RuntimeError('Supplemental license is outside the source tree.')
+        data = notice.read_bytes()
+        if hashlib.sha256(data).hexdigest() != entry['sha256']:
+            raise RuntimeError('Supplemental license hash mismatch: '+entry['component'])
+        result.append(({**package, 'notice':notice.name, 'sha256':entry['sha256']}, data))
+    return result
+
+
 def bundle(destination, binary, expected_revision, profile):
     if revision() != expected_revision:
         raise RuntimeError('Source revision changed during the desktop build.')
@@ -35,6 +62,7 @@ def bundle(destination, binary, expected_revision, profile):
         ).decode()
         # Cargo's generated config must refer to the bundled location, not this machine.
         config = config.replace(str(vendor).replace('\\', '\\\\'), 'cargo-vendor').replace(str(vendor), 'cargo-vendor')
+        notices = source_notices(vendor)
         # Registry source archives can retain Unix-epoch timestamps. ZIP starts in 1980.
         with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, strict_timestamps=False) as output:
             original_config = ''
@@ -56,6 +84,9 @@ def bundle(destination, binary, expected_revision, profile):
                     raise RuntimeError('Vendored source contains a symlink.')
                 if path.is_file():
                     output.write(path, 'DAW/cargo-vendor/' + path.relative_to(vendor).as_posix())
+            for entry, data in notices:
+                output.writestr('DAW/SOURCE-LICENSES/'+entry['notice'], data)
+            output.writestr('DAW/SOURCE-LICENSES/index.json', json.dumps([e for e, _ in notices], indent=2)+'\n')
             # Retain the local Charon patch already present in the committed vendor tree.
             output.writestr('DAW/.cargo/config.toml', original_config + '\n' + config)
             output.writestr('DAW/SOURCE-BUILD.txt', f'''Corresponding application source for DAW commit {expected_revision}.
@@ -71,6 +102,8 @@ in crates/separation/assets/licenses/Native-Stem-SOURCE-NOTICE.txt and
 specs/audio/stem-native-dependencies.md. These immutable public source locations
 are the equivalent source-access route for unchanged native inputs. Model weights
 and operating-system libraries are not included. No model is needed to build.
+Supplemental upstream source grants and their exact package/version/revision/hash
+mapping are in SOURCE-LICENSES/index.json. Retain them with the vendored sources.
 See crates/media/assets/licenses for GPL/LGPL and other combined-work terms;
 the root BSD license applies to original DAW code, not every combined component.
 ''')
