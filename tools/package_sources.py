@@ -34,8 +34,9 @@ def bundle(destination, binary, expected_revision, profile):
             ['cargo', 'vendor', '--locked', '--versioned-dirs', str(vendor)], cwd=ROOT
         ).decode()
         # Cargo's generated config must refer to the bundled location, not this machine.
-        config = config.replace(str(vendor).replace('\\', '\\\\'), 'vendor').replace(str(vendor), 'vendor')
-        with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as output:
+        config = config.replace(str(vendor).replace('\\', '\\\\'), 'cargo-vendor').replace(str(vendor), 'cargo-vendor')
+        # Registry source archives can retain Unix-epoch timestamps. ZIP starts in 1980.
+        with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, strict_timestamps=False) as output:
             original_config = ''
             with tarfile.open(fileobj=io.BytesIO(git('archive', expected_revision)), mode='r:') as source:
                 for entry in source:
@@ -54,14 +55,14 @@ def bundle(destination, binary, expected_revision, profile):
                 if path.is_symlink():
                     raise RuntimeError('Vendored source contains a symlink.')
                 if path.is_file():
-                    output.write(path, 'DAW/vendor/' + path.relative_to(vendor).as_posix())
+                    output.write(path, 'DAW/cargo-vendor/' + path.relative_to(vendor).as_posix())
             # Retain the local Charon patch already present in the committed vendor tree.
             output.writestr('DAW/.cargo/config.toml', original_config + '\n' + config)
             output.writestr('DAW/SOURCE-BUILD.txt', f'''Corresponding application source for DAW commit {expected_revision}.
 Build profile: {profile}. See docs/development for native platform prerequisites.
 This archive contains the committed application, local vendor patches, Cargo.lock,
 and the exact registry/Git Rust dependency sources, including bundled LAME and
-Rubber Band sources. The generated .cargo/config.toml selects this vendor directory.
+Rubber Band sources. The generated .cargo/config.toml selects cargo-vendor, separate from local vendor patches.
 Run cargo build --locked -p daw-desktop{' --release' if profile == 'release' else ''} to rebuild/relink.
 Modify the application or LGPL libraries and rebuild with the same command to relink.
 Native ONNX Runtime is downloaded by its checksum-pinned build adapter; exact

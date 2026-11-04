@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -42,6 +43,7 @@ class SourcePackages(unittest.TestCase):
                     vendor = Path(args[-1])
                     (vendor/'dependency-1.0').mkdir(parents=True)
                     (vendor/'dependency-1.0/LICENSE').write_text('upstream grant')
+                    os.utime(vendor/'dependency-1.0/LICENSE',(0,0))
                     return f'[source.crates-io]\nreplace-with = "vendored-sources"\n[source.vendored-sources]\ndirectory = "{vendor}"\n'.encode()
                 return check_output(args, **kwargs)
             destination = root/'package'
@@ -50,10 +52,11 @@ class SourcePackages(unittest.TestCase):
             with zipfile.ZipFile(destination/'DAW-source.zip') as archive:
                 self.assertEqual(archive.read('DAW/Cargo.lock'), b'exact locked sources\n')
                 self.assertEqual(archive.read('DAW/vendor/charon-audio/DAW-PATCH.md'), b'local patch\n')
-                self.assertEqual(archive.read('DAW/vendor/dependency-1.0/LICENSE'), b'upstream grant')
+                self.assertEqual(archive.read('DAW/cargo-vendor/dependency-1.0/LICENSE'), b'upstream grant')
+                self.assertEqual(archive.getinfo('DAW/cargo-vendor/dependency-1.0/LICENSE').date_time[0],1980)
                 config = archive.read('DAW/.cargo/config.toml').decode()
                 self.assertIn('jobs = 2', config)
-                self.assertIn('directory = "vendor"', config)
+                self.assertIn('directory = "cargo-vendor"', config)
                 self.assertNotIn(str(root), config)
                 self.assertFalse(any('private-recording' in name or '.git/' in name for name in archive.namelist()))
                 self.assertEqual(len(archive.namelist()),len(set(archive.namelist())))
