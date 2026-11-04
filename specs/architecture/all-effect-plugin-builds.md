@@ -70,3 +70,18 @@ products. Both editors use the 720-point shared history body. The product has fo
 discrete parameters, zero audio latency/tail, bounded worker analysis and transient
 Hold/Reset actions outside automation. Its extended control-thread telemetry and
 measurement limits are defined in the [meter specification](../effects/loudness-meter.md).
+
+## Runtime notice closure correction — 2026-11-03
+
+The runtime inventory now retains all 36 selected normal-runtime omissions from
+the six-target/per-product audit, plus the shared legacy objc2 MIT grant containing
+Steven Sheldon’s copyright. Exact upstream bytes are retained in the common UI
+notice directory; existing desktop and plugin copy rules include them. Unused
+target notices may be bundled conservatively. Build/proc-macro-only and currently
+unpackaged tool candidates were excluded from this correction.
+
+Desktop staging and Linux archives, as well as both plugin-format archives across
+the supported package targets, verify the inventory hashes. The inventory is a
+bounded regression record; dependency/feature changes still require a fresh
+license-closure assessment. Corresponding-source/relink release obligations remain
+separate from notice retention.

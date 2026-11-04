@@ -1,5 +1,7 @@
 """Exercise native shell packaging with generated artifacts and build shims."""
 import os
+import hashlib
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -52,9 +54,18 @@ p.mkdir(parents=True, exist_ok=True)
                         subprocess.run(['sh', str(root / 'tools' / script.name), profile], cwd=root, env=env, check=True, capture_output=True)
                         if platform == 'macos':
                             data = (default / 'DAW.app/Contents/MacOS/daw-desktop').read_bytes()
+                            notices = default / 'DAW.app/Contents/Resources/licenses'
+                            for entry in json.loads((ROOT / 'tools/runtime_notices.json').read_text())['notices']:
+                                if 'desktop' in entry['deliverables']:
+                                    payload = (notices / Path(entry['notice']).name).read_bytes()
+                                    self.assertEqual(hashlib.sha256(payload).hexdigest(), entry['sha256'])
                         else:
                             with zipfile.ZipFile(default / 'DAW-linux-x64.zip') as archive:
                                 data = archive.read('DAW/daw-desktop')
+                                for entry in json.loads((ROOT / 'tools/runtime_notices.json').read_text())['notices']:
+                                    if 'desktop' in entry['deliverables']:
+                                        payload = archive.read('DAW/licenses/' + Path(entry['notice']).name)
+                                        self.assertEqual(hashlib.sha256(payload).hexdigest(), entry['sha256'])
                         self.assertEqual(data, b'current')
 
 

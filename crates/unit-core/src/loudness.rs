@@ -191,8 +191,10 @@ mod tests {
             serde_json::from_value::<crate::EffectInstance>(encoded).unwrap(),
             unit
         );
-        let mut s = LoudnessSettings::default();
-        s.target = 3;
+        let mut s = LoudnessSettings {
+            target: 3,
+            ..Default::default()
+        };
         assert!(!s.valid());
         s.target = 1;
         s.version = 2;

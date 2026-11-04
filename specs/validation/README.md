@@ -4,6 +4,27 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Runtime notices and strict lint correction — 2026-11-03
+
+Added exact upstream license bytes for the 36 selected runtime staging omissions
+and the shared legacy objc2 MIT grant. The common UI notice directory reaches
+existing desktop and plugin copy rules without new runtime dependencies. The
+Loudness settings test now initializes its invalid target in the struct literal.
+
+Completed checks:
+
+- `cargo clippy --locked --workspace --all-targets -- -D warnings` passed.
+- `cargo test --locked -p daw-unit-core loudness --lib` passed both selected tests.
+- `python3 -m unittest discover -s tools -p 'test_*packag*.py' -v` passed 16 tests.
+  Desktop checks verify every inventory hash in macOS staging and Linux archives;
+  plugin archives and CRLF checkout retention verify the same upstream bytes.
+- All 36 audited runtime attributions and the legacy objc2 copyright now occur
+  in staged common notice inputs. Every inventory source hash matches.
+- Formatting and diff whitespace checks passed.
+
+Packaging fixtures verify archive construction and notice retention, not native
+Windows/Linux execution or corresponding-source/relink release correspondence.
+
 ## Export tail progress and guide corrections — 2026-11-03
 
 F001: desktop export status now receives the shared export total, including capped
