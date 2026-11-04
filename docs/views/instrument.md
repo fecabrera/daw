@@ -31,6 +31,7 @@ The Instrument components catalog has three folders. Each folder starts collapse
 | Sources | [Oscillator](../instruments/oscillator.md) | Generate Sine, Saw, Square, or Triangle tones. One Oscillator unit can contain several sources. |
 | Sources | [Granulizer](../instruments/granulizer.md) | Build overlapping grain textures from a selected audio region. |
 | Sources | [Sampler](../instruments/sampler.md) | Play a selected audio region when MIDI notes arrive. |
+| Sources | [Noise](../instruments/noise.md) | Generate White, Pink, or Brown noise. |
 | Modulators | [Envelope](../instruments/envelope.md) | Shape a parameter over the life of a note. |
 | Modulators | [LFO](../instruments/lfo.md) | Repeat a control pattern at a fixed or tempo-related rate. |
 | Modulators | [Macro](../instruments/macro.md) | Control several parameters from one knob. |
@@ -42,7 +43,7 @@ Use Up/Down to move through visible folders and components. On a folder, Enter h
 
 With an audio track, group, Master, or no track selected, the Layers panel remains visible. Its Add layer button is disabled, and the empty layer area shows **Select an instrument track**. Select a MIDI track to show its instrument layers and enable the button.
 
-A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain one of Oscillator, Sampler, or Granulizer. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a compatible lane.
+A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain one of Oscillator, Sampler, Granulizer, or Noise. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a compatible lane.
 
 Layers show a waveform icon before their names. Output uses a merge icon with its arrow pointing right. Click a regular layer header to select it. Shift-click toggles layers in the selection. Each selected layer has an outline. LFO and Envelope have dedicated [instrument-wide lanes](../instruments/modulation-lanes.md) after the regular layers. Each accepts only its own provider type. They have no audio mix controls. Output is selected separately and stays pinned at the bottom.
 
@@ -64,14 +65,16 @@ Layer controls stay in the left column; installed components appear to their rig
 
 ## Effects
 
-The Effects catalog has the same four folders in every view:
+The Effects catalog has the same six folders in every view:
 
 | Folder | Effects |
 | --- | --- |
-| EQ & Filters | [3-band EQ](../effects/equalizer.md), [Auto-filter](../effects/auto-filter.md) |
+| EQ & Filters | [3-band EQ](../effects/equalizer.md), [Filter](../effects/filter.md), [Auto-filter](../effects/auto-filter.md), [Multiband EQ](../effects/multiband-eq.md) |
 | Dynamics | [Compressor](../effects/compressor.md), [OTT](../effects/ott.md), [Limiter](../effects/limiter.md) |
-| Distortion | [Drive](../effects/drive.md), [Bitcrusher](../effects/bitcrusher.md) |
-| Imaging | [Direction Mixer](../effects/direction-mixer.md), [Stereo Spread](../effects/stereo-spread.md) |
+| Distortion | [Drive](../effects/drive.md), [Drive v2](../effects/drive-v2.md), [Bitcrusher](../effects/bitcrusher.md), [Saturator](../effects/saturator.md), [Multiband Exciter](../effects/exciter.md), [Harmonic Lift](../effects/harmonic-lift.md) |
+| Imaging | [Direction Mixer](../effects/direction-mixer.md), [Stereo Spread](../effects/stereo-spread.md), [Chorus](../effects/chorus.md) |
+| Reverb | [Plate Reverb](../effects/plate-reverb.md), [Ambient Reverb](../effects/ambient-reverb.md) |
+| Analysis | [Loudness Meter](../effects/loudness-meter.md) |
 
 Folders start collapsed. Click a folder to hide or show its effects. Use Up/Down to move through visible rows. Enter toggles a focused folder; Left closes it and Right opens it. Left on an effect closes its folder. Closing a folder deselects its hidden effects. Each catalog retains its own folder choices while the application is open.
 

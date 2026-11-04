@@ -4,6 +4,27 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Review documentation corrections — 2026-11-03
+
+Corrected F002, F003, F005 and F006 from the standalone main review:
+updated source/effect catalogs and plugin inventory, mixed inline effect placement,
+export tail limits, and compatible component transfer destinations.
+
+Completed checks:
+
+- Compared all 18 documented plugin slugs with product manifests.
+- Compared all 19 documented effects and their six categories with the shared catalog.
+- Checked Noise against the source catalog and Drive v2 controls against its manifest
+  and guide; removed the nonexistent Bias control.
+- Checked transfer and inline-placement wording against component transfer code,
+  modulation-lane guidance and the accepted layer-effect specification.
+- Checked the ten-second export cap against shared export code and the export guide.
+- All local links and heading anchors in the five changed guides resolve.
+- `git diff --check` passed.
+
+These are documentation corrections. No runtime behavior changed; Rust tests and
+native UI/platform checks were not rerun.
+
 ## Runtime notices and strict lint correction — 2026-11-03
 
 Added exact upstream license bytes for the 36 selected runtime staging omissions

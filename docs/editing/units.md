@@ -19,13 +19,13 @@ The action keeps the units and their settings. Undo and Redo apply to the group 
 ## Move or copy components
 
 1. Select one or more installed units.
-2. Drag a selected header to the destination layer or Output.
+2. Drag a selected header to the compatible destination lane.
 3. Use the insertion line to choose the position. Drop on a layer label to append.
 4. Release to apply the transfer, or press Escape to cancel.
 
-All selected units must be compatible with the destination. A rejected drop leaves the complete group unchanged. Output accepts shared Envelope, LFO, and Macro components. It does not accept Oscillator, Sampler, Amplitude, or Per note Envelopes.
+All selected units must be compatible with the destination. A rejected drop leaves the complete group unchanged. Output accepts Macro components. It does not accept audio sources or Amplitude. LFO and Envelope units stay in their dedicated [modulation lanes](../instruments/modulation-lanes.md). Reorder or copy them only within the matching lane type; regular layers and Output do not accept them.
 
-A regular layer can have Oscillator or Sampler. Multiple oscillators can share an Oscillator unit; an occupied Sampler or a conflicting source type blocks a source transfer. Use Replace source in the source header menu for an explicit replacement. Only one Amplitude stage is allowed in a layer. Macro transfers merge strips into the destination Macro component.
+A regular layer can have one source type: Oscillator, Sampler, Granulizer, or Noise. Multiple oscillators can share an Oscillator unit; an occupied sample source or a conflicting source type blocks a source transfer. Use Replace source in the source header menu for an explicit replacement. Only one Amplitude stage is allowed in a layer. Macro transfers merge strips into the destination Macro component.
 
 ## Reorder sources, connections, and effects
 
@@ -35,6 +35,8 @@ Drag effect headers to reorder selected effects in chain order. Modifier draggin
 
 An insertion line previews the result. Hold near a lane edge to scroll. Changes take effect on release. Escape, focus loss, or an outside drop cancels. A same-position move makes no change.
 
-In Instrument, layer effects sit after the components in the same layer lane. Click a layer before adding effects from the catalog, or drag catalog effects after its components. Effect selection, removal, reordering, and drag duplication work within that chain. Output has its own inline effect chain. Click the bottom effects lane to target track effects.
+In Instrument, effects share the regular layer or Output lane with control components. Click a lane before adding effects from the catalog, or drag catalog effects to an insertion line between control components, including before Macro. Audio sources stay pinned first. Effect selection, removal, reordering, and drag duplication work within that chain. Output has its own inline effect chain. Click the bottom effects lane to target track effects.
 
-Drag an installed effect header to another regular layer, Output, or the track effects lane to move it. Hold Option on macOS or Ctrl on Windows/Linux to duplicate it. If the effect is selected with other effects, the group transfers in its chain order. Release after the destination layer's components or at the insertion line in the track effects lane to place the group. Escape or an outside drop cancels.
+Drag an installed effect header to another regular layer, Output, or the track effects lane to move it. Hold Option on macOS or Ctrl on Windows/Linux to duplicate it. If the effect is selected with other effects, the group transfers in its chain order. Release at the insertion line in the destination lane to place the group. Escape or an outside drop cancels.
+
+Effects process in their serial chain order. Moving control components across effects changes their display position, not source processing, the fixed Amplitude stage, or modulation timing.

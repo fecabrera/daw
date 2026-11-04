@@ -16,7 +16,7 @@ DAW provides audio, MIDI and beat arrangement, layered instruments, effects, mix
 
 Normal imports reference external audio recordings. Save does not automatically bundle them. Use **Collect project sources** to copy complete original media into a saved project. Included-source Save As also protects active Undo/Redo sources. Missing recordings remain visible and play as silence. Keep externally referenced recordings available, or collect them before moving the complete project folder.
 
-[Undo and redo](editing/undo-redo.md) retain up to 100 project edits for the current session. Sampler supports root-relative playback across the full MIDI note range. Export ends at the arranged project duration and does not append effect tails. Mobile delivery is outside the current release scope.
+[Undo and redo](editing/undo-redo.md) retain up to 100 project edits for the current session. Sampler supports root-relative playback across the full MIDI note range. [Export](projects/README.md#export) appends enabled effect tails after the arrangement, up to ten seconds. Bypassed effects add no tail. The completion report warns when a longer tail is truncated. Mobile delivery is outside the current release scope.
 
 ## Planned work
 

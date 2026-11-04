@@ -5,22 +5,23 @@ The registered built-in effects have separate CLAP and VST3 development previews
 | Product | Unit slug | Controls |
 | --- | --- | --- |
 | [Drive](drive-plugin.md) | `drive` | Gain, Color, Tone, Level, Dry/Wet |
-| [Drive v2](drive-v2-plugin.md) | `drive-v2` | Drive, Shape, Bias, Tone, Level, Dry/Wet |
+| [Drive v2](drive-v2-plugin.md) | `drive-v2` | Clip mode, Drive Gain, Drive Tone; Color power, Shape, Strength, Frequency; Input Gain, Output Level, Dry/Wet |
 | [Saturator](distortion-plugins.md) | `saturator` | Drive, Shape, Clip Mode, Level, Dry/Wet |
 | [Bitcrusher](distortion-plugins.md) | `bitcrusher` | Drive, Resolution, Downsampling, Level, Dry/Wet |
-| 3-band EQ | `equalizer` | Low/Mid/High gain and power; Low/High frequency and Q |
-| Multiband EQ | `multiband-eq` | 64 band slots with power, mode, frequency, gain, Q; output Level |
-| Filter | `filter` | Shape, Frequency, Q, Level, Dry/Wet |
-| Auto-filter | `auto-filter` | Filter controls, LFO power/wave, Hz/Note rate, Strength, Sync/Stereo Phase |
-| Compressor | `compressor` | Threshold, Ratio, Detection, Attack, Release, Knee, Level, Dry/Wet |
-| OTT | `ott` | Crossovers; per-band power, Depth, Input, Output, Attack, Release; Detection, Level, Dry/Wet |
-| Limiter | `limiter` | Input, Release, Lookahead, Ceiling, Peak/True Peak, L/R or M/S |
-| Direction Mixer | `direction-mixer` | L/R or M/S input, Direction, Spread |
-| Stereo Spread | `stereo-spread` | Lower/Upper Intensity and Frequency, Order |
-| Harmonic Lift | `harmonic-lift` | Wet Input, Normal/HQ 2×; six branch Power/Frequency/Gain controls; Drive, Push, Limit Level, Level, Dry/Wet |
-| [Plate Reverb](plate-reverb.md) | `plate-reverb` | Pre-delay, Decay, Gate, filters, Color, Drive, Quality, Width, Level, Dry/Wet |
-| [Ambient Reverb](ambient-reverb.md) | `ambient-reverb` | Decay, Bloom, Tone, Modulation, High-pass, Quality, Width, Level, Dry/Wet |
-| Chorus | `chorus` | Delay, Depth, Feedback, Voices, Hz/Note rate, Stereo Phase, Width, Level, Dry/Wet |
+| [3-band EQ](equalizer.md) | `equalizer` | Low/Mid/High gain and power; Low/High frequency and Q |
+| [Multiband EQ](multiband-eq.md) | `multiband-eq` | 64 band slots with power, mode, frequency, gain, Q; output Level |
+| [Filter](filter.md) | `filter` | Shape, Frequency, Q, Level, Dry/Wet |
+| [Auto-filter](auto-filter.md) | `auto-filter` | Filter controls, LFO power/wave, Hz/Note rate, Strength, Sync/Stereo Phase |
+| [Compressor](compressor.md) | `compressor` | Threshold, Ratio, Detection, Attack, Release, Knee, Level, Dry/Wet |
+| [OTT](ott.md) | `ott` | Crossovers; per-band power, Depth, Input, Output, Attack, Release; Detection, Level, Dry/Wet |
+| [Limiter](limiter.md) | `limiter` | Input, Release, Lookahead, Ceiling, Peak/True Peak, L/R or M/S |
+| [Direction Mixer](direction-mixer.md) | `direction-mixer` | L/R or M/S input, Direction, Spread |
+| [Stereo Spread](stereo-spread.md) | `stereo-spread` | Lower/Upper Intensity and Frequency, Order |
+| [Harmonic Lift](harmonic-lift.md) | `harmonic-lift` | Wet Input, Normal/HQ 2×; six branch Power/Frequency/Gain controls; Drive, Push, Limit Level, Level, Dry/Wet |
+| [Plate Reverb](plate-reverb.md) | `plate-reverb` | Pre-delay, Decay, Tail, Color, Quality; Hi-Pass and Lo-Pass power, Frequency, Slope; Drive power, Mode, Drive, Tone; Level, Width, Dry/Wet |
+| [Ambient Reverb](ambient-reverb.md) | `ambient-reverb` | Decay, Bloom, Modulation, Quality; Hi-Pass and Lo-Pass power, Frequency, Slope; Level, Width, Dry/Wet |
+| [Chorus](chorus.md) | `chorus` | Delay, Depth, Feedback, Voices, Hz/Note rate, Stereo Phase, Width, Level, Dry/Wet |
+| [Loudness Meter](loudness-meter.md) | `loudness` | Target, TP quality, Clock, History metric, Hold/Resume, Reset; loudness, maxima, range, dynamics and output readings |
 
 [Build, package, and download instructions](../development/plugins.md) apply to all products. The packager accepts one slug, a comma-separated list, or `--units all`. Build both formats for all selected units first. Extract the downloaded ZIP and keep the included licenses beside the plugin. Close your host before replacing or removing it.
 
