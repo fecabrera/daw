@@ -4,6 +4,7 @@
 //! no captured machine code, decompiled functions, or runtime tables are embedded.
 mod drive;
 mod filters;
+mod makeup;
 mod processor;
 pub use processor::{Parameters, Reverb};
 

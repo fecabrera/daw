@@ -1,5 +1,41 @@
 use daw_ambient_reverb::AmbientReverb;
 use daw_unit_core::{AmbientReverbSettings as Settings, EffectUnit, ProcessingContext};
+
+#[test]
+fn wet_makeup_and_its_setting_changes_do_not_change_the_zero_wet_transformer_path() {
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        let dry = Settings {
+            dry_wet: 0.0,
+            ..Default::default()
+        };
+        let mut baseline = unit(rate, &dry);
+        let mut settings = Settings {
+            decay_seconds: 60.0,
+            hq: true,
+            bloom: 1.0,
+            tone: 0.0,
+            highpass_enabled: true,
+            lowpass_hz: 500.0,
+            ..dry
+        };
+        let mut changed = unit(rate, &settings);
+        for frame in 0..rate / 2 {
+            if frame == rate / 4 {
+                settings.decay_seconds = 1.0;
+                settings.hq = false;
+                changed.retarget(&settings);
+            }
+            let x = [(frame as f32 * 0.17).sin() * 0.2, -0.1];
+            assert_eq!(baseline.process_sample(x), changed.process_sample(x));
+        }
+        settings.enabled = false;
+        changed.retarget(&settings);
+        for _ in 0..rate / 100 {
+            changed.process_sample([0.2, -0.1]);
+        }
+        assert_eq!(changed.process_sample([0.2, -0.1]), [0.2, -0.1]);
+    }
+}
 fn unit(rate: u32, s: &Settings) -> AmbientReverb {
     AmbientReverb::new(
         ProcessingContext {

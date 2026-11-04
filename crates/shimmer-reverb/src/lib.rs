@@ -10,6 +10,10 @@ use daw_unit_core::{ShimmerReverbSettings as Settings, *};
 use delay::Diffuser;
 use std::sync::{Arc, atomic::AtomicU32};
 
+// +15 dB calibrated from pink noise and chord/percussion fixtures. Apply after
+// Warm and outside both regeneration loops; never normalize from signal level.
+const WET_MAKEUP: f64 = 5.623413251903491;
+
 #[derive(Clone)]
 pub struct ShimmerReverb {
     context: ProcessingContext,
@@ -207,8 +211,9 @@ impl ShimmerReverb {
             self.warm[ch] += self.warm_alpha * (wet[ch] - self.warm[ch]);
             let wet = wet[ch] * (1.0 - f64::from(p[13])) + self.warm[ch] * f64::from(p[13]);
             let mix = v[11];
-            let effected =
-                ((1.0 - mix * mix) * dry[ch] + 0.9 * (1.0 - (mix - 1.0).powi(2)) * wet) * v[10];
+            let effected = ((1.0 - mix * mix) * dry[ch]
+                + 0.9 * (1.0 - (mix - 1.0).powi(2)) * wet * WET_MAKEUP)
+                * v[10];
             (dry[ch] * (1.0 - f64::from(p[12])) + effected * f64::from(p[12]))
                 .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
         });

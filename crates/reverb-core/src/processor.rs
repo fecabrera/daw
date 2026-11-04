@@ -325,6 +325,7 @@ pub struct Reverb {
     monitor: LevelMonitor<3>,
     effective: [f32; 12],
     mode_weight: ModulationRamp,
+    makeup: crate::makeup::MakeupRamp,
     switches: [ModulationRamp; 5],
     drive_modes: [ModulationRamp; 3],
     drive_tone: [HighShelf; 2],
@@ -390,6 +391,15 @@ impl Reverb {
             monitor: LevelMonitor::new(context.sample_rate_hz, p.values[11] != 0.),
             effective: p.values,
             mode_weight: ModulationRamp::new(if p.hq && !p.gated { 1. } else { 0. }),
+            makeup: crate::makeup::MakeupRamp::new(
+                context.sample_rate_hz,
+                crate::makeup::wet_makeup(
+                    f64::from(p.values[0]),
+                    f64::from(p.hq && !p.gated),
+                    f64::from(p.gated),
+                    plate,
+                ),
+            ),
             switches: [
                 p.gated,
                 p.dark,
@@ -501,6 +511,12 @@ impl Reverb {
             r.reset();
         }
         self.mode_weight.reset();
+        self.makeup.reset(crate::makeup::wet_makeup(
+            f64::from(self.flags.values[0]),
+            f64::from(self.flags.hq && !self.flags.gated),
+            f64::from(self.flags.gated),
+            self.plate,
+        ));
         for filter in &mut self.drive_tone {
             filter.reset();
         }
@@ -722,6 +738,12 @@ impl Reverb {
                 *sample = *sample * (1.0 - drive_enabled) + toned * drive_enabled;
             }
         }
+        // Calibrate only the completed wet path: do not change Drive intensity,
+        // feedback decay, or the dry branch. Slow gain rises protect stored tails.
+        let makeup = self
+            .makeup
+            .sample(crate::makeup::wet_makeup(v[0], hq, gate, self.plate));
+        wet = wet.map(|x| x * makeup);
         let [gd, gw] = mix_gains(v[10], self.plate);
         let mut result = std::array::from_fn::<_, 2, _>(|ch| dry[ch] * gd + wet[ch] * gw);
         if self.plate {

@@ -107,6 +107,42 @@ offsets at the shared 1 ms duration. Document departures from reference smoothin
 DAW Stop/seek reset and reconstruct history through the worker path. Pause retains
 state; loops retain tails. External host suspension is a separate lifecycle event.
 
+## Calibrated wet makeup
+
+Apply makeup after all wet-only processing (including Plate Drive/Tone) and
+before the existing curved Dry/Wet blend. Keep dry gain, Out Level, Ambient's
+post-mix transformer, feedback matrices, delay attenuation and tail declarations
+unchanged. No saved parameter, state version, UI control or automation ID is added.
+Existing projects and plugin states use the new gain with their saved controls;
+there is no hidden legacy sound mode.
+
+The fixed reference gains are +16 dB at Plate's 3 s decay and +10 dB at Ambient's
+7.5 s decay. For each sample, use the existing smoothed physical decay and quality
+weights: `gain = clamp(nominal * reference_decay / effective_decay * quality_gain,
+1, nominal * 4)`. The quality factor interpolates linearly in amplitude from
+unity to -3 dB for Plate HQ or -1.5 dB for Ambient HQ. Gated Plate interpolates
+effective decay to 0.18 s and quality correction to unity; HQ has no effect once
+fully gated. The four-times cap limits short-tail compensation; unity is the
+minimum gain for long tails. The map is continuous and requires no detector.
+An inline gain smoother uses a 500 ms one-pole rise and a 5 ms one-pole fall,
+with rate-derived coefficients prepared at construction. This prevents the old
+stored tail from receiving the new short-tail gain before it dissipates.
+Construction and reset initialize to the current base target; compatible updates
+and snapshots retain the smoother history. Sampling uses only scalar arithmetic,
+without allocation, coefficient exponentials or retirement. Feedback stability
+is unchanged. Short/gated energy remains lower;
+this is level calibration, not loudness normalization of every setting or source.
+
+The reproducible fixtures and release report live in
+`crates/engine/tests/reverb_makeup.rs`: 8 s of deterministic stereo white/pink
+noise, generated chord/percussion audio, isolated transients and a 1 kHz tone,
+peak-normalized to 0.25 (-12.04 dBFS). Measure RMS over the last 4 s. Pink noise
+and chord/percussion audio target about -6 dB wet/input RMS at default settings;
+tone/transient and long-tail checks retain headroom rather than forcing unity.
+Interpolate the same physical 48 kHz source at all six project rates. Validate
+quality, decay endpoints, damping, gating and Shimmer regeneration separately.
+No private recordings or external reference implementation are used.
+
 ## Parameters and persistence
 
 Plate Decay is 0.3–15 s, default 3 s; pre-delay is 0–300 ms, default zero.

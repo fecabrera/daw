@@ -46,6 +46,17 @@ output transformer model, which processes the complete blend. Consequently,
 0% wet can still change the dry signal. Use header power for a dry comparison.
 Level at exact silence remains silent even with modulation.
 
+The wet signal has calibrated makeup gain before Dry/Wet. At the default 7.5 s
+Decay it adds 10 dB in ECO or 8.5 dB in HQ. Compensation decreases for longer
+decays and is bounded for shorter ones. Damping and short tails can still reduce
+the wet level. Compensation rises gradually when settings change, so a stored
+tail does not receive a sudden boost. The gain follows the settings, not the
+incoming audio, so it does not raise a fading tail automatically. Feedback decay
+is unchanged.
+
+Existing projects use the louder wet output with their saved settings. Reduce
+Dry/Wet or Out Level as needed. Makeup gain does not impose an output ceiling.
+
 All knobs accept shared modulation through the standard connection strips.
 Quality, Hi-Pass and Slope remain discrete. The unit uses the standard knob reset,
 Shift fine adjustment, power, collapse, selection, and effect-chain gestures.

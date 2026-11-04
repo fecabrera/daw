@@ -7650,3 +7650,52 @@ Executed locally on macOS:
 
 The Windows access violation was not reproduced locally. Windows CI must confirm
 the reported failure is resolved; native GUI/device checks were not run.
+
+### Calibrated reverb wet makeup — 2026-11-04
+
+Plate, Ambient and Shimmer now apply calibrated gain to the completed wet path
+before their existing Dry/Wet curves. Nominal default ECO gains are +16/+10/+15 dB.
+Plate/Ambient include bounded decay and quality compensation. A 500 ms gain rise
+and 5 ms fall protect already-loaded tails during setting changes. No signal
+detector, feedback gain, saved parameter, state version or host ID changed.
+Shimmer uses fixed post-Warm gain outside both regeneration loops. Existing
+sessions use the new wet level with their saved settings.
+
+Calibration uses deterministic generated stereo fixtures, peak-normalized to
+0.25 (-12.04 dBFS), with 8 s input and RMS measured over the final 4 s. At 48 kHz,
+100% wet, default ECO and 0 dB Out, measured wet/input RMS changed as follows:
+
+| Fixture | Plate before / after | Ambient before / after | Shimmer before / after |
+| --- | --- | --- | --- |
+| Pink noise | -22.85 / -6.85 dB | -14.97 / -5.38 dB | -20.73 / -5.73 dB |
+| Generated chords/percussion | -20.71 / -4.71 dB | -14.61 / -4.95 dB | -21.14 / -6.14 dB |
+
+The fixtures and reproducible release report are in
+`crates/engine/tests/reverb_makeup.rs`. Automated checks cover default ECO/HQ
+balance and peak headroom at all six rates, setting extremes, half-wet mixing,
+and long-to-short/quality/gated transitions with loaded tails. The unsmoothed
+transition probe exposed peaks of 2.47 for Plate and 1.70 for Ambient; the final
+smoother reduced the maximum tested six-rate transition peaks to 0.573/0.325,
+with Shimmer below 0.331. These are fixture results, not a guaranteed ceiling.
+Very short/gated tails and spectral notches remain quieter by design.
+
+Executed locally on macOS:
+
+- Three calibration/headroom regression tests passed. The manual calibration
+  report also passed when explicitly invoked in release mode.
+- Release libraries with `allocation-check` passed all 90 native CLAP/VST3,
+  plugin contract and editor tests across the three products. Host tests cover
+  six-rate DSP parity, automation, reset, state recall and callback heap guards.
+- Shimmer's explicit 120-second stability test passed at all six rates, with
+  frozen and automated motion at maximum regeneration.
+- Strict workspace all-target Clippy and the desktop executable build passed.
+- `cargo test --release --locked --offline --workspace` passed, including
+  documentation tests and the final gain-transition regressions. Explicit manual
+  acceptance/performance tests remain ignored unless listed above.
+- The CLI build and `python3 tools/check_cli.py` passed. Rustfmt and diff
+  whitespace checks passed.
+
+The macOS app packager requires committed sources and rejected this dirty tree;
+the existing app bundle was retained. Source changes remain uncommitted. Native
+listening, device deadlines, external-host attachment and Windows/Linux runtime
+checks were not run. Receipts are retained in ignored `work/reverb-makeup/`.

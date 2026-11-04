@@ -37,6 +37,17 @@ longer convolution span. Color changes the tail damping. Width affects only the
 wet signal: zero makes it mono. Dry/Wet uses a curved blend, so its midpoint is
 not a half-amplitude linear mix.
 
+The wet signal has calibrated makeup gain before Dry/Wet. At the default 3 s
+Decay it adds 16 dB in ECO or 13 dB in HQ. Compensation decreases for longer
+decays and is bounded for shorter ones. Very short and gated tails remain
+quieter. Compensation rises gradually when settings change, so a stored tail
+does not receive a sudden boost. The gain follows the settings, not the incoming
+audio, so it does not raise a fading tail automatically. Drive intensity and
+feedback decay are unchanged. Out Level still adjusts the complete blend.
+
+Existing projects use the louder wet output with their saved settings. Reduce
+Dry/Wet or Out Level as needed. Makeup gain does not impose an output ceiling.
+
 Filter frequency readouts use whole Hz below 1 kHz and one decimal place in kHz
 from 1 kHz upward. The labels below each frequency knob show its range.
 Use each filter strip's power button to bypass that filter. Its frequency knob

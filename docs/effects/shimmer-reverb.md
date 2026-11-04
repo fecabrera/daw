@@ -4,6 +4,9 @@ Shimmer Reverb adds a stereo reverb tail, two regenerating pitch voices and a
 vowel color. Find it under **Reverb** in the Effects catalog. It is also available
 as a separate [CLAP or VST3 plugin](plugins.md).
 
+Use **Shimmer Reverb** for spacious tails with rising or falling harmonics and
+vowel color.
+
 1. Add the unit to a track, instrument layer, Output bus, group or Master.
 2. Set Size and Pre-delay to shape the space.
 3. Set a Shimmer voice's Pitch, then raise its Amount. Try +12 st for an octave
@@ -45,6 +48,13 @@ bypasses the complete unit. It clears the meters immediately while its histories
 continue, so re-enabling can reveal a remaining tail. Click a held peak to reset
 it. Parameter changes retain the tail. Stop and seek reconstruct processing
 history; Pause preserves it and loop boundaries let it continue.
+
+The completed wet signal has 15 dB of calibrated makeup gain before Dry/Wet.
+This fixed gain leaves Size, damping and pitch regeneration free to change the
+tail's energy; it does not raise a fading tail automatically. The regeneration
+loops are unchanged. Existing projects use the louder wet output with their
+saved settings. Reduce Dry/Wet or Level as needed and check the output meter;
+makeup gain does not impose an output ceiling.
 
 Continuous controls support the DAW's [shared modulation](../modulation/README.md).
 Pre-delay modulation applies in Time mode. Pitch choices, Sync, note division and

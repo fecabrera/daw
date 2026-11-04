@@ -156,6 +156,14 @@ history remains active while off. Mix gains are `dry=1−m²` and
 modulation. Exact base silence remains silent. Nonfinite input is treated as
 silence; use f64 state and finite f32 output bounds for extreme input headroom.
 
+Apply fixed +15 dB wet makeup after Warm and before the existing mix. It is
+outside the pitch and tank feedback loops, so their contraction bounds and tail
+shape remain unchanged. Output peak bounds must include the 5.623413251903491
+multiplier; this is not a limiter. No detector, new state, saved parameter or host
+ID is introduced. Existing saved settings use the new wet level. Reuse the
+generated fixtures and calibration procedure in [reverbs](reverbs.md#calibrated-wet-makeup),
+including full regeneration and short/long Size headroom checks.
+
 Prepare all rings and meter handles before processing. Retarget, reset, sampling
 and modulation must not allocate, lock, perform I/O or release final owners.
 Resets invalidate rings in constant time. Base controls, power, ratio and mode
