@@ -184,6 +184,38 @@ impl DawUi {
                 ui.close();
             }
         }
+        menus::separator(ui);
+        for panel in ViewPanel::ALL {
+            let selected = self.view_panel_selected(panel);
+            let enabled = self.view_panel_enabled(panel, ui.ctx());
+            if ui
+                .add_enabled_ui(enabled, |ui| {
+                    menus::checked_button(ui, selected, panel.label(), "")
+                })
+                .inner
+                .clicked()
+            {
+                self.toggle_view_panel(panel, ui.ctx());
+                ui.close();
+            }
+        }
+        menus::separator(ui);
+        let fullscreen = ui.input(|input| input.viewport().fullscreen.unwrap_or(false));
+        if ui
+            .add_enabled(
+                self.view_switch_enabled(),
+                egui::Button::new(if fullscreen {
+                    "Exit Full Screen"
+                } else {
+                    "Enter Full Screen"
+                }),
+            )
+            .clicked()
+        {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
+            ui.close();
+        }
     }
 
     pub(super) fn view_controls(&mut self, ui: &mut egui::Ui) {

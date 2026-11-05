@@ -450,11 +450,26 @@ fn view_menu_checks_one_mode_and_switches_on_release_without_project_changes() {
         );
         for mode in ViewMode::ALL.into_iter().chain([ViewMode::Timeline]) {
             let output = menu_frame(&mut app, &ctx, vec![]);
+            let modes_bottom = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == "Mixer" => {
+                        Some(text.pos.y + text.galley.size().y)
+                    }
+                    _ => None,
+                })
+                .unwrap();
             let checks: Vec<_> = output
                 .shapes
                 .iter()
                 .filter_map(|shape| match &shape.shape {
-                    egui::Shape::Path(path) if path.points.len() == 3 => Some(path),
+                    egui::Shape::Path(path)
+                        if path.points.len() == 3
+                            && Rect::from_points(&path.points).center().y < modes_bottom =>
+                    {
+                        Some(path)
+                    }
                     _ => None,
                 })
                 .collect();

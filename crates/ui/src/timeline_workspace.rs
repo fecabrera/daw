@@ -20,11 +20,7 @@ impl DawUi {
             && self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
         let toggle = timeline_toolbar::clip_settings(ui, rail, self.clip_settings_visible, allowed);
         if toggle.clicked() {
-            self.clip_settings_visible = !self.clip_settings_visible;
-            if !self.clip_settings_visible {
-                self.clear_clip_settings_edits();
-            }
-            ui.ctx().request_repaint();
+            self.toggle_view_panel(ViewPanel::ClipSettings, ui.ctx());
         }
         #[cfg(test)]
         {

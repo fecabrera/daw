@@ -1,4 +1,6 @@
-use daw_ui::{ClipAction, ClipMenuAction, DawUi, FileAction, HistoryAction, TrackAction, ViewMode};
+use daw_ui::{
+    ClipAction, ClipMenuAction, DawUi, FileAction, HistoryAction, TrackAction, ViewMode, ViewPanel,
+};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, rc::Retained, sel};
 use objc2_app_kit::{
     NSApplication, NSControlStateValueOff, NSControlStateValueOn, NSEventModifierFlags,
@@ -22,6 +24,7 @@ enum MenuAction {
     History(HistoryAction),
     Track(TrackAction),
     View(ViewMode),
+    Panel(ViewPanel),
 }
 
 define_class!(
@@ -50,6 +53,16 @@ define_class!(
                 && let Some(mode) = ViewMode::ALL.get(index)
             {
                 let _ = self.ivars().sender.send(MenuAction::View(*mode));
+                self.ivars().context.request_repaint();
+            }
+        }
+        // SAFETY: The selector takes an NSMenuItem sender and returns void.
+        #[unsafe(method(performPanelAction:))]
+        fn perform_panel_action(&self, item: &NSMenuItem) {
+            if let Ok(index) = usize::try_from(item.tag())
+                && let Some(panel) = ViewPanel::ALL.get(index)
+            {
+                let _ = self.ivars().sender.send(MenuAction::Panel(*panel));
                 self.ivars().context.request_repaint();
             }
         }
@@ -394,6 +407,25 @@ impl NativeMenu {
             view_menu.addItem(&item);
             items.push((MenuAction::View(mode), item));
         }
+        view_menu.addItem(&NSMenuItem::separatorItem(mtm));
+        for (index, panel) in ViewPanel::ALL.into_iter().enumerate() {
+            // SAFETY: The selector is defined above with an NSMenuItem argument.
+            let item = unsafe {
+                NSMenuItem::initWithTitle_action_keyEquivalent(
+                    NSMenuItem::alloc(mtm),
+                    &NSString::from_str(panel.label()),
+                    Some(sel!(performPanelAction:)),
+                    ns_string!(""),
+                )
+            };
+            item.setTag(index as isize);
+            // SAFETY: NativeMenu retains the target until items are detached.
+            unsafe { item.setTarget(Some(&target)) };
+            view_menu.addItem(&item);
+            items.push((MenuAction::Panel(panel), item));
+        }
+        // AppKit appends its full-screen command after this panel section.
+        view_menu.addItem(&NSMenuItem::separatorItem(mtm));
         let view_item = NSMenuItem::new(mtm);
         view_item.setTitle(ns_string!("View"));
         view_item.setSubmenu(Some(&view_menu));
@@ -432,6 +464,7 @@ impl NativeMenu {
                             if *key == shortcut.logical_key && modifiers.matches_exact(shortcut.modifiers))
                     }));
                 }
+                MenuAction::Panel(panel) => ui.toggle_view_panel(panel, ctx),
                 MenuAction::View(mode) => {
                     ui.set_view_mode(mode, ctx);
                     let shortcut = mode.shortcut();
@@ -480,6 +513,13 @@ impl NativeMenu {
                     NSControlStateValueOff
                 });
             }
+            if let MenuAction::Panel(panel) = action {
+                item.setState(if ui.view_panel_selected(*panel) {
+                    NSControlStateValueOn
+                } else {
+                    NSControlStateValueOff
+                });
+            }
             item.setEnabled(match action {
                 MenuAction::Settings => ui.settings_enabled(),
                 MenuAction::ProjectSettings => ui.project_settings_enabled(),
@@ -489,6 +529,7 @@ impl NativeMenu {
                 MenuAction::History(action) => ui.history_action_enabled(*action, ctx),
                 MenuAction::Track(action) => ui.track_action_enabled(*action, ctx),
                 MenuAction::View(_) => ui.view_switch_enabled(),
+                MenuAction::Panel(panel) => ui.view_panel_enabled(*panel, ctx),
             });
         }
     }

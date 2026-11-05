@@ -52,6 +52,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Component editing and registration](editing/components.md).
 - [Clip settings](editing/clip-settings.md).
 - [Chord catalog](editing/chords.md).
+- [View menu panels](views/view-menu.md): shared panel toggles, view availability and checked states.
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).
 - [Instrument and Editor project track browser](views/instrument-tracks.md).
 - [Beat editor design](views/beat-editor.md): implemented MVP and native acceptance criteria.

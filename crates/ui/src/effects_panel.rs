@@ -242,14 +242,17 @@ impl DawUi {
 
     pub(super) fn effects_editing_enabled(&self, ui: &egui::Ui) -> bool {
         // Knob focus remains editable; text editors and other active gestures block changes.
-        ui.is_enabled()
-            && self.edit_environment_available()
+        ui.is_enabled() && self.effects_editing_available(ui.ctx())
+    }
+
+    pub(super) fn effects_editing_available(&self, ctx: &egui::Context) -> bool {
+        self.edit_environment_available()
             && self.chords.drag.as_ref().is_none_or(|drag| !drag.active)
             && self.drag.is_none()
             && self.track_drag.is_none()
             && !self.midi_editor.dragging()
             && !self.instrument_ui.dragging()
-            && ui.input(|input| input.focused)
+            && ctx.input(|input| input.focused)
             && !self.instrument_ui.editing_name()
             && self.track_name_edit.is_none()
             && self.tempo_edit.is_none()

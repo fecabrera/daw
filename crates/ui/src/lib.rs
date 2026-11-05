@@ -1,3 +1,5 @@
+mod view_panels;
+pub use view_panels::ViewPanel;
 mod ambient_reverb_panel;
 mod loudness_panel;
 mod plate_reverb_panel;
@@ -3077,10 +3079,13 @@ impl DawUi {
             if self.view_mode == ViewMode::Mixer {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let response = ui
-                        .add(egui::Button::new("Returns").selected(self.mixer_returns_visible))
+                        .add_enabled(
+                            self.view_panel_enabled(ViewPanel::Returns, ui.ctx()),
+                            egui::Button::new("Returns").selected(self.mixer_returns_visible),
+                        )
                         .on_hover_text("Show or hide Return tracks");
                     if response.clicked() {
-                        self.mixer_returns_visible = !self.mixer_returns_visible;
+                        self.toggle_view_panel(ViewPanel::Returns, ui.ctx());
                     }
                 });
             }
@@ -3164,63 +3169,25 @@ impl DawUi {
             self.effects_lane_visible(),
             enabled,
         );
-        if toggles.tracks.as_ref().is_some_and(|r| r.clicked()) {
-            self.set_tracks_panel_visible(!self.tracks_panel_visible());
-            if self.tracks_panel_visible() {
-                if self.view_mode == ViewMode::Instrument {
-                    self.instrument_catalog_visible = false;
-                }
-                self.instrument_catalog.clear();
-                self.set_effects_catalog_visible(false);
-                self.effects_catalog.clear();
-                self.set_chords_visible(false);
-                self.chords.catalog.clear();
+        for (panel, clicked) in [
+            (
+                ViewPanel::Tracks,
+                toggles.tracks.as_ref().is_some_and(|r| r.clicked()),
+            ),
+            (
+                ViewPanel::Chords,
+                toggles.chords.as_ref().is_some_and(|r| r.clicked()),
+            ),
+            (ViewPanel::EffectsCatalog, toggles.library.clicked()),
+            (
+                ViewPanel::Components,
+                toggles.components.as_ref().is_some_and(|r| r.clicked()),
+            ),
+            (ViewPanel::EffectsLane, toggles.lane.clicked()),
+        ] {
+            if clicked {
+                self.toggle_view_panel(panel, ui.ctx());
             }
-            ui.ctx().request_repaint();
-        }
-        if toggles.chords.as_ref().is_some_and(|r| r.clicked()) {
-            self.set_chords_visible(!self.chords_visible());
-            self.chords.catalog.clear();
-            if self.chords_visible() {
-                self.set_tracks_panel_visible(false);
-                self.set_effects_catalog_visible(false);
-                self.effects_catalog.clear();
-            }
-            ui.ctx().request_repaint();
-        }
-        if toggles.library.clicked() {
-            self.set_effects_catalog_visible(!self.effects_catalog_visible());
-            self.effects_catalog.clear();
-            if self.effects_catalog_visible() {
-                self.set_tracks_panel_visible(false);
-                self.set_chords_visible(false);
-                self.chords.catalog.clear();
-                if self.view_mode == ViewMode::Instrument {
-                    self.instrument_catalog_visible = false;
-                }
-                self.instrument_catalog.clear();
-            }
-            ui.ctx().request_repaint();
-        }
-        if toggles
-            .components
-            .as_ref()
-            .is_some_and(|response| response.clicked())
-        {
-            self.instrument_catalog_visible = !self.instrument_catalog_visible;
-            self.instrument_catalog.clear();
-            if self.instrument_catalog_visible {
-                self.track_browser.visible = false;
-                self.set_effects_catalog_visible(false);
-                self.effects_catalog.clear();
-            }
-            ui.ctx().request_repaint();
-        }
-        if toggles.lane.clicked() {
-            self.set_effects_lane_visible(!self.effects_lane_visible());
-            self.selected_effects.clear();
-            self.effects_drag = None;
-            ui.ctx().request_repaint();
         }
         #[cfg(test)]
         {
@@ -5753,6 +5720,7 @@ mod tests {
     mod transport;
     mod trim_boundary;
     mod unit_power;
+    mod view_panels;
     #[cfg(target_os = "windows")]
     mod windows_titlebar;
     use super::*;

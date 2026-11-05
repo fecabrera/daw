@@ -207,10 +207,11 @@ fn application_menu_view_action_works_from_row_padding() {
             .filter(|shape| matches!(
                 &shape.shape, egui::Shape::Path(path)
                     if path.points.len() == 3 && path.stroke.width > 0.0
+                        && Rect::from_points(&path.points).center().y < text_rect(&child, "Mixer").bottom()
             ))
             .count(),
         1,
-        "Only the active view has a visible checkmark"
+        "Only the active view row has a visible checkmark"
     );
     assert!(
         highlight(

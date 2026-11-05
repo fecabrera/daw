@@ -7956,3 +7956,30 @@ and `git diff --check` passed. The desktop executable was rebuilt. Native UI,
 audio-device and Windows/Linux checks were not run. macOS bundle packaging
 requires committed tracked sources and rejected the uncommitted working tree.
 Receipts are in ignored `work/mixer-returns/`.
+
+### 2026-11-05 — View menu panel toggles
+
+Native macOS and in-app View menus list Tracks, Components, Effects Catalog,
+Chords, Clip Settings, Effects Lane and Returns after Mixer, with a separator on
+each side of the panel section before the full-screen command. Unsupported
+panels stay listed, disabled and unchecked. Supported checkmarks read current
+view preferences and refresh after toolbar actions and view switches. Native
+menu callbacks and toolbar buttons share guarded dispatch and existing catalog
+exclusivity/selection cleanup. The in-app menu sends the full-screen viewport
+command; macOS retains its AppKit command.
+
+`cargo test --locked --offline --workspace` passed in debug: 2,556 passed,
+21 existing manual cases ignored. Separately,
+`cargo test --release --locked --offline --workspace` passed: 2,556 passed,
+21 existing manual cases ignored. Both profiles passed all 874 headless UI tests.
+New regressions cover the view-availability matrix, current-view checked state,
+blocked/unsupported actions, catalog exclusivity, menu clicks sharing toolbar
+state, section order and both dividers, and Enter Full Screen command dispatch.
+Existing view-selection tests now distinguish mode checks from panel checks.
+
+Strict workspace all-target Clippy, rustfmt, documentation links and diff
+whitespace checks passed. The desktop executable was rebuilt. Native macOS menu
+appearance, native full-screen interaction, devices and Windows/Linux behavior
+were not checked manually. macOS app-bundle packaging requires committed tracked
+sources and rejected the uncommitted working tree. Receipts are in ignored
+`work/view-panels/`.
