@@ -236,3 +236,10 @@ Return-only Solo, and restoring feeds after clearing Solo without editing routes
 Timeline pinned boundaries use one full-width divider above the first Return and
 above Master. Master retains this divider when no Returns exist. The pinned bank
 owns these separators; Return rows do not add a second bottom stroke beside Master.
+
+Mixer track, group, Return and Master stereo rails show independent per-channel
+held maxima using the shared secondary-grey, one-point peak marker. Audio
+publication latches finite positive amplitudes per channel without allocation or
+locking. Silence retains holds. The numeric peak reads their maximum. Clicking
+either rail, the gap between L/R rails, or the readout resets both holds and the
+shared clipping warning without changing current readings or project history.

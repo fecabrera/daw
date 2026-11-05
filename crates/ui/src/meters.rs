@@ -58,6 +58,34 @@ pub fn stereo(ui: &mut Ui, height: f32, levels: [(f32, bool); 2]) -> [Response; 
     stereo_with_scale(ui, height, levels, true)
 }
 
+/// Mixer rails retain each channel's maximum; the gap shares their reset target.
+pub fn stereo_held(
+    ui: &mut Ui,
+    height: f32,
+    levels: [(f32, bool); 2],
+    held: [f32; 2],
+) -> [bool; 2] {
+    let channels = stereo(ui, height, levels);
+    for (channel, peak) in channels.iter().zip(held) {
+        if peak > 0.0 {
+            let rail = channel.rect;
+            daw_unit_ui::meters::vertical_peak_marker(
+                ui,
+                rail,
+                rail.bottom() - rail.height() * position_for_peak(peak),
+            );
+        }
+    }
+    let gap = Rect::from_min_max(channels[0].rect.right_top(), channels[1].rect.left_bottom());
+    let gap = ui
+        .interact(gap, ui.id().with("stereo_peak_reset_gap"), Sense::click())
+        .on_hover_text("Click to reset peak and stereo clipping.");
+    [
+        channels[0].clicked() || gap.clicked(),
+        channels[1].clicked(),
+    ]
+}
+
 fn stereo_with_scale(
     ui: &mut Ui,
     height: f32,
@@ -241,6 +269,95 @@ fn channel_with_inset(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mixer_channel_and_gap_clicks_reset_both_shared_peak_markers() {
+        for target in 0..3 {
+            let ctx = egui::Context::default();
+            theme::configure(&ctx);
+            let meter = daw_output::StereoMeter::default();
+            meter.publish_peaks([1.25, 0.5]);
+            meter.publish_peaks([0.25, 0.125]);
+            let mut rails: Vec<Rect> = Vec::new();
+            for phase in 0..4 {
+                let events = if phase == 1 || phase == 2 {
+                    let point = match target {
+                        0 => rails[0].center(),
+                        1 => rails[1].center(),
+                        _ => Pos2::new(
+                            (rails[0].right() + rails[1].left()) / 2.0,
+                            rails[0].center().y,
+                        ),
+                    };
+                    vec![
+                        egui::Event::PointerMoved(point),
+                        egui::Event::PointerButton {
+                            pos: point,
+                            button: egui::PointerButton::Primary,
+                            pressed: phase == 1,
+                            modifiers: Default::default(),
+                        },
+                    ]
+                } else {
+                    vec![]
+                };
+                let output = ctx.run_ui(
+                    egui::RawInput {
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let clicked = stereo_held(ui, 100.0, meter.levels(), meter.held_peaks());
+                        reset_on_click(ui, Some(&meter), clicked);
+                    },
+                );
+                rails = output
+                    .shapes
+                    .iter()
+                    .filter_map(|shape| match &shape.shape {
+                        egui::Shape::Rect(r)
+                            if r.fill == theme::palette(&ctx).input
+                                && r.rect.width() == CHANNEL_WIDTH
+                                && r.rect.height() == 100.0 =>
+                        {
+                            Some(r.rect)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(rails.len(), 2);
+                let markers: Vec<_> = output
+                    .shapes
+                    .iter()
+                    .filter_map(|shape| match &shape.shape {
+                        egui::Shape::LineSegment { points, stroke }
+                            if stroke.color == theme::palette(&ctx).secondary
+                                && stroke.width == 1.0
+                                && points[0].y == points[1].y
+                                && (points[1].x - points[0].x - CHANNEL_WIDTH).abs() < 0.01 =>
+                        {
+                            Some(points)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(markers.len(), if phase < 3 { 2 } else { 0 });
+                if phase == 0 {
+                    for (index, peak) in [1.25, 0.5].into_iter().enumerate() {
+                        let rail = rails[index];
+                        let y = (rail.bottom() - rail.height() * position_for_peak(peak))
+                            .clamp(rail.top() + 0.5, rail.bottom() - 0.5);
+                        assert!((markers[index][0].y - y).abs() < 0.01);
+                    }
+                }
+                assert_eq!(
+                    meter.held_peaks(),
+                    if phase < 2 { [1.25, 0.5] } else { [0.0; 2] }
+                );
+                assert_eq!(meter.levels(), [(0.25, phase < 2), (0.125, phase < 2)]);
+            }
+        }
+    }
 
     #[test]
     fn reduction_peak_lines_use_secondary_color_and_click_resets_only_the_peak() {

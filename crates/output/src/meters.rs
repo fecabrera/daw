@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 #[derive(Default)]
 pub struct StereoMeter {
     pub peaks: [AtomicU32; 2],
-    held_peak: AtomicU32,
+    held_peaks: [AtomicU32; 2],
     clipped: AtomicBool,
 }
 
@@ -15,9 +15,10 @@ impl StereoMeter {
             self.peaks[channel].store(peak.to_bits(), Ordering::Relaxed);
         }
         // Positive finite f32 bit patterns have the same order as their amplitudes.
-        let peak = peaks[0].max(peaks[1]);
-        if peak.is_finite() && peak > 0.0 {
-            self.held_peak.fetch_max(peak.to_bits(), Ordering::Relaxed);
+        for (hold, peak) in self.held_peaks.iter().zip(peaks) {
+            if peak.is_finite() && peak > 0.0 {
+                hold.fetch_max(peak.to_bits(), Ordering::Relaxed);
+            }
         }
         if peaks.into_iter().any(|peak| peak > 1.0) {
             self.clipped.store(true, Ordering::Relaxed);
@@ -37,12 +38,21 @@ impl StereoMeter {
     }
 
     pub fn held_peak(&self) -> f32 {
-        f32::from_bits(self.held_peak.load(Ordering::Relaxed))
+        let [left, right] = self.held_peaks();
+        left.max(right)
+    }
+
+    pub fn held_peaks(&self) -> [f32; 2] {
+        self.held_peaks
+            .each_ref()
+            .map(|peak| f32::from_bits(peak.load(Ordering::Relaxed)))
     }
 
     /// Reset the held peak and stereo clipping warning. New audio can raise both again.
     pub fn reset(&self) {
-        self.held_peak.store(0, Ordering::Relaxed);
+        for peak in &self.held_peaks {
+            peak.store(0, Ordering::Relaxed);
+        }
         self.clipped.store(false, Ordering::Relaxed);
     }
 }
@@ -50,6 +60,23 @@ impl StereoMeter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stereo_holds_retain_independent_maxima_through_silence_and_reset() {
+        let meter = StereoMeter::default();
+        meter.publish_peaks([0.75, 0.25]);
+        meter.publish_peaks([0.1, 0.5]);
+        meter.publish_peaks([0.0; 2]);
+        assert_eq!(meter.held_peaks(), [0.75, 0.5]);
+        assert_eq!(meter.held_peak(), 0.75);
+        meter.publish_peaks([f32::NAN, f32::INFINITY]);
+        assert_eq!(meter.held_peaks(), [0.75, 0.5]);
+        meter.reset();
+        assert_eq!(meter.held_peaks(), [0.0; 2]);
+        assert!(!meter.is_clipped());
+        meter.publish_peaks([0.2, 0.3]);
+        assert_eq!(meter.held_peaks(), [0.2, 0.3]);
+    }
 
     #[test]
     fn either_channel_latches_both_until_reset_without_changing_levels() {

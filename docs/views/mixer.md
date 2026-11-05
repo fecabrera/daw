@@ -18,7 +18,7 @@ Use numeric fields for precise values. Press Enter or leave the field to apply a
 
 Mute silences a track’s direct output; its sends remain active. Solo plays the selected soloed tracks and excludes the others. Solo takes priority over mute: a track with both enabled plays. Select several tracks to apply Mute or Solo together from the Track menu or with M and S.
 
-Meters show current output. Held peak readouts help identify the highest recent level; click a peak readout to reset it. Reduce gain if the project output clips.
+Meters show current output. Each L/R bar has a held-peak marker that stays at its highest level until reset. The peak readout shows the higher of the two held levels. Click either bar, the gap between L and R, or the peak readout to reset both held peaks and the clipping warning. Reduce gain if the project output clips.
 
 ## Track groups
 

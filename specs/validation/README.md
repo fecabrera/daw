@@ -7849,3 +7849,23 @@ The desktop executable was rebuilt. Native UI/device/platform checks were not ru
 App-bundle packaging requires committed tracked sources and was not completed;
 changes remain uncommitted. Receipts are in ignored
 `work/track-sends/visible-out-spacing/`.
+
+### 2026-11-05 — Mixer held-peak markers and gap reset
+
+Mixer track, group, Return and Master meters retain independent L/R maxima and
+paint shared one-point secondary-grey markers without changing rail geometry.
+The numeric readout uses the greater hold. Clicking either channel, their gap,
+or the peak readout resets both holds and clipping, retaining current levels and
+project state. Publication uses finite positive atomic maxima without allocation
+or locks; silence retains them until reset.
+
+`cargo test --release --locked --offline --workspace` passed: 2,548 tests,
+with 21 existing manual cases ignored. Checks include separate channel maxima,
+silence retention, nonfinite publication, renewed publication after reset, marker
+positions/color, and press/release reset through L, R and their gap. Strict
+workspace all-target Clippy, rustfmt, documentation links and diff whitespace
+checks passed. `cargo build --locked --offline -p daw-desktop` passed. Native UI,
+audio-device and Windows/Linux checks were not run. macOS bundle packaging
+requires committed tracked sources and rejected this uncommitted working tree;
+the desktop executable was rebuilt. Receipts are in ignored
+`work/mixer-held-peaks/`.

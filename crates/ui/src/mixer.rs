@@ -687,20 +687,19 @@ impl DawUi {
                     Vec2::new(column_widths[1], column_height),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
+                        let idle_meter = daw_output::StereoMeter::default();
+                        let meter = self.output.as_ref().map_or(&idle_meter, |output| {
+                            track.map_or(&output.status.meter, |track| {
+                                output.track_meter(track.id).unwrap_or(&idle_meter)
+                            })
+                        });
                         ui.spacing_mut().interact_size.y = numeric_height;
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
                             ui.add_space((column_widths[1] - NUMERIC_WIDTH) / 2.0);
-                            let idle_meter = daw_output::StereoMeter::default();
-                            let meter = self.output.as_ref().map_or(&idle_meter, |output| {
-                                track.map_or(&output.status.meter, |track| {
-                                    output.track_meter(track.id).unwrap_or(&idle_meter)
-                                })
-                            });
                             meters::peak_level(ui, meter);
                         });
-                        cleared = meters::stereo(ui, fader_height, levels)
-                            .map(|response| response.clicked());
+                        cleared = meters::stereo_held(ui, fader_height, levels, meter.held_peaks());
                     },
                 );
             },

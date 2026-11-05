@@ -142,6 +142,15 @@ pub fn peak_marker(ui: &Ui, rail: Rect, x: f32) {
     );
 }
 
+/// Vertical level-rail counterpart of the shared one-point held-peak marker.
+pub fn vertical_peak_marker(ui: &Ui, rail: Rect, y: f32) {
+    ui.painter().hline(
+        rail.x_range(),
+        y.clamp(rail.top() + 0.5, rail.bottom() - 0.5),
+        egui::Stroke::new(1.0, theme::palette(ui.ctx()).secondary),
+    );
+}
+
 /// Standard effect Out-strip monitor. Hide stale values immediately on bypass.
 /// The rail occupies the existing top margin, so controls and strip size do not move.
 pub fn effect_output_level<'a>(
