@@ -8,17 +8,19 @@ pub enum ViewPanel {
     EffectsCatalog,
     Chords,
     ClipSettings,
+    TrackMixer,
     EffectsLane,
     Returns,
 }
 
 impl ViewPanel {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Tracks,
         Self::Components,
         Self::EffectsCatalog,
         Self::Chords,
         Self::ClipSettings,
+        Self::TrackMixer,
         Self::EffectsLane,
         Self::Returns,
     ];
@@ -30,6 +32,7 @@ impl ViewPanel {
             Self::EffectsCatalog => "Effects Catalog",
             Self::Chords => "Chords",
             Self::ClipSettings => "Clip Settings",
+            Self::TrackMixer => "Track Mixer",
             Self::EffectsLane => "Effects Lane",
             Self::Returns => "Returns",
         }
@@ -41,7 +44,7 @@ impl ViewPanel {
             Self::Components => view == ViewMode::Instrument,
             Self::EffectsCatalog | Self::EffectsLane => true,
             Self::Chords => matches!(view, ViewMode::Timeline | ViewMode::Edit),
-            Self::ClipSettings => view == ViewMode::Timeline,
+            Self::ClipSettings | Self::TrackMixer => view == ViewMode::Timeline,
             Self::Returns => view == ViewMode::Mixer,
         }
     }
@@ -64,6 +67,7 @@ impl DawUi {
                 ViewPanel::EffectsCatalog => self.effects_catalog_visible(),
                 ViewPanel::Chords => self.chords_visible(),
                 ViewPanel::ClipSettings => self.clip_settings_visible,
+                ViewPanel::TrackMixer => self.track_mixer_visible,
                 ViewPanel::EffectsLane => self.effects_lane_visible(),
                 ViewPanel::Returns => self.mixer_returns_visible,
             }
@@ -125,7 +129,17 @@ impl DawUi {
             }
             ViewPanel::ClipSettings => {
                 self.clip_settings_visible = !self.clip_settings_visible;
+                if self.clip_settings_visible {
+                    self.track_mixer_visible = false;
+                }
                 if !self.clip_settings_visible {
+                    self.clear_clip_settings_edits();
+                }
+            }
+            ViewPanel::TrackMixer => {
+                self.track_mixer_visible = !self.track_mixer_visible;
+                if self.track_mixer_visible {
+                    self.clip_settings_visible = false;
                     self.clear_clip_settings_edits();
                 }
             }

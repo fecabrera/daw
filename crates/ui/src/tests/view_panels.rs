@@ -35,19 +35,19 @@ fn panel_menu_availability_and_checks_follow_the_current_view() {
     for (view, enabled) in [
         (
             ViewMode::Timeline,
-            [false, false, true, true, true, true, false],
+            [false, false, true, true, true, true, true, false],
         ),
         (
             ViewMode::Instrument,
-            [true, true, true, false, false, true, false],
+            [true, true, true, false, false, false, true, false],
         ),
         (
             ViewMode::Edit,
-            [true, false, true, true, false, true, false],
+            [true, false, true, true, false, false, true, false],
         ),
         (
             ViewMode::Mixer,
-            [false, false, true, false, false, true, true],
+            [false, false, true, false, false, false, true, true],
         ),
     ] {
         app.set_view_mode(view, &ctx);

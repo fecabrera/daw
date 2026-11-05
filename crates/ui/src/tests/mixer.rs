@@ -1716,3 +1716,171 @@ fn output_spacing_uses_visible_edges_instead_of_widget_slots() {
         }
     }
 }
+
+#[test]
+fn timeline_track_mixer_follows_selection_and_parent_bus() {
+    let (mut app, track) = fixture();
+    let group = app.session.project.add_group_track().unwrap();
+    app.session
+        .project
+        .edit(Edit::MoveTrack {
+            track_id: track,
+            group_id: Some(group),
+            index: 1,
+        })
+        .unwrap();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    let toggle = app.effects_bounds.track_mixer_toggle.center();
+    click(&mut app, &ctx, toggle);
+    assert!(app.view_panel_selected(ViewPanel::TrackMixer));
+    assert!(!app.clip_settings_visible);
+    app.select_track(track, false);
+    frame(&mut app, &ctx, vec![]);
+    let panel = app.effects_bounds.track_mixer;
+    let current = app.mixer_bounds[&track];
+    let parent = app.mixer_bounds[&group];
+    assert_eq!(current.right(), parent.left());
+    assert!(panel.contains_rect(current));
+    assert!(panel.contains_rect(parent));
+    assert!(app.timeline_bounds.right() <= panel.left());
+    assert!(app.lane_bounds.values().all(|r| r.right() <= panel.left()));
+    app.select_track(group, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.mixer_bounds[&group].right(), app.master_bounds.left());
+    app.select_master();
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::Text(text) if text.galley.text() == "Master"
+            && app.effects_bounds.track_mixer.contains(text.pos))));
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+    app.toggle_view_panel(ViewPanel::ClipSettings, &ctx);
+    assert!(app.clip_settings_visible);
+    assert!(!app.track_mixer_visible);
+    app.toggle_view_panel(ViewPanel::TrackMixer, &ctx);
+    app.set_view_mode(ViewMode::Mixer, &ctx);
+    assert!(!app.view_panel_selected(ViewPanel::TrackMixer));
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    assert!(app.view_panel_selected(ViewPanel::TrackMixer));
+}
+
+#[test]
+fn timeline_track_mixer_edits_both_strips_and_blocks_controls_during_dialogs() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    frame(&mut app, &ctx, vec![]);
+    app.toggle_view_panel(ViewPanel::TrackMixer, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let panel = app.effects_bounds.track_mixer;
+    let mute = label_point(&mut app, &ctx, "M", Some(panel));
+    click(&mut app, &ctx, mute);
+    assert!(app.session.project.tracks[0].muted);
+    for key in [Some(track), None] {
+        let fader = app.mixer_faders[&key];
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new(fader.center().x, fader.top() + 1.0),
+        );
+    }
+    assert!(app.session.project.tracks[0].gain_db > 0.0);
+    assert!(app.session.project.master.gain_db > 0.0);
+    let before = app.session.project.clone();
+    app.settings_open = true;
+    click(&mut app, &ctx, mute);
+    assert_eq!(app.session.project, before);
+}
+
+#[test]
+fn timeline_track_mixer_handles_empty_selection_returns_and_narrow_layouts() {
+    let (mut app, _) = fixture();
+    let return_track = app.session.project.add_return_track().unwrap();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    app.toggle_view_panel(ViewPanel::TrackMixer, &ctx);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::Text(text) if text.galley.text() == "Select a track")));
+    app.select_track(return_track, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(
+        app.mixer_bounds[&return_track].right(),
+        app.master_bounds.left()
+    );
+    let before = app.session.project.clone();
+    for size in [Vec2::new(900.0, 500.0), Vec2::new(650.0, 400.0)] {
+        frame_sized(&mut app, &ctx, vec![], size);
+        let panel = app.effects_bounds.track_mixer;
+        assert!(panel.is_positive());
+        assert!(app.timeline_bounds.right() <= panel.left());
+        assert!(panel.right() <= app.effects_bounds.clip_settings_toolbar.left());
+        assert!(app.mixer_faders[&Some(return_track)].is_positive());
+    }
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn timeline_track_mixer_placeholder_matches_clip_settings_and_uses_one_toolbar_divider() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        app.toggle_view_panel(ViewPanel::ClipSettings, &ctx);
+        let clip_shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let text = |shapes: &[egui::epaint::ClippedShape], label: &str| {
+            shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => Some(text.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("Missing {label}"))
+        };
+        let clip_prompt = text(&clip_shapes, "Select a clip");
+        let clip_header = text(&clip_shapes, "Clip settings");
+        app.toggle_view_panel(ViewPanel::TrackMixer, &ctx);
+        let mixer_shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let mixer_prompt = text(&mixer_shapes, "Select a track");
+        let mixer_header = text(&mixer_shapes, "Track mixer");
+        assert_eq!(
+            clip_prompt.pos - clip_header.pos,
+            mixer_prompt.pos - mixer_header.pos
+        );
+        assert_eq!(
+            clip_prompt.galley.job.sections[0].format,
+            mixer_prompt.galley.job.sections[0].format
+        );
+        for selected in [false, true] {
+            if selected {
+                app.select_track(track, false);
+            }
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let panel = app.effects_bounds.track_mixer;
+            let dividers = shapes
+                .iter()
+                .filter(|shape| {
+                    matches!(&shape.shape,
+                        egui::Shape::LineSegment { points, stroke }
+                            if (points[0].x - points[1].x).abs() < 0.01
+                                && (points[0].x - panel.right()).abs() <= 1.0
+                                && (points[0].y - panel.top()).abs() < 0.1
+                                && (points[1].y - panel.bottom()).abs() < 0.1
+                                && stroke.width == 1.0
+                    )
+                })
+                .count();
+            assert_eq!(dividers, 1, "one toolbar divider, selected={selected}");
+        }
+    }
+}

@@ -14,6 +14,7 @@ in-app menu sends the equivalent viewport command.
 | Effects Catalog | All |
 | Chords | Timeline, Editor |
 | Clip Settings | Timeline |
+| Track Mixer | Timeline |
 | Effects Lane | All |
 | Returns | Mixer |
 
@@ -46,3 +47,37 @@ and blocked actions, catalog exclusivity, toolbar/menu parity, section ordering
 and separators, and full-screen viewport command dispatch. Keep headless texture
 delta cleanup and run both debug and release workspace tests. Native macOS menu
 appearance and Windows/Linux window behavior require platform checks.
+
+## Timeline Track Mixer
+
+The right Timeline rail has Clip Settings followed by Track Mixer (sliders icon).
+Both use the shared View-panel dispatcher and gesture/job/dialog guards. These
+inspectors are mutually exclusive; opening Track Mixer cancels unconfirmed clip
+settings. Left catalogs remain independent. Track Mixer starts hidden and retains
+its choice across view switches in the app session. It is absent outside Timeline.
+
+Reserve two standard Mixer strip widths (120 logical points each) outside the
+Timeline canvas and drop bounds. Keep the right rail available when the inspector
+is closed. Constrain the inspector to leave the existing minimum Timeline width;
+scroll the strips horizontally and vertically when necessary.
+
+Resolve the primary selected track by stable ID each frame. Show that track on
+the left and its immediate `group_id` bus on the right, or Master when ungrouped.
+Group and Return tracks follow the same rule. Master selection shows Master once,
+with no parent. Empty selection shows the standard ControlPanel “Track mixer”
+header and “Select a track” placeholder, using the same padding, small secondary
+text and form-row baseline as Clip Settings. Selection and topology
+changes must update the strips without stale references.
+
+Reuse `mixer_strip` and its headers, numeric fields, faders, meters, send rack and
+control updates. Headers use Mixer geometry, colors and text; inspector names are read-only
+and must not start Timeline track drags or duplicate Timeline rename fields. Controls edit their own track without switching selection.
+The right toolbar owns the single divider between the inspector and toolbar;
+Master must not add a second outer strip border in Timeline.
+Panel toggles and rendering do not edit project history or audio routing. All
+controls respect blocked editing. No new audio processing or callback work is
+introduced.
+
+Validate toolbar/menu parity, inspector exclusivity, parent resolution, Master
+selection, control edits, blocked input, view switching and canvas separation with
+automated egui frames. Native layout, scrolling and meter motion need UI checks.

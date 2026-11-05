@@ -820,6 +820,7 @@ pub struct DawUi {
     editor_effects: effects_panel::Visibility,
     mixer_effects: effects_panel::Visibility,
     clip_settings_visible: bool,
+    track_mixer_visible: bool,
     clip_settings_draft: Option<clip_settings::FieldEdit>,
     clip_transpose_drag: Option<clip_settings::TransposeDrag>,
     clip_settings_change: Option<clip_settings::DragChange>,
@@ -943,6 +944,7 @@ impl Default for DawUi {
             editor_effects: Default::default(),
             mixer_effects: Default::default(),
             clip_settings_visible: false,
+            track_mixer_visible: false,
             clip_settings_draft: None,
             clip_transpose_drag: None,
             clip_settings_change: None,
@@ -3200,6 +3202,8 @@ impl DawUi {
                 toggles.tracks.as_ref().map_or(Rect::NOTHING, |r| r.rect);
             self.effects_bounds.toolbar = rail;
             self.effects_bounds.library_toggle = toggles.library.rect;
+            self.effects_bounds.track_mixer_toggle = Rect::NOTHING;
+            self.effects_bounds.track_mixer = Rect::NOTHING;
             self.effects_bounds.clip_settings_toggle = Rect::NOTHING;
             self.effects_bounds.clip_settings_toolbar = Rect::NOTHING;
             self.effects_bounds.lane_toggle = toggles.lane.rect;
@@ -3941,21 +3945,25 @@ impl DawUi {
         }
     }
     fn master_name(&self, ui: &mut egui::Ui) {
-        let font_size = if self.view_mode == mixer::ViewMode::Mixer {
+        self.master_name_layout(ui, self.view_mode == ViewMode::Mixer);
+    }
+    fn master_name_layout(&self, ui: &mut egui::Ui, mixer: bool) {
+        let font_size = if mixer {
             panels::HEADER_FONT_SIZE
         } else {
             rows::NAME_FONT_SIZE
         };
         rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
-            self.center_mixer_header(ui, "Master");
-            let tint =
-                (self.view_mode == mixer::ViewMode::Mixer).then(|| theme::palette(ui.ctx()).text);
+            if mixer {
+                self.center_mixer_header(ui, "Master");
+            }
+            let tint = mixer.then(|| theme::palette(ui.ctx()).text);
             let response = icons::header_icon_tinted(
                 ui,
                 icons::Lucide::BoomBox,
                 Sense::hover(),
                 tint,
-                if self.view_mode == mixer::ViewMode::Mixer {
+                if mixer {
                     icons::TOOLBAR_ICON_SIZE
                 } else {
                     icons::HEADER_ICON_WIDTH
@@ -3972,15 +3980,19 @@ impl DawUi {
         });
     }
     fn track_name(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
-        let tint = (self.view_mode == mixer::ViewMode::Mixer)
-            .then(|| theme::clip_colors(track.color, None).text);
-        let icon_width = if self.view_mode == mixer::ViewMode::Mixer {
+        self.track_name_layout(ui, track, self.view_mode == ViewMode::Mixer);
+    }
+    fn track_name_layout(&mut self, ui: &mut egui::Ui, track: &daw_core::Track, mixer: bool) {
+        let tint = mixer.then(|| theme::clip_colors(track.color, None).text);
+        let icon_width = if mixer {
             icons::TOOLBAR_ICON_SIZE
         } else {
             icons::HEADER_ICON_WIDTH
         };
         rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
-            self.center_mixer_header(ui, &track.name);
+            if mixer {
+                self.center_mixer_header(ui, &track.name);
+            }
             if track.kind == daw_core::TrackKind::Group {
                 if icons::disclosure_button(
                     ui,
@@ -4009,7 +4021,7 @@ impl DawUi {
                     daw_core::TrackKind::Return => (icons::Lucide::CornerDownLeft, "Return track"),
                     daw_core::TrackKind::Group => unreachable!(),
                 };
-                let timeline = self.view_mode == mixer::ViewMode::Timeline;
+                let timeline = !mixer && self.view_mode == ViewMode::Timeline;
                 let response = icons::header_icon_tinted(
                     ui,
                     icon,
@@ -4033,7 +4045,7 @@ impl DawUi {
                     response.on_hover_text(label);
                 }
             }
-            self.track_name_label(ui, track);
+            self.track_name_label(ui, track, mixer);
         });
     }
     fn track_name_input(
@@ -4079,22 +4091,25 @@ impl DawUi {
         }
         Some(response)
     }
-    fn track_name_label(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
+    fn track_name_label(&mut self, ui: &mut egui::Ui, track: &daw_core::Track, mixer: bool) {
         let width = ui.available_width();
-        let font_size = if self.view_mode == mixer::ViewMode::Mixer {
+        let inspector = mixer && self.view_mode == ViewMode::Timeline;
+        let reorder = (!mixer && self.view_mode == ViewMode::Timeline)
+            || (self.view_mode == ViewMode::Mixer && track.kind == daw_core::TrackKind::Return);
+        let font_size = if mixer {
             panels::HEADER_FONT_SIZE
         } else {
             rows::NAME_FONT_SIZE
         };
-        if !self.browser_track_renaming(track.id)
+        if !inspector
+            && !self.browser_track_renaming(track.id)
             && self.track_name_input(ui, track, font_size).is_some()
         {
             return;
         }
         {
             use egui::AtomExt as _;
-            let mixer_colors = (self.view_mode == mixer::ViewMode::Mixer)
-                .then(|| theme::clip_colors(track.color, None));
+            let mixer_colors = mixer.then(|| theme::clip_colors(track.color, None));
             let text_id = ui.make_persistent_id(("track_name_text", track.id));
             let mut atoms = egui::Atoms::new(
                 egui::RichText::new(&track.name)
@@ -4106,7 +4121,11 @@ impl DawUi {
                 atoms.push_right(egui::Atom::grow());
             }
             let mut button = egui::Button::new(atoms)
-                .sense(Sense::click_and_drag())
+                .sense(if inspector {
+                    Sense::hover()
+                } else {
+                    Sense::click_and_drag()
+                })
                 .selected(self.track_selected(track.id))
                 .frame(false)
                 .truncate();
@@ -4124,17 +4143,20 @@ impl DawUi {
             let text_rect = output.rect(text_id);
             let response = output
                 .response
-                .on_hover_text(if self.view_mode == mixer::ViewMode::Timeline || track.kind == daw_core::TrackKind::Return {
+                .on_hover_text(if inspector {
+                    track.name.clone()
+                } else if reorder {
                     format!("{}\nDrag to reorder. Double-click the name to edit or empty space to select all clips.", track.name)
                 } else {
                     format!("{}\nDouble-click the name to edit or empty space to select all clips.", track.name)
                 })
-                .on_hover_cursor(if self.view_mode == mixer::ViewMode::Timeline || track.kind == daw_core::TrackKind::Return {
+                .on_hover_cursor(if reorder {
                     egui::CursorIcon::Grab
                 } else {
                     egui::CursorIcon::PointingHand
                 });
-            if response.double_clicked()
+            if !inspector
+                && response.double_clicked()
                 && self.track_name_edit.is_none()
                 && !self.instrument_ui.editing_name()
             {
@@ -4151,9 +4173,7 @@ impl DawUi {
                     self.select_track_clips(track.id);
                 }
             }
-            if self.view_mode == mixer::ViewMode::Timeline
-                || track.kind == daw_core::TrackKind::Return
-            {
+            if reorder {
                 self.start_track_drag(ui, &response, track.id);
             }
         }

@@ -216,6 +216,19 @@ impl ControlPanel {
         })
     }
 
+    /// Empty inspectors share form padding, row height and muted small text.
+    pub(super) fn placeholder(&self, ui: &mut Ui, text: &str) {
+        self.padded_body(ui, |ui| {
+            crate::rows::centered(ui, Self::content_row_height(ui), |ui| {
+                ui.label(
+                    egui::RichText::new(text)
+                        .text_style(egui::TextStyle::Small)
+                        .color(crate::theme::palette(ui.ctx()).secondary),
+                )
+            });
+        });
+    }
+
     pub(super) fn content_row_height(ui: &Ui) -> f32 {
         // Use pixel-rounded galley height so form fields retain stable baselines
         // at fractional display scales.

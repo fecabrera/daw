@@ -301,7 +301,7 @@ impl DawUi {
         });
     }
 
-    fn mixer_send_height(&self) -> f32 {
+    pub(super) fn mixer_send_height(&self) -> f32 {
         let count = self
             .session
             .project
@@ -514,9 +514,6 @@ impl DawUi {
     }
 
     pub(super) fn center_mixer_header(&self, ui: &mut egui::Ui, name: &str) {
-        if self.view_mode != ViewMode::Mixer {
-            return;
-        }
         let leading_width = icons::TOOLBAR_ICON_SIZE + ui.spacing().item_spacing.x;
         let text = egui::WidgetText::from(
             egui::RichText::new(name).font(egui::FontId::proportional(panels::HEADER_FONT_SIZE)),
@@ -555,7 +552,8 @@ impl DawUi {
             ui.painter()
                 .vline(rect.left() + 0.5, rect.y_range(), border);
         }
-        if track.is_none() {
+        // Timeline's right toolbar owns the single outer divider.
+        if track.is_none() && self.view_mode != ViewMode::Timeline {
             ui.painter()
                 .vline(rect.right() - 0.5, rect.y_range(), border);
         }
@@ -577,9 +575,9 @@ impl DawUi {
         // Match the icon-to-label gap to the vertical padding around the header artwork.
         content.spacing_mut().item_spacing.x = (HEADER_HEIGHT - icons::TOOLBAR_ICON_SIZE) / 2.0;
         if let Some(track) = track {
-            self.track_name(&mut content, track);
+            self.track_name_layout(&mut content, track, true);
         } else {
-            self.master_name(&mut content);
+            self.master_name_layout(&mut content, true);
         }
         content.spacing_mut().item_spacing.x = CONTROL_SPACING;
         content.spacing_mut().item_spacing.y = OUT_CONTROL_SPACING;

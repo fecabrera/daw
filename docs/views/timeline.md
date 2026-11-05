@@ -122,6 +122,22 @@ Silent clips stay silent when selected with audible clips. The audible clips rec
 
 If any selected clip contains audio, transpose previews for the whole group until release. All selected clips, including MIDI clips, change together after preparation succeeds. Failure or cancellation keeps the previous settings and audio for the whole group. Changing the selection cancels an unconfirmed text edit or transpose preview.
 
+## Track Mixer
+
+Use the sliders button in the right toolbar, or **View > Track Mixer**, to show
+the selected track and its parent bus side by side. The parent is the immediate
+track group, or Master for a top-level track. The panel follows the current track
+when several tracks are selected. Selecting Master shows only its strip.
+
+Use the same gain, pan, mute, solo, sends and meters as in [Mixer](mixer.md).
+Controls affect the strip shown without changing track selection. Scroll the
+panel when its controls do not fit. With no track selected, select a track to
+show its controls.
+
+Track Mixer and Clip Settings share the right sidebar. Opening one closes the
+other. The left catalog can stay open. Track Mixer starts closed and remembers
+its visibility while you switch views during the app session.
+
 ## Track groups
 
 Select track headers and choose **Track > Group selected tracks** to create a shared processing bus. Group and Master labels align left. Use the borderless group arrow to hide or show children. Drag tracks into a group, or move the complete group from its name or blank header area. See [Track groups](../editing/track-groups.md) for routing, shared effects, and Ungroup.

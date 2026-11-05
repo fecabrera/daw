@@ -144,15 +144,7 @@ impl super::DawUi {
             .or_else(|| clips.first())
         else {
             self.clear_clip_settings_edits();
-            panel.padded_body(ui, |ui| {
-                crate::rows::centered(ui, panels::ControlPanel::content_row_height(ui), |ui| {
-                    ui.label(
-                        egui::RichText::new("Select a clip")
-                            .text_style(egui::TextStyle::Small)
-                            .color(theme::palette(ui.ctx()).secondary),
-                    )
-                });
-            });
+            panel.placeholder(ui, "Select a clip");
             #[cfg(test)]
             {
                 self.effects_bounds.clip_settings = bounds;

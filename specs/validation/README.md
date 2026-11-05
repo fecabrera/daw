@@ -4,6 +4,36 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Timeline Track Mixer — 2026-11-05
+
+Added the [Timeline Track Mixer](../views/view-menu.md#timeline-track-mixer):
+selected track and immediate parent bus, shared Mixer controls, right-rail and
+View-menu dispatch, inspector exclusivity and session visibility. Clip Settings
+and Track Mixer now share the standard empty-inspector placeholder. Timeline's
+right toolbar owns the single outer divider, including beside Master.
+
+Completed checks with the pinned toolchain on macOS:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `cargo test --workspace --offline`: PASS before the final placeholder/divider
+  adjustment. No shared DSP behavior changed in that adjustment.
+- `cargo test -p daw-ui --lib --offline`: PASS after the adjustment; covers track,
+  group and Master resolution, empty selection, Returns, narrow layouts,
+  control edits, dialog guards, view state, canvas separation, matching placeholder
+  text format/baselines and a single toolbar divider in dark and light themes.
+- `cargo build -p daw-desktop --offline`: PASS after the adjustment.
+- `cargo test --workspace --release --offline`: PASS.
+- `cargo test -p daw-ui --lib --release --offline`: PASS after the final
+  placeholder/divider adjustment.
+- Native macOS temporary build: inspected selected-track/Master strip layout and
+  group selection. Final placeholder/divider appearance, native scrolling,
+  device playback and Windows/Linux UI remain unchecked.
+
+`sh tools/package_macos.sh debug` stopped at its committed-tree precondition:
+“Commit tracked changes before packaging corresponding source.” No commit or
+package replacement was made. The desktop executable was rebuilt separately.
+
 ## Shimmer Reverb — 2026-11-04
 
 Implemented the [Shimmer Reverb contract](../effects/shimmer-reverb.md): original

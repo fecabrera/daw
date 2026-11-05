@@ -117,12 +117,13 @@ pub(super) fn show(
 }
 
 /// Timeline-local rail. Its caller reserves this width outside canvas interactions.
-pub(super) fn clip_settings(
+pub(super) fn right_panels(
     ui: &mut Ui,
     bounds: Rect,
     selected: bool,
+    mixer_selected: bool,
     enabled: bool,
-) -> egui::Response {
+) -> (egui::Response, egui::Response) {
     let palette = theme::palette(ui.ctx());
     ui.painter().rect_filled(bounds, 0.0, palette.panel);
     ui.painter().vline(
@@ -137,7 +138,7 @@ pub(super) fn clip_settings(
             .max_rect(bounds),
     );
     rail.set_clip_rect(bounds.intersect(ui.clip_rect()));
-    toggle_at(
+    let clip = toggle_at(
         &mut rail,
         bounds.min + Vec2::splat(inset),
         "clip-settings",
@@ -145,7 +146,17 @@ pub(super) fn clip_settings(
         "Show clip settings",
         selected,
         enabled,
-    )
+    );
+    let mixer = toggle_at(
+        &mut rail,
+        bounds.min + Vec2::new(inset, inset + BUTTON_SIZE + inset),
+        "track-mixer",
+        icons::Lucide::SlidersVertical,
+        "Show track mixer",
+        mixer_selected,
+        enabled,
+    );
+    (clip, mixer)
 }
 
 fn toggle_at(
