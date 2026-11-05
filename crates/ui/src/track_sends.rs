@@ -273,8 +273,10 @@ impl DawUi {
                     let height = ui.available_height();
                     for track in &tracks {
                         ui.push_id(track.id, |ui| {
-                            let (r, response) =
-                                ui.allocate_exact_size(Vec2::new(120.0, height), Sense::click());
+                            let (r, response) = ui.allocate_exact_size(
+                                Vec2::new(mixer::STRIP_WIDTH, height),
+                                Sense::click(),
+                            );
                             let mut strip =
                                 ui.new_child(egui::UiBuilder::new().max_rect(r).id_salt("strip"));
                             let _ = self.mixer_strip(&mut strip, r, Some(track), true);
@@ -306,12 +308,6 @@ impl DawUi {
                 });
                 self.return_reorder(ui, &rows, rect.intersect(ui.clip_rect()), true);
             });
-        let handle = Rect::from_min_size(rect.min, Vec2::new(4.0, rect.height()));
-        let response = ui.interact(handle, ui.id().with("return_width"), Sense::drag());
-        if response.dragged() {
-            self.return_bank_width = (self.return_bank_width - response.drag_delta().x).max(120.0);
-        }
-        response.on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
     }
 }
 

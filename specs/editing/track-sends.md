@@ -117,9 +117,13 @@ track scrolling must not move either bank.
 Returns reorder only within their bank. Pinning is presentation, not group
 membership or a routing change. For more Returns than fit, give the Return bank
 its own vertical scroll in Timeline and horizontal scroll in Mixer. Keep Master
-visible outside that scroll area, bound the Return area's size, and reserve a
-usable viewport for ordinary tracks. The bank size can be adjusted and
-kept in workspace UI state without creating project history entries.
+visible outside that scroll area and reserve a usable viewport for ordinary
+tracks. In Mixer, size the bank to the Return count times the standard strip
+width, limited by the space before Master after reserving one source-strip width
+when source tracks exist. Remove the fixed-width and percentage caps; horizontal
+scrolling is only needed when this available space cannot fit all Returns. Mixer
+bank width is automatic, with no resize handle. Timeline bank height remains
+adjustable in workspace UI state without creating project history entries.
 With no Returns, the Return area occupies no space; Master keeps its normal
 pinned position.
 
@@ -248,3 +252,16 @@ Timeline track, group, Return and Master headers reuse the Mixer held-marker and
 inter-channel reset helper, including collapsed rows. They read the same stereo
 holds as Mixer; resetting in either view clears both channel holds and clipping
 without changing levels, routing, gain or project history.
+
+Mixer has a standard selected Returns toggle at the transport toolbar's right
+edge. It defaults to shown and lives in workspace UI state across view switches.
+Hiding Returns gives their bank zero width; Master stays pinned and ordinary
+tracks gain the space. Keep Return selection, effects targets, sends and DSP
+active. The toggle creates no project/history edits and does not hide Timeline
+Returns. When shown, retain automatic bank sizing and overflow scrolling.
+
+Bottom-align each source's send controls within the shared rack height. Keep send
+order and row spacing, with Plus at the same baseline for zero, one or many sends.
+Retain the 8-point visible Plus-to-divider gap. Shorter stacks leave unused space
+above their rows; the tallest stack still controls common rack height and global
+Mixer overflow.

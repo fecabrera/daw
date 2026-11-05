@@ -28,7 +28,7 @@ Meters show current output. Each L/R bar has a held-peak marker that stays at it
 
 ## Sends and Returns
 
-Send rows always appear above Pan, with a grouped power button and Return dropdown on the left and a small level knob on the right. The stack grows with its rows; scroll Mixer vertically if needed. Add a send to an existing Return or create an empty Return with **+ Send > New Return**. Returns stay immediately left of Master in their own scrolling bank. See [track sends and Returns](../editing/track-sends.md) for routing, defaults and Solo behavior.
+Send rows always appear above Pan, with a grouped power button and Return dropdown on the left and a small level knob on the right. Send stacks align at the bottom of their section, with **+ Send** aligned above the output divider. The stack grows upward with its rows; scroll Mixer vertically if needed. Add a send to an existing Return or create an empty Return with **+ Send > New Return**. Use **Returns** at the right of the transport toolbar to show or hide the Return strips. It starts enabled and remembers your choice while you switch views. Hidden Returns keep processing audio. Master stays visible. Returns stay immediately left of Master. Their bank expands to fit all Returns when space permits, with standard strip widths and independent scrolling for overflow. Master stays pinned and source tracks retain a usable viewport. See [track sends and Returns](../editing/track-sends.md) for routing, defaults and Solo behavior.
 
 ## Master
 

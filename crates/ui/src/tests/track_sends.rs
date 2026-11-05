@@ -471,3 +471,246 @@ fn pinned_timeline_boundaries_have_one_full_width_divider() {
         }
     }
 }
+
+#[test]
+fn mixer_returns_expand_to_show_every_strip_when_they_fit() {
+    for count in [0, 1, 3, 5] {
+        let (mut app, source) = fixture();
+        let ctx = context();
+        app.view_mode = ViewMode::Mixer;
+        app.mixer_effects.catalog = false;
+        let returns: Vec<_> = (0..count)
+            .map(|_| app.session.project.add_return_track().unwrap())
+            .collect();
+        let before = app.session.project.clone();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let master = app.master_bounds;
+        let source = app.mixer_bounds[&source];
+        for (index, id) in returns.iter().enumerate() {
+            let rect = app.mixer_bounds[id];
+            assert_eq!(rect.width(), crate::mixer::STRIP_WIDTH);
+            assert!(rect.left() >= source.right());
+            assert!(
+                (rect.right()
+                    - (master.left() - (count - index - 1) as f32 * crate::mixer::STRIP_WIDTH))
+                    .abs()
+                    < 0.1
+            );
+            let name = &app
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == *id)
+                .unwrap()
+                .name;
+            let clip = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text)
+                        if text.galley.text() == *name && rect.contains(text.pos) =>
+                    {
+                        Some(shape.clip_rect)
+                    }
+                    _ => None,
+                })
+                .expect("Return header");
+            assert!(
+                clip.left() <= rect.left() + 0.1 && clip.right() >= rect.right() - 0.1,
+                "Return {index} clipped: {rect:?} / {clip:?}"
+            );
+        }
+        assert_eq!(app.session.project, before);
+    }
+}
+
+#[test]
+fn mixer_return_overflow_scrolls_without_moving_master_or_source() {
+    let (mut app, source) = fixture();
+    let ctx = context();
+    app.view_mode = ViewMode::Mixer;
+    app.mixer_effects.catalog = false;
+    let returns: Vec<_> = (0..12)
+        .map(|_| app.session.project.add_return_track().unwrap())
+        .collect();
+    frame(&mut app, &ctx, vec![]);
+    let master = app.master_bounds;
+    let source_rect = app.mixer_bounds[&source];
+    let first = app.mixer_bounds[&returns[0]];
+    let before = app.session.project.clone();
+    let point = Pos2::new(master.left() - 60.0, master.center().y);
+    for _ in 0..3 {
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(-2000.0, 0.0),
+                    modifiers: Default::default(),
+                    phase: egui::TouchPhase::Move,
+                },
+            ],
+        );
+    }
+    for _ in 0..10 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let last = app.mixer_bounds[returns.last().unwrap()];
+    assert!(app.mixer_bounds[&returns[0]].left() < first.left());
+    assert!(last.left() >= source_rect.right() && last.right() <= master.left() + 0.1);
+    assert_eq!(app.master_bounds, master);
+    assert_eq!(app.mixer_bounds[&source], source_rect);
+    let point = last.center_top() + Vec2::new(0.0, 12.0);
+    for pressed in [true, false] {
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+    }
+    assert_eq!(app.selected_track, returns.last().copied());
+    assert_eq!(app.session.project, before);
+}
+
+#[test]
+fn mixer_returns_toggle_is_right_aligned_and_only_changes_presentation() {
+    let (mut app, source) = fixture();
+    let ctx = context();
+    app.view_mode = ViewMode::Mixer;
+    let destination = app.session.project.add_return_track().unwrap();
+    app.session
+        .project
+        .tracks
+        .iter_mut()
+        .find(|t| t.id == source)
+        .unwrap()
+        .sends = vec![TrackSend::new(destination)];
+    app.select_track(destination, false);
+    let before = app.session.project.clone();
+    frame(&mut app, &ctx, vec![]);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(app.mixer_returns_visible && app.mixer_bounds.contains_key(&destination));
+    let master = app.master_bounds;
+    let point = label(&shapes, "Returns");
+    assert!(point.x > 1180.0 && point.x > app.tempo_bounds.right());
+    for pressed in [true, false] {
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, pressed)],
+        );
+    }
+    assert!(!app.mixer_returns_visible && !app.mixer_bounds.contains_key(&destination));
+    assert_eq!(app.master_bounds, master);
+    assert_eq!(app.selected_track, Some(destination));
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+    app.view_mode = ViewMode::Timeline;
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(app.lane_bounds.contains_key(&destination));
+    assert!(
+        !shapes
+            .iter()
+            .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Returns"))
+    );
+    app.view_mode = ViewMode::Mixer;
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(!app.mixer_bounds.contains_key(&destination));
+    let point = label(&shapes, "Returns");
+    for pressed in [true, false] {
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, pressed)],
+        );
+    }
+    assert!(app.mixer_bounds.contains_key(&destination));
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn mixer_send_stacks_align_plus_at_the_bottom_for_different_send_counts() {
+    let (mut app, first) = fixture();
+    let ctx = context();
+    app.view_mode = ViewMode::Mixer;
+    app.mixer_effects.catalog = false;
+    let second = app.session.project.add_track().unwrap();
+    let third = app.session.project.add_track().unwrap();
+    let returns: Vec<_> = (0..4)
+        .map(|_| app.session.project.add_return_track().unwrap())
+        .collect();
+    for (id, count) in [(first, 4), (second, 1), (third, 0)] {
+        app.session
+            .project
+            .tracks
+            .iter_mut()
+            .find(|t| t.id == id)
+            .unwrap()
+            .sends = returns
+            .iter()
+            .take(count)
+            .map(|id| TrackSend::new(*id))
+            .collect();
+    }
+    let before = app.session.project.clone();
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let mut bottoms = vec![];
+    for id in [first, second, third] {
+        let strip = app.mixer_bounds[&id];
+        let plus = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(t) if t.galley.text() == "+ Send" && strip.contains(t.pos) => {
+                    Some(Rect::from_min_size(t.pos, t.galley.size()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let button = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(r)
+                    if r.rect.contains_rect(plus)
+                        && r.rect.height() < 30.0
+                        && strip.contains_rect(r.rect) =>
+                {
+                    Some(r.rect)
+                }
+                _ => None,
+            })
+            .unwrap();
+        let divider = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::LineSegment { points, stroke }
+                    if (points[0].x - strip.left()).abs() < 0.1
+                        && (points[1].x - strip.right()).abs() < 0.1
+                        && points[0].y > button.bottom()
+                        && points[0].y - button.bottom() < 10.0 =>
+                {
+                    Some(points[0].y - stroke.width / 2.0)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!((divider - button.bottom() - 8.0).abs() < 0.1);
+        bottoms.push(button.bottom());
+    }
+    assert!(
+        bottoms
+            .iter()
+            .all(|bottom| (*bottom - bottoms[0]).abs() < 0.1)
+    );
+    assert_eq!(app.session.project, before);
+}

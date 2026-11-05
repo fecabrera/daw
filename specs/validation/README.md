@@ -7931,3 +7931,28 @@ application behavior are unchanged.
 `cargo fmt --all --check` and `git diff --check` passed. This test-only change
 required no desktop rebuild or native UI/device checks. Receipts are in ignored
 `work/ci-texture-cleanup/`.
+
+### 2026-11-05 — Mixer Returns visibility and bottom-aligned sends
+
+Mixer Return banks size automatically to their standard-width strips, with no
+fixed-width/percentage cap or manual width handle. Reserve a source strip when
+sources exist, keep Master pinned, and scroll only overflow Returns. The transport
+has a right-aligned Returns toggle, shown by default. Hiding the bank preserves
+routing, processing and selection, retains the preference across view switches,
+and leaves Timeline Returns visible. Source send stacks align at the bottom,
+including Plus, with existing row order and the 8-point divider gap.
+
+`cargo test --locked --offline --workspace` passed in debug: 2,553 passed,
+21 existing manual cases ignored. Separately,
+`cargo test --release --locked --offline --workspace` passed: 2,553 passed,
+21 existing manual cases ignored. The new headless checks cover complete Return
+visibility for fitting banks, overflow scrolling with fixed source/Master strips,
+selection after scrolling, toggle placement/state/view scope and project-state
+preservation, plus bottom alignment for zero, one and four sends. Both profiles
+passed all 871 headless UI tests.
+
+Strict workspace all-target Clippy, `cargo fmt --all --check`, documentation links
+and `git diff --check` passed. The desktop executable was rebuilt. Native UI,
+audio-device and Windows/Linux checks were not run. macOS bundle packaging
+requires committed tracked sources and rejected the uncommitted working tree.
+Receipts are in ignored `work/mixer-returns/`.

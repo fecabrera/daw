@@ -1,7 +1,7 @@
 use super::*;
 use crate::panels::HEADER_HEIGHT;
 
-const STRIP_WIDTH: f32 = 120.0;
+pub(super) const STRIP_WIDTH: f32 = 120.0;
 const STRIP_BORDER: f32 = 1.0;
 const OUT_PADDING: f32 = 8.0;
 const STRIP_PADDING: Vec2 = Vec2::new(4.0, OUT_PADDING + STRIP_BORDER);
@@ -18,6 +18,16 @@ pub(super) const MIN_HEIGHT: f32 = 2.0 * STRIP_PADDING.y
     + MIN_FADER_HEIGHT
     + toolbars::CONTROL_HEIGHT
     + OUT_CONTROL_SPACING;
+
+fn send_controls_height(count: usize) -> f32 {
+    count as f32 * (knobs::HEADER_SIZE + CONTROL_SPACING)
+        + if count > 0 {
+            OUT_CONTROL_SPACING - CONTROL_SPACING
+        } else {
+            0.0
+        }
+        + toolbars::CONTROL_HEIGHT
+}
 
 // Leave the bottom edge to the single mixer/status separator.
 fn strip_edges(ui: &egui::Ui, rect: Rect, stroke: Stroke) {
@@ -268,15 +278,7 @@ impl DawUi {
             .map(|i| self.session.project.tracks[i].sends.len())
             .max()
             .unwrap_or(0);
-        count as f32 * (knobs::HEADER_SIZE + CONTROL_SPACING)
-            + if count > 0 {
-                OUT_CONTROL_SPACING - CONTROL_SPACING
-            } else {
-                0.0
-            }
-            + toolbars::CONTROL_HEIGHT
-            + OUT_CONTROL_SPACING
-            + STRIP_BORDER * 0.5
+        send_controls_height(count) + OUT_CONTROL_SPACING + STRIP_BORDER * 0.5
     }
 
     pub(super) fn mixer(&mut self, ui: &mut egui::Ui) {
@@ -332,15 +334,24 @@ impl DawUi {
             .project
             .tracks
             .iter()
-            .filter(|t| t.kind == daw_core::TrackKind::Return)
+            .filter(|t| self.mixer_returns_visible && t.kind == daw_core::TrackKind::Return)
             .count();
-        let bank_width = if return_count == 0 {
-            0.0
+        let available_width = (master_left - bounds.left()).max(0.0);
+        let source_width = if self
+            .session
+            .project
+            .tracks
+            .iter()
+            .any(|track| track.kind != daw_core::TrackKind::Return)
+        {
+            STRIP_WIDTH.min(available_width)
         } else {
-            self.return_bank_width
-                .min(return_count as f32 * STRIP_WIDTH)
-                .min((master_left - bounds.left()) * 0.45)
+            0.0
         };
+        // Fit every Return at its standard width before enabling bank overflow.
+        // Keep one source strip usable and leave Master outside both scroll areas.
+        let bank_width =
+            (return_count as f32 * STRIP_WIDTH).min((available_width - source_width).max(0.0));
         let return_rect = Rect::from_min_max(
             Pos2::new(master_left - bank_width, bounds.top()),
             Pos2::new(master_left, bounds.bottom()),
@@ -581,6 +592,9 @@ impl DawUi {
             rack.spacing_mut().item_spacing.y = CONTROL_SPACING;
             if let Some(track) = track.filter(|t| t.kind != daw_core::TrackKind::Return) {
                 rack_bounds = Some(send_rect);
+                rack.add_space(
+                    (send_rect.height() - send_controls_height(track.sends.len())).max(0.0),
+                );
                 rack.add_enabled_ui(self.editing_enabled(), |ui| self.send_rack(ui, track));
                 ui.painter()
                     .hline(rect.x_range(), rack_rect.bottom(), border);

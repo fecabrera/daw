@@ -15,7 +15,7 @@ Audio, MIDI, beat parent tracks and groups can send. Each source can have one se
 
 ## Send controls
 
-Each send is a row with a power button and Return dropdown joined in one input group on the left, and a small level knob on the right. Use the dropdown to change its destination; Returns already used by another send on the same source are unavailable. Hover the knob to read its level. A divider separates the send rack from Pan and the output controls. All send rows stay in the stack; scroll Mixer vertically if the complete controls do not fit the window.
+Each send is a row with a power button and Return dropdown joined in one input group on the left, and a small level knob on the right. Use the dropdown to change its destination; Returns already used by another send on the same source are unavailable. Hover the knob to read its level. A divider separates the send rack from Pan and the output controls. Send stacks align at the bottom, with **+ Send** at the same height across source tracks. All send rows stay in the stack; scroll Mixer vertically if the complete controls do not fit the window.
 
 | Control | Behavior |
 | --- | --- |
@@ -32,7 +32,7 @@ A child's send bypasses its parent group's effects and mix controls. Send from t
 
 Returns use the normal effects lane, gain, Pan, Mute, Solo and output meters. Mute silences a Return's output while its effects continue to run. Solo a Return to hear only its wet output; its contributors keep running, including muted sources. With both source and Return solos, source solos restrict the contributors and Return solos restrict the Return outputs. Selected sources retain their direct output.
 
-Returns stay above Master in Timeline and beside Master in Mixer. Their bank scrolls independently of ordinary tracks. Drag its boundary to resize it. Drag Return headers to reorder Returns within the bank. Master stays outside the scrolling bank.
+Returns stay above Master in Timeline and beside Master in Mixer. Use **Returns** at the right of Mixer’s transport toolbar to show or hide Return strips; hiding them keeps their audio processing active. In Mixer, the Return bank expands to show all Returns when space permits, keeping standard strip widths. Overflow Returns scroll independently, with Master pinned and space reserved for source tracks. In Timeline, their bank scrolls independently; drag its top boundary to resize it. Drag Return headers to reorder Returns within the bank. Master stays outside the scrolling bank.
 
 Rename and duplicate Returns through the normal Track menu. Duplicating a source copies its sends to the same Returns. Duplicating a Return copies its effects and mix settings without adding incoming sends. Deleting a Return also removes its incoming sends. Undo restores the Return and those sends together.
 

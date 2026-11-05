@@ -811,8 +811,8 @@ pub struct DawUi {
     #[cfg(test)]
     instrument_catalog_bounds: instrument_catalog::Bounds,
     master_selected: bool,
-    return_bank_width: f32,
     return_bank_height: f32,
+    mixer_returns_visible: bool,
     timeline_catalog_visible: bool,
     instrument_effects_catalog_visible: bool,
     editor_effects: effects_panel::Visibility,
@@ -946,8 +946,8 @@ impl Default for DawUi {
             clip_settings_change: None,
             timeline_effects_visible: true,
             master_selected: false,
-            return_bank_width: 240.0,
             return_bank_height: 180.0,
+            mixer_returns_visible: true,
             effects_lane_focus: Default::default(),
             effects_drag: None,
             selected_effects: HashSet::new(),
@@ -3072,6 +3072,16 @@ impl DawUi {
             if self.view_mode == ViewMode::Instrument {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     self.track_control(ui);
+                });
+            }
+            if self.view_mode == ViewMode::Mixer {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let response = ui
+                        .add(egui::Button::new("Returns").selected(self.mixer_returns_visible))
+                        .on_hover_text("Show or hide Return tracks");
+                    if response.clicked() {
+                        self.mixer_returns_visible = !self.mixer_returns_visible;
+                    }
                 });
             }
             #[cfg(test)]
