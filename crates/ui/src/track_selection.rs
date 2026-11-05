@@ -95,6 +95,11 @@ impl DawUi {
                     && ctx.dragged_id().is_none()
                     && !self.instrument_ui.has_layer_gesture()
             }
+            TrackAction::Rename | TrackAction::Group | TrackAction::Ungroup
+                if self.view_mode == ViewMode::Timeline =>
+            {
+                !ctx.text_edit_focused() && ctx.dragged_id().is_none()
+            }
             TrackAction::Add
             | TrackAction::AddMidi
             | TrackAction::AddBeat

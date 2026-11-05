@@ -83,3 +83,12 @@ processing graphs. Both drag surfaces use this topology for eligibility and no-o
 detection. `moved_tracks` constructs and validates the full project only for the
 release transaction. A stationary plain Timeline click replaces the selection;
 arming a drag retains the group until the gesture is resolved.
+
+## Timeline shortcut focus
+
+Timeline Rename, Group and Ungroup use text-edit focus rather than general
+keyboard ownership. Other pane and non-text control focus does not block them.
+Retain selection requirements, window focus, active drag/pointer, text entry,
+dialog and blocking-job guards, repeat suppression and shared native-menu
+dispatch. Other views keep their existing focus rules. Mute and Solo handling
+is unchanged.

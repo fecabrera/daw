@@ -7884,3 +7884,18 @@ Clippy, rustfmt, documentation links and diff whitespace checks passed. The
 desktop executable was rebuilt. Native UI/device/platform checks were not run.
 macOS bundle packaging requires committed tracked sources and rejected the
 uncommitted working tree. Receipts are in ignored `work/timeline-held-peaks/`.
+
+### 2026-11-05 — Timeline Rename/Group/Ungroup focus
+
+Only Timeline Rename, Group and Ungroup now accept non-text control/pane focus.
+Selection, text entry, active drag, window-focus, dialog and job guards remain.
+Other views and Mute/Solo dispatch are unchanged.
+
+`cargo test --release --locked --offline --workspace` passed (2,549 passed;
+21 existing manual cases ignored). The focused shortcut regression covers all
+three actions in Timeline and Mixer with non-text controls, text entry and active
+drags. Strict workspace all-target Clippy, rustfmt, documentation links and diff
+whitespace checks passed. The desktop executable was rebuilt. Native UI/device
+and Windows/Linux checks were not run. macOS bundle packaging requires committed
+tracked sources and rejected the uncommitted tree. Receipts are in ignored
+`work/rename-group-focus/`.

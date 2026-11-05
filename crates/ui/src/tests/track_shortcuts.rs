@@ -1265,7 +1265,10 @@ fn timeline_add_and_duplicate_buttons_work_with_focus_outside_tracks() {
             let enabled = action == TrackAction::Add || selected;
             assert_eq!(app.track_action_enabled(action, &ctx), enabled);
             assert!(app.track_action_enabled(TrackAction::AddMidi, &ctx));
-            assert!(!app.track_action_enabled(TrackAction::Rename, &ctx));
+            assert_eq!(
+                app.track_action_enabled(TrackAction::Rename, &ctx),
+                selected
+            );
             let point = Pos2::new(
                 app.timeline_bounds.left()
                     - if action == TrackAction::Duplicate {
@@ -1842,5 +1845,81 @@ fn fast_layer_drag_escape_retains_group_and_mix_target() {
         assert!(app.instrument_ui.selected_layer.is_none());
         assert!(app.instrument_ui.selected_layers.is_empty());
         assert_eq!(app.session.project, before_escape);
+    }
+}
+
+#[test]
+fn rename_group_and_ungroup_ignore_non_text_focus_only_in_timeline() {
+    for mode in [ViewMode::Timeline, ViewMode::Mixer] {
+        for action in [
+            TrackAction::Rename,
+            TrackAction::Group,
+            TrackAction::Ungroup,
+        ] {
+            for focus in ["control", "text", "drag"] {
+                let (mut app, tracks, _) = multi_clip_fixture();
+                let ctx = context();
+                app.view_mode = mode;
+                frame(&mut app, &ctx, vec![]);
+                app.select_track(tracks[0], false);
+                if action == TrackAction::Group {
+                    app.select_track(tracks[1], true);
+                }
+                if action == TrackAction::Ungroup {
+                    app.perform_track_action(TrackAction::Group, &ctx);
+                }
+                let before = app.session.project.clone();
+                let shortcut = action.shortcut().unwrap();
+                let mut text = String::new();
+                for step in 0..2 {
+                    let events = if step == 1 {
+                        vec![
+                            key_event(shortcut.logical_key, shortcut.modifiers, false, true),
+                            key_event(shortcut.logical_key, shortcut.modifiers, false, false),
+                        ]
+                    } else {
+                        vec![]
+                    };
+                    let output = ctx.run_ui(
+                        egui::RawInput {
+                            events,
+                            ..Default::default()
+                        },
+                        |ui| {
+                            let response = if focus == "text" {
+                                ui.text_edit_singleline(&mut text)
+                            } else {
+                                ui.button("Control outside Timeline")
+                            };
+                            if step == 0 {
+                                response.request_focus();
+                            }
+                            if focus == "drag" {
+                                ctx.set_dragged_id(response.id);
+                            }
+                            assert_eq!(ctx.text_edit_focused(), focus == "text");
+                            assert!(ctx.egui_wants_keyboard_input());
+                            app.track_shortcuts(&ctx);
+                        },
+                    );
+                    drop(output);
+                }
+                if mode != ViewMode::Timeline || focus != "control" {
+                    assert_eq!(app.session.project, before);
+                    assert!(app.track_name_edit.is_none());
+                } else {
+                    match action {
+                        TrackAction::Rename => assert!(app.track_name_edit.is_some()),
+                        TrackAction::Group => {
+                            assert_eq!(app.session.project.tracks.len(), before.tracks.len() + 1)
+                        }
+                        TrackAction::Ungroup => {
+                            assert_eq!(app.session.project.tracks.len() + 1, before.tracks.len())
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        }
     }
 }
