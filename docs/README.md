@@ -64,6 +64,7 @@ Knob tooltips show only the parameter name on the left and the current value on 
 ## Workflows and limits
 
 - [Modulation](modulation/README.md) and [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).
+- [Track sends and Returns](editing/track-sends.md): shared effects and parallel routing.
 - [Track groups](editing/track-groups.md): shared processing buses and nested track organization.
 - [Undo and redo](editing/undo-redo.md).
 - [Moving and copying units](editing/units.md).

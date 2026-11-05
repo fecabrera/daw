@@ -8,6 +8,7 @@ fn kind(track: &Track) -> &'static str {
         TrackKind::Midi => "MIDI",
         TrackKind::Beat => "Beat",
         TrackKind::Group => "Group",
+        TrackKind::Return => "Return",
     }
 }
 

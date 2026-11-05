@@ -65,3 +65,5 @@ Duplicate copies the group structure, instruments, and settings into new tracks.
 These edits support [undo and redo](undo-redo.md). Group membership, settings, effects, and collapsed state are saved with the project.
 
 Dragging a selected project track moves all selected tracks in project order. Selected groups include their complete subtrees; selected descendants move once. Drop in the middle of an existing group row to add the selection to that group, including collapsed groups. Edge drops reorder the selection. The move commits as one undoable transaction on release.
+
+Group Mute silences the normal group output while group and child sends keep running. Muting a child removes it from the group sum but retains that child’s own sends. See [track sends and Returns](track-sends.md).

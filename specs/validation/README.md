@@ -7742,3 +7742,110 @@ Native listening, device deadlines, external-host attachment and Windows/Linux
 runtime checks were not run. The desktop executable was rebuilt; the app bundle
 was not refreshed because its source packager requires a committed tree. Changes
 remain uncommitted. Receipts are retained in ignored `work/shimmer-delay-transitions/`.
+
+## 2026-11-04 — Track sends and dedicated Returns
+
+Implemented the accepted [track sends contract](../editing/track-sends.md):
+source-owned Pre/Post sends, explicitly created empty Returns, pinned banks,
+separate normal/send audibility, prepared per-edge latency and shared rendering.
+New and legacy projects create no Returns. No Return presets are installed.
+
+Automated checks:
+
+- Core tests passed for defaults, legacy loading, serialization, duplicate IDs,
+  invalid destinations/gains, atomic failure, duplication, removal and ordering.
+- Routing tests passed at all six project rates for muted-source Pre/Post feeds,
+  exact-silence faders, pan, unequal latency and impulses through two Returns and
+  nested groups. Group/child mute distinctions, source/Return Solo, continuing
+  tails, send-free parity, live/offline output and serial/parallel loop/seek
+  reconstruction passed.
+- Prepared level, power, tap and Solo changes passed callback allocation guards
+  at all six rates. Beat-parent sends ran once after Output processing and clip
+  gain. Save/open, history restoration and float export matched the shared render.
+- Headless egui tests passed for Return creation/selection, pinned/overflow banks,
+  aligned faders, release-only reordering, Escape cancellation, send menus and atomic New Return/Undo.
+  Existing Timeline, Mixer and track-browser regression tests also passed.
+- `cargo test --release --locked --offline --workspace` passed, including
+  documentation tests. Existing explicit manual/performance cases remained
+  ignored. Strict locked/offline workspace all-target Clippy passed with
+  `-D warnings`; rustfmt, local documentation targets and diff whitespace checks
+  passed.
+- `cargo build --locked --offline -p daw-cli -p daw-desktop` and
+  `python3 tools/check_cli.py` passed.
+
+Native listening, device deadlines, native pointer/window behavior and
+Windows/Linux runtime checks were not run. Automated egui tests establish
+headless input/layout behavior only. The desktop executable was rebuilt.
+`sh tools/package_macos.sh debug` could not update the app bundle because its
+source packager requires committed tracked changes. No commit was requested.
+Receipts are retained in ignored `work/track-sends/`.
+
+### 2026-11-04 — Send rack presentation correction
+
+Send knobs now use the shared standard size. Mixer shows send racks without a
+Sends visibility toggle. Empty rack space retains the track context menu; existing
+sends retain their own menus. The user guide and accepted specification reflect
+these controls.
+
+Locked/offline release workspace tests passed (2,542 tests; 21 existing manual
+cases ignored), including all 861 headless UI tests. Strict workspace all-target
+Clippy, rustfmt, documentation targets and diff whitespace checks passed. The
+desktop executable was rebuilt. Native UI/device checks were not run; the app
+bundle still requires committed sources as recorded above. Receipts are in
+ignored `work/track-sends/presentation/`.
+
+### 2026-11-04 — Grouped send rows and natural Mixer flow
+
+Send rows use equal canonical side insets, a shared input group containing Power
+and a Return dropdown, and a small header-size gain knob on the right. Knob
+values use tooltips; Pre/Post stays in the context menu. A standard control gap
+separates each side of the Sends/Out divider. Send stacks grow with their rows
+without a nested scrolling area; the complete Mixer scrolls vertically when
+needed. The Mixer minimum height includes the empty send section.
+
+Locked/offline release workspace tests passed: 2,544 tests, with 21 existing
+manual cases ignored. All 863 headless UI tests passed, including 40-send overflow,
+whole-Mixer scrolling, destination changes while powered off, retained send
+settings, Undo, menus and short-window layout. Strict workspace all-target Clippy,
+rustfmt, documentation links and diff whitespace checks passed. The desktop
+executable was rebuilt. Native UI/device/platform checks were not run; app-bundle
+packaging still requires committed sources. Receipts are in ignored
+`work/track-sends/grouped-rows/`.
+
+### 2026-11-05 — Mixer output spacing
+
+Mixer output controls use 4-point vertical gaps, 4 points below the final row,
+and equal 4-point gaps on each side of the Sends/Out divider. Pan placeholders
+and both numeric/rail columns use the same spacing, retaining alignment across
+tracks, Returns and Master. Send-row spacing remains independent.
+
+Locked/offline release workspace tests passed (2,544 passed; 21 existing
+manual cases ignored), including all 863 headless UI tests. Strict workspace
+all-target Clippy, rustfmt and diff whitespace checks passed. The desktop
+executable was rebuilt. Native UI/device checks were not run; app-bundle
+packaging still requires committed sources. Receipts are in ignored
+`work/track-sends/out-spacing/`.
+
+### 2026-11-05 — Visible output spacing and pinned Timeline dividers
+
+This supersedes the earlier 4-point Mixer output spacing. Output controls have
+8-point visible vertical gaps and section padding. Numeric rows use their painted
+height; Pan retains its standard drawing and interaction. Fader and meter rails
+align, and scale labels remain inside their rail area without collisions. Plus
+has an 8-point gap after the final send row and before the divider. Mute/Solo
+retain their 6-point internal gap and have 8-point surrounding spacing.
+
+Timeline has one full-width divider above the Return bank and above Master,
+including when the project has no Returns. Return rows and Master no longer add
+adjacent strokes at their shared boundary.
+
+`cargo test --release --locked --offline --workspace` passed: 2,546 tests,
+with 21 existing manual cases ignored. All 865 headless UI tests passed,
+including painted gap measurements in both themes at three Pan positions,
+track/Master alignment, short-window clipping, and pinned boundaries with zero,
+one and two Returns at both row heights. Strict workspace all-target Clippy,
+`cargo fmt --all --check`, documentation links and `git diff --check` passed.
+The desktop executable was rebuilt. Native UI/device/platform checks were not run.
+App-bundle packaging requires committed tracked sources and was not completed;
+changes remain uncommitted. Receipts are in ignored
+`work/track-sends/visible-out-spacing/`.

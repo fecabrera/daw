@@ -8,7 +8,7 @@ impl TrackKind {
             Self::Audio => asset.is_audio(),
             Self::Midi => asset.midi_pattern.is_some(),
             Self::Beat => asset.beat_pattern.is_some(),
-            Self::Group => false,
+            Self::Group | Self::Return => false,
         }
     }
 }

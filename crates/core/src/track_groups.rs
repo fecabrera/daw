@@ -38,6 +38,7 @@ impl Project {
             TrackKind::Midi => next.add_midi_track()?,
             TrackKind::Beat => next.add_beat_track()?,
             TrackKind::Group => next.add_group_track()?,
+            TrackKind::Return => return Err(Error("Returns cannot belong to groups".into())),
         };
         next.edit(Edit::MoveTrack {
             track_id: id,
@@ -163,30 +164,14 @@ impl Project {
     /// Local bus gates. A soloed descendant opens its ancestor path; a group's
     /// own solo does not override a child's mute or an explicit sibling solo.
     pub fn track_mix_audible(&self) -> Vec<bool> {
-        let index: HashMap<_, _> = self
-            .tracks
-            .iter()
-            .enumerate()
-            .map(|(i, t)| (t.id, i))
-            .collect();
-        let mut solo: Vec<_> = self.tracks.iter().map(|t| t.soloed).collect();
-        for (i, track) in self.tracks.iter().enumerate().rev() {
-            if let Some(parent) = track.group_id.and_then(|id| index.get(&id)) {
-                solo[*parent] |= solo[i];
-            }
-        }
-        let mut siblings = HashMap::new();
-        for (i, track) in self.tracks.iter().enumerate() {
-            *siblings.entry(track.group_id).or_insert(false) |= solo[i];
-        }
-        self.tracks
-            .iter()
-            .enumerate()
-            .map(|(i, t)| mix_audible(t.muted, solo[i], siblings[&t.group_id]))
-            .collect()
+        self.routing_mix_gates()
     }
     pub(crate) fn track_audible(&self, id: Id) -> bool {
-        if !self.tracks.iter().any(|t| t.kind == TrackKind::Group) {
+        if !self
+            .tracks
+            .iter()
+            .any(|t| matches!(t.kind, TrackKind::Group | TrackKind::Return))
+        {
             return self.tracks.iter().find(|t| t.id == id).is_some_and(|t| {
                 mix_audible(t.muted, t.soloed, self.tracks.iter().any(|t| t.soloed))
             });
@@ -223,6 +208,13 @@ impl Project {
                 .any(|id| !self.tracks.iter().any(|t| t.id == *id))
         {
             return Err(Error("Select tracks to group".into()));
+        }
+        if self
+            .tracks
+            .iter()
+            .any(|t| t.kind == TrackKind::Return && selection.contains(&t.id))
+        {
+            return Err(Error("Returns cannot be grouped".into()));
         }
         let roots = self.track_selection_roots(selection);
         let first = self.tracks.iter().find(|t| t.id == roots[0]).unwrap();
@@ -281,6 +273,7 @@ impl Project {
             }
         }
         let group = Track {
+            sends: vec![],
             id: group_id,
             name: clip_name(&name)?.to_owned(),
             kind: TrackKind::Group,
@@ -345,6 +338,13 @@ impl Project {
         parent: Option<Id>,
         index: usize,
     ) -> Result<Vec<(usize, Option<Id>)>> {
+        if self
+            .tracks
+            .iter()
+            .any(|t| t.kind == TrackKind::Return && selection.contains(&t.id))
+        {
+            return Err(Error("Reorder Returns within their pinned bank".into()));
+        }
         let ids: HashSet<_> = self.tracks.iter().map(|t| t.id).collect();
         if selection.is_empty() || selection.iter().any(|id| !ids.contains(id)) {
             return Err(Error("Select tracks to move".into()));
@@ -449,6 +449,9 @@ impl Project {
 pub(crate) fn duplicate_track_settings(track: &Track, id: Id) -> Track {
     let mut copy = track.clone();
     copy.id = id;
+    for send in &mut copy.sends {
+        send.id = Id::new_v4();
+    }
     copy.clips.clear();
     for s in copy
         .instrument

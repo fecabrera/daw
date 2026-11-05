@@ -51,7 +51,7 @@ Users build MIDI instruments and beat subtrack instruments in Instrument. Track 
 | D20 | Declare unit capabilities and typed ports; validate placement in the shared core (Q02). | Allow modulators inside audio-track effects without allowing source instruments on audio tracks. |
 | D21 | Use latest-note replacement and envelope restart for the initial MIDI voice (Q03). | Note-off affects only the current note; do not resume older held notes or provide legato initially. |
 | D22 | Support mono/stereo audio, modulation signals, and sample-timed note/control events (Q04). | Use the project rate and reject graph cycles; delay feedback stays inside the delay unit. |
-| D23 | Put effects before gain/pan on tracks and beat lanes; include serial Master effects before Master gain (Q05). | Defer sends and retain Mixer control of parent tracks. |
+| D23 | Put effects before gain/pan on tracks and beat lanes; include serial Master effects before Master gain (Q05). | Track sends use dedicated Return buses; retain Mixer control of parent tracks. |
 | D24 | Use explicit transport, mute, bypass, and atomic graph-replacement rules (Q06). | Follow the accepted lifecycle below in playback and export. |
 | D25 | Earlier units add no latency. The Limiter adds fixed host-compensated latency (2026-10-14); export reported tails up to 10 seconds (Q07). | Align parallel tracks and Master; warn if tails are truncated. |
 | D26 | Version unit state and preserve missing-unit data; separate pattern content from track/lane processing (Q08). | Missing instruments render silence; missing effects pass audio through. Defer nested presets. |
@@ -90,7 +90,7 @@ Accepted on 2026-10-11. Q01–Q10 are resolved for the MVP through D10 and D19�
 | Q02 | Declared capabilities, typed ports, and shared-core placement validation. Modulators can operate inside audio-track effects. Sound-generating instruments belong on MIDI tracks or beat lanes. | Additional placement capabilities. |
 | Q03 | Polyphonic MIDI tracks under D29, with independent note-offs and prepared voice slots. One active voice per beat lane. Beat playback follows the accepted Beat rules. | Legato, configurable voice limits/stealing, and beat-subtrack polyphony. |
 | Q04 | Mono/stereo audio, modulation signals, and sample-timed note/control events at the project rate. Reject graph cycles. Delay feedback is internal to the delay unit. | Graph-level feedback and additional port layouts. |
-| Q05 | Source/clip output → serial effects → gain/pan → track mix. Beat lanes pass through lane effects and lane gain/pan, then sum into parent effects and parent gain/pan. Serial Master effects precede Master gain and output meters. | Sends and advanced audio routing. |
+| Q05 | Source/clip output → serial effects → gain/pan → track mix. Beat lanes pass through lane effects and lane gain/pan, then sum into parent effects and parent gain/pan. Serial Master effects precede Master gain and output meters. | Return feedback, sidechains and arbitrary routing. |
 | Q06 | Stop and seek reset voices and effects. Pause preserves state. Loop boundaries end active notes while effects continue. Mute suppresses output while processing continues. Smooth bypass changes and publish prepared graph replacements atomically. | More advanced transport-state restoration. |
 | Q07 | Built-in Limiter, Saturator and Multiband Exciter latency is reported, aligned across tracks/layers/Main/Master, and primed for playback/export. Other current units add no latency. Musical delay/reverb remain allowed; reported tails are capped at 10 seconds with a notice on truncation. | Arbitrary third-party/plugin latency. |
 | Q08 | Versioned unit IDs, parameters, connections, and presets. Pattern sources hold immutable note/step data; tracks and lanes own instrument/effect setups. Preserve and report missing-unit data. Missing instruments render silence; missing effects pass audio through. | Nested presets. |
@@ -130,6 +130,8 @@ Select the editor from the clip being edited, rather than its track or a beat la
 
 The first MIDI editor and opening gesture are defined in [MIDI patterns and oscillators](../instruments/midi-patterns.md). Audio-editor tools and further multi-clip editor behavior remain to be specified. The [beat pattern editor design](../views/beat-editor.md) retains the accepted step-editing scope. All editors must preserve source recordings and the pattern-source isolation rules below.
 
+Track-level auxiliary routing uses [track sends and dedicated Returns](../editing/track-sends.md). Returns are root buses with effect chains, not instrument containers. Both Pre and Post sends ignore Mute and obey source Solo.
+
 ## Track capabilities
 
 | Track type | Confirmed unit placement |
@@ -158,7 +160,7 @@ The track owns one container and receives one audio output bus from it. Track-le
 
 A MIDI instrument owns its internal graph and note/voice allocation. Users can add multiple oscillator units inside that instrument and route them through internal processing. Units reuse the shared core and base panel. Each active voice uses the same configured graph with independent oscillator runtime state. This keeps source implementations reusable without attaching several independent instruments directly to one MIDI track.
 
-A beat instrument owns its lanes and combines their outputs after lane effects and controls, before parent-track effects and gain/pan. Each lane retains its own trigger handling, voice state, and lane-stop connections. The Beat MVP's one-voice limit applies separately to each lane. Internal branching within an instrument does not add parallel lane effects, shared sends, or audio sidechains to that MVP.
+A beat instrument owns its lanes and combines their outputs after lane effects and controls, before parent-track effects and gain/pan. Each lane retains its own trigger handling, voice state, and lane-stop connections. The Beat MVP's one-voice limit applies separately to each lane. Internal branching within an instrument does not add parallel lane effects, lane sends, or audio sidechains to that MVP. Track-level sends use [dedicated Return buses](../editing/track-sends.md).
 
 Clip sources remain immutable content: audio files, MIDI patterns, and beat patterns. They are separate from the track-owned processing container. Copying or editing a pattern retains the source-isolation rules below; changing an instrument intentionally affects clips on its track or lane.
 

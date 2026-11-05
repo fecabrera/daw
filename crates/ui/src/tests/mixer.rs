@@ -963,19 +963,23 @@ fn fader_scales_fit_the_strips_and_silence_survives_view_changes() {
                     (rect.bottom() - inset)..=(rect.top() + inset),
                     faders::position_for_gain(db),
                 );
-                let bounds = shapes
-                    .iter()
-                    .find_map(|shape| match &shape.shape {
-                        egui::Shape::Text(text) if text.galley.text() == label => {
-                            let bounds = text.galley.rect.translate(text.pos.to_vec2());
-                            ((bounds.center().y - y).abs() < 0.6
-                                && bounds.right() < rect.left()
-                                && bounds.left() >= rect.left() - faders::SCALE_WIDTH - 0.1)
-                                .then_some(bounds)
-                        }
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| panic!("Missing fader label {label} on {id:?}"));
+                let bounds = shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                        ((bounds.center().y - y).abs() < 0.6
+                            && bounds.right() < rect.left()
+                            && bounds.left() >= rect.left() - faders::SCALE_WIDTH - 0.1)
+                            .then_some(bounds)
+                    }
+                    _ => None,
+                });
+                let Some(bounds) = bounds else {
+                    assert!(
+                        db > 0.0 && db < faders::MAX_GAIN_DB,
+                        "Missing fader label {label} on {id:?}"
+                    );
+                    continue;
+                };
                 assert!(
                     strip.contains_rect(bounds),
                     "{label}: {bounds:?}, strip: {strip:?}"
@@ -1016,7 +1020,7 @@ fn fader_scales_fit_the_strips_and_silence_survives_view_changes() {
                     egui::Shape::Rect(shape)
                         if shape.fill == theme::palette(&ctx).input
                             && (shape.rect.width() - 8.0).abs() < 0.1
-                            && (shape.rect.height() - (rect.height() - 10.0)).abs() < 0.1
+                            && (shape.rect.height() - rect.height()).abs() < 0.1
                             && strip.contains_rect(shape.rect) =>
                     {
                         Some(shape.rect)
@@ -1026,22 +1030,28 @@ fn fader_scales_fit_the_strips_and_silence_survives_view_changes() {
                 .collect();
             assert_eq!(rails.len(), 2);
             let rail = rails[0];
-            for db in [
-                0, -3, -6, -9, -12, -15, -18, -21, -24, -30, -35, -40, -45, -50, -60,
-            ] {
+            let labels: Vec<_> = shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) => {
+                        let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                        let db = text.galley.text().parse::<i32>().ok()?;
+                        (strip.contains_rect(bounds)
+                            && bounds.left() > rect.right()
+                            && bounds.right() < rail.left())
+                        .then_some((db, bounds))
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert!(labels.len() >= 14);
+            assert_eq!(labels.first().unwrap().0, 0);
+            assert_eq!(labels.last().unwrap().0, -60);
+            for (db, bounds) in labels {
                 let y = egui::lerp(rail.bottom()..=rail.top(), (db as f32 + 60.0) / 60.0);
-                assert!(
-                    shapes.iter().any(|shape| matches!(&shape.shape,
-                        egui::Shape::Text(text) if text.galley.text() == db.to_string() && {
-                            let bounds = text.galley.rect.translate(text.pos.to_vec2());
-                            strip.contains_rect(bounds)
-                                && bounds.left() > rect.right()
-                                && bounds.right() < rail.left()
-                                && (bounds.center().y - y).abs() < 0.6
-                        }
-                    )),
-                    "Missing meter label {db} on {id:?}"
-                );
+                let expected_top =
+                    (y - bounds.height() / 2.0).clamp(rail.top(), rail.bottom() - bounds.height());
+                assert!((bounds.top() - expected_top).abs() < 0.6);
             }
             click(&mut app, &ctx, Pos2::new(rect.center().x, rect.bottom()));
             let db = id.map_or(app.session.project.master.gain_db, |_| {
@@ -1130,7 +1140,7 @@ fn gain_and_peak_fields_align_with_marked_columns_in_tracks_and_master() {
                         egui::Shape::Rect(shape)
                             if shape.fill == theme::palette(&ctx).input
                                 && (shape.rect.width() - 8.0).abs() < 0.1
-                                && (shape.rect.height() - fader.height() + 10.0).abs() < 0.1
+                                && (shape.rect.height() - fader.height()).abs() < 0.1
                                 && strip.contains_rect(shape.rect) =>
                         {
                             Some(shape.rect)
@@ -1139,7 +1149,7 @@ fn gain_and_peak_fields_align_with_marked_columns_in_tracks_and_master() {
                     })
                     .collect();
                 assert_eq!(rails.len(), 2);
-                assert!((rails[0].top() - fader.top() - 5.0).abs() < 0.1);
+                assert!((rails[0].top() - fader.top()).abs() < 0.1);
                 let fader_center = (fader.left() - faders::SCALE_WIDTH + fader.right()) / 2.0;
                 let meter_center = (rails[0].left() - meters::SCALE_WIDTH + rails[1].right()) / 2.0;
                 let field_bounds = |label: &str, x: f32| {
@@ -1570,5 +1580,124 @@ fn numbered_view_shortcuts_switch_with_exact_modifiers_and_preserve_project_stat
         press(&mut app, ViewMode::Mixer, false, modifiers);
         assert_eq!(app.view_mode(), ViewMode::Timeline);
         assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn output_spacing_uses_visible_edges_instead_of_widget_slots() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for pan in [-1.0, 0.0, 1.0] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.view_mode = ViewMode::Mixer;
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.session
+                .project
+                .tracks
+                .iter_mut()
+                .find(|t| t.id == track)
+                .unwrap()
+                .pan = pan;
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let strip = app.mixer_bounds[&track];
+            let fader = app.mixer_faders[&Some(track)];
+            let field = |text: &str, width: f32, before: f32| {
+                let text = shapes
+                    .iter()
+                    .find_map(|s| match &s.shape {
+                        egui::Shape::Text(t) if t.galley.text() == text => {
+                            let r = t.galley.rect.translate(t.pos.to_vec2());
+                            (strip.contains_rect(r) && r.bottom() < before).then_some(r)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("Missing {text} in {strip:?}"));
+                shapes
+                    .iter()
+                    .find_map(|s| match &s.shape {
+                        egui::Shape::Rect(r)
+                            if (r.rect.width() - width).abs() < 0.1
+                                && r.rect.contains_rect(text) =>
+                        {
+                            Some(r.visual_bounding_rect())
+                        }
+                        _ => None,
+                    })
+                    .expect("visible control frame")
+            };
+            let pan_field = field(&format!("{pan:.2}"), NUMERIC_WIDTH, fader.top());
+            let gain = field("0.0", NUMERIC_WIDTH, fader.top());
+            let peak = field("−∞", NUMERIC_WIDTH, fader.top());
+            let mute = field("M", toolbars::CONTROL_HEIGHT, strip.bottom());
+            let divider = shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::LineSegment { points, stroke }
+                        if (points[0].x - strip.left()).abs() < 0.1
+                            && (points[1].x - strip.right()).abs() < 0.1
+                            && (points[0].y - points[1].y).abs() < 0.1
+                            && points[0].y < pan_field.top() =>
+                    {
+                        Some(points[0].y + stroke.width * 0.5)
+                    }
+                    _ => None,
+                })
+                .max_by(f32::total_cmp)
+                .expect("send/output divider");
+            let pan_face = shapes
+                .iter()
+                .filter(|s| {
+                    matches!(
+                        s.shape,
+                        egui::Shape::Path(_)
+                            | egui::Shape::Circle(_)
+                            | egui::Shape::LineSegment { .. }
+                    )
+                })
+                .map(|s| s.shape.visual_bounding_rect())
+                .filter(|r| {
+                    r.width() < 32.0
+                        && r.height() < 32.0
+                        && strip.contains_rect(*r)
+                        && r.top() > divider
+                        && r.bottom() < pan_field.top()
+                })
+                .fold(Rect::NOTHING, |a, b| a.union(b));
+            assert!(pan_face.is_positive());
+            let rail = shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Rect(r)
+                        if (r.rect.width() - 8.0).abs() < 0.1
+                            && (r.rect.height() - fader.height()).abs() < 0.1
+                            && r.rect.left() > fader.right()
+                            && strip.contains_rect(r.rect) =>
+                    {
+                        Some(r.rect)
+                    }
+                    _ => None,
+                })
+                .expect("full-height meter rail");
+            for (name, gap) in [
+                ("divider / pan", pan_face.top() - divider),
+                ("pan / field", pan_field.top() - pan_face.bottom()),
+                ("pan field / gain fields", gain.top() - pan_field.bottom()),
+                ("gain / fader", fader.top() - gain.bottom()),
+                ("peak / meter", rail.top() - peak.bottom()),
+                ("rail / buttons", mute.top() - fader.bottom()),
+                ("bottom padding", strip.bottom() - 1.0 - mute.bottom()),
+            ] {
+                assert!((gap - 8.0).abs() < 0.15, "{name}: {gap} (pan {pan})");
+            }
+            assert!((rail.top() - fader.top()).abs() < 0.1);
+            assert!((rail.bottom() - fader.bottom()).abs() < 0.1);
+            assert!((app.mixer_faders[&None].top() - fader.top()).abs() < 0.1);
+        }
     }
 }

@@ -86,6 +86,8 @@ pub use split::MidiNoteSplit;
 mod resize;
 pub use placement::ClipPlacement;
 mod track_groups;
+mod track_sends;
+pub use track_sends::{SendTap, TrackSend};
 mod trim;
 pub use trim::ClipEdge;
 
@@ -272,6 +274,8 @@ pub struct SourceMetadata {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Track {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sends: Vec<TrackSend>,
     /// Stable parent bus identity. None routes directly to Master.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_id: Option<Id>,
@@ -490,6 +494,7 @@ impl Project {
     }
     pub fn validate(&self) -> Result<()> {
         self.validate_track_groups()?;
+        self.validate_sends()?;
         self.stretch_engine.validate()?;
         let invalid = |text: &str| Error(text.into());
         if !SAMPLE_RATES.contains(&self.sample_rate_hz) {
@@ -596,6 +601,11 @@ impl Project {
             if !ids.insert(t.id) {
                 return Err(invalid("Duplicate track ID"));
             }
+            for send in &t.sends {
+                if !ids.insert(send.id) {
+                    return Err(invalid("Duplicate send ID"));
+                }
+            }
             if !t.pan.is_finite()
                 || !(-1.0..=1.0).contains(&t.pan)
                 || !t.gain_db.is_finite()
@@ -699,6 +709,7 @@ impl Project {
     pub fn add_track(&mut self) -> Result<Id> {
         let id = Id::new_v4();
         self.tracks.push(Track {
+            sends: vec![],
             group_id: None,
             group_collapsed: false,
             effects: vec![],
@@ -734,6 +745,39 @@ impl Project {
 
     fn apply_edit(&mut self, command: Edit) -> Result<()> {
         match command {
+            Edit::AddReturn { track_id, name } => self.insert_return(track_id, name)?,
+            Edit::SetTrackSends { track_id, sends } => {
+                self.tracks
+                    .iter_mut()
+                    .find(|t| t.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?
+                    .sends = sends;
+            }
+            Edit::ReorderReturns { return_ids } => {
+                let mut returns: std::collections::HashMap<_, _> = self
+                    .tracks
+                    .iter()
+                    .filter(|t| t.kind == TrackKind::Return)
+                    .map(|t| (t.id, t.clone()))
+                    .collect();
+                if return_ids.len() != returns.len() {
+                    return Err(Error("Invalid Return order".into()));
+                }
+                let mut ordered = Vec::new();
+                for id in return_ids {
+                    ordered.push(
+                        returns
+                            .remove(&id)
+                            .ok_or_else(|| Error("Invalid Return order".into()))?,
+                    );
+                }
+                let mut ordered = ordered.into_iter();
+                for t in &mut self.tracks {
+                    if t.kind == TrackKind::Return {
+                        *t = ordered.next().unwrap();
+                    }
+                }
+            }
             Edit::Beat { track_id, edit } => self.beat_mut(track_id)?.edit(edit)?,
             Edit::ReplaceBeatPattern { clip_id, pattern } => {
                 self.replace_beat_pattern(clip_id, pattern)?
@@ -977,6 +1021,10 @@ impl Project {
                 if let Ok(range) = self.track_subtree(id) {
                     self.tracks.drain(range);
                 }
+                let ids: std::collections::HashSet<_> = self.tracks.iter().map(|t| t.id).collect();
+                for t in &mut self.tracks {
+                    t.sends.retain(|s| ids.contains(&s.return_id));
+                }
             }
             Edit::DuplicateTrack {
                 track_id,
@@ -1088,6 +1136,17 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    AddReturn {
+        track_id: Id,
+        name: String,
+    },
+    SetTrackSends {
+        track_id: Id,
+        sends: Vec<TrackSend>,
+    },
+    ReorderReturns {
+        return_ids: Vec<Id>,
+    },
     Beat {
         track_id: Id,
         edit: BeatEdit,

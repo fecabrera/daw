@@ -10,7 +10,7 @@ pub(super) struct TrackProcessor<'a> {
     pub clips: &'a [Clip],
 }
 impl TrackProcessor<'_> {
-    pub fn sample(
+    pub fn sample_unaligned(
         &mut self,
         frame: u64,
         tempo: f32,
@@ -30,7 +30,7 @@ impl TrackProcessor<'_> {
         } else {
             self.audio.sample(self.clips, frame, realtime)
         };
-        let source = self.effects.sample(
+        self.effects.sample(
             source,
             mono,
             latency::delayed_frame(
@@ -44,7 +44,6 @@ impl TrackProcessor<'_> {
                 self.midi.as_ref().map_or(&[], |r| r.modulation_values()),
                 self.midi.as_ref().map(|r| r.modulation_sources()),
             ),
-        );
-        self.delay.tick(source)
+        )
     }
 }

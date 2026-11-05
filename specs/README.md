@@ -47,6 +47,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Instrument Output](instruments/main.md).
 - [Per-layer effects](instruments/layer-effects.md): saved stereo bus chains, shared controls, modulation, and latency alignment.
 - [Track groups as processing buses](editing/track-groups.md).
+- [Track sends and Return tracks](editing/track-sends.md): shared effects, Pre/Post sends, pinned Return banks and routing/latency requirements.
 - [Project undo and redo](editing/undo-redo.md).
 - [Component editing and registration](editing/components.md).
 - [Clip settings](editing/clip-settings.md).

@@ -353,6 +353,19 @@ pub fn gain(ui: &mut Ui, value: &mut f32) -> Response {
     gain_scaled(ui, value, 1.0)
 }
 
+/// Send gain reuses the standard scale and gestures, with exact silence as reset.
+pub fn send_gain(ui: &mut Ui, value: &mut f32) -> Response {
+    send_gain_scaled(ui, value, 1.0)
+}
+
+/// Compact send controls retain the shared gain scale and silence reset.
+pub fn send_gain_scaled(ui: &mut Ui, value: &mut f32, scale: f32) -> Response {
+    let mut spec = gain_spec();
+    spec.name = "Send level";
+    spec.reset = daw_unit_core::SILENT_GAIN_DB;
+    ui.add(Knob::new(value, spec.display_scale(scale)))
+}
+
 /// Scale the gain control while retaining its shared scale, reset and input behavior.
 pub fn gain_scaled(ui: &mut Ui, value: &mut f32, scale: f32) -> Response {
     ui.add(Knob::new(value, gain_spec().display_scale(scale)))

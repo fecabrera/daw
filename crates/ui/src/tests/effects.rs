@@ -6827,7 +6827,7 @@ fn editor_and_mixer_share_workspace_toolbar_and_remember_independent_visibility(
             click(&mut app, &ctx, library);
             click(&mut app, &ctx, lane);
             for size in [Vec2::new(1280.0, 800.0), Vec2::new(900.0, 500.0)] {
-                frame_sized(&mut app, &ctx, vec![], size);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
                 let rail = app.effects_bounds.toolbar;
                 let catalog = app.effects_bounds.library;
                 let strip = app.effects_bounds.strip;
@@ -6839,7 +6839,21 @@ fn editor_and_mixer_share_workspace_toolbar_and_remember_independent_visibility(
                 assert!(rail.contains_rect(app.effects_bounds.lane_toggle));
                 if mode == ViewMode::Mixer {
                     assert!(app.master_bounds.left() >= catalog.right());
-                    assert!(app.master_bounds.bottom() <= strip.top());
+                    // Short Mixers scroll their complete control stack. Its paint
+                    // viewport must still stop before the effects lane.
+                    let master_clip = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text)
+                                if text.galley.text() == "Master"
+                                    && app.master_bounds.contains(text.pos) =>
+                            {
+                                Some(shape.clip_rect)
+                            }
+                            _ => None,
+                        })
+                        .expect("Master header");
+                    assert!(master_clip.bottom() <= strip.top());
                 } else {
                     assert!(app.midi_editor.content.bounds.height() > 0.0);
                 }

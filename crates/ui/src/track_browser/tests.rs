@@ -987,6 +987,7 @@ fn project_track_and_group_names_share_inline_commit_and_cancel_in_both_views() 
                 TrackKind::Audio => a,
                 TrackKind::Midi => m,
                 TrackKind::Group => g,
+                TrackKind::Return => app.session.project.add_return_track().unwrap(),
                 TrackKind::Beat => app.session.project.add_beat_track().unwrap(),
             };
             app.view_mode = view;
@@ -1282,7 +1283,7 @@ fn empty_panel_group_creation_and_dismissal_preserve_existing_data() {
 fn menubar_group_and_subtrack_actions_use_shared_guards_and_editor_owner() {
     let creation: Vec<_> = TrackAction::ALL
         .iter()
-        .take(5)
+        .take(6)
         .map(|action| action.label())
         .collect();
     assert_eq!(
@@ -1292,6 +1293,7 @@ fn menubar_group_and_subtrack_actions_use_shared_guards_and_editor_owner() {
             "Add MIDI track",
             "Add beat track",
             "Add group",
+            "Add Return",
             "Add subtrack"
         ]
     );

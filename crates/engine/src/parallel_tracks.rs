@@ -44,6 +44,7 @@ struct TrackWork {
     delay: Delay,
     gains: [f32; 4],
     output: Vec<[f32; 2]>,
+    raw: Vec<super::latency::Sample>,
     elapsed: u64,
 }
 struct Batch {
@@ -62,6 +63,7 @@ impl Batch {
         for work in &mut self.items {
             let started = Instant::now();
             work.output.resize(self.frames, [0.0; 2]);
+            work.raw.resize(self.frames, ([0.0; 2], false));
             if work.group {
                 continue;
             }
@@ -79,7 +81,9 @@ impl Batch {
                 {
                     return false;
                 }
-                let (sample, mono) = processor.sample(frame, self.tempo, self.region, true, false);
+                let raw = processor.sample_unaligned(frame, self.tempo, self.region, true, false);
+                work.raw[offset] = raw;
+                let (sample, mono) = processor.delay.tick(raw);
                 let base = if mono { 0 } else { 2 };
                 *output = std::array::from_fn(|ch| sample[ch] * work.gains[base + ch]);
             }
@@ -96,6 +100,7 @@ pub(super) struct ParallelTracks {
     batches: [Option<Batch>; 2],
     slots: Vec<Option<TrackWork>>,
     buffers: Vec<Vec<[f32; 2]>>,
+    raw_buffers: Vec<Vec<super::latency::Sample>>,
     times: Vec<u64>,
     order: Vec<usize>,
     groups: Vec<usize>,
@@ -114,7 +119,7 @@ impl ParallelTracks {
         (2 * STACK + 64 * 1024) as u64
             + metadata
             + tracks.len() as u64
-                * (block * 8
+                * (block * 32
                     + 3 * (std::mem::size_of::<TrackWork>()
                         + std::mem::size_of::<Option<TrackWork>>())
                         as u64
@@ -158,6 +163,7 @@ impl ParallelTracks {
             }),
             slots: (0..count).map(|_| None).collect(),
             buffers: (0..count).map(|_| Vec::with_capacity(block)).collect(),
+            raw_buffers: (0..count).map(|_| Vec::with_capacity(block)).collect(),
             times: vec![1; count],
             order: (0..count).collect(),
             groups: vec![0; count],
@@ -245,13 +251,14 @@ impl ParallelTracks {
                 .items
                 .push(TrackWork {
                     index,
-                    group: renderer.plan.project.tracks[index].kind == daw_core::TrackKind::Group,
+                    group: super::send_routing::is_bus(renderer.plan.project.tracks[index].kind),
                     audio,
                     midi,
                     effects,
                     delay,
                     gains: renderer.gains[index].target,
                     output: std::mem::take(&mut self.buffers[index]),
+                    raw: std::mem::take(&mut self.raw_buffers[index]),
                     elapsed: 0,
                 });
         }
@@ -296,6 +303,7 @@ impl ParallelTracks {
             renderer.effects.push(item.effects);
             renderer.alignment.tracks.push(item.delay);
             self.buffers[item.index] = item.output;
+            self.raw_buffers[item.index] = item.raw;
         }
         if complete && !failed {
             for offset in 0..frames {
@@ -308,6 +316,7 @@ impl ParallelTracks {
                 }
                 for (index, buffer) in self.buffers.iter().enumerate() {
                     renderer.buses.output[index] = buffer[offset];
+                    renderer.buses.raw[index] = self.raw_buffers[index][offset];
                 }
                 let mix = renderer.sample_buses(from + offset as u64, region, false);
                 renderer.sample_master(mix, from + offset as u64, region);

@@ -107,6 +107,12 @@ impl RenderPlan {
                 self.project
                     .tracks
                     .iter()
+                    .flat_map(|t| t.sends.iter().map(|s| s.id)),
+            )
+            .chain(
+                self.project
+                    .tracks
+                    .iter()
                     .filter_map(|t| t.beat.as_ref())
                     .flat_map(|b| {
                         std::iter::once(b.output.id).chain(b.subtracks.iter().map(|s| s.id))
@@ -139,6 +145,7 @@ impl RenderPlan {
             );
             let mut output = parent.clone();
             output.id = beat.output.id;
+            output.sends.clear();
             output.name = "Output".into();
             output.group_id = Some(parent.id);
             let mut graph = beat.output_settings();
@@ -161,6 +168,7 @@ impl RenderPlan {
                 let mut child = parent.clone();
                 child.kind = TrackKind::Midi;
                 child.id = row.id;
+                child.sends.clear();
                 child.name = row.name.clone();
                 child.group_id = Some(beat.output.id);
                 child.instrument = Some(row.instrument.clone());

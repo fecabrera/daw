@@ -28,6 +28,7 @@ impl Project {
                 .iter()
                 .map(|t| {
                     t.name.capacity() as u64
+                        + vec_bytes(&t.sends)
                         + vec_bytes(&t.clips)
                         + t.clips
                             .iter()

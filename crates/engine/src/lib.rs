@@ -1,6 +1,7 @@
 mod beat;
 mod beat_gain;
 mod buses;
+mod send_routing;
 pub use beat::BeatVoicePlan;
 mod cache_policy;
 pub use cache_policy::{CachePolicy, CacheProfile};
@@ -365,6 +366,10 @@ impl Renderer {
         for (track, runtime) in plan.project.tracks.iter().zip(&midi) {
             track.id.hash(&mut hash);
             track.group_id.hash(&mut hash);
+            for send in &track.sends {
+                send.id.hash(&mut hash);
+                send.return_id.hash(&mut hash);
+            }
             track.effects.len().hash(&mut hash);
             if let Some(runtime) = runtime {
                 Some(runtime.fingerprint()).hash(&mut hash);
@@ -471,7 +476,7 @@ impl Renderer {
         }
         let source_fingerprint = hash.finish();
         let alignment = latency::Alignment::new(&plan.project);
-        let buses = buses::Buses::new(&plan);
+        let buses = buses::Buses::new(&plan, &alignment);
         let mut renderer = Self {
             buses,
             alignment,
@@ -835,7 +840,7 @@ impl Renderer {
                 .project
                 .tracks
                 .iter()
-                .any(|t| t.kind == daw_core::TrackKind::Group)
+                .any(|t| send_routing::is_bus(t.kind))
                 && self.plan.project.all_effects().next().is_some())
     }
     /// Control/worker thread only: reconstruct sources and alignment at the requested clock.
@@ -952,6 +957,7 @@ impl Renderer {
         }
         if aligned && self.plan.project.sample_rate_hz == old.plan.project.sample_rate_hz {
             self.alignment.inherit(&mut old.alignment);
+            self.buses.sends.inherit(&mut old.buses.sends);
             self.master_effects
                 .inherit_chain(&mut old.master_effects, &self.plan.project.master.effects);
             for (effects, track) in self.effects.iter_mut().zip(&self.plan.project.tracks) {
@@ -1049,6 +1055,7 @@ impl Renderer {
         self.prime_offset = 0;
         self.prime_pending = true;
         self.alignment.reset();
+        self.buses.sends.reset();
         self.master_effects.reset();
         for effects in &mut self.effects {
             effects.reset();

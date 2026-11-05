@@ -50,6 +50,7 @@ pub enum TrackKind {
     Midi,
     Beat,
     Group,
+    Return,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

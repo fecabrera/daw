@@ -2087,3 +2087,46 @@ mod ambient_reverb;
 
 #[path = "support/shimmer_reverb.rs"]
 mod shimmer_reverb;
+
+#[test]
+fn send_levels_taps_power_and_solo_retarget_without_callback_heap_work() {
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        let mut plan = plan(rate, false);
+        let r = plan.project.add_return_track().unwrap();
+        let mut send = TrackSend::new(r);
+        send.gain_db = -6.0;
+        plan.project.tracks[0].sends.push(send);
+        plan.project.tracks[1].effects =
+            vec![EffectInstance::ambient_reverb(), EffectInstance::limiter()];
+        let mut current = Renderer::new(plan.clone());
+        current.play();
+        for _ in 0..1000 {
+            current.next_sample();
+        }
+        for step in 0..4 {
+            let s = &mut plan.project.tracks[0].sends[0];
+            s.gain_db = if step == 0 { -3.0 } else { SILENT_GAIN_DB };
+            s.tap = SendTap::PreFader;
+            s.enabled = step != 2;
+            plan.project.tracks[0].muted = true;
+            plan.project.tracks[1].soloed = step == 3;
+            let mut next = Renderer::new(plan.clone());
+            assert!(next.can_inherit_without_preroll(&current));
+            ALLOCATIONS.with(|c| c.set(0));
+            TRACK_ALLOCATIONS.with(|c| c.set(true));
+            next.inherit(&mut current);
+            for _ in 0..1000 {
+                next.next_sample();
+            }
+            next.stop();
+            next.seek(1234);
+            next.play();
+            for _ in 0..100 {
+                next.next_sample();
+            }
+            TRACK_ALLOCATIONS.with(|c| c.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            current = next;
+        }
+    }
+}

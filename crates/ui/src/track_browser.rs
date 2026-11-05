@@ -657,7 +657,7 @@ impl DawUi {
                                     }
                                     if row.kind == TrackKind::Group {
                                         menus::separator(ui);
-                                        if let Some(action) = self.track_creation_menu(ui) {
+                                        if let Some(action) = self.track_creation_menu(ui, false) {
                                             self.add_track_to_group_from_menu(
                                                 row.id,
                                                 action,
@@ -706,7 +706,7 @@ impl DawUi {
             } else {
                 blank_click.then_some(egui::SetOpenCommand::Bool(true))
             })
-            .show(|ui| self.track_creation_menu(ui))
+            .show(|ui| self.track_creation_menu(ui, true))
             .and_then(|response| response.inner)
         {
             self.perform_track_action(action, ui.ctx());

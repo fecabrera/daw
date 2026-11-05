@@ -8,11 +8,13 @@ pub(super) struct Buses {
     pub children: Vec<Vec<usize>>,
     roots: Vec<usize>,
     groups: Vec<usize>,
+    pub raw: Vec<latency::Sample>,
+    pub sends: super::send_routing::Sends,
     pub output: Vec<[f32; 2]>,
     clip_gains: Vec<super::beat_gain::Envelope>,
 }
 impl Buses {
-    pub fn new(plan: &RenderPlan) -> Self {
+    pub fn new(plan: &RenderPlan, alignment: &latency::Alignment) -> Self {
         let project = &plan.project;
         let index: HashMap<_, _> = project
             .tracks
@@ -36,6 +38,8 @@ impl Buses {
             children: vec![Vec::new(); project.tracks.len()],
             roots: Vec::new(),
             groups: Vec::new(),
+            raw: vec![([0.0; 2], false); project.tracks.len()],
+            sends: super::send_routing::Sends::new(project, alignment),
             output: vec![[0.0; 2]; project.tracks.len()],
         };
         for (i, t) in project.tracks.iter().enumerate() {
@@ -49,10 +53,20 @@ impl Buses {
             }
         }
         buses.groups.reverse();
+        buses.groups.extend(
+            project
+                .tracks
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.kind == TrackKind::Return)
+                .map(|(i, _)| i),
+        );
         buses
     }
     pub fn heap_bytes(&self) -> u64 {
-        vec_bytes(&self.clip_gains)
+        vec_bytes(&self.raw)
+            + self.sends.heap_bytes()
+            + vec_bytes(&self.clip_gains)
             + self
                 .clip_gains
                 .iter()
@@ -94,7 +108,7 @@ impl Renderer {
         realtime: bool,
     ) {
         for (index, track) in self.plan.project.tracks.iter().enumerate() {
-            if track.kind == TrackKind::Group {
+            if super::send_routing::is_bus(track.kind) {
                 continue;
             }
             let (sample, mono) = track_processing::TrackProcessor {
@@ -104,13 +118,15 @@ impl Renderer {
                 delay: &mut self.alignment.tracks[index],
                 clips: &track.clips,
             }
-            .sample(
+            .sample_unaligned(
                 frame,
                 self.plan.project.tempo_bpm,
                 region,
                 playing,
                 realtime,
             );
+            self.buses.raw[index] = (sample, mono);
+            let (sample, mono) = self.alignment.tracks[index].tick((sample, mono));
             self.buses.output[index] = self.gains[index].apply(sample, mono, live, self.ramp);
         }
     }
@@ -120,8 +136,13 @@ impl Renderer {
         region: Option<(u64, u64)>,
         live: bool,
     ) -> [f32; 2] {
+        self.buses.sends.advance(live);
         for &index in &self.buses.groups {
-            let mut sum = [0.0; 2];
+            let mut sum = if self.plan.project.tracks[index].kind == TrackKind::Return {
+                self.buses.sends.sum(index, &self.buses.raw, live)
+            } else {
+                [0.0; 2]
+            };
             for &child in &self.buses.children[index] {
                 for (ch, value) in sum.iter_mut().enumerate() {
                     *value += self.buses.output[child][ch];
@@ -144,6 +165,7 @@ impl Renderer {
                 region,
                 controls,
             );
+            self.buses.raw[index] = (sample, false);
             let (sample, _) = self.alignment.tracks[index].tick((sample, false));
             let content_frame =
                 latency::delayed_frame(frame, self.alignment.output_frames[index], region);

@@ -106,6 +106,7 @@ impl Project {
                 };
                 // Copy only this owner's presentation data, not sibling instruments or clips.
                 return Some(Track {
+                    sends: vec![],
                     id: owner,
                     name,
                     kind: TrackKind::Midi,

@@ -656,3 +656,37 @@ fn beat_noise_sources_render_repeatably_with_stereo_and_seek_parity() {
         assert_eq!(range, expected[1024..1152]);
     }
 }
+
+#[test]
+fn beat_parent_sends_once_after_output_effects_and_clip_gain() {
+    for rate in SAMPLE_RATES {
+        let mut direct = beat_plan(rate, false, false);
+        direct.project.tracks[0].clips[0].gain_db = -6.0;
+        direct.project.tracks[0]
+            .effects
+            .push(EffectInstance::limiter());
+        let mut wet = direct.clone();
+        let r = wet.project.add_return_track().unwrap();
+        let mut send = TrackSend::new(r);
+        send.gain_db = 0.0;
+        wet.project.tracks[0].sends.push(send);
+        wet.project.tracks[0].muted = true;
+        let prepared = wet.clone().prepare_beats();
+        assert_eq!(
+            prepared
+                .project
+                .tracks
+                .iter()
+                .map(|t| t.sends.len())
+                .sum::<usize>(),
+            1
+        );
+        let mut a = Renderer::new(direct);
+        let mut b = Renderer::new(wet);
+        let mut x = vec![[0.0; 2]; 8192];
+        let mut y = x.clone();
+        a.render_offline_at(0, &mut x);
+        b.render_offline_at(0, &mut y);
+        assert_eq!(x, y);
+    }
+}

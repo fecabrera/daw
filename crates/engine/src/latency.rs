@@ -60,9 +60,11 @@ pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
 pub(super) struct Alignment {
     pub tracks: Vec<Delay>,
     pub input_frames: Vec<u64>,
+    pub node_frames: Vec<u64>,
+    pub send_delays: Vec<(Id, usize, usize, u64)>,
     /// Feed-to-content delay after each track's effects and sibling alignment.
     pub output_frames: Vec<u64>,
-    parents: Vec<(Id, Option<Id>, bool)>,
+    parents: Vec<(Id, Option<Id>, daw_core::TrackKind)>,
     index: std::collections::HashMap<Id, usize>,
     pub track_max: u64,
     pub total: u64,
@@ -71,7 +73,9 @@ pub(super) struct Alignment {
 }
 impl Alignment {
     pub fn heap_bytes(&self) -> u64 {
-        daw_unit_core::memory::vec_bytes(&self.input_frames)
+        daw_unit_core::memory::vec_bytes(&self.node_frames)
+            + daw_unit_core::memory::vec_bytes(&self.send_delays)
+            + daw_unit_core::memory::vec_bytes(&self.input_frames)
             + daw_unit_core::memory::vec_bytes(&self.output_frames)
             + daw_unit_core::memory::vec_bytes(&self.parents)
             + daw_unit_core::memory::vec_bytes(&self.tracks)
@@ -102,6 +106,46 @@ impl Alignment {
                 track_max = track_max.max(subtree[i]);
             }
         }
+        // Return ingress is the longest incoming source/group path. Returns
+        // cannot send or parent other tracks, so sources precede them in this DAG.
+        for (r, t) in project
+            .tracks
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.kind == daw_core::TrackKind::Return)
+        {
+            input_frames[r] = project
+                .tracks
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.sends.iter().any(|send| send.return_id == t.id))
+                .map(|(i, _)| subtree[i])
+                .max()
+                .unwrap_or(0);
+            subtree[r] = input_frames[r] + track_frames(t, rate);
+        }
+        track_max = project
+            .tracks
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.group_id.is_none())
+            .map(|(i, _)| subtree[i])
+            .max()
+            .unwrap_or(0);
+        let send_delays = project
+            .tracks
+            .iter()
+            .enumerate()
+            .flat_map(|(i, t)| {
+                t.sends
+                    .iter()
+                    .map(|s| {
+                        let r = index[&s.return_id];
+                        (s.id, i, r, input_frames[r] - subtree[i])
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
         let total = track_max + chain_frames(&project.master.effects, rate);
         let output_frames: Vec<_> = project
             .tracks
@@ -119,12 +163,14 @@ impl Alignment {
             .map(|(i, t)| Delay::new(t.id, output_frames[i] - subtree[i]))
             .collect();
         Self {
+            node_frames: subtree,
+            send_delays,
             input_frames,
             output_frames,
             parents: project
                 .tracks
                 .iter()
-                .map(|t| (t.id, t.group_id, t.kind == daw_core::TrackKind::Group))
+                .map(|t| (t.id, t.group_id, t.kind))
                 .collect(),
             index: tracks.iter().enumerate().map(|(i, t)| (t.id, i)).collect(),
             tracks,
@@ -135,9 +181,22 @@ impl Alignment {
         }
     }
     pub fn compatible(&self, old: &Self) -> bool {
+        if self.send_delays.len() != old.send_delays.len()
+            || !self.send_delays.iter().zip(&old.send_delays).all(|(a, b)| {
+                a.0 == b.0
+                    && self.parents[a.1].0 == old.parents[b.1].0
+                    && self.parents[a.2].0 == old.parents[b.2].0
+                    && a.3 == b.3
+            })
+        {
+            return false;
+        }
         // A routing change needs exact group history reconstructed on a worker.
-        let grouped =
-            |parents: &[(Id, Option<Id>, bool)]| parents.iter().any(|(_, p, g)| p.is_some() || *g);
+        let grouped = |parents: &[(Id, Option<Id>, daw_core::TrackKind)]| {
+            parents
+                .iter()
+                .any(|(_, p, g)| p.is_some() || super::send_routing::is_bus(*g))
+        };
         if (grouped(&self.parents) || grouped(&old.parents)) && self.parents != old.parents {
             return false;
         }

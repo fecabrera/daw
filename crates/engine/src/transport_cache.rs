@@ -55,7 +55,7 @@ impl TransportCache {
             .project
             .tracks
             .iter()
-            .filter(|t| t.kind != daw_core::TrackKind::Group)
+            .filter(|t| !super::send_routing::is_bus(t.kind))
             .filter(|t| {
                 !t.effects.is_empty()
                     || t.instrument.as_ref().is_some_and(|i| {
@@ -72,7 +72,7 @@ impl TransportCache {
             .project
             .tracks
             .iter()
-            .filter(|t| t.kind != daw_core::TrackKind::Group)
+            .filter(|t| !super::send_routing::is_bus(t.kind))
             .count()
             >= 2
             && (mode == PreparationMode::Parallel

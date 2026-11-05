@@ -35,6 +35,7 @@ mod sampler_panel;
 mod stretch;
 mod track_groups;
 mod track_selection;
+mod track_sends;
 mod trim;
 use daw_core::{Clip, Edit, Id};
 #[cfg(test)]
@@ -161,6 +162,23 @@ fn placement_start(
 }
 
 const NUMERIC_WIDTH: f32 = 36.0;
+
+/// Single-line numeric text plus TextEdit's standard two-point top/bottom margins.
+fn numeric_field_height(ui: &egui::Ui) -> f32 {
+    let font = fonts::numeric(egui::TextStyle::Small.resolve(ui.style()).size);
+    let line_height =
+        ui.fonts_mut(|fonts| fonts.row_height(&font)) + ui.spacing().extra_text_line_spacing;
+    let mut job =
+        egui::text::LayoutJob::simple_singleline("0.00".into(), font, egui::Color32::WHITE);
+    for section in &mut job.sections {
+        section.format.line_height = Some(line_height);
+    }
+    ui.fonts_mut(|fonts| fonts.layout_job(job))
+        .size()
+        .y
+        .max(line_height)
+        + 4.0
+}
 
 fn numeric_field(
     ui: &mut egui::Ui,
@@ -450,6 +468,7 @@ pub enum TrackAction {
     AddMidi,
     AddBeat,
     AddGroup,
+    AddReturn,
     AddSubtrack,
     Mute,
     Solo,
@@ -458,11 +477,12 @@ pub enum TrackAction {
     Delete,
 }
 impl TrackAction {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Add,
         Self::AddMidi,
         Self::AddBeat,
         Self::AddGroup,
+        Self::AddReturn,
         Self::AddSubtrack,
         Self::Rename,
         Self::Duplicate,
@@ -488,6 +508,7 @@ impl TrackAction {
             Self::AddMidi => "Add MIDI track",
             Self::AddBeat => "Add beat track",
             Self::AddGroup => "Add group",
+            Self::AddReturn => "Add Return",
             Self::AddSubtrack => "Add subtrack",
             Self::Mute => "Mute",
             Self::Solo => "Solo",
@@ -503,6 +524,7 @@ impl TrackAction {
             | Self::AddMidi
             | Self::AddBeat
             | Self::AddGroup
+            | Self::AddReturn
             | Self::AddSubtrack
             | Self::Duplicate
             | Self::Delete => {
@@ -789,6 +811,8 @@ pub struct DawUi {
     #[cfg(test)]
     instrument_catalog_bounds: instrument_catalog::Bounds,
     master_selected: bool,
+    return_bank_width: f32,
+    return_bank_height: f32,
     timeline_catalog_visible: bool,
     instrument_effects_catalog_visible: bool,
     editor_effects: effects_panel::Visibility,
@@ -922,6 +946,8 @@ impl Default for DawUi {
             clip_settings_change: None,
             timeline_effects_visible: true,
             master_selected: false,
+            return_bank_width: 240.0,
+            return_bank_height: 180.0,
             effects_lane_focus: Default::default(),
             effects_drag: None,
             selected_effects: HashSet::new(),
@@ -3251,6 +3277,27 @@ impl DawUi {
         master_ui.set_clip_rect(master_rect.intersect(ui.clip_rect()));
         let master_label = self.master_track(&mut master_ui);
 
+        let return_count = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .filter(|t| t.kind == daw_core::TrackKind::Return)
+            .count();
+        let has_returns = return_count > 0;
+        let bank_height = if has_returns {
+            self.return_bank_height
+                .min(return_count as f32 * self.track_row_height())
+                .min((master_rect.top() - bounds.top()) * 0.4)
+                .max(0.0)
+        } else {
+            0.0
+        };
+        let return_rect = Rect::from_min_max(
+            Pos2::new(bounds.left(), master_rect.top() - bank_height),
+            Pos2::new(bounds.right(), master_rect.top()),
+        );
+
         // The scrollbar belongs to the timeline viewport, not a window-wide panel.
         let scrollbar_rect = Rect::from_min_max(
             Pos2::new(
@@ -3277,10 +3324,10 @@ impl DawUi {
         self.lane_bounds.clear();
         let selected_before_tracks = self.selected_clip;
         let tracks = egui::ScrollArea::vertical()
-            .max_height((master_rect.top() - ui.cursor().top()).max(0.0))
+            .max_height((return_rect.top() - ui.cursor().top()).max(0.0))
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                let rows = self.tracks(ui);
+                let rows = self.tracks_kind(ui, false);
                 self.empty_tracks_context_menu(ui);
                 self.scroll_track_drag(ui);
                 if self
@@ -3298,7 +3345,15 @@ impl DawUi {
                 }
                 rows
             });
-        self.timeline_bounds = timeline_rect;
+        let return_rows = self.return_timeline_bank(ui, return_rect);
+        self.timeline_bounds = if has_returns {
+            Rect::from_min_max(
+                timeline_rect.min,
+                Pos2::new(timeline_rect.right(), return_rect.top()),
+            )
+        } else {
+            timeline_rect
+        };
         self.track_reorder(ui, tracks.inner_rect);
         // A clip interaction or pattern creation already handled this click.
         if self.selected_clip == selected_before_tracks {
@@ -3354,6 +3409,20 @@ impl DawUi {
         }
         let track_panels = self.track_panel_containers(&tracks.inner);
         self.paint_track_group_edges(ui, &track_panels, tracks.inner_rect);
+        // Pinned rows own one shared boundary across the controls and Timeline.
+        // Paint outside their child clips so the upper half of the stroke is retained.
+        for top in [
+            has_returns.then_some(return_rect.top()),
+            Some(master_rect.top()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            panels::ControlPanel::pinned_row_divider(
+                ui,
+                Rect::from_min_max(Pos2::new(bounds.left(), top), bounds.max),
+            );
+        }
         control_panel.finish(ui);
         for (id, rect) in track_panels {
             if self.track_selected(id) {
@@ -3368,6 +3437,14 @@ impl DawUi {
         let master = master_rect.intersect(ui.clip_rect());
         if master.contains(pointer) {
             return Some((effects_panel::EffectTarget::Master, master));
+        }
+        for (id, header) in return_rows {
+            let row =
+                Rect::from_min_max(header.min, Pos2::new(return_rect.right(), header.bottom()))
+                    .intersect(return_rect);
+            if row.contains(pointer) {
+                return Some((effects_panel::EffectTarget::Track(id), row));
+            }
         }
         let visible = tracks.inner_rect.intersect(ui.clip_rect());
         if !visible.contains(pointer) {
@@ -3423,12 +3500,7 @@ impl DawUi {
                 cleared,
             );
         });
-        // The status panel supplies the shared bottom divider.
-        let rect = panel.response.rect.shrink(0.5);
-        ui.painter().line_segment(
-            [rect.left_top(), rect.right_top()],
-            Stroke::new(1.0, theme::palette(ui.ctx()).border),
-        );
+        // The Timeline owns the shared top divider; the status panel owns the bottom.
         self.master_selection_input(ui, panel.response.rect);
         panel.response.rect
     }
@@ -3953,6 +4025,7 @@ impl DawUi {
                     daw_core::TrackKind::Audio => (icons::Lucide::AudioLines, "Audio track"),
                     daw_core::TrackKind::Midi => (icons::Lucide::KeyboardMusic, "MIDI track"),
                     daw_core::TrackKind::Beat => (icons::Lucide::ListMusic, "Beat track"),
+                    daw_core::TrackKind::Return => (icons::Lucide::CornerDownLeft, "Return track"),
                     daw_core::TrackKind::Group => unreachable!(),
                 };
                 let timeline = self.view_mode == mixer::ViewMode::Timeline;
@@ -4070,12 +4143,12 @@ impl DawUi {
             let text_rect = output.rect(text_id);
             let response = output
                 .response
-                .on_hover_text(if self.view_mode == mixer::ViewMode::Timeline {
+                .on_hover_text(if self.view_mode == mixer::ViewMode::Timeline || track.kind == daw_core::TrackKind::Return {
                     format!("{}\nDrag to reorder. Double-click the name to edit or empty space to select all clips.", track.name)
                 } else {
                     format!("{}\nDouble-click the name to edit or empty space to select all clips.", track.name)
                 })
-                .on_hover_cursor(if self.view_mode == mixer::ViewMode::Timeline {
+                .on_hover_cursor(if self.view_mode == mixer::ViewMode::Timeline || track.kind == daw_core::TrackKind::Return {
                     egui::CursorIcon::Grab
                 } else {
                     egui::CursorIcon::PointingHand
@@ -4097,7 +4170,9 @@ impl DawUi {
                     self.select_track_clips(track.id);
                 }
             }
-            if self.view_mode == mixer::ViewMode::Timeline {
+            if self.view_mode == mixer::ViewMode::Timeline
+                || track.kind == daw_core::TrackKind::Return
+            {
                 self.start_track_drag(ui, &response, track.id);
             }
         }
@@ -4127,6 +4202,15 @@ impl DawUi {
             || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape))
         {
             self.track_drag = None;
+            return;
+        }
+        if self
+            .session
+            .project
+            .tracks
+            .iter()
+            .any(|t| t.id == track_id && t.kind == daw_core::TrackKind::Return)
+        {
             return;
         }
         let pointer = ui.input(|input| input.pointer.latest_pos());
@@ -4194,13 +4278,16 @@ impl DawUi {
         ui.scroll_with_delta_animation(Vec2::new(0.0, delta), egui::style::ScrollAnimation::none());
         ui.ctx().request_repaint();
     }
-    fn tracks(&mut self, ui: &mut egui::Ui) -> Vec<(Id, Rect)> {
+    fn tracks_kind(&mut self, ui: &mut egui::Ui, returns: bool) -> Vec<(Id, Rect)> {
         let row_height = self.track_row_height();
         let tracks: Vec<_> = self
             .session
             .project
             .visible_tracks()
             .into_iter()
+            .filter(|&i| {
+                (self.session.project.tracks[i].kind == daw_core::TrackKind::Return) == returns
+            })
             .map(|i| (i, self.session.project.tracks[i].id))
             .collect();
         ui.scope(|ui| {
@@ -4677,9 +4764,13 @@ impl DawUi {
                     },
                     valid: destination.is_none_or(|track| {
                         // Missing metadata retains the transaction's normal diagnostics.
-                        asset.map_or(track.kind != daw_core::TrackKind::Group, |asset| {
-                            track.kind.accepts_asset(asset)
-                        })
+                        asset.map_or(
+                            !matches!(
+                                track.kind,
+                                daw_core::TrackKind::Group | daw_core::TrackKind::Return
+                            ),
+                            |asset| track.kind.accepts_asset(asset),
+                        )
                     }),
                     removed: false,
                 }
@@ -4957,12 +5048,14 @@ impl DawUi {
                         .iter()
                         .find(|track| track.id == id)
                         .is_some_and(|track| {
-                            track.kind != daw_core::TrackKind::Group
-                                && track.clips.iter().all(|clip| {
-                                    Some(clip.id) == ignore
-                                        || end <= clip.start_frame
-                                        || start >= clip.end()
-                                })
+                            !matches!(
+                                track.kind,
+                                daw_core::TrackKind::Group | daw_core::TrackKind::Return
+                            ) && track.clips.iter().all(|clip| {
+                                Some(clip.id) == ignore
+                                    || end <= clip.start_frame
+                                    || start >= clip.end()
+                            })
                         })
                 })
             })
@@ -5400,8 +5493,9 @@ impl DawUi {
             index > 0,
             false,
         );
-        if index + 1 == count {
+        if index + 1 == count && track.kind != daw_core::TrackKind::Return {
             // The final child and all enclosing groups share one bottom edge.
+            // The pinned Master owns the Return bank's bottom divider.
             panels::GroupPanel::row_dividers(ui, row, 0, false, true);
         }
         for clip in &track.clips {
@@ -5630,6 +5724,7 @@ mod tests {
     mod source_output_meters;
     mod track_groups;
     mod track_header;
+    mod track_sends;
     mod track_shortcuts;
     mod transport;
     mod trim_boundary;

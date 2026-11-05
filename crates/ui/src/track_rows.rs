@@ -83,6 +83,7 @@ impl DawUi {
 /// Metadata used by track headers; processing graphs and clip content stay in the project.
 pub(super) fn header_snapshot(track: &daw_core::Track) -> daw_core::Track {
     daw_core::Track {
+        sends: vec![],
         id: track.id,
         name: track.name.clone(),
         kind: track.kind,

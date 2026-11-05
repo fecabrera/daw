@@ -99,6 +99,7 @@ impl DawUi {
             | TrackAction::AddMidi
             | TrackAction::AddBeat
             | TrackAction::AddGroup
+            | TrackAction::AddReturn
             | TrackAction::AddSubtrack
             | TrackAction::Duplicate => !ctx.text_edit_focused() && ctx.dragged_id().is_none(),
             TrackAction::Mute | TrackAction::Solo
@@ -108,7 +109,14 @@ impl DawUi {
             }
             _ => !ctx.egui_wants_keyboard_input(),
         };
-        (action != TrackAction::Ungroup || self.selected_group().is_some())
+        (action != TrackAction::Group
+            || !self
+                .session
+                .project
+                .tracks
+                .iter()
+                .any(|t| self.track_selected(t.id) && t.kind == daw_core::TrackKind::Return))
+            && (action != TrackAction::Ungroup || self.selected_group().is_some())
             && (action != TrackAction::AddSubtrack || self.selected_beat_parent().is_some())
             && (action != TrackAction::AddMidi
                 || matches!(
@@ -138,6 +146,7 @@ impl DawUi {
                     | TrackAction::AddMidi
                     | TrackAction::AddBeat
                     | TrackAction::AddGroup
+                    | TrackAction::AddReturn
                     | TrackAction::AddSubtrack
             ) || self
                 .session
@@ -206,9 +215,12 @@ impl DawUi {
                 | TrackAction::AddMidi
                 | TrackAction::AddBeat
                 | TrackAction::AddGroup
+                | TrackAction::AddReturn
                 | TrackAction::AddSubtrack
         ) {
-            let result = if action == TrackAction::AddGroup {
+            let result = if action == TrackAction::AddReturn {
+                self.session.project.add_return_track()
+            } else if action == TrackAction::AddGroup {
                 self.session.project.add_group_track()
             } else if action == TrackAction::AddBeat {
                 self.session.project.add_beat_track()
@@ -433,13 +445,21 @@ impl DawUi {
         }
     }
 
-    pub(super) fn track_creation_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
+    pub(super) fn track_creation_menu(
+        &self,
+        ui: &mut egui::Ui,
+        allow_returns: bool,
+    ) -> Option<TrackAction> {
         for action in [
             TrackAction::Add,
             TrackAction::AddMidi,
             TrackAction::AddBeat,
             TrackAction::AddGroup,
-        ] {
+            TrackAction::AddReturn,
+        ]
+        .into_iter()
+        .filter(|a| allow_returns || *a != TrackAction::AddReturn)
+        {
             if action.starts_menu_group() {
                 menus::separator(ui);
             }
@@ -458,7 +478,7 @@ impl DawUi {
     }
 
     pub(super) fn add_track_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
-        if let Some(action) = self.track_creation_menu(ui) {
+        if let Some(action) = self.track_creation_menu(ui, true) {
             return Some(action);
         }
         if self.selected_beat_parent().is_some() {
@@ -507,7 +527,7 @@ impl DawUi {
         }
         let response = ui.interact(rect, ui.id().with("empty-tracks"), egui::Sense::click());
         let action = crate::menus::ContextMenu::new(&response)
-            .show(|ui| self.track_creation_menu(ui))
+            .show(|ui| self.track_creation_menu(ui, true))
             .and_then(|response| response.inner);
         if let Some(action) = action {
             self.perform_track_action(action, ui.ctx());
@@ -526,7 +546,7 @@ impl DawUi {
                 .iter()
                 .any(|track| track.id == id && track.kind == daw_core::TrackKind::Group)
         }) {
-            if let Some(action) = self.track_creation_menu(ui) {
+            if let Some(action) = self.track_creation_menu(ui, false) {
                 return Some(action);
             }
             menus::separator(ui);

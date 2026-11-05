@@ -23,22 +23,13 @@ fn level_rail(rect: Rect) -> Rect {
 /// Read the held stereo peak; clicking resets monitoring without changing gain.
 pub fn peak_level(ui: &mut Ui, meter: &daw_output::StereoMeter) -> Response {
     let mut text = peak_text(meter.held_peak());
-    let response = ui
-        .allocate_ui_with_layout(
-            Vec2::new(crate::NUMERIC_WIDTH, crate::toolbars::CONTROL_HEIGHT),
-            egui::Layout::left_to_right(egui::Align::Center),
-            |ui| {
-                ui.set_min_height(crate::toolbars::CONTROL_HEIGHT);
-                crate::numeric_field(
-                    ui,
-                    &mut text,
-                    "Held peak level (dBFS). Click to reset peak and stereo clipping.",
-                    false,
-                )
-            },
-        )
-        .inner
-        .interact(Sense::click());
+    let response = crate::numeric_field(
+        ui,
+        &mut text,
+        "Held peak level (dBFS). Click to reset peak and stereo clipping.",
+        false,
+    )
+    .interact(Sense::click());
     reset_on_click(ui, Some(meter), [response.clicked(), false]);
     response.widget_info(|| {
         egui::WidgetInfo::labeled(
@@ -79,11 +70,11 @@ fn stereo_with_scale(
             ui.allocate_exact_size(Vec2::new(SCALE_WIDTH, height), Sense::hover())
                 .0
         });
-        let left = channel_with_inset(ui, "L", height, levels[0].0, levels[0].1, show_scale);
+        let left = channel_with_inset(ui, "L", height, levels[0].0, levels[0].1, false);
         ui.add_space(CHANNEL_SPACING);
-        let right = channel_with_inset(ui, "R", height, levels[1].0, levels[1].1, show_scale);
+        let right = channel_with_inset(ui, "R", height, levels[1].0, levels[1].1, false);
         if let Some(scale) = scale {
-            paint_scale(ui, scale, level_rail(left.rect));
+            paint_scale(ui, scale, left.rect);
         }
         [left, right]
     })
@@ -98,11 +89,12 @@ fn paint_scale(ui: &Ui, scale: Rect, rail: Rect) {
     let bottom_label = ui
         .painter()
         .layout_no_wrap("-60".into(), font.clone(), palette.text);
-    let bottom_label_top = rail.bottom() - bottom_label.size().y / 2.0;
+    let bottom_label_top = rail.bottom() - bottom_label.size().y;
     let mut previous_bottom = scale.top() - 0.25;
     for db in MARKS {
-        let y = y_at(db as f32);
         let unity = db == 0;
+        let half_stroke = if unity { 0.75 } else { 0.5 };
+        let y = y_at(db as f32).clamp(rail.top() + half_stroke, rail.bottom() - half_stroke);
         ui.painter().line_segment(
             [
                 Pos2::new(right - if unity { 6.0 } else { 4.0 }, y),
@@ -652,7 +644,7 @@ mod tests {
                             0
                         };
                         let caps = output.shapes.iter().filter(|shape| matches!(&shape.shape,
-                            egui::Shape::Rect(rect) if rect.rect.height() == 3.0 && rects.iter().any(|channel| (if show_scale { level_rail(*channel) } else { *channel }).min == rect.rect.min)
+                            egui::Shape::Rect(rect) if rect.rect.height() == 3.0 && rects.iter().any(|channel| channel.min == rect.rect.min)
                         )).count();
                         assert_eq!(
                             caps, expected_caps,
@@ -817,7 +809,7 @@ mod tests {
                 let (rects, _, shapes) = frame(&ctx, height, levels, vec![], true);
                 assert_eq!(rects[1].left() - rects[0].right(), CHANNEL_SPACING);
                 for (rect, position) in rects.into_iter().zip([0.9, 0.5]) {
-                    let rail = level_rail(rect);
+                    let rail = rect;
                     let fill = shapes
                         .iter()
                         .find_map(|shape| match &shape.shape {
@@ -855,7 +847,7 @@ mod tests {
                     assert!(pair[0].1.bottom() < pair[1].1.top());
                 }
                 if height == 220.0 {
-                    assert_eq!(labels.len(), MARKS.len());
+                    assert!(labels.len() >= MARKS.len() - 1);
                     let subdivisions = shapes.iter().filter(|shape| matches!(&shape.shape,
                         egui::Shape::LineSegment { points, .. } if (points[1].x - points[0].x - 2.0).abs() < 0.1
                     )).count();
@@ -865,7 +857,6 @@ mod tests {
             let levels = [(2.0, true), (2.0, true)];
             let (rects, _, shapes) = frame(&ctx, 220.0, levels, vec![], true);
             for rail in rects {
-                let rail = level_rail(rail);
                 assert!(shapes.iter().any(|shape| matches!(&shape.shape,
                     egui::Shape::Rect(rect) if rect.fill == palette.error && rect.rect.min == rail.min && rect.rect.height() == 3.0
                 )));

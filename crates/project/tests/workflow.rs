@@ -5342,3 +5342,57 @@ fn symlink_parent_paths_keep_filesystem_meaning_for_open_import_save_and_export(
         other.project.project_id
     );
 }
+
+#[test]
+fn sends_and_returns_survive_save_open_history_and_float_export() {
+    use daw_core::{SendTap, TrackSend};
+    use daw_media::{ExportSettings, WavCodec};
+    use daw_project::SessionHistory;
+    let fixture = Fixture::new();
+    let source = fixture.wav("send.wav", 48000, 2, 32, true);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let r = session.project.add_return_track().unwrap();
+    let t = session.project.tracks[0].id;
+    let mut send = TrackSend::new(r);
+    send.gain_db = -6.0;
+    send.tap = SendTap::PreFader;
+    session
+        .project
+        .edit(Edit::SetTrackSends {
+            track_id: t,
+            sends: vec![send],
+        })
+        .unwrap();
+    session.project.tracks[0].muted = true;
+    let mut reference = vec![[0.0; 2]; session.project.end() as usize];
+    session.plan().render(0, &mut reference);
+    assert!(reference.iter().any(|s| s[0].abs() > 0.01));
+    let folder = fixture.0.join("project");
+    session.save(&folder).unwrap();
+    let restored = Session::open(&folder).unwrap();
+    assert_eq!(restored.project, session.project);
+    let output = fixture.0.join("send-output.wav");
+    restored
+        .export_with_settings(
+            &output,
+            false,
+            ExportSettings {
+                wav_codec: WavCodec::Float32,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let decoded = daw_media::decode_wav(&output).unwrap();
+    assert_eq!(decoded.samples.len(), reference.len());
+    for (a, b) in decoded.samples.iter().zip(&reference) {
+        for ch in 0..2 {
+            assert!((a[ch] - b[ch]).abs() < 1e-6);
+        }
+    }
+    let mut history = SessionHistory::new(&session, true).unwrap();
+    session.project.edit(Edit::DeleteTrack(r)).unwrap();
+    history.record(&session).unwrap();
+    let undo = history.undo(&session).unwrap();
+    assert_eq!(undo.project, restored.project);
+}

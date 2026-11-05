@@ -151,12 +151,21 @@ fn paint_scale(ui: &Ui, response: &Response, height: f32) {
             let label =
                 ui.painter()
                     .layout_no_wrap(label, crate::fonts::numeric(8.0), palette.text);
-            if db <= 0.0
+            let top_label_bottom = response.rect.top() + label.size().y;
+            let fits_top_label = db <= 0.0
                 || db == MAX_GAIN_DB
-                || (y_at(3.0) - y_at(0.0)).abs() >= label.size().y + 0.25
+                || y - label.size().y / 2.0 > top_label_bottom + 0.25;
+            if fits_top_label
+                && (db <= 0.0
+                    || db == MAX_GAIN_DB
+                    || (y_at(3.0) - y_at(0.0)).abs() >= label.size().y + 0.25)
             {
                 ui.painter().galley(
-                    Pos2::new(right - 10.0 - label.size().x, y - label.size().y / 2.0),
+                    Pos2::new(
+                        right - 10.0 - label.size().x,
+                        (y - label.size().y / 2.0)
+                            .clamp(response.rect.top(), response.rect.bottom() - label.size().y),
+                    ),
                     label,
                     palette.text,
                 );
