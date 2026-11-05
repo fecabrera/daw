@@ -7983,3 +7983,30 @@ appearance, native full-screen interaction, devices and Windows/Linux behavior
 were not checked manually. macOS app-bundle packaging requires committed tracked
 sources and rejected the uncommitted working tree. Receipts are in ignored
 `work/view-panels/`.
+
+### 2026-11-05 — CI test time budget and debug-enabled optimization
+
+In [run 42034731164](https://github.com/fecabrera/daw/actions/runs/42034731164),
+macOS and Windows test jobs were cancelled at their 90-minute job limit while
+workspace tests were progressing. Linux completed its test job in about 70
+minutes. The reverb makeup suite alone took 2,172.70 seconds on macOS and
+1,969.93 seconds on Windows. This identifies unoptimized DSP execution as a
+major contributor, rather than an individual test assertion failure in that run.
+
+The default Cargo test profile now uses optimization level 1, with
+`debug-assertions = true` and `overflow-checks = true`. Production dev/release
+profiles, test selection and CI time limits are unchanged. Compiler output
+confirms optimization level 1, debug information and debug assertions enabled
+for epaint, reverb-core, engine and UI. The egui texture-delta destructor check
+therefore remains enabled. The local reverb makeup suite took 69.31 seconds,
+compared with 1,445.68 seconds in the preceding unoptimized local run. These are
+observed runs, not an isolated performance benchmark or a hosted-runner guarantee.
+
+`cargo test --locked --offline --workspace --verbose` passed in the optimized,
+debug-enabled test profile: 2,556 passed, 21 existing manual cases ignored.
+Separately, `cargo test --release --locked --offline --workspace` passed:
+2,556 passed, 21 existing manual cases ignored. Strict workspace all-target
+Clippy, rustfmt, documentation links and diff whitespace checks passed. No
+runtime code changed, so no desktop rebuild or native UI/device checks were
+needed. Hosted macOS/Windows CI must still run the committed change. Receipts
+and downloaded job logs are in ignored `work/ci-timeouts/`.

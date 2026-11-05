@@ -273,7 +273,7 @@ cargo test --workspace
 cargo test --workspace --release
 ```
 
-- Keep debug assertions enabled for the default `cargo test --workspace` run. Release tests do not replace it: lifecycle checks such as egui texture-delta cleanup can fail only with debug assertions enabled. Record debug and release commands and results separately in the validation record.
+- The default Cargo test profile uses optimization level 1 with debug assertions and overflow checks explicitly enabled to keep DSP matrices within CI limits. Keep debug assertions enabled for the default `cargo test --workspace` run. Release tests do not replace it: lifecycle checks such as egui texture-delta cleanup can fail only with debug assertions enabled. Record debug and release commands and results separately in the validation record.
 - Add meaningful tests for changed behavior and failure paths. Keep unit tests near the implementation; use `crates/project/tests/workflow.rs` for storage/render/export workflows and existing egui input tests for interactions. Avoid tests that only repeat implementation details.
 - For CLI or shared import/render/export changes, build `daw-cli`, then run `python3 tools/check_cli.py`. It needs the tracked demo and uses temporary output folders.
 - `python3 tools/create_demo.py` regenerates tracked demo files. Do not run it over user edits or include regenerated fixtures unless required by the task.

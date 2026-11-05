@@ -4,6 +4,13 @@
 
 The [Test and build workflow](../../.github/workflows/build-and-test.yml) runs on pushes, pull requests, and manual dispatches. It calls the [platform workflow](../../.github/workflows/platform.yml) separately for Windows, macOS, and Linux. Each platform has separate `test` and `build` jobs. Tests run formatting, strict workspace/all-target Clippy, workspace tests, and the headless CLI smoke checks with the pinned Rust toolchain and locked dependencies. Build starts after that platform's tests pass, builds and packages release binaries on a fresh worker, and uploads artifacts retained for 14 days. A failure on one platform does not block or cancel another platform's build. Both jobs use the same [native build setup action](../../.github/actions/setup-build/action.yml).
 
+Workspace tests use the default Cargo test profile at optimization level 1, with
+debug assertions and integer overflow checks explicitly enabled. This keeps the
+full DSP matrices practical on hosted runners and preserves debug-only lifecycle
+checks such as egui texture cleanup. Test selection and the 90-minute job limit
+are unchanged. Release validation remains a separate local requirement; see
+[repository validation instructions](../../AGENTS.md#validation).
+
 | Platform | Runner | Download |
 | --- | --- | --- |
 | Windows x64 | `windows-2025` | `DAW-windows-x64`: portable `daw-desktop.exe`, project license, and dependency notices |
