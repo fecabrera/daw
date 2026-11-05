@@ -318,8 +318,13 @@ impl Drive {
                     let baseline = bias.tanh();
                     let positive = (self.clipping + bias).tanh() - baseline;
                     let negative = baseline - (bias - self.clipping).tanh();
-                    let tube_sample =
-                        ((color * self.clipping + bias).tanh() - baseline) / positive.max(negative);
+                    // A folded tanh(bias) and the platform runtime tanh can differ
+                    // by an ULP. Preserve exact silence before subtracting them.
+                    let tube_sample = if color == 0.0 {
+                        0.0
+                    } else {
+                        ((color * self.clipping + bias).tanh() - baseline) / positive.max(negative)
+                    };
                     // Crossfade all modes with independent weights; the soft
                     // contribution is already reduced by the hard weight.
                     blended + (tube_sample - soft) * tube

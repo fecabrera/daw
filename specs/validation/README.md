@@ -8010,3 +8010,49 @@ Clippy, rustfmt, documentation links and diff whitespace checks passed. No
 runtime code changed, so no desktop rebuild or native UI/device checks were
 needed. Hosted macOS/Windows CI must still run the committed change. Receipts
 and downloaded job logs are in ignored `work/ci-timeouts/`.
+
+
+### 2026-11-05 — Linux Tube silence and macOS native archive extraction
+
+[Run 42092728180](https://github.com/fecabrera/daw/actions/runs/42092728180)
+passed macOS and Windows tests but failed Linux's Drive v2 Tube silence assertion
+(output approximately −2.31e−8 instead of zero), and failed macOS packaging in
+ort-sys's streaming native archive extraction with `EINVAL`.
+
+Tube now explicitly returns zero for a zero colored sample before subtracting
+the bias. This prevents platform differences between constant-folded and runtime
+`tanh` from creating a silent-input residual. The existing all-rate Tube silence,
+asymmetry, finite-output and transition-history regression remains exact.
+
+ARM macOS CI now downloads the existing pinned CoreML archive to disk, verifies
+its SHA-256, and extracts it transactionally before Cargo runs. No runtime version,
+linking policy or distribution notices changed. A fresh download/extraction passed;
+the extracted library matches the existing upstream cache byte for byte. Four
+Python regressions passed: successful publication/cache reuse, rejected checksum
+and unsafe archive entries, failed-download cleanup, and dependency-pin drift.
+The existing shell desktop-packaging fixture test also passed.
+
+Completed local macOS checks:
+
+- `cargo test --workspace --locked --offline`: PASS, 2,556 passed and 21 existing
+  manual cases ignored, with debug assertions and overflow checks enabled.
+- `cargo test --release --workspace --locked --offline`: all 2,555 unit/integration
+  cases passed, with 21 existing cases ignored. The command then failed a project
+  doctest because a concurrent desktop build with a different `ORT_LIB_PATH`
+  replaced dependencies in the shared target directory. After that build finished,
+  `cargo test --release --workspace --doc --locked --offline` passed every doctest.
+  This was a local validation-order error; the complete test coverage passes when
+  the release tests and their doctests are combined.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`:
+  PASS. `cargo fmt --all --check`, specification links and `git diff --check`:
+  PASS.
+- `ORT_LIB_PATH=<fresh verified extraction> cargo build --release --locked
+  --offline -p daw-desktop`: PASS, including rebuilding ort-sys against that library.
+- `python3 -m unittest discover -s tools -p test_prepare_macos_ort.py`: four PASS;
+  `python3 -m unittest discover -s tools -p test_desktop_packaging.py`: one PASS.
+
+Logs are in ignored `work/ci-failures/`. A Linux x64 container compiler probe
+crashed under QEMU before compiling repository code; this does not constitute a Linux test
+result. Hosted Linux tests and the complete macOS DMG job still require a new CI
+run. Full local packaging requires a clean committed tracked tree; the working tree
+contains the uncommitted fixes.

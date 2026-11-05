@@ -69,3 +69,10 @@ runs:
           ~/.cargo/registry/cache
           ~/.cargo/git/db
         key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+    - name: Prepare macOS ONNX Runtime archive
+      if: runner.os == 'macOS' && runner.arch == 'ARM64'
+      shell: bash
+      run: |
+        python -m unittest discover -s tools -p test_prepare_macos_ort.py
+        python tools/prepare_macos_ort.py
