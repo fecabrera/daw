@@ -1880,7 +1880,7 @@ fn rename_group_and_ungroup_ignore_non_text_focus_in_arrangement_views() {
                     } else {
                         vec![]
                     };
-                    let output = ctx.run_ui(
+                    let mut output = ctx.run_ui(
                         egui::RawInput {
                             events,
                             ..Default::default()
@@ -1902,7 +1902,7 @@ fn rename_group_and_ungroup_ignore_non_text_focus_in_arrangement_views() {
                             app.track_shortcuts(&ctx);
                         },
                     );
-                    drop(output);
+                    output.textures_delta.clear();
                 }
                 if mode == ViewMode::Edit || focus != "control" {
                     assert_eq!(app.session.project, before);

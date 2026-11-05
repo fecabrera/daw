@@ -7915,3 +7915,19 @@ Clippy, rustfmt, documentation links and diff whitespace checks passed. The
 desktop executable was rebuilt. Native UI/device/platform checks were not run.
 macOS bundle packaging requires committed tracked sources and rejected the
 uncommitted tree. Receipts are in ignored `work/mixer-shortcut-focus/`.
+
+### 2026-11-05 — Headless egui texture cleanup in debug tests
+
+The stereo held-marker/reset and track shortcut focus tests now clear each
+headless frame's texture deltas before dropping `FullOutput`. The texture delta
+destructor asserts on unhandled updates only with debug assertions enabled;
+previous release-only runs did not exercise that check. Drawing assertions and
+application behavior are unchanged.
+
+`cargo test --locked --offline -p daw-ui --lib` passed in debug mode: 867 passed,
+3 existing manual cases ignored, including both tests reported by CI.
+`cargo test --release --locked --offline --workspace` passed: 2,549 passed,
+21 existing manual cases ignored. Strict workspace all-target Clippy,
+`cargo fmt --all --check` and `git diff --check` passed. This test-only change
+required no desktop rebuild or native UI/device checks. Receipts are in ignored
+`work/ci-texture-cleanup/`.

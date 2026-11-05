@@ -329,7 +329,7 @@ mod tests {
                 } else {
                     vec![]
                 };
-                let output = ctx.run_ui(
+                let mut output = ctx.run_ui(
                     egui::RawInput {
                         events,
                         ..Default::default()
@@ -349,6 +349,7 @@ mod tests {
                         reset_on_click(ui, Some(&meter), clicked);
                     },
                 );
+                output.textures_delta.clear();
                 rails = output
                     .shapes
                     .iter()

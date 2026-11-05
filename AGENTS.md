@@ -264,14 +264,16 @@ The CLI infers WAV or MP3 from the output extension unless `--format wav|mp3` is
 
 ### Validation
 
-For code changes, run affected checks while developing, then run the workspace checks before completion:
+For code changes, run affected checks while developing, then run the workspace checks before completion. Both debug and release tests are required:
 
 ```sh
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo test --workspace --release
 ```
 
+- Keep debug assertions enabled for the default `cargo test --workspace` run. Release tests do not replace it: lifecycle checks such as egui texture-delta cleanup can fail only with debug assertions enabled. Record debug and release commands and results separately in the validation record.
 - Add meaningful tests for changed behavior and failure paths. Keep unit tests near the implementation; use `crates/project/tests/workflow.rs` for storage/render/export workflows and existing egui input tests for interactions. Avoid tests that only repeat implementation details.
 - For CLI or shared import/render/export changes, build `daw-cli`, then run `python3 tools/check_cli.py`. It needs the tracked demo and uses temporary output folders.
 - `python3 tools/create_demo.py` regenerates tracked demo files. Do not run it over user edits or include regenerated fixtures unless required by the task.
