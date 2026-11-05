@@ -243,3 +243,8 @@ publication latches finite positive amplitudes per channel without allocation or
 locking. Silence retains holds. The numeric peak reads their maximum. Clicking
 either rail, the gap between L/R rails, or the readout resets both holds and the
 shared clipping warning without changing current readings or project history.
+
+Timeline track, group, Return and Master headers reuse the Mixer held-marker and
+inter-channel reset helper, including collapsed rows. They read the same stereo
+holds as Mixer; resetting in either view clears both channel holds and clipping
+without changing levels, routing, gain or project history.

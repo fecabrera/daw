@@ -6,6 +6,8 @@ Timeline arranges audio and MIDI clips on tracks. Use Editor for MIDI notes, Ins
 
 Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Their names use the same spacing as group headers. Track gain and pan, and Master gain, use compact knobs without text-entry fields. Tracks start with one row: icon, name, Mute, Solo, Pan, Gain, then meters. In the expanded layout, the second row places Mute and Solo at the left; Pan then Gain sit at the right, immediately before the level meters. Master uses one row, with its gain knob on the right immediately before the level meters. Level meter rails align with the top and bottom padding of the other header controls. Hover or drag a knob to see its value in the tooltip. Master's meters align with the track meters at the right of the control column. Drag an audio or MIDI icon, track name, or blank header area to move the track. Release applies the move; Escape or focus loss cancels it.
 
+Each L/R meter bar has a held-peak marker. Click either bar or the gap between them to reset both held peaks and the clipping warning. This applies to tracks, groups, Returns and Master. Held levels are shared with Mixer.
+
 Use **Expand tracks to two rows**, beside Fit all clips and zoom in the playback toolbar, for the full layout. **Collapse tracks to one row** restores the default compact layout. Timeline and Editor share this choice for the app session. It does not change the project or audio. Master stays on one row.
 
 The Tracks header’s Add track (Plus) button opens a dropdown with **Add audio track**, **Add MIDI track**, and **Add beat track**. Choose an item to create and select a new empty track. Opening or dismissing the menu does not add a track.

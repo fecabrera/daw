@@ -3471,7 +3471,11 @@ impl DawUi {
                 .output
                 .as_ref()
                 .map_or([(0.0, false); 2], |output| output.status.meter.levels());
-            let cleared = meters::stereo_panel(ui, MASTER_HEIGHT - 14.0, levels, |ui| {
+            let held = self
+                .output
+                .as_ref()
+                .map_or([0.0; 2], |output| output.status.meter.held_peaks());
+            let cleared = meters::stereo_panel_held(ui, MASTER_HEIGHT - 14.0, levels, held, |ui| {
                 rows::centered(ui, knobs::SIZE, |ui| {
                     let name_width =
                         (ui.available_width() - knobs::SIZE - ui.spacing().item_spacing.x).max(1.0);
@@ -4341,8 +4345,17 @@ impl DawUi {
                                     .as_ref()
                                     .and_then(|output| output.track_meter(track.id))
                                     .map_or([(0.0, false); 2], |meter| meter.levels());
-                                let cleared =
-                                    meters::stereo_panel(ui, row_height - 14.0, levels, |ui| {
+                                let held = self
+                                    .output
+                                    .as_ref()
+                                    .and_then(|output| output.track_meter(track.id))
+                                    .map_or([0.0; 2], |meter| meter.held_peaks());
+                                let cleared = meters::stereo_panel_held(
+                                    ui,
+                                    row_height - 14.0,
+                                    levels,
+                                    held,
+                                    |ui| {
                                         let mut mute = track.muted;
                                         let mut solo = track.soloed;
                                         let mut header_rows = track_rows::HeaderRows::new(
@@ -4420,7 +4433,8 @@ impl DawUi {
                                             }
                                             self.changed();
                                         }
-                                    });
+                                    },
+                                );
                                 meters::reset_on_click(
                                     ui,
                                     self.output

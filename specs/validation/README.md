@@ -7869,3 +7869,18 @@ audio-device and Windows/Linux checks were not run. macOS bundle packaging
 requires committed tracked sources and rejected this uncommitted working tree;
 the desktop executable was rebuilt. Receipts are in ignored
 `work/mixer-held-peaks/`.
+
+### 2026-11-05 — Timeline held-peak markers
+
+Timeline track, group, Return and Master headers read the same per-channel held
+peaks as Mixer. Shared marker/reset handling covers both bars and their gap,
+including one-row and two-row headers, without changing meter geometry.
+
+`cargo test --release --locked --offline --workspace` passed (2,548 passed;
+21 existing manual cases ignored). The marker/reset test now covers Mixer,
+expanded Timeline and collapsed Timeline rail heights, each channel and their
+gap, held positions and reset after pointer release. Strict workspace all-target
+Clippy, rustfmt, documentation links and diff whitespace checks passed. The
+desktop executable was rebuilt. Native UI/device/platform checks were not run.
+macOS bundle packaging requires committed tracked sources and rejected the
+uncommitted working tree. Receipts are in ignored `work/timeline-held-peaks/`.

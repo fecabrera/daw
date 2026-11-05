@@ -66,6 +66,10 @@ pub fn stereo_held(
     held: [f32; 2],
 ) -> [bool; 2] {
     let channels = stereo(ui, height, levels);
+    held_channel_controls(ui, channels, held)
+}
+
+fn held_channel_controls(ui: &mut Ui, channels: [Response; 2], held: [f32; 2]) -> [bool; 2] {
     for (channel, peak) in channels.iter().zip(held) {
         if peak > 0.0 {
             let rail = channel.rect;
@@ -183,6 +187,27 @@ pub fn stereo_panel_with_content<R>(
     levels: [(f32, bool); 2],
     content: impl FnOnce(&mut Ui) -> R,
 ) -> (R, [bool; 2]) {
+    stereo_panel_content_held(ui, height, levels, [0.0; 2], content)
+}
+
+/// Compact track-header rails share Mixer held markers and the inter-channel reset target.
+pub fn stereo_panel_held(
+    ui: &mut Ui,
+    height: f32,
+    levels: [(f32, bool); 2],
+    held: [f32; 2],
+    content: impl FnOnce(&mut Ui),
+) -> [bool; 2] {
+    stereo_panel_content_held(ui, height, levels, held, content).1
+}
+
+fn stereo_panel_content_held<R>(
+    ui: &mut Ui,
+    height: f32,
+    levels: [(f32, bool); 2],
+    held: [f32; 2],
+    content: impl FnOnce(&mut Ui) -> R,
+) -> (R, [bool; 2]) {
     ui.horizontal_top(|ui| {
         let content_width =
             (ui.available_width() - (STEREO_WIDTH - SCALE_WIDTH) - ui.spacing().item_spacing.x)
@@ -198,8 +223,8 @@ pub fn stereo_panel_with_content<R>(
                 },
             )
             .inner;
-        let clicked =
-            stereo_with_scale(ui, height, levels, false).map(|response| response.clicked());
+        let channels = stereo_with_scale(ui, height, levels, false);
+        let clicked = held_channel_controls(ui, channels, held);
         (content, clicked)
     })
     .inner
@@ -272,7 +297,10 @@ mod tests {
 
     #[test]
     fn mixer_channel_and_gap_clicks_reset_both_shared_peak_markers() {
-        for target in 0..3 {
+        for (compact, height, target) in [(false, 100.0), (true, 42.0), (true, 14.0)]
+            .into_iter()
+            .flat_map(|(compact, height)| (0..3).map(move |target| (compact, height, target)))
+        {
             let ctx = egui::Context::default();
             theme::configure(&ctx);
             let meter = daw_output::StereoMeter::default();
@@ -307,7 +335,17 @@ mod tests {
                         ..Default::default()
                     },
                     |ui| {
-                        let clicked = stereo_held(ui, 100.0, meter.levels(), meter.held_peaks());
+                        let clicked = if compact {
+                            stereo_panel_held(
+                                ui,
+                                height,
+                                meter.levels(),
+                                meter.held_peaks(),
+                                |_| {},
+                            )
+                        } else {
+                            stereo_held(ui, height, meter.levels(), meter.held_peaks())
+                        };
                         reset_on_click(ui, Some(&meter), clicked);
                     },
                 );
@@ -318,7 +356,7 @@ mod tests {
                         egui::Shape::Rect(r)
                             if r.fill == theme::palette(&ctx).input
                                 && r.rect.width() == CHANNEL_WIDTH
-                                && r.rect.height() == 100.0 =>
+                                && r.rect.height() == height =>
                         {
                             Some(r.rect)
                         }
