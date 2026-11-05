@@ -7899,3 +7899,19 @@ whitespace checks passed. The desktop executable was rebuilt. Native UI/device
 and Windows/Linux checks were not run. macOS bundle packaging requires committed
 tracked sources and rejected the uncommitted tree. Receipts are in ignored
 `work/rename-group-focus/`.
+
+### 2026-11-05 — Mixer track shortcut focus
+
+Mixer Mute, Solo, Rename, Group and Ungroup accept focus in other panes and
+non-text controls. Text editing, active gestures, selection, window-focus,
+dialog and blocking-job guards remain. Timeline/Instrument Mute/Solo handling
+is unchanged.
+
+`cargo test --release --locked --offline --workspace` passed (2,549 passed;
+21 existing manual cases ignored). Focused regressions verify Mixer M/S with
+non-text focus and text entry, plus Rename/Group/Ungroup in Timeline, Mixer and
+Editor with control focus, text entry and drags. Strict workspace all-target
+Clippy, rustfmt, documentation links and diff whitespace checks passed. The
+desktop executable was rebuilt. Native UI/device/platform checks were not run.
+macOS bundle packaging requires committed tracked sources and rejected the
+uncommitted tree. Receipts are in ignored `work/mixer-shortcut-focus/`.

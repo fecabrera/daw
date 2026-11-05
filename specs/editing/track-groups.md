@@ -90,5 +90,13 @@ Timeline Rename, Group and Ungroup use text-edit focus rather than general
 keyboard ownership. Other pane and non-text control focus does not block them.
 Retain selection requirements, window focus, active drag/pointer, text entry,
 dialog and blocking-job guards, repeat suppression and shared native-menu
-dispatch. Other views keep their existing focus rules. Mute and Solo handling
-is unchanged.
+dispatch. Mixer follows its focus rules below; other views retain their existing rules.
+This Timeline change leaves Mute and Solo handling unchanged.
+
+## Mixer shortcut focus
+
+Mixer Rename, Group, Ungroup, Mute and Solo use the text-edit focus guard rather
+than general keyboard ownership. Other pane and non-text control focus does not
+block their shortcuts or shared native-menu actions. Preserve active drag,
+pointer, window-focus, selection, text-entry, dialog and job guards and repeat
+suppression. Timeline and Instrument Mute/Solo dispatch remains unchanged.

@@ -18,6 +18,8 @@ Use numeric fields for precise values. Press Enter or leave the field to apply a
 
 Mute silences a track’s direct output; its sends remain active. Solo plays the selected soloed tracks and excludes the others. Solo takes priority over mute: a track with both enabled plays. Select several tracks to apply Mute or Solo together from the Track menu or with M and S.
 
+Track shortcuts work from other Mixer panes and non-text controls: Mute (M), Solo (S), Rename (Command/Ctrl+R), Group (Command/Ctrl+G), and Ungroup (Command/Ctrl+Shift+G). Text entry, active gestures, dialogs and blocking jobs retain their guards. Selection requirements still apply.
+
 Meters show current output. Each L/R bar has a held-peak marker that stays at its highest level until reset. The peak readout shows the higher of the two held levels. Click either bar, the gap between L and R, or the peak readout to reset both held peaks and the clipping warning. Reduce gain if the project output clips.
 
 ## Track groups

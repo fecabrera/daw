@@ -96,7 +96,7 @@ impl DawUi {
                     && !self.instrument_ui.has_layer_gesture()
             }
             TrackAction::Rename | TrackAction::Group | TrackAction::Ungroup
-                if self.view_mode == ViewMode::Timeline =>
+                if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Mixer) =>
             {
                 !ctx.text_edit_focused() && ctx.dragged_id().is_none()
             }
@@ -107,6 +107,9 @@ impl DawUi {
             | TrackAction::AddReturn
             | TrackAction::AddSubtrack
             | TrackAction::Duplicate => !ctx.text_edit_focused() && ctx.dragged_id().is_none(),
+            TrackAction::Mute | TrackAction::Solo if self.view_mode == ViewMode::Mixer => {
+                !ctx.text_edit_focused() && ctx.dragged_id().is_none()
+            }
             TrackAction::Mute | TrackAction::Solo
                 if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument) =>
             {

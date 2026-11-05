@@ -249,7 +249,7 @@ fn timeline_mute_and_solo_ignore_control_focus_but_preserve_text_input_and_other
                 assert!(ctx.egui_wants_keyboard_input());
                 assert!(!app.track_action_enabled(TrackAction::Rename, &ctx));
             }
-            let toggled = mode == ViewMode::Timeline && !text_input;
+            let toggled = !text_input;
             for track in &app.session.project.tracks[..2] {
                 assert_eq!(track.muted, toggled);
                 assert_eq!(track.soloed, toggled);
@@ -1849,8 +1849,8 @@ fn fast_layer_drag_escape_retains_group_and_mix_target() {
 }
 
 #[test]
-fn rename_group_and_ungroup_ignore_non_text_focus_only_in_timeline() {
-    for mode in [ViewMode::Timeline, ViewMode::Mixer] {
+fn rename_group_and_ungroup_ignore_non_text_focus_in_arrangement_views() {
+    for mode in [ViewMode::Timeline, ViewMode::Mixer, ViewMode::Edit] {
         for action in [
             TrackAction::Rename,
             TrackAction::Group,
@@ -1889,7 +1889,7 @@ fn rename_group_and_ungroup_ignore_non_text_focus_only_in_timeline() {
                             let response = if focus == "text" {
                                 ui.text_edit_singleline(&mut text)
                             } else {
-                                ui.button("Control outside Timeline")
+                                ui.button("Control outside tracks")
                             };
                             if step == 0 {
                                 response.request_focus();
@@ -1904,7 +1904,7 @@ fn rename_group_and_ungroup_ignore_non_text_focus_only_in_timeline() {
                     );
                     drop(output);
                 }
-                if mode != ViewMode::Timeline || focus != "control" {
+                if mode == ViewMode::Edit || focus != "control" {
                     assert_eq!(app.session.project, before);
                     assert!(app.track_name_edit.is_none());
                 } else {
