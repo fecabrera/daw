@@ -1491,3 +1491,114 @@ fn empty_sampler_controls_match_loaded_preview_geometry() {
         }
     }
 }
+
+#[test]
+fn audio_file_drops_on_sample_units_keep_sampler_or_granulizer_settings() {
+    for nested in [false, true] {
+        for granular in [false, true] {
+            let mut app = DawUi::default();
+            let parent = if nested {
+                app.session.project.add_beat_track().unwrap()
+            } else {
+                app.session.project.add_midi_track().unwrap()
+            };
+            let owner = if nested {
+                let row = daw_core::BeatSubtrack::new("Sample source".into());
+                let id = row.id;
+                app.session
+                    .project
+                    .edit(Edit::Beat {
+                        track_id: parent,
+                        edit: daw_core::BeatEdit::Add {
+                            subtrack: Box::new(row),
+                            index: 0,
+                        },
+                    })
+                    .unwrap();
+                id
+            } else {
+                parent
+            };
+            let layer = &mut app
+                .session
+                .project
+                .instrument_settings_mut(owner)
+                .unwrap()
+                .layers[0];
+            let layer_id = layer.id;
+            layer.clear_sources();
+            layer.envelopes[0].present = true;
+            let mut source = if granular {
+                daw_core::SamplerSettings::granular()
+            } else {
+                Default::default()
+            };
+            source.root_note = 48;
+            source.gain_db = -7.0;
+            if let Some(grains) = &mut source.granulizer {
+                grains.size_ms = 125.0;
+                grains.speed = -0.5;
+                grains.seed = 91;
+            }
+            let mut route = daw_core::Modulation::new(daw_core::ModulationParameter::SamplerGain);
+            route.source = Some(daw_core::ModulationSourceId {
+                layer: layer_id,
+                unit: layer.envelopes[0].id,
+            });
+            route.amount = 3.0;
+            source.modulations.push(route);
+            layer.sampler = Some(source.clone());
+            app.select_track(parent, false);
+            app.view_mode = ViewMode::Instrument;
+            if nested {
+                app.navigate_beat_owner(parent, Some(owner), false);
+            }
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            let first = TestWav::new();
+            let second = TestWav::new_frames(24000);
+            let mut loaded = None;
+            for (index, file) in [&first, &second].into_iter().enumerate() {
+                let bounds = app
+                    .instrument_ui
+                    .samplers
+                    .iter()
+                    .find(|b| b.track == owner && b.layer == layer_id)
+                    .unwrap();
+                let point = if index == 0 {
+                    bounds.panel.center()
+                } else {
+                    bounds.panel.min + Vec2::new(50.0, 12.0)
+                };
+                assert_eq!(app.sampler_unit_drop_target(point), Some((owner, layer_id)));
+                file_frame(&mut app, &ctx, &file.0, point, true);
+                wait(&mut app, &ctx);
+                let layer = &app
+                    .session
+                    .project
+                    .instrument_settings(owner)
+                    .unwrap()
+                    .layers[0];
+                assert_eq!(layer.id, layer_id);
+                let actual = layer.sampler.as_ref().unwrap();
+                assert_eq!(actual.granulizer.is_some(), granular);
+                let mut expected = source.clone();
+                expected.input = actual.input.clone();
+                expected.end_frame = if index == 0 { 48000 } else { 24000 };
+                assert_eq!(*actual, expected);
+                assert_eq!(
+                    actual.input.as_ref().unwrap().name,
+                    file.0.file_name().unwrap().to_str().unwrap()
+                );
+                assert!(app.session.sampler_audio.contains_key(&source.id));
+                app.session.project.validate().unwrap();
+                if index == 0 {
+                    loaded = Some(app.session.project.clone());
+                }
+            }
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            assert_eq!(app.session.project, loaded.unwrap());
+        }
+    }
+}

@@ -103,8 +103,13 @@ owners use the same target and latest-request worker. A layer file drop prepares
 Sampler and the decoded input through `Session::with_layer_sampler_decoded` before
 publishing the complete session. Existing Sampler file replacement retains its
 controls; another source is replaced by a fresh Sampler. Failures and cancellation
-retain the original session. Existing source Choose sample and Timeline clip-drop
-paths keep their Sampler/Granulizer settings and unit-specific targets.
+retain the original session. Direct external file drops on an installed Sampler
+or Granulizer take priority over the containing layer target. Dispatch these to
+`load_sampler_file` / `Session::with_sampler_decoded`, as for Choose sample, so the
+existing source type, UUID, controls and modulation routes survive. This includes
+unit headers and empty or loaded bodies for MIDI and nested beat owners. Layer
+background drops continue through `with_layer_sampler_decoded`. Existing Choose
+sample and Timeline clip-drop paths keep their unit-specific targets.
 
 ## Effective clip pitches — 2026-11-02
 

@@ -4,6 +4,31 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Audio-file drops onto existing sample sources — 2026-11-06
+
+Direct drops onto Sampler/Granulizer units now use the existing sample-loading
+worker instead of the layer-source replacement path. Unit hit targets take
+priority over their containing layer, including unit headers and empty bodies.
+The source type, UUID, grain controls, root note, Gain and modulation connections
+survive while the new sample and full input region prepare atomically.
+
+The new input-event regression check passed for Sampler and Granulizer in regular
+MIDI layers and beat-subtrack layers. It drops onto empty units and loaded headers,
+checks retained settings/routes/identities and prepared banks, and verifies Undo
+restores the previous sample and project. All 20 focused `tests::sampler` checks
+passed, including layer replacement and existing failure/cancellation coverage.
+
+Checks use Cargo `--locked --offline`:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS with debug assertions enabled.
+- `cargo test --workspace --release`: PASS.
+- Documentation links (139 local targets) and `git diff --check`: PASS.
+
+These are automated egui/workspace checks. Native external file dragging,
+physical playback and Windows/Linux checks were not performed for this fix.
+
 ## Time-signature editor visibility — 2026-11-06
 
 Numerator and denominator editors use their full, unchanged display-slot width

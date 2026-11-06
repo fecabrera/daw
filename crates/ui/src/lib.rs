@@ -2529,7 +2529,16 @@ impl DawUi {
                 if ctx.input(|i| i.raw.dropped_files.len()) > 1 {
                     self.fail("Drop one audio file onto an instrument layer");
                 } else {
-                    self.load_layer_sampler_file(target, dropped.path().to_path_buf());
+                    let on_unit = ctx
+                        .input(|i| i.pointer.latest_pos())
+                        .is_some_and(|pointer| {
+                            self.sampler_unit_drop_target(pointer) == Some(target)
+                        });
+                    if on_unit {
+                        self.load_sampler_file(target, dropped.path().to_path_buf());
+                    } else {
+                        self.load_layer_sampler_file(target, dropped.path().to_path_buf());
+                    }
                 }
             } else if self.file_action_enabled(FileAction::Import)
                 && let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned())
