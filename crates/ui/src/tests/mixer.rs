@@ -1949,3 +1949,221 @@ fn timeline_track_mixer_keeps_its_panel_header_above_every_selected_strip() {
         assert!(!app.dirty);
     }
 }
+
+#[test]
+fn mixer_output_destinations_follow_groups_in_both_views_without_master_rows() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let outer = app.session.project.add_group_track().unwrap();
+        let inner = app.session.project.add_group_track().unwrap();
+        app.session
+            .project
+            .edit(Edit::MoveTrack {
+                track_id: inner,
+                group_id: Some(outer),
+                index: 2,
+            })
+            .unwrap();
+        app.session
+            .project
+            .edit(Edit::MoveTrack {
+                track_id: track,
+                group_id: Some(inner),
+                index: 2,
+            })
+            .unwrap();
+        let root = app.session.project.add_midi_track().unwrap();
+        let returns = app.session.project.add_return_track().unwrap();
+        app.session
+            .project
+            .tracks
+            .iter_mut()
+            .find(|t| t.id == track)
+            .unwrap()
+            .sends = vec![daw_core::TrackSend::new(returns)];
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        let outer_name = app
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == outer)
+            .unwrap()
+            .name
+            .clone();
+        let inner_name = app
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == inner)
+            .unwrap()
+            .name
+            .clone();
+        for view in [ViewMode::Mixer, ViewMode::Timeline] {
+            app.set_view_mode(view, &ctx);
+            if view == ViewMode::Timeline {
+                app.toggle_view_panel(ViewPanel::TrackMixer, &ctx);
+            }
+            for (id, destination) in [
+                (track, inner_name.as_str()),
+                (inner, outer_name.as_str()),
+                (outer, "Master"),
+                (root, "Master"),
+                (returns, "Master"),
+            ] {
+                app.select_track(id, false);
+                let before = app.session.project.clone();
+                frame(&mut app, &ctx, vec![]);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                let strip = app.mixer_bounds[&id];
+                assert_destination_row(&shapes, &ctx, strip, Some(destination));
+                if app.master_bounds.is_positive() {
+                    assert_destination_row(&shapes, &ctx, app.master_bounds, None);
+                }
+                assert_eq!(app.session.project, before);
+                assert!(!app.dirty);
+            }
+            app.select_master();
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            assert_destination_row(&shapes, &ctx, app.master_bounds, None);
+        }
+        app.set_view_mode(ViewMode::Mixer, &ctx);
+        let long_name = "A group destination name that exceeds the strip width";
+        app.session
+            .project
+            .tracks
+            .iter_mut()
+            .find(|t| t.id == inner)
+            .unwrap()
+            .name = long_name.into();
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert_destination_row(&shapes, &ctx, app.mixer_bounds[&track], Some(long_name));
+        app.session
+            .project
+            .edit(Edit::MoveTrack {
+                track_id: track,
+                group_id: Some(outer),
+                index: 2,
+            })
+            .unwrap();
+        let before = app.session.project.clone();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert_destination_row(&shapes, &ctx, app.mixer_bounds[&track], Some(&outer_name));
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+}
+
+fn assert_destination_row(
+    shapes: &[egui::epaint::ClippedShape],
+    ctx: &egui::Context,
+    strip: Rect,
+    destination: Option<&str>,
+) {
+    let borders: Vec<_> = shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Rect(r)
+                if r.stroke.width == 1.0
+                    && (r.rect.width() - strip.width() + 16.0).abs() < 0.1
+                    && (r.rect.height() - toolbars::CONTROL_HEIGHT).abs() < 0.1
+                    && r.rect.left() >= strip.left()
+                    && r.rect.right() <= strip.right()
+                    && r.rect.top() >= strip.top() + panels::HEADER_HEIGHT
+                    && r.rect.top() < strip.top() + panels::HEADER_HEIGHT + 16.0 =>
+            {
+                Some(r.rect)
+            }
+            _ => None,
+        })
+        .collect();
+    let Some(destination) = destination else {
+        assert!(borders.is_empty());
+        return;
+    };
+    assert_eq!(borders.len(), 1, "one full-width bordered output indicator");
+    let row = borders[0];
+    assert!((row.left() - strip.left() - 8.0).abs() < 0.1);
+    assert!((strip.right() - row.right() - 8.0).abs() < 0.1);
+    assert!((row.top() - strip.top() - panels::HEADER_HEIGHT - 8.0).abs() < 0.1);
+    if let Some(send) = shapes.iter().find_map(|shape| match &shape.shape {
+        egui::Shape::Text(t)
+            if t.galley.text() == "Return 1" && strip.contains(t.pos) && t.pos.y > row.bottom() =>
+        {
+            Some(Rect::from_min_size(t.pos, t.galley.size()))
+        }
+        _ => None,
+    }) {
+        let send_border = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(r)
+                    if r.stroke.width > 0.0
+                        && r.rect.height() < 30.0
+                        && r.rect.contains_rect(send) =>
+                {
+                    Some(r.rect)
+                }
+                _ => None,
+            })
+            .expect("send input border");
+        assert!(
+            (row.left() - send_border.left()).abs() < 0.1,
+            "destination {row:?}, send {send_border:?}"
+        );
+    }
+    let text = shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text)
+                if text.galley.text() == destination && row.contains(text.pos) =>
+            {
+                Some(text)
+            }
+            _ => None,
+        })
+        .expect("destination text in its strip");
+    assert!(row.contains_rect(Rect::from_min_size(text.pos, text.galley.size())));
+    let small = egui::TextStyle::Small.resolve(&ctx.global_style()).size;
+    assert!(
+        text.galley
+            .job
+            .sections
+            .iter()
+            .all(|s| s.format.font_id.size == small)
+    );
+    let icon = icons::Lucide::ArrowRight
+        .size(icons::TOOLBAR_ICON_SIZE)
+        .stroke_width(2.0)
+        .color(theme::palette(ctx).secondary);
+    let egui::load::TexturePoll::Ready { texture } = ctx
+        .try_load_texture(
+            &icon.uri(),
+            egui::TextureOptions::LINEAR,
+            egui::load::SizeHint::Size {
+                width: 16,
+                height: 16,
+                maintain_aspect_ratio: false,
+            },
+        )
+        .unwrap()
+    else {
+        panic!("output arrow texture");
+    };
+    assert!(
+        shapes
+            .iter()
+            .any(|shape| matches!(&shape.shape, egui::Shape::Rect(r)
+        if r.brush.as_ref().is_some_and(|b| b.fill_texture_id == texture.id)
+            && row.contains_rect(r.rect) && r.rect.right() < text.pos.x))
+    );
+}

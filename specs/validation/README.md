@@ -4,6 +4,33 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Mixer output-destination indicators — 2026-11-06
+
+Non-Master strips now show a bordered destination row with send-matching horizontal and vertical padding below
+the track header. It uses Small text and the standard ArrowRight icon. Root
+tracks, root groups and Returns show Master; nested tracks/groups show their
+immediate parent group. Long names truncate with full hover/accessibility text.
+Both Mixer and Timeline’s Track mixer use the shared renderer. Master has no row.
+Shared minimum height reserves the added row while output controls stay aligned.
+
+All 25 Mixer checks passed. The final full UI suite passed with 894 tests and
+three ignored. The new paint regression covers both
+views and themes, root/Return/nested destinations, border width and geometry, eight-point margins and alignment with an actual send,
+Small text, ArrowRight texture, long-name truncation, rename/reparent updates,
+Master omission and unchanged project/dirty state. Existing output-spacing,
+header, control-editing and narrow-layout checks also pass.
+
+Checks use Cargo `--locked --offline`:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS with debug assertions enabled.
+- `cargo test --workspace --release`: PASS.
+- Documentation links (219 local targets) and staged/unstaged `git diff --check`: PASS.
+
+These are automated egui/workspace checks. Native appearance, display scaling and
+physical device checks on macOS, Windows and Linux were not performed.
+
 ## Audio-file drops onto existing sample sources — 2026-11-06
 
 Direct drops onto Sampler/Granulizer units now use the existing sample-loading

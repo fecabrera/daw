@@ -72,7 +72,7 @@ scrolling strips below this fixed panel header. Empty selection shows the
 form-row baseline as Clip Settings. Selection and topology
 changes must update the strips without stale references.
 
-Reuse `mixer_strip` and its headers, numeric fields, faders, meters, send rack and
+Reuse the [Mixer output-destination label](mixer.md), `mixer_strip` and its headers, numeric fields, faders, meters, send rack and
 control updates. Headers use Mixer geometry, colors and text; inspector names are read-only
 and must not start Timeline track drags or duplicate Timeline rename fields. Controls edit their own track without switching selection.
 The right toolbar owns the single divider between the inspector and toolbar;

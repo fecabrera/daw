@@ -12,6 +12,8 @@ Select a track, group or Master to change the effect target. Add effects from th
 
 Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Each track and group header centers its icon and name together. Icons use the same contrasting text color as their header names. Master’s icon matches its label. The icon-to-label gap matches the vertical padding around the icon. Master uses the same centered layout.
 
+Each non-Master strip shows its output destination just below its header, with a right-arrow icon and a bordered label. Its horizontal and vertical spacing matches the send controls. A track or nested group shows its immediate parent group’s name. Root tracks, root groups and Returns show **Master**. The same labels appear in Timeline’s Track mixer. These labels are read-only.
+
 Output controls have equal visible vertical gaps and outer padding. They stay aligned across tracks, Returns and Master. Gain uses a vertical fader on tracks, groups and Master. Drag it from exact silence (−∞) to +12 dB. Hold Shift for finer adjustment, or double-click the fader to reset it to 0 dB. Pan uses a knob on tracks and groups to position mono audio or balance stereo audio. Master has no Pan knob.
 
 Use numeric fields for precise values. Press Enter or leave the field to apply a valid value; Escape cancels the draft. Gain accepts a finite dB value or `−∞` for exact silence. Track and group numeric gain can exceed the fader's travel range; Master input clamps to silence through +12 dB. Very low finite values keep a numeric readout. Pan accepts −1 (left) through +1 (right), with 0 at center.

@@ -53,6 +53,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Clip settings](editing/clip-settings.md).
 - [Clip gain normalization](editing/normalize-gain.md).
 - [Chord catalog](editing/chords.md).
+- [Mixer strip output destinations](views/mixer.md).
 - [View menu panels](views/view-menu.md): shared panel toggles, view availability and checked states.
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).
 - [Instrument and Editor project track browser](views/instrument-tracks.md).

@@ -10,8 +10,8 @@ pub(super) const OUT_CONTROL_SPACING: f32 = 8.0;
 const METER_COLUMN_SPACING: f32 = 1.0;
 const FIXED_CONTROL_HEIGHT: f32 = HEADER_HEIGHT
     + knobs::PAN_VISIBLE_HEIGHT
-    + 3.0 * toolbars::CONTROL_HEIGHT
-    + 5.0 * OUT_CONTROL_SPACING;
+    + 4.0 * toolbars::CONTROL_HEIGHT
+    + 6.0 * OUT_CONTROL_SPACING;
 const MIN_FADER_HEIGHT: f32 = 24.0;
 pub(super) const MIN_HEIGHT: f32 = 2.0 * STRIP_PADDING.y
     + FIXED_CONTROL_HEIGHT
@@ -539,6 +539,62 @@ impl DawUi {
         ui.add_space(((ui.available_width() - leading_width - text.size().x) / 2.0).max(0.0));
     }
 
+    fn mixer_output_destination(&self, ui: &mut egui::Ui, track: &daw_core::Track, width: f32) {
+        let palette = theme::palette(ui.ctx());
+        let border = Stroke::new(STRIP_BORDER, palette.border);
+        let destination = track
+            .group_id
+            .and_then(|id| {
+                self.session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|parent| parent.id == id)
+            })
+            .map_or("Master", |parent| parent.name.as_str());
+        let (destination_rect, response) =
+            ui.allocate_exact_size(Vec2::new(width, toolbars::CONTROL_HEIGHT), Sense::hover());
+        ui.painter()
+            .rect_stroke(destination_rect, 2.0, border, egui::StrokeKind::Inside);
+        let text = egui::WidgetText::from(egui::RichText::new(destination).small()).into_galley(
+            ui,
+            Some(egui::TextWrapMode::Truncate),
+            (destination_rect.width() - 8.0 - icons::TOOLBAR_ICON_SIZE - 4.0).max(0.0),
+            egui::TextStyle::Small,
+        );
+        let icon_width = icons::TOOLBAR_ICON_SIZE;
+        let left = destination_rect.center().x - (icon_width + 4.0 + text.size().x) / 2.0;
+        icons::Lucide::ArrowRight
+            .size(icon_width)
+            .stroke_width(2.0)
+            .color(palette.secondary)
+            .image()
+            .alt_text("Output destination")
+            .paint_at(
+                ui,
+                Rect::from_center_size(
+                    Pos2::new(left + icon_width / 2.0, destination_rect.center().y),
+                    Vec2::splat(icon_width),
+                ),
+            );
+        ui.painter().galley(
+            Pos2::new(
+                left + icon_width + 4.0,
+                destination_rect.center().y - text.size().y / 2.0,
+            ),
+            text,
+            palette.text,
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Label,
+                ui.is_enabled(),
+                format!("Output destination: {destination}"),
+            )
+        });
+        response.on_hover_text(format!("Output destination: {destination}"));
+    }
+
     pub(super) fn mixer_strip(
         &mut self,
         ui: &mut egui::Ui,
@@ -592,6 +648,18 @@ impl DawUi {
         }
         content.spacing_mut().item_spacing.x = CONTROL_SPACING;
         content.spacing_mut().item_spacing.y = OUT_CONTROL_SPACING;
+        if let Some(track) = track {
+            content.add_space(
+                (rect.top() + HEADER_HEIGHT + OUT_CONTROL_SPACING - content.cursor().top())
+                    .max(0.0),
+            );
+            // Match the send rows' inset within the strip's shared content padding.
+            self.mixer_output_destination(
+                &mut content,
+                track,
+                (inner.width() - 2.0 * f32::from(menus::ITEM_PADDING)).max(0.0),
+            );
+        }
         // Align all faders, meters, and bottom controls, including Master.
         let rack_height = self.mixer_send_height();
         let fader_height =
