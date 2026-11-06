@@ -114,10 +114,10 @@ impl DawUi {
                 .find(|track| track.id == id)
                 .cloned()
         });
+        let panel = panels::ControlPanel::with_width(ui, ui.max_rect(), ui.available_width());
+        let header = panel.header(ui, "Track mixer", |_| {});
+        panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
         if track.is_none() && !self.master_selected {
-            let panel = panels::ControlPanel::with_width(ui, ui.max_rect(), ui.available_width());
-            let header = panel.header(ui, "Track mixer", |_| {});
-            panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
             panel.placeholder(ui, "Select a track");
             return;
         }

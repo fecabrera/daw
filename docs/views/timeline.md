@@ -138,7 +138,7 @@ If any selected clip contains audio, transpose previews for the whole group unti
 Use the sliders button in the right toolbar, or **View > Track Mixer**, to show
 the selected track and its parent bus side by side. The parent is the immediate
 track group, or Master for a top-level track. The panel follows the current track
-when several tracks are selected. Selecting Master shows only its strip.
+when several tracks are selected. Selecting Master shows only its strip. The Track mixer title stays visible above the strips, including when you scroll their controls.
 
 Use the same gain, pan, mute, solo, sends and meters as in [Mixer](mixer.md).
 Controls affect the strip shown without changing track selection. Scroll the

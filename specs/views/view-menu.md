@@ -64,9 +64,11 @@ scroll the strips horizontally and vertically when necessary.
 Resolve the primary selected track by stable ID each frame. Show that track on
 the left and its immediate `group_id` bus on the right, or Master when ungrouped.
 Group and Return tracks follow the same rule. Master selection shows Master once,
-with no parent. Empty selection shows the standard ControlPanel “Track mixer”
-header and “Select a track” placeholder, using the same padding, small secondary
-text and form-row baseline as Clip Settings. Selection and topology
+with no parent. Always show the standard ControlPanel “Track mixer” header and
+its bottom divider, including when a track or Master is selected. Place the
+scrolling strips below this fixed panel header. Empty selection shows the
+“Select a track” placeholder, using the same padding, small secondary text and
+form-row baseline as Clip Settings. Selection and topology
 changes must update the strips without stale references.
 
 Reuse `mixer_strip` and its headers, numeric fields, faders, meters, send rack and

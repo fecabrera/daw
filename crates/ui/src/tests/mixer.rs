@@ -1884,3 +1884,68 @@ fn timeline_track_mixer_placeholder_matches_clip_settings_and_uses_one_toolbar_d
         }
     }
 }
+
+#[test]
+fn timeline_track_mixer_keeps_its_panel_header_above_every_selected_strip() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, audio) = fixture();
+        let group = app.session.project.add_group_track().unwrap();
+        let return_track = app.session.project.add_return_track().unwrap();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        app.toggle_view_panel(ViewPanel::TrackMixer, &ctx);
+        let before = app.session.project.clone();
+        let mut header_position = None;
+        for selected in [None, Some(audio), Some(group), Some(return_track), None] {
+            if let Some(id) = selected {
+                app.select_track(id, false);
+            } else if header_position.is_some() {
+                app.select_master();
+            }
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let panel = app.effects_bounds.track_mixer;
+            let headers: Vec<_> = shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text)
+                        if text.galley.text() == "Track mixer" && panel.contains(text.pos) =>
+                    {
+                        Some(text.pos)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                headers.len(),
+                1,
+                "one panel header with selection {selected:?}"
+            );
+            if let Some(position) = header_position {
+                assert_eq!(headers[0], position);
+            } else {
+                header_position = Some(headers[0]);
+            }
+            if selected.is_some() || app.master_selected {
+                for strip in app
+                    .mixer_bounds
+                    .values()
+                    .chain(std::iter::once(&app.master_bounds))
+                {
+                    assert!(
+                        strip.top() >= panel.top() + toolbars::HEIGHT,
+                        "strip must start below the fixed panel header"
+                    );
+                }
+            }
+        }
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+}

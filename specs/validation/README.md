@@ -4,6 +4,34 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Persistent Track Mixer panel header — 2026-11-06
+
+Moved the standard Track mixer panel header and bottom divider outside the empty
+selection branch. The header now remains visible with audio, group, Return or
+Master selection; scrolling strips start below it. The empty placeholder,
+read-only strip names, shared controls and single right-toolbar divider retain
+their existing behavior.
+
+All five focused `timeline_track_mixer` tests passed. The new paint check covers
+both themes, empty selection, audio/group/Return selection and Master. It checks
+one panel title at a stable position, strip bounds below the header, and unchanged
+project/dirty state. Existing checks cover parent selection, editable controls,
+dialog guards, narrow layouts and the shared placeholder/toolbar divider.
+
+Checks (Cargo used `--locked --offline` and the local CMake build tool):
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS with debug assertions enabled.
+- `cargo test --workspace --release`: PASS.
+- `cargo build -p daw-desktop`: PASS.
+- Changed documentation links and `git diff --check`: PASS.
+
+These are automated egui and workspace checks. Native scrolling/display-scaling
+checks and Windows/Linux appearance checks were not performed for this fix.
+Distributable app packaging requires a clean committed tracked tree; no commit
+was requested. Audio processing and project persistence are unchanged.
+
 ## Return header selection outline alignment — 2026-11-05
 
 Timeline Return outlines now paint in the final header selection pass after the
