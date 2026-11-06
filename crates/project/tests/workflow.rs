@@ -5518,3 +5518,292 @@ fn saved_time_signature_preserves_audio_midi_timing_render_and_history() {
         }
     );
 }
+
+#[test]
+fn normalize_uses_trimmed_dry_sections_individually_and_preserves_saved_sources() {
+    use daw_project::{NormalizeOptions, NormalizeProgress};
+    use std::sync::atomic::Ordering;
+    let f = Fixture::new();
+    let path = f.0.join("normalization.wav");
+    let mut writer = hound::WavWriter::create(
+        &path,
+        hound::WavSpec {
+            channels: 2,
+            sample_rate: 48000,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        },
+    )
+    .unwrap();
+    for i in 0..16000 {
+        let value = if i < 4000 {
+            0.9
+        } else if i < 8000 {
+            0.1
+        } else if i < 12000 {
+            0.01
+        } else {
+            0.0
+        };
+        writer.write_sample(value).unwrap();
+        writer.write_sample(-value * 0.5).unwrap();
+    }
+    writer.finalize().unwrap();
+    let original_file = fs::read(&path).unwrap();
+    let mut session = Session::default();
+    let id = session.import(&path, None, 0).unwrap();
+    let first = &mut session.project.tracks[0].clips[0];
+    assert_eq!(first.id, id);
+    first.source_offset_frame = 4000;
+    first.length_frames = 4000;
+    first.gain_db = -9.0;
+    let mut second = first.clone();
+    second.id = daw_core::Id::new_v4();
+    second.start_frame = 4000;
+    second.source_offset_frame = 8000;
+    // Loop only the quiet section with a nonzero phase.
+    second.repeat = Some(ClipLoop {
+        length_frames: 4000,
+        phase_frame: 37,
+    });
+    second.length_frames = 6000;
+    let mut silent = second.clone();
+    silent.id = daw_core::Id::new_v4();
+    silent.start_frame = 10000;
+    silent.source_offset_frame = 12000;
+    silent.length_frames = 4000;
+    silent.repeat = None;
+    let ids = [id, second.id, silent.id];
+    session.project.tracks[0].clips.extend([second, silent]);
+    session.project.tracks[0].gain_db = -40.0;
+    session.project.master.gain_db = 6.0;
+    let before = session.project.clone();
+    let progress = NormalizeProgress::default();
+    let edits = session
+        .normalize_clips(&ids, NormalizeOptions::default(), &progress)
+        .unwrap();
+    assert_eq!(session.project, before);
+    assert_eq!(progress.done.load(Ordering::Relaxed), 14000);
+    assert_eq!(progress.total.load(Ordering::Relaxed), 14000);
+    assert_eq!(edits.len(), 2);
+    session.project.edit(Edit::Batch(edits)).unwrap();
+    assert!((session.project.tracks[0].clips[0].gain_db - 19.0).abs() < 0.001);
+    assert!((session.project.tracks[0].clips[1].gain_db - 39.0).abs() < 0.001);
+    assert_eq!(
+        session.project.tracks[0].clips[2],
+        before.tracks[0].clips[2]
+    );
+    for (clip, previous) in session.project.tracks[0]
+        .clips
+        .iter()
+        .zip(&before.tracks[0].clips)
+    {
+        let mut expected = previous.clone();
+        expected.gain_db = clip.gain_db;
+        assert_eq!(*clip, expected);
+    }
+    let capped = session
+        .normalize_clips(
+            &ids,
+            NormalizeOptions {
+                target: 0.0,
+                allow_increase: false,
+                ..Default::default()
+            },
+            &NormalizeProgress::default(),
+        )
+        .unwrap();
+    assert!(capped.is_empty());
+    let lower = session
+        .normalize_clips(
+            &ids,
+            NormalizeOptions {
+                target: -6.0,
+                allow_increase: false,
+                ..Default::default()
+            },
+            &NormalizeProgress::default(),
+        )
+        .unwrap();
+    session.project.edit(Edit::Batch(lower)).unwrap();
+    assert!((session.project.tracks[0].clips[0].gain_db - 14.0).abs() < 0.001);
+    session.save_new(&f.0, "normalized").unwrap();
+    let reopened = Session::open(&f.0.join("normalized")).unwrap();
+    assert_eq!(reopened.project.tracks, session.project.tracks);
+    assert_eq!(fs::read(&path).unwrap(), original_file);
+    let cancelled = NormalizeProgress::default();
+    cancelled.cancel.store(true, Ordering::Relaxed);
+    assert!(
+        session
+            .normalize_clips(&ids, NormalizeOptions::default(), &cancelled)
+            .is_err()
+    );
+    assert!(
+        session
+            .normalize_clips(
+                &[id, daw_core::Id::new_v4()],
+                NormalizeOptions::default(),
+                &NormalizeProgress::default()
+            )
+            .is_err()
+    );
+    assert!(
+        session
+            .normalize_clips(
+                &ids,
+                NormalizeOptions {
+                    target: f32::NAN,
+                    ..Default::default()
+                },
+                &NormalizeProgress::default()
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn normalize_loudness_and_true_peak_reach_targets_from_prepared_audio_and_fail_atomically() {
+    use daw_project::{NormalizeMode, NormalizeOptions, NormalizeProgress};
+    let f = Fixture::new();
+    let path = f.0.join("loudness.wav");
+    let mut writer = hound::WavWriter::create(
+        &path,
+        hound::WavSpec {
+            channels: 2,
+            sample_rate: 48000,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        },
+    )
+    .unwrap();
+    for i in 0..48000 {
+        let v = (std::f64::consts::TAU * 1000.0 * i as f64 / 48000.0).sin() as f32 * 0.1;
+        writer.write_sample(v).unwrap();
+        writer.write_sample(-v).unwrap();
+    }
+    writer.finalize().unwrap();
+    let mut session = Session::default();
+    let id = session.import(&path, None, 0).unwrap();
+    for (mode, target) in [
+        (NormalizeMode::Integrated, -23.0),
+        (NormalizeMode::TruePeak, -1.0),
+    ] {
+        let mut normalized = session.clone();
+        let edits = normalized
+            .normalize_clips(
+                &[id],
+                NormalizeOptions {
+                    mode,
+                    target,
+                    allow_increase: true,
+                },
+                &NormalizeProgress::default(),
+            )
+            .unwrap();
+        normalized.project.edit(Edit::Batch(edits)).unwrap();
+        let clip = &normalized.project.tracks[0].clips[0];
+        let gain = daw_core::linear_gain(clip.gain_db);
+        let mut analyzer = daw_loudness::OfflineAnalyzer::new(48000, mode).unwrap();
+        let mut reader = daw_media::FrameReader::new(normalized.audio_for_clip(clip).unwrap());
+        for local in 0..clip.length_frames {
+            analyzer
+                .push(
+                    reader
+                        .sample(clip.source_frame(local))
+                        .unwrap()
+                        .map(|v| v * gain),
+                )
+                .unwrap();
+        }
+        assert!((analyzer.finish().unwrap().unwrap() - target).abs() < 0.02);
+    }
+    let mut transformed = session.clone();
+    let clip = &mut transformed.project.tracks[0].clips[0];
+    clip.stretch = daw_core::ClipStretch::new(1, 2);
+    clip.transpose = 12;
+    clip.source_offset_frame = 4800;
+    clip.length_frames = 9600;
+    transformed.prepare_stretches().unwrap();
+    let clip = &transformed.project.tracks[0].clips[0];
+    let audio = transformed.audio_for_clip(clip).unwrap();
+    assert!(audio.frame_count() > session.audio_for_clip(clip).map_or(0, |a| a.frame_count()));
+    let mut reader = daw_media::FrameReader::new(audio);
+    let expected_peak = (4800..14400)
+        .flat_map(|f| reader.sample(f).unwrap())
+        .map(f32::abs)
+        .fold(0.0f32, f32::max);
+    let edits = transformed
+        .normalize_clips(
+            &[id],
+            NormalizeOptions::default(),
+            &NormalizeProgress::default(),
+        )
+        .unwrap();
+    transformed.project.edit(Edit::Batch(edits)).unwrap();
+    assert!(
+        (transformed.project.tracks[0].clips[0].gain_db - (-1.0 - 20.0 * expected_peak.log10()))
+            .abs()
+            < 0.001
+    );
+    let asset = session.project.tracks[0].clips[0].asset_id;
+    let mut missing = session.clone();
+    missing.audio.remove(&asset);
+    assert!(
+        missing
+            .normalize_clips(
+                &[id],
+                NormalizeOptions::default(),
+                &NormalizeProgress::default()
+            )
+            .is_err()
+    );
+    let mut too_quiet = session.clone();
+    too_quiet.audio.get_mut(&asset).unwrap().samples = std::sync::Arc::new(vec![[1e-5; 2]; 48000]);
+    assert!(
+        too_quiet
+            .normalize_clips(
+                &[id],
+                NormalizeOptions::default(),
+                &NormalizeProgress::default()
+            )
+            .is_err()
+    );
+    let mut writer = daw_media::DiskAudioWriter::new(48000).unwrap();
+    let samples = session.audio[&asset].samples.clone();
+    writer.write(&samples).unwrap();
+    let disk = writer
+        .finish(48000, session.audio[&asset].metadata.clone())
+        .unwrap();
+    session.audio.insert(asset, disk);
+    let disk_edits = session
+        .normalize_clips(
+            &[id],
+            NormalizeOptions::default(),
+            &NormalizeProgress::default(),
+        )
+        .unwrap();
+    assert_eq!(disk_edits.len(), 1);
+    let before = session.project.clone();
+    let mut invalid = session.project.tracks[0].clips[0].clone();
+    invalid.id = daw_core::Id::new_v4();
+    invalid.start_frame = 48000;
+    invalid.length_frames = 100;
+    session.project.tracks[0].clips.push(invalid.clone());
+    assert!(
+        session
+            .normalize_clips(
+                &[id, invalid.id],
+                NormalizeOptions {
+                    mode: NormalizeMode::Integrated,
+                    target: -23.0,
+                    allow_increase: true
+                },
+                &NormalizeProgress::default()
+            )
+            .is_err()
+    );
+    assert_eq!(
+        session.project.tracks[0].clips[0],
+        before.tracks[0].clips[0]
+    );
+}

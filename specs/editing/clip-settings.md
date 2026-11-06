@@ -26,7 +26,7 @@ Name, source, and gain are labels. Transpose is a label as well. Labels and valu
 | --- | --- |
 | Name | Double-click to edit. Enter commits a trimmed, nonempty name with no control characters through `Edit::SetClipName`. |
 | Source | Read-only file name in the secondary color. MIDI clips show “MIDI pattern”. The tooltip shows the path. |
-| Gain | The label shows the value with a dB suffix, for example `0.0 dB`. Drag vertically in 0.1 dB steps. Shift uses 0.01 dB steps. Horizontal motion does not change the value. Double-click edits the number through `faders::format_gain` / `parse_gain`, including −∞. Typed and dragged values clamp to `SILENT_GAIN_DB..=12`. Dragging up from silence starts at −60 dB. |
+| Gain | The label shows the value with a dB suffix, for example `0.0 dB`. Drag vertically in 0.1 dB steps. Shift uses 0.01 dB steps. Horizontal motion does not change the value. Double-click edits the number through `faders::format_gain` / `parse_gain`, including −∞. Typed and dragged values clamp to `SILENT_GAIN_DB..=CLIP_MAX_GAIN_DB` (+60 dB). Dragging up from silence starts at −60 dB. |
 | Transpose | The label shows the value with a semitones suffix, for example `0 semitones`. Drag vertically in 1 semitone steps. Shift uses 0.1 semitone steps and keeps the unused fraction until it reaches a whole semitone. Horizontal motion does not change the value. Double-click edits a whole number from −48 to +48. Dragging clamps to that range. Typed values outside it are rejected. |
 
 For multiple selected clips, Name and Source are disabled and show the literal “Multiple clips selected”, including when their values match. While idle, Gain and Transpose show their common value or “Multiple values” when they differ. These numeric fields reuse the same label, drag functions, parser, steps, bounds and inline editor as a single clip. Dragging applies a common signed offset to each clip's value: dB for Gain and whole semitones for Transpose. Typed commits still set one absolute value across the selection; mixed fields start their text editor from the primary value.
@@ -59,4 +59,4 @@ Undo/redo retains complete prepared snapshots. Open, Save As, rate/engine change
 
 ## Validation
 
-Reject an empty or control-character name, a non-finite gain outside silence to +12 dB, and a transpose outside −48..=48. A rejected edit leaves the project unchanged.
+Reject an empty or control-character name, a non-finite gain or a gain outside silence to +60 dB, and a transpose outside −48..=48. A rejected edit leaves the project unchanged.

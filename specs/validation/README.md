@@ -4,6 +4,46 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Clip gain normalization — 2026-11-06
+
+Added shared Clip/context-menu normalization in Timeline and Editor with sample
+peak, true peak and integrated loudness modes, a target and attenuation-only
+option. Workers analyze each arranged dry source section separately using shared
+prepared-audio mapping and bounded readers. Results publish as one gain-edit
+batch. Progress and Cancel stay in the status bar; only errors open a report.
+Clip Gain now accepts up to +60 dB; the previous +12 dB clip limit is superseded.
+Source PCM, clip mapping, track effects and other gain limits remain unchanged.
+
+Focused checks passed:
+
+- Two offline analyzer tests: stereo calibration at all six project rates,
+  sample peak, true-peak tail flush, silence, invalid input and undefined loudness.
+- Two project workflow tests: separate gains for shared-source trims and loop
+  phases, current mix independence, attenuation-only behavior, silence, immutable
+  source files, save/open, prepared stretch/transpose, disk PCM, missing sources,
+  unsupported gain, cancellation and atomic failure.
+- Four normalization UI tests: actual dialog submission in Timeline/Editor,
+  grouped Undo, menu/modal guards, error routing, no completion modal, percentage
+  progress and status-bar cancellation retaining the receiver until acknowledgement.
+- All 22 focused clip-settings checks passed with the +60 dB range.
+
+An initial workspace run caught a status-text assertion that depended on whether
+the worker had reached the percentage phase. The assertion now accepts both
+phases regardless of capitalization; the full debug rerun passed.
+
+Workspace checks use Cargo `--locked --offline`:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS with debug assertions enabled.
+- `cargo test --workspace --release`: PASS.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: PASS.
+- Documentation links (290 local targets) and `git diff --check`: PASS.
+
+These are automated checks. Native menu/dialog appearance, pointer interaction,
+physical playback and Windows/Linux checks were not performed. True-peak analysis
+reuses the existing Loudness Meter estimate; no broadcast conformance is claimed.
+
 ## Mixer Return and Master visibility toggles — 2026-11-06
 
 Replaced the Returns text button with the Return track's arrow icon and shared

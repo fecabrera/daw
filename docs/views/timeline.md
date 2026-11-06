@@ -54,10 +54,12 @@ Audio file drags over MIDI tracks or group buses show the invalid-action cursor.
 
 ## Clip menu
 
+Use [Normalize gain](../editing/normalize-gain.md) to set each selected audio clip’s peak or loudness level before effects.
+
 Open **Clip** in the macOS menu bar or the Windows/Linux application menu. Its actions have three groups, separated by lines:
 
 - **Import clip**, **Add MIDI pattern**.
-- **Split at playhead**, **Stem-separation**.
+- **Split at playhead**, **Stem-separation**, **Normalize gain**.
 - **Edit clip**, **Disable clip**, **Delete clip**.
 
 Choose **Add MIDI pattern** with a MIDI track selected to place a new pattern at the playhead. It follows the same placement rules as other new clips: covered clips are trimmed, split, or removed. Undo restores the previous arrangement. Import clip accepts WAV, MP3, AAC-LC, and Opus audio. Use Command+Shift+I on macOS or Ctrl+Shift+I on Windows/Linux to import a clip.
@@ -115,7 +117,7 @@ Horizontal scrolling moves the timeline while track controls stay fixed. Pinch z
 
 In Timeline, use the headphone-file button in the right toolbar to open Clip settings beside it. The panel can stay open with the Effects or Chords catalog on the left. Closing it gives its space back to the timeline. When the effects lane is hidden, the right toolbar extends to the status bar. Leaving Timeline closes this panel and discards any unconfirmed text. Audio tracks also offer these controls under **Clip options** in [Editor](editor.md).
 
-Select a clip to edit its name, gain, and transpose. The source row shows the audio file name, or MIDI pattern for a MIDI clip. These rows use the smaller catalog text, and the values are aligned to the left. The source is dimmed because it cannot be edited. A long name is shortened with an ellipsis; hover the source to see the full path. Gain is shown in dB, from silence (−∞ dB) to +12 dB, for example 0.0 dB. Transpose is shown in semitones, from −48 to +48, for example 0 semitones.
+Select a clip to edit its name, gain, and transpose. The source row shows the audio file name, or MIDI pattern for a MIDI clip. These rows use the smaller catalog text, and the values are aligned to the left. The source is dimmed because it cannot be edited. A long name is shortened with an ellipsis; hover the source to see the full path. Gain is shown in dB, from silence (−∞ dB) to +60 dB, for example 0.0 dB. Transpose is shown in semitones, from −48 to +48, for example 0 semitones.
 
 Drag gain up or down in steps of 0.1 dB. Drag transpose up or down in steps of 1 semitone. Hold Shift while dragging for a finer adjustment: 0.01 dB, or 0.1 semitone. A sideways drag does not change the value. Dragging up from silence starts at −60 dB.
 

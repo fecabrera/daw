@@ -1,3 +1,5 @@
+mod normalize;
+pub use normalize::{NormalizeMode, NormalizeOptions, NormalizeProgress};
 mod background_audio;
 mod effect_warnings;
 pub use background_audio::BackgroundAudio;

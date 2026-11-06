@@ -7,24 +7,26 @@ pub enum ClipMenuAction {
     AddMidi,
     Split,
     Separate,
+    Normalize,
     Edit,
     ToggleMuted,
     Delete,
 }
 
 impl ClipMenuAction {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Import,
         Self::AddMidi,
         Self::Split,
         Self::Separate,
+        Self::Normalize,
         Self::Edit,
         Self::ToggleMuted,
         Self::Delete,
     ];
     pub const GROUPS: [&'static [Self]; 3] = [
         &[Self::Import, Self::AddMidi],
-        &[Self::Split, Self::Separate],
+        &[Self::Split, Self::Separate, Self::Normalize],
         &[Self::Edit, Self::ToggleMuted, Self::Delete],
     ];
 
@@ -34,6 +36,7 @@ impl ClipMenuAction {
             Self::AddMidi => "Add MIDI pattern",
             Self::Split => "Split at playhead",
             Self::Separate => "Stem separation",
+            Self::Normalize => "Normalize gain",
             Self::Edit => "Edit clip",
             Self::ToggleMuted => "Disable clip",
             Self::Delete => "Delete clip",
@@ -129,6 +132,9 @@ impl DawUi {
             ClipMenuAction::Split => !self
                 .clips_crossed_by_playhead(&self.menu_clip_targets(clip.id))
                 .is_empty(),
+            ClipMenuAction::Normalize => {
+                self.normalization_targets_are_audio(&self.menu_clip_targets(clip.id))
+            }
             ClipMenuAction::Separate => {
                 self.view_mode == ViewMode::Timeline
                     && self.separation_enabled()
@@ -174,6 +180,9 @@ impl DawUi {
         match action {
             ClipMenuAction::Split => self.split_at(&self.menu_clip_targets(id)),
             ClipMenuAction::Separate => self.separate_clip(id),
+            ClipMenuAction::Normalize => {
+                self.normalize_dialog = Some(normalize::Draft::new(self.menu_clip_targets(id)));
+            }
             ClipMenuAction::Edit => self.open_clip_editor(id, track, ctx),
             ClipMenuAction::ToggleMuted => self.edit(Edit::SetClipMuted {
                 clip_id: id,

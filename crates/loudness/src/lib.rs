@@ -1,5 +1,7 @@
 //! Transparent stereo loudness analysis. Prepare and retire workers outside audio.
 mod filter;
+mod offline;
+pub use offline::{MeasureMode, OfflineAnalyzer};
 mod statistics;
 use daw_unit_core::{
     BandMeter, EffectUnit, LevelMonitor, LoudnessMeter, LoudnessReading, LoudnessSettings,

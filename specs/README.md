@@ -51,6 +51,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Project undo and redo](editing/undo-redo.md).
 - [Component editing and registration](editing/components.md).
 - [Clip settings](editing/clip-settings.md).
+- [Clip gain normalization](editing/normalize-gain.md).
 - [Chord catalog](editing/chords.md).
 - [View menu panels](views/view-menu.md): shared panel toggles, view availability and checked states.
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).

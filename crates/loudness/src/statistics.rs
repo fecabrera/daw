@@ -16,12 +16,12 @@ pub fn db(a: f64) -> f32 {
         f32::NEG_INFINITY
     }
 }
-struct Distribution {
+pub(crate) struct Distribution {
     bins: Box<[u64]>,
     sums: Box<[f64]>,
 }
 impl Distribution {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             bins: vec![0; BINS].into_boxed_slice(),
             sums: vec![0.0; BINS].into_boxed_slice(),
@@ -31,7 +31,7 @@ impl Distribution {
         self.bins.fill(0);
         self.sums.fill(0.0);
     }
-    fn add(&mut self, p: f64) {
+    pub(crate) fn add(&mut self, p: f64) {
         let l = lufs(p);
         if l >= -70.0 {
             let i = ((l + 100.0) * 100.0).round().clamp(0.0, (BINS - 1) as f32) as usize;
@@ -43,7 +43,7 @@ impl Distribution {
         let i = ((t + 100.0) * 100.0).ceil().clamp(0.0, BINS as f32) as usize;
         (self.bins[i..].iter().sum(), self.sums[i..].iter().sum())
     }
-    fn gated(&self, relative: f32) -> (f32, f32) {
+    pub(crate) fn gated(&self, relative: f32) -> (f32, f32) {
         let (n, sum) = self.above(-70.0);
         if n == 0 {
             return (f32::NEG_INFINITY, -70.0);

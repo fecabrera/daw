@@ -12,6 +12,7 @@ mod audio_edits;
 mod audio_preparation;
 mod clip_lane;
 mod clip_menu;
+mod normalize;
 mod unit_power;
 pub use clip_menu::ClipMenuAction;
 mod audio_editor;
@@ -360,6 +361,7 @@ enum Job {
     Saved(daw_project::SavedSession),
     Exported(Vec<String>),
     Separated(daw_project::PreparedSeparation),
+    Normalized(Vec<Edit>),
     ModelValidated(Result<daw_project::SeparationModelInfo, String>),
     CollectionPreflight(
         Id,
@@ -936,6 +938,8 @@ pub struct DawUi {
     collection_input_ready: bool,
     collection_focus: Option<egui::Id>,
     separation_status: Option<separation::Status>,
+    normalize_dialog: Option<normalize::Draft>,
+    normalize_progress: Option<daw_project::NormalizeProgress>,
     overwrite_settings: ExportSettings,
     allow_close: bool,
     native_menu: bool,
@@ -1075,6 +1079,8 @@ impl Default for DawUi {
             collection_input_ready: true,
             collection_focus: None,
             separation_status: None,
+            normalize_dialog: None,
+            normalize_progress: None,
             overwrite_settings: ExportSettings::default(),
             allow_close: false,
             native_menu: false,
@@ -1576,6 +1582,7 @@ impl DawUi {
                     self.unsaved_prompt = false;
                     self.perform_pending();
                 }
+                Ok(Job::Normalized(edits)) => self.finish_normalization(Ok(edits)),
                 Ok(Job::Separated(prepared)) => {
                     if let Some(status) = &mut self.separation_status {
                         if status
@@ -1602,7 +1609,9 @@ impl DawUi {
                     }
                 }
                 Err(e) => {
-                    if self.separation_models.running() {
+                    if self.normalize_progress.is_some() {
+                        self.finish_normalization(Err(e));
+                    } else if self.separation_models.running() {
                         self.finish_model_validation(Err(e));
                     } else if let Some(status) = &mut self.collection_status {
                         Self::collection_error(status, e);
@@ -2328,6 +2337,7 @@ impl DawUi {
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
                         && self.separation_status.is_none()
+                        && self.normalize_dialog.is_none()
                         && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
@@ -2340,7 +2350,8 @@ impl DawUi {
                 if self.job.is_some() {
                     ui.spinner();
                     ui.label(
-                        self.collection_status_text()
+                        self.normalization_status_text()
+                            .or_else(|| self.collection_status_text())
                             .or_else(|| {
                                 self.separation_status
                                     .as_ref()
@@ -2352,9 +2363,10 @@ impl DawUi {
                         if let Some(cancel) = &self.settings_cancel {
                             cancel.store(true, Ordering::Relaxed);
                         }
-                        // Keep separation and model-check receivers until acknowledgement.
-                        // Both publication paths reject cancelled results.
+                        // Keep normalization, separation and model-check receivers until
+                        // acknowledgement. Their publication paths reject cancelled results.
                         if self.separation_status.is_none()
+                            && self.normalize_progress.is_none()
                             && self.collection_status.is_none()
                             && !self.separation_models.running()
                         {
@@ -2396,6 +2408,7 @@ impl DawUi {
                             && self.overwrite.is_none()
                             && self.export_status.is_none()
                             && self.separation_status.is_none()
+                            && self.normalize_dialog.is_none()
                             && self.collection_status.is_none()
                             && self.project_name_dialog.is_none()
                             && self.project_settings.is_none()
@@ -2421,6 +2434,7 @@ impl DawUi {
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
                         && self.separation_status.is_none()
+                        && self.normalize_dialog.is_none()
                         && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
@@ -2498,6 +2512,7 @@ impl DawUi {
         if self.job.is_none()
             && self.export_status.is_none()
             && self.separation_status.is_none()
+            && self.normalize_dialog.is_none()
             && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
@@ -2713,6 +2728,7 @@ impl DawUi {
             && self.export_dialog.is_none()
             && self.export_status.is_none()
             && self.separation_status.is_none()
+            && self.normalize_dialog.is_none()
             && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
@@ -5792,6 +5808,7 @@ impl DawUi {
         {
             self.error = None;
         }
+        self.show_normalization(ctx);
         self.show_collection(ctx);
         if let Some(status) = &self.separation_status
             && status.show(ctx)
@@ -5840,6 +5857,7 @@ mod tests {
     mod modulation_lanes;
     mod multiband_compressor;
     mod multiband_eq_reorder;
+    mod normalize;
     mod placement_overwrite;
     mod project_settings;
     mod resize_neighbors;

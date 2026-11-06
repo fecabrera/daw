@@ -54,6 +54,8 @@ Zoom out in either audio or MIDI content to see other clips on that track. MIDI 
 
 ## Audio clips
 
+Use [Normalize gain](../editing/normalize-gain.md) from an audio clip’s context menu to adjust its dry peak or loudness level. Selected audio clips are normalized individually.
+
 The lower audio editor shows the selected track’s clips, including when no clip is selected. Clearing selection keeps the current zoom and scroll. Clips outside the visible range remain available by zooming out or scrolling. The lower editor has its own ruler, horizontal zoom, and scroll. Zoom and scroll remain available without a selected clip; Fit clip requires one. Single-click an overview clip to select it and scroll the lower editor to its start without changing zoom. Double-click to fit it to the editor width. Zoom out to see other clips on the same track. Both rulers follow the project playhead. Mono uses one waveform lane; stereo shows both channels. Trim offsets, loop phases, and prepared stretch or transpose audio match Timeline. Overview clip clicks keep the overview viewport unchanged. Click a waveform in the lower editor to select its clip and update Clip options without changing either viewport’s zoom or scroll. Right-click a waveform to open the same clip context menu as Timeline. Opening the menu keeps the current selection, zoom, and scroll; actions use the clicked clip or its selected group. Missing recordings show “Missing source”.
 
 Double-click a lower waveform clip header to select and fit that clip. Double-clicking the waveform body keeps the current zoom and scroll.

@@ -319,7 +319,7 @@ impl super::DawUi {
                                         .map(|clip| f64::from(clip.gain_db)),
                                     f64::from(value) - f64::from(gain_reference),
                                     f64::from(daw_core::SILENT_GAIN_DB),
-                                    f64::from(faders::MAX_GAIN_DB),
+                                    f64::from(daw_core::CLIP_MAX_GAIN_DB),
                                 );
                                 DragChange::add(&mut self.clip_settings_change, clip.id, &ids, Field::Gain, delta);
                                 ui.ctx().request_repaint();
@@ -327,7 +327,7 @@ impl super::DawUi {
                                     if audible_gain && daw_core::linear_gain(current) == 0.0 {
                                         current
                                     } else {
-                                        faders::clamp_gain((f64::from(current) + delta) as f32)
+                                        clamp_clip_gain((f64::from(current) + delta) as f32)
                                     }
                                 }));
                             }
@@ -436,7 +436,7 @@ impl super::DawUi {
                             },
                             Field::Gain => match faders::parse_gain(&current.text) {
                                 Some(value) => {
-                                    let value = faders::clamp_gain(value);
+                                    let value = clamp_clip_gain(value);
                                     commands.extend(gain_edits(&clips, |_| value));
                                 }
                                 None => error = Some("Gain must be a finite number or −∞"),
@@ -706,7 +706,7 @@ fn drag_gain(ui: &Ui, response: &Response, current: f32) -> Option<f32> {
         origin = f64::from(AUDIBLE_GAIN_FLOOR_DB);
     }
     let adjusted = ((origin - f64::from(delta) * step) * 100.0).round() / 100.0;
-    let value = faders::clamp_gain(adjusted as f32);
+    let value = clamp_clip_gain(adjusted as f32);
     (value != current).then_some(value)
 }
 
@@ -794,4 +794,8 @@ fn parse_transpose(text: &str) -> Option<i8> {
     text.parse::<i8>()
         .ok()
         .filter(|value| (-TRANSPOSE_LIMIT..=TRANSPOSE_LIMIT).contains(value))
+}
+
+fn clamp_clip_gain(db: f32) -> f32 {
+    db.clamp(daw_core::SILENT_GAIN_DB, daw_core::CLIP_MAX_GAIN_DB)
 }

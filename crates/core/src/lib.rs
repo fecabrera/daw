@@ -345,7 +345,8 @@ fn is_zero_transpose(transpose: &i8) -> bool {
     *transpose == 0
 }
 
-const CLIP_MAX_GAIN_DB: f32 = 12.0;
+/// Maximum stored clip gain, including offline normalization.
+pub const CLIP_MAX_GAIN_DB: f32 = 60.0;
 const CLIP_TRANSPOSE_LIMIT: i8 = 48;
 
 fn clip_name(name: &str) -> Result<&str> {
@@ -698,7 +699,7 @@ impl Project {
             return Err(invalid("Clip name must contain visible text"));
         }
         if !c.gain_db.is_finite() || !(SILENT_GAIN_DB..=CLIP_MAX_GAIN_DB).contains(&c.gain_db) {
-            return Err(invalid("Clip gain must be from silence to +12 dB"));
+            return Err(invalid("Clip gain must be from silence to +60 dB"));
         }
         if !(-CLIP_TRANSPOSE_LIMIT..=CLIP_TRANSPOSE_LIMIT).contains(&c.transpose) {
             return Err(invalid("Clip transpose must be from -48 to +48 semitones"));
@@ -1733,7 +1734,7 @@ mod tests {
             project
                 .edit(Edit::SetClipGain {
                     clip_id,
-                    gain_db: 12.5,
+                    gain_db: 60.5,
                 })
                 .is_err()
         );

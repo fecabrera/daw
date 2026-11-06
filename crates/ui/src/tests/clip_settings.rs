@@ -355,7 +355,10 @@ fn right_clip_settings_coexists_with_catalogs_and_edits_the_selected_clip() {
     assert_eq!(app.session.project.tracks[0].clips[0].gain_db, -6.0);
     let gain = app.effects_bounds.clip_gain;
     replace_field(&mut app, &ctx, gain, "99", egui::Key::Enter);
-    assert_eq!(app.session.project.tracks[0].clips[0].gain_db, 12.0);
+    assert_eq!(
+        app.session.project.tracks[0].clips[0].gain_db,
+        daw_core::CLIP_MAX_GAIN_DB
+    );
     let transpose = app.effects_bounds.clip_transpose;
     replace_field(&mut app, &ctx, transpose, "12", egui::Key::Enter);
     assert_eq!(app.session.project.tracks[0].clips[0].transpose, 12);
@@ -363,7 +366,10 @@ fn right_clip_settings_coexists_with_catalogs_and_edits_the_selected_clip() {
     app.dirty = false;
     let gain = app.effects_bounds.clip_gain;
     replace_field(&mut app, &ctx, gain, "nope", egui::Key::Enter);
-    assert_eq!(app.session.project.tracks[0].clips[0].gain_db, 12.0);
+    assert_eq!(
+        app.session.project.tracks[0].clips[0].gain_db,
+        daw_core::CLIP_MAX_GAIN_DB
+    );
     assert!(app.error.is_some());
     assert!(!app.dirty);
     dismiss_error(&mut app, &ctx);
@@ -773,14 +779,14 @@ fn clip_settings_group_gain_drag_reuses_steps_bounds_and_one_undo_gesture() {
     let gain = app.effects_bounds.clip_gain;
     replace_field(&mut app, &ctx, gain, "99", egui::Key::Enter);
     for clip in app.selected_clip_snapshots() {
-        assert_eq!(clip.clip.gain_db, 12.0);
+        assert_eq!(clip.clip.gain_db, daw_core::CLIP_MAX_GAIN_DB);
     }
 }
 
 #[test]
 fn clip_settings_group_gain_limit_preserves_offsets_and_reverses_without_lost_motion() {
     let (mut app, ctx, _) = group_settings_fixture();
-    app.session.project.tracks[1].clips[0].gain_db = 11.0;
+    app.session.project.tracks[1].clips[0].gain_db = daw_core::CLIP_MAX_GAIN_DB - 1.0;
     app.history = None;
     frame(&mut app, &ctx, vec![]);
     let original = app.session.project.clone();
@@ -788,14 +794,20 @@ fn clip_settings_group_gain_limit_preserves_offsets_and_reverses_without_lost_mo
     pointer(&mut app, &ctx, point, true, false);
     pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 40.0), false);
     assert_eq!(app.session.project.tracks[0].clips[0].gain_db, 1.0);
-    assert_eq!(app.session.project.tracks[1].clips[0].gain_db, 12.0);
+    assert_eq!(
+        app.session.project.tracks[1].clips[0].gain_db,
+        daw_core::CLIP_MAX_GAIN_DB
+    );
     assert_drag_label(&mut app, &ctx, "+1.00 dB", true);
     pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 60.0), false);
     assert_eq!(app.session.project.tracks[0].clips[0].gain_db, 1.0);
     assert_drag_label(&mut app, &ctx, "+1.00 dB", true);
     pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 50.0), false);
     assert_eq!(app.session.project.tracks[0].clips[0].gain_db, 0.0);
-    assert_eq!(app.session.project.tracks[1].clips[0].gain_db, 11.0);
+    assert_eq!(
+        app.session.project.tracks[1].clips[0].gain_db,
+        daw_core::CLIP_MAX_GAIN_DB - 1.0
+    );
     pointer(&mut app, &ctx, point - Vec2::new(0.0, 50.0), false, false);
     assert_eq!(app.session.project, original);
 }

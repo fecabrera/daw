@@ -70,6 +70,8 @@ need a selection retain their usual empty-selection prompts.
 
 ## Workflows and limits
 
+- [Normalize clip gain](editing/normalize-gain.md): set audio clips to individual peak or loudness targets.
+
 - [Modulation](modulation/README.md) and [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).
 - [Track sends and Returns](editing/track-sends.md): shared effects and parallel routing.
 - [Track groups](editing/track-groups.md): shared processing buses and nested track organization.
