@@ -511,6 +511,60 @@
         "plugins"
       ],
       "reason": "Exact upstream runtime copyright and permission text retained in common packaged notices. Unused target notices may be bundled conservatively."
+    },
+    {
+      "component": "sctk-adwaita-0.10.1",
+      "notice": "crates/ui/assets/licenses/sctk-adwaita-0.10.1-LICENSE.txt",
+      "sha256": "65fc947f4bac882a2cd104ef73c246b1b037059df9f2b3a58b7f77f0b9e56071",
+      "deliverables": [
+        "desktop"
+      ],
+      "reason": "Linux Wayland Adwaita decoration runtime and embedded fallback font notice."
+    },
+    {
+      "component": "ab_glyph-0.2.32",
+      "notice": "crates/ui/assets/licenses/ab_glyph-0.2.32-LICENSE.txt",
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+      "deliverables": [
+        "desktop"
+      ],
+      "reason": "Linux Wayland Adwaita decoration runtime and embedded fallback font notice."
+    },
+    {
+      "component": "ab_glyph_rasterizer-0.1.10",
+      "notice": "crates/ui/assets/licenses/ab_glyph_rasterizer-0.1.10-LICENSE.txt",
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+      "deliverables": [
+        "desktop"
+      ],
+      "reason": "Linux Wayland Adwaita decoration runtime and embedded fallback font notice."
+    },
+    {
+      "component": "owned_ttf_parser-0.25.1",
+      "notice": "crates/ui/assets/licenses/owned_ttf_parser-0.25.1-LICENSE.txt",
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+      "deliverables": [
+        "desktop"
+      ],
+      "reason": "Linux Wayland Adwaita decoration runtime and embedded fallback font notice."
+    },
+    {
+      "component": "ttf-parser-0.25.1",
+      "notice": "crates/ui/assets/licenses/ttf-parser-0.25.1-LICENSE.txt",
+      "sha256": "f3c9fe731c701ed77fd5fbaac573872af04dc5869385eb9bd5e3c73c42713814",
+      "deliverables": [
+        "desktop"
+      ],
+      "reason": "Linux Wayland Adwaita decoration runtime and embedded fallback font notice."
+    },
+    {
+      "component": "sctk-adwaita-0.10.1-Cantarell",
+      "notice": "crates/ui/assets/licenses/Cantarell-OFL.txt",
+      "sha256": "d25c8dda67c2dd6a00093855a3c1beffd7473c76c798feb31840317ad9892e05",
+      "deliverables": [
+        "desktop"
+      ],
+      "reason": "Linux Wayland Adwaita decoration runtime and embedded fallback font notice."
     }
   ]
 }

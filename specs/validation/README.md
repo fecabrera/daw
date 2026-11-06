@@ -4,6 +4,27 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Linux Wayland Adwaita decorations — 2026-11-05
+
+The Linux-only desktop dependency enables Winit's `wayland-csd-adwaita`
+feature. This supplies the Adwaita fallback frame with title text when the
+compositor does not provide decorations. X11 and other platforms keep their
+existing window setup. The default feature sets remain disabled. The lockfile
+adds only the Adwaita renderer and four font-processing dependencies.
+Crate licenses and the embedded Cantarell font notice are included through the
+existing UI notice packaging path and runtime notice inventory.
+
+`cargo check -p daw-desktop` passed on Linux. The initial sandbox attempt
+could not reach crates.io; the approved retry downloaded the new dependencies
+and completed. `cargo fmt --all --check` and `git diff --check` passed.
+`cargo tree -p daw-desktop -e features -i sctk-adwaita --locked --offline`
+confirmed the feature is enabled through the desktop dependency.
+The desktop packaging test was skipped because `zip` is unavailable.
+`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p test_package_plugins.py`
+passed (15 tests, one skipped), including runtime-notice hash retention.
+Native Wayland/X11 appearance, title text, scaling, dragging,
+resizing and window buttons remain unverified. macOS/Windows checks were not run.
+
 ## Linux default audio device label — 2026-11-05
 
 Linux input/output selectors now show **ALSA default** in place of **System default**.

@@ -72,6 +72,8 @@ On Windows, **Appearance > Titlebar > Custom** combines the menu, project title,
 
 Changes apply on this computer and are retained across restarts. Close retains your choices. These preferences are separate from Project Settings.
 
+On Linux, the desktop supplies window decorations where supported. Wayland uses an Adwaita-style titlebar when the desktop does not supply one. This titlebar does not follow all GTK theme customizations.
+
 ## Audio devices
 
 The main **Settings** window exposes **Output device** and **Input device** under **Playback**. Select an output device and, if needed, save an input-device choice. **ALSA default** on Linux uses the ALSA default device when the next stream opens. It can differ from the desktop audio output. Select **pipewire** or **pulse** when available to use the desktop audio service. On macOS and Windows, **System default** uses the operating system's default device. **Refresh devices** updates the list. An unavailable saved device is marked in the list. Output selection tests the replacement before saving it. Failure keeps the previous device and shows an error in Settings; success stops playback and keeps the playhead. Input selection saves immediately without interrupting playback.

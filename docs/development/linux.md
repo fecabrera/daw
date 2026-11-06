@@ -11,6 +11,8 @@ cargo build -p daw-desktop
 cargo run -p daw-desktop
 ```
 
+On Wayland, the app uses an Adwaita-style titlebar when the desktop does not provide window decorations. X11 uses the window manager's decorations.
+
 Create a portable ZIP with `sh tools/package_linux.sh release`. Use `debug` for a debug build. The archive is `target/<profile>/DAW-linux-x64.zip` on x64 or `DAW-linux-arm64.zip` on ARM64. Extract it and run `DAW/daw-desktop`. Keep `DAW/LICENSE.txt` and `DAW/licenses` with the executable. The archive preserves executable permissions and includes the same dependency notices as the other packages. It does not bundle system libraries: the destination needs compatible C/C++ runtime, ALSA, graphics libraries, and a desktop portal for dialogs.
 
 Desktop downloads also contain the exact [corresponding source and relinking

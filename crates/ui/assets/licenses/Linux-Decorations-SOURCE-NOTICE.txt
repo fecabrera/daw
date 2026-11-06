@@ -1,0 +1,14 @@
+Linux Wayland window decorations
+
+The Linux desktop enables Winit 0.30.13 wayland-csd-adwaita.
+The following crate license texts are retained beside this notice:
+sctk-adwaita 0.10.1: https://crates.io/crates/sctk-adwaita/0.10.1
+ab_glyph 0.2.32: https://crates.io/crates/ab_glyph/0.2.32
+ab_glyph_rasterizer 0.1.10: https://crates.io/crates/ab_glyph_rasterizer/0.1.10
+owned_ttf_parser 0.25.1: https://crates.io/crates/owned_ttf_parser/0.25.1
+ttf-parser 0.25.1: https://crates.io/crates/ttf-parser/0.25.1
+
+The embedded Cantarell-Regular.ttf is supplied by sctk-adwaita 0.10.1.
+Its copyright and SIL Open Font License 1.1 are retained in Cantarell-OFL.txt.
+Copyright statements were read from the embedded font name table.
+Font upstream: https://gitlab.gnome.org/GNOME/cantarell-fonts
