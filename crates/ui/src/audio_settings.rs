@@ -44,9 +44,14 @@ enum Action {
     Cancel,
 }
 
+#[cfg(target_os = "linux")]
+const DEFAULT_DEVICE_LABEL: &str = "ALSA default";
+#[cfg(not(target_os = "linux"))]
+const DEFAULT_DEVICE_LABEL: &str = "System default";
+
 fn device_label(selection: Option<&DeviceId>, devices: &[DeviceInfo]) -> String {
     let Some(selection) = selection else {
-        return "System default".into();
+        return DEFAULT_DEVICE_LABEL.into();
     };
     let suffix = if selection.occurrence > 0 {
         format!(" ({})", selection.occurrence + 1)
@@ -79,7 +84,7 @@ pub(super) fn device_row(
                 .selected_text(device_label(selected.as_ref(), devices))
                 .width(ui.available_width())
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(selected, None, "System default");
+                    ui.selectable_value(selected, None, DEFAULT_DEVICE_LABEL);
                     for device in devices {
                         ui.selectable_value(
                             selected,
@@ -500,8 +505,8 @@ mod tests {
             &shapes,
             "Changing output stops playback. Input selection is saved for future recording; input monitoring is not available.",
         );
-        // The first System default dropdown belongs to Output device.
-        let output_point = point(&shapes, "System default");
+        // The first default-device dropdown belongs to Output device.
+        let output_point = point(&shapes, DEFAULT_DEVICE_LABEL);
         let button = |position, pressed| egui::Event::PointerButton {
             pos: position,
             button: egui::PointerButton::Primary,

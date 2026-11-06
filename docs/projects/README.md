@@ -74,7 +74,7 @@ Changes apply on this computer and are retained across restarts. Close retains y
 
 ## Audio devices
 
-The main **Settings** window exposes **Output device** and **Input device** under **Playback**. Select an output device and, if needed, save an input-device choice. **System default** uses the operating system's default device when the next stream opens. **Refresh devices** updates the list. An unavailable saved device is marked in the list. Output selection tests the replacement before saving it. Failure keeps the previous device and shows an error in Settings; success stops playback and keeps the playhead. Input selection saves immediately without interrupting playback.
+The main **Settings** window exposes **Output device** and **Input device** under **Playback**. Select an output device and, if needed, save an input-device choice. **ALSA default** on Linux uses the ALSA default device when the next stream opens. It can differ from the desktop audio output. Select **pipewire** or **pulse** when available to use the desktop audio service. On macOS and Windows, **System default** uses the operating system's default device. **Refresh devices** updates the list. An unavailable saved device is marked in the list. Output selection tests the replacement before saving it. Failure keeps the previous device and shows an error in Settings; success stops playback and keeps the playhead. Input selection saves immediately without interrupting playback.
 
 Input selection is saved for future recording. The app does not yet record or monitor input.
 

@@ -12,9 +12,9 @@ Application Settings > Playback owns machine-local input/output device identitie
 
 ## Device controls and stream construction
 
-Output device and input device each offer System default and discovered devices from the default CPAL host. Discovery runs on a named control worker and returns one result through a bounded channel. Refresh does not replace the accepted stream or quality defaults. Input selection is reserved for future recording: it does not open capture, request microphone access, record or monitor input.
+Output device and input device each offer ALSA default on Linux (System default on other platforms) and discovered devices from the default CPAL host. Both the selected value and popup use this platform-specific label. Linux resolves the ALSA default PCM, which can differ from the desktop audio service; discovered pipewire and pulse names remain unchanged. Discovery runs on a named control worker and returns one result through a bounded channel. Refresh does not replace the accepted stream or quality defaults. Input selection is reserved for future recording: it does not open capture, request microphone access, record or monitor input.
 
-CPAL 0.16 exposes names but no portable persistent device identifiers. Store name and occurrence within each direction to distinguish duplicate names. Identity depends on enumeration order among equal names. Device changes/renames can require reselection. System default resolves at stream creation; an open stream does not move automatically.
+CPAL 0.16 exposes names but no portable persistent device identifiers. Store name and occurrence within each direction to distinguish duplicate names. Identity depends on enumeration order among equal names. Device changes/renames can require reselection. The default selection resolves at stream creation; an open stream does not move automatically.
 
 Stream construction receives only the device identities from app preferences. Resolve quality from `RenderPlan.project`, including when probing an output device replacement. Require the project's advertised output sample format; report unsupported formats with a Project Settings/device-selection error rather than silently substituting a bit depth. Distinguish signed/unsigned integer and float labels. Driver mixing/conversion can still use a different physical hardware format.
 

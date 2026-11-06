@@ -4,6 +4,18 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Linux default audio device label — 2026-11-05
+
+Linux input/output selectors now show **ALSA default** in place of **System default**.
+Discovered device names, including `pipewire` and `pulse`, remain unchanged.
+Other platforms retain **System default**. Device resolution and saved preferences
+are unchanged. The user guide and audio device specification describe the distinction.
+
+Checks: `cargo fmt --all --check` and `git diff --check` passed.
+`cargo test -p daw-ui audio_settings::tests::main_settings_selects_devices_without_editing_quality_defaults --locked` passed (one test).
+The existing egui interaction test covers device selection with the platform label.
+Native UI and audio-device checks were not run for this label change.
+
 ## Saved time signature and live grid preview — 2026-11-05
 
 Added a project-wide positive numerator/denominator setting, defaulting to 4/4
