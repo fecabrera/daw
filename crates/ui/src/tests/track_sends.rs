@@ -598,10 +598,15 @@ fn mixer_returns_toggle_is_right_aligned_and_only_changes_presentation() {
     app.select_track(destination, false);
     let before = app.session.project.clone();
     frame(&mut app, &ctx, vec![]);
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert_eq!(
+        app.mixer_returns_bounds.size(),
+        Vec2::splat(icons::TOOLBAR_BUTTON_SIZE)
+    );
+    assert_eq!(app.mixer_returns_bounds.size(), app.metronome_bounds.size());
     assert!(app.mixer_returns_visible && app.mixer_bounds.contains_key(&destination));
     let master = app.master_bounds;
-    let point = label(&shapes, "Returns");
+    let point = app.mixer_returns_bounds.center();
     assert!(point.x > 1180.0 && point.x > app.tempo_bounds.right());
     for pressed in [true, false] {
         frame(
@@ -618,15 +623,16 @@ fn mixer_returns_toggle_is_right_aligned_and_only_changes_presentation() {
     app.view_mode = ViewMode::Timeline;
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     assert!(app.lane_bounds.contains_key(&destination));
+    assert_eq!(app.mixer_returns_bounds, Rect::NOTHING);
     assert!(
         !shapes
             .iter()
             .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Returns"))
     );
     app.view_mode = ViewMode::Mixer;
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     assert!(!app.mixer_bounds.contains_key(&destination));
-    let point = label(&shapes, "Returns");
+    let point = app.mixer_returns_bounds.center();
     for pressed in [true, false] {
         frame(
             &mut app,
@@ -792,4 +798,63 @@ fn return_selection_outlines_paint_after_shared_borders_and_pinned_dividers() {
             }
         }
     }
+}
+
+#[test]
+fn mixer_master_toggle_frees_space_and_preserves_selection_and_project() {
+    let (mut app, _) = fixture();
+    let ctx = context();
+    app.view_mode = ViewMode::Mixer;
+    let destination = app.session.project.add_return_track().unwrap();
+    app.select_master();
+    let before = app.session.project.clone();
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let master = app.master_bounds;
+    let return_strip = app.mixer_bounds[&destination];
+    assert!(app.mixer_master_visible);
+    assert!(app.mixer_returns_bounds.right() <= app.mixer_master_bounds.left());
+    assert_eq!(app.mixer_master_bounds.size(), app.metronome_bounds.size());
+    let point = app.mixer_master_bounds.center();
+    for pressed in [true, false] {
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, pressed)],
+        );
+    }
+    assert!(!app.mixer_master_visible);
+    assert_eq!(app.master_bounds, Rect::NOTHING);
+    assert!(!app.mixer_faders.contains_key(&None));
+    assert!(
+        (app.mixer_bounds[&destination].right() - return_strip.right() - master.width()).abs()
+            < 0.1
+    );
+    assert!(app.master_selected);
+    app.toggle_view_panel(ViewPanel::Returns, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.mixer_bounds.contains_key(&destination));
+    assert_eq!(app.master_bounds, Rect::NOTHING);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.master_bounds.is_positive());
+    assert_eq!(app.mixer_master_bounds, Rect::NOTHING);
+    app.set_view_mode(ViewMode::Mixer, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.mixer_master_visible);
+    assert_eq!(app.master_bounds, Rect::NOTHING);
+    let point = app.mixer_master_bounds.center();
+    for pressed in [true, false] {
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, pressed)],
+        );
+    }
+    assert!(app.mixer_master_visible);
+    assert_eq!(app.master_bounds, master);
+    assert!(!app.mixer_returns_visible);
+    assert!(app.master_selected);
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
 }

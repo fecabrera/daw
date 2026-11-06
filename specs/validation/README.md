@@ -4,6 +4,32 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Mixer Return and Master visibility toggles — 2026-11-06
+
+Replaced the Returns text button with the Return track's arrow icon and shared
+borderless toolbar control. Added the Master boom box toggle immediately after
+Returns, with a matching View-menu entry. Both start enabled and retain independent
+workspace state across view switches. Hiding Master removes its controls and hit
+targets and returns its width to the mixer banks. Selection, settings, effects,
+audio processing, Timeline visibility and project history remain unchanged.
+
+All 23 focused `mixer_` checks passed. Coverage includes toolbar geometry and order,
+Return/Master hide/show clicks, independent visibility, reclaimed bank width,
+view-switch persistence, retained selection and unchanged project/dirty state.
+The View-panel matrix includes Master and shared blocked-action checks.
+
+Checks (Cargo used `--locked --offline`):
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS with debug assertions enabled.
+- `cargo test --workspace --release`: PASS.
+- `git diff --check`: PASS.
+
+Native appearance, macOS menu interaction, display scaling and Windows/Linux
+checks were not performed. These results cover automated egui and workspace
+checks only.
+
 ## Persistent Track Mixer panel header — 2026-11-06
 
 Moved the standard Track mixer panel header and bottom divider outside the empty

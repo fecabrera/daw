@@ -342,25 +342,35 @@ impl DawUi {
         }
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         let bounds = ui.max_rect();
-        let master_left = (bounds.right() - STRIP_WIDTH).max(bounds.left());
-        let master_rect = Rect::from_min_max(Pos2::new(master_left, bounds.top()), bounds.max);
+        let master_left = if self.mixer_master_visible {
+            (bounds.right() - STRIP_WIDTH).max(bounds.left())
+        } else {
+            bounds.right()
+        };
         #[cfg(test)]
         {
-            self.master_bounds = master_rect;
+            self.master_bounds = Rect::NOTHING;
         }
-        let mut master_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt("mixer_master")
-                .max_rect(master_rect),
-        );
-        master_ui.set_clip_rect(master_rect.intersect(ui.clip_rect()));
-        let _ = self.mixer_strip(
-            &mut master_ui,
-            master_rect,
-            None,
-            master_left > bounds.left(),
-        );
-        self.master_selection(&master_ui, master_rect);
+        if self.mixer_master_visible {
+            let master_rect = Rect::from_min_max(Pos2::new(master_left, bounds.top()), bounds.max);
+            #[cfg(test)]
+            {
+                self.master_bounds = master_rect;
+            }
+            let mut master_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("mixer_master")
+                    .max_rect(master_rect),
+            );
+            master_ui.set_clip_rect(master_rect.intersect(ui.clip_rect()));
+            let _ = self.mixer_strip(
+                &mut master_ui,
+                master_rect,
+                None,
+                master_left > bounds.left(),
+            );
+            self.master_selection(&master_ui, master_rect);
+        }
 
         let return_count = self
             .session

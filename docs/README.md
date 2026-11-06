@@ -19,7 +19,7 @@ Knob tooltips show only the parameter name on the left and the current value on 
 - [Beat tracks and step editor](views/beat-editor.md): create rhythms and configure independent subtrack instruments.
 
 Use the **View** menu to show or hide Tracks, Components, Effects Catalog, Chords,
-Clip Settings, Effects Lane and Returns. Unavailable panels are greyed out. A
+Clip Settings, Effects Lane, Returns and Master. Unavailable panels are greyed out. A
 checkmark shows whether the panel is open in the current view; it updates when
 you switch views or use a toolbar toggle. The panel items sit between the view
 choices and the full-screen command, with a divider on each side. Panels that

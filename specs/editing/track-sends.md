@@ -257,12 +257,24 @@ inter-channel reset helper, including collapsed rows. They read the same stereo
 holds as Mixer; resetting in either view clears both channel holds and clipping
 without changing levels, routing, gain or project history.
 
-Mixer has a standard selected Returns toggle at the transport toolbar's right
-edge. It defaults to shown and lives in workspace UI state across view switches.
-Hiding Returns gives their bank zero width; Master stays pinned and ordinary
+Mixer has an icon-only Returns toggle at the transport toolbar's right edge.
+Use the Return track's `CornerDownLeft` icon and the shared 24-point borderless
+toolbar toggle, including selected fill, hover state and disabled behavior.
+Provide the tooltip and accessibility name `Show or hide Return tracks`.
+It defaults to shown and lives in workspace UI state across view switches.
+Hiding Returns gives their bank zero width; visible Master stays pinned and ordinary
 tracks gain the space. Keep Return selection, effects targets, sends and DSP
 active. The toggle creates no project/history edits and does not hide Timeline
 Returns. When shown, retain automatic bank sizing and overflow scrolling.
+
+Place the Master toggle immediately after Returns from left to right. Reuse the
+same toolbar control with Master's `BoomBox` icon and the tooltip/accessibility
+name `Show or hide Master track`. Both toggles use the shared View-panel dispatcher
+and menu entries. Master starts shown and retains its workspace visibility across
+view switches. Hiding Master removes its strip, controls and hit targets and frees
+its width for the Return/source banks. Keep Master selection, effects target,
+settings and DSP unchanged. Returns and Master can be hidden independently;
+Timeline Master stays visible. No visibility toggle changes project history.
 
 Bottom-align each source's send controls within the shared rack height. Keep send
 order and row spacing, with Plus at the same baseline for zero, one or many sends.

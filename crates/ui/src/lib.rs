@@ -826,6 +826,7 @@ pub struct DawUi {
     master_selected: bool,
     return_bank_height: f32,
     mixer_returns_visible: bool,
+    mixer_master_visible: bool,
     metronome_enabled: bool,
     timeline_catalog_visible: bool,
     instrument_effects_catalog_visible: bool,
@@ -846,6 +847,10 @@ pub struct DawUi {
     transport_bounds: [Rect; 3],
     #[cfg(test)]
     metronome_bounds: Rect,
+    #[cfg(test)]
+    mixer_returns_bounds: Rect,
+    #[cfg(test)]
+    mixer_master_bounds: Rect,
     #[cfg(test)]
     mixer_bounds: HashMap<Id, Rect>,
     #[cfg(test)]
@@ -967,6 +972,7 @@ impl Default for DawUi {
             master_selected: false,
             return_bank_height: 180.0,
             mixer_returns_visible: true,
+            mixer_master_visible: true,
             metronome_enabled: false,
             effects_lane_focus: Default::default(),
             effects_drag: None,
@@ -980,6 +986,10 @@ impl Default for DawUi {
             transport_bounds: [Rect::NOTHING; 3],
             #[cfg(test)]
             metronome_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            mixer_returns_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            mixer_master_bounds: Rect::NOTHING,
             #[cfg(test)]
             mixer_bounds: HashMap::new(),
             #[cfg(test)]
@@ -3136,16 +3146,49 @@ impl DawUi {
                     self.track_control(ui);
                 });
             }
+            #[cfg(test)]
+            {
+                self.mixer_returns_bounds = Rect::NOTHING;
+                self.mixer_master_bounds = Rect::NOTHING;
+            }
             if self.view_mode == ViewMode::Mixer {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let response = ui
-                        .add_enabled(
-                            self.view_panel_enabled(ViewPanel::Returns, ui.ctx()),
-                            egui::Button::new("Returns").selected(self.mixer_returns_visible),
-                        )
-                        .on_hover_text("Show or hide Return tracks");
-                    if response.clicked() {
-                        self.toggle_view_panel(ViewPanel::Returns, ui.ctx());
+                    // Right-to-left layout places Master after Returns visually.
+                    for (panel, icon, name, selected) in [
+                        (
+                            ViewPanel::Master,
+                            icons::Lucide::BoomBox,
+                            "Show or hide Master track",
+                            self.mixer_master_visible,
+                        ),
+                        (
+                            ViewPanel::Returns,
+                            icons::Lucide::CornerDownLeft,
+                            "Show or hide Return tracks",
+                            self.mixer_returns_visible,
+                        ),
+                    ] {
+                        let enabled = self.view_panel_enabled(panel, ui.ctx());
+                        let response = ui
+                            .add_enabled_ui(enabled, |ui| {
+                                icons::borderless_toggle(
+                                    ui,
+                                    icon,
+                                    name,
+                                    selected,
+                                    Vec2::splat(icons::TOOLBAR_BUTTON_SIZE),
+                                )
+                            })
+                            .inner;
+                        #[cfg(test)]
+                        match panel {
+                            ViewPanel::Master => self.mixer_master_bounds = response.rect,
+                            ViewPanel::Returns => self.mixer_returns_bounds = response.rect,
+                            _ => unreachable!(),
+                        }
+                        if response.clicked() {
+                            self.toggle_view_panel(panel, ui.ctx());
+                        }
                     }
                 });
             }

@@ -11,10 +11,11 @@ pub enum ViewPanel {
     TrackMixer,
     EffectsLane,
     Returns,
+    Master,
 }
 
 impl ViewPanel {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Tracks,
         Self::Components,
         Self::EffectsCatalog,
@@ -23,6 +24,7 @@ impl ViewPanel {
         Self::TrackMixer,
         Self::EffectsLane,
         Self::Returns,
+        Self::Master,
     ];
 
     pub fn label(self) -> &'static str {
@@ -35,6 +37,7 @@ impl ViewPanel {
             Self::TrackMixer => "Track Mixer",
             Self::EffectsLane => "Effects Lane",
             Self::Returns => "Returns",
+            Self::Master => "Master",
         }
     }
 
@@ -45,7 +48,7 @@ impl ViewPanel {
             Self::EffectsCatalog | Self::EffectsLane => true,
             Self::Chords => matches!(view, ViewMode::Timeline | ViewMode::Edit),
             Self::ClipSettings | Self::TrackMixer => view == ViewMode::Timeline,
-            Self::Returns => view == ViewMode::Mixer,
+            Self::Returns | Self::Master => view == ViewMode::Mixer,
         }
     }
 }
@@ -70,6 +73,7 @@ impl DawUi {
                 ViewPanel::TrackMixer => self.track_mixer_visible,
                 ViewPanel::EffectsLane => self.effects_lane_visible(),
                 ViewPanel::Returns => self.mixer_returns_visible,
+                ViewPanel::Master => self.mixer_master_visible,
             }
     }
 
@@ -144,6 +148,7 @@ impl DawUi {
                 }
             }
             ViewPanel::Returns => self.mixer_returns_visible = !self.mixer_returns_visible,
+            ViewPanel::Master => self.mixer_master_visible = !self.mixer_master_visible,
         }
         ctx.request_repaint();
     }

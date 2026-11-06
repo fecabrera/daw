@@ -17,6 +17,7 @@ in-app menu sends the equivalent viewport command.
 | Track Mixer | Timeline |
 | Effects Lane | All |
 | Returns | Mixer |
+| Master | Mixer |
 
 Keep unavailable panel entries visible, disabled and unchecked. A supported
 panel's checkmark reads the current view's actual visibility, including when a
