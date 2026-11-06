@@ -232,11 +232,6 @@ impl DawUi {
                 rows
             })
             .inner;
-        for &(id, row) in &rows {
-            if self.track_selected(id) {
-                panels::ControlPanel::selected_row(&bank, row, rect);
-            }
-        }
         let handle = Rect::from_min_size(rect.min, Vec2::new(rect.width(), 4.0));
         let response = ui.interact(handle, ui.id().with("return_height"), Sense::drag());
         if response.dragged() {

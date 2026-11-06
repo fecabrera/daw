@@ -714,3 +714,82 @@ fn mixer_send_stacks_align_plus_at_the_bottom_for_different_send_counts() {
     );
     assert_eq!(app.session.project, before);
 }
+
+#[test]
+fn return_selection_outlines_paint_after_shared_borders_and_pinned_dividers() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for count in [1, 2, 12] {
+            for expanded in [false, true] {
+                let (mut app, _) = fixture();
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                app.track_rows_collapsed = !expanded;
+                let returns: Vec<_> = (0..count)
+                    .map(|_| app.session.project.add_return_track().unwrap())
+                    .collect();
+                app.select_track(returns[0], false);
+                app.selected_tracks.extend(returns.iter().copied());
+                let size = Vec2::new(1000.0, 650.0);
+                frame_shapes(&mut app, &ctx, vec![], size);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+                let palette = theme::palette(&ctx);
+                let mut visible = 0;
+                for id in &returns {
+                    let lane = app.lane_bounds[id];
+                    let header = Rect::from_min_max(
+                        Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
+                        Pos2::new(lane.left(), lane.bottom()),
+                    );
+                    let Some(selected) = shapes.iter().enumerate().find(|(_, shape)| matches!(&shape.shape,
+                        egui::Shape::Rect(rect) if rect.rect == header && rect.stroke == theme::selection_outline(&ctx)
+                    )) else { continue; };
+                    let clipped = header.intersect(selected.1.clip_rect);
+                    if !clipped.is_positive() {
+                        continue;
+                    }
+                    visible += 1;
+                    // The final outline may be clipped by the Return viewport,
+                    // but must not be inset or covered by a later neutral edge.
+                    assert_eq!(
+                        selected.1.clip_rect.right().min(header.right()),
+                        header.right()
+                    );
+                    for (index, shape) in shapes.iter().enumerate() {
+                        if let egui::Shape::LineSegment { points, stroke } = &shape.shape
+                            && stroke.color == palette.border
+                            && points[0].x == points[1].x
+                            && (points[0].x - header.right()).abs() <= 1.0
+                            && points[0].y.min(points[1].y) < clipped.bottom()
+                            && points[0].y.max(points[1].y) > clipped.top()
+                        {
+                            assert!(
+                                index < selected.0,
+                                "Return outline must paint above the shared column border"
+                            );
+                        }
+                        if let egui::Shape::LineSegment { points, stroke } = &shape.shape
+                            && stroke.color == palette.border
+                            && points[0].y == points[1].y
+                            && points[0].y >= clipped.top() - 1.0
+                            && points[0].y <= clipped.bottom()
+                            && points[0].x.min(points[1].x) <= header.left()
+                            && points[0].x.max(points[1].x) >= header.right()
+                        {
+                            assert!(
+                                index < selected.0,
+                                "Return outline must paint above pinned dividers"
+                            );
+                        }
+                    }
+                }
+                assert!(visible > 0);
+            }
+        }
+    }
+}

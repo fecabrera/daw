@@ -79,7 +79,7 @@ impl GroupPanel {
 }
 
 /// Base control column shared by Tracks, Layers, and the Effects catalog. Row content stays with each view.
-/// Paint the border last so selected rows, lanes, and scrolling cannot cover it.
+/// Paint the neutral border after row fills and scrolling, then overlay selection outlines.
 pub(super) struct ControlPanel {
     rect: Rect,
 }

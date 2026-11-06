@@ -30,7 +30,7 @@ A child's send bypasses its parent group's effects and mix controls. Send from t
 
 ## Return controls and layout
 
-Returns use the normal effects lane, gain, Pan, Mute, Solo and output meters. Mute silences a Return's output while its effects continue to run. Solo a Return to hear only its wet output; its contributors keep running, including muted sources. With both source and Return solos, source solos restrict the contributors and Return solos restrict the Return outputs. Selected sources retain their direct output.
+Returns use the normal effects lane, gain, Pan, Mute, Solo and output meters. Click a Return header to select it. Its outline marks the selected track, as for other tracks and Master. Mute silences a Return's output while its effects continue to run. Solo a Return to hear only its wet output; its contributors keep running, including muted sources. With both source and Return solos, source solos restrict the contributors and Return solos restrict the Return outputs. Selected sources retain their direct output.
 
 Returns stay above Master in Timeline and beside Master in Mixer. Use **Returns** at the right of Mixer’s transport toolbar to show or hide Return strips; hiding them keeps their audio processing active. In Mixer, the Return bank expands to show all Returns when space permits, keeping standard strip widths. Overflow Returns scroll independently, with Master pinned and space reserved for source tracks. In Timeline, their bank scrolls independently; drag its top boundary to resize it. Drag Return headers to reorder Returns within the bank. Master stays outside the scrolling bank.
 

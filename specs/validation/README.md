@@ -4,6 +4,33 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Return header selection outline alignment — 2026-11-05
+
+Timeline Return outlines now paint in the final header selection pass after the
+shared column border and pinned bank/Master dividers. They retain the original
+header bounds, shared inside stroke and corner geometry, and Return viewport
+clipping. This prevents neutral edges from covering the outline's right and
+bottom edges. Track selection, routing, scrolling and Mixer behavior are unchanged.
+
+The new egui paint check covers dark/light themes, one/two/overflowing Return
+banks and compact/expanded rows. It checks exact header bounds, viewport clipping,
+and outline order above the shared column border and pinned dividers. The check
+passed with the fix and failed against the original production paint order.
+
+Checks (Cargo used `--locked --offline` and the local CMake build tool):
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS with debug assertions enabled.
+- `cargo test --workspace --release`: PASS.
+- `cargo build -p daw-desktop`: PASS.
+- Changed documentation links and `git diff --check`: PASS.
+
+These are automated paint/interaction and workspace checks. Native pointer,
+display-scaling and Windows/Linux appearance checks were not performed for this
+fix. Distributable app packaging still requires a clean committed tracked tree;
+no commit was requested. No audio or device behavior changed.
+
 ## Linux Wayland Adwaita decorations — 2026-11-05
 
 The Linux-only desktop dependency enables Winit's `wayland-csd-adwaita`

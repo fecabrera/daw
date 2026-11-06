@@ -3468,6 +3468,13 @@ impl DawUi {
                 panels::ControlPanel::selected_row(ui, rect, tracks.inner_rect);
             }
         }
+        // Return outlines share the regular track/Master final paint pass so
+        // column borders and pinned dividers cannot cover their edges.
+        for &(id, row) in &return_rows {
+            if self.track_selected(id) {
+                panels::ControlPanel::selected_row(ui, row, return_rect);
+            }
+        }
         if self.master_selected {
             panels::ControlPanel::selected_row(ui, master_label, master_rect);
         }

@@ -240,6 +240,10 @@ Return-only Solo, and restoring feeds after clearing Solo without editing routes
 Timeline pinned boundaries use one full-width divider above the first Return and
 above Master. Master retains this divider when no Returns exist. The pinned bank
 owns these separators; Return rows do not add a second bottom stroke beside Master.
+Paint selected Return header outlines in the final Timeline selection pass, after
+the shared control-column border and pinned dividers, alongside regular tracks
+and Master. Reuse `ControlPanel::selected_row` with the original header bounds
+and Return viewport clip. Do not inset or shift the outline to avoid overpainting.
 
 Mixer track, group, Return and Master stereo rails show independent per-channel
 held maxima using the shared secondary-grey, one-point peak marker. Audio
