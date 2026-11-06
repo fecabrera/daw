@@ -11,6 +11,7 @@ pub(super) fn initial_plan(plan: &RenderPlan) -> RenderPlan {
         output_sample_format: plan.project.output_sample_format,
         buffer_size_frames: plan.project.buffer_size_frames,
         tempo_bpm: plan.project.tempo_bpm,
+        time_signature: plan.project.time_signature,
         stretch_engine: plan.project.stretch_engine,
         transport: plan.project.transport.clone(),
         ..Default::default()

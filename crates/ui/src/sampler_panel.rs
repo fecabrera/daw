@@ -229,6 +229,7 @@ impl DawUi {
                                     s,
                                     self.session.project.sample_rate_hz,
                                     self.session.project.tempo_bpm,
+                                    self.display_time_signature(),
                                 );
                                 let pixel = |f: u64| {
                                     wave.left()
@@ -241,12 +242,13 @@ impl DawUi {
                                     pixel(preview[1]),
                                     true,
                                 );
-                                let clock = preview_clock(
+                                let mut clock = preview_clock(
                                     s,
                                     wave.width(),
                                     self.session.project.sample_rate_hz,
                                     self.session.project.tempo_bpm,
                                 );
+                                clock.timeline = clock.timeline.with_time_signature(self.display_time_signature());
                                 clock.timeline.paint_grid(&ui.painter_at(body), body);
                                 clock.timeline.paint_ruler_ticks(
                                     &ui.painter_at(ruler),
@@ -916,7 +918,14 @@ impl PreviewClock {
         }
     }
 }
-fn selection(ui: &egui::Ui, bar: Rect, s: &mut SamplerSettings, rate: u32, tempo: f32) -> [u64; 2] {
+fn selection(
+    ui: &egui::Ui,
+    bar: Rect,
+    s: &mut SamplerSettings,
+    rate: u32,
+    tempo: f32,
+    signature: daw_core::TimeSignature,
+) -> [u64; 2] {
     let length = s.input.as_ref().unwrap().length_frames;
     let id = ui.make_persistent_id("sample-selection");
     let response = ui.interact(bar, id, Sense::click_and_drag()).on_hover_text("Drag the selection edges or body. Drag outside to select a new region. Shift bypasses snapping.");
@@ -940,7 +949,8 @@ fn selection(ui: &egui::Ui, bar: Rect, s: &mut SamplerSettings, rate: u32, tempo
     let mut preview = [s.start_frame, s.end_frame];
     if let Some(d) = &mut drag {
         if let Some(pointer) = ui.input(|i| i.pointer.latest_pos()) {
-            let clock = preview_clock(&d.original, bar.width(), rate, tempo);
+            let mut clock = preview_clock(&d.original, bar.width(), rate, tempo);
+            clock.timeline = clock.timeline.with_time_signature(signature);
             let pos = at(pointer.x);
             d.preview = range_selection::preview(
                 range_selection::Gesture {

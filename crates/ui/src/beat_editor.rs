@@ -693,6 +693,7 @@ impl DawUi {
                 .map_or(clip.length_frames, |(_, _, frames)| frames);
             let tempo = self.session.project.tempo_bpm;
             let rate = self.session.project.sample_rate_hz;
+            let signature = self.display_time_signature();
             let (minimum, maximum) = if let Some(repeat) = clip.repeat {
                 (
                     repeat.length_frames.min(clip.length_frames),
@@ -712,9 +713,14 @@ impl DawUi {
             ui.label("Length");
             let monitor = transport_monitor_control(
                 ui,
-                &musical_time::duration_monitor_at_rate(frame, tempo, rate),
+                &musical_time::duration_monitor_at_rate_in_meter(
+                    frame,
+                    tempo,
+                    rate,
+                    self.display_time_signature(),
+                ),
                 &format!(
-                    "Clip length in bars and beats (4/4): {:.6} seconds, {frame} samples",
+                    "Clip length in bars and beats: {:.6} seconds, {frame} samples",
                     self.session.project.seconds(frame)
                 ),
                 0,
@@ -731,7 +737,7 @@ impl DawUi {
                     &responses,
                     &mut self.beat_ui.length_drag,
                     clip.length_frames,
-                    &musical_steps(tempo, rate),
+                    &musical_steps(tempo, rate, signature),
                     minimum..=maximum,
                 )
             {
@@ -748,13 +754,21 @@ impl DawUi {
                 self.beat_ui.subdivision_items.clear();
             }
             let dropdown = menus::Dropdown::from_id_salt(("beat-grid", track.id))
-                .selected_text(resolution_name(resolution, clip.stretch))
+                .selected_text(resolution_name_in_meter(
+                    resolution,
+                    clip.stretch,
+                    self.display_time_signature(),
+                ))
                 .show_ui(ui, |ui| {
                     for choice in BeatResolution::ALL {
                         let response = ui.selectable_value(
                             &mut resolution,
                             choice,
-                            resolution_name(choice, clip.stretch),
+                            resolution_name_in_meter(
+                                choice,
+                                clip.stretch,
+                                self.display_time_signature(),
+                            ),
                         );
                         #[cfg(test)]
                         {
@@ -769,7 +783,7 @@ impl DawUi {
                 self.beat_ui.subdivision_bounds = Some(dropdown.response.rect);
             }
             dropdown.response.on_hover_text(
-                "Step length as a fraction of one bar (4/4), including clip stretch.",
+                "Step length as a fraction of the current bar, including clip stretch.",
             );
             if resolution != pattern.resolution
                 && let Ok(next) = pattern.with_grid(pattern.bars, resolution)
@@ -944,8 +958,9 @@ impl DawUi {
             .as_ref()
             .map_or(16, |p| p.length_ticks() / step_ticks)
             .max(1);
-        let first = (clock.beats(first_frame) * steps_per_beat).floor() as u64;
-        let last = ((clock.beats(last_frame) * steps_per_beat).ceil() as u64).saturating_add(1);
+        let first = (clock.quarter_beats(first_frame) * steps_per_beat).floor() as u64;
+        let last =
+            ((clock.quarter_beats(last_frame) * steps_per_beat).ceil() as u64).saturating_add(1);
         let stride = last.saturating_sub(first).div_ceil(2048).max(1) as usize;
         let seconds_per_step = 60.0 / f64::from(self.session.project.tempo_bpm) / steps_per_beat;
         for index in (first..last).step_by(stride) {
@@ -1458,11 +1473,15 @@ fn reduced_fraction(numerator: u128, denominator: u128) -> (u128, u128) {
     }
     (numerator / a, denominator / a)
 }
-fn resolution_name(resolution: BeatResolution, stretch: Option<daw_core::ClipStretch>) -> String {
+fn resolution_name_in_meter(
+    resolution: BeatResolution,
+    stretch: Option<daw_core::ClipStretch>,
+    signature: daw_core::TimeSignature,
+) -> String {
     let (numerator, denominator) = step_length_in_beats(resolution, stretch);
     let (numerator, denominator) = reduced_fraction(
-        numerator,
-        denominator * u128::from(musical_time::BEATS_PER_BAR),
+        numerator * u128::from(signature.denominator),
+        denominator * u128::from(signature.numerator) * 4,
     );
     if denominator == 1 {
         return numerator.to_string();

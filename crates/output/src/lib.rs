@@ -1352,6 +1352,8 @@ impl Callback {
         }
         let frame = (self.renderer.playing && !self.renderer.buffering())
             .then(|| self.renderer.playhead.saturating_sub(1));
+        self.metronome
+            .set_signature(self.renderer.plan.project.time_signature);
         let click = self
             .metronome
             .next(frame, f64::from(self.renderer.plan.project.tempo_bpm));

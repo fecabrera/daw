@@ -1,3 +1,4 @@
+mod time_signature;
 pub use daw_unit_core::{
     AMBIENT_REVERB_TYPE_ID, AmbientHighPassSlope, AmbientReverbSettings, ReverbFilterSlope,
 };
@@ -7,6 +8,7 @@ pub use daw_unit_core::{
 };
 pub use daw_unit_core::{PLATE_REVERB_TYPE_ID, PlateDriveMode, PlateReverbSettings};
 pub use daw_unit_core::{SHIMMER_REVERB_TYPE_ID, ShimmerReverbSettings};
+pub use time_signature::TimeSignature;
 mod effect_owners;
 pub use daw_unit_core::{
     HARMONIC_BAND_NAMES, HARMONIC_FREQUENCY_DEFAULTS, HARMONIC_FREQUENCY_RANGES,
@@ -229,6 +231,8 @@ pub struct Project {
     pub buffer_size_frames: u32,
     #[serde(default = "default_tempo_bpm")]
     pub tempo_bpm: f32,
+    #[serde(default)]
+    pub time_signature: TimeSignature,
     pub master: Master,
     pub assets: Vec<Asset>,
     #[serde(deserialize_with = "deserialize_tracks")]
@@ -377,6 +381,7 @@ impl Default for Project {
             output_sample_format: SampleFormat::default(),
             buffer_size_frames: default_buffer_size(),
             tempo_bpm: DEFAULT_TEMPO_BPM,
+            time_signature: TimeSignature::default(),
             master: Master {
                 gain_db: 0.0,
                 effects: vec![],
@@ -503,6 +508,7 @@ impl Project {
         if !BUFFER_SIZES.contains(&self.buffer_size_frames) {
             return Err(invalid("Unsupported project buffer size"));
         }
+        self.time_signature.validate()?;
         if !self.tempo_bpm.is_finite() || self.tempo_bpm <= 0.0 {
             return Err(invalid("Tempo must be a positive finite BPM value"));
         }
@@ -916,6 +922,10 @@ impl Project {
                 self.apply_trim_boundary(clip_id, &selected, edge, delta)?;
             }
             Edit::StretchClips { clips, edge } => self.apply_stretches(&clips, edge)?,
+            Edit::SetTimeSignature { signature } => {
+                signature.validate()?;
+                self.time_signature = signature;
+            }
             Edit::SetTempo { bpm } => {
                 if !bpm.is_finite() || bpm <= 0.0 {
                     return Err(Error("Tempo must be a positive finite BPM value".into()));
@@ -1235,6 +1245,10 @@ pub enum Edit {
     StretchClips {
         clips: Vec<Clip>,
         edge: ClipEdge,
+    },
+    /// Change musical display and click grouping without retiming content.
+    SetTimeSignature {
+        signature: TimeSignature,
     },
     /// Retain clip start beat positions, rounding to the nearest sample frame.
     /// Scale loop-selection endpoints too, rounding up as with ruler snapping.

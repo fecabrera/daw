@@ -122,7 +122,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - Include a Tracks header and an Add track button with Audio/MIDI choices. Keep track creation available regardless of the track count, subject to the shared edit guards.
 - Place a toolbar above the timeline. Toggle Play to Pause during playback, using the corresponding Lucide icons. Include a separate Stop button.
 - Put New project, Open, Save, Save as, and Export in the File menu. Import audio through Clip > Import clip. Use the native macOS menu bar and an in-window menu on Windows and Linux. Group these actions with separators and provide keyboard shortcuts.
-- Display a bars-and-beats ruler and grid above the track lanes using project tempo and 4/4. Use the upper ruler band for loop selection, edge resizing, and moving the selection body. A primary click on an existing range or its handles toggles looping on release; dragging does not toggle it. While looping, match both handles to the Loop button gold and use a lighter gold background with contrasting labels. While disabled, use the toolbar hover background and inactive icon color for both handles; use the lower band for playhead clicks and dragging. Keep moved selections the same length and clamp them at frame zero. Show a visible playhead and waveforms within clips. Include a matching bar.beat monitor beside the toolbar time display. Count bars and beats from 1; start the monitor at 0001.01.
+- Display a bars-and-beats ruler and grid above the track lanes using project tempo and the saved time signature (default 4/4). Use the upper ruler band for loop selection, edge resizing, and moving the selection body. A primary click on an existing range or its handles toggles looping on release; dragging does not toggle it. While looping, match both handles to the Loop button gold and use a lighter gold background with contrasting labels. While disabled, use the toolbar hover background and inactive icon color for both handles; use the lower band for playhead clicks and dragging. Keep moved selections the same length and clamp them at frame zero. Show a visible playhead and waveforms within clips. Include a matching bar.beat monitor beside the toolbar time display. Count bars and beats from 1; start the monitor at 0001.01.
 - Keep the track list visible during horizontal timeline scrolling. Keep track rows and timeline lanes aligned during vertical scrolling.
 - Support two-finger pinch zoom over the timeline, ruler, and scrollbar. Use the horizontal zoom slider's 1–3000 pixels-per-second range. Keep the timeline point under the pointer fixed where bounds permit, and update the grid and clips before painting. Ignore gestures outside the timeline, during jobs or dialogs, during clip or loop-selection drags, and while unfocused. Zoom must not change project data or interface font sizes.
 - Support horizontal two-finger trackpad scrolling over the timeline, ruler, and scrollbar. Use the same bounds as the scrollbar, retain vertical scrolling for diagonal gestures, and leave project data unchanged.
@@ -427,11 +427,6 @@ Source management is also a future goal; its delivery horizon remains to be defi
 - Audio recording.
 - Additional import and export formats.
 - Mono/stereo export, channel mapping/downmix rules, and dither modes including an off option.
-
-#### Musical Timing
-
-- Metronome/click.
-- Time signatures.
 
 #### UI
 

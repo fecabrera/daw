@@ -158,6 +158,7 @@ impl DawUi {
         self.instrument_ui.cancel();
         self.track_name_edit = None;
         self.tempo_edit = None;
+        self.time_signature_control = Default::default();
         self.inputs.clear();
         self.master_gain_input = faders::format_gain(self.session.project.master.gain_db);
         if let Some(id) = ctx.memory(|memory| memory.focused()) {

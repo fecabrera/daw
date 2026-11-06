@@ -1,3 +1,4 @@
+mod time_signature_control;
 mod view_panels;
 pub use view_panels::ViewPanel;
 mod ambient_reverb_panel;
@@ -160,6 +161,7 @@ fn placement_start(
         .filter(|clip| Some(clip.id) != ignore)
         .flat_map(|clip| [clip.start_frame, clip.end()]);
     musical_time::Timeline::at_sample_rate(project.tempo_bpm, zoom, 0.0, project.sample_rate_hz)
+        .with_time_signature(project.time_signature)
         .snap_range(start, length, anchors)
 }
 
@@ -577,6 +579,7 @@ enum PositionStep {
         count: i64,
         tempo: f32,
         sample_rate_hz: u32,
+        signature: daw_core::TimeSignature,
     },
     Frames(u64),
 }
@@ -588,11 +591,13 @@ impl PositionStep {
                 count,
                 tempo,
                 sample_rate_hz,
-            } => musical_time::shift_at_rate(
+                signature,
+            } => musical_time::shift_at_rate_in_meter(
                 frame,
                 tempo,
                 steps.saturating_mul(count),
                 sample_rate_hz,
+                signature,
             ),
             Self::Frames(count) => (i128::from(frame) + i128::from(steps) * i128::from(count))
                 .clamp(0, i128::from(u64::MAX)) as u64,
@@ -600,17 +605,23 @@ impl PositionStep {
     }
 }
 
-fn musical_steps(tempo: f32, sample_rate_hz: u32) -> [PositionStep; 2] {
+fn musical_steps(
+    tempo: f32,
+    sample_rate_hz: u32,
+    signature: daw_core::TimeSignature,
+) -> [PositionStep; 2] {
     [
         PositionStep::Beats {
-            count: musical_time::BEATS_PER_BAR as i64,
+            count: i64::from(signature.numerator),
             tempo,
             sample_rate_hz,
+            signature,
         },
         PositionStep::Beats {
             count: 1,
             tempo,
             sample_rate_hz,
+            signature,
         },
     ]
 }
@@ -858,6 +869,7 @@ pub struct DawUi {
     inputs: HashMap<Id, Inputs>,
     track_name_edit: Option<TrackNameEdit>,
     master_gain_input: String,
+    time_signature_control: time_signature_control::State,
     tempo_edit: Option<TempoEdit>,
     time_drag: Option<MonitorDrag>,
     musical_drag: Option<MonitorDrag>,
@@ -991,6 +1003,7 @@ impl Default for DawUi {
             inputs: HashMap::new(),
             track_name_edit: None,
             master_gain_input: "0.0".into(),
+            time_signature_control: Default::default(),
             tempo_edit: None,
             musical_drag: None,
             time_drag: None,
@@ -1103,6 +1116,7 @@ impl DawUi {
             && self.track_name_edit.is_none()
             && !self.instrument_ui.editing_name()
             && self.tempo_edit.is_none()
+            && !self.time_signature_control.active()
             && self.time_drag.is_none()
             && self.musical_drag.is_none()
             && self.selection_drag.iter().all(Option::is_none)
@@ -1251,6 +1265,7 @@ impl DawUi {
                 self.track_name_edit = None;
                 self.master_gain_input = faders::format_gain(self.session.project.master.gain_db);
                 self.tempo_edit = None;
+                self.time_signature_control = Default::default();
                 self.musical_drag = None;
                 self.time_drag = None;
                 self.selection_drag = [None, None];
@@ -1630,6 +1645,7 @@ impl DawUi {
             self.track_name_edit = None;
             self.master_gain_input = faders::format_gain(session.project.master.gain_db);
             self.tempo_edit = None;
+            self.time_signature_control = Default::default();
             self.musical_drag = None;
             self.time_drag = None;
             self.selection_drag = [None, None];
@@ -2878,10 +2894,16 @@ impl DawUi {
     fn musical_control(&mut self, ui: &mut egui::Ui) {
         let frame = self.session.project.transport.playhead_frame;
         let tempo = self.session.project.tempo_bpm;
+        let signature = self.display_time_signature();
         let monitor = transport_monitor_control(
             ui,
-            &musical_time::monitor_at_rate(frame, tempo, self.session.project.sample_rate_hz),
-            "Bars and beats (4/4)",
+            &musical_time::monitor_at_rate_in_meter(
+                frame,
+                tempo,
+                self.session.project.sample_rate_hz,
+                signature,
+            ),
+            "Bars and beats",
             0,
             Sense::hover(),
         );
@@ -2895,7 +2917,7 @@ impl DawUi {
             &responses,
             &mut self.musical_drag,
             frame,
-            &musical_steps(tempo, self.session.project.sample_rate_hz),
+            &musical_steps(tempo, self.session.project.sample_rate_hz, signature),
             0..=u64::MAX,
         ) && destination != frame
         {
@@ -2904,24 +2926,27 @@ impl DawUi {
     }
     fn selection_control(&mut self, ui: &mut egui::Ui) {
         let tempo = self.session.project.tempo_bpm;
+        let signature = self.display_time_signature();
         let region = &self.session.project.transport.r#loop;
         let text = format!(
             "{}–{}",
-            musical_time::monitor_at_rate(
+            musical_time::monitor_at_rate_in_meter(
                 region.start_frame,
                 tempo,
-                self.session.project.sample_rate_hz
+                self.session.project.sample_rate_hz,
+                signature
             ),
-            musical_time::monitor_at_rate(
+            musical_time::monitor_at_rate_in_meter(
                 region.end_frame,
                 tempo,
-                self.session.project.sample_rate_hz
+                self.session.project.sample_rate_hz,
+                signature
             ),
         );
         let monitor = transport_monitor_control(
             ui,
             &text,
-            "Selection range in bars and beats (4/4)",
+            "Selection range in bars and beats",
             0,
             Sense::hover(),
         );
@@ -2948,7 +2973,7 @@ impl DawUi {
                 &responses,
                 &mut self.selection_drag[endpoint],
                 frame,
-                &musical_steps(tempo, self.session.project.sample_rate_hz),
+                &musical_steps(tempo, self.session.project.sample_rate_hz, signature),
                 limits,
             ) && destination != frame
             {
@@ -3082,6 +3107,18 @@ impl DawUi {
             ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
+            ui.add_enabled_ui(self.job.is_none(), |ui| {
+                match self
+                    .time_signature_control
+                    .show(ui, self.session.project.time_signature)
+                {
+                    Ok(Some(signature)) if signature != self.session.project.time_signature => {
+                        self.edit(Edit::SetTimeSignature { signature })
+                    }
+                    Err(error) => self.fail(error),
+                    _ => {}
+                }
+            });
             let metronome =
                 transport_controls::metronome(ui, self.metronome_enabled, self.job.is_none());
             #[cfg(test)]
@@ -4589,6 +4626,10 @@ impl DawUi {
             self.scroll = seconds;
         }
     }
+    fn display_time_signature(&self) -> daw_core::TimeSignature {
+        self.time_signature_control
+            .preview(self.session.project.time_signature)
+    }
     fn musical_timeline(&self) -> musical_time::Timeline {
         musical_time::Timeline::at_sample_rate(
             self.session.project.tempo_bpm,
@@ -4596,6 +4637,7 @@ impl DawUi {
             self.view_scroll(),
             self.session.project.sample_rate_hz,
         )
+        .with_time_signature(self.display_time_signature())
     }
     fn paint_grid(&self, painter: &egui::Painter, rect: Rect) {
         self.musical_timeline().paint_grid(painter, rect);
@@ -4630,6 +4672,7 @@ impl DawUi {
             0.0,
             self.session.project.sample_rate_hz,
         )
+        .with_time_signature(self.display_time_signature())
     }
     fn drag_delta(&self, drag: &Drag, pointer: Pos2) -> i64 {
         (f64::from(pointer.x - drag.origin.x) / f64::from(self.clip_drag_zoom())

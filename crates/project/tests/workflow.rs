@@ -5430,3 +5430,91 @@ fn opus_sampler_source_prepares_and_reopens_without_reencoding() {
     assert!(reopened.warnings.is_empty());
     assert_eq!(*reopened.audio[&id].samples, *session.audio[&id].samples);
 }
+
+#[test]
+fn saved_time_signature_preserves_audio_midi_timing_render_and_history() {
+    use daw_core::{MidiNote, MidiPattern, TimeSignature};
+    use daw_project::SessionHistory;
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    session
+        .import(&fixture.wav("meter.wav", 48_000, 2, 24, false), None, 1234)
+        .unwrap();
+    let track = session.project.add_midi_track().unwrap();
+    let clip = session.project.add_midi_pattern(track, 4321).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: MidiPattern {
+                length_ticks: 960,
+                notes: vec![MidiNote {
+                    id: daw_core::Id::new_v4(),
+                    start_tick: 123,
+                    length_ticks: 456,
+                    pitch: 60,
+                    velocity: 100,
+                }],
+            },
+        })
+        .unwrap();
+    session.project.transport.playhead_frame = 2345;
+    session.project.transport.r#loop.start_frame = 3456;
+    session.project.transport.r#loop.end_frame = 123456;
+    let original = session.project.clone();
+    let mut before = vec![[0.0; 2]; 8000];
+    session.plan().render(0, &mut before);
+    let mut history = SessionHistory::new(&session, true).unwrap();
+    for signature in [
+        TimeSignature {
+            numerator: 6,
+            denominator: 8,
+        },
+        TimeSignature {
+            numerator: 7,
+            denominator: 8,
+        },
+        TimeSignature {
+            numerator: 5,
+            denominator: 3,
+        },
+    ] {
+        session
+            .project
+            .edit(Edit::SetTimeSignature { signature })
+            .unwrap();
+        history.record(&session).unwrap();
+        let mut expected = original.clone();
+        expected.time_signature = signature;
+        assert_eq!(session.project, expected);
+        let mut after = vec![[0.0; 2]; 8000];
+        session.plan().render(0, &mut after);
+        assert_eq!(before, after);
+    }
+    let folder = fixture.0.join("saved");
+    session.save(&folder).unwrap();
+    let reopened = Session::open(&folder).unwrap();
+    assert_eq!(
+        reopened.project.time_signature,
+        session.project.time_signature
+    );
+    assert_eq!(reopened.project.tracks, original.tracks);
+    assert_eq!(reopened.project.transport, original.transport);
+    assert_eq!(reopened.project.tempo_bpm, original.tempo_bpm);
+    session = history.undo(&session).unwrap();
+    assert_eq!(
+        session.project.time_signature,
+        TimeSignature {
+            numerator: 7,
+            denominator: 8
+        }
+    );
+    session = history.redo(&session).unwrap();
+    assert_eq!(
+        session.project.time_signature,
+        TimeSignature {
+            numerator: 5,
+            denominator: 3
+        }
+    );
+}

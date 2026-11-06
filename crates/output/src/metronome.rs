@@ -3,6 +3,7 @@
 use std::f64::consts::TAU;
 
 pub(super) struct Metronome {
+    signature: daw_core::TimeSignature,
     rate: u32,
     enabled: bool,
     gain: f32,
@@ -15,6 +16,7 @@ pub(super) struct Metronome {
 impl Metronome {
     pub fn new(rate: u32) -> Self {
         Self {
+            signature: daw_core::TimeSignature::default(),
             rate,
             enabled: false,
             gain: 0.0,
@@ -23,6 +25,12 @@ impl Metronome {
             tempo: 0.0,
             transition: 0,
             transition_from: 0.0,
+        }
+    }
+    pub fn set_signature(&mut self, signature: daw_core::TimeSignature) {
+        if self.signature != signature {
+            self.signature = signature;
+            self.previous_frame = None;
         }
     }
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -51,7 +59,7 @@ impl Metronome {
                 self.transition = fade;
                 self.transition_from = self.previous;
             }
-            click(frame, tempo, self.rate)
+            click_in_meter(frame, tempo, self.rate, self.signature)
         } else {
             self.previous
         };
@@ -67,14 +75,18 @@ impl Metronome {
     }
 }
 
+#[cfg(test)]
 fn click(frame: u64, tempo: f64, rate: u32) -> f32 {
+    click_in_meter(frame, tempo, rate, daw_core::TimeSignature::default())
+}
+fn click_in_meter(frame: u64, tempo: f64, rate: u32, signature: daw_core::TimeSignature) -> f32 {
     if rate == 0 || !tempo.is_finite() || tempo <= 0.0 {
         return 0.0;
     }
     // Derive every beat from the absolute musical clock; rounding each boundary
     // independently avoids drift at fractional frame periods. Limit to one beat
     // per sample for otherwise valid but impractically high project tempos.
-    let period = (f64::from(rate) * 60.0 / tempo).clamp(1.0, f64::MAX);
+    let period = signature.frames_per_beat(rate, tempo).clamp(1.0, f64::MAX);
     let beat = ((frame as f64 + 0.5) / period).floor();
     let start = (beat * period).round();
     let age = (frame as f64 - start).max(0.0);
@@ -82,7 +94,7 @@ fn click(frame: u64, tempo: f64, rate: u32) -> f32 {
     if age >= duration {
         return 0.0;
     }
-    let accented = beat.rem_euclid(4.0) == 0.0;
+    let accented = beat.rem_euclid(f64::from(signature.numerator)) == 0.0;
     let frequency = if accented { 2400.0 } else { 1600.0 };
     // A 10 dB amplitude increase is 10^(10/20).
     let amplitude = if accented { 0.40 } else { 0.28 } * 3.162_277_660_168_379_5;
@@ -94,6 +106,34 @@ fn click(frame: u64, tempo: f64, rate: u32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn six_eighth_note_clicks_accent_once_per_six_beats() {
+        let signature = daw_core::TimeSignature {
+            numerator: 6,
+            denominator: 8,
+        };
+        for rate in daw_core::SAMPLE_RATES {
+            let period = u64::from(rate) / 4; // eighth notes at 120 quarter notes/minute
+            let peak = |beat| {
+                (0..u64::from(rate) / 50)
+                    .map(|age| click_in_meter(beat * period + age, 120.0, rate, signature).abs())
+                    .fold(0.0_f32, f32::max)
+            };
+            assert_eq!(peak(0), peak(6));
+            assert!(peak(0) > peak(4) * 1.25);
+            for beat in 1..6 {
+                assert_eq!(peak(beat), peak(1));
+            }
+            for beat in 0..12 {
+                assert!(click_in_meter(beat * period + 1, 120.0, rate, signature) > 0.0);
+                assert_eq!(
+                    click_in_meter(beat * period + u64::from(rate) / 10, 120.0, rate, signature),
+                    0.0
+                );
+            }
+        }
+    }
 
     #[test]
     fn metronome_clicks_follow_rounded_beats_without_accumulated_drift_at_all_rates() {

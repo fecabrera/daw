@@ -6,6 +6,7 @@ impl DawUi {
         self.edit_shortcuts_available(ctx)
             && self.track_name_edit.is_none()
             && self.tempo_edit.is_none()
+            && !self.time_signature_control.active()
             && self.time_drag.is_none()
             && self.musical_drag.is_none()
             && self.selection_drag.iter().all(Option::is_none)

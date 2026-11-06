@@ -86,14 +86,18 @@ Duplicating into new track space creates fresh track defaults. Group paste also 
 
 Press Space to play or pause from any view, pane, or focused control. Text fields take precedence: Space inserts a space while you edit text. Holding Space does not toggle playback repeatedly. Dialogs and blocking background jobs still disable the shortcut.
 
-Use **Metronome**, immediately after the tempo display, to hear a click on each
-beat during playback. A higher click marks the first beat of each 4/4 bar. It
+Set the **time signature** between Tempo and Metronome. It starts at **4/4**. Drag the upper number up or down in steps of one to change beats per bar. Drag the lower number through **2, 3, 4, 6, 8, 12, 16** to change the beat note value. Double-click either number, type an integer from **1 to 65,535**, and press Enter. Escape or clicking elsewhere cancels text entry. The ruler and grid update during the drag. Release to apply the value to the project; Escape or loss of window focus cancels the drag.
+
+The signature is saved with the project and supports Undo/Redo. It updates bar/beat positions, rulers, grids, snapping, and the metronome. Tempo stays in quarter notes per minute. Clips, notes, the playhead, and the loop range keep their exact timing. Existing pattern lengths and source duration settings keep their original durations.
+
+Use **Metronome**, immediately after the time signature, to hear a click on each
+beat during playback. A higher click marks the first beat of each bar. In 6/8, it plays six eighth-note clicks per bar. It
 follows the project tempo and playhead through seeks and loops, and fades out
 when playback pauses or stops. The button starts off and remembers its choice
 for the app session. It does not change the saved project. The click is a playback
 aid; exports retain the project mix.
 
-The ruler uses four beats per bar, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI and beat timing follow tempo.
+The ruler uses the saved time signature, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI and beat timing follow tempo.
 
 At a transport loop boundary, MIDI and beat releases and one-shot samples
 continue into the next iteration. Audio clips repeat only the selected loop

@@ -864,7 +864,10 @@ impl DawUi {
             .midi_editor
             .content
             .timeline(&self.session.project)
+            .with_time_signature(self.display_time_signature())
             .visible_step()
+            * 4.0
+            / f64::from(self.display_time_signature().denominator)
             / clip.stretch.map_or(1.0, |s| s.ratio())
             * f64::from(MIDI_TICKS_PER_BEAT))
         .round()

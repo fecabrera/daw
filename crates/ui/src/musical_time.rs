@@ -1,4 +1,4 @@
-pub const BEATS_PER_BAR: u64 = 4;
+use daw_core::TimeSignature;
 
 pub(super) fn snap_bypassed(ui: &egui::Ui) -> bool {
     ui.input(|input| input.modifiers.shift)
@@ -9,10 +9,21 @@ pub fn position(frame: u64, tempo_bpm: f32) -> (u64, u64) {
     position_at_rate(frame, tempo_bpm, daw_core::SAMPLE_RATE)
 }
 
+#[cfg(test)]
 pub fn position_at_rate(frame: u64, tempo_bpm: f32, sample_rate_hz: u32) -> (u64, u64) {
-    let beat =
-        ((frame as f64 / f64::from(sample_rate_hz)) * (f64::from(tempo_bpm) / 60.0)).floor() as u64;
-    (beat / BEATS_PER_BAR + 1, beat % BEATS_PER_BAR + 1)
+    position_at_rate_in_meter(frame, tempo_bpm, sample_rate_hz, TimeSignature::default())
+}
+
+pub fn position_at_rate_in_meter(
+    frame: u64,
+    tempo_bpm: f32,
+    sample_rate_hz: u32,
+    signature: TimeSignature,
+) -> (u64, u64) {
+    let beat = (frame as f64 / signature.frames_per_beat(sample_rate_hz, f64::from(tempo_bpm)))
+        .floor() as u64;
+    let count = u64::from(signature.numerator);
+    (beat / count + 1, beat % count + 1)
 }
 
 #[cfg(test)]
@@ -20,16 +31,38 @@ pub fn monitor(frame: u64, tempo_bpm: f32) -> String {
     monitor_at_rate(frame, tempo_bpm, daw_core::SAMPLE_RATE)
 }
 
+#[cfg(test)]
 pub fn monitor_at_rate(frame: u64, tempo_bpm: f32, sample_rate_hz: u32) -> String {
-    let (bar, beat) = position_at_rate(frame, tempo_bpm, sample_rate_hz);
+    monitor_at_rate_in_meter(frame, tempo_bpm, sample_rate_hz, TimeSignature::default())
+}
+
+pub fn monitor_at_rate_in_meter(
+    frame: u64,
+    tempo_bpm: f32,
+    sample_rate_hz: u32,
+    signature: TimeSignature,
+) -> String {
+    let (bar, beat) = position_at_rate_in_meter(frame, tempo_bpm, sample_rate_hz, signature);
     format!("{bar:04}.{beat:02}")
 }
 
 /// Completed bars/beats of a duration. Allow half a sample of tick/frame rounding.
+#[cfg(test)]
 pub fn duration_monitor_at_rate(frame: u64, tempo_bpm: f32, sample_rate_hz: u32) -> String {
-    let beats = (((frame as f64 + 0.5) / f64::from(sample_rate_hz)) * (f64::from(tempo_bpm) / 60.0))
-        .floor() as u64;
-    format!("{:04}.{:02}", beats / BEATS_PER_BAR, beats % BEATS_PER_BAR)
+    duration_monitor_at_rate_in_meter(frame, tempo_bpm, sample_rate_hz, TimeSignature::default())
+}
+
+pub fn duration_monitor_at_rate_in_meter(
+    frame: u64,
+    tempo_bpm: f32,
+    sample_rate_hz: u32,
+    signature: TimeSignature,
+) -> String {
+    let beats = ((frame as f64 + 0.5)
+        / signature.frames_per_beat(sample_rate_hz, f64::from(tempo_bpm)))
+    .floor() as u64;
+    let count = u64::from(signature.numerator);
+    format!("{:04}.{:02}", beats / count, beats % count)
 }
 
 #[cfg(test)]
@@ -37,11 +70,28 @@ pub fn shift(frame: u64, tempo_bpm: f32, beats: i64) -> u64 {
     shift_at_rate(frame, tempo_bpm, beats, daw_core::SAMPLE_RATE)
 }
 
+#[cfg(test)]
 pub fn shift_at_rate(frame: u64, tempo_bpm: f32, beats: i64, sample_rate_hz: u32) -> u64 {
+    shift_at_rate_in_meter(
+        frame,
+        tempo_bpm,
+        beats,
+        sample_rate_hz,
+        TimeSignature::default(),
+    )
+}
+
+pub fn shift_at_rate_in_meter(
+    frame: u64,
+    tempo_bpm: f32,
+    beats: i64,
+    sample_rate_hz: u32,
+    signature: TimeSignature,
+) -> u64 {
     if beats == 0 {
         return frame;
     }
-    let frames_per_beat = f64::from(sample_rate_hz) * 60.0 / f64::from(tempo_bpm);
+    let frames_per_beat = signature.frames_per_beat(sample_rate_hz, f64::from(tempo_bpm));
     // The next sample must not fall just before a fractional beat boundary.
     (frame as f64 + beats as f64 * frames_per_beat)
         .max(0.0)
@@ -57,6 +107,7 @@ pub fn size_boundaries(frame: u64, anchor: u64, length: u64) -> impl Iterator<It
 }
 
 pub struct Timeline {
+    signature: TimeSignature,
     sample_rate_hz: u32,
     beats_per_second: f64,
     pixels_per_beat: f64,
@@ -90,11 +141,25 @@ impl Timeline {
     ) -> Self {
         let beats_per_second = f64::from(tempo_bpm) / 60.0;
         Self {
+            signature: TimeSignature::default(),
             sample_rate_hz,
             beats_per_second,
             pixels_per_beat: f64::from(pixels_per_second) / beats_per_second,
             scroll_beats: scroll_seconds * beats_per_second,
         }
+    }
+
+    pub fn with_time_signature(mut self, signature: TimeSignature) -> Self {
+        let ratio = f64::from(signature.denominator) / f64::from(self.signature.denominator);
+        self.signature = signature;
+        self.beats_per_second *= ratio;
+        self.pixels_per_beat /= ratio;
+        self.scroll_beats *= ratio;
+        self
+    }
+
+    pub fn quarter_beats(&self, frame: u64) -> f64 {
+        self.beats(frame) * 4.0 / f64::from(self.signature.denominator)
     }
 
     pub fn beats(&self, frame: u64) -> f64 {
@@ -150,7 +215,7 @@ impl Timeline {
 
     fn grid_spacings(&self) -> [f64; 3] {
         let step = self.visible_step();
-        [step.max(BEATS_PER_BAR as f64), step.max(1.0), step]
+        [self.bar_step(step), step.max(1.0), step]
     }
 
     fn grid_target(
@@ -385,31 +450,48 @@ impl Timeline {
         }
     }
 
+    fn bar_step(&self, minimum: f64) -> f64 {
+        let count = f64::from(self.signature.numerator);
+        count * 2.0_f64.powf((minimum / count).log2().ceil().max(0.0))
+    }
+
     pub fn ticks(&self, width: f32) -> impl Iterator<Item = Tick> + '_ {
-        // Power-of-two subdivisions keep every tick aligned to the 4/4 bars.
-        // Bound tick density in pixels, including at extreme valid tempos.
         let step = self.visible_step();
         let label_step = 2.0_f64
             .powf((80.0 / self.pixels_per_beat).log2().ceil())
             .max(1.0);
-        let first = (self.scroll_beats / step).floor();
-        let count = (f64::from(width) / (step * self.pixels_per_beat)).ceil() as usize + 2;
-        (0..count).filter_map(move |index| {
-            let beat = (first + index as f64) * step;
+        let bar_step = self.bar_step(step);
+        let bar_labels = self.bar_step(label_step);
+        let beats_per_bar = f64::from(self.signature.numerator);
+        // Include exact bar boundaries even when an odd meter is not divisible
+        // by the visible power-of-two subdivisions. Both sequences are bounded.
+        let mut beats = Vec::new();
+        for spacing in [step, bar_step] {
+            let first = (self.scroll_beats / spacing).floor();
+            let count = (f64::from(width) / (spacing * self.pixels_per_beat)).ceil() as usize + 2;
+            beats.extend((0..count).map(|index| (first + index as f64) * spacing));
+        }
+        beats.sort_by(f64::total_cmp);
+        beats.dedup();
+        beats.into_iter().filter_map(move |beat| {
             let x = (beat - self.scroll_beats) * self.pixels_per_beat;
             if beat < 0.0 || x < 0.0 || x > f64::from(width) {
                 return None;
             }
             let whole_beat = beat.fract() == 0.0;
-            let bar = whole_beat && beat % BEATS_PER_BAR as f64 == 0.0;
-            let label = if beat % label_step == 0.0 {
-                let whole = beat as u64;
-                let bar_number = whole / BEATS_PER_BAR + 1;
-                Some(if label_step >= BEATS_PER_BAR as f64 {
-                    bar_number.to_string()
-                } else {
-                    format!("{bar_number}.{}", whole % BEATS_PER_BAR + 1)
-                })
+            let bar = whole_beat && beat % beats_per_bar == 0.0;
+            let label = if label_step >= beats_per_bar {
+                (bar && beat % bar_labels == 0.0)
+                    .then(|| format!("{}", beat as u64 / u64::from(self.signature.numerator) + 1))
+            } else if whole_beat
+                && beat % beats_per_bar % label_step == 0.0
+                && (bar || beat % beats_per_bar + label_step <= beats_per_bar)
+            {
+                Some(format!(
+                    "{}.{}",
+                    beat as u64 / u64::from(self.signature.numerator) + 1,
+                    beat as u64 % u64::from(self.signature.numerator) + 1
+                ))
             } else {
                 None
             };
@@ -428,6 +510,72 @@ impl Timeline {
 mod tests {
     use super::*;
     use daw_core::frames;
+
+    #[test]
+    fn meters_change_bars_and_grid_without_changing_frame_geometry() {
+        for rate in daw_core::SAMPLE_RATES {
+            for signature in [
+                TimeSignature {
+                    numerator: 3,
+                    denominator: 4,
+                },
+                TimeSignature {
+                    numerator: 6,
+                    denominator: 8,
+                },
+                TimeSignature {
+                    numerator: 7,
+                    denominator: 8,
+                },
+                TimeSignature {
+                    numerator: 2,
+                    denominator: 3,
+                },
+            ] {
+                let period = signature.frames_per_beat(rate, 120.0);
+                let bar = (period * f64::from(signature.numerator)).ceil() as u64;
+                assert_eq!(
+                    monitor_at_rate_in_meter(bar, 120.0, rate, signature),
+                    "0002.01"
+                );
+                assert_eq!(
+                    duration_monitor_at_rate_in_meter(bar, 120.0, rate, signature),
+                    "0001.00"
+                );
+                assert_eq!(
+                    shift_at_rate_in_meter(
+                        0,
+                        120.0,
+                        i64::from(signature.numerator),
+                        rate,
+                        signature
+                    ),
+                    bar
+                );
+                for zoom in [2.0, 37.0, 200.0] {
+                    let clock = Timeline::at_sample_rate(120.0, zoom, 0.0, rate)
+                        .with_time_signature(signature);
+                    let original = Timeline::at_sample_rate(120.0, zoom, 0.0, rate);
+                    assert!(
+                        (clock.pixel_at_frame(bar) - original.pixel_at_frame(bar)).abs() < 1e-8
+                    );
+                    assert_eq!(clock.frame_at_pixel(123.0), original.frame_at_pixel(123.0));
+                    let ticks: Vec<_> = clock.ticks(1000.0).collect();
+                    assert!(ticks.iter().any(|t| t.bar));
+                    for tick in ticks.iter().filter(|t| t.bar) {
+                        assert_eq!(tick.beat % f64::from(signature.numerator), 0.0);
+                    }
+                    let labels: Vec<_> = ticks.iter().filter(|t| t.label.is_some()).collect();
+                    for pair in labels.windows(2) {
+                        assert!(pair[1].x - pair[0].x >= 79.9);
+                    }
+                    let target =
+                        clock.grid_target(bar, 0..=u64::MAX, f64::from(signature.numerator));
+                    assert_eq!(target, Some(bar));
+                }
+            }
+        }
+    }
 
     #[test]
     fn duration_monitor_counts_from_zero_and_accepts_rounded_musical_boundaries() {

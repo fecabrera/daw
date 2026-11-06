@@ -85,6 +85,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 - [AAC-LC export](audio/aac-export.md): portable streaming encoding, rate conversion and ADTS limits.
 - [Audio import](audio/import.md): WAV, MP3 and AAC-LC decoding, metadata and preparation limits.
+- [Project time signature](audio/time-signature.md): saved meter, transport input, musical display, snapping and metronome grouping.
 - [Playback metronome](audio/metronome.md): transport toggle, sample-clock timing and live monitor output.
 - [Audio device preferences](audio/devices.md): machine-local device selection and output format/buffer negotiation.
 

@@ -260,6 +260,7 @@ impl DawUi {
             && !self.instrument_ui.editing_name()
             && self.track_name_edit.is_none()
             && self.tempo_edit.is_none()
+            && !self.time_signature_control.active()
             && self.time_drag.is_none()
             && self.musical_drag.is_none()
             && self.loop_drag.is_none()

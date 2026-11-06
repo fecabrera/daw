@@ -333,10 +333,11 @@ looped edits to one repeat cycle through the timeline limit. Keep stored source
 grid bars separate from visible clip duration. This supersedes the earlier Bars
 readout.
 
-Subdivision captions and choices measure the audible step duration against one
-4/4 bar: `(resolution.step_ticks / (4 * MIDI_TICKS_PER_BEAT)) * clip.stretch`.
+Subdivision captions and choices measure the audible step duration against the
+current project bar: `(resolution.step_ticks * signature.denominator /
+(4 * signature.numerator * MIDI_TICKS_PER_BEAT)) * clip.stretch`.
 Use the saved stretch ratio, never clip length or pattern bar count. Unstretched
-Quarter/Eighth/Sixteenth/ThirtySecond source grids display 1/4, 1/8, 1/16 and 1/32 bar.
+Quarter/Eighth/Sixteenth/ThirtySecond source grids display 1/4, 1/8, 1/16 and 1/32 bar in 4/4; other signatures change the captions, not the source ticks.
 Keep stored enum values and source ticks unchanged for compatibility. Display
 reduced fractions for compact ratios and up to four decimal bar digits for large
 frame-derived fractions. Menu choices use the same stretched units and still edit

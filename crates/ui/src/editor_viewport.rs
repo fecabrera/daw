@@ -120,6 +120,7 @@ impl EditorViewport {
             self.scroll,
             project.sample_rate_hz,
         )
+        .with_time_signature(project.time_signature)
     }
 }
 

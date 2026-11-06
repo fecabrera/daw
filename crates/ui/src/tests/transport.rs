@@ -623,7 +623,7 @@ fn stopped_transport_returns_to_origin_once_without_an_audio_device_in_every_vie
 }
 
 #[test]
-fn metronome_toggle_sits_after_tempo_and_keeps_project_and_transport_unchanged() {
+fn metronome_toggle_sits_after_time_signature_and_keeps_project_and_transport_unchanged() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, _) = fixture();
         let ctx = context();
@@ -641,7 +641,7 @@ fn metronome_toggle_sits_after_tempo_and_keeps_project_and_transport_unchanged()
         let rect = app.metronome_bounds;
         assert_eq!(rect.size(), app.transport_bounds[0].size());
         assert!((rect.center().y - app.transport_bounds[0].center().y).abs() < 0.1);
-        assert!((rect.left() - app.tempo_bounds.right() - 7.0).abs() < 0.1);
+        assert!((rect.left() - app.time_signature_control.bounds[1].right() - 7.0).abs() < 0.1);
         let point = rect.center();
         frame(
             &mut app,
@@ -662,5 +662,140 @@ fn metronome_toggle_sits_after_tempo_and_keeps_project_and_transport_unchanged()
             assert!(app.metronome_enabled);
             assert!(app.metronome_bounds.left() > app.tempo_bounds.right());
         }
+    }
+}
+
+fn meter_key(key: egui::Key) -> egui::Event {
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    }
+}
+
+#[test]
+fn time_signature_double_click_edits_each_number_and_preserves_tempo_and_frames() {
+    for (part, text, expected) in [
+        (0, "7", Some(7)),
+        (1, "8", Some(8)),
+        (1, "5", Some(5)),
+        (0, "0", None),
+        (1, "65536", None),
+        (1, "x", None),
+    ] {
+        let mut app = DawUi::default();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        let original = app.session.project.clone();
+        assert!(
+            (app.time_signature_control.bounds[0].left() - app.tempo_bounds.right() - 7.0).abs()
+                < 0.1
+        );
+        let point = app.time_signature_control.bounds[part].center();
+        for _ in 0..2 {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point), button(point, true)],
+            );
+            frame(&mut app, &ctx, vec![button(point, false)]);
+        }
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.time_signature_control.active());
+        assert!(ctx.text_edit_focused());
+        frame(&mut app, &ctx, vec![egui::Event::Text(text.into())]);
+        frame(&mut app, &ctx, vec![meter_key(egui::Key::Enter)]);
+        assert!(!app.time_signature_control.active());
+        if let Some(value) = expected {
+            let mut expected = original;
+            if part == 0 {
+                expected.time_signature.numerator = value;
+            } else {
+                expected.time_signature.denominator = value;
+            }
+            assert_eq!(app.session.project, expected);
+            assert!(app.dirty);
+            assert!(app.error.is_none(), "{:?}", app.error);
+        } else {
+            assert_eq!(app.session.project, original);
+            assert!(!app.dirty);
+            assert!(app.error.is_some());
+        }
+    }
+}
+
+#[test]
+fn time_signature_drags_commit_on_release_and_escape_cancels() {
+    for (part, cancel, expected) in [(0, false, 7), (1, false, 12), (0, true, 4), (1, true, 4)] {
+        let mut app = DawUi::default();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        let start = app.time_signature_control.bounds[part].center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        let end = start - egui::vec2(0.0, 12.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert_eq!(
+            app.session.project.time_signature,
+            daw_core::TimeSignature::default()
+        );
+        assert!(!app.dirty);
+        let preview = app.display_time_signature();
+        assert_eq!(
+            if part == 0 {
+                preview.numerator
+            } else {
+                preview.denominator
+            },
+            if part == 0 { 7 } else { 12 }
+        );
+        let bars: Vec<_> = app
+            .musical_timeline()
+            .ticks(1000.0)
+            .filter(|tick| tick.bar)
+            .map(|tick| tick.beat)
+            .collect();
+        assert!(
+            bars.iter()
+                .all(|beat| beat % f64::from(preview.numerator) == 0.0)
+        );
+        assert_eq!(
+            app.musical_timeline().beats(24_000),
+            f64::from(preview.denominator) / 4.0
+        );
+        if cancel {
+            frame(&mut app, &ctx, vec![meter_key(egui::Key::Escape)]);
+            assert_eq!(
+                app.display_time_signature(),
+                daw_core::TimeSignature::default()
+            );
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end - egui::vec2(0.0, 12.0))],
+            );
+            assert_eq!(
+                app.display_time_signature(),
+                daw_core::TimeSignature::default()
+            );
+        }
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        let sig = app.session.project.time_signature;
+        assert_eq!(
+            if part == 0 {
+                sig.numerator
+            } else {
+                sig.denominator
+            },
+            expected
+        );
+        assert_eq!(app.dirty, !cancel);
     }
 }

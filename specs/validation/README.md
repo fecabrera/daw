@@ -4,6 +4,45 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Saved time signature and live grid preview — 2026-11-05
+
+Added a project-wide positive numerator/denominator setting, defaulting to 4/4
+for older manifests. The transport selector uses the position monitor style and
+sits between Tempo and Metronome. Numerator dragging steps by one; denominator
+dragging uses 2, 3, 4, 6, 8, 12, 16. Double-click text entry accepts 1–65535.
+Rulers, positions, grids and snapping preview the value during dragging, then
+commit one project/history change on release. Escape/focus loss/disabled editing
+restores the previous display; cancelled pointer gestures stay cancelled until
+release. Saved signature edits preserve tempo, clip/source ranges, MIDI ticks,
+playhead and loop frames. Playback uses the committed renderer signature, with
+six eighth-note clicks per 6/8 bar and the existing click level.
+
+Automated coverage includes legacy defaults and serialization, invalid-edit
+rollback, save/reopen, Undo/Redo, mixed audio/MIDI timing and unchanged render
+samples; 3/4, 6/8, 7/8 and non-power-of-two denominators across all project rates;
+bar/grid/snap alignment and frame/pixel invariance; both number input targets,
+invalid text, drag preview before release, held-pointer cancellation, focus/job
+guards and toolbar placement; metronome grouping, looped callback routing and
+offline isolation. Existing callback heap guards remain in the workspace suite.
+
+Checks (Cargo used `--locked --offline` and the local CMake tool):
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS with debug assertions enabled.
+- `cargo test --workspace --release`: PASS.
+- `cargo build -p daw-desktop -p daw-cli`: PASS.
+- `python3 tools/check_cli.py`: PASS.
+- `git diff HEAD --check` and changed documentation links: PASS.
+
+Native macOS check used a temporary local test bundle over the rebuilt debug
+executable. Confirmed the toolbar appearance/placement, double-click entry on
+both numbers, 6/8 ruler redraw and Undo back to clean 4/4. In-drag preview and
+cancellation are automated input checks; a native held-drag test and audible
+metronome/device listening were not performed. Windows/Linux native checks
+remain open. The distributable app bundle was not packaged: the packager needs
+a clean committed tracked tree; this task does not authorize a commit.
+
 ## Metronome additional 10 dB — 2026-11-05
 
 Raised both click amplitudes by `10^(10/20)` (approximately 3.16227766), preserving
