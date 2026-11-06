@@ -4,6 +4,64 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Metronome additional 10 dB — 2026-11-05
+
+Raised both click amplitudes by `10^(10/20)` (approximately 3.16227766), preserving
+the accent balance, envelope and timing. This supersedes the 0.40 / 0.28 scales
+recorded below. The current amplitude scales are approximately 1.264911064 /
+0.885437745; the envelope keeps measured isolated peaks near 0.53 / 0.37.
+Updated the peak-level regression and finite-output bound.
+
+Completed on macOS with the pinned toolchain and the existing local CMake override:
+
+- `cargo test -p daw-output --locked --offline`: PASS.
+- `cargo test -p daw-output --release --locked --offline`: PASS.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: PASS.
+- `cargo fmt --all --check`: PASS.
+- `cargo test --workspace --locked --offline`: PASS.
+- `cargo test --workspace --release --locked --offline`: PASS.
+- `cargo build -p daw-desktop --locked --offline`: PASS.
+
+Native listening after this increase remains unchecked. The debug executable was
+rebuilt; the packaged app remains unchanged under its committed-tree requirement.
+
+## Playback metronome — 2026-11-05
+
+Implemented the [playback metronome](../audio/metronome.md): Lucide toggle directly
+after Tempo in every view, shared transport geometry/hover/selected colors,
+app-session state and atomic live-output control. The procedural click follows
+the active renderer's audible project frame and tempo through loop normalization,
+seeks and pause/stop. Bar accents follow 4/4. Monitor mixing precedes device-rate
+conversion and leaves offline project rendering unchanged. Final click scales
+are 0.40 / 0.28, twice the initial levels (about +6 dB).
+
+Completed on macOS with the pinned toolchain:
+
+- `cargo test -p daw-output metronome --locked --offline`: PASS, including the
+  raised level. Covers rounded fractional-tempo boundaries without cumulative
+  drift at all six rates, bar accents, power/pause fades, loop alignment,
+  device-rate conversion, offline isolation and callback allocation/deallocation
+  guards. A peak-level regression covers the raised default.
+- `cargo test -p daw-ui metronome --locked --offline`: PASS in dark/light themes.
+  Covers exact placement after Tempo, shared button dimensions/alignment, toggling
+  without opening a device or editing project data, and state across all views.
+- `cargo test --workspace --locked --offline` and
+  `cargo test --workspace --release --locked --offline`: PASS.
+- After the final click-level adjustment,
+  `cargo test -p daw-output --locked --offline` and
+  `cargo test -p daw-output --release --locked --offline`: PASS.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` and
+  `cargo fmt --all --check`: PASS after the level adjustment.
+- `cargo build -p daw-desktop --locked --offline`: PASS with the raised level.
+- Native macOS temporary build: checked placement immediately after Tempo and
+  the active gold/white Metronome toggle. The stopped empty project remained
+  unmodified. Native device listening after the final level adjustment and
+  Windows/Linux presentation remain unchecked.
+
+CMake was selected from the existing ignored local build-tools directory through
+`CMAKE`, as with Opus validation. The packaged app was not replaced: the packager
+requires a clean committed tracked tree. No commit or push was made.
+
 ## Opus import — 2026-11-05
 
 Implemented [Ogg Opus import](../audio/import.md#ogg-opus-timing-and-validation)

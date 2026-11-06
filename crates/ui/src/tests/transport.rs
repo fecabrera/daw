@@ -621,3 +621,46 @@ fn stopped_transport_returns_to_origin_once_without_an_audio_device_in_every_vie
         assert!(!app.dirty);
     }
 }
+
+#[test]
+fn metronome_toggle_sits_after_tempo_and_keeps_project_and_transport_unchanged() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, _) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        assert!(!app.metronome_enabled);
+        let rect = app.metronome_bounds;
+        assert_eq!(rect.size(), app.transport_bounds[0].size());
+        assert!((rect.center().y - app.transport_bounds[0].center().y).abs() < 0.1);
+        assert!((rect.left() - app.tempo_bounds.right() - 7.0).abs() < 0.1);
+        let point = rect.center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        assert!(app.metronome_enabled);
+        assert!(
+            app.output.is_none(),
+            "enabling a stopped metronome must not open a device"
+        );
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+        for view in ViewMode::ALL {
+            app.set_view_mode(view, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            assert!(app.metronome_enabled);
+            assert!(app.metronome_bounds.left() > app.tempo_bounds.right());
+        }
+    }
+}

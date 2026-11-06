@@ -24,6 +24,7 @@ type ModulationMeter = Arc<[AtomicU32; daw_engine::MODULATION_SNAPSHOT_SIZE]>;
 mod effect_audition;
 mod layer_meters;
 mod meters;
+mod metronome;
 mod performance;
 mod preparation;
 #[cfg(test)]
@@ -35,6 +36,7 @@ pub use performance::{Performance, PerformanceSnapshot};
 #[derive(Default)]
 pub struct Status {
     pub performance: Performance,
+    metronome_enabled: AtomicBool,
     transport_sequence: AtomicU64,
     // Monotonic project samples rendered, independent of seeks and loop wraps.
     rendered_frames: AtomicU64,
@@ -708,6 +710,13 @@ impl AudioOutput {
             .push(command)
             .map_err(|_| "Audio command queue is full; try again".into())
     }
+    /// Live monitor state; does not change project data or offline rendering.
+    pub fn set_metronome(&self, enabled: bool) {
+        self.status
+            .metronome_enabled
+            .store(enabled, Ordering::Relaxed);
+    }
+
     /// UI state only; changes never enter the project, history or export renderer.
     pub fn set_exciter_solos(&self, selected: &std::collections::HashSet<(Id, Id)>) {
         for (key, flag) in &self.exciter_solos {
@@ -1074,6 +1083,7 @@ impl AudioOutput {
 }
 struct Callback {
     project_rate_hz: u32,
+    metronome: metronome::Metronome,
     audition: audition::Player,
     audition_sender: Option<audition::Sender>,
     renderer: Box<PreparedRenderer>,
@@ -1153,6 +1163,7 @@ impl Callback {
         let (sender, audition) = audition::channel(project_rate_hz);
         Ok(Self {
             project_rate_hz,
+            metronome: metronome::Metronome::new(project_rate_hz),
             audition,
             audition_sender: Some(sender),
             renderer: Box::new(PreparedRenderer::try_new(plan, meters)?),
@@ -1172,6 +1183,8 @@ impl Callback {
         })
     }
     fn update(&mut self) {
+        self.metronome
+            .set_enabled(self.status.metronome_enabled.load(Ordering::Relaxed));
         self.audition.update();
         let started = std::time::Instant::now();
         self.activate_scheduled();
@@ -1337,13 +1350,21 @@ impl Callback {
             self.renderer.playing = false;
             self.status.source_failed.store(true, Ordering::Relaxed);
         }
+        let frame = (self.renderer.playing && !self.renderer.buffering())
+            .then(|| self.renderer.playhead.saturating_sub(1));
+        let click = self
+            .metronome
+            .next(frame, f64::from(self.renderer.plan.project.tempo_bpm));
         let audition = self.audition.next();
         // Worker activation deadlines use the project sample clock. A disk
         // hold must not move that clock ahead of the transport/DSP state.
         if !self.renderer.buffering() {
             self.rendered_frames += 1;
         }
-        [sample[0] + audition[0], sample[1] + audition[1]]
+        [
+            sample[0] + audition[0] + click,
+            sample[1] + audition[1] + click,
+        ]
     }
     fn discard_buffered_output(&mut self) {
         // Discard cached samples from before the command. Keep filter history so
@@ -2746,3 +2767,6 @@ mod loudness_prepared_transport_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod metronome_tests;

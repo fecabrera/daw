@@ -198,6 +198,10 @@ Use stable track order for summation. Export must use saved target control value
 
 ### Transport rules
 
+The [playback metronome](../audio/metronome.md) toggle follows Tempo in the shared
+transport toolbar. It uses the active playback clock without changing project
+data or offline rendering.
+
 Play starts at the current playhead and records that position as the playback start. Pause holds the current playhead; Play resumes without replacing the recorded start. Stop ends playback and returns to the recorded start, including while paused or after natural completion. Seek changes the playhead during playback, while paused, or while stopped. Seeking and live plan updates preserve the recorded start until Stop or a new playback after natural completion. Stop before any playback leaves the current position unchanged. The playback start is runtime state and is not stored in the manifest. Seeking, starting, pausing, stopping, and wrapping a loop must avoid unintended discontinuity clicks; use bounded transition handling within the fixed MVP fade policy. Pausing and stopping must hold the playhead even when it is outside an enabled loop.
 
 With looping disabled, stop at the end of the last clip. With looping enabled, repeat the selected range using an exclusive end. Reject empty loop ranges. Disable playback when the project has no clips. If every source is missing but clips exist, playback can run as silence with warnings.

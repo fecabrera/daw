@@ -815,6 +815,7 @@ pub struct DawUi {
     master_selected: bool,
     return_bank_height: f32,
     mixer_returns_visible: bool,
+    metronome_enabled: bool,
     timeline_catalog_visible: bool,
     instrument_effects_catalog_visible: bool,
     editor_effects: effects_panel::Visibility,
@@ -832,6 +833,8 @@ pub struct DawUi {
     effects_bounds: effects_panel::EffectsUiBounds,
     #[cfg(test)]
     transport_bounds: [Rect; 3],
+    #[cfg(test)]
+    metronome_bounds: Rect,
     #[cfg(test)]
     mixer_bounds: HashMap<Id, Rect>,
     #[cfg(test)]
@@ -952,6 +955,7 @@ impl Default for DawUi {
             master_selected: false,
             return_bank_height: 180.0,
             mixer_returns_visible: true,
+            metronome_enabled: false,
             effects_lane_focus: Default::default(),
             effects_drag: None,
             selected_effects: HashSet::new(),
@@ -962,6 +966,8 @@ impl Default for DawUi {
             effects_bounds: Default::default(),
             #[cfg(test)]
             transport_bounds: [Rect::NOTHING; 3],
+            #[cfg(test)]
+            metronome_bounds: Rect::NOTHING,
             #[cfg(test)]
             mixer_bounds: HashMap::new(),
             #[cfg(test)]
@@ -1695,6 +1701,9 @@ impl DawUi {
             }
         }
         self.sync_exciter_audition();
+        if let Some(output) = &self.output {
+            output.set_metronome(self.metronome_enabled);
+        }
         self.configure_audio_cache(false);
         if let Some(output) = &mut self.output
             && let Err(e) = output.play()
@@ -3073,6 +3082,18 @@ impl DawUi {
             ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
+            let metronome =
+                transport_controls::metronome(ui, self.metronome_enabled, self.job.is_none());
+            #[cfg(test)]
+            {
+                self.metronome_bounds = metronome.rect;
+            }
+            if metronome.clicked() {
+                self.metronome_enabled = !self.metronome_enabled;
+                if let Some(output) = &self.output {
+                    output.set_metronome(self.metronome_enabled);
+                }
+            }
             if self.view_mode == ViewMode::Instrument {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     self.track_control(ui);

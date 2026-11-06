@@ -122,3 +122,18 @@ pub(super) fn show(
         looping,
     }
 }
+
+/// Same geometry, hover overlay, timing-toggle fill and white active artwork as Loop.
+pub(super) fn metronome(ui: &mut Ui, selected: bool, enabled: bool) -> Response {
+    ui.add_enabled_ui(enabled, |ui| {
+        icons::borderless_toggle_with_colors(
+            ui,
+            icons::Lucide::Metronome,
+            "Metronome",
+            selected,
+            Vec2::splat(icons::TOOLBAR_BUTTON_SIZE),
+            (theme::LOOP_COLOR, egui::Color32::WHITE),
+        )
+    })
+    .inner
+}

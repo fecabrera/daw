@@ -1197,3 +1197,20 @@ fn disk_buffering_holds_the_worker_activation_clock_with_the_transport() {
     assert_eq!(callback.rendered_frames, clock + 1);
     assert_eq!(callback.renderer.playhead, state.frame + 1);
 }
+
+#[test]
+fn metronome_updates_and_callback_processing_are_allocation_free() {
+    for rate in [44_100, 48_000, 96_000] {
+        let (output, mut callback) = controlled_output(rate);
+        callback.renderer.play();
+        for enabled in [true, false, true] {
+            output.set_metronome(enabled);
+            realtime(|| {
+                callback.update();
+                for _ in 0..2048 {
+                    assert!(callback.next().iter().all(|s| s.is_finite()));
+                }
+            });
+        }
+    }
+}
