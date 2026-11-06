@@ -3132,19 +3132,7 @@ impl DawUi {
             }
             ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
-            ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
-            ui.add_enabled_ui(self.job.is_none(), |ui| {
-                match self
-                    .time_signature_control
-                    .show(ui, self.session.project.time_signature)
-                {
-                    Ok(Some(signature)) if signature != self.session.project.time_signature => {
-                        self.edit(Edit::SetTimeSignature { signature })
-                    }
-                    Err(error) => self.fail(error),
-                    _ => {}
-                }
-            });
+            ui.separator();
             let metronome =
                 transport_controls::metronome(ui, self.metronome_enabled, self.job.is_none());
             #[cfg(test)]
@@ -3157,6 +3145,19 @@ impl DawUi {
                     output.set_metronome(self.metronome_enabled);
                 }
             }
+            ui.add_enabled_ui(self.job.is_none(), |ui| {
+                match self
+                    .time_signature_control
+                    .show(ui, self.session.project.time_signature)
+                {
+                    Ok(Some(signature)) if signature != self.session.project.time_signature => {
+                        self.edit(Edit::SetTimeSignature { signature })
+                    }
+                    Err(error) => self.fail(error),
+                    _ => {}
+                }
+            });
+            ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
             if self.view_mode == ViewMode::Instrument {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     self.track_control(ui);

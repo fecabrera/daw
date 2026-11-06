@@ -9,6 +9,9 @@ pub(super) struct State {
     cancelled: bool,
     #[cfg(test)]
     pub bounds: [Rect; 2],
+    /// Editor frame, text clip and text bounds for paint regression checks.
+    #[cfg(test)]
+    pub editor_bounds: Option<[Rect; 3]>,
 }
 #[cfg(test)]
 impl Default for State {
@@ -19,6 +22,7 @@ impl Default for State {
             cancelled: false,
             #[cfg(test)]
             bounds: [Rect::NOTHING; 2],
+            editor_bounds: None,
         }
     }
 }
@@ -70,6 +74,10 @@ impl State {
             self.drag = None;
         }
         let preview = self.preview(signature);
+        #[cfg(test)]
+        {
+            self.editor_bounds = None;
+        }
         let monitor = transport_monitor_control(
             ui,
             &format!("{}/{}", preview.numerator, preview.denominator),
@@ -115,9 +123,19 @@ impl State {
             let mut output = egui::TextEdit::singleline(&mut edit.text)
                 .id(monitor.response.id.with("edit"))
                 .font(fonts::semibold(13.0))
-                .desired_width((rect.width() - 8.0).max(1.0))
+                // Keep the display slot fixed; leave enough room for its digit.
+                .margin(egui::Margin::symmetric(1, 2))
+                .desired_width(rect.width())
                 .horizontal_align(egui::Align::Center)
                 .show(&mut ui.new_child(egui::UiBuilder::new().max_rect(rect)));
+            #[cfg(test)]
+            {
+                self.editor_bounds = Some([
+                    output.response.rect,
+                    output.text_clip_rect,
+                    Rect::from_min_size(output.galley_pos, output.galley.size()),
+                ]);
+            }
             output.response.widget_info(|| {
                 egui::WidgetInfo::text_edit(
                     ui.is_enabled(),

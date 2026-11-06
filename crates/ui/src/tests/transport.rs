@@ -623,7 +623,7 @@ fn stopped_transport_returns_to_origin_once_without_an_audio_device_in_every_vie
 }
 
 #[test]
-fn metronome_toggle_sits_after_time_signature_and_keeps_project_and_transport_unchanged() {
+fn timing_section_orders_metronome_signature_tempo_and_keeps_project_and_transport_unchanged() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, _) = fixture();
         let ctx = context();
@@ -641,7 +641,7 @@ fn metronome_toggle_sits_after_time_signature_and_keeps_project_and_transport_un
         let rect = app.metronome_bounds;
         assert_eq!(rect.size(), app.transport_bounds[0].size());
         assert!((rect.center().y - app.transport_bounds[0].center().y).abs() < 0.1);
-        assert!((rect.left() - app.time_signature_control.bounds[1].right() - 7.0).abs() < 0.1);
+        assert!((app.time_signature_control.bounds[0].left() - rect.right() - 7.0).abs() < 0.1);
         let point = rect.center();
         frame(
             &mut app,
@@ -659,8 +659,33 @@ fn metronome_toggle_sits_after_time_signature_and_keeps_project_and_transport_un
         for view in ViewMode::ALL {
             app.set_view_mode(view, &ctx);
             frame(&mut app, &ctx, vec![]);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             assert!(app.metronome_enabled);
-            assert!(app.metronome_bounds.left() > app.tempo_bounds.right());
+            assert!(app.metronome_bounds.right() < app.time_signature_control.bounds[0].left());
+            assert!(
+                (app.tempo_bounds.left() - app.time_signature_control.bounds[1].right() - 7.0)
+                    .abs()
+                    < 0.1
+            );
+            let dividers = shapes
+                .iter()
+                .filter(|shape| {
+                    matches!(&shape.shape,
+                        egui::Shape::LineSegment { points, .. }
+                        if points[0].x == points[1].x
+                            && points[0].x > app.musical_bounds[1].right()
+                            && points[0].x < app.metronome_bounds.left()
+                            && points[0].y <= app.metronome_bounds.center().y
+                            && points[1].y >= app.metronome_bounds.center().y
+                    )
+                })
+                .count();
+            assert_eq!(
+                dividers, 1,
+                "{view:?}: one divider before the timing section"
+            );
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
         }
     }
 }
@@ -691,7 +716,7 @@ fn time_signature_double_click_edits_each_number_and_preserves_tempo_and_frames(
         frame(&mut app, &ctx, vec![]);
         let original = app.session.project.clone();
         assert!(
-            (app.time_signature_control.bounds[0].left() - app.tempo_bounds.right() - 7.0).abs()
+            (app.tempo_bounds.left() - app.time_signature_control.bounds[1].right() - 7.0).abs()
                 < 0.1
         );
         let point = app.time_signature_control.bounds[part].center();
@@ -797,5 +822,78 @@ fn time_signature_drags_commit_on_release_and_escape_cancels() {
             expected
         );
         assert_eq!(app.dirty, !cancel);
+    }
+}
+
+#[test]
+fn time_signature_editors_keep_display_width_and_scroll_long_input() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for view in ViewMode::ALL {
+            for part in 0..2 {
+                let mut app = DawUi::default();
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                app.set_view_mode(view, &ctx);
+                frame(&mut app, &ctx, vec![]);
+                frame(&mut app, &ctx, vec![]);
+                let before = app.session.project.clone();
+                let idle_tempo = app.tempo_bounds;
+                let idle_numbers = app.time_signature_control.bounds;
+                let point = app.time_signature_control.bounds[part].center();
+                for _ in 0..2 {
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(point), button(point, true)],
+                    );
+                    frame(&mut app, &ctx, vec![button(point, false)]);
+                }
+                frame(&mut app, &ctx, vec![]);
+                assert!(ctx.text_edit_focused());
+                for text in [None, Some("65535")] {
+                    let events = text
+                        .map(|text| vec![egui::Event::Text(text.into())])
+                        .unwrap_or_default();
+                    frame(&mut app, &ctx, events);
+                    let [editor, clip, painted_text] =
+                        app.time_signature_control.editor_bounds.unwrap();
+                    assert_eq!(app.time_signature_control.bounds, idle_numbers);
+                    assert_eq!(app.tempo_bounds, idle_tempo);
+                    assert!((editor.width() - idle_numbers[part].width()).abs() < 0.1);
+                    if text.is_none() {
+                        assert!(
+                            clip.expand(0.5).contains_rect(painted_text),
+                            "{view:?}, {part}: text {painted_text:?}, clip {clip:?}"
+                        );
+                    } else {
+                        assert!(painted_text.width() > clip.width());
+                    }
+                    assert!(
+                        app.time_signature_control.bounds[part]
+                            .expand(0.5)
+                            .contains_rect(editor)
+                    );
+                    assert!(
+                        app.metronome_bounds.right() < app.time_signature_control.bounds[0].left()
+                    );
+                    assert!(
+                        app.time_signature_control.bounds[0].right()
+                            < app.time_signature_control.bounds[1].left()
+                    );
+                    assert!(app.time_signature_control.bounds[1].right() < app.tempo_bounds.left());
+                }
+                frame(&mut app, &ctx, vec![meter_key(egui::Key::Escape)]);
+                assert!(!app.time_signature_control.active());
+                assert!(app.time_signature_control.editor_bounds.is_none());
+                assert_eq!(app.session.project, before);
+                assert!(!app.dirty);
+            }
+        }
     }
 }

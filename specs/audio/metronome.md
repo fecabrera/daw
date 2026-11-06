@@ -2,8 +2,9 @@
 
 ## Accepted behavior
 
-Place a borderless Metronome toggle immediately after the time signature in the shared playback
-transport toolbar in all four views. Use Lucide `Metronome`, the existing 24-point
+Place a borderless Metronome toggle immediately before the time signature in the shared playback
+transport toolbar in all four views. Start this section with a standard vertical toolbar
+separator after the position monitors; order Metronome, time signature, then Tempo. Use Lucide `Metronome`, the existing 24-point
 transport button and 16-point artwork, seven-point spacing, shared hover overlay,
 and Loop's gold selected fill with white active artwork in both themes. Retain
 transport input/dialog/job guards, tooltip and accessibility name “Metronome”.

@@ -4,6 +4,54 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Time-signature editor visibility — 2026-11-06
+
+Numerator and denominator editors use their full, unchanged display-slot width
+with compact horizontal padding. TextEdit's desired width already includes its
+margins; subtracting them again left too little room for a digit. Longer input
+scrolls within the same field. Slash, inactive number, Metronome and Tempo keep
+their positions. Existing commit, cancellation and validation behavior remains.
+
+The geometry regression check covers both editors, all four views and both tested
+themes. It checks single-digit visibility, fixed editor and neighbor bounds,
+horizontal scrolling for five-digit input, and unchanged project/clean state on
+Escape.
+
+Checks use Cargo `--locked --offline`:
+
+- Focused transport tests: PASS (all 12).
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS with debug assertions enabled.
+- `cargo test --workspace --release`: PASS.
+- Documentation links (131 local targets) and `git diff --check`: PASS.
+
+These are automated egui/workspace checks. Native appearance and display scaling
+on macOS, Windows and Linux were not checked for this fix.
+
+## Transport timing section order — 2026-11-06
+
+The shared playback toolbar now places a standard vertical separator after the
+position monitors, followed by Metronome, time signature and Tempo. This
+supersedes the earlier Tempo/signature/Metronome order. Existing controls,
+spacing, state and editing behavior are reused.
+
+All 11 focused `tests::transport` checks passed. The updated layout check covers
+the control order, seven-point gaps and one separator before the section in all
+four views and both tested themes. Existing checks cover metronome state,
+unchanged project/transport state, signature editing and transport guards.
+
+Workspace checks use Cargo `--locked --offline`:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --workspace`: PASS with debug assertions enabled.
+- `cargo test --workspace --release`: PASS.
+- Documentation links (131 local targets) and `git diff --check`: PASS.
+
+These are automated egui/workspace checks. Native appearance and display scaling
+on macOS, Windows and Linux were not checked for this layout change.
+
 ## Clip gain normalization — 2026-11-06
 
 Added shared Clip/context-menu normalization in Timeline and Editor with sample
