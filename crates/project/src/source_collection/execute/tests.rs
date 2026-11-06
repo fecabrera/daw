@@ -160,7 +160,8 @@ fn complete_original_bytes_shared_sources_metadata_pcm_and_live_state_are_preser
 fn compressed_sources_keep_full_bitstreams_and_container_extensions() {
     let f = Fixture::new();
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../media/tests/fixtures");
-    let inputs = ["tone-2.mp3", "tone-2.aac", "tone-2.m4a"].map(|name| fixture.join(name));
+    let inputs =
+        ["tone-2.mp3", "tone-2.aac", "tone-2.m4a", "tone-2.opus"].map(|name| fixture.join(name));
     let live = f.session(&inputs.iter().map(PathBuf::as_path).collect::<Vec<_>>());
     let result = collect(&plan(&live, None), &live, None);
     assert_committed(&result, &live);
@@ -169,7 +170,7 @@ fn compressed_sources_keep_full_bitstreams_and_container_extensions() {
         .assets
         .iter()
         .zip(&inputs)
-        .zip(["mp3", "aac", "mp4"])
+        .zip(["mp3", "aac", "mp4", "opus"])
     {
         assert!(asset.source.path.ends_with(extension));
         assert_eq!(

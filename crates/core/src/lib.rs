@@ -584,7 +584,7 @@ impl Project {
                         a.source_metadata.sample_format.as_str(),
                         a.source_metadata.bits_per_sample
                     ),
-                    ("pcm_int", 16 | 24) | ("ieee_float", 32) | ("mp3" | "aac", 0)
+                    ("pcm_int", 16 | 24) | ("ieee_float", 32) | ("mp3" | "aac" | "opus", 0)
                 )
             {
                 return Err(invalid("Unsupported source metadata"));

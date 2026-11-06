@@ -426,7 +426,7 @@ fn collected_compressed_media_keeps_full_original_bytes_through_save_as() {
     let f = Fixture::new();
     let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../media/tests/fixtures");
     let mut live = Session::default();
-    let names = ["tone-2.mp3", "tone-2.aac", "tone-2.m4a"];
+    let names = ["tone-2.mp3", "tone-2.aac", "tone-2.m4a", "tone-2.opus"];
     for name in names {
         live.import(&fixtures.join(name), None, 0).unwrap();
     }
@@ -450,7 +450,7 @@ fn collected_compressed_media_keeps_full_original_bytes_through_save_as() {
         .assets
         .iter()
         .zip(names)
-        .zip(["mp3", "aac", "mp4"])
+        .zip(["mp3", "aac", "mp4", "opus"])
     {
         assert!(asset.source.path.ends_with(extension));
         assert_eq!(

@@ -1,9 +1,9 @@
 //! Worker-side source decoding. Compressed stream lengths are never allocation hints.
 use crate::*;
 use std::io::{Read, Seek, SeekFrom};
-use symphonia::core::codecs::{CODEC_TYPE_AAC, CODEC_TYPE_MP3};
+use symphonia::core::codecs::{CODEC_TYPE_AAC, CODEC_TYPE_MP3, CODEC_TYPE_OPUS};
 
-pub const IMPORT_EXTENSIONS: &[&str] = &["wav", "mp3", "aac", "m4a", "mp4"];
+pub const IMPORT_EXTENSIONS: &[&str] = &["wav", "mp3", "aac", "m4a", "mp4", "opus", "ogg"];
 
 pub fn decode_audio(path: &Path) -> Result<AudioData> {
     decode_audio_at_rate(path, SAMPLE_RATE)
@@ -43,7 +43,8 @@ pub fn decode_audio_cancellable(
             &hint,
             MediaSourceStream::new(Box::new(file), Default::default()),
             &FormatOptions {
-                enable_gapless: true,
+                // Opus uses explicit RFC 7845 bounds below.
+                enable_gapless: &header[..4] != b"OggS",
                 ..Default::default()
             },
             &MetadataOptions::default(),
@@ -53,14 +54,32 @@ pub fn decode_audio_cancellable(
     let track = format
         .tracks()
         .iter()
-        .find(|t| matches!(t.codec_params.codec, CODEC_TYPE_MP3 | CODEC_TYPE_AAC))
-        .ok_or_else(|| err(&"Supported audio formats are WAV, MP3 and AAC-LC"))?;
+        .find(|t| {
+            matches!(
+                t.codec_params.codec,
+                CODEC_TYPE_MP3 | CODEC_TYPE_AAC | CODEC_TYPE_OPUS
+            )
+        })
+        .ok_or_else(|| err(&"Supported audio formats are WAV, MP3, AAC-LC and Ogg Opus"))?;
     let params = &track.codec_params;
-    let sample_format = if params.codec == CODEC_TYPE_MP3 {
-        "mp3"
-    } else {
-        "aac"
+    let sample_format = match params.codec {
+        CODEC_TYPE_MP3 => "mp3",
+        CODEC_TYPE_OPUS => "opus",
+        _ => "aac",
     };
+    let mut opus = if params.codec == CODEC_TYPE_OPUS {
+        let head = params
+            .extra_data
+            .as_deref()
+            .ok_or_else(|| err(&"Missing Opus header"))?;
+        Some(
+            crate::opus_import::OpusImport::read(path, head, params.start_ts, cancelled)
+                .map_err(|e| err(&e))?,
+        )
+    } else {
+        None
+    };
+    let gain = opus.as_ref().map_or(1.0, |opus| opus.gain);
     // ADTS duration is a bitrate estimate. MP3 gapless and MP4 sample tables
     // supply exact packet bounds, so reject premature EOF for those sources.
     let expected_end =
@@ -71,8 +90,17 @@ pub fn decode_audio_cancellable(
         };
     let mut packet_end = 0;
     let track_id = track.id;
-    let mut decoder = symphonia::default::get_codecs()
-        .make(params, &DecoderOptions::default())
+    let mut codecs = symphonia::core::codecs::CodecRegistry::new();
+    symphonia::default::register_enabled_codecs(&mut codecs);
+    codecs.register_all::<symphonia_adapter_libopus::OpusDecoder>();
+    let mut decoder_params = params.clone();
+    if opus.is_some() {
+        // The worker owns pre-skip across packets and final-granule trimming.
+        // Disable the adapter's first-packet-only pre-skip to apply it once.
+        decoder_params.extra_data.as_mut().unwrap()[10..12].fill(0);
+    }
+    let mut decoder = codecs
+        .make(&decoder_params, &DecoderOptions::default())
         .map_err(|e| err(&e))?;
     let mut reservations = vec![AudioReservation::new(0, 1024 * 1024)?];
     let mut source_spec = None;
@@ -120,9 +148,25 @@ pub fn decode_audio_cancellable(
             )?);
             source_spec = Some((source_rate, channels));
         }
+        let mut buffer = SampleBuffer::<f32>::new(audio.frames() as u64, *audio.spec());
+        let frame_count = audio.frames();
+        buffer.copy_interleaved_ref(audio);
+        // MP3 trims inside its decoder; AAC and Opus use the worker bounds.
+        let (trim_start, trim_end) = if sample_format == "aac" {
+            (packet.trim_start() as usize, packet.trim_end() as usize)
+        } else if let Some(opus) = &mut opus {
+            opus.trim(frame_count)
+        } else {
+            (0, 0)
+        };
+        let frame_count = buffer.samples().len() / channels;
+        let keep = frame_count
+            .checked_sub(trim_start)
+            .and_then(|n| n.checked_sub(trim_end))
+            .ok_or_else(|| err(&"Invalid encoder delay or padding"))?;
         let required = samples
             .len()
-            .checked_add(audio.frames())
+            .checked_add(keep)
             .ok_or_else(|| err(&"Audio length overflow"))?;
         if disk.is_none() && crate::stream_decode::should_stream(required as u64) {
             let mut writer = DiskAudioWriter::incremental()?;
@@ -154,19 +198,6 @@ pub fn decode_audio_cancellable(
                 .try_reserve_exact(admitted - samples.len())
                 .map_err(|e| err(&e))?;
         }
-        let mut buffer = SampleBuffer::<f32>::new(audio.frames() as u64, *audio.spec());
-        buffer.copy_interleaved_ref(audio);
-        // MP3 applies packet trims in its decoder; AAC does not.
-        let (trim_start, trim_end) = if sample_format == "aac" {
-            (packet.trim_start() as usize, packet.trim_end() as usize)
-        } else {
-            (0, 0)
-        };
-        let frame_count = buffer.samples().len() / channels;
-        let keep = frame_count
-            .checked_sub(trim_start)
-            .and_then(|n| n.checked_sub(trim_end))
-            .ok_or_else(|| err(&"Invalid encoder delay or padding"))?;
         let mut packet_frames = Vec::with_capacity(keep);
         for frame in buffer
             .samples()
@@ -174,8 +205,8 @@ pub fn decode_audio_cancellable(
             .skip(trim_start)
             .take(keep)
         {
-            let l = frame[0];
-            let r = if channels == 1 { l } else { frame[1] };
+            let l = frame[0] * gain;
+            let r = if channels == 1 { l } else { frame[1] * gain };
             if !l.is_finite() || !r.is_finite() {
                 return Err(err(&"Source contains non-finite samples"));
             }
@@ -189,7 +220,9 @@ pub fn decode_audio_cancellable(
             writer.write(&packet_frames)?;
         }
     }
-    if expected_end.is_some_and(|end| packet_end < end) {
+    if opus.as_ref().is_some_and(|opus| !opus.complete())
+        || expected_end.is_some_and(|end| packet_end < end)
+    {
         return Err(err(&"Incomplete compressed audio data"));
     }
     if disk.is_none() && samples.is_empty() {

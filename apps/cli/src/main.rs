@@ -146,7 +146,7 @@ fn export_settings(
         "aac" => ExportFormat::Aac,
         _ => ExportFormat::Wav,
     };
-    if ["wav", "mp3", "aac", "m4a", "mp4"].contains(&extension.as_str())
+    if daw_media::IMPORT_EXTENSIONS.contains(&extension.as_str())
         && extension != settings.format.extension()
     {
         return Err(daw_project::Error(
@@ -274,6 +274,8 @@ mod tests {
             ("mix.aac", None, Some("pcm16"), None),
             ("mix.aac", None, None, Some(123)),
             ("mix.m4a", Some("aac"), None, None),
+            ("mix.opus", None, None, None),
+            ("mix.ogg", Some("wav"), None, None),
         ] {
             assert!(export_settings(std::path::Path::new(path), format, codec, bitrate).is_err());
         }

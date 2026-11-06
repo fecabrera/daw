@@ -1,0 +1,20 @@
+Ogg Opus import uses symphonia-adapter-libopus 0.2.9 (MIT OR Apache-2.0),
+opusic-sys 0.7.7 (BSD-3-Clause), and its bundled libopus 1.6.1.
+The adapter and native bindings are unmodified. opusic-sys includes its upstream
+opus.patch changes to the bundled libopus build; see the exact source archive.
+DRED and OSCE features are disabled. The application adds no Opus export path.
+
+Sources and exact Cargo archives:
+https://github.com/aschey/symphonia-adapters
+https://crates.io/api/v1/crates/symphonia-adapter-libopus/0.2.9/download
+https://github.com/DoumanAsh/opusic-sys
+https://crates.io/api/v1/crates/opusic-sys/0.7.7/download
+https://opus-codec.org/
+https://opus-codec.org/license/
+
+Cargo.lock records archive checksums. License texts are included in
+symphonia-adapter-libopus-MIT.txt, symphonia-adapter-libopus-Apache-2.0.txt,
+opusic-sys-BSD-3-Clause.txt and Opus-COPYING.txt. Opus-COPYING.txt includes
+upstream copyright, redistribution conditions and patent-license references.
+Desktop packagers copy this directory. Corresponding Cargo sources are included
+by tools/package_sources.py under the existing source/relinking workflow.

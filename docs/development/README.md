@@ -2,7 +2,7 @@
 
 Build, run, and package the desktop app, CLI, and effect plugins. Choose your platform first.
 
-Run commands from the repository root with the toolchain pinned in [rust-toolchain.toml](../../rust-toolchain.toml). Dependency and minimum Rust versions are defined in [Cargo.toml](../../Cargo.toml) and [Cargo.lock](../../Cargo.lock). Rubber Band is built from bundled source and requires a C++ compiler and Clang/libclang for its Rust bindings. The packaged app needs no separate Rubber Band, LAME, or ONNX Runtime installation. The first build downloads the pinned ONNX Runtime binaries; it does not download model weights.
+Run commands from the repository root with the toolchain pinned in [rust-toolchain.toml](../../rust-toolchain.toml). Dependency and minimum Rust versions are defined in [Cargo.toml](../../Cargo.toml) and [Cargo.lock](../../Cargo.lock). The bundled Opus decoder requires CMake and a C compiler. Rubber Band is built from bundled source and requires a C++ compiler and Clang/libclang for its Rust bindings. The packaged app needs no separate Rubber Band, LAME, Opus, or ONNX Runtime installation. The first build downloads the pinned ONNX Runtime binaries; it does not download model weights.
 
 - [Windows](windows.md): MSVC and libclang setup, builds, ZIP packaging, and troubleshooting.
 - [macOS](macos.md): builds, app bundles, and disk images.

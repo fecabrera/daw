@@ -35,7 +35,7 @@ Collect sources before sharing or moving a project:
 3. Watch the status bar for checking, copying and saving progress. Collection starts immediately and also saves current changes, without a confirmation prompt.
 4. Wait for **Project sources collected and saved** in the status bar. Any warnings appear there too. A dialog opens only if an error occurs. Restore missing or changed originals before retrying.
 
-Collection copies complete original WAV, MP3 and AAC files without trimming, resampling or re-encoding. It includes unused assets, Sampler/Granulizer inputs and sources retained by the active Undo/Redo history. Original files stay unchanged. Undo/Redo history itself is not stored in the project.
+Collection copies complete original WAV, MP3, AAC and Opus files without trimming, resampling or re-encoding. It includes unused assets, Sampler/Granulizer inputs and sources retained by the active Undo/Redo history. Original files stay unchanged. Undo/Redo history itself is not stored in the project.
 
 Temporary copies need additional space; free space is not measured. When no new copies are needed, collection still saves the project.
 

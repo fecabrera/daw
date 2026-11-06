@@ -10,7 +10,7 @@ Make a saved project portable by copying its media sources into its project fold
 
 The first version follows these rules:
 
-- Copy full original WAV, MP3 and AAC source files without trimming, resampling or re-encoding. Preserve source metadata and project-rate frame coordinates.
+- Copy full original WAV, MP3, AAC and Opus source files without trimming, resampling or re-encoding. Preserve source metadata and project-rate frame coordinates.
 - Include every non-MIDI asset retained by the current project, including unused assets and Sampler/Granulizer inputs without timeline clips. Embedded MIDI patterns already travel in the manifest.
 - Preserve generated stems and their existing project-owned lifecycle. Do not rewrite their provenance or move existing `stems/` contents merely to normalize the layout.
 - Protect sources retained only by current session history. Collection must not make an Undo or Redo operation depend on an old external location after that source has been collected.

@@ -158,6 +158,30 @@ def main():
         for options in [("--codec", "pcm16"), ("--bitrate", "7"), ("--format", "wav")]:
             run(2, "render", "--project", folder, "--output", folder / "invalid.aac", *options)
         run(2, "render", "--project", folder, "--output", folder / "invalid.m4a", "--format", "aac")
+        # Opus imports use the same decoder without graphics or a device.
+        for name, frames, channels in [("tone-2.opus", 12000, 2), ("recorder.opus", 102408, 1)]:
+            opus_project = copy.deepcopy(aac_project)
+            opus_project["assets"] = opus_project["assets"][:1]
+            opus_source = ROOT / f"crates/media/tests/fixtures/{name}"
+            opus_bytes = opus_source.read_bytes()
+            opus_project["assets"][0].update(
+                name=name, decoded_frame_count=frames,
+                source={"kind": "external", "path": str(opus_source), "path_kind": "absolute"},
+                source_metadata={"sample_rate_hz": 48000, "channels": channels,
+                                 "sample_format": "opus", "bits_per_sample": 0})
+            opus_project["tracks"][0]["clips"][0].update(source_offset_frame=0, length_frames=frames)
+            project.write_text(json.dumps(opus_project))
+            run(0, "validate", "--project", folder)
+            opus_mix = folder / f"opus-import-{name}.wav"
+            run(0, "render", "--project", folder, "--output", opus_mix, "--codec", "pcm16")
+            with wave.open(str(opus_mix)) as output:
+                assert output.getnframes() == frames and output.getframerate() == 48000
+                assert any(output.readframes(frames))
+            assert opus_source.read_bytes() == opus_bytes
+        for extension in ("opus", "ogg"):
+            destination = folder / f"unsupported.{extension}"
+            run(2, "render", "--project", folder, "--output", destination)
+            assert not destination.exists()
         project.write_text(json.dumps(manifest))
         # A unity group is a real processing bus and preserves the flat mix.
         grouped = copy.deepcopy(manifest)
@@ -203,7 +227,7 @@ def main():
         run(1, "tracks", cwd=folder)
         run(1, "validate", "--project", folder)
         run(2, "render")
-    print("CLI smoke check passed: source collection, track inspection, WAV/MP3/AAC codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
+    print("CLI smoke check passed: source collection, track inspection, Opus imports, WAV/MP3/AAC codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
 
 
 if __name__ == "__main__":

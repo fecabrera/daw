@@ -3,8 +3,14 @@ use super::*;
 #[test]
 fn compressed_menu_import_and_file_drop_publish_prepared_clips() {
     let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../media/tests/fixtures");
-    for extension in ["mp3", "aac", "m4a"] {
-        let path = fixtures.join(format!("tone-2.{extension}"));
+    for name in [
+        "tone-2.mp3",
+        "tone-2.aac",
+        "tone-2.m4a",
+        "tone-2.opus",
+        "recorder.opus",
+    ] {
+        let path = fixtures.join(name);
         let mut app = DawUi::default();
         let ctx = context();
         app.import(path.clone());

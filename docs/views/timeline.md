@@ -40,7 +40,7 @@ Chords use the normal clip overwrite rules and Undo/Redo. Audio and group tracks
 ## Import and arrange
 
 1. Add an audio or MIDI track from the Track menu or the Tracks header.
-2. Use Clip > Import clip for WAV, MP3, or AAC audio, or drop a supported audio file on an audio track. Dropping into empty Timeline space creates a new audio track.
+2. Use Clip > Import clip for WAV, MP3, AAC, or Opus audio, or drop a supported audio file on an audio track. Dropping into empty Timeline space creates a new audio track.
 3. Drag a clip header to move it. Hold Option on macOS or Ctrl on Windows/Linux to copy it.
 4. Release to apply the change. Escape or focus loss cancels an active gesture.
 
@@ -60,7 +60,7 @@ Open **Clip** in the macOS menu bar or the Windows/Linux application menu. Its a
 - **Split at playhead**, **Stem-separation**.
 - **Edit clip**, **Disable clip**, **Delete clip**.
 
-Choose **Add MIDI pattern** with a MIDI track selected to place a new pattern at the playhead. It follows the same placement rules as other new clips: covered clips are trimmed, split, or removed. Undo restores the previous arrangement. Import clip accepts WAV, MP3, and AAC-LC audio. Use Command+Shift+I on macOS or Ctrl+Shift+I on Windows/Linux to import a clip.
+Choose **Add MIDI pattern** with a MIDI track selected to place a new pattern at the playhead. It follows the same placement rules as other new clips: covered clips are trimmed, split, or removed. Undo restores the previous arrangement. Import clip accepts WAV, MP3, AAC-LC, and Opus audio. Use Command+Shift+I on macOS or Ctrl+Shift+I on Windows/Linux to import a clip.
 
 Edit, Disable and Stem-separation use the primary selected clip. Disable changes to **Enable clip** for a disabled clip. Delete removes all selected clips. Split acts on selected clips that cross the playhead. Unavailable actions are disabled; Stem-separation requires an audio clip in Timeline and a validated model.
 
@@ -158,15 +158,19 @@ Right-click a disabled clip and choose **Enable clip** to restore it. **Disable 
 
 ## Supported imports
 
-Import mono or stereo WAV, MP3, or AAC-LC clips. AAC-LC can use `.aac` (ADTS),
-`.m4a`, or `.mp4` containers. WAV supports PCM16, PCM24, and float32. Audio is
-converted to the project processing rate, and its waveform is prepared before
+Import mono or stereo WAV, MP3, AAC-LC, or Opus clips. AAC-LC can use `.aac` (ADTS),
+`.m4a`, or `.mp4` containers. Opus uses Ogg `.opus` or `.ogg` files.
+WAV supports PCM16, PCM24, and float32. Audio is converted to the project processing rate, and its waveform is prepared before
 the clip is added. The original recording remains unchanged and must remain
 available when reopening the project.
 
 HE-AAC, protected audio, other codecs inside MP4 files, and files with more than
-two channels are unsupported. A rejected import leaves the arrangement intact.
+two channels are unsupported. Opus supports one mono/stereo stream
+with the standard channel mapping (family 0); chained or multiplexed streams
+and Ogg Vorbis are unsupported. Recorder files without a final end marker can
+load if they end on a complete page. A rejected import leaves the arrangement intact.
 MP3 encoder delay and padding are removed when the file provides that information.
+Opus imports remove encoder delay and end padding and apply the header output gain.
 AAC files can retain encoder padding, so their clip length can be slightly longer
 than the original uncompressed recording.
 

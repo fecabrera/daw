@@ -4,6 +4,57 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Opus import — 2026-11-05
+
+Implemented [Ogg Opus import](../audio/import.md#ogg-opus-timing-and-validation)
+through Symphonia 0.5.5, symphonia-adapter-libopus 0.2.9 and opusic-sys 0.7.7
+with bundled libopus 1.6.1. Added `.opus`/`.ogg` chooser filters, persisted source
+metadata, canonical collection naming, native dependency notices and CMake build
+prerequisites. No Opus encoder/export mode was added; CLI output guards reject
+Opus/Ogg extensions.
+
+Recorder compatibility includes complete checksum-valid final pages without an
+EOS flag. A supplied WhatsApp file exposed the original strict-EOS rejection.
+The corrected importer validated and rendered that file through the headless CLI;
+its decoded frame count matched FFmpeg. The source digest was unchanged and the
+temporary decoded output was removed. No private recording or machine-specific
+source path was added to the repository. `recorder.opus` is a generated sine tone
+with 120 ms packets, a nonzero starting timestamp and no EOS flag.
+
+Completed checks on macOS with the pinned Rust toolchain:
+
+- `cargo test -p daw-media --test opus_import --locked --offline`: PASS. Mono and
+  stereo, all project rates, exact short/multi-page/recorder lengths, pre-skip
+  across packets, +6 dB header gain, cache reuse, `.ogg` content verification,
+  cancellation, truncation, CRC corruption, chained streams and surround rejection.
+- `cargo test -p daw-media --locked --offline`: PASS before the recorder fix;
+  focused Opus checks above were repeated after it.
+- `cargo test -p daw-project compressed --locked --offline`: PASS. Original
+  compressed bytes, collection/Save As, reopen, processing-rate changes, and export.
+  The workspace run also covers the new Opus Sampler save/reopen regression.
+- `cargo test -p daw-ui compressed_menu_import --locked --offline`: PASS after
+  the recorder fix; menu and file-drop publication cover normal and recorder Opus.
+- `cargo build -p daw-cli -p daw-desktop --locked --offline`: PASS after the fix.
+- `python3 tools/check_cli.py`: PASS after the fix, including normal/recorder Opus
+  validation/rendering, exact lengths, original-byte preservation, and rejection
+  of Opus/Ogg export paths. Tests remain headless.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` and
+  `cargo fmt --all --check`: PASS after the recorder fix.
+- `cargo test --workspace --locked --offline`: PASS after the recorder fix.
+- `cargo test --workspace --release --locked --offline`: PASS after the recorder fix.
+- `python3 -m unittest discover -s tools -p test_desktop_packaging.py`: PASS
+  with generated artifacts and build shims for the POSIX packaging paths.
+
+The host lacked CMake. Validation used CMake 4.4.4 installed only under ignored
+`work/opus-build-tools`, selected through the `CMAKE` environment override. Normal
+builds need CMake on PATH as described in the platform development guides.
+
+Native chooser/drag gestures, device playback and Windows/Linux builds were not
+checked. CI setup now installs CMake on Linux and checks its availability on all
+platforms. The macOS app bundle was not repackaged: packaging requires a clean
+committed tracked tree. Debug desktop and CLI executables were rebuilt; no commit
+or push was made.
+
 ## Timeline Track Mixer — 2026-11-05
 
 Added the [Timeline Track Mixer](../views/view-menu.md#timeline-track-mixer):

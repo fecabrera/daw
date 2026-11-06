@@ -4814,21 +4814,21 @@ fn compressed_clip_import_reopen_rate_change_and_export_preserve_sources() {
     let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../media/tests/fixtures");
     let mut session = Session::default();
     let mut originals = Vec::new();
-    for extension in ["mp3", "aac", "m4a"] {
+    for extension in ["mp3", "aac", "m4a", "opus"] {
         let source = f.0.join(format!("source.{extension}"));
         fs::copy(fixtures.join(format!("tone-2.{extension}")), &source).unwrap();
         let bytes = fs::read(&source).unwrap();
         session.import(&source, None, 0).unwrap();
         originals.push((source, bytes));
     }
-    assert_eq!(session.project.tracks.len(), 3);
+    assert_eq!(session.project.tracks.len(), 4);
     session.project.validate().unwrap();
     let before = session.project.clone();
     let folder = f.0.join("compressed-project");
     session.save(&folder).unwrap();
     let loaded = Session::open(&folder).unwrap();
     assert!(loaded.warnings.is_empty());
-    assert_eq!(loaded.project.assets.len(), 3);
+    assert_eq!(loaded.project.assets.len(), 4);
     for asset in &before.assets {
         assert_eq!(
             *session.audio[&asset.id].samples,
@@ -5395,4 +5395,38 @@ fn sends_and_returns_survive_save_open_history_and_float_export() {
     history.record(&session).unwrap();
     let undo = history.undo(&session).unwrap();
     assert_eq!(undo.project, restored.project);
+}
+
+#[test]
+fn opus_sampler_source_prepares_and_reopens_without_reencoding() {
+    let fixture = Fixture::new();
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../media/tests/fixtures/tone-2.opus");
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let layer = &mut session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.sampler = Some(daw_core::SamplerSettings::default());
+    let owner = layer.id;
+    session = session.with_sampler_file(track, owner, &path).unwrap();
+    session.project.validate().unwrap();
+    let sampler = session.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .layers[0]
+        .sampler
+        .as_ref()
+        .unwrap();
+    let id = sampler.id;
+    assert_eq!(session.audio[&id].samples.len(), 12_000);
+    assert_eq!(session.audio[&id].metadata.sample_format, "opus");
+    let folder = fixture.0.join("opus-sampler");
+    session.save(&folder).unwrap();
+    let reopened = Session::open(&folder).unwrap();
+    assert!(reopened.warnings.is_empty());
+    assert_eq!(*reopened.audio[&id].samples, *session.audio[&id].samples);
 }

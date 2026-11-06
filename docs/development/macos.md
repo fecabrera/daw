@@ -4,7 +4,8 @@
 
 Run commands from the repository root.
 
-Install Rust through Rustup and the native C++ development tools with Clang/libclang. Build and run with:
+Install Rust through Rustup and the native C++ development tools with Clang/libclang. Install CMake for the bundled Opus decoder (for example,
+`brew install cmake`). Build and run with:
 
 ```sh
 cargo build -p daw-desktop

@@ -13,7 +13,7 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential pkg-config clang libclang-dev \
+        sudo apt-get install -y build-essential cmake pkg-config clang libclang-dev \
           autoconf automake libtool libasound2-dev libudev-dev libx11-dev \
           libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev \
           libgl1-mesa-dev libwayland-dev libxkbcommon-dev libssl-dev zip
@@ -53,6 +53,10 @@ runs:
         library_directory="$(cd "$clang_directory/../lib" && pwd)"
         test -f "$library_directory/libclang.dylib"
         echo "LIBCLANG_PATH=$library_directory" >> "$GITHUB_ENV"
+
+    - name: Verify CMake for bundled Opus
+      shell: bash
+      run: cmake --version
 
     - name: Install the repository Rust toolchain
       shell: bash

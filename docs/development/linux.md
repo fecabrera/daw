@@ -4,7 +4,7 @@
 
 Run commands from the repository root.
 
-Install Rust through Rustup, a C++ compiler, Clang/libclang, ALSA development libraries, pkg-config, and OpenSSL development headers (for build-time runtime downloads). Ensure the XDG Desktop Portal service is available for file dialogs. Package names depend on your distribution.
+Install Rust through Rustup, a C++ compiler, CMake, Clang/libclang, ALSA development libraries, pkg-config, and OpenSSL development headers (for build-time runtime downloads). Ensure the XDG Desktop Portal service is available for file dialogs. Package names depend on your distribution.
 
 ```sh
 cargo build -p daw-desktop

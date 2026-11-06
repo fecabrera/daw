@@ -16,6 +16,7 @@ pub use source_revision::{
     verify_prepared_source,
 };
 mod decode;
+mod opus_import;
 pub use decode::{IMPORT_EXTENSIONS, decode_audio, decode_audio_at_rate, decode_audio_cancellable};
 mod clip_audio;
 pub use clip_audio::{ClipAudioCache, ClipAudioKey, clip_audio};

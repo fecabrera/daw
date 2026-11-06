@@ -14,7 +14,7 @@ Use ASD-STE100 principles and Plain Language for specifications, technical docum
 
 | Baseline ID | Required capability |
 | --- | --- |
-| MVP-01 | Import supported WAV, MP3 and AAC-LC sources and display waveforms. |
+| MVP-01 | Import supported WAV, MP3, AAC-LC and Opus sources and display waveforms. |
 | MVP-02 | Add and delete tracks with no fixed track-count limit. Provide gain, pan/balance, mute, and solo. |
 | MVP-03 | Move, trim, split, and delete clips without changing source files or allowing overlap on one track. |
 | MVP-04 | Provide a timeline, left track list, top playback toolbar, zoom, and scrolling. |
@@ -66,7 +66,7 @@ Use one reusable application dialog component for project naming, export options
 | UI and rendering | egui, eframe; Glow/OpenGL on Windows for native caption composition, wgpu on macOS/Linux |
 | Command parsing | clap |
 | Device output | cpal |
-| Decoding | symphonia with WAV, PCM, MP3, AAC and ISO MP4 enabled |
+| Decoding | symphonia with WAV, PCM, MP3, AAC, ISO MP4 and Ogg enabled; symphonia-adapter-libopus for Opus |
 | WAV writing | hound |
 | MP3 writing | mp3lame-encoder with bundled LAME |
 | Resampling | rubato |
@@ -144,7 +144,7 @@ Unreadable, malformed, or unsupported existing audio files are processing errors
 
 ## Import and editing
 
-Accept uncompressed WAV containing 16-bit or 24-bit integer PCM, or 32-bit IEEE float samples. Also accept MP3 and AAC-LC as defined by [audio import](../audio/import.md). Accept mono and stereo. Reject other encodings and files with more than two channels with a clear error.
+Accept uncompressed WAV containing 16-bit or 24-bit integer PCM, or 32-bit IEEE float samples. Also accept MP3, AAC-LC and Ogg Opus as defined by [audio import](../audio/import.md). Accept mono and stereo. Reject other encodings and files with more than two channels with a clear error.
 
 Decode sources before playback. Convert their audio to 32-bit floating-point PCM at the selected project rate using Rubato when required. Preserve original channel metadata and source information. Generate waveform peak data on a worker thread. Commit the imported asset and clip only after decoding and placement validation succeed.
 

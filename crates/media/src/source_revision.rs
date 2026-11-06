@@ -246,6 +246,7 @@ pub fn source_file_extension(
     match metadata.sample_format.as_str() {
         "pcm_int" | "ieee_float" if &header[..4] == b"RIFF" && &header[8..] == b"WAVE" => Ok("wav"),
         "mp3" | "aac" if &header[4..8] == b"ftyp" => Ok("mp4"),
+        "opus" if &header[..4] == b"OggS" => Ok("opus"),
         "mp3" => Ok("mp3"),
         "aac" => Ok("aac"),
         _ => Err(Error(

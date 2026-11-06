@@ -1,6 +1,6 @@
 # Desktop DAW
 
-A desktop digital audio workstation for macOS, Windows and Linux, written in Rust. It imports external WAV, MP3, and AAC sources, and shares its rendering engine with a headless command-line interface.
+A desktop digital audio workstation for macOS, Windows and Linux, written in Rust. It imports external WAV, MP3, AAC, and Opus sources, and shares its rendering engine with a headless command-line interface.
 
 ## Current features
 
