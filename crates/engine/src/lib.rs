@@ -1508,6 +1508,100 @@ mod tests {
         );
     }
 
+    #[test]
+    fn looped_crossfades_follow_phase_and_seam_fades_in_both_directions() {
+        for mask in [1, 2, 3] {
+            for left in [false, true] {
+                let mut plan = plan();
+                let mut first = plan.project.tracks[0].clips[0].clone();
+                first.source_offset_frame = 0;
+                first.length_frames = 800;
+                let mut second = first.clone();
+                second.id = Id::new_v4();
+                second.start_frame = 800;
+                second.source_offset_frame = 1000;
+                if mask & 1 != 0 {
+                    first.repeat = Some(daw_core::ClipLoop {
+                        length_frames: 127,
+                        phase_frame: 91,
+                    });
+                }
+                if mask & 2 != 0 {
+                    second.repeat = Some(daw_core::ClipLoop {
+                        length_frames: 173,
+                        phase_frame: 39,
+                    });
+                }
+                plan.project.tracks[0].clips = vec![first.clone(), second.clone()];
+                let fade = daw_core::ClipFade {
+                    length_frames: 200,
+                    midpoint: 0.7,
+                    midpoint_position: 0.35,
+                    crossfade: true,
+                };
+                let mut fades = daw_core::ClipFades::default();
+                if left {
+                    fades.fade_in = fade;
+                } else {
+                    fades.fade_out = fade;
+                }
+                plan.project
+                    .edit(daw_core::Edit::SetClipFades {
+                        clip_id: if left { second.id } else { first.id },
+                        fades,
+                    })
+                    .unwrap();
+                let audio = plan.audio.values_mut().next().unwrap();
+                audio.samples = (0..2000)
+                    .map(|i| [i as f32 / 4000.0, -(i as f32) / 8000.0])
+                    .collect::<Vec<_>>()
+                    .into();
+                let mut runtime = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
+                let start = if left { 600 } else { 800 };
+                let owner = if left { &second } else { &first };
+                let neighbor = if left { &first } else { &second };
+                let source = |clip: &Clip, frame: u64| {
+                    let local = i128::from(frame) - i128::from(clip.start_frame);
+                    let offset = clip.repeat.map_or(local, |r| {
+                        (i128::from(r.phase_frame) + local).rem_euclid(i128::from(r.length_frames))
+                    });
+                    (i128::from(clip.source_offset_frame) + offset) as u64
+                };
+                for frame in (start..start + 200).chain((start..start + 200).rev()) {
+                    let progress = (frame - start) as f32 / 199.0;
+                    let progress = if left { progress } else { 1.0 - progress };
+                    let a = source(owner, frame);
+                    let b = source(neighbor, frame);
+                    assert_eq!(
+                        owner.extended_source_frame(
+                            i128::from(frame) - i128::from(owner.start_frame)
+                        ),
+                        Some(a)
+                    );
+                    let expected = a as f32 / 4000.0
+                        * clip_repeat_fade(owner, a, 48_000)
+                        * fade.gain(progress)
+                        + b as f32 / 4000.0
+                            * clip_repeat_fade(neighbor, b, 48_000)
+                            * fade.opposing_gain(progress);
+                    let actual = runtime
+                        .sample(&plan.project.tracks[0].clips, frame, false)
+                        .0;
+                    assert!(
+                        (actual[0] - expected).abs() < 1e-6,
+                        "mask={mask} left={left} frame={frame}"
+                    );
+                    assert!((plan.sample_at(frame)[0] - expected).abs() < 1e-6);
+                }
+                let json = serde_json::to_string(&plan.project).unwrap();
+                assert_eq!(
+                    serde_json::from_str::<Project>(&json).unwrap(),
+                    plan.project
+                );
+            }
+        }
+    }
+
     fn plan() -> RenderPlan {
         use daw_core::{Asset, Clip, Source, SourceMetadata};
         use std::sync::Arc;

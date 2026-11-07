@@ -317,7 +317,12 @@ impl AudioTrack {
             mono = Some(audio.metadata.channels == 1);
             let scale = 1.0;
             for ch in 0..2 {
-                primary[ch] = primary[ch] * opposing + extra[ch] * gain * weight * scale;
+                primary[ch] = primary[ch] * opposing
+                    + extra[ch]
+                        * gain
+                        * weight
+                        * super::clip_repeat_fade(clip, position, self.rate)
+                        * scale;
             }
         }
         (primary, mono)
@@ -368,12 +373,9 @@ impl AudioTrack {
 fn audio_source_missing(plan: &RenderPlan, clip: &daw_core::Clip) -> bool {
     plan.audio_for_clip(clip).is_none()
 }
-fn transition_position(t: &Transition, clip: &daw_core::Clip, frame: u64) -> u64 {
-    if t.left {
-        clip.source_offset_frame - (clip.start_frame - frame)
-    } else {
-        clip.source_offset_frame + clip.length_frames + (frame - clip.end())
-    }
+fn transition_position(_t: &Transition, clip: &daw_core::Clip, frame: u64) -> u64 {
+    clip.extended_source_frame(i128::from(frame) - i128::from(clip.start_frame))
+        .expect("validated transition source range")
 }
 
 #[cfg(test)]

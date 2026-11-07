@@ -1030,3 +1030,57 @@ fn group_fade_settings_apply_relative_shape_to_selected_audio() {
     assert!((b - a - 0.1).abs() < 1e-6);
     assert_eq!(app.selected_clips.len(), 2);
 }
+
+#[test]
+fn looped_crossfade_controls_and_waveforms_support_either_owner_direction() {
+    for mask in [1, 2, 3] {
+        for left in [false, true] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            let mut first = app.session.project.tracks[0].clips[0].clone();
+            first.length_frames = 96_000;
+            let mut second = first.clone();
+            second.id = Id::new_v4();
+            second.start_frame = first.end();
+            second.source_offset_frame = if left && mask & 2 != 0 { 0 } else { 96_000 };
+            if mask & 1 != 0 {
+                first.repeat = Some(daw_core::ClipLoop {
+                    length_frames: 257,
+                    phase_frame: 193,
+                });
+            }
+            if mask & 2 != 0 {
+                second.repeat = Some(daw_core::ClipLoop {
+                    length_frames: 389,
+                    phase_frame: 71,
+                });
+            }
+            let owner = if left { second.id } else { first.id };
+            app.session.project.tracks[0].clips = vec![first, second];
+            let fade = daw_core::ClipFade {
+                length_frames: 24_000,
+                crossfade: true,
+                ..Default::default()
+            };
+            let mut fades = daw_core::ClipFades::default();
+            if left {
+                fades.fade_in = fade;
+            } else {
+                fades.fade_out = fade;
+            }
+            app.session
+                .project
+                .edit(Edit::SetClipFades {
+                    clip_id: owner,
+                    fades,
+                })
+                .unwrap();
+            app.select_clip(owner, track, false);
+            let before = app.session.project.clone();
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            assert!(!shapes.is_empty());
+            assert_eq!(app.session.project, before);
+            assert!(app.session.project.clip_fade_limit(owner, left, true) >= 24_000);
+        }
+    }
+}

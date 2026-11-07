@@ -130,8 +130,11 @@ Audio clips have square fade handles in the strip between the name header and
 waveform. Drag the left or right handle inward to create a fade. Drag it outward
 to crossfade with the adjacent audio clip. The join stays at the same timeline
 position; the blend uses original audio beyond the trimmed edge. Crossfades
-require touching, unlooped clips with matching mono/stereo layouts and available
-source audio. Gaps, muted clips and unavailable source handles prevent a blend.
+require touching clips with matching mono/stereo layouts. Either or both clips
+can loop. A looped clip continues its repeat range and phase through the blend,
+including its usual loop-seam fades. A non-looped clip needs unused source audio
+beyond the edge that extends into its neighbor. Gaps, muted clips and unavailable
+source audio prevent a blend.
 
 A circle on each curve controls its shape. Drag it horizontally to change its
 position within the fade, or vertically to change its level. Neither changes
@@ -171,7 +174,7 @@ handles edit the same values. For a group, the settings show one selected audio
 clip as the reference. Duration, Shape and Position changes apply relative to
 each clip's existing value; Mode applies the chosen mode to the selected audio
 clips. Each clip retains its own source and duration limits. Fade duration is bounded by the clip. Crossfade duration is bounded by half
-each adjacent clip and the available source audio. Zero duration
+each adjacent clip and, for a non-looped owner, the available source audio. Zero duration
 keeps the automatic 5 ms anti-click fade. A crossfade replaces the corresponding
 neighbor boundary fade. If editing removes an eligible join, its crossfade
 becomes inactive and the automatic boundary fade applies.

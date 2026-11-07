@@ -809,7 +809,11 @@ impl DawUi {
                 let mut visual = other.clone();
                 if left {
                     visual.start_frame -= length;
-                    visual.source_offset_frame -= length;
+                    if let Some(repeat) = &mut visual.repeat {
+                        *repeat = repeat.shifted(-i128::from(length));
+                    } else {
+                        visual.source_offset_frame -= length;
+                    }
                 }
                 visual.length_frames += length;
                 let delta = (visual.start_frame as f64 - clip.start_frame as f64)

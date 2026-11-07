@@ -4,6 +4,28 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Looped audio crossfades — 2026-11-07
+
+Adjacent audio clips can now crossfade when either or both clips loop. Looped
+owners extend their saved repeat base/phase through either edge instead of
+requiring external source handles. Non-looped owners retain source limits.
+Logical ranges, channel compatibility, mute guards and half-clip duration limits
+are unchanged. Extended audio retains loop-seam fades. Waveform continuations
+shift the repeat phase for left extensions without changing the repeat base.
+This supersedes the earlier unlooped-only restriction.
+
+`cargo test -p daw-core -p daw-engine -p daw-ui --lib --locked` passed: core
+129 tests (one existing manual test ignored), engine 41, UI 930 (three existing
+manual tests ignored). New checks cover both directions and all one/both-looped
+combinations, nonzero phases, repeated seam crossings, backward seeks, independent
+reference sample mapping, renderer parity, persistence and waveform painting.
+`cargo test -p daw-engine --test streaming crossfades_stream --locked` passed
+resident/disk parity across seeks and transport loop wraps, with zero callback
+allocations, for all four loop combinations. Clippy (`cargo clippy -p daw-core
+-p daw-engine -p daw-ui --all-targets --locked -- -D warnings`), formatting and
+diff checks passed. Native listening and appearance checks on macOS, Windows and
+Linux remain open; full workspace release/CLI acceptance was not rerun.
+
 ## Upper right toolbar placement and single divider — 2026-11-07
 
 Returns and Master now stay at the bottom of the upper right toolbar in Mixer

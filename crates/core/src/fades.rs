@@ -142,8 +142,21 @@ impl ClipFades {
         edge(self.fade_in, local).min(edge(self.fade_out, length - 1 - local))
     }
 }
+impl crate::Clip {
+    /// Continue source time beyond either clip edge, retaining loop phase.
+    /// Non-looped clips return None before source frame zero or on overflow.
+    pub fn extended_source_frame(&self, local: i128) -> Option<u64> {
+        let position = if let Some(repeat) = self.repeat {
+            i128::from(repeat.shifted(local).phase_frame)
+        } else {
+            local
+        };
+        u64::try_from(i128::from(self.source_offset_frame).checked_add(position)?).ok()
+    }
+}
+
 impl crate::Project {
-    /// Maximum duration for an edge envelope. Crossfades use adjacent, unlooped audio.
+    /// Maximum duration for an edge envelope. Crossfades use adjacent audio.
     pub fn clip_fade_limit(&self, id: crate::Id, left: bool, crossfade: bool) -> u64 {
         let Some(track) = self
             .tracks
@@ -157,13 +170,12 @@ impl crate::Project {
             return clip.length_frames.saturating_sub(1);
         }
         let own = clip.length_frames.saturating_sub(1) / 2;
-        if clip.repeat.is_some() || clip.muted {
+        if clip.muted {
             return 0;
         }
         let Some(neighbor) = track.clips.iter().find(|other| {
             other.id != id
                 && !other.muted
-                && other.repeat.is_none()
                 && if left {
                     other.end() == clip.start_frame
                 } else {
@@ -189,7 +201,9 @@ impl crate::Project {
         if asset.source_metadata.channels != other_asset.source_metadata.channels {
             return 0;
         }
-        let handles = if left {
+        let handles = if clip.repeat.is_some() {
+            u64::MAX
+        } else if left {
             clip.source_offset_frame
         } else {
             clip.source_length(asset.decoded_frame_count)

@@ -41,9 +41,17 @@ and sample-rate changes rescale saved fade lengths with checked arithmetic.
 Crossfades leave all logical clip positions, source offsets and lengths intact.
 An outward left edge uses preceding source frames across the preceding clip's
 last range. An outward right edge uses following source frames across the next
-clip's first range. Adjacent clips must touch, be unmuted/unlooped audio and have
+clip's first range. Adjacent clips must touch, be unmuted audio and have
 matching channel layouts. Cap duration at half both clips and the owner's
-available stretched-source handles. No timeline overlap is introduced.
+available stretched-source handles for non-looped owners. A looped owner has no
+external source-handle limit: extend its repeat range in either time direction
+using the saved phase modulo the repeat length. Preserve the repeat base and
+source offset. Apply the existing repeat-seam fade to both contributions,
+including extended owner audio. The shared signed source mapping and shifted
+repeat phase keep playback and waveform continuations aligned. This includes
+one looped clip or two looped clips. No timeline overlap is introduced. Existing
+saved crossfades on looped clips become active when the join is eligible; no
+manifest schema change is required.
 
 For left-edge transitions, owner weight follows the curve from zero to one;
 for right-edge transitions it follows one to zero. The adjacent clip receives

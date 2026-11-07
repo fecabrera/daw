@@ -120,7 +120,8 @@ copy/split/trim/loop/stretch behavior and legacy defaults in the fade contract.
 
 ### 2B: transitions
 
-Initially support adjacent audio clips with sufficient source handles. Show the
+Support adjacent audio clips, including looped clips. Non-looped owners need
+sufficient source handles; looped owners continue their saved repeat phase. Show the
 transition extent and clamp or reject unavailable material explicitly. Keep
 source recordings unchanged. Store transitions by stable clip identity and
 validate affected clips as one transaction. Prepare any required audio before
