@@ -1060,6 +1060,13 @@ fn escape_deselects_subtracks_in_both_views_without_editing_the_project() {
         assert_eq!(app.selected_track, Some(track));
         assert_eq!(app.selected_clip, Some(clip));
         assert!(!app.dirty);
+        if view == ViewMode::Edit {
+            super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+            assert!(app.selected_clip.is_none());
+            assert!(app.selected_clips.is_empty());
+            assert_eq!(app.selected_track, Some(track));
+            assert_eq!(app.session.project, before);
+        }
     }
 }
 

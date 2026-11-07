@@ -127,3 +127,30 @@ fn editor_delete_prefers_notes_and_header_click_returns_to_clip_deletion() {
         assert!(app.session.project.tracks[0].clips.is_empty());
     }
 }
+
+#[test]
+fn editor_escape_deselects_clips_without_changing_track_project_or_viewport() {
+    let (mut app, ctx, track, id) = super::audio_editor::audio_fixture();
+    let mut second = app.session.project.tracks[0].clips[0].clone();
+    second.id = Id::new_v4();
+    second.start_frame = second.end();
+    app.session.project.tracks[0].clips.push(second.clone());
+    app.select_clip(id, track, false);
+    app.select_clip(second.id, track, true);
+    frame(&mut app, &ctx, vec![]);
+    let project = app.session.project.clone();
+    let dirty = app.dirty;
+    let viewport = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+    frame(&mut app, &ctx, vec![delete(egui::Key::Escape, false)]);
+    assert!(app.selected_clip.is_none());
+    assert!(app.selected_clips.is_empty());
+    assert_eq!(app.selected_track, Some(track));
+    assert_eq!(app.session.project, project);
+    assert_eq!(app.dirty, dirty);
+    assert_eq!(
+        (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+        viewport
+    );
+    frame(&mut app, &ctx, vec![delete(egui::Key::Escape, true)]);
+    assert_eq!(app.selected_track, Some(track));
+}

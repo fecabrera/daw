@@ -940,3 +940,27 @@ fn lower_ruler_loop_cancel_and_guards_preserve_the_project_and_viewports() {
         }
     }
 }
+
+#[test]
+fn editor_escape_clears_midi_and_audio_clip_groups_and_retains_track() {
+    for midi in [false, true] {
+        let (mut app, ctx, track, first, second) = fixture(midi);
+        app.select_clip(first, track, false);
+        app.select_clip(second, track, true);
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        let escape = egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        };
+        frame(&mut app, &ctx, vec![escape]);
+        assert!(app.selected_clip.is_none());
+        assert!(app.selected_clips.is_empty());
+        assert_eq!(app.selected_track, Some(track));
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+}

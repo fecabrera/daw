@@ -4,6 +4,21 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Editor Escape clip deselection — 2026-11-07
+
+The shared Escape selection handler now supports Editor audio and MIDI clip
+selection. Escape clears selected clips and the time range while retaining the
+displayed track and viewport. Text edits, active note/clip gestures, dialogs,
+jobs and focus guards keep precedence. Beat Editor clears selected subtracks
+first, then clips on the next idle Escape. Repeated keys do not advance selection.
+The action does not edit the project or dirty state.
+
+`cargo test -p daw-ui escape --lib --locked` passed 27 tests, including new
+Editor audio/MIDI group deselection and beat precedence checks. Existing Escape
+cancellation and Timeline/Instrument selection checks passed in the same run.
+Clippy (`cargo clippy -p daw-ui --lib --locked -- -D warnings`), formatting and
+diff checks passed. Native keyboard checks on macOS, Windows and Linux remain open.
+
 ## Selected-group fade editing — 2026-11-07
 
 Fade and crossfade drags now capture selected audio clips and preserve selection.

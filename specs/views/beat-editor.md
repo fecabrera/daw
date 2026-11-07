@@ -221,7 +221,9 @@ disclosure buttons, child controls and catalog focus; leave the event available
 for catalog deselection, matching instrument-layer behavior. Beat Editor uses that same shared view-level Escape path, including after
 header control interactions. Remember Editor text focus so Escape cancels text
 drafts before deselection. Keep the primary inspection target, track/clip
-selection, project, history and dirty state unchanged. Text editing and active
+selection, project, history and dirty state unchanged when clearing subtracks.
+A subsequent idle Escape in Editor clears clip selection and time-range selection
+while retaining the displayed track. Text editing and active
 gestures take priority; Escape cancels those without clearing subtrack selection.
 Respect disabled UI, focus and existing job/dialog guards.
 

@@ -8,6 +8,10 @@ For beat tracks, the lower editor shows the [beat step grid](beat-editor.md) and
 
 MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
 
+Press Escape to deselect clips and clear a selected time range. The displayed track,
+zoom and scroll stay unchanged. Escape first cancels an active edit or drag. In
+the beat editor, it first clears selected subtracks; press it again to deselect clips.
+
 ## Create and edit a pattern
 
 1. Add a MIDI track from the Track menu.

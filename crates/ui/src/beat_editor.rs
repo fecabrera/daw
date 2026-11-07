@@ -279,6 +279,9 @@ impl DawUi {
             }
         }
     }
+    pub(super) fn has_selected_beat_subtracks(&self) -> bool {
+        !self.beat_ui.selected.is_empty()
+    }
     pub(super) fn deselect_beat_subtracks(&mut self) {
         self.beat_ui.selected.clear();
     }

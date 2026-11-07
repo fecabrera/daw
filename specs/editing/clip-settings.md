@@ -64,3 +64,14 @@ Reject an empty or control-character name, a non-finite gain or a gain outside s
 ## Audio fade controls
 
 Single audio selections also show the shared [fade and crossfade controls](fades.md). They use the same saved envelope and curve as clip handles; multiple selections retain their existing controls.
+
+## Editor Escape selection
+
+The shared view-level selection handler supports Editor. An unmodified,
+non-repeated Escape clears whole-clip selection and the clip time range without
+changing the displayed track, viewport, project, history or dirty state. With
+no clips selected, Editor Escape does not clear track selection. Beat subtrack
+selection takes precedence: clear it first, then clear clips on a later press.
+Text input, popups, active clip/note/range gestures, disabled editing, dialogs,
+jobs and focus loss retain their existing guards. Cancel active gestures without
+also clearing clip selection on that press.
