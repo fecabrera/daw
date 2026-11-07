@@ -2167,3 +2167,49 @@ fn assert_destination_row(
             && row.contains_rect(r.rect) && r.rect.right() < text.pos.x))
     );
 }
+
+#[test]
+fn mixer_escape_deselects_tracks_and_master_and_preserves_hidden_clips() {
+    for master in [false, true] {
+        let (mut app, track) = fixture();
+        let second = app.session.project.add_track().unwrap();
+        let ctx = context();
+        let clip = app.session.project.tracks[0].clips[0].id;
+        app.select_clip(clip, track, false);
+        app.select_track(second, true);
+        if master {
+            app.select_master();
+        }
+        app.view_mode = ViewMode::Mixer;
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        let dirty = app.dirty;
+        let clips = app.selected_clips.clone();
+        frame(&mut app, &ctx, vec![key(egui::Key::Escape)]);
+        assert!(app.selected_track.is_none());
+        assert!(app.selected_tracks.is_empty());
+        assert!(!app.master_selected);
+        assert_eq!(app.selected_clip, Some(clip));
+        assert_eq!(app.selected_clips, clips);
+        assert_eq!(app.session.project, before);
+        assert_eq!(app.dirty, dirty);
+    }
+}
+
+#[test]
+fn mixer_escape_cancels_track_rename_before_deselection() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.view_mode = ViewMode::Mixer;
+    app.select_track(track, false);
+    app.track_name_edit = Some(TrackNameEdit {
+        track,
+        text: "Draft".into(),
+        focus: true,
+    });
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    frame(&mut app, &ctx, vec![key(egui::Key::Escape)]);
+    assert_eq!(app.selected_track, Some(track));
+    assert_eq!(app.session.project, before);
+}

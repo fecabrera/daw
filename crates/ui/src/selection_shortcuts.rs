@@ -27,7 +27,7 @@ impl DawUi {
                 .is_some_and(|track| track.kind == daw_core::TrackKind::Beat);
         if !matches!(
             self.view_mode,
-            ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit
+            ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit | ViewMode::Mixer
         ) || !self.selection_escape_available(ctx)
             || (self.view_mode == ViewMode::Edit && self.midi_editor.dragging())
             || ctx.text_edit_focused()
@@ -58,6 +58,10 @@ impl DawUi {
         if self.view_mode == ViewMode::Instrument {
             self.deselect_beat_subtracks();
             self.clear_layer_selections_except(None);
+        } else if self.view_mode == ViewMode::Mixer {
+            self.selected_track = None;
+            self.selected_tracks.clear();
+            self.master_selected = false;
         } else if beat_editor && self.has_selected_beat_subtracks() {
             self.deselect_beat_subtracks();
         } else if self.selected_clip.is_some()

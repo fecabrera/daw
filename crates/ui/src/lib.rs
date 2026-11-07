@@ -2611,7 +2611,7 @@ impl DawUi {
         self.selection_text_focus = ctx.memory(|memory| memory.focused()).filter(|_| {
             matches!(
                 self.view_mode,
-                ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit
+                ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit | ViewMode::Mixer
             ) && ctx.text_edit_focused()
         });
     }

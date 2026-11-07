@@ -4,6 +4,20 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Mixer Escape track deselection — 2026-11-07
+
+Mixer now uses the shared Escape handler to clear track/group and Master
+selection. Hidden clip selection is retained and does not delay track
+deselection. Existing text, gesture, focus, popup, dialog and job guards apply.
+Mixer text focus is remembered so cancelling text entry preserves selection.
+Project content and dirty state stay unchanged.
+
+`cargo test -p daw-ui escape --lib --locked` passed 29 tests, including Mixer
+track/Master deselection with hidden selected clips and rename cancellation.
+Existing Timeline, Editor and Instrument Escape checks passed in the same run.
+Clippy (`cargo clippy -p daw-ui --lib --locked -- -D warnings`), formatting and
+diff checks passed. Native keyboard checks on macOS, Windows and Linux remain open.
+
 ## Editor Escape clip deselection — 2026-11-07
 
 The shared Escape selection handler now supports Editor audio and MIDI clip

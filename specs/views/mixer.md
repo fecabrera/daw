@@ -35,3 +35,12 @@ reparenting. Master must have no row. Painting leaves the project and dirty stat
 unchanged. Retain existing output-spacing and narrow-layout checks. Native
 appearance and scaling require separate checks; record results in
 [validation history](../validation/README.md).
+
+## Escape selection
+
+Mixer uses the shared view-level Escape handler. An unmodified, non-repeated
+Escape clears the primary track, selected track IDs and Master selection directly,
+including when other views retain selected clips. Preserve clip/range selection,
+project, history and dirty state. Text editors and active gestures retain
+precedence; reuse existing focus, popup, dialog and job guards. Remember Mixer
+text focus across frames so cancelling a text field does not also deselect tracks.
