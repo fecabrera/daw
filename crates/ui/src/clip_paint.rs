@@ -205,7 +205,7 @@ impl DawUi {
         } else if let Some(pattern) = pattern {
             self.paint_midi_notes(&clip_painter, block, clip, pattern, colors.waveform);
         } else if let Some(audio) = audio {
-            waveforms::paint_peaks(
+            waveforms::paint_peaks_with_gain(
                 &clip_painter,
                 body,
                 audio,
@@ -213,6 +213,7 @@ impl DawUi {
                 f64::from(self.session.project.sample_rate_hz) / f64::from(self.view_zoom()),
                 colors,
                 if cached.is_none() { clip.stretch } else { None },
+                self.waveform_fade_gain(clip, painter.ctx()),
             );
         }
 

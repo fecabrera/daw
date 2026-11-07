@@ -258,7 +258,7 @@ impl DawUi {
         }
         fades
     }
-    fn visible_fades(&self, clip: &Clip, ctx: &egui::Context) -> daw_core::ClipFades {
+    pub(super) fn visible_fades(&self, clip: &Clip, ctx: &egui::Context) -> daw_core::ClipFades {
         self.drag
             .as_ref()
             .filter(|d| d.clip.id == clip.id && matches!(d.mode, ClipDragMode::Fade { .. }))
@@ -570,6 +570,85 @@ impl DawUi {
             }
         }
     }
+    /// Resolve preview curves once per paint, rather than searching per pixel.
+    pub(super) fn waveform_fade_gain(
+        &self,
+        clip: &Clip,
+        ctx: &egui::Context,
+    ) -> impl Fn(u64) -> f32 + use<> {
+        let mut fades = self.visible_fades(clip, ctx);
+        for (left, fade) in [(true, &mut fades.fade_in), (false, &mut fades.fade_out)] {
+            fade.length_frames = fade.length_frames.min(self.session.project.clip_fade_limit(
+                clip.id,
+                left,
+                fade.crossfade,
+            ));
+        }
+        let mut neighbors = [None; 2];
+        if let Some(track) = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.clips.iter().any(|c| c.id == clip.id))
+        {
+            for other in &track.clips {
+                let other_fades = self.visible_fades(other, ctx);
+                for (left, mut fade) in [(true, other_fades.fade_in), (false, other_fades.fade_out)]
+                {
+                    if !fade.crossfade
+                        || !(if left {
+                            other.start_frame == clip.end()
+                        } else {
+                            other.end() == clip.start_frame
+                        })
+                    {
+                        continue;
+                    }
+                    fade.length_frames = fade
+                        .length_frames
+                        .min(self.session.project.clip_fade_limit(other.id, left, true));
+                    if fade.length_frames > 0 {
+                        neighbors[usize::from(left)] = Some((left, fade));
+                    }
+                }
+            }
+        }
+        let length = clip.length_frames;
+        move |local| {
+            let mut gain = 1.0_f32;
+            for (left, fade) in [(true, fades.fade_in), (false, fades.fade_out)] {
+                if !fade.crossfade && fade.length_frames > 0 {
+                    let position = if left {
+                        local
+                    } else {
+                        length.saturating_sub(1).saturating_sub(local)
+                    };
+                    gain = gain.min(fade.gain(position as f32 / fade.length_frames as f32));
+                }
+            }
+            for (left, fade) in neighbors.into_iter().flatten() {
+                let active = if left {
+                    local >= length.saturating_sub(fade.length_frames)
+                } else {
+                    local < fade.length_frames
+                };
+                let position = if left {
+                    local.saturating_sub(length.saturating_sub(fade.length_frames))
+                } else {
+                    fade.length_frames.saturating_sub(1).saturating_sub(local)
+                };
+                if active {
+                    gain *= 1.0
+                        - fade.gain(
+                            position as f32 / fade.length_frames.saturating_sub(1).max(1) as f32,
+                        );
+                }
+            }
+            gain
+        }
+    }
+
     /// Draw the source samples actually used beyond the owner's logical edge.
     /// Each host paints its own span, so source continuations do not depend on
     /// saved clip order and never cover the neighbor's later curves.
@@ -632,7 +711,7 @@ impl DawUi {
                     rect.max,
                 );
                 let painter = painter.with_clip_rect(block.intersect(painter.clip_rect()));
-                waveforms::paint_peaks(
+                waveforms::paint_peaks_with_gain(
                     &painter,
                     body,
                     audio,
@@ -643,6 +722,14 @@ impl DawUi {
                         other.stretch
                     } else {
                         None
+                    },
+                    |local| {
+                        let position = if left {
+                            local
+                        } else {
+                            visual.length_frames.saturating_sub(1).saturating_sub(local)
+                        };
+                        fade.gain(position as f32 / length.saturating_sub(1).max(1) as f32)
                     },
                 );
             }

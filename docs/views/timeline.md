@@ -140,7 +140,7 @@ crossover selects the clip whose header and waveform extend across it. The ownin
 through the overlap region. The original side between the curves keeps its normal brightness. The extended
 side between the curves receives two layers of shading; the upper and lower
 regions receive one layer.
-Both waveforms keep their colors. Audio waveform bodies and crossfade headers have no extra border;
+Both waveforms keep their colors. Their heights follow the fade curves, including while you drag a handle. Ordinary fades also reduce the displayed waveform height toward silence. Audio waveform bodies and crossfade headers have no extra border;
 selected clips retain a selection outline across the full visible crossfade. Clip
 timing stays unchanged. For an ordinary fade, a dark vertical guide runs from its duration handle
 through the waveform, marking the fade-in end or fade-out start. Crossfades show

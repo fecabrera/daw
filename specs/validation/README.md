@@ -4,6 +4,22 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Fade waveform envelopes — 2026-11-07
+
+Audio clip peak heights now follow explicit fade curves in Timeline and Editor,
+including active handle previews. Crossfade source continuations and receiving
+waveforms use complementary gains with unchanged source time mapping and colors.
+Peak heights approximate the envelope at each visible column; they do not show
+the summed transition signal. This supersedes the previous full-height source
+waveform display in fade areas.
+
+Checks: `cargo test -p daw-ui clip_fades --lib --locked` passed all 16 focused
+tests. Coverage includes both ordinary fade edges and shape, crossfade source
+handles in both directions and saved orders, previews and cancellation.
+`cargo clippy -p daw-ui --lib --locked -- -D warnings`, `cargo fmt --all`
+and `git diff --check` passed. Native appearance checks on
+macOS, Windows and Linux remain open. Audio processing did not change.
+
 ## Editor drag rectangle clip selection — 2026-11-07
 
 The Editor overview, audio waveform pane and MIDI clip-header strip now use the

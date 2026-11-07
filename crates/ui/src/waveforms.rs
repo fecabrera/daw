@@ -52,6 +52,30 @@ pub(super) fn paint_peaks(
     colors: crate::theme::ClipColors,
     unprepared: Option<daw_core::ClipStretch>,
 ) {
+    paint_peaks_with_gain(
+        painter,
+        body,
+        audio,
+        clip,
+        frames_per_pixel,
+        colors,
+        unprepared,
+        |_| 1.0,
+    );
+}
+
+/// Scale cached source peaks at each visible column by the current envelope.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn paint_peaks_with_gain(
+    painter: &egui::Painter,
+    body: egui::Rect,
+    audio: &AudioData,
+    clip: &Clip,
+    frames_per_pixel: f64,
+    colors: crate::theme::ClipColors,
+    unprepared: Option<daw_core::ClipStretch>,
+    gain: impl Fn(u64) -> f32,
+) {
     if !body.intersect(painter.clip_rect()).is_positive() {
         return;
     }
@@ -89,6 +113,8 @@ pub(super) fn paint_peaks(
                     channel,
                 )
             };
+            let gain = gain(local);
+            let [min, max] = [min * gain, max * gain];
             painter.line_segment(
                 [
                     egui::pos2(pixel as f32, center - max.clamp(-1.0, 1.0) * height * 0.42),

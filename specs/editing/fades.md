@@ -160,7 +160,7 @@ Draw both source waveforms in each crossover span. Extend an outgoing owner's
 waveform past its logical end using its following source frames; extend an
 incoming owner's waveform before its logical start using preceding source
 frames. Reuse the normal prepared-audio and original/stretch lookup paths and
-source extrema painter. Do not shift, repeat, or rescale the source waveform.
+source extrema painter. Keep source time mapping unchanged. Scale each visible peak column by its envelope gain. Ordinary fades use the saved fade curve; crossfade continuations use the owner curve and the receiving waveform uses its complement. Resolve active limits and drag previews before painting. This peak display approximates gain within each pixel column; it is not a rendered mix.
 Clip continuation painting to the receiving host span and paint it after that
 host's peaks and before either curve. Body outlines follow the same visual
 boundaries as headers; retain logical project ranges and audio behavior.

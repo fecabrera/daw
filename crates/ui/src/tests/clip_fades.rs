@@ -537,12 +537,30 @@ fn crossfade_shading_is_applied_once_regardless_of_saved_clip_order() {
                 "both stereo source waveforms must extend through the overlap"
             );
             let scale = (block.height() - crate::clip_fades::WAVEFORM_TOP) * 0.5 * 0.42;
-            for amplitude in [0.8, if left { 0.2 } else { 0.4 }] {
+            let frames_per_pixel =
+                f64::from(app.session.project.sample_rate_hz) / f64::from(app.view_zoom());
+            let extended_left = if left {
+                block.left() - width
+            } else {
+                block.left()
+            };
+            let local =
+                ((f64::from(pixel) - f64::from(extended_left)) * frames_per_pixel).max(0.0) as u64;
+            let position = if left {
+                local
+            } else {
+                owner.length_frames + fade.length_frames - 1 - local
+            };
+            let weight = fade.gain(position as f32 / (fade.length_frames - 1) as f32);
+            for amplitude in [
+                0.8 * weight,
+                (if left { 0.2 } else { 0.4 }) * (1.0 - weight),
+            ] {
                 assert!(
                     heights
                         .iter()
                         .any(|height| (height - amplitude * scale).abs() < 0.01),
-                    "continuation must use source handles at the correct offset"
+                    "both source waveforms must follow their complementary transition gains"
                 );
             }
             let guide_count = |shapes: &[egui::epaint::ClippedShape]| {
@@ -764,4 +782,25 @@ fn fade_controls_are_hover_only_and_whole_at_shared_boundaries() {
         Vec2::new(1280.0, 800.0),
     );
     assert!(markers(&absent).is_empty());
+}
+
+#[test]
+fn waveform_fade_envelope_tracks_both_edges_and_shape() {
+    let (mut app, _) = fixture();
+    let ctx = context();
+    let clip = &mut app.session.project.tracks[0].clips[0];
+    clip.fades.fade_in = daw_core::ClipFade {
+        length_frames: 1000,
+        midpoint: 0.8,
+        midpoint_position: 0.25,
+        crossfade: false,
+    };
+    clip.fades.fade_out = clip.fades.fade_in;
+    let clip = clip.clone();
+    let gain = app.waveform_fade_gain(&clip, &ctx);
+    assert_eq!(gain(0), 0.0);
+    assert!((gain(250) - 0.8).abs() < 0.00001);
+    assert_eq!(gain(1000), 1.0);
+    assert!((gain(clip.length_frames - 251) - 0.8).abs() < 0.00001);
+    assert_eq!(gain(clip.length_frames - 1), 0.0);
 }
