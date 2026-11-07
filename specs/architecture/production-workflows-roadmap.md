@@ -107,10 +107,12 @@ pass. Recovery leaves manual saves intact and never deletes unrelated files.
 
 ## Stage 2: editable fades and crossfades
 
+Initial implementation is described in [Audio clip fades and crossfades](../editing/fades.md). It includes the requested handle/midpoint controls and inspector settings. Broader curve presets and transition support remain planned.
+
 ### 2A: clip fades
 
-Add saved fade-in/out lengths and linear/equal-power curve choices for audio
-clips. Use dedicated handles in Timeline and the audio Editor, with previews,
+Add saved fade-in/out lengths and movable control points on S-curves for audio
+clips. Additional curve presets remain a later extension. Use dedicated handles in Timeline and the audio Editor, with previews,
 release-only transactions, Escape/focus-loss cancellation and group-edit rules.
 Keep the existing shared-boundary trim press region distinct from fade handles.
 Use one evaluator for playback and export. Define rate/tempo edit behavior,

@@ -4,7 +4,7 @@ DAW provides audio, MIDI and beat arrangement, layered instruments, effects, mix
 
 ## Available features
 
-- Arrange audio and MIDI clips in Timeline. Move, copy, trim, loop, and stretch clips with grid snapping.
+- Arrange audio and MIDI clips in Timeline. Move, copy, trim, loop, and stretch clips with grid snapping. Shape audio [fades and adjacent crossfades](views/timeline.md#fades-and-crossfades) with handles or Clip settings.
 - Build [beat patterns](views/beat-editor.md) with independently configured subtrack instruments and shared mix controls.
 - Create MIDI patterns and edit notes in Editor's piano roll.
 - Build MIDI instruments from Oscillator, Sampler, Envelope, LFO, Amplitude, and Macro components.
@@ -21,7 +21,8 @@ Normal imports reference external audio recordings. Save does not automatically 
 ## Planned work
 
 The proposed priority order below covers the next basic production workflows.
-These features are not available yet. Each milestone must pass its acceptance
+The initial fade/crossfade controls are implemented; the other milestones remain
+planned. Each milestone must pass its acceptance
 checks before the next dependent milestone ships. This is a delivery proposal,
 not a release-date commitment.
 
@@ -41,12 +42,13 @@ retention policy. Manual Save remains explicit. Recovery must retain available
 project-owned audio and report missing external recordings. Completed recordings
 must become recoverable before their temporary files can be removed.
 
-### 2. Finish audio transitions
+### 2. Finish audio transitions — initial controls implemented
 
-Deliver fade-in and fade-out handles with linear and equal-power curves first.
-Then add crossfades between adjacent audio clips where source material permits.
-Show their extent and limits, support Undo/Redo, and use the same sound in
-playback and export. Keep trim, loop and stretch gestures available.
+Fade-in/out handles, adjustable midpoint curves and fixed-boundary adjacent
+crossfades are implemented for audio clips. Clip settings uses the same values.
+Crossfades currently require matching channel layouts and unlooped clips with
+source handles. Dedicated equal-power presets and broader transition types remain
+planned. Native appearance and listening acceptance remain open.
 
 ### 3. Capture MIDI performances
 

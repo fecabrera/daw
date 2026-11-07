@@ -11,6 +11,47 @@ pub(super) fn paint(
     colors: crate::theme::ClipColors,
     unprepared: Option<daw_core::ClipStretch>,
 ) {
+    paint_background(painter, body, audio, colors);
+    paint_peaks(
+        painter,
+        body,
+        audio,
+        clip,
+        frames_per_pixel,
+        colors,
+        unprepared,
+    );
+}
+
+pub(super) fn paint_background(
+    painter: &egui::Painter,
+    body: egui::Rect,
+    audio: &AudioData,
+    colors: crate::theme::ClipColors,
+) {
+    let channels = usize::from(audio.metadata.channels).clamp(1, 2);
+    if channels == 2 {
+        let top = body.center().y;
+        if colors.channel != colors.body {
+            painter.rect_filled(
+                egui::Rect::from_min_max(egui::pos2(body.left(), top), body.max),
+                0.0,
+                colors.channel,
+            );
+        }
+        painter.hline(body.x_range(), top, egui::Stroke::new(1.0, colors.header));
+    }
+}
+
+pub(super) fn paint_peaks(
+    painter: &egui::Painter,
+    body: egui::Rect,
+    audio: &AudioData,
+    clip: &Clip,
+    frames_per_pixel: f64,
+    colors: crate::theme::ClipColors,
+    unprepared: Option<daw_core::ClipStretch>,
+) {
     if !body.intersect(painter.clip_rect()).is_positive() {
         return;
     }
@@ -25,18 +66,6 @@ pub(super) fn paint(
     for channel in 0..channels {
         let top = body.top() + height * channel as f32;
         let center = top + height * 0.5;
-        if channel == 1 {
-            // Equal surfaces already have the body fill. Do not compound alpha
-            // over the second channel of a disabled clip.
-            if colors.channel != colors.body {
-                painter.rect_filled(
-                    egui::Rect::from_min_max(egui::pos2(body.left(), top), body.max),
-                    0.0,
-                    colors.channel,
-                );
-            }
-            painter.hline(body.x_range(), top, egui::Stroke::new(1.0, colors.header));
-        }
         for pixel in body.left().max(painter.clip_rect().left()) as i32
             ..=body.right().min(painter.clip_rect().right()) as i32
         {
@@ -177,6 +206,7 @@ mod tests {
 
     fn clip(offset: u64, length: u64, repeat: Option<ClipLoop>) -> Clip {
         Clip {
+            fades: Default::default(),
             muted: false,
             stretch: None,
             id: Id::nil(),

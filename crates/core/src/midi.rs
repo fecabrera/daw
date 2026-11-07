@@ -454,6 +454,7 @@ impl Project {
     ) -> Result<(Asset, Clip)> {
         let asset = self.midi_asset(name, pattern)?;
         let clip = Clip {
+            fades: Default::default(),
             muted: false,
             id: Id::new_v4(),
             asset_id: asset.id,

@@ -152,7 +152,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - If no sibling is soloed, play siblings that are not muted. Apply each group gate to its combined output. Flat projects retain the existing global-track behavior.
 - Use the same mute/solo rules for playback and export.
 - Retain floating-point headroom within the mixer. Show a clipping indicator when the master signal exceeds the output range; clamp only at the final device output, integer WAV export, and MP3 export. Do not apply automatic normalization or a limiter in the MVP.
-- Apply 5 ms linear fades at clip starts and ends, and at repeat boundaries within looped clips. For ranges shorter than 10 ms, shorten each fade to half the range duration so the fades do not overlap.
+- Apply default 5 ms linear fades at clip starts and ends, and at repeat boundaries within looped clips. User-set audio clip envelopes and crossfades follow [Audio clip fades and crossfades](../editing/fades.md) and replace the corresponding outer boundary fades. For ranges shorter than 10 ms, shorten each fade to half the range duration so the fades do not overlap.
 - Smooth live gain, pan/balance, mute, and solo transitions to avoid clicks.
 
 ## Project storage
@@ -433,7 +433,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 - Further theme customization beyond the built-in Light and Dark palettes.
 - Audio settings interface for device selection and audio-memory budget. Project sample rate and buffer-size controls are available in Project Settings.
 - Advanced import/export controls for sample format, bit depth, channel conversion, and dither.
-- User-configurable mixing controls after the MVP: pan law, stereo pan/balance modes, clipping protection options, and clip fade lengths and curves.
+- User-configurable mixing controls after the MVP: pan law, stereo pan/balance modes, and clipping protection options. Clip fade lengths, midpoint curves and adjacent crossfades are implemented under the [fade contract](../editing/fades.md).
 
 #### Editing
 

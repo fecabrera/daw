@@ -34,6 +34,9 @@ impl DawUi {
         lane: Rect,
         response: egui::Response,
     ) {
+        if self.clip_fade_interaction(ui, track_id, clip, block, lane) {
+            return;
+        }
         response.widget_info(|| {
             egui::WidgetInfo::selected(
                 egui::WidgetType::SelectableLabel,
@@ -46,13 +49,18 @@ impl DawUi {
             self.clip_context_menu(ui, clip.id);
             self.midi_clip_note_menu(ui, clip);
         });
+        let click_owner = response
+            .interact_pointer_pos()
+            .filter(|_| response.clicked() || response.double_clicked())
+            .and_then(|pos| self.crossfade_click_owner(track_id, clip, block, pos, ui.ctx()));
+        let click_clip = click_owner.as_ref().unwrap_or(clip);
         let fit_clip = response.double_clicked()
             && (!self.midi_editor.content_active
                 || response
                     .interact_pointer_pos()
                     .is_some_and(|pos| pos.y < block.top() + 22.0));
         if fit_clip {
-            self.open_clip_editor(clip.id, track_id, ui.ctx());
+            self.open_clip_editor(click_clip.id, track_id, ui.ctx());
             if self.midi_editor.content_active {
                 self.retain_content_view();
             }
@@ -61,14 +69,14 @@ impl DawUi {
             ui.ctx().request_repaint();
         } else if response.clicked() {
             self.select_clip(
-                clip.id,
+                click_clip.id,
                 track_id,
                 ui.input(|input| input.modifiers.shift || input.modifiers.command),
             );
             if self.view_mode.has_track_overview() && !self.midi_editor.content_active {
                 self.retain_content_view();
                 self.midi_editor.content.scroll =
-                    clip.start_frame as f64 / f64::from(self.session.project.sample_rate_hz);
+                    click_clip.start_frame as f64 / f64::from(self.session.project.sample_rate_hz);
             }
         }
         if self.midi_editor.content_active
@@ -130,7 +138,7 @@ impl DawUi {
                         },
                     );
                 }
-                ClipDragMode::Body => {}
+                ClipDragMode::Body | ClipDragMode::Fade { .. } => {}
             }
         }
         let edge_press = midi_editor::primary_press(ui)

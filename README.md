@@ -4,7 +4,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 ## Current features
 
-- **Timeline:** arrange, trim, loop, stretch, transpose, split, move, copy, and duplicate audio, MIDI and beat clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog.
+- **Timeline:** arrange, trim, loop, stretch, transpose, split, move, copy, and duplicate audio, MIDI and beat clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog. Audio clips support editable fades and adjacent crossfades.
 - **Beat editor:** build rhythms with [step patterns](docs/views/beat-editor.md) and independently configured subtrack instruments.
 - **MIDI editor:** create patterns and edit notes in a piano roll, with a project track browser, track controls and optional scale snapping.
 - **Instruments:** build layered synthesizers, samplers, and granular instruments, with instrument-wide LFO and Envelope lanes and a shared Output bus. Browse project tracks and groups from Instrument.

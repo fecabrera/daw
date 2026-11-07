@@ -4,6 +4,317 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Crossover guides and shading meet the header — 2026-11-07
+
+Both crossover guides and the shading mesh now start at the shared 22-point
+header bottom, including the handle band. This supersedes the previous
+30-point waveform-peak origin and removes the unshaded strip. Curve endpoints
+retain their 23-point handle-top attachment. Hover behavior, bottom endpoints
+and one-point strokes remain unchanged.
+
+The input check requires both guide tops and the shading mesh bounds to meet
+the shared header bottom in both directions and saved clip orders.
+All fifteen focused fade checks passed.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+`cargo test --workspace --locked --offline`: PASS, including doctests.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff HEAD --check` and 132 local documentation targets: PASS.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+Native appearance and device/platform checks were not performed.
+
+## Two full-height crossover guides on hover — 2026-11-07
+
+Crossfades now show dark one-point vertical guides at both overlap edges. Both
+span the full waveform section and appear only while the crossover is hovered.
+Ordinary fade guides retain their existing behavior. A half-point inward inset
+keeps boundary strokes whole inside the host clip.
+
+The focused input check verifies zero guides before hover, two guides during
+hover and zero on pointer exit, in both directions and saved clip orders. Paint
+checks verify both exact endpoint pairs and one-point dark strokes.
+All fifteen focused fade checks passed.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+`cargo test --workspace --locked --offline`: PASS, including doctests.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff HEAD --check` and 132 local documentation targets: PASS.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+Native appearance and device/platform checks were not performed.
+
+## Crossover outlines, click ownership and hover controls — 2026-11-07
+
+The neighbor foreground pass now completes the selected owner's outer visual
+outline across its header/waveform continuation. Owner and neighbor spans use
+the same range and selection stroke. Neutral header/body borders remain absent.
+The integration check selects the owner and verifies that the outline is visible
+across the crossover in both directions and either saved clip order. It also
+starts from the receiver selection, clicks the crossover and verifies selection
+of the visual owner. Fade controls now show only on visual-clip hover or during
+a fade drag. A separate input check covers enter/exit visibility and whole
+shared-boundary controls.
+All fifteen focused fade checks passed.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+`cargo test --workspace --locked --offline`: PASS, including doctests.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff HEAD --check` and 132 local documentation targets: PASS.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+
+Native appearance and device/platform checks were not performed.
+
+## Crossfade headers, whole controls and one-point curves — 2026-11-07
+
+Removed the extra header rectangle strokes from both the owner and neighbor
+extension passes. Selected audio retains one outer selection outline rather
+than a separate header box. The focused integration check now rejects neutral
+border rectangles around both audio headers and waveform bodies, in both
+crossfade directions and saved clip orders. Curve strokes now use one logical
+point. Controls paint last with the lane clip and a neighboring control allowance;
+the integration check verifies complete shared-boundary squares in either order.
+A separate check covers complete zero-duration squares at viewport edges.
+All fourteen focused fade checks passed.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+`cargo test --workspace --locked --offline`: PASS, including doctests.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff HEAD --check` and 132 local documentation targets: PASS.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+
+Native appearance and device/platform checks were not performed.
+
+## Crossfade masks, waveform borders and hover curves — 2026-11-07
+
+Crossfade shading now combines two masks: below the neighbor curve and above
+the owner's complementary curve. The original side between curves stays clear;
+the extended side gets two composited layers. Upper and lower caps get one
+layer. This supersedes full-overlap rectangle shading below. Both masks share
+one mesh and one host pass; waveforms remain above the masks in original colors.
+
+A focused coverage check counts zero, one and two layers in the respective
+regions, in both directions with an off-center control point. Source continuation
+and header geometry remain covered by the existing checks. Audio bodies no
+longer receive neutral rectangle borders; explicit selection outlines remain.
+The integration check also rejects neutral body border rectangles and checks
+both curves hidden, shown on crossover hover, then hidden on pointer exit.
+Active fade drags retain curve visibility.
+All thirteen focused fade checks passed.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+`cargo test --workspace --locked --offline`: PASS, including doctests.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff HEAD --check` and 132 local documentation targets: PASS.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+Native appearance
+and device/platform checks remain unperformed.
+
+## Crossfade source continuations and overlap shading — 2026-11-07
+
+Crossfade display now extends the owner's source waveform alongside its header.
+Both source waveforms appear in the full darkened crossover region, with their
+original colors. Body outlines follow the visual header boundaries. Source
+continuations use the same prepared/original/stretch lookup as normal peaks,
+with preceding frames for incoming owners and following frames for outgoing
+owners; project ranges and audio rendering remain unchanged.
+
+The focused integration check covers both directions and saved clip orders,
+one shading layer before both stereo waveforms, and distinct source amplitudes
+that detect missing continuations or incorrect source offsets.
+All twelve focused fade checks passed.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff HEAD --check` and 132 local documentation targets: PASS.
+`cargo test --workspace --locked --offline`: PASS, including doctests.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+Native appearance and device/platform checks were not performed.
+
+## Crossfade headers, background shading and centered controls — 2026-11-07
+
+Active crossfades extend the owner header into the neighbor and shift the
+neighbor header boundary without changing logical clip ranges. Channel fills
+and one black attenuation mesh precede waveform peaks, preserving waveform
+colors. Both curves use dark ink again. Square and circular markers now have
+transparent bodies with dark borders. Half-gain markers align with the waveform
+center while full-gain curve endpoints retain handle-top attachment.
+
+Focused checks cover header extension in both directions and saved orders,
+single-application background shading before the original-color waveform,
+paired curves, transparent controls and half-gain vertical centering.
+All twelve focused fade checks passed.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff HEAD --check` and 132 local documentation targets: PASS.
+`cargo test --workspace --locked --offline`: PASS, including doctests.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+Native appearance and device/platform checks were not performed.
+
+## Both crossfade curves — 2026-11-07
+
+Crossfades now draw both complementary gain curves over the same time span.
+The shared Timeline/Editor painter adds the companion without extra shading
+or independent handles. Ordinary fades still show one curve.
+
+All eleven focused fade checks passed. The new painting check covers ordinary
+and crossfade modes in both directions, with an off-center control point, and
+checks that paired gains sum to unity. Existing checks retain single-application
+neighbor shading, editing and inspector synchronization.
+`cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: PASS.
+Native appearance and device/platform checks were not performed.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+
+## Plain fade values and section spacing — 2026-11-07
+
+Both fade sections have separators with matching space above and below. Their
+subheaders now use the standard row height; an egui check compares the visible
+text gaps on either side of both dividers. Mode fills the value column and uses
+Small text for its caption and popup items. Duration, Shape and Position reuse Gain’s plain numeric
+label and font, vertical dragging, Shift fine adjustment and double-click text
+editing. Submitted finite values clamp to the existing bounds; painting is
+read-only. Zero-duration Shape and Position remain disabled.
+
+All ten focused fade checks passed, including numeric limit drags and replacing
+a selected numeric value through double-click text entry.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff HEAD --check` and 132 local documentation link targets: PASS.
+`cargo test --workspace --locked --offline`: PASS for the final layout,
+including doctests.
+`cargo test --workspace --release --locked --offline`: PASS for the final layout,
+including doctests.
+Native appearance and device/platform checks were not performed.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+
+## Fade settings layout and secondary curve color — 2026-11-07
+
+A divider precedes the single-audio-clip fade controls. Fade in/out subheaders
+use the theme secondary color. Mode, Duration, Shape and Position use the shared
+settings rows and the same label width as Name and Gain. Curve lines now use the
+theme secondary color, superseding dark curve ink below; marker borders and
+vertical guides retain dark ink.
+
+All ten focused fade UI checks passed, including input through the separate
+right-hand Shape and Position values and secondary-color curve painting.
+`cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: PASS.
+`cargo fmt --all --check`, `git diff HEAD --check`, and 132 local documentation
+link targets: PASS.
+`cargo test --workspace --locked --offline`: PASS.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+Native appearance and device/platform checks were not performed.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+
+## S-shaped fades and dark outlined controls — 2026-11-07
+
+Custom fades and crossfades now use a shared monotone cubic S-curve with flat
+endpoint slopes and a movable two-axis control point. Position is limited to
+15–85% and Shape to −75%–75%; older coordinates are clamped on load, while invalid
+new edits are rejected. A dark vertical guide below the duration handle marks
+the fade-in end/fade-out start. The new interpolation intentionally replaces the previous
+power response in audio and painting. Automatic zero-duration 5 ms boundary
+fades remain linear. The full-level curve endpoint now meets the top of the
+square handle, superseding the previous center attachment. Curves and marker
+borders use dark ink; both square and circular markers have white bodies.
+
+Focused core checks passed for monotonicity, bounds, control-point interpolation,
+S-shaped quarter values/flat ends, point persistence and legacy automatic fades
+at all project rates. Ten focused UI checks passed, including top attachment,
+marker fill/border/line colors, shading, two-axis input, inspector sync and
+single-application crossfade overlays and drag/inspector range limits. The updated direct/scheduled audio
+rendering check passed.
+
+`cargo test -p daw-ui --locked --offline`: PASS (905 tests, three ignored),
+including clamped drag and numeric-field edits at the requested range limits.
+`cargo fmt --all --check` and
+`cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: PASS.
+Documentation links (416 local targets) and `git diff HEAD --check`: PASS.
+
+`cargo build -p daw-cli --locked --offline` and `python3 tools/check_cli.py`: PASS.
+
+`cargo test --workspace --locked --offline`: PASS with debug assertions enabled.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+
+Native appearance/listening and device/platform checks were not performed.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard. Tracked
+changes remain uncommitted; no new app bundle was published.
+
+## Fade curve attachment, shading and two-axis control — 2026-11-06
+
+Fade curves now end at their duration handle's center, with a translucent neutral
+grey overlay above the curve. The midpoint moves horizontally and vertically;
+Clip settings exposes the same horizontal Position alongside Shape. Crossfade
+presentation uses the neighboring complementary ramp so outward handles also
+attach at full level, while retaining the previous audio response.
+
+Saved midpoint positions default to 0.5 when absent. The shared audio/visual power
+curve passes through the saved position and level. Curve sampling includes that
+point exactly. This supersedes the fixed-half-position and waveform-top drawing
+rules in the initial implementation below. Clip headers and selection outlines
+remain above the shading.
+
+Focused checks passed for both fade directions and crossfade mode: handle-center
+attachment, control-point alignment, above-curve mesh bounds, two-axis input,
+inspector synchronization, legacy sound and position serialization. Core tests
+also cover invalid positions and monotonic curves. The updated engine check
+passed for an off-center control point in direct and scheduled audio rendering.
+
+The final `cargo test -p daw-ui --locked --offline` run passed 903 tests with
+three ignored, including single-application crossfade shading in both saved clip
+orders and read-only settings at boundary control points.
+`cargo fmt --all --check` and
+`cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: PASS.
+Documentation links (416 local targets) and `git diff HEAD --check`: PASS.
+
+`cargo test --workspace --locked --offline`: PASS with debug assertions enabled.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+`cargo test --workspace --release --locked --offline clip_fades`: PASS for all
+eight final fade UI/geometry checks after the last presentation fixes.
+`cargo build -p daw-cli --locked --offline` and `python3 tools/check_cli.py`: PASS.
+
+Native appearance/listening and platform/device checks were not performed.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard; tracked
+changes remain uncommitted, so no updated app bundle was published.
+
+## Editable audio fades and fixed-boundary crossfades — 2026-11-06
+
+Audio clips now have edge handles between headers and waveforms, vertical
+midpoint shape handles and synchronized single-clip Fade in/out settings in
+Timeline and the audio Editor. Inward drags create fades; outward drags blend
+adjacent unlooped audio with matching channel layouts when source handles exist.
+Crossfades keep logical clip ranges fixed. Ordinary fades can span the clip;
+crossfade ranges are capped at half each adjacent clip and source availability.
+Legacy projects retain their automatic 5 ms boundary fades.
+
+Four focused egui checks passed with
+`cargo test -p daw-ui --locked --offline tests::clip_fades`: inward/outward gestures, preview/release/cancel, midpoint
+shaping, inspector edits/read-only painting, fixed ranges and the lower Editor's
+captured drag clock. The engine envelope/crossfade test covers constant-signal
+level continuity, direct/scheduled parity, source limits, invalid-edit rollback,
+serialization and sample-rate scaling. The new streaming test passed with no
+callback allocations across seek and loop wraps, matching resident PCM.
+An initial full run exposed the ordinary fade half-duration restriction; ordinary
+fades now use the full clip bound, while transition bounds remain disjoint.
+
+`cargo build -p daw-cli --locked --offline` and `python3 tools/check_cli.py`: PASS.
+The final full UI run (`cargo test -p daw-ui --locked --offline`) passed 899 tests
+with three ignored. `cargo fmt --all --check` and
+`cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: PASS.
+
+`cargo test --workspace --locked --offline`: PASS with debug assertions enabled.
+The workspace UI run passed 898 tests with three ignored; the later final UI run
+above also covers the added lower-Editor drag-clock regression.
+`cargo test --workspace --release --locked --offline`: PASS, including all four
+fade UI checks (899 UI tests passed, three ignored) and the streaming allocation
+check. A release build started before the duration correction failed the same
+regression; this completed final run supersedes it.
+Documentation links (416 local targets) and `git diff HEAD --check`: PASS.
+
+Native appearance/listening, display scaling and physical device/platform checks
+remain open. `sh tools/package_macos.sh debug` stopped before building because
+`package_sources.py` requires committed tracked changes. Changes remain uncommitted.
+
 ## Audio sidechain modulation roadmap — 2026-11-06
 
 Added audio sidechain modulation as the sixth high-priority milestone. The plan

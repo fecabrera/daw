@@ -1,5 +1,5 @@
 //! Prepared non-overlapping ranges. Saved clip order is independent of playback order.
-use super::{RenderPlan, sample_fade};
+use super::RenderPlan;
 use daw_core::Track;
 use daw_media::AudioData;
 
@@ -40,10 +40,22 @@ impl Ranges {
 }
 
 #[derive(Clone)]
+struct Transition {
+    owner: usize,
+    start: u64,
+    length: u64,
+    left: bool,
+    fade: daw_core::ClipFade,
+}
+
+#[derive(Clone)]
 pub(super) struct AudioTrack {
     ranges: Ranges,
     audio: Vec<Option<AudioData>>,
     rate: u32,
+    envelopes: Vec<daw_core::ClipFades>,
+    transitions: Vec<Transition>,
+    transition_ranges: Ranges,
     staged: Option<(usize, u64, [f32; 2])>,
     loop_pin: Option<(u64, Option<(usize, u64)>)>,
     readers: Vec<daw_media::FrameReader>,
@@ -52,6 +64,9 @@ pub(super) struct AudioTrack {
 impl AudioTrack {
     pub fn heap_bytes(&self) -> u64 {
         self.ranges.heap_bytes()
+            + self.transition_ranges.heap_bytes()
+            + daw_unit_core::memory::vec_bytes(&self.envelopes)
+            + daw_unit_core::memory::vec_bytes(&self.transitions)
             + daw_unit_core::memory::vec_bytes(&self.audio)
             + daw_unit_core::memory::vec_bytes(&self.readers)
             + daw_unit_core::memory::vec_bytes(&self.reader_indices)
@@ -71,7 +86,7 @@ impl AudioTrack {
     pub fn new(plan: &RenderPlan, track: &Track) -> Self {
         let mut sources = Vec::new();
         let mut readers = Vec::new();
-        let reader_indices = track
+        let reader_indices: Vec<Option<usize>> = track
             .clips
             .iter()
             .map(|clip| {
@@ -89,7 +104,99 @@ impl AudioTrack {
                 Some(readers.len() - 1)
             })
             .collect();
+        let mut envelopes: Vec<_> = track
+            .clips
+            .iter()
+            .map(|c| {
+                let mut fades = c.fades;
+                if fades.fade_in.crossfade {
+                    fades.fade_in = daw_core::ClipFade::default();
+                }
+                if fades.fade_out.crossfade {
+                    fades.fade_out = daw_core::ClipFade::default();
+                }
+                fades
+            })
+            .collect();
+        let mut transitions = Vec::new();
+        for (owner, clip) in track.clips.iter().enumerate() {
+            for (left, fade) in [(true, clip.fades.fade_in), (false, clip.fades.fade_out)] {
+                if !fade.crossfade || fade.length_frames == 0 {
+                    continue;
+                }
+                let length = fade
+                    .length_frames
+                    .min(plan.project.clip_fade_limit(clip.id, left, true));
+                if length == 0 {
+                    continue;
+                }
+                let neighbor = track
+                    .clips
+                    .iter()
+                    .position(|other| {
+                        other.id != clip.id
+                            && if left {
+                                other.end() == clip.start_frame
+                            } else {
+                                other.start_frame == clip.end()
+                            }
+                    })
+                    .unwrap();
+                // Outgoing owners take priority if an unrelated placement joins two saved transitions.
+                if left
+                    && track.clips[neighbor].fades.fade_out.crossfade
+                    && track.clips[neighbor].fades.fade_out.length_frames > 0
+                {
+                    continue;
+                }
+                if audio_source_missing(plan, clip)
+                    || audio_source_missing(plan, &track.clips[neighbor])
+                {
+                    continue;
+                }
+                let start = if left {
+                    clip.start_frame - length
+                } else {
+                    clip.end()
+                };
+                transitions.push(Transition {
+                    owner,
+                    start,
+                    length,
+                    left,
+                    fade,
+                });
+                let edge = if left {
+                    &mut envelopes[owner].fade_in
+                } else {
+                    &mut envelopes[owner].fade_out
+                };
+                *edge = fade;
+                let other = if left {
+                    &mut envelopes[neighbor].fade_out
+                } else {
+                    &mut envelopes[neighbor].fade_in
+                };
+                other.crossfade = true;
+                other.length_frames = length;
+            }
+        }
+        // Extended owner reads have independent reader state even when the PCM is shared.
+        let mut reader_indices = reader_indices;
+        for owner in transitions.iter().map(|t| t.owner) {
+            if let Some(audio) = plan.audio_for_clip(&track.clips[owner])
+                && audio.disk.is_some()
+            {
+                reader_indices[owner] = Some(readers.len());
+                readers.push(daw_media::FrameReader::new(audio));
+            }
+        }
+        let transition_ranges =
+            Ranges::new(transitions.iter().map(|t| (t.start, t.start + t.length)));
         Self {
+            envelopes,
+            transitions,
+            transition_ranges,
             readers,
             reader_indices,
             staged: None,
@@ -121,7 +228,12 @@ impl AudioTrack {
         }
         Ok(())
     }
-    pub fn ready(&mut self, clips: &[daw_core::Clip], frame: u64, loop_start: Option<u64>) -> bool {
+    fn ready_primary(
+        &mut self,
+        clips: &[daw_core::Clip],
+        frame: u64,
+        loop_start: Option<u64>,
+    ) -> bool {
         if let Some(start) = loop_start {
             if self.loop_pin.as_ref().is_none_or(|(old, _)| *old != start) {
                 let pin = self.ranges.at(start).and_then(|i| {
@@ -159,7 +271,55 @@ impl AudioTrack {
             .map(|value| (index, position, value));
         ready && self.staged.is_some()
     }
+    pub fn ready(&mut self, clips: &[daw_core::Clip], frame: u64, loop_start: Option<u64>) -> bool {
+        let primary = self.ready_primary(clips, frame, loop_start);
+        if let Some(i) = self.transition_ranges.at(frame) {
+            let t = &self.transitions[i];
+            let clip = &clips[t.owner];
+            let position = transition_position(t, clip, frame);
+            if let Some(reader) = self.reader_indices[t.owner] {
+                return self.readers[reader].ready(position, None) && primary;
+            }
+        }
+        primary
+    }
     pub fn sample(
+        &mut self,
+        clips: &[daw_core::Clip],
+        frame: u64,
+        realtime: bool,
+    ) -> ([f32; 2], Option<bool>) {
+        let (mut primary, mut mono) = self.sample_primary(clips, frame, realtime);
+        if let Some(i) = self.transition_ranges.at(frame) {
+            let t = &self.transitions[i];
+            let clip = &clips[t.owner];
+            let position = transition_position(t, clip, frame);
+            let audio = self.audio[t.owner].as_ref().unwrap();
+            let extra = if let Some(reader) = self.reader_indices[t.owner] {
+                if realtime {
+                    self.readers[reader].live_sample(position)
+                } else {
+                    self.readers[reader].sample(position).unwrap_or_default()
+                }
+            } else {
+                audio
+                    .samples
+                    .get(position as usize)
+                    .copied()
+                    .unwrap_or_default()
+            };
+            let progress = (frame - t.start) as f32 / t.length.saturating_sub(1).max(1) as f32;
+            let weight = t.fade.gain(if t.left { progress } else { 1.0 - progress });
+            let gain = daw_core::linear_gain(clip.gain_db);
+            mono = Some(audio.metadata.channels == 1);
+            let scale = 1.0;
+            for ch in 0..2 {
+                primary[ch] = primary[ch] * (1.0 - weight) + extra[ch] * gain * weight * scale;
+            }
+        }
+        (primary, mono)
+    }
+    fn sample_primary(
         &mut self,
         clips: &[daw_core::Clip],
         frame: u64,
@@ -174,7 +334,9 @@ impl AudioTrack {
         let clip = &clips[index];
         let local = frame - clip.start_frame;
         let position = clip.source_frame(local);
-        let fade = sample_fade(clip, local, position, self.rate);
+        let fade = self.envelopes[index]
+            .gain(local, clip.length_frames, self.rate)
+            .min(super::clip_repeat_fade(clip, position, self.rate));
         let value = if let Some(reader) = self.reader_indices[index] {
             if realtime {
                 self.staged
@@ -197,6 +359,17 @@ impl AudioTrack {
             value.map(|v| v * fade * daw_core::linear_gain(clip.gain_db)),
             Some(audio.metadata.channels == 1),
         )
+    }
+}
+
+fn audio_source_missing(plan: &RenderPlan, clip: &daw_core::Clip) -> bool {
+    plan.audio_for_clip(clip).is_none()
+}
+fn transition_position(t: &Transition, clip: &daw_core::Clip, frame: u64) -> u64 {
+    if t.left {
+        clip.source_offset_frame - (clip.start_frame - frame)
+    } else {
+        clip.source_offset_frame + clip.length_frames + (frame - clip.end())
     }
 }
 

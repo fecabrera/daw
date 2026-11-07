@@ -48,7 +48,12 @@ impl RenderPlan {
         )
     }
     fn needs_stateful_render(&self) -> bool {
-        self.audio.values().any(|audio| audio.disk.is_some())
+        self.project
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .any(|c| c.fades.fade_in.crossfade || c.fades.fade_out.crossfade)
+            || self.audio.values().any(|audio| audio.disk.is_some())
             || self
                 .stretched_audio
                 .values()
@@ -111,11 +116,9 @@ impl RenderPlan {
     }
 }
 fn sample_fade(clip: &daw_core::Clip, local: u64, source_frame: u64, sample_rate_hz: u32) -> f32 {
-    clip_fade_at_rate(local, clip.length_frames, sample_rate_hz).min(clip_repeat_fade(
-        clip,
-        source_frame,
-        sample_rate_hz,
-    ))
+    clip.fades
+        .gain(local, clip.length_frames, sample_rate_hz)
+        .min(clip_repeat_fade(clip, source_frame, sample_rate_hz))
 }
 /// Loop-seam fade for dry clip preparation. Outer boundaries remain the
 /// responsibility of playback so a baked clip does not receive two fades.
@@ -1375,6 +1378,128 @@ mod tests {
             .unwrap();
         assert_ne!(plan.sample_at(1000), [0.0; 2]);
     }
+    #[test]
+    fn editable_fades_crossfades_preserve_bounds_and_match_scheduled_render() {
+        for left in [false, true] {
+            let mut plan = plan();
+            let mut first = plan.project.tracks[0].clips[0].clone();
+            first.length_frames = 800;
+            first.source_offset_frame = 200;
+            let mut second = first.clone();
+            second.id = Id::new_v4();
+            second.start_frame = 800;
+            second.source_offset_frame = 1000;
+            plan.project.tracks[0].clips = vec![first.clone(), second.clone()];
+            let id = if left { second.id } else { first.id };
+            let fade = daw_core::ClipFade {
+                length_frames: 200,
+                midpoint: 0.8,
+                midpoint_position: 0.35,
+                crossfade: true,
+            };
+            let mut fades = daw_core::ClipFades::default();
+            if left {
+                fades.fade_in = fade;
+            } else {
+                fades.fade_out = fade;
+            }
+            let before = plan.project.clone();
+            plan.project
+                .edit(daw_core::Edit::SetClipFades { clip_id: id, fades })
+                .unwrap();
+            assert_eq!(plan.project.tracks[0].clips[0].start_frame, 0);
+            assert_eq!(plan.project.tracks[0].clips[0].length_frames, 800);
+            assert_eq!(plan.project.tracks[0].clips[1].start_frame, 800);
+            let json = serde_json::to_string(&plan.project).unwrap();
+            assert_eq!(
+                serde_json::from_str::<Project>(&json).unwrap(),
+                plan.project
+            );
+            let mut track = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
+            for frame in 600..1000 {
+                let direct = track.sample(&plan.project.tracks[0].clips, frame, false).0;
+                assert!(
+                    (direct[0] - 0.25).abs() < 0.00001,
+                    "constant source must have no dip at {frame}"
+                );
+                assert!((plan.sample_at(frame)[0] - direct[0]).abs() < 0.00001);
+            }
+            let old = plan.project.clone();
+            let mut too_long = fades;
+            if left {
+                too_long.fade_in.length_frames = 500;
+            } else {
+                too_long.fade_out.length_frames = 500;
+            }
+            assert!(
+                plan.project
+                    .edit(daw_core::Edit::SetClipFades {
+                        clip_id: id,
+                        fades: too_long
+                    })
+                    .is_err()
+            );
+            assert_eq!(plan.project, old);
+            let mut invalid = fades;
+            invalid.fade_in.midpoint = f32::NAN;
+            assert!(
+                plan.project
+                    .edit(daw_core::Edit::SetClipFades {
+                        clip_id: id,
+                        fades: invalid
+                    })
+                    .is_err()
+            );
+            assert_eq!(plan.project, old);
+            for (position, level) in [(0.14, 0.5), (0.86, 0.5), (0.5, 0.124), (0.5, 0.876)] {
+                let mut invalid = fades;
+                let edge = if left {
+                    &mut invalid.fade_in
+                } else {
+                    &mut invalid.fade_out
+                };
+                edge.midpoint_position = position;
+                edge.midpoint = level;
+                assert!(
+                    plan.project
+                        .edit(daw_core::Edit::SetClipFades {
+                            clip_id: id,
+                            fades: invalid
+                        })
+                        .is_err()
+                );
+                assert_eq!(plan.project, old);
+            }
+            let scaled = plan.project.with_audio_settings(96_000, 512).unwrap();
+            let scaled_clip = scaled.tracks[0].clips.iter().find(|c| c.id == id).unwrap();
+            assert_eq!(
+                if left {
+                    scaled_clip.fades.fade_in.length_frames
+                } else {
+                    scaled_clip.fades.fade_out.length_frames
+                },
+                400
+            );
+            assert_eq!(
+                before.tracks[0].clips[0].source_offset_frame,
+                plan.project.tracks[0].clips[0].source_offset_frame
+            );
+        }
+        let mut plan = plan();
+        let clip = &mut plan.project.tracks[0].clips[0];
+        clip.fades.fade_in = daw_core::ClipFade {
+            length_frames: 1000,
+            midpoint: 0.2,
+            midpoint_position: 0.25,
+            crossfade: false,
+        };
+        assert!((plan.sample_at(250)[0] - 0.05).abs() < 0.00001);
+        let mut track = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
+        assert!(
+            (track.sample(&plan.project.tracks[0].clips, 250, false).0[0] - 0.05).abs() < 0.00001
+        );
+    }
+
     fn plan() -> RenderPlan {
         use daw_core::{Asset, Clip, Source, SourceMetadata};
         use std::sync::Arc;
@@ -1402,6 +1527,7 @@ mod tests {
             decoded_frame_count: 2000,
         });
         project.tracks[0].clips.push(Clip {
+            fades: Default::default(),
             muted: false,
             stretch: None,
             id: Id::new_v4(),

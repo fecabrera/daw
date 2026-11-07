@@ -2,6 +2,8 @@
 use super::*;
 use daw_core::MidiPattern;
 
+pub(super) const HEADER_HEIGHT: f32 = 22.0;
+
 /// Shared temporal painting with separate MIDI pitch and unbounded beat-row coordinates.
 enum NotePreview<'a> {
     Midi(&'a MidiPattern),
@@ -128,7 +130,26 @@ impl DawUi {
             },
         );
         let clip_painter = painter.with_clip_rect(block.intersect(lane));
-        paint_header(&clip_painter, block, &clip.name, colors, missing);
+        let header = if pattern.is_none() && beat.is_none() {
+            self.clip_fade_header_rect(block, clip, painter.ctx())
+        } else {
+            block
+        };
+        paint_header(&clip_painter, header, &clip.name, colors, missing);
+        let body = Rect::from_min_max(
+            Pos2::new(
+                block.left(),
+                (block.top() + clip_fades::WAVEFORM_TOP).min(block.bottom()),
+            ),
+            block.max,
+        );
+        if pattern.is_none() && beat.is_none() {
+            if let Some(audio) = audio {
+                waveforms::paint_background(&clip_painter, body, audio, colors);
+            }
+            self.paint_clip_fade_background(&clip_painter, block, clip);
+            self.paint_neighbor_crossfades(&clip_painter, block, clip, true);
+        }
         if missing {
             clip_painter.text(
                 block.center(),
@@ -184,8 +205,7 @@ impl DawUi {
         } else if let Some(pattern) = pattern {
             self.paint_midi_notes(&clip_painter, block, clip, pattern, colors.waveform);
         } else if let Some(audio) = audio {
-            let body = Rect::from_min_max(Pos2::new(block.left(), block.top() + 22.0), block.max);
-            waveforms::paint(
+            waveforms::paint_peaks(
                 &clip_painter,
                 body,
                 audio,
@@ -193,6 +213,15 @@ impl DawUi {
                 f64::from(self.session.project.sample_rate_hz) / f64::from(self.view_zoom()),
                 colors,
                 if cached.is_none() { clip.stretch } else { None },
+            );
+        }
+
+        if pattern.is_none() && beat.is_none() {
+            self.paint_neighbor_crossfade_waveforms(&clip_painter, block, clip);
+            self.paint_clip_fades(
+                &painter.with_clip_rect(block.intersect(painter.clip_rect())),
+                block,
+                clip,
             );
         }
 
@@ -224,16 +253,32 @@ impl DawUi {
                 }
             }
         }
-        painter.rect_stroke(
-            block,
-            2.0,
-            if selected {
-                theme::selection_outline(painter.ctx())
-            } else {
-                Stroke::new(1.0, theme::palette(painter.ctx()).divider)
-            },
-            StrokeKind::Inside,
-        );
+        if pattern.is_none() && beat.is_none() {
+            self.paint_neighbor_crossfades(painter, block, clip, false);
+        }
+        let outline = if header != block {
+            Rect::from_min_max(header.min, Pos2::new(header.right(), block.bottom()))
+        } else {
+            block
+        };
+        // Audio uses its fill and fade geometry. Keep only the explicit
+        // selection outline; neutral rectangles add an unrelated waveform border.
+        if selected || pattern.is_some() || beat.is_some() {
+            clip_painter.rect_stroke(
+                outline,
+                2.0,
+                if selected {
+                    theme::selection_outline(painter.ctx())
+                } else {
+                    Stroke::new(1.0, theme::palette(painter.ctx()).divider)
+                },
+                StrokeKind::Inside,
+            );
+        }
+        if pattern.is_none() && beat.is_none() {
+            self.paint_clip_fade_controls(painter, block, clip);
+            self.paint_neighbor_fade_controls(painter, block, clip);
+        }
     }
     pub(super) fn paint_midi_notes(
         &self,
@@ -254,7 +299,10 @@ impl DawUi {
         pattern: NotePreview<'_>,
         color: egui::Color32,
     ) {
-        let body = Rect::from_min_max(Pos2::new(block.left(), block.top() + 22.0), block.max);
+        let body = Rect::from_min_max(
+            Pos2::new(block.left(), block.top() + HEADER_HEIGHT),
+            block.max,
+        );
         let (min_row, max_row) = pattern.bounds();
         let count = clip.repeat.map_or(1, |repeat| {
             (clip.length_frames / repeat.length_frames).saturating_add(2)
@@ -358,7 +406,10 @@ pub(super) fn paint_header(
     colors: theme::ClipColors,
     missing: bool,
 ) -> Rect {
-    let header = Rect::from_min_max(block.min, Pos2::new(block.right(), block.top() + 22.0));
+    let header = Rect::from_min_max(
+        block.min,
+        Pos2::new(block.right(), block.top() + HEADER_HEIGHT),
+    );
     painter.rect_filled(
         header,
         2.0,

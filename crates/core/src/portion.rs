@@ -106,6 +106,7 @@ mod tests {
         });
         let clip = Id::new_v4();
         project.tracks[0].clips.push(Clip {
+            fades: Default::default(),
             muted: false,
             id: clip,
             asset_id: asset,

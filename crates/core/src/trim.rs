@@ -73,6 +73,7 @@ mod tests {
 
     fn clip() -> Clip {
         Clip {
+            fades: Default::default(),
             muted: false,
             id: Id::new_v4(),
             asset_id: Id::new_v4(),

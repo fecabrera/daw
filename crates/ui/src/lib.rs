@@ -10,6 +10,7 @@ mod background_audio;
 use daw_unit_ui::menus;
 mod audio_edits;
 mod audio_preparation;
+mod clip_fades;
 mod clip_lane;
 mod clip_menu;
 mod normalize;
@@ -727,8 +728,14 @@ struct Marquee {
     primary: Option<Id>,
     toggle: bool,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum ClipDragMode {
+    Fade {
+        left: bool,
+        shape: bool,
+        height: u32,
+        frames_per_point: f64,
+    },
     Move,
     TrimLeft,
     TrimRight,
@@ -5281,6 +5288,7 @@ impl DawUi {
             target.snap_zoom,
         );
         let clip = Clip {
+            fades: Default::default(),
             muted: false,
             stretch: None,
             id: Id::nil(),
@@ -5530,6 +5538,23 @@ impl DawUi {
         if self.drag.is_some() && self.content_clip_drag != self.midi_editor.content_active {
             return;
         }
+        if self
+            .drag
+            .as_ref()
+            .is_some_and(|d| matches!(d.mode, ClipDragMode::Fade { .. }))
+        {
+            if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
+                let drag = self.drag.take().unwrap();
+                let fades = self.fade_drag_value(&drag, ui.ctx());
+                if fades != drag.clip.fades {
+                    self.edit(Edit::SetClipFades {
+                        clip_id: drag.clip.id,
+                        fades,
+                    });
+                }
+            }
+            return;
+        }
         if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary))
             && let Some(drag) = self.drag.take()
             && drag.mode != ClipDragMode::Body
@@ -5649,7 +5674,7 @@ impl DawUi {
             let selected = self.clip_selected(clip.id);
             let mut clip_painter = painter.clone();
             if self.drag.as_ref().is_some_and(|drag| {
-                drag.mode != ClipDragMode::Body
+                !matches!(drag.mode, ClipDragMode::Body | ClipDragMode::Fade { .. })
                     && !drag.duplicate
                     && (drag.clip.id == clip.id
                         || drag.clips.iter().any(|entry| entry.clip.id == clip.id))
@@ -5832,6 +5857,7 @@ mod tests {
     mod beat;
     mod chords;
     mod clip_duplication;
+    mod clip_fades;
     mod clip_menu;
     mod clip_portion;
     mod clip_settings;
@@ -5911,6 +5937,7 @@ mod tests {
             decoded_frame_count: 480000,
         });
         app.session.project.tracks[0].clips.push(Clip {
+            fades: Default::default(),
             muted: false,
             stretch: None,
             id: Id::new_v4(),

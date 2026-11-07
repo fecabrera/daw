@@ -120,6 +120,57 @@ Use **Fit all clips**, immediately left of the playback toolbar’s zoom control
 
 Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a MIDI clip to open it in [Editor](editor.md).
 
+## Fades and crossfades
+
+Audio clips have square fade handles in the strip between the name header and
+waveform. Drag the left or right handle inward to create a fade. Drag it outward
+to crossfade with the adjacent audio clip. The join stays at the same timeline
+position; the blend uses original audio beyond the trimmed edge. Crossfades
+require touching, unlooped clips with matching mono/stereo layouts and available
+source audio. Gaps, muted clips and unavailable source handles prevent a blend.
+
+A circle on each curve controls its shape. Drag it horizontally to change its
+position within the fade, or vertically to change its level. Neither changes
+the fade duration. The S-curve starts at the top of its square handle. Handles and midpoint controls
+have transparent bodies with dark borders, and the curve line is dark. The area
+above the curve is darkened to show attenuation; waveform colors stay unchanged. Crossfades show both
+complementary curves when you hover over the blend or drag a fade control.
+Hover a clip to show its fade handles and midpoint controls. Clicking a
+crossover selects the clip whose header and waveform extend across it. The owning clip’s header and source waveform extend into the neighboring clip
+through the overlap region. The original side between the curves keeps its normal brightness. The extended
+side between the curves receives two layers of shading; the upper and lower
+regions receive one layer.
+Both waveforms keep their colors. Audio waveform bodies and crossfade headers have no extra border;
+selected clips retain a selection outline across the full visible crossfade. Clip
+timing stays unchanged. For an ordinary fade, a dark vertical guide runs from its duration handle
+through the waveform, marking the fade-in end or fade-out start. Crossfades show
+a vertical guide at each edge only while the crossover is hovered. Both guides
+start directly below the header and reach the waveform bottom. The crossover
+shading also meets the header without a gap.
+Release commits the change; Escape or loss of window focus cancels. These
+controls edit one audio clip at a time. Header looping, waveform trimming and
+shared-boundary trimming keep their existing gestures outside the fade handles.
+
+For a single selected audio clip, a divider separates the fade controls from the
+other clip settings, and another divider precedes **Fade out**. Both use muted subheaders, with labels
+on the left and values on the right. Each section contains Mode (Fade/Crossfade),
+Duration in milliseconds, Shape and Position. The Mode selector fills the value
+column. Drag numeric values up or down, hold Shift for finer adjustment, or
+double-click to type a value. Shape sets the control point level from −75% to +75%; Position sets
+its horizontal location from 15% to 85% between the clip edge and duration handle.
+Shape 0% with Position 50% gives a balanced S-curve. These settings and the curve
+handles edit the same values. Fade duration is bounded by the clip. Crossfade duration is bounded by half
+each adjacent clip and the available source audio. Zero duration
+keeps the automatic 5 ms anti-click fade. A crossfade replaces the corresponding
+neighbor boundary fade. If editing removes an eligible join, its crossfade
+becomes inactive and the automatic boundary fade applies.
+
+Older saved control points outside these ranges are clamped when the project
+opens. Fades save with the project, support Undo/Redo, and sound the same in playback
+and export. Copies retain their settings; trims and splits retain settings with
+durations limited to the surviving clip. Stretch and project-rate changes scale
+the saved durations. Loop seams retain their automatic anti-click fades.
+
 ## Clip settings
 
 In Timeline, use the headphone-file button in the right toolbar to open Clip settings beside it. The panel can stay open with the Effects or Chords catalog on the left. Closing it gives its space back to the timeline. When the effects lane is hidden, the right toolbar extends to the status bar. Leaving Timeline closes this panel and discards any unconfirmed text. Audio tracks also offer these controls under **Clip options** in [Editor](editor.md).

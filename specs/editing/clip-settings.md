@@ -60,3 +60,7 @@ Undo/redo retains complete prepared snapshots. Open, Save As, rate/engine change
 ## Validation
 
 Reject an empty or control-character name, a non-finite gain or a gain outside silence to +60 dB, and a transpose outside −48..=48. A rejected edit leaves the project unchanged.
+
+## Audio fade controls
+
+Single audio selections also show the shared [fade and crossfade controls](fades.md). They use the same saved envelope and curve as clip handles; multiple selections retain their existing controls.

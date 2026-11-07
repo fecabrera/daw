@@ -1,6 +1,6 @@
 use super::*;
 
-fn audio_fixture() -> (DawUi, egui::Context, Id, Id) {
+pub(super) fn audio_fixture() -> (DawUi, egui::Context, Id, Id) {
     let (mut app, track) = fixture();
     let asset = &mut app.session.project.assets[0];
     asset.decoded_frame_count = 4800;
@@ -56,7 +56,7 @@ fn waveform_body(app: &DawUi, shapes: &[egui::epaint::ClippedShape]) -> Rect {
                     && rect.rect.top() >= app.midi_editor.track_bounds.bottom() =>
             {
                 Some(Rect::from_min_max(
-                    rect.rect.min + Vec2::new(0.0, 22.0),
+                    rect.rect.min + Vec2::new(0.0, crate::clip_fades::WAVEFORM_TOP),
                     rect.rect.max,
                 ))
             }

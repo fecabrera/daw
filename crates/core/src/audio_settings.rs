@@ -39,6 +39,8 @@ impl Project {
                     .checked_add(source_length)
                     .ok_or_else(|| Error("Source range exceeds supported bounds".into()))?,
             )?;
+            clip.fades.fade_in.length_frames = scale(clip.fades.fade_in.length_frames)?;
+            clip.fades.fade_out.length_frames = scale(clip.fades.fade_out.length_frames)?;
             clip.start_frame = scale(clip.start_frame)?;
             clip.length_frames = end
                 .checked_sub(clip.start_frame)
@@ -119,6 +121,7 @@ mod tests {
             .unwrap()
             .clips
             .push(crate::Clip {
+                fades: Default::default(),
                 muted: false,
                 id: crate::Id::new_v4(),
                 asset_id: asset,

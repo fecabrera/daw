@@ -205,6 +205,7 @@ impl Project {
 
 fn linear_piece(clip: &Clip, asset_id: Id, start: u64, end: u64, id: Id) -> Clip {
     Clip {
+        fades: Default::default(),
         muted: clip.muted,
         id,
         asset_id,
@@ -514,6 +515,7 @@ mod tests {
         });
         let clip = Id::new_v4();
         project.tracks[0].clips.push(Clip {
+            fades: Default::default(),
             muted: false,
             id: clip,
             asset_id: asset,

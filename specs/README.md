@@ -52,6 +52,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Project undo and redo](editing/undo-redo.md).
 - [Component editing and registration](editing/components.md).
 - [Clip settings](editing/clip-settings.md).
+- [Audio fades and crossfades](editing/fades.md): edge handles, midpoint shaping, fixed-boundary transitions and shared rendering.
 - [Clip gain normalization](editing/normalize-gain.md).
 - [Chord catalog](editing/chords.md).
 - [Audio sidechain modulation plan](modulation/audio-sidechain-plan.md): high-priority track/group/Return sources and configurable audio-to-control mapping.

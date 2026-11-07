@@ -1,3 +1,5 @@
+mod fades;
+pub use fades::{ClipFade, ClipFades};
 mod time_signature;
 pub use daw_unit_core::{
     AMBIENT_REVERB_TYPE_ID, AmbientHighPassSlope, AmbientReverbSettings, ReverbFilterSlope,
@@ -311,6 +313,8 @@ pub struct Track {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
+    #[serde(default, skip_serializing_if = "ClipFades::is_default")]
+    pub fades: ClipFades,
     /// Disabled clips retain their content but do not generate audio or note events.
     #[serde(default)]
     pub muted: bool,
@@ -422,6 +426,8 @@ impl Clip {
         clip.start_frame = start;
         clip.length_frames = length;
         clip.source_offset_frame = change.scale(self.source_offset_frame)?;
+        clip.fades.fade_in.length_frames = change.scale(clip.fades.fade_in.length_frames)?;
+        clip.fades.fade_out.length_frames = change.scale(clip.fades.fade_out.length_frames)?;
         clip.repeat = match self.repeat {
             Some(repeat) => {
                 let length_frames = change.scale(repeat.length_frames)?.max(1);
@@ -671,6 +677,9 @@ impl Project {
     }
     fn validate_clip_asset(&self, c: &Clip, a: &Asset) -> Result<()> {
         let invalid = |s: &str| Error(s.into());
+        if !c.fades.valid() || (!a.is_audio() && !c.fades.is_default()) {
+            return Err(invalid("Invalid audio clip fades"));
+        }
         if c.repeat.is_some_and(|repeat| {
             repeat.length_frames == 0 || repeat.phase_frame >= repeat.length_frames
         }) {
@@ -1025,6 +1034,9 @@ impl Project {
             Edit::SetClipGain { clip_id, gain_db } => {
                 self.clip_mut(clip_id)?.gain_db = gain_db;
             }
+            Edit::SetClipFades { clip_id, fades } => {
+                self.set_clip_fades(clip_id, fades)?;
+            }
             Edit::SetClipTranspose { clip_id, transpose } => {
                 self.clip_mut(clip_id)?.transpose = transpose;
             }
@@ -1290,6 +1302,10 @@ pub enum Edit {
         clip_id: Id,
         gain_db: f32,
     },
+    SetClipFades {
+        clip_id: Id,
+        fades: ClipFades,
+    },
     SetClipTranspose {
         clip_id: Id,
         transpose: i8,
@@ -1443,6 +1459,7 @@ mod tests {
     #[test]
     fn stretch_scales_offsets_and_repeats_and_can_return_to_original_duration() {
         let clip = Clip {
+            fades: Default::default(),
             muted: false,
             id: Id::nil(),
             asset_id: Id::nil(),
@@ -1503,6 +1520,7 @@ mod tests {
             (13, 0, false),
         ] {
             let mut clip = Clip {
+                fades: Default::default(),
                 muted: false,
                 stretch: None,
                 id: Id::nil(),
@@ -1674,6 +1692,7 @@ mod tests {
         });
         let clip_id = Id::new_v4();
         project.tracks[0].clips.push(Clip {
+            fades: Default::default(),
             muted: false,
             id: clip_id,
             asset_id,

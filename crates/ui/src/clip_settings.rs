@@ -408,6 +408,7 @@ impl super::DawUi {
                         },
                     )
                     .inner).inner.on_disabled_hover_text("Wait for project audio before transposing audio clips.");
+                    if !multiple { self.clip_fade_settings(ui, clip, panel, label_width, &mut commands); }
                     let finished = if was_editing {
                         let response = match edit.as_ref().map(|current| current.field) {
                             Some(Field::Name) => Some(&name),
@@ -609,6 +610,91 @@ fn opened_by_double_click(ui: &Ui, response: &Response) -> bool {
         ui.data_mut(|data| data.insert_temp(id, (now, pos)));
     }
     open
+}
+
+/// Plain numeric setting: the same label, font, vertical drag and double-click
+/// editor as Gain. Values stay unchanged while the control is only painted.
+pub(super) fn setting_number(
+    ui: &mut Ui,
+    id: egui::Id,
+    value: &mut f64,
+    range: std::ops::RangeInclusive<f64>,
+    speed: f64,
+    suffix: &str,
+) -> Response {
+    let draft_id = id.with("draft");
+    let draft = ui.data_mut(|data| data.remove_temp::<(String, bool)>(draft_id));
+    let mut response;
+    if let Some((mut text, focus)) = draft {
+        let mut output = egui::TextEdit::singleline(&mut text)
+            .id(id)
+            .font(value_font(ui, true))
+            .text_color(theme::palette(ui.ctx()).text)
+            .desired_width(ui.available_width())
+            .show(ui);
+        response = output.response.response;
+        if focus && ui.is_enabled() {
+            response.request_focus();
+            output
+                .state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(text.chars().count()),
+                )));
+            output.state.store(ui.ctx(), response.id);
+        }
+        let cancelled = ui.input(|input| input.key_pressed(egui::Key::Escape));
+        let submitted = ui.input(|input| input.key_pressed(egui::Key::Enter));
+        if cancelled || submitted || response.lost_focus() || !ui.is_enabled() {
+            if !cancelled
+                && ui.is_enabled()
+                && let Ok(parsed) = text.trim().replace('−', "-").parse::<f64>()
+                && parsed.is_finite()
+            {
+                let next = parsed.clamp(*range.start(), *range.end());
+                if next != *value {
+                    *value = next;
+                    response.mark_changed();
+                }
+            }
+            response.surrender_focus();
+        } else {
+            ui.data_mut(|data| data.insert_temp(draft_id, (text, false)));
+        }
+    } else {
+        let text = format!("{value:.2}");
+        let text = text.trim_end_matches('0').trim_end_matches('.');
+        response = ui
+            .push_id(id, |ui| {
+                value_label(
+                    ui,
+                    &format!("{text}{suffix}"),
+                    "Drag up or down. Hold Shift for finer adjustment. Double-click to edit.",
+                    true,
+                    false,
+                    Sense::click_and_drag(),
+                )
+            })
+            .inner;
+        if opened_by_double_click(ui, &response) {
+            ui.data_mut(|data| data.insert_temp(draft_id, (value.to_string(), true)));
+            ui.ctx().request_repaint();
+        } else if response.dragged_by(egui::PointerButton::Primary)
+            && ui.is_enabled()
+            && ui.input(|input| input.focused)
+            && !ui.input(|input| input.key_pressed(egui::Key::Escape))
+        {
+            let fine = ui.input(|input| if input.modifiers.shift { 0.1 } else { 1.0 });
+            let next = (*value - f64::from(response.drag_delta().y) * speed * fine)
+                .clamp(*range.start(), *range.end());
+            if next != *value {
+                *value = next;
+                response.mark_changed();
+            }
+        }
+    }
+    response
 }
 
 fn field_label(ui: &mut Ui, text: &str) {

@@ -420,6 +420,7 @@ impl Session {
             None => next.add_track().map_err(error)?,
         };
         let clip = Clip {
+            fades: Default::default(),
             muted: false,
             stretch: None,
             id: clip_id,

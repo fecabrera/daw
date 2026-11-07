@@ -1511,6 +1511,7 @@ mod tests {
             decoded_frame_count: 48_000,
         });
         project.tracks[0].clips.push(Clip {
+            fades: Default::default(),
             muted: false,
             stretch: None,
             id: Id::new_v4(),
