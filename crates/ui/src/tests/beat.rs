@@ -538,6 +538,26 @@ fn step_and_unit_focus_do_not_delete_selected_subtracks() {
 }
 
 #[test]
+fn beat_editor_clip_header_restores_clip_delete_after_step_editing() {
+    let (mut app, ctx, _, row, clip) = setup();
+    let step = app.beat_ui.steps[&(row, 0)].center();
+    click(&mut app, &ctx, step);
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Delete, false, false);
+    assert_eq!(app.session.project.tracks[0].clips[0].id, clip);
+    let block = app.track_overview_clip_rect(
+        app.midi_editor.track_bounds,
+        &app.session.project.tracks[0].clips[0],
+    );
+    click(
+        &mut app,
+        &ctx,
+        Pos2::new(block.center().x, block.top() + 10.0),
+    );
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Backspace, false, false);
+    assert!(app.session.project.tracks[0].clips.is_empty());
+}
+
+#[test]
 fn component_catalog_targets_local_provider_lanes_and_fixed_output_across_frames() {
     let (mut app, ctx, track, row, _) = setup();
     app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);

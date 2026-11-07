@@ -63,6 +63,8 @@ struct NoteSelection {
 pub(super) struct MidiEditor {
     pub(super) content: crate::editor_viewport::EditorViewport,
     pub(super) content_active: bool,
+    /// Clip strips and audio content own clip deletion; note/step content does not.
+    pub(super) delete_clips: bool,
     #[cfg(test)]
     pub(crate) panel_bounds: Rect,
     #[cfg(test)]
@@ -147,6 +149,7 @@ impl Default for MidiEditor {
         Self {
             content: Default::default(),
             content_active: false,
+            delete_clips: true,
             #[cfg(test)]
             panel_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -355,6 +358,7 @@ impl DawUi {
     }
     pub(super) fn open_clip_editor(&mut self, clip: Id, track: Id, ctx: &egui::Context) {
         self.select_clip(clip, track, false);
+        self.midi_editor.delete_clips = true;
         self.set_view_mode(ViewMode::Edit, ctx);
     }
     pub(super) fn edit_view(&mut self, ui: &mut egui::Ui) {
@@ -422,6 +426,17 @@ impl DawUi {
         };
         self.midi_editor.content_active = true;
         self.editor_content_header(ui, &track);
+        if track.kind == TrackKind::Audio {
+            self.midi_editor.delete_clips = true;
+        } else if ui.input(|input| {
+            input.pointer.primary_pressed()
+                && input
+                    .pointer
+                    .press_origin()
+                    .is_some_and(|pos| ui.available_rect_before_wrap().contains(pos))
+        }) {
+            self.midi_editor.delete_clips = false;
+        }
         if track.kind == TrackKind::Beat {
             // One lower-pane scroll area owns the left headers and right steps.
             let available = ui.available_rect_before_wrap();
@@ -457,9 +472,11 @@ impl DawUi {
         previous_track: Option<Id>,
     ) {
         if self.portion.is_none()
-            && !self.midi_editor.dragging()
-            && !ui.ctx().egui_wants_keyboard_input()
-            && ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
+            && !self.midi_editor.selected_notes.is_empty()
+            && ui.is_enabled()
+            && self.clip_actions_available(ui.ctx())
+            && !ui.input(|input| input.pointer.any_down())
+            && clip_delete::take_delete(ui.ctx())
         {
             self.delete_selected_midi_notes();
         }

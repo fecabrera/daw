@@ -49,6 +49,10 @@ impl DawUi {
             self.clip_context_menu(ui, clip.id);
             self.midi_clip_note_menu(ui, clip);
         });
+        if self.view_mode == ViewMode::Edit && (response.clicked() || response.drag_started()) {
+            self.midi_editor.clear_note_selection();
+            self.midi_editor.delete_clips = true;
+        }
         let click_owner = response
             .interact_pointer_pos()
             .filter(|_| response.clicked() || response.double_clicked())

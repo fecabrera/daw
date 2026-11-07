@@ -27,7 +27,7 @@ fn draw_click(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
     frame(app, ctx, vec![button(point, false)]);
     frame(app, ctx, vec![]);
 }
-fn fixture() -> (DawUi, Id, Id, Id) {
+pub(super) fn fixture() -> (DawUi, Id, Id, Id) {
     let mut app = DawUi::default();
     let track = app.session.project.add_midi_track().unwrap();
     app.session.project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());

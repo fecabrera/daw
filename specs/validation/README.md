@@ -4,6 +4,31 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Editor clip Delete shortcut — 2026-11-07
+
+Delete/Backspace now removes selected clips from Editor through the same batch
+as Timeline. Selected MIDI notes consume their press first; clip-header clicks
+clear note selection and reactivate clip deletion. Note/beat content clicks
+keep clip deletion inactive until a clip header is selected. Repeated key events are consumed without deleting clips.
+Text editing, modal/focus/gesture guards and source-media retention remain in
+place. New input checks cover audio groups and Undo, key guards, and MIDI
+note-versus-clip precedence including a held-key repeat.
+`cargo test --workspace --locked --offline`: PASS, including doctests.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+All three focused Editor Delete tests passed, covering both keys, group deletion,
+Undo, retained source media, note precedence, repeats, text entry, dialogs/jobs,
+disabled UI, window focus and pointer-down guards.
+The focused beat regression also passes: step editing preserves the clip, then
+a clip-header click re-enables clip deletion. The initial workspace run exposed
+this focus fallthrough; the Editor now tracks clip versus note/step keyboard
+ownership explicitly.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff --check` and 198 local documentation targets: PASS.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+
+Native keyboard/device/platform checks were not performed.
+
 ## Crossover guides and shading meet the header — 2026-11-07
 
 Both crossover guides and the shading mesh now start at the shared 22-point

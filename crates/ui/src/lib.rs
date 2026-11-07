@@ -10,6 +10,7 @@ mod background_audio;
 use daw_unit_ui::menus;
 mod audio_edits;
 mod audio_preparation;
+mod clip_delete;
 mod clip_fades;
 mod clip_lane;
 mod clip_menu;
@@ -2572,27 +2573,7 @@ impl DawUi {
                     true,
                 );
             }
-            if !ctx.egui_wants_keyboard_input()
-                && ui.is_enabled()
-                && self.clip_actions_available(&ctx)
-                && ctx.input(|i| {
-                    i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)
-                })
-            {
-                if self.portion.is_some() {
-                    self.delete_portion();
-                } else if self.view_mode != ViewMode::Edit {
-                    let clips = self.selected_clip_snapshots();
-                    if !clips.is_empty() {
-                        self.edit(Edit::Batch(
-                            clips
-                                .into_iter()
-                                .map(|entry| Edit::DeleteClip(entry.clip.id))
-                                .collect(),
-                        ));
-                    }
-                }
-            }
+            self.delete_clip_shortcut(&ctx, ui.is_enabled());
         }
         if ctx.input(|i| !i.pointer.any_down() || !i.focused)
             && let Some(history) = &mut self.history
@@ -5864,6 +5845,7 @@ mod tests {
     mod clip_split;
     mod component_transfer;
     mod compressed_import;
+    mod editor_delete;
     mod editor_viewport;
     mod effects;
     mod envelope_units;
