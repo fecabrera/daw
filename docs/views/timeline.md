@@ -10,6 +10,13 @@ Each L/R meter bar has a held-peak marker. Click either bar or the gap between t
 
 Use **Expand tracks to two rows**, beside Fit all clips and zoom in the playback toolbar, for the full layout. **Collapse tracks to one row** restores the default compact layout. Timeline and Editor share this choice for the app session. It does not change the project or audio. Master stays on one row.
 
+Use the **Return tracks** arrow and **Master track** boom box buttons in the
+playback toolbar to show or hide the pinned Return rows and Master. They sit to
+the left of the track layout and zoom controls. Both start enabled. Timeline and
+Mixer remember separate choices for the app session. You can also use **View >
+Returns** and **View > Master**. Hidden tracks keep processing audio, and their
+selection stays unchanged.
+
 The Tracks header’s Add track (Plus) button opens a dropdown with **Add audio track**, **Add MIDI track**, and **Add beat track**. Choose an item to create and select a new empty track. Opening or dismissing the menu does not add a track.
 
 The Add track and Duplicate track buttons stay available when another pane or non-text control has focus. Duplicate still requires a selected track. Text entry, jobs, dialogs, active gestures, and loss of window focus retain their guards.

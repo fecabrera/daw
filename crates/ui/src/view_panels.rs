@@ -48,7 +48,7 @@ impl ViewPanel {
             Self::EffectsCatalog | Self::EffectsLane => true,
             Self::Chords => matches!(view, ViewMode::Timeline | ViewMode::Edit),
             Self::ClipSettings | Self::TrackMixer => view == ViewMode::Timeline,
-            Self::Returns | Self::Master => view == ViewMode::Mixer,
+            Self::Returns | Self::Master => matches!(view, ViewMode::Timeline | ViewMode::Mixer),
         }
     }
 }
@@ -72,6 +72,12 @@ impl DawUi {
                 ViewPanel::ClipSettings => self.clip_settings_visible,
                 ViewPanel::TrackMixer => self.track_mixer_visible,
                 ViewPanel::EffectsLane => self.effects_lane_visible(),
+                ViewPanel::Returns if self.view_mode == ViewMode::Timeline => {
+                    self.timeline_returns_visible
+                }
+                ViewPanel::Master if self.view_mode == ViewMode::Timeline => {
+                    self.timeline_master_visible
+                }
                 ViewPanel::Returns => self.mixer_returns_visible,
                 ViewPanel::Master => self.mixer_master_visible,
             }
@@ -147,9 +153,58 @@ impl DawUi {
                     self.clear_clip_settings_edits();
                 }
             }
+            ViewPanel::Returns if self.view_mode == ViewMode::Timeline => {
+                self.timeline_returns_visible = !self.timeline_returns_visible
+            }
+            ViewPanel::Master if self.view_mode == ViewMode::Timeline => {
+                self.timeline_master_visible = !self.timeline_master_visible
+            }
             ViewPanel::Returns => self.mixer_returns_visible = !self.mixer_returns_visible,
             ViewPanel::Master => self.mixer_master_visible = !self.mixer_master_visible,
         }
         ctx.request_repaint();
+    }
+}
+
+impl DawUi {
+    /// Shared Returns/Master toggles; callers use a right-to-left toolbar layout.
+    pub(super) fn return_master_buttons(&mut self, ui: &mut egui::Ui) {
+        // Right-to-left layout places Master after Returns visually.
+        for (panel, icon, name, selected) in [
+            (
+                ViewPanel::Master,
+                icons::Lucide::BoomBox,
+                "Show or hide Master track",
+                self.view_panel_selected(ViewPanel::Master),
+            ),
+            (
+                ViewPanel::Returns,
+                icons::Lucide::CornerDownLeft,
+                "Show or hide Return tracks",
+                self.view_panel_selected(ViewPanel::Returns),
+            ),
+        ] {
+            let enabled = self.view_panel_enabled(panel, ui.ctx());
+            let response = ui
+                .add_enabled_ui(enabled, |ui| {
+                    icons::borderless_toggle(
+                        ui,
+                        icon,
+                        name,
+                        selected,
+                        Vec2::splat(icons::TOOLBAR_BUTTON_SIZE),
+                    )
+                })
+                .inner;
+            #[cfg(test)]
+            match panel {
+                ViewPanel::Master => self.mixer_master_bounds = response.rect,
+                ViewPanel::Returns => self.mixer_returns_bounds = response.rect,
+                _ => unreachable!(),
+            }
+            if response.clicked() {
+                self.toggle_view_panel(panel, ui.ctx());
+            }
+        }
     }
 }

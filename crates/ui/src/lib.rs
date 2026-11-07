@@ -827,6 +827,8 @@ pub struct DawUi {
     instrument_catalog_bounds: instrument_catalog::Bounds,
     master_selected: bool,
     return_bank_height: f32,
+    timeline_returns_visible: bool,
+    timeline_master_visible: bool,
     mixer_returns_visible: bool,
     mixer_master_visible: bool,
     metronome_enabled: bool,
@@ -975,6 +977,8 @@ impl Default for DawUi {
             timeline_effects_visible: true,
             master_selected: false,
             return_bank_height: 180.0,
+            timeline_returns_visible: true,
+            timeline_master_visible: true,
             mixer_returns_visible: true,
             mixer_master_visible: true,
             metronome_enabled: false,
@@ -3179,43 +3183,7 @@ impl DawUi {
             }
             if self.view_mode == ViewMode::Mixer {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Right-to-left layout places Master after Returns visually.
-                    for (panel, icon, name, selected) in [
-                        (
-                            ViewPanel::Master,
-                            icons::Lucide::BoomBox,
-                            "Show or hide Master track",
-                            self.mixer_master_visible,
-                        ),
-                        (
-                            ViewPanel::Returns,
-                            icons::Lucide::CornerDownLeft,
-                            "Show or hide Return tracks",
-                            self.mixer_returns_visible,
-                        ),
-                    ] {
-                        let enabled = self.view_panel_enabled(panel, ui.ctx());
-                        let response = ui
-                            .add_enabled_ui(enabled, |ui| {
-                                icons::borderless_toggle(
-                                    ui,
-                                    icon,
-                                    name,
-                                    selected,
-                                    Vec2::splat(icons::TOOLBAR_BUTTON_SIZE),
-                                )
-                            })
-                            .inner;
-                        #[cfg(test)]
-                        match panel {
-                            ViewPanel::Master => self.mixer_master_bounds = response.rect,
-                            ViewPanel::Returns => self.mixer_returns_bounds = response.rect,
-                            _ => unreachable!(),
-                        }
-                        if response.clicked() {
-                            self.toggle_view_panel(panel, ui.ctx());
-                        }
-                    }
+                    self.return_master_buttons(ui);
                 });
             }
             #[cfg(test)]
@@ -3254,6 +3222,10 @@ impl DawUi {
                         self.fit_all_requested = true;
                     }
                     self.track_rows_button(ui);
+                    if self.view_mode == ViewMode::Timeline {
+                        ui.separator();
+                        self.return_master_buttons(ui);
+                    }
                 });
                 if self.view_mode.has_track_overview() {
                     self.midi_editor.zoom = zoom;
@@ -3369,21 +3341,35 @@ impl DawUi {
         let master_rect = Rect::from_min_max(
             Pos2::new(
                 bounds.left(),
-                (bounds.bottom() - MASTER_HEIGHT).max(bounds.top()),
+                (bounds.bottom()
+                    - if self.timeline_master_visible {
+                        MASTER_HEIGHT
+                    } else {
+                        0.0
+                    })
+                .max(bounds.top()),
             ),
             Pos2::new(timeline_left, bounds.bottom()),
         );
         #[cfg(test)]
         {
-            self.master_bounds = master_rect;
+            self.master_bounds = if self.timeline_master_visible {
+                master_rect
+            } else {
+                Rect::NOTHING
+            };
         }
-        let mut master_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt("master_track")
-                .max_rect(master_rect),
-        );
-        master_ui.set_clip_rect(master_rect.intersect(ui.clip_rect()));
-        let master_label = self.master_track(&mut master_ui);
+        let master_label = if self.timeline_master_visible {
+            let mut master_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("master_track")
+                    .max_rect(master_rect),
+            );
+            master_ui.set_clip_rect(master_rect.intersect(ui.clip_rect()));
+            Some(self.master_track(&mut master_ui))
+        } else {
+            None
+        };
 
         let return_count = self
             .session
@@ -3392,7 +3378,7 @@ impl DawUi {
             .iter()
             .filter(|t| t.kind == daw_core::TrackKind::Return)
             .count();
-        let has_returns = return_count > 0;
+        let has_returns = self.timeline_returns_visible && return_count > 0;
         let bank_height = if has_returns {
             self.return_bank_height
                 .min(return_count as f32 * self.track_row_height())
@@ -3453,7 +3439,11 @@ impl DawUi {
                 }
                 rows
             });
-        let return_rows = self.return_timeline_bank(ui, return_rect);
+        let return_rows = if has_returns {
+            self.return_timeline_bank(ui, return_rect)
+        } else {
+            Vec::new()
+        };
         self.timeline_bounds = if has_returns {
             Rect::from_min_max(
                 timeline_rect.min,
@@ -3521,7 +3511,7 @@ impl DawUi {
         // Paint outside their child clips so the upper half of the stroke is retained.
         for top in [
             has_returns.then_some(return_rect.top()),
-            Some(master_rect.top()),
+            self.timeline_master_visible.then_some(master_rect.top()),
         ]
         .into_iter()
         .flatten()
@@ -3544,13 +3534,15 @@ impl DawUi {
                 panels::ControlPanel::selected_row(ui, row, return_rect);
             }
         }
-        if self.master_selected {
+        if self.master_selected
+            && let Some(master_label) = master_label
+        {
             panels::ControlPanel::selected_row(ui, master_label, master_rect);
         }
         self.timeline_scrollbar_at(ui, scrollbar_rect, "timeline_scrollbar");
         let pointer = ui.input(|i| i.pointer.latest_pos())?;
         let master = master_rect.intersect(ui.clip_rect());
-        if master.contains(pointer) {
+        if self.timeline_master_visible && master.contains(pointer) {
             return Some((effects_panel::EffectTarget::Master, master));
         }
         for (id, header) in return_rows {

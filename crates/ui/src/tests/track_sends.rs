@@ -623,7 +623,7 @@ fn mixer_returns_toggle_is_right_aligned_and_only_changes_presentation() {
     app.view_mode = ViewMode::Timeline;
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     assert!(app.lane_bounds.contains_key(&destination));
-    assert_eq!(app.mixer_returns_bounds, Rect::NOTHING);
+    assert!(app.mixer_returns_bounds.is_positive());
     assert!(
         !shapes
             .iter()
@@ -838,7 +838,7 @@ fn mixer_master_toggle_frees_space_and_preserves_selection_and_project() {
     app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert!(app.master_bounds.is_positive());
-    assert_eq!(app.mixer_master_bounds, Rect::NOTHING);
+    assert!(app.mixer_master_bounds.is_positive());
     app.set_view_mode(ViewMode::Mixer, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert!(!app.mixer_master_visible);
@@ -855,6 +855,68 @@ fn mixer_master_toggle_frees_space_and_preserves_selection_and_project() {
     assert_eq!(app.master_bounds, master);
     assert!(!app.mixer_returns_visible);
     assert!(app.master_selected);
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn timeline_return_master_toggles_hide_rows_without_changing_mixer_or_project() {
+    let (mut app, _) = fixture();
+    let ctx = context();
+    let destination = app.session.project.add_return_track().unwrap();
+    app.select_master();
+    let before = app.session.project.clone();
+    frame(&mut app, &ctx, vec![]);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(app.master_bounds.is_positive());
+    assert!(app.lane_bounds.contains_key(&destination));
+    assert!(app.mixer_returns_bounds.right() <= app.mixer_master_bounds.left());
+    assert!(app.mixer_master_bounds.right() < app.track_rows_bounds.left());
+    assert!(shapes.iter().any(|shape| {
+        matches!(&shape.shape, egui::Shape::LineSegment { points, .. }
+            if points[0].x == points[1].x
+                && points[0].x > app.mixer_master_bounds.right()
+                && points[0].x < app.track_rows_bounds.left()
+                && points[0].y.min(points[1].y) <= app.mixer_master_bounds.center().y
+                && points[0].y.max(points[1].y) >= app.mixer_master_bounds.center().y)
+    }));
+    for panel in [ViewPanel::Returns, ViewPanel::Master] {
+        let point = match panel {
+            ViewPanel::Returns => app.mixer_returns_bounds.center(),
+            _ => app.mixer_master_bounds.center(),
+        };
+        for pressed in [true, false] {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point), button(point, pressed)],
+            );
+        }
+        frame(&mut app, &ctx, vec![]);
+        assert!(!app.view_panel_selected(panel));
+    }
+    assert_eq!(app.master_bounds, Rect::NOTHING);
+    assert!(!app.lane_bounds.contains_key(&destination));
+    assert!(app.master_selected);
+    app.set_view_mode(ViewMode::Mixer, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.view_panel_selected(ViewPanel::Returns));
+    assert!(app.view_panel_selected(ViewPanel::Master));
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.view_panel_selected(ViewPanel::Returns));
+    assert!(!app.view_panel_selected(ViewPanel::Master));
+    app.settings_open = true;
+    app.toggle_view_panel(ViewPanel::Returns, &ctx);
+    app.toggle_view_panel(ViewPanel::Master, &ctx);
+    assert!(!app.timeline_returns_visible);
+    assert!(!app.timeline_master_visible);
+    app.settings_open = false;
+    app.toggle_view_panel(ViewPanel::Returns, &ctx);
+    app.toggle_view_panel(ViewPanel::Master, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.master_bounds.is_positive());
+    assert!(app.lane_bounds.contains_key(&destination));
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
 }

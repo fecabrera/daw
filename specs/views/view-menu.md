@@ -16,8 +16,8 @@ in-app menu sends the equivalent viewport command.
 | Clip Settings | Timeline |
 | Track Mixer | Timeline |
 | Effects Lane | All |
-| Returns | Mixer |
-| Master | Mixer |
+| Returns | Timeline, Mixer |
+| Master | Timeline, Mixer |
 
 Keep unavailable panel entries visible, disabled and unchecked. A supported
 panel's checkmark reads the current view's actual visibility, including when a
@@ -84,3 +84,17 @@ introduced.
 Validate toolbar/menu parity, inspector exclusivity, parent resolution, Master
 selection, control edits, blocked input, view switching and canvas separation with
 automated egui frames. Native layout, scrolling and meter motion need UI checks.
+
+## Timeline Return and Master visibility
+
+Timeline reuses Mixer's Return (`CornerDownLeft`) and Master (`BoomBox`) toolbar
+buttons, in that order, before the track-row, Fit all and zoom controls. Add a
+standard vertical toolbar separator between the visibility buttons and these
+visualization controls. Both buttons use the shared View-panel dispatcher,
+selection style, tooltips, accessibility names and editing guards.
+
+Store separate Timeline and Mixer visibility choices in UI state. Default each
+to visible and retain them across view switches for the app session. Hidden
+Timeline Returns reserve no bank height; hidden Master reserves no pinned row
+height. Do not paint or interact with hidden rows, their dividers or drop targets.
+Keep selection, project history, audio routing and processing unchanged.

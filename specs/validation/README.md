@@ -4,6 +4,35 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Timeline Return and Master toggles — 2026-11-06
+
+Timeline now shares Mixer's Return and Master toolbar controls and View-menu
+commands. A vertical divider separates them from the track-row, Fit all and zoom
+controls. Each view retains independent visibility choices. Hidden pinned rows
+release their space and have no controls or drop targets; selection and project
+state remain unchanged.
+
+The 16 focused `tests::track_sends` checks passed with
+`cargo test -p daw-ui --locked --offline tests::track_sends -- --nocapture`.
+The new input-event check covers toolbar order, the divider, hide/show behavior,
+View-menu state, blocked commands, separate view choices and unchanged project
+and dirty state.
+
+Additional checks:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: PASS.
+- `cargo test --workspace --locked --offline`: PASS with debug assertions enabled;
+  the UI suite passed 895 tests with three ignored.
+- `cargo test --workspace --release --locked --offline`: PASS;
+  the UI suite passed 895 tests with three ignored.
+- Local documentation links (131 targets) and `git diff --check`: PASS.
+
+The macOS packaging command `sh tools/package_macos.sh debug` stopped before
+building: `package_sources.py` requires committed tracked changes. Changes remain
+uncommitted. Native appearance, display scaling, physical audio devices and
+Windows/Linux behavior were not checked.
+
 ## Mixer output-destination indicators — 2026-11-06
 
 Non-Master strips now show a bordered destination row with send-matching horizontal and vertical padding below
