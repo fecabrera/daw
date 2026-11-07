@@ -5,6 +5,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 ## Architecture and baseline
 
 - [MVP scope and architecture](architecture/mvp-scope.md).
+- [Basic production workflows roadmap](architecture/production-workflows-roadmap.md): proposed core stages for recovery, fades, MIDI, recording, automation and sidechaining, followed by markers, MIDI tools, rendering, tempo maps and plugin hosting.
 - [Iteration 1 implementation specification](architecture/iteration-1.md).
 - [Modular audio units](architecture/modular-audio-units.md).
 - [Plugin development tools](architecture/plugin-development-tools.md): Drive contract, validator, feasibility, and native-editor commands.
@@ -53,6 +54,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Clip settings](editing/clip-settings.md).
 - [Clip gain normalization](editing/normalize-gain.md).
 - [Chord catalog](editing/chords.md).
+- [Audio sidechain modulation plan](modulation/audio-sidechain-plan.md): high-priority track/group/Return sources and configurable audio-to-control mapping.
 - [Mixer strip output destinations](views/mixer.md).
 - [View menu panels](views/view-menu.md): shared panel toggles, view availability and checked states.
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).

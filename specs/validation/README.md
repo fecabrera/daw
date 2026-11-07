@@ -4,6 +4,39 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Audio sidechain modulation roadmap — 2026-11-06
+
+Added audio sidechain modulation as the sixth high-priority milestone. The plan
+extends the existing modulation source selector with Tracks, Groups and Returns,
+plus detector, channel/filter, level-range, attack/release and curve/invert
+controls. It records shared continuous-provider integration, cross-track scope,
+combined audio/control cycle checks, latency alignment and playback/export parity.
+The source picker order is None, divider, modulation sources, divider, sidechain
+sources. Section names describe grouping rather than new submenu levels.
+Defaults, bounds and exact transfer functions remain pre-implementation gates.
+
+Documentation-only checks: 110 local link targets resolve; roadmap numbering,
+dependencies and scope were checked against the shared modulation and send
+contracts. `git diff --check`: PASS. No application code changed; builds, tests
+and native/device checks were not run.
+
+## Basic production workflows roadmap — 2026-11-06
+
+Added a proposed implementation sequence for autosave/recovery, editable fades
+and crossfades, live MIDI/MIDI recording, audio capture/monitoring and automation.
+The technical plan records dependencies, design decisions required before coding,
+crate ownership, failure policies and automated/native acceptance gates. The user
+roadmap describes planned workflows without claiming they are implemented.
+Lower-priority milestones cover markers, MIDI performance tools, bounce/freeze
+and batch stem export, tempo/signature maps and third-party plugin hosting,
+with dependencies and acceptance gates.
+
+Documentation-only checks: 104 local link targets in the changed roadmap
+and specification index resolve; content was checked against current save,
+history, device, preparation and unit contracts. `git diff --check`: PASS.
+No application behavior changed. Builds, tests and native/device checks were not
+run for this documentation-only change.
+
 ## Timeline Return and Master toggles — 2026-11-06
 
 Timeline now shares Mixer's Return and Master toolbar controls and View-menu
