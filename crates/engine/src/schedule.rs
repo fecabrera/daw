@@ -310,11 +310,14 @@ impl AudioTrack {
             };
             let progress = (frame - t.start) as f32 / t.length.saturating_sub(1).max(1) as f32;
             let weight = t.fade.gain(if t.left { progress } else { 1.0 - progress });
+            let opposing = t
+                .fade
+                .opposing_gain(if t.left { progress } else { 1.0 - progress });
             let gain = daw_core::linear_gain(clip.gain_db);
             mono = Some(audio.metadata.channels == 1);
             let scale = 1.0;
             for ch in 0..2 {
-                primary[ch] = primary[ch] * (1.0 - weight) + extra[ch] * gain * weight * scale;
+                primary[ch] = primary[ch] * opposing + extra[ch] * gain * weight * scale;
             }
         }
         (primary, mono)

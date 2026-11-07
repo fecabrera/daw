@@ -31,8 +31,8 @@ impl Default for ClipFade {
 impl ClipFade {
     pub const MIN_POSITION: f32 = 0.15;
     pub const MAX_POSITION: f32 = 0.85;
-    pub const MIN_LEVEL: f32 = 0.125;
-    pub const MAX_LEVEL: f32 = 0.875;
+    pub const MIN_LEVEL: f32 = 0.15;
+    pub const MAX_LEVEL: f32 = 0.85;
 
     pub fn valid(self) -> bool {
         self.midpoint.is_finite()
@@ -40,6 +40,14 @@ impl ClipFade {
             && self.midpoint_position.is_finite()
             && (Self::MIN_POSITION..=Self::MAX_POSITION).contains(&self.midpoint_position)
             && self.length_frames < u64::MAX
+    }
+    /// Opposing transition gain shares the control point's time and gain.
+    pub fn opposing_gain(self, progress: f32) -> f32 {
+        let mirrored = Self {
+            midpoint: 1.0 - self.midpoint,
+            ..self
+        };
+        1.0 - mirrored.gain(progress)
     }
     /// Monotone cubic S-curve with flat endpoints through the saved control point.
     pub fn gain(self, progress: f32) -> f32 {
@@ -245,7 +253,7 @@ mod tests {
     #[test]
     fn curves_hit_endpoints_and_midpoint_and_remain_monotone() {
         for position in [0.15, 0.2, 0.5, 0.8, 0.85] {
-            for midpoint in [0.125, 0.2, 0.5, 0.8, 0.875] {
+            for midpoint in [0.15, 0.2, 0.5, 0.8, 0.85] {
                 let fade = ClipFade {
                     midpoint,
                     midpoint_position: position,
@@ -313,15 +321,14 @@ mod tests {
     }
     #[test]
     fn legacy_coordinates_migrate_to_new_bounds_and_invalid_edits_are_rejected() {
-        for (x, y, expected_x, expected_y) in [(0.01, 0.99, 0.15, 0.875), (0.99, 0.01, 0.85, 0.125)]
-        {
+        for (x, y, expected_x, expected_y) in [(0.01, 0.99, 0.15, 0.85), (0.99, 0.01, 0.85, 0.15)] {
             let json = serde_json::json!({"length_frames":1000,"midpoint":y,"midpoint_position":x,"crossfade":false});
             let fade: ClipFade = serde_json::from_value(json).unwrap();
             assert!(fade.valid());
             assert_eq!(fade.midpoint_position, expected_x);
             assert_eq!(fade.midpoint, expected_y);
         }
-        for level in [0.124, 0.876, f32::NAN] {
+        for level in [0.149, 0.851, f32::NAN] {
             assert!(
                 !ClipFade {
                     midpoint: level,
@@ -329,6 +336,28 @@ mod tests {
                 }
                 .valid()
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod transition_gain_tests {
+    use super::*;
+
+    #[test]
+    fn crossing_gain_and_time_are_independent() {
+        for position in [0.2, 0.5, 0.8] {
+            for level in [0.15, 0.5, 0.85] {
+                let fade = ClipFade {
+                    midpoint_position: position,
+                    midpoint: level,
+                    ..Default::default()
+                };
+                assert!((fade.gain(position) - level).abs() < 1e-6);
+                assert!((fade.opposing_gain(position) - level).abs() < 1e-6);
+                assert_eq!(fade.opposing_gain(0.0), 1.0);
+                assert_eq!(fade.opposing_gain(1.0), 0.0);
+            }
         }
     }
 }

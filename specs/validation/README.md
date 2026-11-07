@@ -4,6 +4,35 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Shape range — 2026-11-07
+
+Fade and crossfade Shape now spans −70% to +70%. Shared gain bounds are
+0.15–0.85 for settings, midpoint dragging and core validation. Existing saved
+coordinates outside these bounds clamp during loading through the existing
+migration path. This supersedes the previous −75% to +75% range.
+
+`cargo test -p daw-ui -p daw-core -p daw-engine fade --lib --locked` passed
+33 tests, including bounds, migration and crossfade gain checks. Formatting
+and diff checks passed. Native UI checks remain open.
+
+## Crossfade crossing gain — 2026-11-07
+
+Crossfade curves now share the saved time/gain control point. Vertical movement
+changes crossing gain independently of crossing time. Horizontal movement changes
+crossing time. The opposing curve mirrors the saved gain coordinate before
+complementing its evaluation. This replaces the previous fixed unity-sum rule,
+including for existing saved crossfades; centered gain retains the old sound.
+Both waveform contributions, preview curves, settings and scheduled playback
+use the same gain behavior. Logical clip ranges remain unchanged.
+
+Checks: `cargo test -p daw-ui -p daw-core -p daw-engine fade --lib --locked`
+passed 33 tests. Coverage includes independent crossing coordinates, both
+transition directions, scheduled/random-render parity, source-handle waveform
+heights, persistence, gesture limits and cancellation.
+`cargo clippy -p daw-core -p daw-engine -p daw-ui --lib --locked -- -D warnings`,
+`cargo fmt --all --check` and `git diff --check` passed. Native visual comparison
+and listening checks on macOS, Windows and Linux remain open.
+
 ## Fade waveform envelopes — 2026-11-07
 
 Audio clip peak heights now follow explicit fade curves in Timeline and Editor,

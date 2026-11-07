@@ -25,17 +25,11 @@ fn visual_position(fade: daw_core::ClipFade) -> f32 {
     }
 }
 fn visual_level(fade: daw_core::ClipFade) -> f32 {
-    if fade.crossfade {
-        1.0 - fade.midpoint
-    } else {
-        fade.midpoint
-    }
+    fade.midpoint
 }
 fn visual_gain(fade: daw_core::ClipFade, progress: f32) -> f32 {
-    // Crossfade handles show the neighbor's complementary fade. Its full-level
-    // endpoint attaches to the outward handle without changing the saved audio curve.
     if fade.crossfade {
-        1.0 - fade.gain(1.0 - progress)
+        fade.opposing_gain(1.0 - progress)
     } else {
         fade.gain(progress)
     }
@@ -68,7 +62,7 @@ fn curve_points_for_gain(
     fade: ClipFade,
     left: bool,
     endpoint: Pos2,
-    complement: bool,
+    companion: bool,
 ) -> Vec<Pos2> {
     let anchor = if left { block.left() } else { block.right() };
     let knot = visual_position(fade);
@@ -86,7 +80,7 @@ fn curve_points_for_gain(
                 gain_y(
                     block,
                     endpoint.y - HANDLE_RADIUS,
-                    if complement { 1.0 - gain } else { gain },
+                    if companion { fade.gain(1.0 - t) } else { gain },
                 ),
             )
         })
@@ -141,7 +135,7 @@ fn shade_crossfade(
 fn paint_curve(painter: &egui::Painter, curve: Vec<Pos2>) {
     painter.add(egui::Shape::line(curve, Stroke::new(1.0, DARK_INK)));
 }
-/// Both signals share the same time span and sum to unity during a crossfade.
+/// Both signals share the same editable time/gain crossing.
 /// Draw the companion without extra shading or independent edit handles.
 fn paint_fade_curves(painter: &egui::Painter, curve: Vec<Pos2>, companion: Option<Vec<Pos2>>) {
     if let Some(companion) = companion {
@@ -231,8 +225,8 @@ impl DawUi {
         let edge = selected_fade(&mut fades, left);
         if shape {
             let vertical = (pointer.y - drag.origin.y) / height.max(1) as f32;
-            edge.midpoint = (edge.midpoint + vertical * if edge.crossfade { 1.0 } else { -1.0 })
-                .clamp(ClipFade::MIN_LEVEL, ClipFade::MAX_LEVEL);
+            edge.midpoint =
+                (edge.midpoint - vertical).clamp(ClipFade::MIN_LEVEL, ClipFade::MAX_LEVEL);
             let horizontal = f64::from(pointer.x - drag.origin.x) * frames_per_point
                 / edge.length_frames.max(1) as f64
                 * if left { 1.0 } else { -1.0 };
@@ -639,10 +633,9 @@ impl DawUi {
                     fade.length_frames.saturating_sub(1).saturating_sub(local)
                 };
                 if active {
-                    gain *= 1.0
-                        - fade.gain(
-                            position as f32 / fade.length_frames.saturating_sub(1).max(1) as f32,
-                        );
+                    gain *= fade.opposing_gain(
+                        position as f32 / fade.length_frames.saturating_sub(1).max(1) as f32,
+                    );
                 }
             }
             gain
@@ -954,7 +947,7 @@ impl DawUi {
                                 ui,
                                 ui.make_persistent_id((clip.id, "fade-shape", left)),
                                 &mut shape,
-                                -75.0..=75.0,
+                                -70.0..=70.0,
                                 1.0,
                                 "%",
                             )
@@ -967,8 +960,7 @@ impl DawUi {
             {
                 let level =
                     (shape as f32 / 200.0 + 0.5).clamp(ClipFade::MIN_LEVEL, ClipFade::MAX_LEVEL);
-                edge.midpoint = (if edge.crossfade { 1.0 - level } else { level })
-                    .clamp(ClipFade::MIN_LEVEL, ClipFade::MAX_LEVEL);
+                edge.midpoint = level.clamp(ClipFade::MIN_LEVEL, ClipFade::MAX_LEVEL);
                 changed = true;
             }
             let mut position = f64::from(visual_position(*edge) * 100.0);
@@ -1201,7 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn crossfades_draw_both_complementary_curves_in_each_direction() {
+    fn crossfades_draw_both_curves_through_the_time_and_gain_control() {
         let ctx = egui::Context::default();
         let block = Rect::from_min_size(Pos2::new(150.0, 40.0), Vec2::new(300.0, 160.0));
         for left in [false, true] {
@@ -1214,6 +1206,12 @@ mod tests {
                 };
                 let (handle, _) = points(block, fade, left, 100.0, 100);
                 let top = handle.y - HANDLE_RADIUS;
+                if crossfade {
+                    let (_, knot_point) = points(block, fade, left, 100.0, 100);
+                    let companion = curve_points_for_gain(block, fade, left, handle, true);
+                    assert!((companion[16].y - knot_point.y).abs() < 0.0001);
+                    assert!((companion[16].x - knot_point.x).abs() < 0.0001);
+                }
                 let curve = curve_points(block, fade, left, handle);
                 let output = ctx.run_ui(Default::default(), |ui| {
                     paint_fade_curves(
@@ -1242,9 +1240,7 @@ mod tests {
                         } else {
                             knot + (1.0 - knot) * (index - 16) as f32 / 16.0
                         };
-                        assert!(
-                            (a.y - gain_y(block, top, 1.0 - visual_gain(fade, t))).abs() < 0.0001
-                        );
+                        assert!((a.y - gain_y(block, top, fade.gain(1.0 - t))).abs() < 0.0001);
                     }
                 }
                 let mut output = output;

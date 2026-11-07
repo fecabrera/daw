@@ -140,7 +140,7 @@ crossover selects the clip whose header and waveform extend across it. The ownin
 through the overlap region. The original side between the curves keeps its normal brightness. The extended
 side between the curves receives two layers of shading; the upper and lower
 regions receive one layer.
-Both waveforms keep their colors. Their heights follow the fade curves, including while you drag a handle. Ordinary fades also reduce the displayed waveform height toward silence. Audio waveform bodies and crossfade headers have no extra border;
+Drag the crossing point vertically to change the gain where the curves meet, or horizontally to change its time. Raising the crossing can increase the transition level; lowering it can reduce it. Both waveforms keep their colors. Their heights follow the fade curves, including while you drag a handle. Ordinary fades also reduce the displayed waveform height toward silence. Audio waveform bodies and crossfade headers have no extra border;
 selected clips retain a selection outline across the full visible crossfade. Clip
 timing stays unchanged. For an ordinary fade, a dark vertical guide runs from its duration handle
 through the waveform, marking the fade-in end or fade-out start. Crossfades show
@@ -156,7 +156,7 @@ other clip settings, and another divider precedes **Fade out**. Both use muted s
 on the left and values on the right. Each section contains Mode (Fade/Crossfade),
 Duration in milliseconds, Shape and Position. The Mode selector fills the value
 column. Drag numeric values up or down, hold Shift for finer adjustment, or
-double-click to type a value. Shape sets the control point level from −75% to +75%; Position sets
+double-click to type a value. Shape sets the control point level from −70% to +70%; Position sets
 its horizontal location from 15% to 85% between the clip edge and duration handle.
 Shape 0% with Position 50% gives a balanced S-curve. These settings and the curve
 handles edit the same values. Fade duration is bounded by the clip. Crossfade duration is bounded by half

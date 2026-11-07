@@ -9,7 +9,7 @@ settings in Timeline and the shared audio Editor. For operation, see
 `core::ClipFades` stores two `ClipFade` values on an audio Clip: `length_frames`,
 `midpoint`, `midpoint_position` and `crossfade`. Missing/default fields retain the legacy linear
 5 ms boundary policy. MIDI/beat clips reject non-default fades. Validate finite
-midpoint levels in 0.125–0.875 and positions in 0.15–0.85 and reject unsupported frame bounds through
+midpoint levels in 0.15–0.85 and positions in 0.15–0.85 and reject unsupported frame bounds through
 `Edit::SetClipFades`. Core edits remain atomic.
 
 The shared gain curve is a piecewise cubic Hermite S-curve through `(0, 0)`,
@@ -47,7 +47,7 @@ available stretched-source handles. No timeline overlap is introduced.
 
 For left-edge transitions, owner weight follows the curve from zero to one;
 for right-edge transitions it follows one to zero. The adjacent clip receives
-the complementary weight. Apply each clip's gain before track effects/mixing.
+the opposing curve `1 - mirrored.gain(progress)`, where `mirrored` retains the owner time position and uses `1 - midpoint` as its level. Both curves pass through the saved time/gain point. Vertical edits change crossing gain; horizontal edits change crossing time. The gain sum can rise above or fall below unity. This intentionally replaces the previous unity-sum rule for saved crossfades. Apply each clip's gain before track effects/mixing.
 Selecting a new crossfade clears the neighbor's corresponding fade. Editing an
 ordinary fade at a shared edge clears a competing neighbor-owned crossfade in
 the same transaction. If later placement introduces competing saved crossfades,
@@ -74,11 +74,12 @@ above the sampled curve with a translucent black background mesh behind the wave
 text and the area below the curve untouched. Paint outlines after fills.
 The midpoint can move in both dimensions: horizontal changes normalized position,
 vertical changes level. Keep duration fixed; clamp position to 0.15–0.85 and
-level to 0.125–0.875. Share these bounds with core edit validation and settings.
+level to 0.15–0.85. Share these bounds with core edit validation and settings.
 Sample the curve through the saved point exactly. Crossfade presentation uses
-the neighbor's complementary ramp so its full-level endpoint also meets the
-outward handle's top; invert displayed level/position when mapping to saved owner
-settings. Preserve existing crossfade sound.
+the neighbor's opposing ramp so its full-level endpoint also meets the
+outward handle's top. Reverse displayed time position when mapping to saved owner
+settings, but retain the displayed gain level. Both curves meet at that control
+point. The new crossing-gain behavior supersedes the previous fixed half-gain crossing.
 Duration drag direction is relative to the clip edge: inward selects Fade,
 outward selects Crossfade. Clamp unavailable extensions. Paint extended curves
 again over the neighbor so later clip fills cannot cover the transition.
@@ -101,7 +102,7 @@ column and uses Small text for both its caption and popup items. Numeric values 
 Shift fine adjustment and double-click text editing; Enter/focus loss applies
 a finite bounded value and Escape cancels.
 For a single audio selection, show Fade in/out mode, duration in ms, Shape and
-Position. Shape maps the displayed point level to −75%–75%; Position maps its
+Position. Shape maps the displayed point level to −70%–+70%; Position maps its
 horizontal fraction to 15%–85%. Zero Shape and 50% Position give a balanced S-curve. Settings and
 handle previews read the same model/curve. Disable unavailable Crossfade choices
 and shape/position editing at zero duration. Browsing/painting never clamps saved state
@@ -113,8 +114,8 @@ single-clip fade fields.
 Cover curve endpoints/midpoint/monotonicity, legacy behavior, short clips,
 validation rollback, source handles and non-overlap, project round trips,
 rate/stretch scaling, resident/disk rendering parity, seeks/loops and callback
-allocations. Crossfades draw both complementary gain curves over the same time span,
-including neighbor overlays. Sample its complementary gain through the same
+allocations. Crossfades draw both opposing gain curves over the same time span,
+including neighbor overlays. Sample its opposing gain through the same
 visual gain-to-height mapping. Keep one shading layer and one set of editable handles.
 Curve lines and both marker borders use dark ink. Square and circular markers
 have transparent bodies with one-point dark borders, independent of the clip color.
@@ -141,7 +142,7 @@ its current host block so saved clip order does not affect the result.
 Paint channel backgrounds first, then one translucent black attenuation mesh,
 then waveform peaks in their original colors, then curves and markers. Crossfade
 shading combines two independent masks: below the neighbor curve and above the
-owner's complementary curve. The original side between the curves stays clear;
+owner's opposing curve. The original side between the curves stays clear;
 the extended side receives two composited layers. The upper and lower caps
 receive one layer. Put both masks into one mesh and apply that mesh once per
 host, so intentional overlap doubles attenuation without duplicate host passes.
@@ -160,7 +161,7 @@ Draw both source waveforms in each crossover span. Extend an outgoing owner's
 waveform past its logical end using its following source frames; extend an
 incoming owner's waveform before its logical start using preceding source
 frames. Reuse the normal prepared-audio and original/stretch lookup paths and
-source extrema painter. Keep source time mapping unchanged. Scale each visible peak column by its envelope gain. Ordinary fades use the saved fade curve; crossfade continuations use the owner curve and the receiving waveform uses its complement. Resolve active limits and drag previews before painting. This peak display approximates gain within each pixel column; it is not a rendered mix.
+source extrema painter. Keep source time mapping unchanged. Scale each visible peak column by its envelope gain. Ordinary fades use the saved fade curve; crossfade continuations use the owner curve and the receiving waveform uses its opposing curve. Resolve active limits and drag previews before painting. This peak display approximates gain within each pixel column; it is not a rendered mix.
 Clip continuation painting to the receiving host span and paint it after that
 host's peaks and before either curve. Body outlines follow the same visual
 boundaries as headers; retain logical project ranges and audio behavior.

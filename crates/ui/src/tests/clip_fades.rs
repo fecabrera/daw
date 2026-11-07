@@ -339,7 +339,7 @@ fn lower_editor_fades_keep_their_drag_clock_when_clip_options_read_the_preview()
 fn inspector_painting_preserves_boundary_control_points_and_inactive_crossfades() {
     for crossfade in [false, true] {
         for position in [0.15, 0.85] {
-            for level in [0.125, 0.875] {
+            for level in [0.15, 0.85] {
                 let (mut app, track) = fixture();
                 let ctx = context();
                 let clip = &mut app.session.project.tracks[0].clips[0];
@@ -554,13 +554,14 @@ fn crossfade_shading_is_applied_once_regardless_of_saved_clip_order() {
             let weight = fade.gain(position as f32 / (fade.length_frames - 1) as f32);
             for amplitude in [
                 0.8 * weight,
-                (if left { 0.2 } else { 0.4 }) * (1.0 - weight),
+                (if left { 0.2 } else { 0.4 })
+                    * fade.opposing_gain(position as f32 / (fade.length_frames - 1) as f32),
             ] {
                 assert!(
                     heights
                         .iter()
                         .any(|height| (height - amplitude * scale).abs() < 0.01),
-                    "both source waveforms must follow their complementary transition gains"
+                    "both source waveforms must follow their opposing transition gains"
                 );
             }
             let guide_count = |shapes: &[egui::epaint::ClippedShape]| {

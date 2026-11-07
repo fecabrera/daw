@@ -1418,9 +1418,17 @@ mod tests {
             let mut track = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
             for frame in 600..1000 {
                 let direct = track.sample(&plan.project.tracks[0].clips, frame, false).0;
+                let start = if left { 600 } else { 800 };
+                let expected = if (start..start + 200).contains(&frame) {
+                    let progress = (frame - start) as f32 / 199.0;
+                    let progress = if left { progress } else { 1.0 - progress };
+                    0.25 * (fade.gain(progress) + fade.opposing_gain(progress))
+                } else {
+                    0.25
+                };
                 assert!(
-                    (direct[0] - 0.25).abs() < 0.00001,
-                    "constant source must have no dip at {frame}"
+                    (direct[0] - expected).abs() < 0.00001,
+                    "transition gain at {frame}"
                 );
                 assert!((plan.sample_at(frame)[0] - direct[0]).abs() < 0.00001);
             }
@@ -1451,7 +1459,7 @@ mod tests {
                     .is_err()
             );
             assert_eq!(plan.project, old);
-            for (position, level) in [(0.14, 0.5), (0.86, 0.5), (0.5, 0.124), (0.5, 0.876)] {
+            for (position, level) in [(0.14, 0.5), (0.86, 0.5), (0.5, 0.149), (0.5, 0.851)] {
                 let mut invalid = fades;
                 let edge = if left {
                     &mut invalid.fade_in
