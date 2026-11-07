@@ -44,3 +44,16 @@ including when other views retain selected clips. Preserve clip/range selection,
 project, history and dirty state. Text editors and active gestures retain
 precedence; reuse existing focus, popup, dialog and job guards. Remember Mixer
 text focus across frames so cancelling a text field does not also deselect tracks.
+
+## Right toolbar
+
+Reserve the standard Timeline toolbar width at the right of Mixer, outside strip
+scrolling and hit bounds. Paint the standard panel fill and left divider. Place
+Return and Master visibility toggles at the bottom, with Returns above Master.
+Reuse the View-panel dispatcher, existing visibility state, icons, selected fill,
+tooltips, accessibility and guards. When the effects lane is open, keep both visibility buttons at the bottom of
+the upper rail, immediately above the effects lane's right toolbar. When closed,
+the upper rail fills the workspace height and the buttons remain at its bottom.
+The effects collapse control stays in the lower rail. The upper right toolbar
+owns the single divider against Master; Master must not add an adjacent border.
+Remove both toggles from the playback toolbar.

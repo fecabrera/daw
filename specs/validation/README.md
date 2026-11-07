@@ -4,6 +4,38 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Upper right toolbar placement and single divider — 2026-11-07
+
+Returns and Master now stay at the bottom of the upper right toolbar in Mixer
+and Timeline. With Effects open, they sit above the lower rail; with it closed,
+they sit at the full-height toolbar bottom. This supersedes the lower-rail
+placement recorded below. The effects collapse control retains its original
+lower-rail geometry. Master no longer draws an adjacent outer divider in Mixer;
+the right toolbar owns the single separator.
+
+`cargo test -p daw-ui --lib --locked` passed 929 tests with three existing manual
+checks ignored. Regression checks cover toggle placement with the lower lane
+open/closed, the single Mixer divider, and existing effects-lane interactions.
+`cargo clippy -p daw-ui --all-targets --locked -- -D warnings`, formatting and
+diff checks passed. Native appearance checks on macOS, Windows and Linux remain open.
+
+## Mixer and Timeline right visibility toolbars — 2026-11-07
+
+Mixer now reserves a standard right toolbar outside strip scrolling. Mixer and
+Timeline place Returns above Master at the workspace bottom instead of in the
+playback toolbar. With Effects open, the lower right rail owns these buttons.
+Compact effects lanes keep their collapse control above the visibility buttons;
+the detached collapse control retains effects-pane focus and selected units.
+Visibility state, View-menu actions, selection and audio processing are unchanged.
+
+`cargo test -p daw-ui --lib --locked` passed 928 tests with three existing manual
+checks ignored. Coverage includes bottom button geometry in both views with
+Effects open/closed, visibility state and View-menu behavior, Mixer scrolling
+and resize bounds, and effects compact controls/selection. Clippy
+(`cargo clippy -p daw-ui --all-targets --locked -- -D warnings`), formatting
+and diff checks passed. Native appearance and pointer checks on macOS, Windows
+and Linux remain open.
+
 ## Mixer Escape track deselection — 2026-11-07
 
 Mixer now uses the shared Escape handler to clear track/group and Master

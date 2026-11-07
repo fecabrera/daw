@@ -318,6 +318,33 @@ impl DawUi {
     }
 
     pub(super) fn mixer(&mut self, ui: &mut egui::Ui) {
+        let bounds = ui.max_rect();
+        let rail = Rect::from_min_max(
+            Pos2::new(
+                (bounds.right() - timeline_toolbar::WIDTH).max(bounds.left()),
+                bounds.top(),
+            ),
+            bounds.max,
+        );
+        let palette = theme::palette(ui.ctx());
+        ui.painter().rect_filled(rail, 0.0, palette.panel);
+        ui.painter().vline(
+            rail.left() + 0.5,
+            rail.y_range(),
+            Stroke::new(1.0, palette.border),
+        );
+        self.return_master_buttons(ui, rail);
+        let content = Rect::from_min_max(bounds.min, rail.left_bottom());
+        let mut body = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("mixer-content-workspace")
+                .max_rect(content),
+        );
+        body.set_clip_rect(content.intersect(ui.clip_rect()));
+        self.mixer_scroll_content(&mut body);
+    }
+
+    fn mixer_scroll_content(&mut self, ui: &mut egui::Ui) {
         let base_height = MIN_HEIGHT - toolbars::CONTROL_HEIGHT - OUT_CONTROL_SPACING;
         let height = (base_height + self.mixer_send_height()).max(ui.available_height());
         egui::ScrollArea::vertical()
@@ -622,8 +649,8 @@ impl DawUi {
             ui.painter()
                 .vline(rect.left() + 0.5, rect.y_range(), border);
         }
-        // Timeline's right toolbar owns the single outer divider.
-        if track.is_none() && self.view_mode != ViewMode::Timeline {
+        // The right toolbar owns the single outer divider in both workspaces.
+        if track.is_none() && !matches!(self.view_mode, ViewMode::Timeline | ViewMode::Mixer) {
             ui.painter()
                 .vline(rect.right() - 0.5, rect.y_range(), border);
         }

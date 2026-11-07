@@ -3171,11 +3171,6 @@ impl DawUi {
                 self.mixer_returns_bounds = Rect::NOTHING;
                 self.mixer_master_bounds = Rect::NOTHING;
             }
-            if self.view_mode == ViewMode::Mixer {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.return_master_buttons(ui);
-                });
-            }
             #[cfg(test)]
             {
                 self.track_rows_bounds = Rect::NOTHING;
@@ -3212,10 +3207,6 @@ impl DawUi {
                         self.fit_all_requested = true;
                     }
                     self.track_rows_button(ui);
-                    if self.view_mode == ViewMode::Timeline {
-                        ui.separator();
-                        self.return_master_buttons(ui);
-                    }
                 });
                 if self.view_mode.has_track_overview() {
                     self.midi_editor.zoom = zoom;

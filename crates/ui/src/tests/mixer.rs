@@ -557,7 +557,7 @@ fn strips_scroll_in_project_order_with_master_pinned_during_resize() {
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let master = app.master_bounds;
-    assert_eq!(master.right(), 1280.0);
+    assert_eq!(master.right(), 1280.0 - timeline_toolbar::WIDTH);
     for pair in tracks.windows(2) {
         assert_eq!(
             app.mixer_bounds[&pair[0]].right(),
@@ -632,7 +632,7 @@ fn strips_scroll_in_project_order_with_master_pinned_during_resize() {
             })
             .count();
         assert_eq!(separators, 1);
-        assert_eq!(app.master_bounds.right(), size.x);
+        assert_eq!(app.master_bounds.right(), size.x - timeline_toolbar::WIDTH);
         let master_fader = app.mixer_faders[&None];
         let track_fader = app.mixer_faders[&Some(tracks[0])];
         assert!(
@@ -2212,4 +2212,30 @@ fn mixer_escape_cancels_track_rename_before_deselection() {
     frame(&mut app, &ctx, vec![key(egui::Key::Escape)]);
     assert_eq!(app.selected_track, Some(track));
     assert_eq!(app.session.project, before);
+}
+
+#[test]
+fn mixer_master_and_right_toolbar_share_one_divider() {
+    for lane in [false, true] {
+        let (mut app, _) = fixture();
+        let ctx = context();
+        app.view_mode = ViewMode::Mixer;
+        app.set_effects_lane_visible(lane);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let master = app.master_bounds;
+        let dividers = shapes
+            .iter()
+            .filter(|shape| {
+                matches!(&shape.shape,
+                    egui::Shape::LineSegment { points, stroke }
+                    if points[0].x == points[1].x
+                        && (points[0].x - master.right()).abs() <= 1.0
+                        && points[0].y.min(points[1].y) <= master.top() + 1.0
+                        && points[0].y.max(points[1].y) >= master.bottom() - 1.0
+                        && *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                )
+            })
+            .count();
+        assert_eq!(dividers, 1, "effects lane open={lane}");
+    }
 }

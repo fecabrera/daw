@@ -813,7 +813,7 @@ fn mixer_master_toggle_frees_space_and_preserves_selection_and_project() {
     let master = app.master_bounds;
     let return_strip = app.mixer_bounds[&destination];
     assert!(app.mixer_master_visible);
-    assert!(app.mixer_returns_bounds.right() <= app.mixer_master_bounds.left());
+    assert!(app.mixer_returns_bounds.bottom() <= app.mixer_master_bounds.top());
     assert_eq!(app.mixer_master_bounds.size(), app.metronome_bounds.size());
     let point = app.mixer_master_bounds.center();
     for pressed in [true, false] {
@@ -867,19 +867,14 @@ fn timeline_return_master_toggles_hide_rows_without_changing_mixer_or_project() 
     app.select_master();
     let before = app.session.project.clone();
     frame(&mut app, &ctx, vec![]);
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let _shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     assert!(app.master_bounds.is_positive());
     assert!(app.lane_bounds.contains_key(&destination));
-    assert!(app.mixer_returns_bounds.right() <= app.mixer_master_bounds.left());
-    assert!(app.mixer_master_bounds.right() < app.track_rows_bounds.left());
-    assert!(shapes.iter().any(|shape| {
-        matches!(&shape.shape, egui::Shape::LineSegment { points, .. }
-            if points[0].x == points[1].x
-                && points[0].x > app.mixer_master_bounds.right()
-                && points[0].x < app.track_rows_bounds.left()
-                && points[0].y.min(points[1].y) <= app.mixer_master_bounds.center().y
-                && points[0].y.max(points[1].y) >= app.mixer_master_bounds.center().y)
-    }));
+    assert!(app.mixer_returns_bounds.bottom() <= app.mixer_master_bounds.top());
+    let rail = app.effects_bounds.clip_settings_toolbar;
+    assert!(app.mixer_returns_bounds.left() >= rail.left());
+    assert!(app.mixer_master_bounds.right() <= rail.right());
+    assert!(app.mixer_master_bounds.bottom() > rail.bottom() - timeline_toolbar::WIDTH);
     for panel in [ViewPanel::Returns, ViewPanel::Master] {
         let point = match panel {
             ViewPanel::Returns => app.mixer_returns_bounds.center(),
@@ -919,4 +914,46 @@ fn timeline_return_master_toggles_hide_rows_without_changing_mixer_or_project() 
     assert!(app.lane_bounds.contains_key(&destination));
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
+}
+
+#[test]
+fn visibility_toggles_stay_at_upper_toolbar_bottom_in_both_views() {
+    for view in [ViewMode::Timeline, ViewMode::Mixer] {
+        for lane in [false, true] {
+            let (mut app, _) = fixture();
+            let ctx = context();
+            app.view_mode = view;
+            app.set_effects_lane_visible(lane);
+            frame(&mut app, &ctx, vec![]);
+            let returns = app.mixer_returns_bounds;
+            let master = app.mixer_master_bounds;
+            assert_eq!(returns.size(), Vec2::splat(icons::TOOLBAR_BUTTON_SIZE));
+            assert_eq!(master.size(), returns.size());
+            assert_eq!(returns.left(), master.left());
+            assert!(returns.bottom() < master.top());
+            assert!(returns.top() > app.transport_bounds[0].bottom() + 100.0);
+            let bottom = if lane {
+                app.effects_bounds.lane_toolbar.top()
+            } else {
+                773.0
+            };
+            let inset = (timeline_toolbar::WIDTH - icons::TOOLBAR_BUTTON_SIZE) * 0.5;
+            assert!(
+                (master.bottom() - (bottom - inset)).abs() < 1.0,
+                "{view:?}, effects={lane}: {master:?}"
+            );
+            if lane {
+                assert!(master.bottom() < app.effects_bounds.lane_compact.top());
+            }
+            if view == ViewMode::Mixer {
+                assert!(app.master_bounds.right() <= master.left());
+            } else {
+                assert!(
+                    app.effects_bounds
+                        .clip_settings_toolbar
+                        .contains_rect(master)
+                );
+            }
+        }
+    }
 }

@@ -167,9 +167,22 @@ impl DawUi {
 }
 
 impl DawUi {
-    /// Shared Returns/Master toggles; callers use a right-to-left toolbar layout.
-    pub(super) fn return_master_buttons(&mut self, ui: &mut egui::Ui) {
-        // Right-to-left layout places Master after Returns visually.
+    /// Stack Returns above Master at the bottom of the reserved right rail.
+    pub(super) fn return_master_buttons(&mut self, ui: &mut egui::Ui, bounds: Rect) {
+        let inset = (timeline_toolbar::WIDTH - icons::TOOLBAR_BUTTON_SIZE) * 0.5;
+        let buttons = Rect::from_min_max(
+            Pos2::new(
+                bounds.left(),
+                bounds.bottom() - 2.0 * (icons::TOOLBAR_BUTTON_SIZE + inset),
+            ),
+            bounds.max,
+        );
+        let mut rail = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("bus-visibility-toolbar")
+                .max_rect(buttons),
+        );
+        rail.set_clip_rect(buttons.intersect(ui.clip_rect()));
         for (panel, icon, name, selected) in [
             (
                 ViewPanel::Master,
@@ -185,17 +198,27 @@ impl DawUi {
             ),
         ] {
             let enabled = self.view_panel_enabled(panel, ui.ctx());
-            let response = ui
-                .add_enabled_ui(enabled, |ui| {
-                    icons::borderless_toggle(
-                        ui,
-                        icon,
-                        name,
-                        selected,
-                        Vec2::splat(icons::TOOLBAR_BUTTON_SIZE),
-                    )
-                })
-                .inner;
+            let offset = if panel == ViewPanel::Master {
+                0.0
+            } else {
+                icons::TOOLBAR_BUTTON_SIZE + inset
+            };
+            let response = timeline_toolbar::toggle_at(
+                &mut rail,
+                Pos2::new(
+                    bounds.left() + inset,
+                    bounds.bottom() - inset - icons::TOOLBAR_BUTTON_SIZE - offset,
+                ),
+                if panel == ViewPanel::Master {
+                    "master-visibility"
+                } else {
+                    "returns-visibility"
+                },
+                icon,
+                name,
+                selected,
+                enabled,
+            );
             #[cfg(test)]
             match panel {
                 ViewPanel::Master => self.mixer_master_bounds = response.rect,

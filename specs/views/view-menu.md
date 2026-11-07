@@ -88,9 +88,11 @@ automated egui frames. Native layout, scrolling and meter motion need UI checks.
 ## Timeline Return and Master visibility
 
 Timeline reuses Mixer's Return (`CornerDownLeft`) and Master (`BoomBox`) toolbar
-buttons, in that order, before the track-row, Fit all and zoom controls. Add a
-standard vertical toolbar separator between the visibility buttons and these
-visualization controls. Both buttons use the shared View-panel dispatcher,
+buttons in the existing right toolbar. Stack Returns above Master at the bottom,
+using the standard toolbar width, button size and inset. Retain Clip settings and
+Track mixer at the top. When the effects lane is open, keep the visibility
+buttons at the bottom of the upper rail, above the lower lane's right toolbar.
+When closed, place them at the bottom of the full-height upper toolbar. Both buttons use the shared View-panel dispatcher,
 selection style, tooltips, accessibility names and editing guards.
 
 Store separate Timeline and Mixer visibility choices in UI state. Default each

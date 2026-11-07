@@ -2,6 +2,10 @@
 
 Mixer controls track levels and the final project output. It uses the same track settings as Timeline, so edits in either view apply to playback and export.
 
+The Return and Master toggles stay at the bottom of the upper right toolbar.
+Opening the effects lane places them just above its toolbar. Closing the lane
+returns them to the bottom of the full-height toolbar.
+
 ## Effects toolbar
 
 Use the left **Effects** button to show the effects catalog and the bottom **Effects lane** button to show the selected track’s or Master’s effect chain. These panels start closed and remember their visibility independently of Editor and Timeline. Mixer has no Clip settings, Chords or Instrument components button.
@@ -32,7 +36,7 @@ Meters show current output. Each L/R bar has a held-peak marker that stays at it
 
 ## Sends and Returns
 
-Send rows always appear above Pan, with a grouped power button and Return dropdown on the left and a small level knob on the right. Send stacks align at the bottom of their section, with **+ Send** aligned above the output divider. The stack grows upward with its rows; scroll Mixer vertically if needed. Add a send to an existing Return or create an empty Return with **+ Send > New Return**. Use the **Return tracks** arrow icon at the right of the transport toolbar to show or hide the Return strips. It starts enabled and remembers your choice while you switch views. Hidden Returns keep processing audio. Use the **Master track** boom box icon after the Return toggle to show or hide Master. Both toggles start enabled, remember their state across view switches, and are also available in the View menu. Hidden strips keep processing audio. Returns stay at the right, immediately left of Master when it is shown. Their bank expands to fit all Returns when space permits, with standard strip widths and independent scrolling for overflow. Master stays pinned and source tracks retain a usable viewport. See [track sends and Returns](../editing/track-sends.md) for routing, defaults and Solo behavior.
+Send rows always appear above Pan, with a grouped power button and Return dropdown on the left and a small level knob on the right. Send stacks align at the bottom of their section, with **+ Send** aligned above the output divider. The stack grows upward with its rows; scroll Mixer vertically if needed. Add a send to an existing Return or create an empty Return with **+ Send > New Return**. Use the **Return tracks** arrow icon at the bottom of the right toolbar to show or hide the Return strips. It starts enabled and remembers your choice while you switch views. Hidden Returns keep processing audio. Use the **Master track** boom box icon after the Return toggle to show or hide Master. Both toggles start enabled, remember their state across view switches, and are also available in the View menu. Hidden strips keep processing audio. Returns stay at the right, immediately left of Master when it is shown. Their bank expands to fit all Returns when space permits, with standard strip widths and independent scrolling for overflow. Master stays pinned and source tracks retain a usable viewport. See [track sends and Returns](../editing/track-sends.md) for routing, defaults and Solo behavior.
 
 ## Master
 

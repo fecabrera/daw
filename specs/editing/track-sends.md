@@ -257,7 +257,7 @@ inter-channel reset helper, including collapsed rows. They read the same stereo
 holds as Mixer; resetting in either view clears both channel holds and clipping
 without changing levels, routing, gain or project history.
 
-Mixer has an icon-only Returns toggle at the transport toolbar's right edge.
+Mixer has an icon-only Returns toggle at the bottom of its right toolbar.
 Use the Return track's `CornerDownLeft` icon and the shared 24-point borderless
 toolbar toggle, including selected fill, hover state and disabled behavior.
 Provide the tooltip and accessibility name `Show or hide Return tracks`.
@@ -267,7 +267,7 @@ tracks gain the space. Keep Return selection, effects targets, sends and DSP
 active. The toggle creates no project/history edits and does not hide Timeline
 Returns. When shown, retain automatic bank sizing and overflow scrolling.
 
-Place the Master toggle immediately after Returns from left to right. Reuse the
+Place the Master toggle below Returns at the bottom of the right toolbar. Reuse the
 same toolbar control with Master's `BoomBox` icon and the tooltip/accessibility
 name `Show or hide Master track`. Both toggles use the shared View-panel dispatcher
 and menu entries. Master starts shown and retains its workspace visibility across

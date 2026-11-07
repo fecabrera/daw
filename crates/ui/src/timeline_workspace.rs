@@ -25,6 +25,7 @@ impl DawUi {
             self.track_mixer_visible,
             allowed,
         );
+        self.return_master_buttons(ui, rail);
         if toggle.clicked() {
             self.toggle_view_panel(ViewPanel::ClipSettings, ui.ctx());
         }

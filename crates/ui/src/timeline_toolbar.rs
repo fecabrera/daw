@@ -159,7 +159,7 @@ pub(super) fn right_panels(
     (clip, mixer)
 }
 
-fn toggle_at(
+pub(super) fn toggle_at(
     ui: &mut Ui,
     position: egui::Pos2,
     id: &str,

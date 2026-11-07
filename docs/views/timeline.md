@@ -11,8 +11,8 @@ Each L/R meter bar has a held-peak marker. Click either bar or the gap between t
 Use **Expand tracks to two rows**, beside Fit all clips and zoom in the playback toolbar, for the full layout. **Collapse tracks to one row** restores the default compact layout. Timeline and Editor share this choice for the app session. It does not change the project or audio. Master stays on one row.
 
 Use the **Return tracks** arrow and **Master track** boom box buttons in the
-playback toolbar to show or hide the pinned Return rows and Master. They sit to
-the left of the track layout and zoom controls. Both start enabled. Timeline and
+right toolbar to show or hide the pinned Return rows and Master. The buttons sit
+at the bottom, with Returns above Master. Both start enabled. Timeline and
 Mixer remember separate choices for the app session. You can also use **View >
 Returns** and **View > Master**. Hidden tracks keep processing audio, and their
 selection stays unchanged.
@@ -26,6 +26,10 @@ Press M to toggle Mute and S to toggle Solo on each selected track. These shortc
 Rename (Command/Ctrl+R), Group (Command/Ctrl+G), and Ungroup (Command/Ctrl+Shift+G) also work when another pane or non-text control has focus in Timeline. Text entry, active drags, dialogs and blocking jobs retain their guards. Selection requirements still apply.
 
 Press Escape to clear selected clips or a selected clip time range first. Tracks and Master stay selected. If no clips or clip time range are selected, Escape clears track or Master selection. Text entry, open menus and active gestures take precedence. Holding Escape does not advance through these steps.
+
+The Return and Master toggles stay at the bottom of the upper right toolbar.
+Opening the effects lane places them just above its toolbar. Closing the lane
+returns them to the bottom of the full-height toolbar.
 
 ## Add chords
 
