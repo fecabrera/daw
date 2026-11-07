@@ -13,6 +13,7 @@ mod audio_preparation;
 mod clip_delete;
 mod clip_fades;
 mod clip_lane;
+mod clip_marquee;
 mod clip_menu;
 mod normalize;
 mod unit_power;
@@ -724,6 +725,7 @@ struct SelectedClip {
     clip: Clip,
 }
 struct Marquee {
+    pane: egui::Id,
     origin: Pos2,
     previous: HashSet<Id>,
     primary: Option<Id>,
@@ -3620,6 +3622,13 @@ impl DawUi {
         viewport: Rect,
         clips_viewport: Rect,
     ) {
+        if self
+            .marquee
+            .as_ref()
+            .is_some_and(|marquee| marquee.pane != response.id)
+        {
+            return;
+        }
         if !ui.is_enabled()
             || !self.editing_enabled()
             || !ui.input(|input| input.focused)
@@ -3653,6 +3662,7 @@ impl DawUi {
                     previous.insert(primary);
                 }
                 self.marquee = Some(Marquee {
+                    pane: response.id,
                     origin,
                     previous,
                     primary: self.selected_clip,
@@ -5846,6 +5856,7 @@ mod tests {
     mod component_transfer;
     mod compressed_import;
     mod editor_delete;
+    mod editor_marquee;
     mod editor_viewport;
     mod effects;
     mod envelope_units;

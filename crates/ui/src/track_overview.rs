@@ -184,6 +184,7 @@ impl DawUi {
             Stroke::new(1.0, palette.border),
         );
         self.paint_track_overview_playhead(&painter, lane);
+        self.editor_clip_marquee(ui, &lane_input, lane, track.id);
     }
 
     pub(super) fn paint_track_overview_playhead(&self, painter: &egui::Painter, rect: Rect) {

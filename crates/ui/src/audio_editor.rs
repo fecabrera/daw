@@ -11,6 +11,11 @@ impl DawUi {
             canvas.min + Vec2::new(track_overview::LABEL_WIDTH, 0.0),
             canvas.max,
         );
+        let selection = ui.interact(
+            lane,
+            ui.id().with("audio-editor-marquee"),
+            Sense::click_and_drag(),
+        );
         let palette = theme::palette(ui.ctx());
         ui.painter().rect_filled(canvas, 0.0, palette.background);
         let painter = ui.painter_at(lane);
@@ -67,6 +72,9 @@ impl DawUi {
                     );
                 }
             }
+        }
+        if let Some(track) = track {
+            self.editor_clip_marquee(ui, &selection, lane, track.id);
         }
         let x = lane.left()
             + (self

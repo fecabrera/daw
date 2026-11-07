@@ -26,6 +26,13 @@ Right-click a header or border for the shared clip menu, including Velocity and 
 
 A plain empty-space drag selects notes with a rectangle. Shift-click toggles individual notes; Shift-drag toggles notes within the rectangle. Delete or Backspace removes selected notes. Hold Option on macOS or Ctrl on Windows/Linux while moving notes to copy them. Escape cancels an active gesture.
 
+To select several clips, drag a rectangle from empty space in the clip overview,
+the audio waveform pane, or the MIDI clip-header strip. Every clip touched by
+the rectangle is selected. Hold Shift to toggle clips in the rectangle. Escape
+or loss of window focus cancels the selection and restores the previous group.
+Dragging a clip still moves it; dragging in the piano-roll note area still selects
+notes. The overview and lower pane keep their own zoom and scroll.
+
 Timeline and Editor offer the same clip selection, time-range selection, copy/paste, split, move, trim, loop, and stretch actions. Delete or Backspace removes all selected clips when clip editing is active. Note and beat-step editing keep Delete in their own pane. Click a clip header to switch back to clip deletion; selecting notes gives note deletion priority. A selected time range takes precedence and removes only that range. Clip deletion supports Undo and keeps source media. Text fields, active gestures, dialogs and unfocused windows retain their existing keyboard protection. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Editor's clip moves keep their track assignments. Shift bypasses grid snapping.
 
 ## Track and scale controls

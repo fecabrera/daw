@@ -166,6 +166,16 @@ Moves, drag duplication, paste, and file drops take priority over existing desti
 
 Select multiple clips by Shift-click (also Command-click on macOS or Ctrl-click on Windows/Linux) to toggle membership, or by click-hold and rectangle dragging in empty timeline space. Rectangles select intersecting visible clips across tracks; Shift-drag toggles intersecting clips against the selection at the start of the drag: add unselected clips, remove selected clips, and keep clips outside the box unchanged. Recompute from that starting selection each frame, so clips leaving the box regain their previous state. Plain clip clicks replace the selection, while plain empty-space clicks clear it. Escape or focus loss cancels a rectangle and restores the prior selection. Clip selection is UI state and does not modify the project or loop range. Primary or secondary presses anywhere in a visible track panel select that track, including padding, borders, child controls, and meters. Keep child control behavior and existing clip selection intact. Paint the selected outline in the same frame. Ignore panel selection while disabled, unfocused, or behind another UI layer or dialog. Drag a track name to reorder the whole track. Preview insertion before or after the hovered row with an accent line across the panel and timeline. Hold near the viewport edges to scroll the list. Commit only on release within the track workspace. Escape, focus loss, disabled UI, dialogs, and outside drops cancel without changing project order. A same-position drop is a no-op. Preserve track/clip IDs, names, colors, control values, clip selection, and source references; keep the master pinned. Store order in the project track array and sync playback after a successful reorder. Key row widget identities by track ID so controls retain their state when rows move. Double-click track-name editing retains its existing behavior.
 
+Editor supports whole-clip rectangle selection in its overview, audio waveform
+pane and MIDI clip-header strip, through the shared Timeline marquee gesture.
+Start in empty space; plain drags replace clip membership and Shift-drags toggle
+it. Preserve clip moves/edge gestures, note-area selection and existing time-range
+gestures. Bind each marquee to its response ID and use only that pane's current
+track geometry and clock. Restore the overview lane map after lower-pane hit
+testing; retain lower zoom/scroll when selection changes. Escape, lost focus,
+disabled UI or blocked editing restores prior clip membership and primary ID.
+Selection remains UI-only and arms Editor clip deletion without changing history.
+
 Delete/Backspace removes the selected clip group in Timeline and Editor through
 one `Edit::Batch` of `Edit::DeleteClip`, or deletes the selected time range first.
 In Editor, selected MIDI notes consume the press before clip deletion. Clicking

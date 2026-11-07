@@ -20,6 +20,11 @@ impl DawUi {
         );
         ui.painter()
             .rect_filled(row, 0.0, theme::palette(ui.ctx()).background);
+        let selection = ui.interact(
+            lane,
+            ui.id().with(("midi-header-marquee", track.id)),
+            Sense::click_and_drag(),
+        );
         let painter = ui.painter_at(lane);
         #[cfg(test)]
         self.midi_editor.pattern_header_bounds.clear();
@@ -52,6 +57,7 @@ impl DawUi {
             };
             clip_paint::paint_header(&painter, header, &clip.name, colors, false);
         }
+        self.editor_clip_marquee(ui, &selection, lane, track.id);
         lane
     }
 

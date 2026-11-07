@@ -4,6 +4,26 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Editor drag rectangle clip selection — 2026-11-07
+
+The Editor overview, audio waveform pane and MIDI clip-header strip now use the
+shared whole-clip rectangle selection gesture. Pane ownership prevents another
+Editor pane from updating the active rectangle. Plain/Shift membership,
+cancellation and read-only project behavior follow Timeline. Selection retains
+the lower viewport clock and enables clip deletion.
+
+Focused checks cover both audio panes, Shift toggling, Escape/focus cancellation,
+viewport stability and MIDI header selection without selecting notes.
+`cargo test --workspace --locked --offline`: PASS, including doctests.
+`cargo test --workspace --release --locked --offline`: PASS, including doctests.
+All four focused Editor marquee checks passed, including unchanged
+Command/Ctrl-drag time ranges in the overview.
+`cargo fmt --all --check`, workspace Clippy with `-D warnings`,
+`git diff --check` and 198 local documentation targets: PASS.
+`sh tools/package_macos.sh debug` stopped at the source-commit guard because
+tracked changes are uncommitted; no updated app bundle was produced.
+Native pointer/device/platform checks were not performed.
+
 ## Editor clip Delete shortcut — 2026-11-07
 
 Delete/Backspace now removes selected clips from Editor through the same batch
