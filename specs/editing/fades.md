@@ -1,6 +1,6 @@
 # Audio clip fades and crossfades
 
-Initial implementation: dedicated edge handles, midpoint shaping and single-clip
+Initial implementation: dedicated edge handles, midpoint shaping and selected-group
 settings in Timeline and the shared audio Editor. For operation, see
 [Timeline](../../docs/views/timeline.md#fades-and-crossfades).
 
@@ -89,7 +89,16 @@ preview and settings. Capture the fade gesture on press and retain its identity
 until release. Keep project data unchanged during handle previews. Release
 commits one core edit; Escape, focus loss or blocked editing cancels. Preserve
 existing trim, shared-boundary, header-loop and modifier-stretch gestures outside
-these hit areas. Handle gestures select only their owner clip. Provide accessible
+these hit areas. Handle gestures preserve an existing whole-clip selection when the owner is
+selected; otherwise select the owner alone. Capture selected audio snapshots on
+press and skip MIDI/beat clips. Apply one signed duration delta to each edge,
+including each edge's own Fade/Crossfade sign. Apply midpoint level and normalized
+position deltas relative to each snapshot, using the dragged clip's duration for
+the horizontal delta. Clamp each target independently. Zero-duration midpoints
+remain unchanged. Preview neighbor-envelope cleanup as well as target changes.
+Publish the ordered SetClipFades edits through one Edit::Batch on release;
+resolve each edit against preceding neighbor cleanup so stale opposite edges
+cannot be restored. Preserve selection, cancellation and no-op releases. Provide accessible
 names and tooltips. Reuse canonical dropdowns and the existing guarded Clip
 settings body in both views.
 
@@ -101,13 +110,16 @@ width as Name and Gain. Each section has Mode, Duration, Shape and Position rows
 column and uses Small text for both its caption and popup items. Numeric values reuse Gain’s plain numeric label/font, vertical drag,
 Shift fine adjustment and double-click text editing; Enter/focus loss applies
 a finite bounded value and Escape cancels.
-For a single audio selection, show Fade in/out mode, duration in ms, Shape and
+For an audio selection, show Fade in/out mode, duration in ms, Shape and
 Position. Shape maps the displayed point level to −70%–+70%; Position maps its
 horizontal fraction to 15%–85%. Zero Shape and 50% Position give a balanced S-curve. Settings and
 handle previews read the same model/curve. Disable unavailable Crossfade choices
 and shape/position editing at zero duration. Browsing/painting never clamps saved state
-into a new edit. Multi-selection retains its existing settings and does not show
-single-clip fade fields.
+into a new edit. For multiple selected audio clips, show one selected audio clip's values and
+explain the reference behavior. Settings apply relative duration, level and
+position changes to all selected audio clips with independent limits. Mode
+changes set the requested mode on each selected audio clip. Skip non-audio clips.
+Commit the settings action through the existing batch transaction.
 
 ## Verification
 

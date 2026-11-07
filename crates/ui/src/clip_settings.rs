@@ -408,7 +408,9 @@ impl super::DawUi {
                         },
                     )
                     .inner).inner.on_disabled_hover_text("Wait for project audio before transposing audio clips.");
-                    if !multiple { self.clip_fade_settings(ui, clip, panel, label_width, &mut commands); }
+                    if let Some(audio_clip) = clips.iter().find(|candidate| self.session.project.assets.iter().any(|asset| asset.id == candidate.asset_id && asset.is_audio())) {
+                        self.clip_fade_settings(ui, audio_clip, panel, label_width, &mut commands);
+                    }
                     let finished = if was_editing {
                         let response = match edit.as_ref().map(|current| current.field) {
                             Some(Field::Name) => Some(&name),

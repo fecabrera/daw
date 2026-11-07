@@ -4,6 +4,28 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Selected-group fade editing — 2026-11-07
+
+Fade and crossfade drags now capture selected audio clips and preserve selection.
+Duration drags apply a common signed time delta with independent clip/source
+limits. Midpoint drags apply common level and normalized-position deltas;
+zero-duration edges are skipped. Previews include neighbor envelope cleanup.
+Release commits one batch history edit; cancellation retains the project.
+Clip settings supports the selected audio group with relative numeric changes
+and explicit Mode assignment. MIDI and beat clips are excluded.
+
+The user guide and fade specification now describe opposing curves with an
+adjustable crossing gain, replacing the obsolete complementary-curve wording
+and single-clip editing restriction. The feature roadmap includes group editing.
+
+Checks: `cargo test -p daw-ui clip_fades --lib --locked` passed 20 tests,
+including new group clamp/preview/Undo, relative shape/cancellation, crossfade
+neighbor cleanup in both directions and settings interaction checks.
+`cargo test -p daw-ui --lib --locked` passed 923 tests with three existing
+manual checks ignored. Clippy (`cargo clippy -p daw-ui --all-targets --locked
+-- -D warnings`), formatting and diff checks passed. Native appearance, pointer
+and listening checks on macOS, Windows and Linux remain open.
+
 ## Shape range — 2026-11-07
 
 Fade and crossfade Shape now spans −70% to +70%. Shared gain bounds are

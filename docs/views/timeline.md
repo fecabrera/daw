@@ -134,7 +134,7 @@ position within the fade, or vertically to change its level. Neither changes
 the fade duration. The S-curve starts at the top of its square handle. Handles and midpoint controls
 have transparent bodies with dark borders, and the curve line is dark. The area
 above the curve is darkened to show attenuation; waveform colors stay unchanged. Crossfades show both
-complementary curves when you hover over the blend or drag a fade control.
+opposing curves when you hover over the blend or drag a fade control.
 Hover a clip to show its fade handles and midpoint controls. Clicking a
 crossover selects the clip whose header and waveform extend across it. The owning clip’s header and source waveform extend into the neighboring clip
 through the overlap region. The original side between the curves keeps its normal brightness. The extended
@@ -147,11 +147,15 @@ through the waveform, marking the fade-in end or fade-out start. Crossfades show
 a vertical guide at each edge only while the crossover is hovered. Both guides
 start directly below the header and reach the waveform bottom. The crossover
 shading also meets the header without a gap.
-Release commits the change; Escape or loss of window focus cancels. These
-controls edit one audio clip at a time. Header looping, waveform trimming and
+Release commits the change; Escape or loss of window focus cancels. When the dragged clip is selected, these controls edit all selected audio clips.
+An unselected clip starts a new selection. Duration drags apply the same time
+change to each clip. Midpoint drags apply the same gain and normalized-position
+change, preserving relative settings. Each clip stops at its own limits; clips
+without a usable adjacent source cannot crossfade. MIDI and beat clips are skipped.
+The whole group previews before release and commits as one Undo step. Header looping, waveform trimming and
 shared-boundary trimming keep their existing gestures outside the fade handles.
 
-For a single selected audio clip, a divider separates the fade controls from the
+For selected audio clips, a divider separates the fade controls from the
 other clip settings, and another divider precedes **Fade out**. Both use muted subheaders, with labels
 on the left and values on the right. Each section contains Mode (Fade/Crossfade),
 Duration in milliseconds, Shape and Position. The Mode selector fills the value
@@ -159,7 +163,10 @@ column. Drag numeric values up or down, hold Shift for finer adjustment, or
 double-click to type a value. Shape sets the control point level from −70% to +70%; Position sets
 its horizontal location from 15% to 85% between the clip edge and duration handle.
 Shape 0% with Position 50% gives a balanced S-curve. These settings and the curve
-handles edit the same values. Fade duration is bounded by the clip. Crossfade duration is bounded by half
+handles edit the same values. For a group, the settings show one selected audio
+clip as the reference. Duration, Shape and Position changes apply relative to
+each clip's existing value; Mode applies the chosen mode to the selected audio
+clips. Each clip retains its own source and duration limits. Fade duration is bounded by the clip. Crossfade duration is bounded by half
 each adjacent clip and the available source audio. Zero duration
 keeps the automatic 5 ms anti-click fade. A crossfade replaces the corresponding
 neighbor boundary fade. If editing removes an eligible join, its crossfade

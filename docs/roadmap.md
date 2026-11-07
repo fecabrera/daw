@@ -46,6 +46,7 @@ must become recoverable before their temporary files can be removed.
 
 Fade-in/out handles, adjustable midpoint curves and fixed-boundary adjacent
 crossfades are implemented for audio clips. Clip settings uses the same values.
+Selected audio clips support group fade and crossfade editing.
 Crossfades currently require matching channel layouts and unlooped clips with
 source handles. Dedicated equal-power presets and broader transition types remain
 planned. Native appearance and listening acceptance remain open.

@@ -5536,12 +5536,9 @@ impl DawUi {
         {
             if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
                 let drag = self.drag.take().unwrap();
-                let fades = self.fade_drag_value(&drag, ui.ctx());
-                if fades != drag.clip.fades {
-                    self.edit(Edit::SetClipFades {
-                        clip_id: drag.clip.id,
-                        fades,
-                    });
+                let commands = self.fade_drag_edits(&drag, ui.ctx());
+                if !commands.is_empty() {
+                    self.edit(Edit::Batch(commands));
                 }
             }
             return;

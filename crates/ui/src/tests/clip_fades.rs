@@ -805,3 +805,228 @@ fn waveform_fade_envelope_tracks_both_edges_and_shape() {
     assert!((gain(clip.length_frames - 251) - 0.8).abs() < 0.00001);
     assert_eq!(gain(clip.length_frames - 1), 0.0);
 }
+
+#[test]
+fn selected_audio_fades_preview_clamp_commit_and_undo_as_one_group() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    let first = app.session.project.tracks[0].clips[0].clone();
+    let mut second = first.clone();
+    second.id = Id::new_v4();
+    second.start_frame = first.end() + 48_000;
+    second.length_frames = 1000;
+    app.session.project.tracks[0].clips.push(second.clone());
+    app.select_clip(first.id, track, false);
+    app.select_clip(second.id, track, true);
+    frame(&mut app, &ctx, vec![]);
+    let block = app.clip_block(app.lane_bounds[&track], &first, first.start_frame);
+    let origin = Pos2::new(block.left() + 1.0, block.top() + 26.0);
+    let target = origin + Vec2::new(40.0, 0.0);
+    let before = app.session.project.clone();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(origin), button(origin, true)],
+    );
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);
+    assert_eq!(app.session.project, before);
+    assert_eq!(app.selected_clips.len(), 2);
+    assert!(app.visible_fades(&first, &ctx).fade_in.length_frames > 1000);
+    assert_eq!(app.visible_fades(&second, &ctx).fade_in.length_frames, 999);
+    frame(&mut app, &ctx, vec![button(target, false)]);
+    assert_eq!(
+        app.session.project.tracks[0].clips[1]
+            .fades
+            .fade_in
+            .length_frames,
+        999
+    );
+    assert!(
+        app.session.project.tracks[0].clips[0]
+            .fades
+            .fade_in
+            .length_frames
+            > 1000
+    );
+    assert_eq!(app.selected_clips.len(), 2);
+    app.session = app.history.as_mut().unwrap().undo(&app.session).unwrap();
+    assert_eq!(app.session.project, before);
+}
+
+#[test]
+fn group_midpoint_changes_keep_relative_shape_and_cancel_without_edits() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    let mut first = app.session.project.tracks[0].clips[0].clone();
+    first.fades.fade_in.length_frames = 24_000;
+    let mut second = first.clone();
+    second.id = Id::new_v4();
+    second.start_frame = first.end() + 48_000;
+    second.fades.fade_in.midpoint = 0.7;
+    app.session.project.tracks[0].clips = vec![first.clone(), second.clone()];
+    app.select_clip(first.id, track, false);
+    app.select_clip(second.id, track, true);
+    let drag = Drag {
+        clip: first.clone(),
+        track,
+        mode: ClipDragMode::Fade {
+            left: true,
+            shape: true,
+            height: 100,
+            frames_per_point: 100.0,
+        },
+        origin: Pos2::new(100.0, 100.0),
+        duplicate: false,
+        linked_boundary: false,
+        clips: app.selected_clip_snapshots(),
+    };
+    app.drag = Some(drag);
+    let before = app.session.project.clone();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(Pos2::new(124.0, 90.0))],
+    );
+    let a = app.visible_fades(&first, &ctx).fade_in;
+    let b = app.visible_fades(&second, &ctx).fade_in;
+    assert!((a.midpoint - 0.6).abs() < 1e-6);
+    assert!((b.midpoint - 0.8).abs() < 1e-6);
+    assert!((a.midpoint_position - 0.6).abs() < 1e-6);
+    assert!((b.midpoint_position - 0.6).abs() < 1e-6);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+    );
+    assert!(app.drag.is_none());
+    assert_eq!(app.session.project, before);
+    assert_eq!(app.selected_clips.len(), 2);
+}
+
+#[test]
+fn grouped_crossfades_match_preview_and_clear_neighbor_envelopes() {
+    for left in [false, true] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        let mut clips = Vec::new();
+        let template = app.session.project.tracks[0].clips[0].clone();
+        let mut owners = Vec::new();
+        for pair in 0..2 {
+            let mut first = template.clone();
+            first.id = Id::new_v4();
+            first.start_frame = pair * 240_000;
+            first.length_frames = 96_000;
+            first.source_offset_frame = 48_000;
+            let mut second = first.clone();
+            second.id = Id::new_v4();
+            second.start_frame = first.end();
+            if left {
+                first.fades.fade_out.length_frames = 1000;
+                owners.push(second.id);
+            } else {
+                second.fades.fade_in.length_frames = 1000;
+                owners.push(first.id);
+            }
+            clips.extend([first, second]);
+        }
+        app.session.project.tracks[0].clips = clips.clone();
+        app.select_clip(owners[0], track, false);
+        app.select_clip(owners[1], track, true);
+        let owner = clips.iter().find(|c| c.id == owners[0]).unwrap().clone();
+        app.drag = Some(Drag {
+            clip: owner,
+            track,
+            mode: ClipDragMode::Fade {
+                left,
+                shape: false,
+                height: 100,
+                frames_per_point: 100.0,
+            },
+            origin: Pos2::new(100.0, 100.0),
+            duplicate: false,
+            linked_boundary: false,
+            clips: app.selected_clip_snapshots(),
+        });
+        let target = Pos2::new(if left { 80.0 } else { 120.0 }, 100.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);
+        let previews: Vec<_> = clips
+            .iter()
+            .map(|clip| app.visible_fades(clip, &ctx))
+            .collect();
+        let edits = app.fade_drag_edits(app.drag.as_ref().unwrap(), &ctx);
+        assert_eq!(edits.len(), 2);
+        let mut project = app.session.project.clone();
+        project.edit(Edit::Batch(edits)).unwrap();
+        for (clip, preview) in project.tracks[0].clips.iter().zip(previews) {
+            assert_eq!(clip.fades, preview);
+            if owners.contains(&clip.id) {
+                let edge = if left {
+                    clip.fades.fade_in
+                } else {
+                    clip.fades.fade_out
+                };
+                assert!(edge.crossfade);
+                assert_eq!(edge.length_frames, 2000);
+            }
+        }
+    }
+}
+
+#[test]
+fn group_fade_settings_apply_relative_shape_to_selected_audio() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    let mut first = app.session.project.tracks[0].clips[0].clone();
+    first.fades.fade_in.length_frames = 48_000;
+    let mut second = first.clone();
+    second.id = Id::new_v4();
+    second.start_frame = first.end() + 48_000;
+    second.fades.fade_in.midpoint = 0.6;
+    app.session.project.tracks[0].clips = vec![first.clone(), second.clone()];
+    app.select_clip(first.id, track, false);
+    app.select_clip(second.id, track, true);
+    app.clip_settings_visible = true;
+    frame(&mut app, &ctx, vec![]);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let label = shapes
+        .iter()
+        .find_map(|s| match &s.shape {
+            egui::Shape::Text(t) if t.galley.text() == "Shape" => Some(t.pos),
+            _ => None,
+        })
+        .unwrap();
+    let point = shapes
+        .iter()
+        .find_map(|s| match &s.shape {
+            egui::Shape::Text(t) if t.pos.x > label.x && (t.pos.y - label.y).abs() < 4.0 => {
+                Some(t.pos + t.galley.size() * 0.5)
+            }
+            _ => None,
+        })
+        .unwrap();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    let target = point + Vec2::new(0.0, -20.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);
+    frame(&mut app, &ctx, vec![button(target, false)]);
+    let a = app.session.project.tracks[0].clips[0]
+        .fades
+        .fade_in
+        .midpoint;
+    let b = app.session.project.tracks[0].clips[1]
+        .fades
+        .fade_in
+        .midpoint;
+    assert!(a > 0.5);
+    assert!((b - a - 0.1).abs() < 1e-6);
+    assert_eq!(app.selected_clips.len(), 2);
+}

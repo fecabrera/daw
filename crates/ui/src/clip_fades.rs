@@ -211,7 +211,15 @@ impl DawUi {
             .any(|a| a.id == clip.asset_id && a.is_audio())
     }
     pub(super) fn fade_drag_value(&self, drag: &Drag, ctx: &egui::Context) -> daw_core::ClipFades {
-        let mut fades = drag.clip.fades;
+        self.fade_drag_value_for(drag, &drag.clip, ctx)
+    }
+    fn fade_drag_value_for(
+        &self,
+        drag: &Drag,
+        clip: &Clip,
+        ctx: &egui::Context,
+    ) -> daw_core::ClipFades {
+        let mut fades = clip.fades;
         let ClipDragMode::Fade {
             left,
             shape,
@@ -222,13 +230,25 @@ impl DawUi {
             return fades;
         };
         let pointer = ctx.input(|i| i.pointer.latest_pos()).unwrap_or(drag.origin);
+        if pointer == drag.origin {
+            return fades;
+        }
         let edge = selected_fade(&mut fades, left);
         if shape {
+            if edge.length_frames == 0 {
+                return fades;
+            }
             let vertical = (pointer.y - drag.origin.y) / height.max(1) as f32;
             edge.midpoint =
                 (edge.midpoint - vertical).clamp(ClipFade::MIN_LEVEL, ClipFade::MAX_LEVEL);
             let horizontal = f64::from(pointer.x - drag.origin.x) * frames_per_point
-                / edge.length_frames.max(1) as f64
+                / (if left {
+                    drag.clip.fades.fade_in
+                } else {
+                    drag.clip.fades.fade_out
+                })
+                .length_frames
+                .max(1) as f64
                 * if left { 1.0 } else { -1.0 };
             edge.midpoint_position = (f64::from(edge.midpoint_position) + horizontal).clamp(
                 f64::from(ClipFade::MIN_POSITION),
@@ -244,7 +264,7 @@ impl DawUi {
             edge.length_frames = (signed.abs().round() as u64).min(
                 self.session
                     .project
-                    .clip_fade_limit(drag.clip.id, left, edge.crossfade),
+                    .clip_fade_limit(clip.id, left, edge.crossfade),
             );
             if edge.length_frames == 0 {
                 edge.crossfade = false;
@@ -252,11 +272,114 @@ impl DawUi {
         }
         fades
     }
+    pub(super) fn fade_drag_edits(&self, drag: &Drag, ctx: &egui::Context) -> Vec<Edit> {
+        let ClipDragMode::Fade { left, .. } = drag.mode else {
+            return Vec::new();
+        };
+        let targets: Vec<_> = if drag.clips.is_empty() {
+            vec![drag.clip.clone()]
+        } else {
+            drag.clips.iter().map(|c| c.clip.clone()).collect()
+        };
+        self.fade_group_edits(&targets, left, |clip| {
+            let mut fades = if clip.id == drag.clip.id {
+                self.fade_drag_value(drag, ctx)
+            } else {
+                self.fade_drag_value_for(drag, clip, ctx)
+            };
+            *selected_fade(&mut fades, left)
+        })
+    }
+    /// Resolve competing neighbor envelopes against each preceding edit, so a
+    /// later target cannot restore an opposite edge cleared by an earlier one.
+    fn fade_group_edits(
+        &self,
+        targets: &[Clip],
+        left: bool,
+        value: impl Fn(&Clip) -> ClipFade,
+    ) -> Vec<Edit> {
+        let mut project = self.session.project.clone();
+        let mut commands = Vec::new();
+        for target in targets {
+            let Some(current) = project
+                .tracks
+                .iter()
+                .flat_map(|t| &t.clips)
+                .find(|c| c.id == target.id)
+            else {
+                continue;
+            };
+            let mut fades = current.fades;
+            *selected_fade(&mut fades, left) = value(target);
+            if fades == current.fades {
+                continue;
+            }
+            let edit = Edit::SetClipFades {
+                clip_id: target.id,
+                fades,
+            };
+            if project.edit(edit.clone()).is_err() {
+                return vec![edit];
+            }
+            commands.push(edit);
+        }
+        commands
+    }
     pub(super) fn visible_fades(&self, clip: &Clip, ctx: &egui::Context) -> daw_core::ClipFades {
-        self.drag
+        let Some(drag) = self
+            .drag
             .as_ref()
-            .filter(|d| d.clip.id == clip.id && matches!(d.mode, ClipDragMode::Fade { .. }))
-            .map_or(clip.fades, |d| self.fade_drag_value(d, ctx))
+            .filter(|d| matches!(d.mode, ClipDragMode::Fade { .. }))
+        else {
+            return clip.fades;
+        };
+        let target = if drag.clip.id == clip.id {
+            Some(&drag.clip)
+        } else {
+            drag.clips
+                .iter()
+                .find(|c| c.clip.id == clip.id)
+                .map(|c| &c.clip)
+        };
+        let mut fades = target.map_or(clip.fades, |target| {
+            self.fade_drag_value_for(drag, target, ctx)
+        });
+        let ClipDragMode::Fade { left, .. } = drag.mode else {
+            return fades;
+        };
+        // Neighbor cleanup is also visible during previews, including unselected neighbors.
+        let targets: Vec<_> = if drag.clips.is_empty() {
+            vec![&drag.clip]
+        } else {
+            drag.clips.iter().map(|c| &c.clip).collect()
+        };
+        for other in targets {
+            if other.id == clip.id {
+                continue;
+            }
+            let same_track = self.session.project.tracks.iter().any(|t| {
+                t.clips.iter().any(|c| c.id == clip.id) && t.clips.iter().any(|c| c.id == other.id)
+            });
+            if !same_track
+                || !(if left {
+                    other.start_frame == clip.end()
+                } else {
+                    other.end() == clip.start_frame
+                })
+            {
+                continue;
+            }
+            let mut next = self.fade_drag_value_for(drag, other, ctx);
+            let next = *selected_fade(&mut next, left);
+            let mut old = other.fades;
+            if next != *selected_fade(&mut old, left) && next.length_frames > 0 {
+                let opposite = selected_fade(&mut fades, !left);
+                if opposite.crossfade || next.crossfade {
+                    *opposite = ClipFade::default();
+                }
+            }
+        }
+        fades
     }
     pub(super) fn paint_clip_fades(&self, painter: &egui::Painter, block: Rect, clip: &Clip) {
         self.paint_clip_fade_layer(painter, block, clip, false);
@@ -329,7 +452,7 @@ impl DawUi {
                 } else {
                     paint_guide(painter, endpoint, block.bottom());
                 }
-                let dragging = self.drag.as_ref().is_some_and(|drag| drag.clip.id == clip.id
+                let dragging = self.drag.as_ref().is_some_and(|drag| (drag.clip.id == clip.id || drag.clips.iter().any(|c| c.clip.id == clip.id))
                     && matches!(drag.mode, ClipDragMode::Fade { left: edge, .. } if edge == left));
                 if !fade.crossfade || hovered || dragging {
                     paint_fade_curves(
@@ -412,7 +535,8 @@ impl DawUi {
             .pointer_hover_pos()
             .is_some_and(|pos| visual.contains(pos));
         let dragging = self.drag.as_ref().is_some_and(|drag| {
-            drag.clip.id == clip.id && matches!(drag.mode, ClipDragMode::Fade { .. })
+            (drag.clip.id == clip.id || drag.clips.iter().any(|c| c.clip.id == clip.id))
+                && matches!(drag.mode, ClipDragMode::Fade { .. })
         });
         if !hovered && !dragging {
             return;
@@ -818,7 +942,15 @@ impl DawUi {
                 });
                 if ui.input(|i| i.pointer.primary_pressed()) {
                     let origin = pointer.unwrap();
-                    self.select_clip(clip.id, track, false);
+                    if !self.clip_selected(clip.id) {
+                        self.select_clip(clip.id, track, false);
+                    }
+                    self.portion = None;
+                    let clips = self
+                        .selected_clip_snapshots()
+                        .into_iter()
+                        .filter(|entry| self.audio_clip(&entry.clip))
+                        .collect();
                     self.content_clip_drag = self.midi_editor.content_active;
                     self.drag = Some(Drag {
                         clip: clip.clone(),
@@ -833,7 +965,7 @@ impl DawUi {
                         origin,
                         duplicate: false,
                         linked_boundary: false,
-                        clips: Vec::new(),
+                        clips,
                     });
                 }
                 return true;
@@ -853,6 +985,15 @@ impl DawUi {
             return;
         }
         let preview = self.visible_fades(clip, ui.ctx());
+        if self
+            .selected_clip_snapshots()
+            .iter()
+            .filter(|entry| self.audio_clip(&entry.clip))
+            .count()
+            > 1
+        {
+            ui.small("Fade values show one clip; changes apply to selected audio clips.");
+        }
         for left in [true, false] {
             ui.add(egui::Separator::default().spacing(12.0));
             rows::centered(ui, panels::ControlPanel::content_row_height(ui), |ui| {
@@ -865,6 +1006,7 @@ impl DawUi {
             let mut fades = preview;
             let edge = selected_fade(&mut fades, left);
             let mut changed = false;
+            let mut mode_changed = false;
             panel.field_row(
                 ui,
                 label_width,
@@ -892,6 +1034,7 @@ impl DawUi {
                                     .clicked()
                                 {
                                     edge.crossfade = value;
+                                    mode_changed = true;
                                     changed = true;
                                     ui.close();
                                 }
@@ -1003,10 +1146,43 @@ impl DawUi {
                     left,
                     edge.crossfade,
                 ));
-                commands.push(Edit::SetClipFades {
-                    clip_id: clip.id,
-                    fades,
-                });
+                let next = *edge;
+                let mut original = preview;
+                let original = *selected_fade(&mut original, left);
+                let targets: Vec<_> = self
+                    .selected_clip_snapshots()
+                    .into_iter()
+                    .filter(|entry| self.audio_clip(&entry.clip))
+                    .map(|entry| entry.clip)
+                    .collect();
+                let targets = if targets.is_empty() {
+                    vec![clip.clone()]
+                } else {
+                    targets
+                };
+                commands.extend(self.fade_group_edits(&targets, left, |target| {
+                    let mut old = target.fades;
+                    let mut value = *selected_fade(&mut old, left);
+                    if mode_changed {
+                        value.crossfade = next.crossfade;
+                    }
+                    let delta = i128::from(next.length_frames) - i128::from(original.length_frames);
+                    value.length_frames = (i128::from(value.length_frames) + delta).clamp(
+                        0,
+                        i128::from(self.session.project.clip_fade_limit(
+                            target.id,
+                            left,
+                            value.crossfade,
+                        )),
+                    ) as u64;
+                    value.midpoint = (value.midpoint + (next.midpoint - original.midpoint))
+                        .clamp(ClipFade::MIN_LEVEL, ClipFade::MAX_LEVEL);
+                    value.midpoint_position = (value.midpoint_position
+                        + (visual_position(next) - visual_position(original))
+                            * if value.crossfade { -1.0 } else { 1.0 })
+                    .clamp(ClipFade::MIN_POSITION, ClipFade::MAX_POSITION);
+                    value
+                }));
             }
         }
     }
