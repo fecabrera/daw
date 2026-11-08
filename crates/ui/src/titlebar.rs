@@ -6,6 +6,8 @@ use egui::{Pos2, Rect, Vec2};
 /// Native caption bounds in egui points. Updated by the desktop adapter for DPI changes.
 #[derive(Clone, Copy, Debug)]
 pub struct CaptionMetrics {
+    /// Reserved width before the application controls, in logical points.
+    pub leading_width: f32,
     pub width: f32,
     pub height: f32,
     /// Compensate for the off-screen resize frame of a maximized Windows window.
@@ -15,6 +17,7 @@ pub struct CaptionMetrics {
 impl Default for CaptionMetrics {
     fn default() -> Self {
         Self {
+            leading_width: 0.0,
             width: 138.0,
             height: toolbars::HEIGHT,
             top_inset: 0.0,
@@ -51,6 +54,19 @@ impl HeaderLayout {
     }
 }
 
+/// Enable the custom titlebar selector only for a host that supplies GTK controls.
+pub fn enable_linux_custom(ctx: &egui::Context) {
+    ctx.data_mut(|data| data.insert_temp(egui::Id::new("gtk_titlebar_host"), true));
+}
+
+pub(crate) fn linux_custom_available(ctx: &egui::Context) -> bool {
+    cfg!(target_os = "linux")
+        && ctx.data(|data| {
+            data.get_temp::<bool>(egui::Id::new("gtk_titlebar_host"))
+                .unwrap_or(false)
+        })
+}
+
 impl DawUi {
     pub fn set_caption_metrics(&mut self, metrics: CaptionMetrics) {
         self.caption_metrics = metrics;
@@ -81,12 +97,15 @@ impl DawUi {
         )));
         let response = toolbars::Toolbar::show(ui, |ui| {
             ui.set_min_height(height - 2.0 * f32::from(theme::TOOLBAR_PADDING));
-            // Reserve the caption region for the DWM-owned caption buttons.
+            // Reserve the regions owned by the host window controls.
             let width = (ui.available_width() - self.caption_metrics.width).max(0.0);
             ui.allocate_ui_with_layout(
                 Vec2::new(width, ui.min_rect().height()),
                 egui::Layout::left_to_right(egui::Align::Center),
                 |ui| {
+                    if self.caption_metrics.leading_width > 0.0 {
+                        ui.add_space(self.caption_metrics.leading_width);
+                    }
                     let menu = self.application_menu(ui);
                     controls.push(menu.rect);
                     // Bound long names so the view controls and native buttons stay visible.
@@ -136,6 +155,13 @@ impl DawUi {
             );
         });
         let bounds = response.response.rect;
+        controls.push(Rect::from_min_max(
+            bounds.min,
+            Pos2::new(
+                bounds.left() + self.caption_metrics.leading_width,
+                bounds.bottom(),
+            ),
+        ));
         let captions = std::array::from_fn(|index| {
             Rect::from_min_max(
                 Pos2::new(
@@ -163,6 +189,58 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_custom_header_requires_a_host_and_reserves_both_control_groups() {
+        let ctx = egui::Context::default();
+        crate::theme::configure(&ctx);
+        crate::fonts::configure(&ctx);
+        crate::icons::configure(&ctx);
+        let mut app = DawUi::default();
+        app.settings.titlebar = crate::settings::TitlebarStyle::Custom;
+        for enabled in [false, true] {
+            if enabled {
+                enable_linux_custom(&ctx);
+            }
+            assert_eq!(linux_custom_available(&ctx), enabled);
+            app.set_caption_metrics(CaptionMetrics {
+                leading_width: 80.0,
+                width: 130.0,
+                height: 40.0,
+                top_inset: 0.0,
+            });
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1000.0, 800.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| app.toolbar(ui),
+                );
+                output.textures_delta.clear();
+            }
+            let layout = app.header_layout(&ctx);
+            if enabled {
+                assert!(layout.bounds.is_positive());
+                assert!(layout.controls[0].left() >= layout.bounds.left() + 80.0);
+                assert!(layout.controls[1].right() <= layout.captions[0].left());
+                assert!(!layout.can_drag(Pos2::new(
+                    layout.bounds.left() + 10.0,
+                    layout.bounds.center().y
+                )));
+            } else {
+                assert!(!layout.bounds.is_positive());
+            }
+        }
+        app.settings.titlebar = crate::settings::TitlebarStyle::Native;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.toolbar(ui));
+        output.textures_delta.clear();
+        assert!(!app.header_layout(&ctx).bounds.is_positive());
+    }
 
     #[test]
     fn long_titles_keep_view_controls_outside_native_captions() {

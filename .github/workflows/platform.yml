@@ -57,6 +57,17 @@ jobs:
         id: tests
         run: cargo test --locked --workspace 2>&1 | tee work/ci-logs/tests.log
 
+      - name: Check Linux GTK window modes
+        id: gtk_window
+        if: runner.os == 'Linux'
+        env:
+          GDK_BACKEND: x11
+          GSK_RENDERER: cairo
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          dbus-run-session -- xvfb-run -a cargo run --locked -p daw-desktop -- --smoke-test 2>&1 | tee work/ci-logs/gtk-window.log
+          cargo run --locked -p daw-desktop -- --font-license > work/ci-logs/font-license.log
+
       - name: Check Intel macOS targets
         if: runner.os == 'macOS' && runner.arch == 'ARM64'
         run: |

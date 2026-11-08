@@ -14,6 +14,7 @@ def main():
         "formatting": "Formatting",
         "clippy": "Clippy",
         "tests": "Workspace tests",
+        "gtk_window": "Linux GTK window modes",
         "cli": "Headless CLI",
         "windows_package": "Windows build and package",
         "macos_package": "macOS build and package",

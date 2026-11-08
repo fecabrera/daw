@@ -1,6 +1,7 @@
 Linux Wayland window decorations
 
-The Linux desktop enables Winit 0.30.13 wayland-csd-adwaita.
+The former Linux eframe launcher enabled Winit 0.30.13 wayland-csd-adwaita.
+Its notices remain bundled conservatively after the GTK host replaced it.
 The following crate license texts are retained beside this notice:
 sctk-adwaita 0.10.1: https://crates.io/crates/sctk-adwaita/0.10.1
 ab_glyph 0.2.32: https://crates.io/crates/ab_glyph/0.2.32

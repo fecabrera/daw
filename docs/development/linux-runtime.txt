@@ -1,0 +1,12 @@
+DAW for Linux
+
+Requires GTK 4.8 or newer, desktop OpenGL 3.3, ALSA, a compatible C/C++
+runtime, and an XDG Desktop Portal service for file dialogs. System libraries
+are not bundled. Run ./daw-desktop from this directory.
+
+Settings > Appearance > Titlebar selects Custom or Native. Custom places real
+GTK window buttons alongside the app controls. Native uses a regular titlebar.
+Fresh preferences use Custom. Existing saved preferences are carried over.
+
+Keep LICENSE.txt, licenses, SOURCE-ACCESS.txt, source-manifest.json and
+DAW-source.zip beside the executable.

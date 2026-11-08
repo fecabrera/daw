@@ -4,13 +4,19 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+# Compatibility with the former GTK experiment command; GTK is always used on Linux.
+[features]
+gtk-titlebar = []
+
 [dependencies]
 daw-ui.workspace = true
-eframe.workspace = true
-wgpu = { version = "30", default-features = false, features = ["std", "metal", "dx12", "vulkan", "gles", "wgsl"] }
 egui.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+eframe.workspace = true
+wgpu = { version = "30", default-features = false, features = ["std", "metal", "dx12", "vulkan", "gles", "wgsl"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.5"
@@ -24,7 +30,9 @@ raw-window-handle = "0.6.2"
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-# Enable Winit's Adwaita fallback when the compositor does not draw decorations.
-winit = { version = "0.30.13", default-features = false, features = ["wayland-csd-adwaita"] }
-raw-window-handle = "0.6.2"
-x11-dl = "2.21"
+gtk4 = { version = "0.10", features = ["v4_8"] }
+egui_glow = { version = "0.36.2", default-features = false }
+libloading.workspace = true
+ron = "0.12.2"
+serde.workspace = true
+serde_json.workspace = true

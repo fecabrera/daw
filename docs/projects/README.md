@@ -73,7 +73,7 @@ On Windows, **Appearance > Titlebar > Custom** combines the menu, project title,
 
 Changes apply on this computer and are retained across restarts. Close retains your choices. These preferences are separate from Project Settings.
 
-On Linux, the desktop supplies window decorations where supported. Wayland uses an Adwaita-style titlebar when the desktop does not supply one. This titlebar does not follow all GTK theme customizations.
+On Linux, **Appearance > Titlebar > Custom** combines the menu, project title and view buttons with actual GTK window buttons. **Native** uses the regular titlebar above the app toolbar. New preferences select Custom; saved choices are retained. Both modes work with the standard launcher. See [Linux setup](../development/linux.md) for prerequisites and remaining platform limits.
 
 ## Audio devices
 

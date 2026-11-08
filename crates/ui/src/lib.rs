@@ -133,7 +133,7 @@ mod selection_focus;
 mod selection_shortcuts;
 pub mod settings;
 pub mod theme;
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
 pub mod titlebar;
 pub mod toolbars;
 mod unit_selection;
@@ -960,9 +960,9 @@ pub struct DawUi {
     allow_close: bool,
     native_menu: bool,
     window_title: String,
-    #[cfg(any(target_os = "windows", test))]
+    #[cfg(any(target_os = "windows", target_os = "linux", test))]
     caption_metrics: titlebar::CaptionMetrics,
-    #[cfg(any(target_os = "windows", test))]
+    #[cfg(any(target_os = "windows", target_os = "linux", test))]
     header_layout: titlebar::HeaderLayout,
 }
 impl Default for DawUi {
@@ -1105,9 +1105,9 @@ impl Default for DawUi {
             allow_close: false,
             native_menu: false,
             window_title: String::new(),
-            #[cfg(any(target_os = "windows", test))]
+            #[cfg(any(target_os = "windows", target_os = "linux", test))]
             caption_metrics: titlebar::CaptionMetrics::default(),
-            #[cfg(any(target_os = "windows", test))]
+            #[cfg(any(target_os = "windows", target_os = "linux", test))]
             header_layout: titlebar::HeaderLayout::default(),
         }
     }
@@ -3062,9 +3062,10 @@ impl DawUi {
             cfg!(target_os = "macos") && self.settings.titlebar == settings::TitlebarStyle::Custom;
         let inline_views = custom_titlebar || cfg!(any(target_os = "windows", target_os = "linux"));
         #[cfg(any(target_os = "windows", target_os = "linux"))]
-        let windows_custom = cfg!(target_os = "windows")
+        let windows_custom = (cfg!(target_os = "windows")
+            || titlebar::linux_custom_available(ui.ctx()))
             && self.settings.titlebar == settings::TitlebarStyle::Custom;
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
             self.header_layout = titlebar::HeaderLayout::default();
             if windows_custom {

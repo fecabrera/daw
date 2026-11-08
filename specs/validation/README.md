@@ -4,6 +4,129 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+
+
+
+## Default GTK Linux desktop — 2026-11-08
+
+The normal Linux `daw-desktop` binary now uses GTK GLArea/OpenGL with Custom
+and Native titlebar modes. New Linux preferences default to Custom; saved modes
+are retained. macOS/Windows keep eframe and their existing adapters. GTK and its
+Rust bindings are Linux-only dependencies. The former trial command remains a
+compatibility alias. The unused eframe X11 file-drag adapter was removed.
+
+Application settings and window geometry now use `daw/settings.json` in the XDG
+configuration directory. Loading imports established eframe preferences first,
+including audio device/quality/theme/titlebar choices and compatible geometry;
+the former trial store is a fallback. Both old files remain unchanged. Writes
+are atomic, throttled to once per second, and forced on accepted close. Fullscreen
+commands and persisted fullscreen/maximized state are handled by GTK.
+
+Linux setup/CI installs GTK headers. CI adds the normal binary's Custom/Native
+smoke test under Xvfb and a display-free font-license check, with command logs and
+a GTK result row in the job summary. Packaging builds the same normal binary and
+includes `LINUX-REQUIREMENTS.txt`. GTK/OpenGL remain system runtime dependencies.
+Existing dependency resolutions were retained outside the required GTK additions
+and removal of the old Winit decoration fallback.
+
+Completed checks:
+
+- `cargo check -p daw-desktop --offline`, `cargo build -p daw-desktop --locked --offline`
+  and the normal binary build with `--release` passed.
+- `cargo test -p daw-desktop --locked --offline` and its `--release` run passed
+  (three tests in each profile). They cover preference/device/mode migration,
+  old-store retention, geometry persistence, fresh/trial defaults and texture
+  patch/free behavior.
+- `cargo clippy -p daw-desktop --all-targets --locked --offline -- -D warnings` passed.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`,
+  `cargo test --workspace --locked --offline` and
+  `cargo test --workspace --release --locked --offline` passed for the default
+  GTK setup. Logs are under ignored `work/gtk-titlebar/default-*.log`.
+- Both `target/debug/daw-desktop --smoke-test` and
+  `target/release/daw-desktop --smoke-test` passed on GNOME Wayland, exercising
+  both modes through the normal binaries without reading or saving preferences.
+- With DISPLAY and WAYLAND_DISPLAY unset, `--font-license` matched the bundled
+  license exactly. The CLI dependency graph contains no GTK/egui/eframe/wgpu.
+- Packaged-notice tests passed (15 tests, one skipped); the desktop archive
+  fixture test was skipped because `zip` is unavailable. CI summary output,
+  shell syntax, documentation link targets and notice hashes were checked.
+
+A real archive was not built: corresponding-source packaging requires a clean
+committed tree, and the user did not request a commit. The new Xvfb CI step has
+not run locally because Xvfb is unavailable. Native X11/macOS/Windows, device
+playback, fractional scaling and interactive input/resize checks remain open.
+GTK egui-content accessibility, full IM composition, image clipboard and extra
+viewport limits remain documented.
+
+## Regular Native titlebar in the GTK experiment — 2026-11-08
+
+Native mode now removes the custom titlebar override, so GTK or the window
+manager supplies the regular titlebar. The app menu and view controls stay in
+the toolbar below it. This supersedes the explicit GTK HeaderBar used by the
+initial experiment. Custom mode retains the existing shared header and actual
+GTK buttons.
+
+Switching hides and unrealizes the native surface before changing decorations.
+The session, workers, maximized state and egui state remain live. CPU copies of
+managed textures retain full images, partial patches and sampler options across
+GL painter recreation; freed images are removed. The smoke test now verifies
+surface recreation and writes separate Native and Custom screenshots.
+
+Checks:
+
+- `cargo test -p daw-desktop --features gtk-titlebar --example gtk_titlebar --locked --offline` passed (texture patch/free regression test).
+- The same example test with `--release` passed in the release profile.
+- `cargo clippy -p daw-desktop --features gtk-titlebar --example gtk_titlebar --locked --offline -- -D warnings` passed.
+- `cargo build -p daw-desktop --features gtk-titlebar --example gtk_titlebar --locked --offline` passed.
+- `target/debug/examples/gtk_titlebar --smoke-test` passed on GNOME Wayland,
+  without GTK warnings. It checked Custom → Native → Custom, regular-titlebar
+  presence and GL surface recreation without reading or saving preferences.
+  Visual inspection of `work/gtk-titlebar/native.png` and `custom.png` confirmed
+  the regular Native titlebar, preserved fonts/icons, and the Custom layout.
+
+X11, fractional scaling, maximized switching and interactive button/drag/resize
+checks remain open. The earlier full debug/release workspace checks pass; this
+follow-up changes only the optional GTK host and its documentation.
+
+## GTK titlebar host experiment — 2026-11-08
+
+Added an optional Linux GTK launcher (`gtk_titlebar` example, `gtk-titlebar`
+feature). The shared DAW interface runs in GTK GLArea with actual GTK window
+controls over its custom header. Native mode initially used a separate GTK header (superseded by the regular-titlebar follow-up). The
+standard launcher keeps eframe and does not expose the Linux custom selector.
+The experiment has separate preferences and is not the packaged default.
+
+Completed checks:
+
+- `cargo build -p daw-desktop --features gtk-titlebar --example gtk_titlebar --locked --offline` passed.
+- `cargo clippy -p daw-desktop --features gtk-titlebar --example gtk_titlebar --locked --offline -- -D warnings` passed.
+- `cargo check -p daw-desktop --locked --offline` passed for the standard launcher.
+- `cargo test -p daw-ui titlebar::tests --locked --offline` passed (three tests).
+  Coverage includes host opt-in, both control-group reservations, native-mode
+  restoration, long titles and drag exclusion regions. An initial new test
+  omitted font configuration; adding the shared setup resolved its failure.
+- `target/debug/examples/gtk_titlebar --smoke-test` passed on local GNOME Wayland
+  outside the sandbox. It rendered the DAW, switched Custom → Native → Custom,
+  checked control visibility, saved an ignored screenshot and closed without
+  reading/writing application preferences. The final run produced no GTK warnings.
+  Visual inspection confirmed a single custom header row with actual GTK buttons.
+  A later alignment check confirmed that empty GTK button groups reserve no CSS
+  padding: menu/title/view items start at the Windows custom-header left margin.
+  The targeted Clippy check, build and window smoke test passed after this change.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` passed.
+- `cargo test --workspace --locked --offline` passed in the debug/test profile.
+- `cargo test --workspace --locked --offline --release` passed. Its output is
+  in the ignored `work/gtk-titlebar/workspace-test-release.log`.
+- `cargo fmt --all --check`, `git diff --check`, documentation link-target checks
+  and runtime-notice hash checks passed.
+- Packaging notice tests passed (15 tests, one skipped). New Rust wrapper and
+  supporting dependency notices are retained through the existing package path.
+
+Native button clicks, resize/drag gestures, fractional scaling, keyboard/IME,
+clipboard, file drops, unsaved-close dialogs and audio playback remain manual
+checks. X11 and other operating systems were not tested. Full IM composition,
+egui accessibility, image clipboard and extra viewports remain experiment limits.
+
 ## Timeline subtrack mix alignment — 2026-11-08
 
 Child headers now explicitly use the same content spacing as normal track

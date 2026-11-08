@@ -1,7 +1,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 #[cfg(target_os = "linux")]
-mod linux_file_drag;
+mod gtk_host;
 #[cfg(target_os = "macos")]
 mod macos_file_drag;
 #[cfg(target_os = "macos")]
@@ -13,6 +13,7 @@ mod windows_file_drag;
 #[cfg(target_os = "windows")]
 mod windows_titlebar;
 
+#[cfg(not(target_os = "linux"))]
 struct App {
     #[cfg(target_os = "windows")]
     titlebar: Option<windows_titlebar::Titlebar>,
@@ -25,9 +26,8 @@ struct App {
     file_drag_pointer: Option<macos_file_drag::FileDragPointer>,
     #[cfg(target_os = "windows")]
     file_drag_pointer: Option<windows_file_drag::FileDragPointer>,
-    #[cfg(target_os = "linux")]
-    file_drag_pointer: Option<linux_file_drag::FileDragPointer>,
 }
+#[cfg(not(target_os = "linux"))]
 impl eframe::App for App {
     #[cfg(target_os = "windows")]
     fn clear_color(&self, _: &egui::Visuals) -> [f32; 4] {
@@ -71,6 +71,12 @@ impl eframe::App for App {
         self.menu.update_enabled(&self.ui, ui.ctx());
     }
 }
+#[cfg(target_os = "linux")]
+fn main() -> gtk4::glib::ExitCode {
+    gtk_host::run()
+}
+
+#[cfg(not(target_os = "linux"))]
 fn main() -> eframe::Result {
     daw_ui::configure_preparation_cache(daw_ui::preparation_cache_directory());
     if std::env::args_os()
@@ -153,8 +159,6 @@ fn main() -> eframe::Result {
                 file_drag_pointer: macos_file_drag::FileDragPointer::new(cc),
                 #[cfg(target_os = "windows")]
                 file_drag_pointer: windows_file_drag::FileDragPointer::new(cc),
-                #[cfg(target_os = "linux")]
-                file_drag_pointer: linux_file_drag::FileDragPointer::new(cc),
             }))
         }),
     )

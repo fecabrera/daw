@@ -21,6 +21,8 @@ class DesktopPackagingTests(unittest.TestCase):
                     with self.subTest(platform=platform, profile=profile, override=override), tempfile.TemporaryDirectory() as tmp:
                         root = Path(tmp)
                         (root / 'tools').mkdir()
+                        (root / 'docs/development').mkdir(parents=True)
+                        shutil.copy(ROOT / 'docs/development/linux-runtime.txt', root / 'docs/development/linux-runtime.txt')
                         script = ROOT / 'tools' / f'package_{platform}.sh'
                         shutil.copy(script, root / 'tools' / script.name)
                         shutil.copy(ROOT / 'tools/package_sources.py', root / 'tools/package_sources.py')
@@ -77,6 +79,7 @@ p.mkdir(parents=True, exist_ok=True)
                                     self.assertEqual(hashlib.sha256(payload).hexdigest(), entry['sha256'])
                         else:
                             with zipfile.ZipFile(default / 'DAW-linux-x64.zip') as archive:
+                                self.assertIn(b'GTK 4.8', archive.read('DAW/LINUX-REQUIREMENTS.txt'))
                                 data = archive.read('DAW/daw-desktop')
                                 manifest=json.loads(archive.read('DAW/source-manifest.json'))
                                 self.assertEqual(manifest['binary_sha256'],hashlib.sha256(data).hexdigest())

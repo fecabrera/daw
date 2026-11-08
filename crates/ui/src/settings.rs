@@ -124,13 +124,13 @@ impl ColorTheme {
     }
 }
 
-/// Window presentation on macOS and Windows. Linux retains its native titlebar.
+/// Window presentation; Linux custom controls require a GTK host.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TitlebarStyle {
-    #[cfg_attr(target_os = "macos", default)]
+    #[cfg_attr(any(target_os = "macos", target_os = "linux"), default)]
     Custom,
-    #[cfg_attr(not(target_os = "macos"), default)]
+    #[cfg_attr(not(any(target_os = "macos", target_os = "linux")), default)]
     Native,
 }
 
@@ -336,7 +336,12 @@ pub fn show(
                 label_text("Accent color") + ui.spacing().item_spacing.x + 14.0,
             );
             ui.strong("Appearance");
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            {
+            let show_titlebar = cfg!(any(target_os = "macos", target_os = "windows"));
+            #[cfg(target_os = "linux")]
+            let show_titlebar = show_titlebar || crate::titlebar::linux_custom_available(ctx);
+            if show_titlebar {
             crate::rows::field(
                 ui,
                 label_width,
@@ -354,6 +359,8 @@ pub fn show(
                         });
                 },
             );
+            }
+            }
             crate::rows::field(
                 ui,
                 label_width,

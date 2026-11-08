@@ -6,6 +6,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 ## Architecture and baseline
 
+- [Linux GTK window host](architecture/linux-gtk-titlebar.md): default Linux launcher, actual window controls, preferences migration and validation.
+
 - [MVP scope and architecture](architecture/mvp-scope.md).
 - [Basic production workflows roadmap](architecture/production-workflows-roadmap.md): proposed core stages for recovery, fades, MIDI, recording, automation and sidechaining, followed by markers, MIDI tools, rendering, tempo maps and plugin hosting.
 - [Iteration 1 implementation specification](architecture/iteration-1.md).
