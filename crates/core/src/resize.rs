@@ -201,6 +201,7 @@ mod tests {
             (300, 100, 400),
         ] {
             project.tracks[0].clips.push(Clip {
+                channels: Default::default(),
                 fades: Default::default(),
                 muted: false,
                 id: Id::new_v4(),

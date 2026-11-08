@@ -232,6 +232,7 @@ mod tests {
 
     fn clip(offset: u64, length: u64, repeat: Option<ClipLoop>) -> Clip {
         Clip {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             stretch: None,

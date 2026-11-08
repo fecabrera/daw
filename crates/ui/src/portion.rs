@@ -312,6 +312,7 @@ impl DawUi {
             let raw = self.drag_delta(
                 &Drag {
                     clip: Clip {
+                        channels: Default::default(),
                         fades: Default::default(),
                         muted: false,
                         id: Id::nil(),

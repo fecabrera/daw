@@ -118,6 +118,91 @@ impl super::DawUi {
             .show(ui, |ui| self.clip_settings_body(ui, panel, bounds, enabled));
     }
 
+    fn clip_channel_settings(
+        &self,
+        ui: &mut Ui,
+        panel: &panels::ControlPanel,
+        label_width: f32,
+        clips: &[Clip],
+        commands: &mut Vec<Edit>,
+    ) {
+        let audio: Vec<_> = clips
+            .iter()
+            .filter(|clip| {
+                self.session
+                    .project
+                    .assets
+                    .iter()
+                    .any(|asset| asset.id == clip.asset_id && asset.is_audio())
+            })
+            .collect();
+        if audio.is_empty() {
+            return;
+        }
+        panel.field_row(ui, label_width, |ui| { ui.small("Channels"); }, |ui| {
+            ui.horizontal(|ui| {
+                for (left, label) in [(true, "L"), (false, "R")] {
+                    let enabled = |clip: &&Clip| if left { clip.channels.left } else { clip.channels.right };
+                    let selected = audio.iter().all(enabled);
+                    let mixed = audio.iter().any(enabled) && !selected;
+                    let response = ui.scope(|ui| {
+                        ui.spacing_mut().button_padding = Vec2::ZERO;
+                        ui.spacing_mut().interact_size = Vec2::splat(18.0);
+                        ui.add_sized(Vec2::splat(18.0), egui::Button::new(egui::RichText::new(label).size(10.0)).selected(selected))
+                    }).inner
+                        .on_hover_text(if mixed { "Mixed selection. Click to enable this channel on selected audio clips." } else if left { "Enable left playback channel" } else { "Enable right playback channel" });
+                    if response.clicked() {
+                        for clip in &audio {
+                            let mut channels = clip.channels;
+                            if left { channels.left = !selected; } else { channels.right = !selected; }
+                            if channels != clip.channels { commands.push(Edit::SetClipChannels { clip_id: clip.id, channels }); }
+                        }
+                    }
+                }
+                let mut swapped = audio.iter().all(|clip| clip.channels.swapped);
+                let mixed = audio.iter().any(|clip| clip.channels.swapped) && !swapped;
+                if ui.checkbox(&mut swapped, egui::RichText::new("Invert").small()).on_hover_text(if mixed { "Mixed selection. Click to swap left and right on all selected audio clips." } else { "Swap left and right audio signals before channel enable controls" }).changed() {
+                    for clip in &audio {
+                        let mut channels = clip.channels;
+                        channels.swapped = swapped;
+                        if channels != clip.channels { commands.push(Edit::SetClipChannels { clip_id: clip.id, channels }); }
+                    }
+                }
+            });
+        });
+        panel.field_row(
+            ui,
+            label_width,
+            |ui| {
+                ui.small("Polarity");
+            },
+            |ui| {
+                let mut selected = audio.iter().all(|clip| clip.channels.inverted);
+                let mixed = audio.iter().any(|clip| clip.channels.inverted) && !selected;
+                if ui
+                    .checkbox(&mut selected, egui::RichText::new("Invert").small())
+                    .on_hover_text(if mixed {
+                        "Mixed selection. Click to invert all selected audio clips."
+                    } else {
+                        "Flip the sign of both playback channels"
+                    })
+                    .changed()
+                {
+                    for clip in audio {
+                        let mut channels = clip.channels;
+                        channels.inverted = selected;
+                        if channels != clip.channels {
+                            commands.push(Edit::SetClipChannels {
+                                clip_id: clip.id,
+                                channels,
+                            });
+                        }
+                    }
+                }
+            },
+        );
+    }
+
     /// Timeline and Editor share fields, selection rules, and release-only audio preparation.
     pub(super) fn clip_settings_body(
         &mut self,
@@ -408,6 +493,7 @@ impl super::DawUi {
                         },
                     )
                     .inner).inner.on_disabled_hover_text("Wait for project audio before transposing audio clips.");
+                    self.clip_channel_settings(ui, panel, label_width, &clips, &mut commands);
                     if let Some(audio_clip) = clips.iter().find(|candidate| self.session.project.assets.iter().any(|asset| asset.id == candidate.asset_id && asset.is_audio())) {
                         self.clip_fade_settings(ui, audio_clip, panel, label_width, &mut commands);
                     }

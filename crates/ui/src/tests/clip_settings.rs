@@ -1387,3 +1387,92 @@ fn right_settings_rail_and_panel_exclude_timeline_input_and_file_drops() {
     assert!(!app.clip_settings_visible);
     assert_eq!(app.session.project, before);
 }
+
+#[test]
+fn clip_channel_and_polarity_controls_follow_transpose_and_edit_groups_with_undo() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    let first = app.session.project.tracks[0].clips[0].clone();
+    let mut second = first.clone();
+    second.id = Id::new_v4();
+    second.start_frame = first.end();
+    app.session.project.tracks[0].clips.push(second.clone());
+    app.select_clip(first.id, track, false);
+    app.select_clip(second.id, track, true);
+    app.clip_settings_visible = true;
+    frame(&mut app, &ctx, vec![]);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let bounds = app.effects_bounds.clip_settings;
+    let point = |name: &str| {
+        shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text)
+                    if text.galley.text() == name && bounds.contains(text.pos) =>
+                {
+                    Some(text.pos + text.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("Missing clip control: {name}"))
+    };
+    assert!(point("Channels").y > point("Transpose").y);
+    assert!(point("Polarity").y > point("Channels").y);
+    assert!(point("Fade in").y > point("Polarity").y);
+    let before = app.session.project.clone();
+    click(&mut app, &ctx, point("L"));
+    for clip in &app.session.project.tracks[0].clips {
+        assert!(!clip.channels.left);
+        assert!(clip.channels.right);
+        assert!(!clip.channels.inverted);
+    }
+    assert_eq!(app.selected_clips.len(), 2);
+    click(&mut app, &ctx, point("Invert"));
+    assert!(
+        app.session.project.tracks[0]
+            .clips
+            .iter()
+            .all(|clip| clip.channels.swapped)
+    );
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let polarity = shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text)
+                if text.galley.text() == "Polarity" && bounds.contains(text.pos) =>
+            {
+                Some(text.pos + text.galley.size() * 0.5)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let polarity_invert = shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text)
+                if text.galley.text() == "Invert"
+                    && bounds.contains(text.pos)
+                    && (text.pos.y + text.galley.size().y * 0.5 - polarity.y).abs() < 4.0 =>
+            {
+                Some(text.pos + text.galley.size() * 0.5)
+            }
+            _ => None,
+        })
+        .unwrap();
+    click(&mut app, &ctx, polarity_invert);
+    for clip in &app.session.project.tracks[0].clips {
+        assert!(!clip.channels.left);
+        assert!(clip.channels.swapped);
+        assert!(clip.channels.inverted);
+    }
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert!(
+        app.session.project.tracks[0]
+            .clips
+            .iter()
+            .all(|clip| !clip.channels.inverted && !clip.channels.left)
+    );
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project, before);
+}

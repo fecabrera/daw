@@ -102,7 +102,7 @@ Use the initial JSON structure in MVP.md. The following fields form the MVP data
 | Source | kind, path, path_kind |
 | Source metadata | sample_rate_hz, channels, sample_format, bits_per_sample |
 | Track | id, name, gain_db, pan, muted, soloed, clips |
-| Clip | id, asset_id, name, start_frame, source_offset_frame, length_frames, optional repeat |
+| Clip | id, asset_id, name, start_frame, source_offset_frame, length_frames, optional repeat, optional channels (left/right enabled and inverted polarity flags; see [Clip settings](../editing/clip-settings.md#audio-channel-and-polarity-controls)) |
 | Clip repeat | length_frames, phase_frame |
 | Transport | playhead_frame, loop |
 | Loop | enabled, start_frame, end_frame |

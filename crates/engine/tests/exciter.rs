@@ -64,6 +64,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         decoded_frame_count: 8192,
     });
     project.tracks[0].clips.push(Clip {
+        channels: Default::default(),
         fades: Default::default(),
         muted: false,
         id: Id::new_v4(),

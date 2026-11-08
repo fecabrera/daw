@@ -121,6 +121,7 @@ mod tests {
             .unwrap()
             .clips
             .push(crate::Clip {
+                channels: Default::default(),
                 fades: Default::default(),
                 muted: false,
                 id: crate::Id::new_v4(),

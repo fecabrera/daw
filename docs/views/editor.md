@@ -75,7 +75,7 @@ The lower waveform editor supports the same clip gestures as the overview. Drag 
 
 Audio clips also share the [fade and crossfade handles](timeline.md#fades-and-crossfades). The midpoint circle moves horizontally and vertically to change the S-curve shape; the area above the curve is greyed out.
 
-The **Clip options** section shows the same Name, Source, Gain, Transpose and audio fade controls as [Timeline clip settings](timeline.md#clip-settings). Select a clip in the overview strip to edit it; with no selection, the panel shows “Select a clip”. Changes appear in both views and support Undo/Redo. Switching tracks or views discards unconfirmed text and audio transpose previews.
+The **Clip options** section shows the same Name, Source, Gain, Transpose, audio channel/polarity and audio fade controls as [Timeline clip settings](timeline.md#clip-settings). Select a clip in the overview strip to edit it; with no selection, the panel shows “Select a clip”. Changes appear in both views and support Undo/Redo. Switching tracks or views discards unconfirmed text and audio transpose previews.
 
 ## Add sound
 

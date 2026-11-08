@@ -308,6 +308,7 @@ impl AudioTrack {
                     .copied()
                     .unwrap_or_default()
             };
+            let extra = clip.channels.apply(extra);
             let progress = (frame - t.start) as f32 / t.length.saturating_sub(1).max(1) as f32;
             let weight = t.fade.gain(if t.left { progress } else { 1.0 - progress });
             let opposing = t
@@ -364,7 +365,9 @@ impl AudioTrack {
                 .unwrap_or_default()
         };
         (
-            value.map(|v| v * fade * daw_core::linear_gain(clip.gain_db)),
+            clip.channels
+                .apply(value)
+                .map(|v| v * fade * daw_core::linear_gain(clip.gain_db)),
             Some(audio.metadata.channels == 1),
         )
     }

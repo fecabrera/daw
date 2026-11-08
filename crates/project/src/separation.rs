@@ -232,6 +232,7 @@ impl Session {
             let stem = track.clips.iter_mut().find(|c| c.id == id).unwrap();
             stem.name = name.to_owned();
             stem.gain_db = clip.gain_db;
+            stem.channels = clip.channels;
             stem.color = clip.color;
             tracks.push(track.id);
             let asset = next

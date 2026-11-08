@@ -93,6 +93,7 @@ impl RenderPlan {
                 let Some(source) = audio.samples.get(source_frame as usize) else {
                     continue;
                 };
+                let source = c.channels.apply(*source);
                 let fade = sample_fade(c, local, source_frame, self.project.sample_rate_hz);
                 let coefficients = pan_coefficients(t.pan, audio.metadata.channels == 1);
                 let clip_gain = linear_gain(c.gain_db);
@@ -1635,6 +1636,150 @@ mod tests {
         }
     }
 
+    #[test]
+    fn clip_channels_and_polarity_match_direct_scheduled_and_saved_audio() {
+        for mono in [false, true] {
+            for left in [false, true] {
+                for right in [false, true] {
+                    for inverted in [false, true] {
+                        let mut plan = plan();
+                        if mono {
+                            plan.project.assets[0].source_metadata.channels = 1;
+                            let audio = plan.audio.values_mut().next().unwrap();
+                            audio.metadata.channels = 1;
+                            audio.samples = vec![[0.25; 2]; 2000].into();
+                        }
+                        let baseline = plan.sample_at(1000);
+                        let id = plan.project.tracks[0].clips[0].id;
+                        let channels = daw_core::ClipChannels {
+                            left,
+                            right,
+                            inverted,
+                            swapped: false,
+                        };
+                        plan.project
+                            .edit(daw_core::Edit::SetClipChannels {
+                                clip_id: id,
+                                channels,
+                            })
+                            .unwrap();
+                        let expected = channels.apply(baseline);
+                        assert_eq!(plan.sample_at(1000), expected);
+                        let mut runtime = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
+                        let scheduled =
+                            runtime.sample(&plan.project.tracks[0].clips, 1000, false).0;
+                        assert_eq!(
+                            scheduled,
+                            channels.apply([0.25, if mono { 0.25 } else { -0.25 }])
+                        );
+                        let json = serde_json::to_string(&plan.project).unwrap();
+                        assert_eq!(
+                            serde_json::from_str::<Project>(&json).unwrap(),
+                            plan.project
+                        );
+                        let mut legacy = serde_json::to_value(&plan.project).unwrap();
+                        legacy["tracks"][0]["clips"][0]
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("channels");
+                        let legacy: Project = serde_json::from_value(legacy).unwrap();
+                        assert!(legacy.tracks[0].clips[0].channels.is_default());
+                    }
+                }
+            }
+        }
+        let mut project = Project::default();
+        let track = project.add_midi_track().unwrap();
+        project.add_midi_pattern(track, 0).unwrap();
+        let before = project.clone();
+        let id = project.tracks[0].clips[0].id;
+        assert!(
+            project
+                .edit(daw_core::Edit::SetClipChannels {
+                    clip_id: id,
+                    channels: daw_core::ClipChannels {
+                        inverted: true,
+                        swapped: false,
+                        ..Default::default()
+                    }
+                })
+                .is_err()
+        );
+        assert_eq!(project, before);
+    }
+
+    #[test]
+    fn crossfade_weights_each_clips_channel_mask_and_polarity_separately() {
+        for owner_left in [false, true] {
+            let mut plan = plan();
+            let mut first = plan.project.tracks[0].clips[0].clone();
+            first.length_frames = 800;
+            first.source_offset_frame = 200;
+            first.channels = daw_core::ClipChannels {
+                left: true,
+                right: false,
+                inverted: true,
+                swapped: true,
+            };
+            let mut second = first.clone();
+            second.id = Id::new_v4();
+            second.start_frame = 800;
+            second.source_offset_frame = 1000;
+            second.channels = daw_core::ClipChannels {
+                left: false,
+                right: true,
+                inverted: false,
+                swapped: false,
+            };
+            let fade = daw_core::ClipFade {
+                length_frames: 200,
+                crossfade: true,
+                ..Default::default()
+            };
+            if owner_left {
+                second.fades.fade_in = fade;
+            } else {
+                first.fades.fade_out = fade;
+            }
+            plan.project.tracks[0].clips = vec![first, second];
+            plan.project.validate().unwrap();
+            let mut runtime = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
+            let start = if owner_left { 600 } else { 800 };
+            for frame in start..start + 200 {
+                let progress = (frame - start) as f32 / 199.0;
+                let g = if owner_left { progress } else { 1.0 - progress };
+                let (a, b) = if owner_left {
+                    (fade.opposing_gain(g), fade.gain(g))
+                } else {
+                    (fade.gain(g), fade.opposing_gain(g))
+                };
+                let expected = [0.25 * a, -0.25 * b];
+                assert_eq!(
+                    runtime
+                        .sample(&plan.project.tracks[0].clips, frame, false)
+                        .0,
+                    expected
+                );
+                assert_eq!(plan.sample_at(frame), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn swapped_channels_match_direct_and_scheduled_audio() {
+        let mut plan = plan();
+        plan.project.tracks[0].clips[0].channels.swapped = true;
+        assert_eq!(plan.sample_at(1000), [-0.25, 0.25]);
+        let mut runtime = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
+        assert_eq!(
+            runtime.sample(&plan.project.tracks[0].clips, 1000, false).0,
+            [-0.25, 0.25]
+        );
+        plan.project.tracks[0].clips[0].channels.left = false;
+        plan.project.tracks[0].clips[0].channels.inverted = true;
+        assert_eq!(plan.sample_at(1000), [0.0, -0.25]);
+    }
+
     fn plan() -> RenderPlan {
         use daw_core::{Asset, Clip, Source, SourceMetadata};
         use std::sync::Arc;
@@ -1662,6 +1807,7 @@ mod tests {
             decoded_frame_count: 2000,
         });
         project.tracks[0].clips.push(Clip {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             stretch: None,

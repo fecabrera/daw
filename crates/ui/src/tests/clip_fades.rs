@@ -157,7 +157,7 @@ fn clip_settings_shape_edits_the_saved_envelope_and_painting_is_read_only() {
     let before = app.session.project.clone();
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     assert_eq!(app.session.project, before);
-    for (before, after) in [("Transpose", "Fade in"), ("Position", "Fade out")] {
+    for (before, after) in [("Polarity", "Fade in"), ("Position", "Fade out")] {
         let text_rect = |name: &str| {
             shapes
                 .iter()

@@ -61,9 +61,42 @@ Undo/redo retains complete prepared snapshots. Open, Save As, rate/engine change
 
 Reject an empty or control-character name, a non-finite gain or a gain outside silence to +60 dB, and a transpose outside −48..=48. A rejected edit leaves the project unchanged.
 
+## Audio channel and polarity controls
+
+Place Channels and Polarity field rows after Transpose and before the fade-section
+divider in the shared Timeline/Editor body. Channels uses compact 18-point L and R
+square toggles with 10-point text followed by an Invert checkbox. Polarity has a
+separate Invert checkbox. Both checkbox labels use Small text. There is no polarity
+selector. Use Small labels and the existing field label width. Show these controls
+when the selection includes audio; skip MIDI and beat clips. Selected means all
+audio targets have the flag enabled; a mixed flag is explained by the tooltip.
+A click sets that flag to the opposite of the all-enabled state on every audio
+target, preserving other flags. Commit through one Edit::Batch for one Undo step.
+Keep existing disabled UI, dialog and text/gesture guards.
+
+Persist ClipChannels on Clip with left/right enabled, channel swapping disabled
+and polarity inversion disabled as
+legacy defaults. Omit the default object on serialization. SetClipChannels uses
+Project::edit validation; non-default settings on MIDI/beat assets are rejected
+atomically. Keep settings through copies, retained ranges, splits, loops,
+stretch/rate preparation and generated replacement stems. Original PCM and
+prepared audio cache identity are unchanged.
+
+Channel Invert sets the saved swapped flag. Swap the two audio signals before
+applying L/R output masks and polarity inversion. For mono the duplicated
+signals are identical, so swapping has no audible effect. Missing swapped flags
+in existing settings default to false.
+
+Apply channel swapping, masks and sign inversion separately to each audio contribution
+before track effects, sends and pan. Mono decoded PCM is duplicated as usual;
+L/R mask those two output channels. Crossfade owners and neighbors retain their
+own masks/polarity before transition summing. Direct rendering, scheduled live
+playback, seeking and export use the same ClipChannels gain mapping, with no
+callback allocation, I/O or audio preparation. Source waveforms remain unchanged.
+
 ## Audio fade controls
 
-Single audio selections also show the shared [fade and crossfade controls](fades.md). They use the same saved envelope and curve as clip handles; multiple selections retain their existing controls.
+Audio selections also show the shared [fade and crossfade controls](fades.md), including group editing. They use the same saved envelope and curve as clip handles.
 
 ## Editor Escape selection
 

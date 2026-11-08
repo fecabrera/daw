@@ -73,6 +73,7 @@ mod tests {
 
     fn clip() -> Clip {
         Clip {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             id: Id::new_v4(),

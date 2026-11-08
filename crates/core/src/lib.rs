@@ -1,3 +1,5 @@
+mod clip_channels;
+pub use clip_channels::ClipChannels;
 mod fades;
 pub use fades::{ClipFade, ClipFades};
 mod time_signature;
@@ -314,6 +316,8 @@ pub struct Track {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
+    #[serde(default, skip_serializing_if = "ClipChannels::is_default")]
+    pub channels: ClipChannels,
     #[serde(default, skip_serializing_if = "ClipFades::is_default")]
     pub fades: ClipFades,
     /// Disabled clips retain their content but do not generate audio or note events.
@@ -679,6 +683,9 @@ impl Project {
     }
     fn validate_clip_asset(&self, c: &Clip, a: &Asset) -> Result<()> {
         let invalid = |s: &str| Error(s.into());
+        if !a.is_audio() && !c.channels.is_default() {
+            return Err(invalid("Channel settings require an audio clip"));
+        }
         if !c.fades.valid() || (!a.is_audio() && !c.fades.is_default()) {
             return Err(invalid("Invalid audio clip fades"));
         }
@@ -1033,6 +1040,9 @@ impl Project {
             Edit::SetClipMuted { clip_id, muted } => {
                 self.clip_mut(clip_id)?.muted = muted;
             }
+            Edit::SetClipChannels { clip_id, channels } => {
+                self.clip_mut(clip_id)?.channels = channels;
+            }
             Edit::SetClipGain { clip_id, gain_db } => {
                 self.clip_mut(clip_id)?.gain_db = gain_db;
             }
@@ -1300,6 +1310,10 @@ pub enum Edit {
         clip_id: Id,
         muted: bool,
     },
+    SetClipChannels {
+        clip_id: Id,
+        channels: ClipChannels,
+    },
     SetClipGain {
         clip_id: Id,
         gain_db: f32,
@@ -1461,6 +1475,7 @@ mod tests {
     #[test]
     fn stretch_scales_offsets_and_repeats_and_can_return_to_original_duration() {
         let clip = Clip {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             id: Id::nil(),
@@ -1522,6 +1537,7 @@ mod tests {
             (13, 0, false),
         ] {
             let mut clip = Clip {
+                channels: Default::default(),
                 fades: Default::default(),
                 muted: false,
                 stretch: None,
@@ -1694,6 +1710,7 @@ mod tests {
         });
         let clip_id = Id::new_v4();
         project.tracks[0].clips.push(Clip {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             id: clip_id,

@@ -4,6 +4,59 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Channel swap and small Invert checkboxes — 2026-11-08
+
+Channels now includes a Small-text Invert checkbox beside the compact L/R
+buttons. It swaps audio signals before the output masks. Polarity Invert is
+also a Small-text checkbox and retains its separate sign-flip behavior. Group
+changes use the existing batch edit/history path. The new saved swapped flag
+defaults to false for existing manifests. Direct, scheduled and crossfade
+contributions use the shared channel transform; mono swapping is inaudible.
+
+Core library tests passed 133 tests (one existing ignored), engine 44 tests,
+and final UI 937 tests (three existing ignored). Coverage includes swap/mask/
+polarity order, legacy persistence, direct/scheduled parity, swapped crossfade
+owners, both checkbox interactions and grouped Undo. The streaming crossfade
+integration test passed with swapping, seeks, loop wraps and no callback
+allocations. Targeted all-target Clippy, formatting and diff checks passed.
+Native appearance and listening checks remain open; CLI smoke/release checks
+were not repeated for this follow-up.
+
+## Compact clip channel toggles — 2026-11-08
+
+L/R playback toggles now use 18-point buttons and 10-point text in the shared
+Timeline/Editor body. The existing channel/polarity group-edit and Undo UI test
+passed with `cargo test -p daw-ui clip_channel_and_polarity_controls --lib --locked`.
+Formatting and diff checks passed. Native appearance checks remain open.
+
+## Audio clip channels and polarity — 2026-11-08
+
+Shared Timeline/Editor Clip settings now places Channels (L/R) and Polarity
+(Invert) after Transpose and before the fade divider. Defaults enable both
+playback channels with normal polarity. Group clicks set one flag on selected
+audio clips through a single batch history edit; mixed flags have explanatory
+tooltips. MIDI and beat clips are excluded. Both disabled channels produce silence;
+mono recordings use L/R to mask their two duplicated playback outputs.
+
+ClipChannels persists non-default settings; old manifests default to the previous
+sound. Core validation rejects non-default settings on non-audio clips. Copies,
+retained ranges, splits, loop/stretch edits and generated replacement stems retain
+the settings. Source PCM, peaks and prepared-cache identities are unchanged.
+Direct rendering and scheduled playback apply each clip's mask/sign before track
+processing, including independent owner/neighbor contributions to crossfades.
+
+Completed checks: core library tests 132 passed (one existing ignored), engine
+library tests 43 passed, final UI library tests 937 passed (three existing ignored).
+New coverage includes all mask/inversion combinations for mono/stereo, both
+crossfade directions, persistence/legacy defaults, invalid edit rollback, control
+placement, group selection and Undo. The updated streaming crossfade integration
+test passed resident/disk parity across seeks/loop wraps with zero callback
+allocations. Workspace all-target compile and Clippy checks, formatting and diff
+checks passed. `cargo build -p daw-cli --locked` and `python3 tools/check_cli.py`
+also passed, including deterministic export and source collection smoke checks.
+Native appearance, playback switching and listening checks on macOS, Windows and
+Linux remain open. Full workspace release tests were not run.
+
 ## Audio sidechain footer alignment — 2026-11-08
 
 Detector, Mapping and Response now place their footers at the shared strip body

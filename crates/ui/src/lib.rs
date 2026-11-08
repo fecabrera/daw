@@ -5286,6 +5286,7 @@ impl DawUi {
             target.snap_zoom,
         );
         let clip = Clip {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             stretch: None,
@@ -5934,6 +5935,7 @@ mod tests {
             decoded_frame_count: 480000,
         });
         app.session.project.tracks[0].clips.push(Clip {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             stretch: None,

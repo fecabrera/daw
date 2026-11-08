@@ -130,6 +130,18 @@ fn crossfades_stream_both_sources_without_callback_allocations_and_match_residen
                         phase_frame: 71,
                     });
                 }
+                first.channels = ClipChannels {
+                    left: true,
+                    right: false,
+                    inverted: true,
+                    swapped: true,
+                };
+                second.channels = ClipChannels {
+                    left: false,
+                    right: true,
+                    inverted: false,
+                    swapped: false,
+                };
                 let fade = ClipFade {
                     length_frames: 256,
                     midpoint: 0.75,

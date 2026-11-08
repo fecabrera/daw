@@ -45,6 +45,7 @@ mod tests {
     #[test]
     fn looping_uses_each_trimmed_base_preserves_phase_and_restores_one_copy() {
         let original = Clip {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             id: Id::new_v4(),

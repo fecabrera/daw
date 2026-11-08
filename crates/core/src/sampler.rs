@@ -3,6 +3,7 @@ use crate::*;
 impl From<&SamplerInput> for Clip {
     fn from(input: &SamplerInput) -> Self {
         Self {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             id: input.asset_id,

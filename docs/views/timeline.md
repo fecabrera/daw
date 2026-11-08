@@ -189,6 +189,19 @@ the saved durations. Loop seams retain their automatic anti-click fades.
 
 In Timeline, use the headphone-file button in the right toolbar to open Clip settings beside it. The panel can stay open with the Effects or Chords catalog on the left. Closing it gives its space back to the timeline. When the effects lane is hidden, the right toolbar extends to the status bar. Leaving Timeline closes this panel and discards any unconfirmed text. Audio tracks also offer these controls under **Clip options** in [Editor](editor.md).
 
+Audio clips also have **Channels** and **Polarity** rows after Transpose, before
+the fade sections. **L** and **R** enable the left and right playback channels;
+both start enabled. The small **Invert** checkbox beside them swaps the left and
+right audio signals before these channel controls. It starts unchecked. Turning
+both channels off silences the clip. Mono recordings still
+use these controls for the left and right playback outputs. The separate small **Polarity > Invert** checkbox flips the
+polarity of both channels; it starts unchecked. It does not reverse audio in time.
+These settings affect playback and export without changing the recording.
+For a group, a toggle is on when all selected audio clips have it on. Clicking
+an off or mixed toggle enables it for all; clicking an on toggle disables it for
+all. MIDI and beat clips are skipped. Changes support Undo/Redo and save with the
+project. The waveform continues to show the source audio.
+
 Select a clip to edit its name, gain, and transpose. The source row shows the audio file name, or MIDI pattern for a MIDI clip. These rows use the smaller catalog text, and the values are aligned to the left. The source is dimmed because it cannot be edited. A long name is shortened with an ellipsis; hover the source to see the full path. Gain is shown in dB, from silence (−∞ dB) to +60 dB, for example 0.0 dB. Transpose is shown in semitones, from −48 to +48, for example 0 semitones.
 
 Drag gain up or down in steps of 0.1 dB. Drag transpose up or down in steps of 1 semitone. Hold Shift while dragging for a finer adjustment: 0.01 dB, or 0.1 semitone. A sideways drag does not change the value. Dragging up from silence starts at −60 dB.

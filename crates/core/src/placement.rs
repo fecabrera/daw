@@ -103,6 +103,7 @@ mod tests {
             },
         });
         let neighbor = Clip {
+            channels: Default::default(),
             fades: Default::default(),
             muted: false,
             id: Id::new_v4(),
