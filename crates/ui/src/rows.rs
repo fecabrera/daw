@@ -221,6 +221,15 @@ pub use daw_unit_ui::rows::unit_label;
 
 /// Join related inputs inside one standard frame, retaining each widget's interaction.
 pub fn input_group<R>(ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    input_group_with_height(ui, crate::toolbars::CONTROL_HEIGHT, content)
+}
+
+/// Size the shared group frame for compact controls without changing its style.
+pub fn input_group_with_height<R>(
+    ui: &mut Ui,
+    height: f32,
+    content: impl FnOnce(&mut Ui) -> R,
+) -> InnerResponse<R> {
     let palette = crate::theme::palette(ui.ctx());
     let border = ui.visuals().widgets.inactive.bg_stroke.width;
     let frame = egui::Frame::new()
@@ -229,8 +238,7 @@ pub fn input_group<R>(ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> InnerR
         .corner_radius(ui.visuals().widgets.inactive.corner_radius);
     frame.show(ui, |ui| {
         // Include the outer border in the standard input height.
-        ui.spacing_mut().interact_size.y =
-            (crate::toolbars::CONTROL_HEIGHT - 2.0 * border).max(0.0);
+        ui.spacing_mut().interact_size.y = (height - 2.0 * border).max(0.0);
         ui.spacing_mut().button_padding.y = (ui.spacing().button_padding.y - 2.0 * border).max(0.0);
         ui.spacing_mut().item_spacing.x = 0.0;
         // TextEdit otherwise adds its focused stroke outside the inner control.

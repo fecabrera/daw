@@ -859,28 +859,10 @@ impl DawUi {
         );
         if track.is_some() {
             content.allocate_ui_with_layout(
-                Vec2::new(
-                    2.0 * toolbars::CONTROL_HEIGHT + CONTROL_SPACING,
-                    toolbars::CONTROL_HEIGHT,
-                ),
+                Vec2::new(2.0 * toolbars::CONTROL_HEIGHT, toolbars::CONTROL_HEIGHT),
                 egui::Layout::left_to_right(egui::Align::Center),
                 |ui| {
-                    for (label, tooltip, value) in
-                        [("M", "Mute", &mut muted), ("S", "Solo", &mut soloed)]
-                    {
-                        let response = toolbars::square_toggle(ui, label, *value);
-                        response.widget_info(|| {
-                            egui::WidgetInfo::selected(
-                                egui::WidgetType::Button,
-                                ui.is_enabled(),
-                                *value,
-                                tooltip,
-                            )
-                        });
-                        if response.on_hover_text(tooltip).clicked() {
-                            *value = !*value;
-                        }
-                    }
+                    mix_controls::mute_solo(ui, &mut muted, &mut soloed, ["Mute", "Solo"]);
                 },
             );
         } else {

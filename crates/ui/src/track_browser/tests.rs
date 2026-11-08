@@ -501,8 +501,13 @@ fn compact_controls_keep_catalog_row_sizes_and_right_alignment_for_every_owner()
                 for control in controls {
                     assert!(row.contains_rect(control));
                 }
-                assert_eq!(controls[0].size(), Vec2::splat(16.0));
-                assert_eq!(controls[1].size(), Vec2::splat(16.0));
+                let border = ctx.global_style().visuals.widgets.inactive.bg_stroke.width;
+                let inner = Vec2::new(
+                    mix_controls::BROWSER_BUTTON_SIZE - border,
+                    mix_controls::BROWSER_BUTTON_SIZE - 2.0 * border,
+                );
+                assert_eq!(controls[0].size(), inner);
+                assert_eq!(controls[1].size(), inner);
                 assert_eq!(controls[2].size(), Vec2::splat(16.0));
                 assert_eq!(controls[3].size(), Vec2::splat(16.0));
                 for control in &controls[2..] {

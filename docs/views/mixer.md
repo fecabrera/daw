@@ -22,6 +22,8 @@ Output controls have equal visible vertical gaps and outer padding. They stay al
 
 Use numeric fields for precise values. Press Enter or leave the field to apply a valid value; Escape cancels the draft. Gain accepts a finite dB value or `−∞` for exact silence. Track and group numeric gain can exceed the fader's travel range; Master input clamps to silence through +12 dB. Very low finite values keep a numeric readout. Pan accepts −1 (left) through +1 (right), with 0 at center.
 
+Mute and Solo use one joined **M / S** button group. Each button toggles independently.
+
 Mute silences a track’s direct output; its sends remain active. Solo plays the selected soloed tracks and excludes the others. Solo takes priority over mute: a track with both enabled plays. Select several tracks to apply Mute or Solo together from the Track menu or with M and S.
 
 Press Escape to deselect tracks, groups and Master. Active edits and drags cancel first. Clip selection in other views stays unchanged.

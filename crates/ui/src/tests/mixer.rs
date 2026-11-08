@@ -679,7 +679,14 @@ fn mixer_faders_and_buttons_change_shared_values_and_preserve_group_selection() 
                 _ => None,
             })
             .unwrap();
-        assert_eq!(rect.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
+        let border = ctx.global_style().visuals.widgets.inactive.bg_stroke.width;
+        assert_eq!(
+            rect.size(),
+            Vec2::new(
+                toolbars::CONTROL_HEIGHT - border,
+                toolbars::CONTROL_HEIGHT - 2.0 * border
+            )
+        );
         assert!(first_rect.contains_rect(rect));
     }
     click(&mut app, &ctx, first_rect.center());
@@ -1649,7 +1656,7 @@ fn output_spacing_uses_visible_edges_instead_of_widget_slots() {
             let pan_field = field(&format!("{pan:.2}"), NUMERIC_WIDTH, fader.top());
             let gain = field("0.0", NUMERIC_WIDTH, fader.top());
             let peak = field("−∞", NUMERIC_WIDTH, fader.top());
-            let mute = field("M", toolbars::CONTROL_HEIGHT, strip.bottom());
+            let mute = field("M", 2.0 * toolbars::CONTROL_HEIGHT, strip.bottom());
             let divider = shapes
                 .iter()
                 .filter_map(|s| match &s.shape {

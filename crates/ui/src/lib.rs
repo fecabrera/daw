@@ -8475,12 +8475,19 @@ mod tests {
                         _ => None,
                     })
                     .unwrap();
-                assert_eq!(rect.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
+                let border = ctx.global_style().visuals.widgets.inactive.bg_stroke.width;
+                assert_eq!(
+                    rect.size(),
+                    Vec2::new(
+                        toolbars::CONTROL_HEIGHT - border,
+                        toolbars::CONTROL_HEIGHT - 2.0 * border
+                    )
+                );
             }
             assert!((mute.y - (lane.top() + 47.0)).abs() < 1.0);
             assert!((solo.y - mute.y).abs() < 1.0);
             assert!(mute.x < solo.x);
-            assert!((solo.x - (lane.left() - TRACK_WIDTH + 46.0)).abs() < 1.0);
+            assert!((solo.x - (lane.left() - TRACK_WIDTH + 39.5)).abs() < 1.0);
             let header = Pos2::new(lane.left() - TRACK_WIDTH + 18.0, lane.top() + 18.0);
             let destination = Pos2::new(header.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
             frame(

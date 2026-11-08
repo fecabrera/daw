@@ -321,7 +321,7 @@ Use a Lucide Repeat icon button immediately after Stop to toggle looping, with n
 - Put two narrow vertical L/R level bars at the right edge of each track block, using the [meter design reference](../assets/vertical-meters-reference.png). Reuse the master monitor style. Each bar is 8 points wide in the 54-point expanded or 28-point collapsed inner block height, with 4 points between bars and endpoint space for scale labels. Left is first; Right is second. Use a dark background and fill levels from the bottom. Retain channel names in accessibility and tooltips without visible letter labels. Measure each channel after track gain, pan, clip fades, and mute/solo, before master gain. Show both channels in a red state when either channel peak exceeds 0 dBFS. Keep red markers at the top of both bars until the user clicks either channel to clear the shared stereo flag and held peak; clear it when the project closes. Show silence when stopped or when sources are missing. Monitoring must not change the audio or project data.
 - Display gain in decibels (dB), with 0 dB as the initial value. Pan ranges from -1.0 (left) to 1.0 (right), with 0.0 as the initial center value. The same Pan field controls stereo balance according to the existing mixing rules.
 - Commit numeric input on Enter or focus loss. Invalid input must leave the previous value unchanged and show clear feedback. Escape cancels an uncommitted input change.
-- Use the same outlined design for Mute and Solo as the toolbar buttons. Label them `M` and `S`. Use the shared 22 × 22-point square toggle with 11-point Outfit labels in Timeline and Mixer, Mute and Solo tooltips, and full accessible names with on/off states. Show enabled states with the shared purple selection style. Permit both buttons to be enabled; solo overrides mute.
+- Use the same outlined design for Mute and Solo as the toolbar buttons. Label them `M` and `S`. Use the shared 44 × 22-point joined M/S group with 11-point Outfit labels in Timeline and Mixer, Mute and Solo tooltips, and full accessible names with on/off states. Show enabled states with the shared purple selection style. Permit both buttons to be enabled; solo overrides mute.
 - Use one reusable knob component for track gain, track pan, and master gain, inspired by the [knob reference](../assets/knob-reference.png). Use 28-point controls with dark faces, purple value arcs, light pointers, and the shared border and text colors. Put a fixed 0 dB mark at twelve o'clock on gain knobs; put a center mark there on pan knobs. Gain dragging covers exact silence (−∞) to +12 dB, reusing the fader’s piecewise scale and amplitude tail with 0 dB at the midpoint of the sweep; numeric track gain entry retains its existing finite-value validation. Pan ranges from -1 to +1. Drag up or right to increase; hold Shift for fine adjustment. Arrow keys change gain by 0.1 dB above −60 dB and step through the amplitude tail below it so they can enter and leave exact silence; pan steps by 0.01. Double-click resets to 0 dB or center. Keep numeric entry for precise values. Keep track deletion in the context menu.
 - Implement the block as a reusable UI component shared by all tracks.
 
@@ -865,3 +865,26 @@ overwrite and manifest-save paths retain the existing replacement operation.
 ## Project time signature
 
 The [time signature contract](../audio/time-signature.md) supersedes fixed 4/4 ruler, position, grid and metronome grouping. Existing clip and note timing remains unchanged. Source-defined four-quarter-note pattern spans and Sampler Bars durations retain their stored meaning.
+
+## Shared Mute/Solo button group — 2026-11-08
+
+All track, group, Return, regular layer and beat-subtrack Mute/Solo pairs share
+mix_controls::mute_solo, including Timeline, Editor overview, Instrument,
+Beat Editor, Tracks-browser rows and Mixer strips. Render M and S as independent
+toggles within one canonical input_group frame with one center divider. Retain
+selected/hover/focus/disabled colors, separate tooltips/accessibility names,
+click-release activation and existing host edit/selection/history rules. Both
+states may be enabled together; this is not an exclusive selector. Source/effect
+unit band-S controls retain their separate behavior.
+
+Use a 22-point outer height and 44-point group width for regular controls. The
+compact Tracks browser uses 16/32 points and its existing small 9-point text.
+Frame borders are included in the group size; inset each cell using the frame's
+stroke width. Child strokes/corner radii are suppressed; the outer frame owns
+rounding and a shared hover/focus outline. Keep zero gap between cells. Reuse
+rows::input_group_with_height and input_group_outline so framing stays canonical.
+
+Remove the former internal M-to-S gap from shared HeaderRows and BROWSER_WIDTH
+budgets; keep Pan/Gain sizes, their spacing and right alignment unchanged. Mixer
+must call the same group instead of drawing its own M/S loop. Returned individual
+responses retain control hit exclusions in header selection/reorder logic.

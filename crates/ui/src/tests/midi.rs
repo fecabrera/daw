@@ -930,7 +930,14 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         );
         let bounds = &app.midi_editor.layer_bounds[&first];
         let [mute, solo, gain, pan] = bounds.mix_controls;
-        assert_eq!(mute.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
+        let border = ctx.global_style().visuals.widgets.inactive.bg_stroke.width;
+        assert_eq!(
+            mute.size(),
+            Vec2::new(
+                toolbars::CONTROL_HEIGHT - border,
+                toolbars::CONTROL_HEIGHT - 2.0 * border
+            )
+        );
         assert_eq!(solo.size(), mute.size());
         assert_eq!(mute.center().y, gain.center().y);
         assert_eq!(solo.center().y, pan.center().y);
@@ -940,7 +947,7 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
             bounds.toolbar,
             bounds.collapse,
         );
-        assert_eq!(solo.left() - mute.right(), 6.0);
+        assert_eq!(solo.left() - mute.right(), 0.0);
         for peer in &layers[1..] {
             let controls = app.midi_editor.layer_bounds[&peer.id].mix_controls;
             assert_eq!(controls[0].x_range(), mute.x_range());

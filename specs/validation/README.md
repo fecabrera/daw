@@ -4,6 +4,19 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Shared Mute/Solo button groups — 2026-11-08
+
+Timeline and Editor track headers, Instrument layers, Beat Editor subtracks,
+Tracks-browser rows and Mixer strips now share a joined M/S control. One outer
+frame and divider replace separate button outlines and their internal gap.
+Mute and Solo retain independent states, tooltips and accessible names.
+
+All 948 UI library tests pass; three existing tests remain ignored. The new
+regression checks independent toggles and disabled input at both control sizes
+in Dark, Light and Mist. Existing layout and edit tests cover the host views.
+Strict all-target UI Clippy, rustfmt and diff checks pass. Native screenshot,
+pointer and Windows/Linux checks were not performed.
+
 ## Selected lane shade refinement — 2026-11-08
 
 The user refined selected lanes to #181818 in Dark. The shared helper now uses

@@ -68,7 +68,7 @@ fn row_toggle_shares_compact_layout_between_timeline_and_editor_without_project_
                 assert_header_meter_insets(&shapes, header, &ctx);
                 let mute = label_rect(&shapes, header, "M");
                 let solo = label_rect(&shapes, header, "S");
-                assert!(mute.right() < solo.left());
+                assert!(mute.right() <= solo.left());
                 assert!((mute.center().y - header.center().y).abs() < 0.1);
                 assert!((solo.center().y - header.center().y).abs() < 0.1);
             }
@@ -101,7 +101,7 @@ fn row_toggle_shares_compact_layout_between_timeline_and_editor_without_project_
                 let [gain, pan] = app.midi_editor.track_mix_bounds;
                 let [mute, solo] = app.midi_editor.mix_bounds;
                 assert!(app.midi_editor.name_bounds.right() < mute.left());
-                assert!(mute.right() < solo.left());
+                assert!(mute.right() <= solo.left());
                 assert!(solo.right() < pan.left());
                 assert!(pan.right() < gain.left());
                 for rect in [app.midi_editor.name_bounds, mute, solo, pan, gain] {
@@ -536,7 +536,7 @@ fn header_mute_solo_align_with_knobs_and_stay_on_the_left() {
                     })
                     .expect("mute/solo label in header");
                 let point = text.galley.rect.translate(text.pos.to_vec2()).center();
-                let x = panel.left() + 18.0 + index as f32 * 28.0;
+                let x = panel.left() + 18.5 + index as f32 * 21.0;
                 assert!(
                     point.distance(Pos2::new(x, panel.top() + 47.0)) < 1.0,
                     "{scope} {label}: {point:?}, panel {panel:?}"
