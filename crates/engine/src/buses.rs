@@ -107,11 +107,17 @@ impl Renderer {
         live: bool,
         realtime: bool,
     ) {
+        if self.sidechains.active() {
+            self.sample_sidechain_graph(frame, region, playing, live, realtime);
+            return;
+        }
         for (index, track) in self.plan.project.tracks.iter().enumerate() {
             if super::send_routing::is_bus(track.kind) {
                 continue;
             }
             let (sample, mono) = track_processing::TrackProcessor {
+                sidechains: &[],
+                sidechain_sources: None,
                 audio: &mut self.audio_tracks[index],
                 midi: &mut self.midi[index],
                 effects: &mut self.effects[index],
@@ -136,42 +142,12 @@ impl Renderer {
         region: Option<(u64, u64)>,
         live: bool,
     ) -> [f32; 2] {
-        self.buses.sends.advance(live);
-        for &index in &self.buses.groups {
-            let mut sum = if self.plan.project.tracks[index].kind == TrackKind::Return {
-                self.buses.sends.sum(index, &self.buses.raw, live)
-            } else {
-                [0.0; 2]
-            };
-            for &child in &self.buses.children[index] {
-                for (ch, value) in sum.iter_mut().enumerate() {
-                    *value += self.buses.output[child][ch];
-                }
+        if !self.sidechains.active() {
+            self.buses.sends.advance(live);
+            for position in 0..self.buses.groups.len() {
+                let index = self.buses.groups[position];
+                self.sample_bus(index, frame, region, live);
             }
-            if let Some(runtime) = self.midi[index].as_mut() {
-                runtime.sample_in_region(frame, region);
-            }
-            let controls = (
-                self.midi[index]
-                    .as_ref()
-                    .map_or(&[][..], |r| r.modulation_values()),
-                self.midi[index].as_ref().map(|r| r.modulation_sources()),
-            );
-            let (sample, _) = self.effects[index].sample(
-                sum,
-                Some(false),
-                latency::delayed_frame(frame, self.alignment.input_frames[index], region),
-                self.plan.project.tempo_bpm,
-                region,
-                controls,
-            );
-            self.buses.raw[index] = (sample, false);
-            let (sample, _) = self.alignment.tracks[index].tick((sample, false));
-            let content_frame =
-                latency::delayed_frame(frame, self.alignment.output_frames[index], region);
-            let gain = self.buses.clip_gains[index].at(content_frame, region);
-            self.buses.output[index] =
-                self.gains[index].apply(sample.map(|v| v * gain), false, live, self.ramp);
         }
         let mut sum = [0.0; 2];
         for &root in &self.buses.roots {
@@ -180,5 +156,115 @@ impl Renderer {
             }
         }
         sum
+    }
+    fn sample_bus(&mut self, index: usize, frame: u64, region: Option<(u64, u64)>, live: bool) {
+        let mut sum = if self.plan.project.tracks[index].kind == TrackKind::Return {
+            self.buses.sends.sum(index, &self.buses.raw, live)
+        } else {
+            [0.0; 2]
+        };
+        for &child in &self.buses.children[index] {
+            for (ch, value) in sum.iter_mut().enumerate() {
+                *value += self.buses.output[child][ch];
+            }
+        }
+        if let Some(runtime) = self.midi[index].as_mut() {
+            runtime.sample_in_region(
+                if self.sidechains.active() {
+                    latency::delayed_frame(frame, self.alignment.input_frames[index], region)
+                } else {
+                    frame
+                },
+                region,
+            );
+        }
+        let controls = (
+            self.midi[index]
+                .as_ref()
+                .map_or(self.sidechains.values[index].as_slice(), |r| {
+                    r.modulation_values()
+                }),
+            self.midi[index]
+                .as_ref()
+                .map(|r| r.modulation_sources())
+                .or_else(|| {
+                    self.sidechains
+                        .active()
+                        .then_some(&self.sidechains.indices[index])
+                }),
+        );
+        let (sample, _) = self.effects[index].sample(
+            sum,
+            Some(false),
+            latency::delayed_frame(frame, self.alignment.input_frames[index], region),
+            self.plan.project.tempo_bpm,
+            region,
+            controls,
+        );
+        self.buses.raw[index] = (sample, false);
+        let (sample, _) = self.alignment.tracks[index].tick((sample, false));
+        let content_frame =
+            latency::delayed_frame(frame, self.alignment.output_frames[index], region);
+        let gain = self.buses.clip_gains[index].at(content_frame, region);
+        self.buses.output[index] =
+            self.gains[index].apply(sample.map(|v| v * gain), false, live, self.ramp);
+    }
+    fn sample_sidechain_graph(
+        &mut self,
+        frame: u64,
+        region: Option<(u64, u64)>,
+        playing: bool,
+        live: bool,
+        realtime: bool,
+    ) {
+        self.buses.sends.advance(live);
+        for position in 0..self.sidechains.order.len() {
+            let index = self.sidechains.order[position];
+            let clock = latency::delayed_frame(frame, self.alignment.input_frames[index], region);
+            let wrapped = self.sidechains.wrapped(index, clock, region);
+            self.sidechains
+                .tick(index, &self.buses.raw, &self.sidechain_post, frame);
+            if let Some(runtime) = &mut self.midi[index] {
+                if wrapped {
+                    runtime.wrap_loop();
+                }
+                runtime.publish_sidechains(&self.sidechains.values[index]);
+            }
+            if super::send_routing::is_bus(self.plan.project.tracks[index].kind) {
+                self.sample_bus(index, frame, region, live);
+            } else {
+                let input = self.alignment.input_frames[index];
+                let clock = latency::delayed_frame(frame, input, region);
+                let valid = frame >= input || region.is_some_and(|(start, _)| frame >= start);
+                let (sample, mono) = if valid {
+                    track_processing::TrackProcessor {
+                        sidechains: &self.sidechains.values[index],
+                        sidechain_sources: Some(&self.sidechains.indices[index]),
+                        audio: &mut self.audio_tracks[index],
+                        midi: &mut self.midi[index],
+                        effects: &mut self.effects[index],
+                        delay: &mut self.alignment.tracks[index],
+                        clips: &self.plan.project.tracks[index].clips,
+                    }
+                    .sample_unaligned(
+                        clock,
+                        self.plan.project.tempo_bpm,
+                        region,
+                        playing,
+                        realtime,
+                    )
+                } else {
+                    ([0.0; 2], false)
+                };
+                self.buses.raw[index] = (sample, mono);
+                let (sample, mono) = self.alignment.tracks[index].tick((sample, mono));
+                self.buses.output[index] = self.gains[index].apply(sample, mono, live, self.ramp);
+            }
+            self.sidechain_post[index] = if live {
+                self.gains[index].value
+            } else {
+                self.gains[index].target
+            };
+        }
     }
 }

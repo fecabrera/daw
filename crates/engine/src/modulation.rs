@@ -209,7 +209,11 @@ impl SharedControls {
         for e in &mut self.controls {
             e.reset();
         }
-        for v in &mut self.values {
+        for v in self
+            .values
+            .iter_mut()
+            .take(self.controls.len() + self.providers.len())
+        {
             v.value = 0.0;
             v.weight = 0.0;
         }

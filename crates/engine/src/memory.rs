@@ -111,6 +111,8 @@ impl Renderer {
                 + self.master_effects.heap_bytes()
                 + self.alignment.heap_bytes()
                 + self.buses.heap_bytes()
+                + self.sidechains.heap_bytes()
+                + vec_bytes(&self.sidechain_post)
                 + vec_bytes(&self.midi),
             shared_audio_bytes: shared.bytes,
         };

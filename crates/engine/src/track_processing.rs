@@ -3,6 +3,8 @@ use super::{effects::EffectChain, latency, midi::MidiTrackRuntime, schedule::Aud
 use daw_core::Clip;
 
 pub(super) struct TrackProcessor<'a> {
+    pub sidechains: &'a [daw_unit_core::ModulationValue],
+    pub sidechain_sources: Option<&'a daw_unit_core::ModulationSourceIndex>,
     pub audio: &'a mut AudioTrack,
     pub midi: &'a mut Option<MidiTrackRuntime>,
     pub effects: &'a mut EffectChain,
@@ -41,8 +43,13 @@ impl TrackProcessor<'_> {
             tempo,
             region,
             (
-                self.midi.as_ref().map_or(&[], |r| r.modulation_values()),
-                self.midi.as_ref().map(|r| r.modulation_sources()),
+                self.midi
+                    .as_ref()
+                    .map_or(self.sidechains, |r| r.modulation_values()),
+                self.midi
+                    .as_ref()
+                    .map(|r| r.modulation_sources())
+                    .or(self.sidechain_sources),
             ),
         )
     }

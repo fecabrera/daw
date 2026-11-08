@@ -1564,6 +1564,14 @@ impl MidiTrackRuntime {
     pub fn modulation_values(&self) -> &[ModulationValue] {
         &self.shared.values
     }
+    pub(super) fn configure_sidechains(&mut self, values: &[ModulationValue]) {
+        self.shared.values.extend_from_slice(values);
+        self.shared.index = daw_unit_core::ModulationSourceIndex::from_values(&self.shared.values);
+    }
+    pub(super) fn publish_sidechains(&mut self, values: &[ModulationValue]) {
+        let start = self.shared.values.len() - values.len();
+        self.shared.values[start..].copy_from_slice(values);
+    }
     pub fn held_sample(&self) -> [f32; 2] {
         self.held_sample
     }

@@ -696,7 +696,14 @@ impl DawUi {
             allowed,
             request_focus,
         } = interaction;
-        let modulation_sources =
+        self.sidechain_context(
+            ui.ctx(),
+            target.map_or(self.session.project.project_id, |t| match t {
+                EffectTarget::Track(id) | EffectTarget::Layer { track: id, .. } => id,
+                EffectTarget::Master => self.session.project.project_id,
+            }),
+        );
+        let mut modulation_sources =
             crate::modulation_panel::sources(target.and_then(|target| match target {
                 EffectTarget::Track(id) | EffectTarget::Layer { track: id, .. } => {
                     self.session.project.instrument_settings(id)
@@ -706,6 +713,7 @@ impl DawUi {
             .into_iter()
             .filter(|s| daw_unit_core::ModulationScope::Shared.accepts(s.scope))
             .collect::<Vec<_>>();
+        crate::audio_sidechain::append_sources(&mut modulation_sources, &self.session.project);
         let mut remove = None;
         let mut slots = Vec::with_capacity(effects.len());
         let content = Rect::from_min_max(strip.min, lane_toolbar::bounds(strip).left_bottom());

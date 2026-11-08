@@ -343,8 +343,13 @@ impl DawUi {
             self.instrument_ui.macro_name_edit = None;
         }
         let layer_order: Vec<_> = settings.layers.iter().map(|l| l.id).collect();
-        let modulation_sources = crate::modulation_panel::sources(Some(&settings));
-        let provider_sources = crate::modulation_panel::provider_sources(&settings);
+        self.sidechain_context(ui.ctx(), track.id);
+        let mut modulation_sources = crate::modulation_panel::sources(Some(&settings));
+        crate::audio_sidechain::append_sources(&mut modulation_sources, &self.session.project);
+        let mut provider_sources = crate::modulation_panel::provider_sources(&settings);
+        for (_, sources) in &mut provider_sources {
+            crate::audio_sidechain::append_sources(sources, &self.session.project);
+        }
         let shared_sources: Vec<_> = track
             .effects
             .iter()

@@ -1,6 +1,6 @@
 # Modulation
 
-Modulation changes a parameter over time without changing its base setting. Envelope, LFO, and Macro components supply control values. A receiving parameter is called a destination.
+Modulation changes a parameter over time without changing its base setting. Envelope, LFO, Macro, and [audio sidechains](audio-sidechain.md) supply control values. A receiving parameter is called a destination.
 
 ## Make a connection
 
@@ -16,7 +16,7 @@ New connections are enabled but have no source and zero Amount. They do not affe
 
 The Source dropdown starts with None, followed by a divider. Each layer has its own submenu, with Output listed after the layers. Open a submenu to select its Envelope, LFO, or Macro. Groups with no compatible sources are hidden. The selected value includes the layer name so repeated component names remain clear. Source and Destination selectors fill the space inside their strip.
 
-Sources stay within one MIDI instrument. Output sources can reach compatible layer, layer-effect, and track-effect parameters. Audio tracks and the project Master do not have instrument modulation sources.
+Envelope, LFO and Macro sources stay within one MIDI instrument. Output sources can reach compatible layer, layer-effect, and track-effect parameters. Audio tracks and the project Master do not have instrument providers, but their effects can receive audio sidechains from tracks, groups and Returns. These appear after a second divider in Source.
 
 Per note Envelopes control individual voices. Shared Retrigger/Legato Envelopes, LFOs, and Macros can feed shared destinations such as layer and track effects. Incompatible sources are unavailable in the picker. Self-connections and feedback loops are not allowed.
 

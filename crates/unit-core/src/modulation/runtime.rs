@@ -100,7 +100,7 @@ impl ModulationRoute {
         shared: &'a [ModulationValue],
         context: ModulationContext,
     ) -> Option<(&'a ModulationValue, bool)> {
-        let source = self.settings.source?;
+        let source = self.settings.effective_source()?;
         if let Some(shared_index) = context.shared_sources
             && (context.local_sources.is_some() || local.is_empty())
         {

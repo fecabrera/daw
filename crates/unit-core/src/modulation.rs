@@ -663,6 +663,8 @@ pub type ModulationTargetId = Uuid;
 pub struct Modulation {
     pub id: Uuid,
     pub source: Option<ModulationSourceId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidechain: Option<crate::AudioSidechain>,
     pub parameter: ModulationParameter,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<ModulationTargetId>,
@@ -674,6 +676,7 @@ impl Modulation {
         Self {
             id: Uuid::new_v4(),
             source: None,
+            sidechain: None,
             parameter,
             target: None,
             amount: 0.0,
@@ -682,12 +685,24 @@ impl Modulation {
     }
     pub fn valid(&self) -> bool {
         !self.id.is_nil()
+            && self
+                .sidechain
+                .is_none_or(|s| self.source.is_none() && s.valid())
             && self.target.is_none_or(|id| !id.is_nil())
             && self.amount.is_finite()
             && self.amount.abs() <= self.parameter.limit()
             && self
                 .source
                 .is_none_or(|s| !s.layer.is_nil() && !s.unit.is_nil())
+    }
+    /// Sidechain providers retain route-local state and use the common source-slot resolver.
+    pub fn effective_source(&self) -> Option<ModulationSourceId> {
+        self.sidechain
+            .map(|s| ModulationSourceId {
+                layer: s.track,
+                unit: self.id,
+            })
+            .or(self.source)
     }
 }
 pub fn valid_modulations(routes: &[Modulation], parameters: &[ModulationParameter]) -> bool {

@@ -511,5 +511,19 @@ pub(crate) fn duplicate_track_settings(track: &Track, id: Id) -> Track {
             }
         }
     }
+    for route in copy
+        .effects
+        .iter_mut()
+        .flat_map(|e| e.unit.modulations_mut())
+        .chain(
+            copy.instrument
+                .iter_mut()
+                .flat_map(|i| i.modulation_routes_mut()),
+        )
+    {
+        if route.sidechain.is_some() {
+            route.id = Id::new_v4();
+        }
+    }
     copy
 }

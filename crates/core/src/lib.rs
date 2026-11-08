@@ -24,6 +24,7 @@ pub use daw_unit_core::{EqBandMode, MULTIBAND_EQ_TYPE_ID, MultibandEqBand, Multi
 pub use daw_unit_core::{GrainWindow, GranulizerSettings};
 pub use daw_unit_core::{NoiseSettings, NoiseType};
 pub use daw_unit_core::{SATURATOR_TYPE_ID, SaturatorClipMode, SaturatorSettings, SaturatorShape};
+mod audio_sidechain;
 mod instrument_validation;
 mod memory;
 mod source_storage;
@@ -507,6 +508,7 @@ impl Project {
     pub fn validate(&self) -> Result<()> {
         self.validate_track_groups()?;
         self.validate_sends()?;
+        self.sidechain_order()?;
         self.stretch_engine.validate()?;
         let invalid = |text: &str| Error(text.into());
         if !SAMPLE_RATES.contains(&self.sample_rate_hz) {

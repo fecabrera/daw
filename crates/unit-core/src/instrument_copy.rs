@@ -4,6 +4,17 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 impl InstrumentLayerSettings {
+    pub fn modulation_routes(&self) -> impl Iterator<Item = &Modulation> {
+        self.oscillator_modulations
+            .iter()
+            .chain(self.sampler.iter().flat_map(|s| &s.modulations))
+            .chain(self.noise.iter().flat_map(|s| &s.modulations))
+            .chain(&self.amplitude.modulations)
+            .chain(&self.macro_module.modulations)
+            .chain(self.envelopes.iter().flat_map(|s| &s.modulations))
+            .chain(self.lfos.iter().flat_map(|s| &s.modulations))
+            .chain(self.effects.iter().flat_map(|e| e.unit.modulations()))
+    }
     /// Copy all retained settings. External providers and immutable sample inputs stay shared.
     pub fn duplicate(&self) -> Self {
         let (mut copy, sources) = self.duplicate_owned();
@@ -149,6 +160,26 @@ fn routes(
 }
 
 impl crate::InstrumentSettings {
+    pub fn modulation_routes_mut(&mut self) -> impl Iterator<Item = &mut Modulation> {
+        self.layers
+            .iter_mut()
+            .flat_map(|l| l.modulation_routes_mut())
+            .chain(
+                [
+                    &mut self.main,
+                    self.lfo_lane.as_mut(),
+                    self.envelope_lane.as_mut(),
+                ]
+                .into_iter()
+                .flat_map(|b| b.modulation_routes_mut()),
+            )
+    }
+    pub fn modulation_routes(&self) -> impl Iterator<Item = &Modulation> {
+        self.layers
+            .iter()
+            .flat_map(|l| l.modulation_routes())
+            .chain(self.buses().flat_map(|b| b.modulation_routes()))
+    }
     /// Copy the whole local graph, including its fixed provider lanes and Output.
     pub fn duplicate(&self) -> Self {
         fn layer(bus: &crate::InstrumentBusSettings) -> InstrumentLayerSettings {

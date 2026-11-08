@@ -37,6 +37,26 @@ impl Default for InstrumentBusSettings {
     }
 }
 impl InstrumentBusSettings {
+    pub fn modulation_routes_mut(&mut self) -> impl Iterator<Item = &mut crate::Modulation> {
+        self.envelopes
+            .iter_mut()
+            .flat_map(|s| &mut s.modulations)
+            .chain(self.lfos.iter_mut().flat_map(|s| &mut s.modulations))
+            .chain(&mut self.macro_module.modulations)
+            .chain(
+                self.effects
+                    .iter_mut()
+                    .flat_map(|e| e.unit.modulations_mut()),
+            )
+    }
+    pub fn modulation_routes(&self) -> impl Iterator<Item = &crate::Modulation> {
+        self.envelopes
+            .iter()
+            .flat_map(|s| &s.modulations)
+            .chain(self.lfos.iter().flat_map(|s| &s.modulations))
+            .chain(&self.macro_module.modulations)
+            .chain(self.effects.iter().flat_map(|e| e.unit.modulations()))
+    }
     /// User-facing name; the saved `main` field and owner identity remain unchanged.
     pub const DISPLAY_NAME: &'static str = "Output";
 

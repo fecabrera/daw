@@ -7,6 +7,7 @@ mod cache_policy;
 pub use cache_policy::{CachePolicy, CacheProfile};
 mod memory;
 pub use memory::{RendererMemory, prepared_model_bytes};
+mod audio_sidechain;
 mod continuous_modulation;
 mod effects;
 mod latency;
@@ -164,6 +165,9 @@ fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
 /// Stable identity for UI parameter telemetry. Layer IDs are scoped to their track.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModulationTarget {
+    Sidechain {
+        route: Id,
+    },
     Noise {
         track: Id,
         layer: Id,
@@ -228,6 +232,8 @@ pub struct Renderer {
     master_effects: effects::EffectChain,
     alignment: latency::Alignment,
     buses: buses::Buses,
+    sidechains: audio_sidechain::Sidechains,
+    sidechain_post: Vec<[f32; 4]>,
     midi: Vec<Option<midi::MidiTrackRuntime>>,
     master: f32,
     master_target: f32,
@@ -347,7 +353,7 @@ impl Renderer {
         );
         let master = linear_gain(plan.project.master.gain_db);
         let playhead = plan.project.transport.playhead_frame;
-        let midi: Vec<_> = plan
+        let mut midi: Vec<_> = plan
             .project
             .tracks
             .iter()
@@ -480,7 +486,16 @@ impl Renderer {
         let source_fingerprint = hash.finish();
         let alignment = latency::Alignment::new(&plan.project);
         let buses = buses::Buses::new(&plan, &alignment);
+        let sidechains = audio_sidechain::Sidechains::new(&plan, &alignment);
+        for (index, runtime) in midi.iter_mut().enumerate() {
+            if let Some(runtime) = runtime {
+                runtime.configure_sidechains(&sidechains.values[index]);
+            }
+        }
+        let sidechain_post = vec![[0.0; 4]; plan.project.tracks.len()];
         let mut renderer = Self {
+            sidechains,
+            sidechain_post,
             buses,
             alignment,
             end_frame,
@@ -526,6 +541,9 @@ impl Renderer {
     /// and 11..27 for up to sixteen grain positions from one active voice.
     pub fn modulation_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {
         match target {
+            ModulationTarget::Sidechain { route } => {
+                self.sidechains.readings(route).map(parameter_snapshot)
+            }
             ModulationTarget::Envelope { track, layer, unit } => {
                 let index = *self.track_index.get(&track)?;
                 self.midi[index]
@@ -797,6 +815,7 @@ impl Renderer {
         let new_loop = &self.plan.project.transport.r#loop;
         let old_loop = &old.plan.project.transport.r#loop;
         self.alignment.compatible(&old.alignment)
+            && self.sidechains.compatible(&old.sidechains)
             && self.midi.iter().enumerate().all(|(index, runtime)| {
                 runtime.as_ref().is_none_or(|next| {
                     old.track_index
@@ -824,6 +843,9 @@ impl Renderer {
     /// Shared preparation admission for cache workers and direct reconstruction.
     /// A bus chain must retain the history of its complete child mix.
     fn needs_processing_history(&self) -> bool {
+        if self.sidechains.active() {
+            return true;
+        }
         self.plan.project.all_effects().any(|e| {
             matches!(
                 e.unit,
@@ -961,6 +983,7 @@ impl Renderer {
         if aligned && self.plan.project.sample_rate_hz == old.plan.project.sample_rate_hz {
             self.alignment.inherit(&mut old.alignment);
             self.buses.sends.inherit(&mut old.buses.sends);
+            self.sidechains.inherit(&mut old.sidechains);
             self.master_effects
                 .inherit_chain(&mut old.master_effects, &self.plan.project.master.effects);
             for (effects, track) in self.effects.iter_mut().zip(&self.plan.project.tracks) {
@@ -1044,6 +1067,7 @@ impl Renderer {
         let region = self.loop_region(live);
         let frame = latency::wrapped_frame(frame, region);
         if live
+            && !self.sidechains.active()
             && self.alignment.total > 0
             && self.alignment.previous_feed.is_some_and(|old| frame < old)
         {
@@ -1059,6 +1083,7 @@ impl Renderer {
         self.prime_pending = true;
         self.alignment.reset();
         self.buses.sends.reset();
+        self.sidechains.reset();
         self.master_effects.reset();
         for effects in &mut self.effects {
             effects.reset();
@@ -1190,6 +1215,9 @@ impl Renderer {
         frame: u64,
         loop_region: Option<(u64, u64)>,
     ) -> [f32; 2] {
+        let index = self.plan.project.tracks.len();
+        self.sidechains
+            .tick(index, &self.buses.raw, &self.sidechain_post, frame);
         self.master_effects
             .sample(
                 mix,
@@ -1197,7 +1225,12 @@ impl Renderer {
                 latency::delayed_frame(frame, self.alignment.track_max, loop_region),
                 self.plan.project.tempo_bpm,
                 loop_region,
-                (&[], None),
+                (
+                    &self.sidechains.values[index],
+                    self.sidechains
+                        .active()
+                        .then_some(&self.sidechains.indices[index]),
+                ),
             )
             .0
     }
@@ -1262,7 +1295,7 @@ impl Renderer {
                 && l.enabled
                 && (self.playhead < l.start_frame || self.playhead >= l.end_frame)
             {
-                if self.alignment.total == 0 {
+                if self.alignment.total == 0 && !self.sidechains.active() {
                     for runtime in self.midi.iter_mut().flatten() {
                         runtime.wrap_loop();
                     }

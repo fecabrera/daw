@@ -218,7 +218,7 @@ same connection strip. Preserve existing sources, signed amount controls, typed
 destinations, strip identities, power, reorder and telemetry.
 
 Deliver the detector/provider and routing validation first, then the shared UI.
-The [audio sidechain plan](../modulation/audio-sidechain-plan.md) defines proposed
+Implemented with native acceptance pending. The [audio sidechain contract](../modulation/audio-sidechain-plan.md) defines
 Peak/RMS detection, channel selection, optional frequency filtering, input-level
 bounds, curve/inversion and attack/release. Prepare combined audio/control
 ordering and alignment before callback publication. Never resolve a cross-track

@@ -8,6 +8,7 @@ DAW provides audio, MIDI and beat arrangement, layered instruments, effects, mix
 - Build [beat patterns](views/beat-editor.md) with independently configured subtrack instruments and shared mix controls.
 - Create MIDI patterns and edit notes in Editor's piano roll.
 - Build MIDI instruments from Oscillator, Sampler, Envelope, LFO, Amplitude, and Macro components.
+- Use [audio sidechain modulation](modulation/audio-sidechain.md) from tracks, groups and Returns, with detector and 0–1 mapping controls beside each connection.
 - Process tracks and Master with 3-band EQ, Drive, Bitcrusher, Saturator, Auto-filter, Compressor, OTT, Limiter, Direction Mixer, and Stereo Spread.
 - Mix tracks and nested [group buses](editing/track-groups.md) with gain, pan, mute, solo, and shared effects. Use Output to balance the layers of an instrument.
 - Save projects and export stereo WAV, MP3, or AAC. Inspect tracks, validate projects or render audio with the [CLI](cli/README.md).
@@ -21,7 +22,8 @@ Normal imports reference external audio recordings. Save does not automatically 
 ## Planned work
 
 The proposed priority order below covers the next basic production workflows.
-The initial fade/crossfade controls are implemented; the other milestones remain
+The initial fade/crossfade controls and audio sidechain modulation are implemented;
+native sidechain acceptance checks remain open. The other milestones remain
 planned. Each milestone must pass its acceptance
 checks before the next dependent milestone ships. This is a delivery proposal,
 not a release-date commitment.
@@ -75,6 +77,8 @@ of control movements after curve playback is stable. Keep automation separate
 from instrument modulation, with a defined rule for combining both.
 
 ### 6. Modulate from other audio
+
+Implemented; see [Audio sidechain modulation](modulation/audio-sidechain.md).
 
 Extend the existing modulation Source dropdown with **Tracks**, **Groups** and
 **Returns**. Show **None** first, then the existing modulation sources, then the

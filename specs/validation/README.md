@@ -4,6 +4,75 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Audio sidechain footer alignment — 2026-11-08
+
+Detector, Mapping and Response now place their footers at the shared strip body
+baseline. Mapping's shorter readout row no longer pulls its footer upward.
+The existing geometry test compares the painted footer positions as well as
+single-line readouts and unchanged settings.
+
+Completed automated checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`:
+  passed; `cargo clippy -p daw-ui --all-targets --locked --offline -- -D warnings`
+  also passed after correcting the test's footer lookup.
+- `cargo test -p daw-ui audio_sidechain::tests --locked --offline`: passed.
+- `cargo test --workspace --jobs 2 --locked --offline`: passed, including doctests.
+- `cargo test --workspace --release --jobs 2 --locked --offline`: passed,
+  including doctests.
+- Documentation links and `git diff --check`: passed.
+
+The initial test lookup matched the Detector control label instead of its footer;
+the corrected lookup and subsequent workspace runs passed. Native appearance
+checks remain open. The previous source-commit packaging guard remains in effect.
+
+## Audio sidechain modulation — 2026-11-07
+
+Track, group and Return taps now publish shared continuous modulation through the
+existing provider output and typed route resolver. Each connection owns its saved
+follower, mapping settings and stable identity. The combined audio/control graph
+rejects cycles, aligns source/destination effect stages, reconstructs transport
+history and preserves each delayed node's own loop boundary. Missing source
+identities remain saved and contribute neutral modulation, including with Invert.
+
+The connection keeps its native destination-matched Amount knob. Detector,
+Mapping and Response reuse Chorus's shared 161-point double-width strips and
+lane height. User screenshots identified three follow-up issues: dBFS readings
+wrapped and moved the footer; selectors used only the knob-column width; repeated
+drags progressively collapsed the gap between paired bounds. Readouts now use
+single-line numeric text, selectors use the padded 70-point field without moving
+knob centers, and numeric edits clamp to a stable bound before core validation.
+Narrower valid saved ranges remain unchanged while painting.
+
+Completed automated checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: passed.
+- `cargo test --workspace --jobs 2 --locked --offline`: passed, including doctests,
+  after the UI follow-up fixes.
+- `cargo test --workspace --release --jobs 2 --locked --offline`: passed,
+  including doctests, after the UI follow-up fixes.
+- `cargo build -p daw-cli --locked --offline` and `python3 tools/check_cli.py`:
+  passed after the shared engine/model implementation. The later fixes are UI-only.
+- Seventeen focused tests cover portable Peak/RMS detection, channel cancellation,
+  attack/release at all six project rates, filtering, mapping/inversion, finite
+  narrow amplitude ranges, legacy/saved routes, cycles and atomic rejection,
+  source copies/deletion, pre/post-fader behavior, muted and missing sources,
+  MIDI gain, source order, block/export/live/seek parity, source and destination
+  latency, delayed MIDI loop timing, and callback allocation-free rendering and
+  inheritance. UI checks cover source-menu order and dividers, unchanged state
+  during browsing/painting, double-width geometry, full-width selector alignment,
+  single-line extreme readouts, and 64 repeated drag frames for all four paired
+  bound knobs without invalid settings.
+
+Native regression checks on macOS, Windows and Linux,
+all themes, and device playback remain open. User-provided screenshots informed
+the fixes; they do not establish independent platform acceptance.
+`sh tools/package_macos.sh debug` stopped at the repository source-commit guard:
+`Commit tracked changes before packaging corresponding source.` No app bundle
+was produced by that command. No commit was made.
+
 ## Time stretch Settings section — 2026-11-07
 
 Moved the new-project engine preference from Playback to its own Time stretch

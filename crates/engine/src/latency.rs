@@ -9,6 +9,9 @@ pub(super) struct Delay {
     index: usize,
 }
 impl Delay {
+    pub fn frames(&self) -> usize {
+        self.samples.len()
+    }
     pub fn heap_bytes(&self) -> u64 {
         daw_unit_core::memory::vec_bytes(&self.samples)
     }
@@ -91,47 +94,92 @@ impl Alignment {
             .enumerate()
             .map(|(i, t)| (t.id, i))
             .collect();
-        let mut subtree: Vec<_> = project
-            .tracks
-            .iter()
-            .map(|t| track_frames(t, rate))
-            .collect();
-        let mut input_frames = vec![0; subtree.len()];
-        let mut track_max = 0;
-        for (i, t) in project.tracks.iter().enumerate().rev() {
-            subtree[i] += input_frames[i];
-            if let Some(parent) = t.group_id.and_then(|id| index.get(&id)) {
-                input_frames[*parent] = input_frames[*parent].max(subtree[i]);
-            } else {
-                track_max = track_max.max(subtree[i]);
+        let specifications = super::audio_sidechain::specs(project);
+        let (subtree, input_frames, track_max) = if specifications.is_empty() {
+            let mut subtree: Vec<_> = project
+                .tracks
+                .iter()
+                .map(|t| track_frames(t, rate))
+                .collect();
+            let mut input_frames = vec![0; subtree.len()];
+            let mut track_max = 0;
+            for (i, t) in project.tracks.iter().enumerate().rev() {
+                subtree[i] += input_frames[i];
+                if let Some(parent) = t.group_id.and_then(|id| index.get(&id)) {
+                    input_frames[*parent] = input_frames[*parent].max(subtree[i]);
+                } else {
+                    track_max = track_max.max(subtree[i]);
+                }
             }
-        }
-        // Return ingress is the longest incoming source/group path. Returns
-        // cannot send or parent other tracks, so sources precede them in this DAG.
-        for (r, t) in project
-            .tracks
-            .iter()
-            .enumerate()
-            .filter(|(_, t)| t.kind == daw_core::TrackKind::Return)
-        {
-            input_frames[r] = project
+            // Return ingress is the longest incoming source/group path. Returns
+            // cannot send or parent other tracks, so sources precede them in this DAG.
+            for (r, t) in project
                 .tracks
                 .iter()
                 .enumerate()
-                .filter(|(_, s)| s.sends.iter().any(|send| send.return_id == t.id))
+                .filter(|(_, t)| t.kind == daw_core::TrackKind::Return)
+            {
+                input_frames[r] = project
+                    .tracks
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| s.sends.iter().any(|send| send.return_id == t.id))
+                    .map(|(i, _)| subtree[i])
+                    .max()
+                    .unwrap_or(0);
+                subtree[r] = input_frames[r] + track_frames(t, rate);
+            }
+            track_max = project
+                .tracks
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.group_id.is_none())
                 .map(|(i, _)| subtree[i])
                 .max()
                 .unwrap_or(0);
-            subtree[r] = input_frames[r] + track_frames(t, rate);
-        }
-        track_max = project
-            .tracks
-            .iter()
-            .enumerate()
-            .filter(|(_, t)| t.group_id.is_none())
-            .map(|(i, _)| subtree[i])
-            .max()
-            .unwrap_or(0);
+            (subtree, input_frames, track_max)
+        } else {
+            let mut subtree = vec![0_u64; project.tracks.len()];
+            let mut input_frames = vec![0; project.tracks.len()];
+            for i in project
+                .sidechain_order()
+                .expect("validated audio/control graph")
+            {
+                let audio = project
+                    .tracks
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, t)| {
+                        t.group_id == Some(project.tracks[i].id)
+                            || t.sends.iter().any(|s| s.return_id == project.tracks[i].id)
+                    })
+                    .map(|(s, _)| subtree[s])
+                    .max()
+                    .unwrap_or(0);
+                let control = specifications
+                    .iter()
+                    .filter(|s| s.destination == i)
+                    .filter_map(|spec| {
+                        let source = spec.route.sidechain.unwrap().track;
+                        index
+                            .get(&source)
+                            .map(|&s| subtree[s].saturating_sub(spec.stage))
+                    })
+                    .max()
+                    .unwrap_or(0);
+                input_frames[i] = audio.max(control);
+                subtree[i] = input_frames[i] + track_frames(&project.tracks[i], rate);
+            }
+            let track_max = project
+                .tracks
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.group_id.is_none())
+                .map(|(i, _)| subtree[i])
+                .max()
+                .unwrap_or(0);
+            (subtree, input_frames, track_max)
+        };
         let send_delays = project
             .tracks
             .iter()

@@ -1430,8 +1430,13 @@ impl DawUi {
             self.midi_editor.add_layer_bounds = Rect::NOTHING;
         }
         self.instrument_ui.component_viewports.push((owner, rect));
-        let sources = modulation_panel::sources(Some(&settings));
-        let providers = modulation_panel::provider_sources(&settings);
+        self.sidechain_context(ui.ctx(), owner);
+        let mut sources = modulation_panel::sources(Some(&settings));
+        crate::audio_sidechain::append_sources(&mut sources, &self.session.project);
+        let mut providers = modulation_panel::provider_sources(&settings);
+        for (_, sources) in &mut providers {
+            crate::audio_sidechain::append_sources(sources, &self.session.project);
+        }
         self.instrument_main(
             ui,
             owner,

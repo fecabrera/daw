@@ -68,6 +68,8 @@ impl Batch {
                 continue;
             }
             let mut processor = TrackProcessor {
+                sidechains: &[],
+                sidechain_sources: None,
                 audio: &mut work.audio,
                 midi: &mut work.midi,
                 effects: &mut work.effects,
@@ -126,6 +128,9 @@ impl ParallelTracks {
                     + 128)
     }
     pub fn new(renderer: &Renderer, available: u64) -> Option<Self> {
+        if renderer.sidechains.active() {
+            return None;
+        }
         let bytes = Self::estimate(renderer);
         if bytes > available.min(SCRATCH_LIMIT) {
             return None;

@@ -225,7 +225,12 @@ impl Project {
             !units[..index].contains(id)
                 && original.iter().find(|e| e.id == *id).is_some_and(|effect| {
                     effect.unit.modulations().iter().all(|route| {
-                        route
+                        route.sidechain.is_none_or(|s| {
+                            self.sidechain_source_available(
+                                owner.unwrap_or(self.project_id),
+                                s.track,
+                            )
+                        }) && route
                             .source
                             .is_none_or(|source| source_available(instrument, source))
                     })

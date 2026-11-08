@@ -445,8 +445,14 @@ fn modulation_meters(
                 })
         })
     });
+    let sidechains = plan
+        .project
+        .audio_sidechain_routes()
+        .into_iter()
+        .map(|(_, r)| ModulationTarget::Sidechain { route: r.id });
     effects
         .chain(bands)
+        .chain(sidechains)
         .chain(macros)
         .chain(lfos)
         .chain(envelopes)

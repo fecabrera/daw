@@ -9,6 +9,7 @@ use daw_unit_core::{ModulationRange, ModulationScope};
 use egui::{Rect, Ui, Vec2};
 #[derive(Clone)]
 pub(super) struct Source {
+    pub audio: bool,
     pub id: ModulationSourceId,
     pub label: String,
     pub layer_name: String,
@@ -24,6 +25,7 @@ pub(super) fn sources(instrument: Option<&InstrumentSettings>) -> Vec<Source> {
         .flat_map(|i| i.modulation_sources())
         .filter(|source| source.present)
         .map(|source| Source {
+            audio: false,
             id: source.id,
             label: format!("{} · {}", source.layer_name, source.display_name()),
             layer_name: source.layer_name.into(),
@@ -44,7 +46,10 @@ struct SourceGroup<'a> {
 }
 fn source_groups(sources: &[Source], scope: ModulationScope) -> Vec<SourceGroup<'_>> {
     let mut groups: Vec<SourceGroup<'_>> = Vec::new();
-    for source in sources.iter().filter(|source| scope.accepts(source.scope)) {
+    for source in sources
+        .iter()
+        .filter(|source| !source.audio && scope.accepts(source.scope))
+    {
         if let Some(group) = groups.iter_mut().find(|group| group.id == source.id.layer) {
             group.sources.push(source);
         } else {
@@ -62,7 +67,11 @@ const SOURCE_MENU_MIN_WIDTH: f32 = crate::menus::MIN_WIDTH;
 fn source_menu_label(label: &str) -> egui::RichText {
     egui::RichText::new(label).text_style(egui::TextStyle::Small)
 }
-fn source_menu_width<'a>(ui: &Ui, labels: impl Iterator<Item = &'a str>, arrows: bool) -> f32 {
+pub(super) fn source_menu_width<'a>(
+    ui: &Ui,
+    labels: impl Iterator<Item = &'a str>,
+    arrows: bool,
+) -> f32 {
     let font = egui::TextStyle::Small.resolve(ui.style());
     let text = labels
         .map(|label| {
@@ -81,9 +90,19 @@ fn source_menu_width<'a>(ui: &Ui, labels: impl Iterator<Item = &'a str>, arrows:
         })
     .max(crate::menus::MIN_WIDTH)
 }
+#[cfg(test)]
 fn source_picker(
     ui: &mut Ui,
     selected: &mut Option<ModulationSourceId>,
+    sources: &[Source],
+    scope: ModulationScope,
+) -> egui::Response {
+    source_picker_with_audio(ui, selected, &mut None, sources, scope)
+}
+fn source_picker_with_audio(
+    ui: &mut Ui,
+    selected: &mut Option<ModulationSourceId>,
+    sidechain: &mut Option<daw_unit_core::AudioSidechain>,
     sources: &[Source],
     scope: ModulationScope,
 ) -> egui::Response {
@@ -97,6 +116,8 @@ fn source_picker(
             },
             |source| source.label.as_str(),
         );
+    let audio_label = sidechain.map(|s| crate::audio_sidechain::source_label(ui, s));
+    let label = audio_label.as_deref().unwrap_or(label);
     crate::menus::Dropdown::from_id_salt("source")
         .small_items()
         .selected_text(egui::RichText::new(label).size(panels::HEADER_FONT_SIZE))
@@ -111,12 +132,19 @@ fn source_picker(
             );
             crate::menus::layout(ui, width, |ui| {
                 if ui
-                    .selectable_value(selected, None, source_menu_label("None"))
+                    .selectable_label(
+                        selected.is_none() && sidechain.is_none(),
+                        source_menu_label("None"),
+                    )
                     .clicked()
                 {
+                    *selected = None;
+                    *sidechain = None;
                     ui.close();
                 }
-                if !groups.is_empty() {
+                if !groups.is_empty()
+                    || !crate::audio_sidechain::context(ui.ctx()).choices.is_empty()
+                {
                     crate::menus::separator(ui);
                 }
                 for group in groups {
@@ -150,6 +178,7 @@ fn source_picker(
                                         )
                                         .clicked()
                                     {
+                                        *sidechain = None;
                                         ui.close();
                                     }
                                 }
@@ -157,6 +186,7 @@ fn source_picker(
                         });
                     });
                 }
+                crate::audio_sidechain::source_menu(ui, selected, sidechain);
             });
         })
         .response
@@ -339,55 +369,68 @@ pub(super) fn targeted_body_with_sources<'a>(
                     .sense(egui::Sense::click_and_drag()),
                 |ui| {
                     ui.add_enabled_ui(!reordering, |ui| {
-                        egui::Frame::new().inner_margin(10).show(ui, |ui| {
-                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                                ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
-                                ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
-                                ui.set_min_height(crate::envelope_panel::body_height(compact));
-                                if !compact {
-                                    let sources = sources_for_target(route.target);
-                                    selector_row(ui, "Source", |ui| {
-                                        source_picker(ui, &mut route.source, sources, scope)
-                                    });
-                                    selector_row(ui, "Destination", |ui| {
-                                        destination_picker(
+                        ui.horizontal_top(|ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            egui::Frame::new().inner_margin(10).show(ui, |ui| {
+                                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                    ui.spacing_mut().item_spacing.y =
+                                        f32::from(theme::TOOLBAR_PADDING);
+                                    ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
+                                    ui.set_min_height(crate::envelope_panel::body_height(compact));
+                                    if !compact {
+                                        let sources = sources_for_target(route.target);
+                                        selector_row(ui, "Source", |ui| {
+                                            source_picker_with_audio(
+                                                ui,
+                                                &mut route.source,
+                                                &mut route.sidechain,
+                                                sources,
+                                                scope,
+                                            )
+                                        });
+                                        selector_row(ui, "Destination", |ui| {
+                                            destination_picker(
+                                                ui,
+                                                route,
+                                                targets,
+                                                scope,
+                                                &sources_for_target,
+                                            )
+                                        });
+                                        let spec = crate::parameter_knobs::amount(route.parameter);
+                                        knobs::row(
                                             ui,
-                                            route,
-                                            targets,
-                                            scope,
-                                            &sources_for_target,
-                                        )
-                                    });
-                                    let spec = crate::parameter_knobs::amount(route.parameter);
-                                    knobs::row(
+                                            &mut route.amount,
+                                            knobs::CHOICE_SIZE,
+                                            |ui, value| ui.add(Knob::new(value, spec)),
+                                        );
+                                    }
+                                    rows::centered(
                                         ui,
-                                        &mut route.amount,
-                                        knobs::CHOICE_SIZE,
-                                        |ui, value| ui.add(Knob::new(value, spec)),
+                                        if compact {
+                                            crate::envelope_panel::body_height(true)
+                                        } else {
+                                            icons::COMPACT_BUTTON_SIZE
+                                        },
+                                        |ui| {
+                                            if rows::power_label(
+                                                ui,
+                                                &format!("Mod {}", index + 1),
+                                                "Toggle modulation connection",
+                                                route.enabled,
+                                            )
+                                            .clicked()
+                                            {
+                                                route.enabled = !route.enabled;
+                                            }
+                                        },
                                     );
-                                }
-                                rows::centered(
-                                    ui,
-                                    if compact {
-                                        crate::envelope_panel::body_height(true)
-                                    } else {
-                                        icons::COMPACT_BUTTON_SIZE
-                                    },
-                                    |ui| {
-                                        if rows::power_label(
-                                            ui,
-                                            &format!("Mod {}", index + 1),
-                                            "Toggle modulation connection",
-                                            route.enabled,
-                                        )
-                                        .clicked()
-                                        {
-                                            route.enabled = !route.enabled;
-                                        }
-                                    },
-                                );
+                                });
                             });
-                        })
+                            if let Some(settings) = &mut route.sidechain {
+                                crate::audio_sidechain::body(ui, route.id, settings, compact);
+                            }
+                        });
                     })
                 },
             );
@@ -499,7 +542,7 @@ pub(super) fn marker(
     for route in routes.iter().filter(|r| r.parameter == parameter) {
         assigned = true;
         let source = route
-            .source
+            .effective_source()
             .and_then(|id| sources.iter().find(|s| s.id == id));
         let reason = if !enabled {
             "unit off"
@@ -945,6 +988,7 @@ mod tests {
     use daw_core::EnvelopeMode;
     fn source(mode: EnvelopeMode) -> Source {
         Source {
+            audio: false,
             id: ModulationSourceId {
                 layer: daw_core::Id::new_v4(),
                 unit: daw_core::Id::new_v4(),

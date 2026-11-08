@@ -1,5 +1,7 @@
 use daw_core::*;
 use daw_engine::{RenderPlan, Renderer};
+#[path = "support/audio_sidechain.rs"]
+mod audio_sidechain;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::collections::HashMap;

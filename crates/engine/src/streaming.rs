@@ -26,8 +26,18 @@ impl Renderer {
     pub(super) fn streaming_ready(&mut self, frame: u64, region: Option<(u64, u64)>) -> bool {
         let frame = latency::wrapped_frame(frame, region);
         let mut ready = true;
-        for (runtime, track) in self.audio_tracks.iter_mut().zip(&self.plan.project.tracks) {
-            ready &= runtime.ready(&track.clips, frame, region.map(|r| r.0));
+        for (index, (runtime, track)) in self
+            .audio_tracks
+            .iter_mut()
+            .zip(&self.plan.project.tracks)
+            .enumerate()
+        {
+            let clock = if self.sidechains.active() {
+                latency::delayed_frame(frame, self.alignment.input_frames[index], region)
+            } else {
+                frame
+            };
+            ready &= runtime.ready(&track.clips, clock, region.map(|r| r.0));
         }
         ready
     }

@@ -3,6 +3,7 @@ use egui::{Event, PointerButton, Pos2, Shape};
 
 fn source(layer: u128, unit: u128, layer_name: &str, name: &str, scope: ModulationScope) -> Source {
     Source {
+        audio: false,
         id: ModulationSourceId {
             layer: daw_core::Id::from_u128(layer),
             unit: daw_core::Id::from_u128(unit),
@@ -23,6 +24,43 @@ fn example() -> Vec<Source> {
         source(2, 103, "Layer 2", "LFO 1", ModulationScope::Shared),
         source(3, 104, "Output", "Macro 1", ModulationScope::Shared),
     ]
+}
+#[test]
+fn sidechain_source_menu_has_exact_section_order_and_browsing_is_read_only() {
+    let ctx = egui::Context::default();
+    let source_id = daw_core::Id::new_v4();
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            egui::Id::new("audio-sidechain-source-context"),
+            crate::audio_sidechain::SourceContext {
+                choices: vec![crate::audio_sidechain::Choice {
+                    id: source_id,
+                    name: "Kick".into(),
+                    group: "Tracks",
+                    available: true,
+                }],
+                ..Default::default()
+            },
+        )
+    });
+    let sources = example();
+    let mut selected = Some(sources[2].id);
+    let original = selected;
+    let first = frame(&ctx, &mut selected, &sources, vec![]);
+    click(&ctx, &mut selected, &sources, first.button.center());
+    let menu = frame(&ctx, &mut selected, &sources, vec![]);
+    let labels: Vec<_> = menu.text.iter().map(|(s, _)| s.as_str()).collect();
+    let y = |name| text_rect(&menu, name).center().y;
+    assert!(
+        y("None") < y("Layer 1")
+            && y("Layer 1") < y("Output")
+            && y("Output") < y("Tracks")
+            && y("Tracks") < y("Groups")
+            && y("Groups") < y("Returns"),
+        "{labels:?}"
+    );
+    assert_eq!(menu.dividers.len(), 2);
+    assert_eq!(selected, original);
 }
 #[test]
 fn groups_keep_layer_identity_order_names_and_scope_filters() {

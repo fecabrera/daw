@@ -42,6 +42,8 @@ mod filter;
 pub use filter::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
 mod modulation;
 pub use modulation::*;
+mod audio_sidechain;
+pub use audio_sidechain::*;
 mod exciter;
 pub use exciter::*;
 mod saturator;
