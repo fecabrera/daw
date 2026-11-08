@@ -3,11 +3,11 @@
 #![forbid(unsafe_code)]
 mod pitch;
 mod spectral;
-mod spectral_attacks;
 mod transients;
+pub use audio_analysis::TransientDetector;
 pub use pitch::{PITCH_REVISION, Pitch, PitchRequest};
 use std::{fmt, ops::ControlFlow, str::FromStr};
-pub use transients::{TransientDetector, detect_transients};
+pub use transients::detect_transients;
 
 /// Processing identity for caches and reports; requests always use this implementation.
 pub const REVISION: u32 = 6;

@@ -34,7 +34,7 @@ Live stretching, ratio/pitch automation, formant preservation, tempo detection, 
 
 ## Portable crate
 
-`crates/timestretch` owns DSP, request validation, output-length calculation, progress, and cancellation checkpoints. It must build and test without DAW crates, graphics, devices, filesystem access, native C/C++ libraries, or Rubber Band. `crates/timestretch-cli` adds file decoding/conversion, reference adapters, reports, and orchestration through portable dependencies. Neither package may depend directly or transitively on `daw-*`, application configuration, project manifests, or DAW build artifacts. The CLI may require native build tools for its Rubber Band references; the core crate must not.
+`crates/timestretch` owns stretch DSP, request validation, output-length calculation, progress, and cancellation checkpoints. It depends on the portable `audio-analysis` crate for transient detection; that crate has no dependency on timestretch or the DAW. It must build and test without DAW crates, graphics, devices, filesystem access, native C/C++ libraries, or Rubber Band. `crates/timestretch-cli` adds file decoding/conversion, reference adapters, reports, and orchestration through portable dependencies. Neither package may depend directly or transitively on `daw-*`, application configuration, project manifests, or DAW build artifacts. The CLI may require native build tools for its Rubber Band references; the core crate must not.
 
 Dependency direction is consumer → portable engine. The DAW's media layer adapts portable types to project types. Share any common reference-adapter code through a small DAW-independent support library if needed; do not make the engine depend on the CLI or the CLI depend on the DAW. A tiny external Cargo consumer must be able to use the engine with only sample buffers and parameters. Standalone builds, examples, and scripts must work from arbitrary directories without a DAW installation or running window.
 
@@ -294,12 +294,20 @@ still fail in projects. Prepared cache keys use R6 and cannot relabel R4/R5 buff
 Pitch composition revision remains 2; its full cache identity includes stretch
 revision 6.
 
-`detect_transients(request, input, detector, progress)` exposes the same source
+`audio_analysis::TransientRequest` is the reusable detection API, with Combined
+as its default and no ratio or output extent. The listening tool and detector
+benchmark call it directly. `timestretch::TransientDetector` reexports the shared
+type. The retained `detect_transients(request, input, detector, progress)`
+compatibility adapter exposes the same source
 analysis for evaluation. It returns sorted source-frame positions, not beats or
 confidence scores. It uses the request's conservative full stretch memory budget
 and output-length validation, even though detection alone does not allocate the
 rendered output. It performs analysis at ratio 1 and during compression too;
-the rendering path uses protection only during expansion.
+the rendering path uses protection only during expansion. The adapter maps shared
+analysis progress into 0.10–0.15 and translates its typed errors. The shared
+entry validates finite input itself, including when called from the stretch
+engine. Extraction preserves onset positions and rendered PCM, so stretch
+revision 6, pitch revision 2 and both detector identities remain unchanged.
 
 ### Validation and rendering sequence
 
@@ -328,51 +336,12 @@ The public detection-only entry validates and scans even constant/nonempty
 input. It does not apply the rendering shortcuts and finishes progress at one.
 Zero-valued input yields no events; a nonzero signal's start may be an event.
 
-### Energy scan and combined spectral evidence
+### Shared detector
 
-The baseline energy detector is unchanged: blocks contain `max(1, floor(rate /
-1000))` frames. Sum squared samples across both channels and divide by sample
-count. An attack must exceed six times the mean of the populated preceding 80
-observations and twice the maximum of the preceding two observations. Require
-at least `floor(rate * 30/1000)` frames since its previous attack. Update history
-after the decision. Startup uses populated observations; all-zero history does
-not impose an absolute amplitude threshold. Polarity cannot cancel summed power.
-
-Combined keeps all baseline candidates and adds spectral evidence:
-
-- Every four energy blocks, analyze a centered Hann window of
-  `clamp(next_power_of_two(floor(rate * 16/1000)), 256, 4096)` frames.
-- Analyze channels separately with the existing RustFFT library and sum bin
-  powers, never channel samples. Use bins from `max(2, floor(700 * width/rate))`
-  through the bin below Nyquist. DC, low-frequency bass and Nyquist are excluded.
-- At each eligible bin, compare current power against the maximum of that bin
-  and its immediate two neighbors in the previous spectrum. Sum only positive
-  differences. This is an independently chosen three-bin novelty reference,
-  not a claim to implement the full SuperFlux algorithm.
-- Require high-band power > `1e-5 * total power`, high-band power > twice its
-  previous value, and summed novelty > 0.35 * current high-band power.
-- Require novelty participation `(sum novelty)^2 / sum(novelty^2) >= 16`.
-  This gain-invariant measure rejects growth concentrated in a few harmonics.
-  Such growth can occur while a guitar note sustains and must not add a phase
-  reset. The test precedes position refinement and the refractory update; a
-  rejected candidate cannot suppress a later broadband event. Energy detection
-  remains unchanged, including its handling of tonal attacks.
-- Locate the event within that window using 1 ms blocks of summed squared
-  first differences of the original channel samples. Choose the block with the
-  largest positive difference from the preceding block; ties retain the earlier
-  block. Its first frame is the event position. The initial comparison value is
-  zero, so refinement is approximate and can favor the window's first block.
-- After refinement, compare mean squared first differences in the 8 ms before
-  the event with the interval from one energy block after the event to 8 ms
-  after it. Require the latter to exceed twice the former. Excluding the first
-  block prevents a single cutoff impulse being classified as a sustained attack.
-  Require both complete intervals; quiet very short impulses can rely on Energy.
-- Require the spectral stream's own 30 ms minimum event spacing. Collect Energy
-  and spectral positions separately. Suppress any spectral candidate less than
-  30 ms from an original Energy candidate, retaining the Energy timestamp even
-  when the spectral candidate is earlier. Sort the combined list and enforce
-  30 ms spacing. Thus added spectral evidence cannot shift a known Energy attack.
-  The v1 experiment's earliest-candidate precedence is superseded.
+Energy and spectral scanning, harmonic-rise rejection and candidate merging live
+in `audio-analysis`; see [Audio analysis](analysis.md#energy-scan-and-combined-spectral-evidence)
+for their detailed implementation contract. Timestretch owns only protected
+regions, the timing map and phase synthesis.
 
 ### Boundary, failure and interaction behavior
 

@@ -1,6 +1,7 @@
 //! Reproducible synthetic detector comparison. No audio files or reference engines.
+use audio_analysis::{TransientDetector as Mode, TransientRequest};
 use std::{f64::consts::TAU, hint::black_box, ops::ControlFlow, time::Instant};
-use timestretch::{Ratio, Request, TransientDetector as Mode, detect_transients};
+use timestretch::{Ratio, Request};
 fn fixture(name: &str, rate: u32) -> (Vec<f32>, Vec<usize>) {
     let events: Vec<_> = if matches!(name, "dyad" | "vibrato" | "silence") {
         vec![]
@@ -93,7 +94,7 @@ fn main() {
                     .fold(0xcbf29ce484222325_u64, |h, b| {
                         (h ^ u64::from(b)).wrapping_mul(0x100000001b3)
                     });
-                let request = Request::new(rate, channels, Ratio::new(3, 2).unwrap());
+                let request = TransientRequest::new(rate, channels);
                 let mut times = [vec![], vec![]];
                 let mut result = [vec![], vec![]];
                 for pass in 0..6 {
@@ -104,9 +105,11 @@ fn main() {
                             Mode::Combined
                         };
                         let start = Instant::now();
-                        let found = detect_transients(request, black_box(&input), mode, |_| {
-                            ControlFlow::Continue(())
-                        })
+                        let found = TransientRequest {
+                            detector: mode,
+                            ..request
+                        }
+                        .detect_with_progress(black_box(&input), |_| ControlFlow::Continue(()))
                         .unwrap();
                         let ms = start.elapsed().as_secs_f64() * 1000.0;
                         if pass > 0 {
@@ -221,11 +224,10 @@ mod tests {
                             }
                         })
                         .collect();
-                    let request = Request::new(rate, channels, Ratio::new(3, 2).unwrap());
-                    let found = detect_transients(request, &input, Mode::Combined, |_| {
-                        ControlFlow::Continue(())
-                    })
-                    .unwrap();
+                    let request = TransientRequest::new(rate, channels);
+                    let found = request
+                        .detect_with_progress(&input, |_| ControlFlow::Continue(()))
+                        .unwrap();
                     let (tp, fp, miss, _) = score(&found, &truth, rate);
                     assert_eq!(
                         (tp, fp, miss),

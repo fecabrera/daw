@@ -5,6 +5,14 @@ fn optional_detector_obeys_identity_errors_cancellation_and_default_compatibilit
     let input: Vec<_> = (0..4800).map(|i| ((i as f32) * 0.13).sin() * 0.5).collect();
     for mode in [Mode::Energy, Mode::Combined] {
         let request = Request::new(48000, 1, Ratio::new(1, 1).unwrap());
+        let analysis = audio_analysis::TransientRequest {
+            detector: mode,
+            ..audio_analysis::TransientRequest::new(48000, 1)
+        };
+        assert_eq!(
+            detect_transients(request, &input, mode, |_| ControlFlow::Continue(())).unwrap(),
+            analysis.detect(&input).unwrap()
+        );
         let mut exact = input.clone();
         exact[0] = -0.0;
         let output = request

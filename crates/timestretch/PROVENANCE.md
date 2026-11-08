@@ -134,3 +134,10 @@ supplement can miss narrowband masked attacks; it does not introduce signal
 separation or guarantee artifact-free polyphonic stretching. No reference-engine
 implementation material was inspected or reused. Stretch revision 6 and detector
 identity energy-spectral-v5 invalidate prior prepared audio.
+
+## Reusable analysis extraction — 2026-11-08
+
+The revision-6 energy/spectral detector and its original unit tests moved to
+crates/audio-analysis without changing thresholds, merge order or revision
+identities. This crate now owns only the detection adapter, attack regions and
+stretch synthesis. See audio-analysis/PROVENANCE.md for the extraction boundary.

@@ -89,3 +89,7 @@ default to 3/4, 3/2 and 2/1; sample rate defaults to 48 kHz. Output directories
 must not exist. Keep licensed/private recordings and renders out of version
 control. `LISTENING.md` describes the human rating procedure; a prepared pack
 is not a passed listening test. No ratings are generated automatically.
+
+Transient detection is owned by the portable [audio-analysis crate](../audio-analysis/README.md).
+Use its TransientRequest directly for analysis without stretch settings. The
+existing timestretch detection API remains a compatibility adapter.

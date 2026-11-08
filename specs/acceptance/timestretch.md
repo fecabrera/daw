@@ -217,3 +217,13 @@ expected compression equality, output path/overwrite guards and generated pack
 structure. Listening status remains pending until scores and notes are supplied.
 This smaller two-detector panel has no vocals, no R2/R3 references and no LUFS
 matching; it cannot pass the full listening gate above.
+
+## Shared analysis extraction
+
+Transient detection is owned by audio-analysis through its stretch-independent
+TransientRequest. Preserve both detector identities and stretch revision 6 when
+extracting unchanged algorithms. Run its validation/resource/cancellation and
+six-rate signal tests, the stretch integration suite, the standalone listening
+tool tests and an external analysis-only consumer. Compare existing private R6
+onset lists and PCM hashes to extracted renders; input hashes must stay unchanged.
+This refactor does not replace the listening gates or add editor markers.

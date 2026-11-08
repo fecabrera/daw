@@ -7,4 +7,5 @@ license = "BSD-2-Clause"
 description = "Independent experimental offline time stretching and pitch shifting"
 
 [dependencies]
-rustfft = "=6.4.1"
+rustfft.workspace = true
+audio-analysis = { path = "../audio-analysis", version = "0.1.0" }

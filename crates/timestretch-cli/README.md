@@ -77,3 +77,7 @@ incomplete diagnostic folder; choose a new directory to rerun.
 
 This two-detector test is not the full twelve-recording three-engine acceptance
 panel. The main `timestretch` binary remains the package's default run target.
+
+The listening tool calls audio-analysis::TransientRequest directly for marker
+analysis. Stretch rendering remains in timestretch; both share one detector
+implementation and unchanged revision identities.

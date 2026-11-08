@@ -2,10 +2,11 @@
 #[path = "../audio.rs"]
 mod audio;
 use audio::{Audio, Result};
+use audio_analysis::{TransientDetector as Mode, TransientRequest};
 use clap::Parser;
 use serde_json::{Value, json};
 use std::{fs, ops::ControlFlow, path::PathBuf, time::Instant};
-use timestretch::{Ratio, Request, TransientDetector as Mode};
+use timestretch::{Ratio, Request};
 
 #[derive(Parser)]
 #[command(
@@ -125,9 +126,11 @@ fn run(args: Args) -> Result<()> {
                     channels: input.channels,
                     rate: input.rate,
                 };
-                let onsets = timestretch::detect_transients(request, &input.samples, mode, |_| {
-                    ControlFlow::Continue(())
-                })?;
+                let onsets = TransientRequest {
+                    detector: mode,
+                    ..TransientRequest::new(input.rate, input.channels)
+                }
+                .detect_with_progress(&input.samples, |_| ControlFlow::Continue(()))?;
                 audio::write(
                     &output
                         .join("raw")

@@ -1,0 +1,10 @@
+[package]
+name = "audio-analysis"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "BSD-2-Clause"
+description = "Portable offline audio analysis over host-owned PCM"
+
+[dependencies]
+rustfft.workspace = true

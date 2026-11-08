@@ -2,6 +2,8 @@
 
 This tree contains implementation requirements, architecture, data formats, acceptance criteria, and engineering validation history. User instructions belong in the [user guide](../docs/README.md). Follow the audience and folder rules in [AGENTS.md](../AGENTS.md#documentation-and-dependency-licenses).
 
+- [Audio analysis](audio/analysis.md): reusable energy/spectral transient detection.
+
 ## Architecture and baseline
 
 - [MVP scope and architecture](architecture/mvp-scope.md).

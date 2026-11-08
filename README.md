@@ -35,6 +35,7 @@ Planned work includes audio editing, advanced beat editing, more effects, and cu
 - [CLI guide](docs/cli/README.md): track inspection, project validation, source collection, export and standalone WAV processing.
 - [Development guides](docs/development/README.md): platform setup, build and run steps, packaging, plugin builds, and CI downloads.
 - [Features and roadmap](docs/roadmap.md), including current limits and planned capabilities.
+- [Reusable audio analysis](crates/audio-analysis/README.md): portable energy/spectral transient detection.
 - [Time stretching and offline pitch changes](docs/audio/time-stretch.md) and the [standalone comparison tool guide](docs/cli/timestretch.md).
 - [Implementation specifications](specs/README.md): architecture, data formats, requirements, and acceptance criteria.
 - [Validation records](specs/validation/README.md): completed checks and remaining verification limits.

@@ -4,6 +4,30 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Reusable audio analysis extraction — 2026-11-08
+
+Moved the revision-6 Energy/Combined routines and Energy unit tests into the
+portable BSD-2-Clause audio-analysis crate. Its TransientRequest uses PCM, rate,
+channels, detector and memory budget; no stretch ratio or render extent. The
+stretch engine owns only its adapter and attack timing regions. The listening
+tool and benchmark use the shared crate directly. See the [analysis contract](../audio/analysis.md).
+
+Algorithms and revision identities are unchanged. All 42 existing private Splice
+renders (36 panel renders plus six full-guitar renders) retain identical PCM
+hashes, frame counts, detector identities and source onset lists. All seven input
+hashes remain unchanged; no licensed media or private manifests were committed.
+Fresh diagnostic packs are in ignored work/transient-listening under
+splice-analysis-extracted and guitar-analysis-extracted. The user's prior R6
+listening confirmation remains applicable to these identical render samples;
+no new listener ratings are inferred.
+
+Analysis and stretch debug/release all-target tests, analysis doctests, standalone
+CLI/tool tests, media tests, strict Clippy and formatting/diff checks pass. The
+analysis-only external Cargo consumer builds/runs offline; its normal dependency
+graph contains RustFFT and existing support crates, without DAW or timestretch.
+No dependency versions changed. Two extended stretch tests remain ignored in the
+ordinary runs. Native UI/device and Windows/Linux checks were not repeated.
+
 ## Harmonic-rise fix — Integrated revision 6, 2026-11-08
 
 The [guitar regression report](transient-harmonic-r6.md) records the user's pitch
