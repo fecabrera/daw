@@ -156,6 +156,21 @@ These are budgets to test, not predicted performance. Record the first measured 
 
 ## Listening gate
 
+### Revision-7 acceptance decision — 2026-11-08
+
+**Broader listening acceptance: COMPLETE for Integrated revision 7.** After
+confirming that the revision-7 renders fixed the reported guitar artifacts, the
+user explicitly instructed that broader listening acceptance be marked complete.
+This acceptance decision supersedes the outstanding listening-panel requirements
+for this revision. The protocol below remains the reference for future measured
+comparisons. No additional listener scores, corpus runs, R2/R3 comparisons or
+loudness measurements were supplied or inferred by this decision. Performance,
+portable-platform, native DAW/device and stable-release gates retain their
+separate requirements. See the [validation record](../validation/transient-lowend-r7.md#broader-listening-acceptance--2026-11-08).
+
+### Reference evaluation protocol
+
+
 After automated correctness passes, use the twelve rights-cleared excerpts above, each 10–30 s, at every non-identity listed ratio. Run the complete panel at 48 kHz and difficult representative cases at 44.1/192 kHz. Objective tests still cover every rate.
 
 Keep raw files for Timestretch, R2, and R3. Create separate audition files using one disclosed constant gain per file, matching integrated loudness within 0.2 LU where measurable. No limiting/clipping; use common attenuation if needed for float playback. Randomize hidden A/B/C labels and retain the seed, mapping, matching gains, and notes. Supply the original for pitch/timbre reference. Record new-engine comparisons against both references separately.
@@ -168,7 +183,7 @@ Initial promotion requirements:
 - Extreme cases: each case's median overall score at least 3; objective pitch/stereo requirements still apply.
 - Repeatable dropouts, reversals, material pitch errors, lost events, or severe boundary defects block promotion regardless of average score.
 
-An experimental standalone release needs automated engine/tool gates and an experimental status; a stable standalone release additionally needs performance, full listening acceptance, and portable checks on macOS/Windows/Linux. DAW-specific gates are not prerequisites for other consumers. Exposing the experimental DAW item also needs its integration gate. Changing the DAW default additionally needs native DAW checks on all three platforms and an explicit validation decision. Missing material/listeners mean incomplete acceptance, not approval.
+An experimental standalone release needs automated engine/tool gates and an experimental status; a stable standalone release additionally needs performance, full listening acceptance, and portable checks on macOS/Windows/Linux. DAW-specific gates are not prerequisites for other consumers. Exposing the experimental DAW item also needs its integration gate. Changing the DAW default additionally needs native DAW checks on all three platforms and an explicit validation decision. Missing material/listeners mean incomplete measured-panel coverage. The explicit revision-7 acceptance decision above closes listening acceptance for that revision without asserting completion of this measured protocol.
 
 ## Test locations and evidence
 
@@ -214,8 +229,9 @@ of detected attacks. More detections can include false positives.
 
 Automated checks establish finite/exact-length renders, input-hash preservation,
 expected compression equality, output path/overwrite guards and generated pack
-structure. Listening status remains pending until scores and notes are supplied.
-This smaller two-detector panel has no vocals, no R2/R3 references and no LUFS
+structure. At preparation time, listening scores and notes were pending. The
+revision-7 acceptance decision above now completes broader listening acceptance;
+no panel scores are inferred. This smaller two-detector panel has no vocals, no R2/R3 references and no LUFS
 matching; it cannot pass the full listening gate above.
 
 ## Shared analysis extraction
@@ -227,3 +243,19 @@ six-rate signal tests, the stretch integration suite, the standalone listening
 tool tests and an external analysis-only consumer. Compare existing private R6
 onset lists and PCM hashes to extracted renders; input hashes must stay unchanged.
 This refactor does not replace the listening gates or add editor markers.
+
+## Revision-7 low-end regression
+
+Retain the harmonic-rich three-note control, six-rate compression/expansion and
+±6-semitone cases with global and local-interior 5-cent/0.5 dB gates. Retain the
+original failure logs and boundary-local diagnostic. Attack waveform metric v2
+removes the known held source tone and a calibrated pre-attack sine/cosine fit
+from output before applying the unchanged 2% percussion residual limit. Check
+held-tone level within 0.5 dB and that a later injected attack survives fitting.
+The old mixed-waveform metric required resetting the held tone to source phase;
+that requirement conflicts with continuous held-tone phase. Record the metric
+change and do not report the old mixed-phase gate as passing. Pure-percussion
+waveform/pre-echo gates stay unchanged. Verify worker resource admission after
+the 10 MiB/56-byte estimate change, source protection and revisions 2–6 migration
+to 7. Updated private auditions do not close the user's reopened listening issue
+until the user confirms the remaining low-end artifacts are resolved.

@@ -14,6 +14,47 @@ fn noise(frames: usize) -> Vec<f32> {
         .collect()
 }
 
+// Fit a known sustained test tone before the attack. Its phase is allowed to
+// remain continuous rather than reset to the source phase at each new hit.
+fn held_tone(samples: &[f32], rate: u32, start: usize, end: usize) -> impl Fn(usize) -> f64 {
+    let (mut ss, mut cc, mut sc, mut ys, mut yc) = (0.0, 0.0, 0.0, 0.0, 0.0);
+    for (frame, &sample) in samples.iter().enumerate().take(end).skip(start) {
+        let phase = TAU * 220.0 * frame as f64 / f64::from(rate);
+        let (sin, cos) = phase.sin_cos();
+        ss += sin * sin;
+        cc += cos * cos;
+        sc += sin * cos;
+        ys += f64::from(sample) * sin;
+        yc += f64::from(sample) * cos;
+    }
+    let determinant = ss * cc - sc * sc;
+    let sin = (ys * cc - yc * sc) / determinant;
+    let cos = (yc * ss - ys * sc) / determinant;
+    let db = 20.0 * (sin.hypot(cos) / 0.1).log10();
+    assert!(db.abs() <= 0.5, "held background level: {db} dB");
+    move |frame| {
+        let phase = TAU * 220.0 * frame as f64 / f64::from(rate);
+        sin * phase.sin() + cos * phase.cos()
+    }
+}
+
+#[test]
+fn held_tone_measurement_tracks_phase_without_removing_a_later_attack() {
+    let rate = 48000;
+    let input: Vec<_> = (0..48000)
+        .map(|i| (0.1 * (TAU * 220.0 * i as f64 / f64::from(rate) + 0.73).sin()) as f32)
+        .collect();
+    let tone = held_tone(&input, rate, 9600, 11520);
+    let error = (12000..24000)
+        .map(|i| (f64::from(input[i]) - tone(i)).powi(2))
+        .sum::<f64>();
+    assert!(error < 1e-12);
+    let mut changed = input.clone();
+    changed[14400] += 0.5;
+    let tone = held_tone(&changed, rate, 9600, 11520);
+    assert!((f64::from(changed[14400]) - tone(14400) - 0.5).abs() < 1e-7);
+}
+
 #[test]
 fn moving_spectral_peaks_preserve_energy_without_gain_matching() {
     let input = noise(48000);
@@ -71,12 +112,41 @@ fn expansion_retains_attacks_on_kicks_noise_and_mixed_material() {
                 let length = rate as usize / if noisy { 2000 } else { 100 };
                 let reference = &input[onset..onset + length];
                 let residual = |signal: &[f32]| -> f64 {
+                    let background_at = background.then(|| {
+                        held_tone(
+                            signal,
+                            rate,
+                            target - rate as usize / 20,
+                            target - rate as usize / 100,
+                        )
+                    });
                     signal[target..target + length]
                         .iter()
                         .zip(reference)
-                        .map(|(a, b)| f64::from(*a - *b).powi(2))
+                        .enumerate()
+                        .map(|(i, (a, b))| {
+                            let source_bed = if background {
+                                0.1 * (TAU * 220.0 * (onset + i) as f64 / f64::from(rate)).sin()
+                            } else {
+                                0.0
+                            };
+                            let output_bed =
+                                background_at.as_ref().map_or(0.0, |tone| tone(target + i));
+                            ((f64::from(*a) - output_bed) - (f64::from(*b) - source_bed)).powi(2)
+                        })
                         .sum::<f64>()
-                        / reference.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>()
+                        / reference
+                            .iter()
+                            .enumerate()
+                            .map(|(i, s)| {
+                                let bed = if background {
+                                    0.1 * (TAU * 220.0 * (onset + i) as f64 / f64::from(rate)).sin()
+                                } else {
+                                    0.0
+                                };
+                                (f64::from(*s) - bed).powi(2)
+                            })
+                            .sum::<f64>()
                 };
                 assert!(
                     residual(&new) < 0.02,

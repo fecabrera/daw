@@ -141,3 +141,25 @@ The revision-6 energy/spectral detector and its original unit tests moved to
 crates/audio-analysis without changing thresholds, merge order or revision
 identities. This crate now owns only the detection adapter, attack regions and
 stretch synthesis. See audio-analysis/PROVENANCE.md for the extraction boundary.
+
+## Low-end resolution and phase history — revision 7, 2026-11-08
+
+The user qualified the initial guitar confirmation with remaining low-end
+distortion/bending. Independent generated harmonic-rich low chords expose a
+60.10-cent error at 48 kHz and ratio 89/120 under the old 50% low-band threshold.
+A significant 10% low-band threshold retains the original broadband veto and
+uses the existing long window. This fixes resolution but exposes low-note level
+loss at expansion attack resets. Analyze an independent pre-onset Hann window
+with the same forward FFT. Preserve existing <=250 Hz bin rotations through a
+guard when prior power is at least one quarter current power; restore other
+source phases as before. Use guard identities so skipped gaps cannot reuse a
+previous guard's mask. This is an independently designed prior-presence test,
+not source separation. No reference-engine implementation material was inspected.
+
+Full mixed-waveform attack equality contradicts preserving an already held
+note's phase. Attack metric v2 subtracts the known held source tone and a fitted
+pre-attack output tone before retaining the original 2% percussion residual gate.
+Add held-tone level and fit/injected-attack controls; preserve original failure
+logs. New real-audio listening remains pending. Detection code/identities are
+unchanged; stretch revision 7 invalidates rendering caches. Resource estimates
+now include history scratch and onset-carrying timing regions.

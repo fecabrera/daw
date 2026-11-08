@@ -24,7 +24,7 @@ fn bass(rate: u32, harmonics: bool) -> Vec<f32> {
 }
 
 // Hann-windowed, zero-padded spectrum, with log-power peak interpolation.
-// Decimation is safe here: generated fixture partials are all below 400 Hz.
+// Generated partials stay below the decimated Nyquist frequency at every rate.
 fn measured_partial(samples: &[f32], rate: u32, expected: f64) -> (f64, f64) {
     let samples: Vec<_> = samples[samples.len() / 4..samples.len() * 3 / 4]
         .iter()
@@ -378,6 +378,75 @@ fn bass_heavy_drums_keep_compressed_attack_timing_and_limit_pre_echo() {
                             && (frame[1] - frame[0] * factor).abs() < 1e-7
                     }));
                 }
+            }
+        }
+    }
+}
+
+#[test]
+fn harmonic_rich_low_chords_retain_their_quieter_fundamentals() {
+    // Guitar-like voicing: upper partials carry most of the energy, while
+    // neighboring low fundamentals still need sufficient frequency resolution.
+    for rate in SAMPLE_RATES {
+        let notes = [92.49860568, 110.0, 138.59131549];
+        let input: Vec<_> = (0..rate as usize * 3)
+            .map(|frame| {
+                let t = frame as f64 / f64::from(rate);
+                notes
+                    .into_iter()
+                    .map(|hz| {
+                        let phase = TAU * hz * t;
+                        0.07 * phase.sin()
+                            + (2..=6)
+                                .map(|h| {
+                                    0.3 / f64::from(h)
+                                        * (phase * f64::from(h) + 0.2 * f64::from(h)).sin()
+                                })
+                                .sum::<f64>()
+                    })
+                    .sum::<f64>() as f32
+            })
+            .collect();
+        for (p, q, semitones) in [
+            (89, 120, 0.0),
+            (3, 2, 0.0),
+            (2, 1, 0.0),
+            (17, 20, 6.0),
+            (5, 4, -6.0),
+        ] {
+            let pitch = Pitch::from_semitones(semitones).unwrap();
+            let output = Request::new(rate, 1, Ratio::new(p, q).unwrap())
+                .with_pitch(pitch)
+                .process(&input)
+                .unwrap();
+            for fundamental in notes {
+                let hz = fundamental * pitch.factor();
+                let (actual, amplitude) = measured_partial(&output, rate, hz);
+                let cents = 1200.0 * (actual / hz).log2();
+                let db = 20.0 * (amplitude / 0.07).log10();
+                eprintln!("{rate} {p}/{q} {semitones} {hz}: {cents} cents, {db} dB");
+                // Local windows catch bending/level fluctuations that a whole
+                // excerpt's strongest spectral peak can hide. Use the middle
+                // half, as in the tonal acceptance metric, excluding boundaries.
+                for (index, window) in output[output.len() / 4..output.len() * 3 / 4]
+                    .windows(rate as usize * 4 / 5)
+                    .step_by(rate as usize / 5)
+                    .enumerate()
+                {
+                    let (local_hz, local_amplitude) = measured_partial(window, rate, hz);
+                    let local_cents = 1200.0 * (local_hz / hz).log2();
+                    let local_db = 20.0 * (local_amplitude / 0.07).log10();
+                    assert!(
+                        local_cents.abs() <= 5.0,
+                        "local window {index} {rate} {p}/{q} {semitones} {hz}: {local_cents} cents"
+                    );
+                    assert!(
+                        local_db.abs() <= 0.5,
+                        "local window {index} {rate} {p}/{q} {semitones} {hz}: {local_db} dB"
+                    );
+                }
+                assert!(cents.abs() <= 5.0, "{rate} {p}/{q} {hz}: {cents} cents");
+                assert!(db.abs() <= 0.5, "{rate} {p}/{q} {hz}: {db} dB");
             }
         }
     }

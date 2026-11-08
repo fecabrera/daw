@@ -4,6 +4,32 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Broader time-stretch listening acceptance — 2026-11-08
+
+**COMPLETE for Integrated revision 7, by explicit user acceptance.** After
+confirming that the revision-7 renders fixed the reported guitar artifacts, the
+user instructed that broader listening acceptance be marked complete. The
+[acceptance decision](transient-lowend-r7.md#broader-listening-acceptance--2026-11-08)
+closes this item and supersedes the remaining listening-panel requirements for
+this revision. No additional scores, multi-listener/corpus runs or reference
+comparisons were supplied or inferred. Historical pending-listening statements
+below describe earlier evidence. Performance, native DAW/device, platform and
+stable-release acceptance retain their separate requirements.
+
+## Remaining guitar low-end regression — revision 7, 2026-11-08
+
+The user reports remaining low-end distortion/bending after the initial R6
+confirmation. The [R7 report](transient-lowend-r7.md) records the reproduced
+60.10-cent low-chord error, longer-window selection and held-note phase history
+fixes, updated resource/migration rules, and attack metric v2. The detector in
+audio-analysis is unchanged. Six-rate global/local-interior chord gates,
+percussion checks, both extended contract matrices and affected host/tool checks
+pass. New private original/R6/R7 auditions include optional 250 Hz low-pass
+versions; source hashes match. The user listened to the revision-7 renders and
+confirmed that the low-end distortion and bending are fixed. **The reported
+guitar regression is closed.** Broader listening acceptance was subsequently
+completed by the explicit user decision recorded above. Historical R6 confirmation below is superseded by this report.
+
 ## Reusable audio analysis extraction — 2026-11-08
 
 Moved the revision-6 Energy/Combined routines and Energy unit tests into the
@@ -17,8 +43,9 @@ renders (36 panel renders plus six full-guitar renders) retain identical PCM
 hashes, frame counts, detector identities and source onset lists. All seven input
 hashes remain unchanged; no licensed media or private manifests were committed.
 Fresh diagnostic packs are in ignored work/transient-listening under
-splice-analysis-extracted and guitar-analysis-extracted. The user's prior R6
-listening confirmation remains applicable to these identical render samples;
+splice-analysis-extracted and guitar-analysis-extracted. The user's initial R6
+listening confirmation was later qualified by a report
+of remaining low-end distortion and bending. The guitar regression is reopened;
 no new listener ratings are inferred.
 
 Analysis and stretch debug/release all-target tests, analysis doctests, standalone
@@ -38,7 +65,9 @@ its spectral supplement now rejects concentrated harmonic growth. The complete
 annotated synthetic attacks remain detected with no false positives. Source
 hashes match after rendering. The user also listened to the updated audition at
 their exact stretch settings and confirmed that the pitch bending is gone. This
-closes the reported guitar regression; broader listening acceptance remains open.
+was the initial listening result. The user subsequently reported remaining
+low-end distortion and bending; the guitar regression is reopened. Broader
+listening acceptance remains open.
 R5 packs and results below are
 historical, superseded by the R6 pack for current auditions.
 

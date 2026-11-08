@@ -28,7 +28,7 @@ assert_eq!(output.len(), input.len());
 
 `PitchRequest` composes the existing `Request` with a validated `Pitch`. Existing constructors and request fields retain their API. `Pitch::UNISON` delegates to the same stretch path, including exact sample bits when duration is also 1. Processing identity is `REVISION = 4`; nonzero-pitch consumers must also identify the pitch offset and `PITCH_REVISION = 2` in their caches/reports.
 
-Pitch processing combines linked-stereo stretching with a shared band-limited resampling filter. Offsets beyond ±24 use up to six bounded passes to limit memory. Large upward shifts resample before spectral processing; downward shifts retain the original order. `Pitch::stages()` exposes the common pass schedule for host adapters. It does not preserve vocal formants or support automation. Upward shifts remove frequencies that would exceed the output Nyquist frequency (half the sample rate); upper-band attenuation and ringing near sharp boundaries are possible. No normalization or clipping is applied. Very short results retain exact length, but few samples cannot establish a meaningful pitch. Full-corpus listening and performance acceptance remain incomplete.
+Pitch processing combines linked-stereo stretching with a shared band-limited resampling filter. Offsets beyond ±24 use up to six bounded passes to limit memory. Large upward shifts resample before spectral processing; downward shifts retain the original order. `Pitch::stages()` exposes the common pass schedule for host adapters. It does not preserve vocal formants or support automation. Upward shifts remove frequencies that would exceed the output Nyquist frequency (half the sample rate); upper-band attenuation and ringing near sharp boundaries are possible. No normalization or clipping is applied. Very short results retain exact length, but few samples cannot establish a meaningful pitch. Broader listening acceptance is complete for revision 7 by explicit user acceptance; performance acceptance remains incomplete. See the [acceptance decision](../../specs/validation/transient-lowend-r7.md#broader-listening-acceptance--2026-11-08).
 
 ## Progress and resources
 
@@ -38,7 +38,7 @@ Pitch requests use the same progress/cancellation and memory limit. Configure th
 
 Hosts can call `PitchRequest::working_memory_bytes(input_frames)` before processing to reserve the same conservative working-storage estimate used by the request. This excludes immutable input, FFT planner internals and allocator overhead. It does not allocate or process audio.
 
-The engine uses a linked stereo phase vocoder with peak phase locking. It carries the applied phase between frames and protects detected attacks during expansion by retaining their short waveform regions at original speed; intervening regions supply the extra duration. Onsets remain anchored to the requested ratio. No gain matching or normalization is applied. A full-source spectral-flatness analysis, including broad occupied frequency bands, selects shorter windows for broadband material. Bass-dominated sources without significant broadband activity in the upper bands use longer analysis windows to separate nearby low notes, reusing the bounded overlap schedule and guarded attack timing. The attack detector uses an 80 ms energy background to avoid resetting phases on bass cycles and beats. Masked attacks, dense percussion, source-wide window selection, and sustained cymbal tails still need listening evaluation. This is an initial experimental engine, not a claim of Rubber Band quality equivalence.
+The engine uses a linked stereo phase vocoder with peak phase locking. It carries the applied phase between frames and protects detected attacks during expansion by retaining their short waveform regions at original speed; intervening regions supply the extra duration. Onsets remain anchored to the requested ratio. No gain matching or normalization is applied. A full-source spectral-flatness analysis, including broad occupied frequency bands, selects shorter windows for broadband material. Bass-dominated sources without significant broadband activity in the upper bands use longer analysis windows to separate nearby low notes, reusing the bounded overlap schedule and guarded attack timing. The attack detector uses an 80 ms energy background to avoid resetting phases on bass cycles and beats. Masked attacks, dense percussion, source-wide window selection, and sustained cymbal tails remain useful targets for future listening evaluation. This is an initial experimental engine, not a claim of Rubber Band quality equivalence.
 
 ```sh
 cargo test -p timestretch
@@ -49,12 +49,12 @@ The expanded release suite includes the six-rate tone and short-input matrices. 
 
 ## Experimental detector comparison
 
-Default processing is revision 6 with the combined energy/spectral detector
+Default processing is revision 7 with the combined energy/spectral detector
 (`energy-spectral-v5`), including pitch composition. To compare the unchanged
 energy baseline, call `Request::process_with_transient_detector` with
 `TransientDetector::Energy` and a progress/cancellation callback. Explicit-mode
 callers must include the detector identity as well as processing revision in
-caches/reports. DAW Integrated revisions 2–5 upgrade to revision 6 with rebuilt
+caches/reports. DAW Integrated revisions 2–6 upgrade to revision 7 with rebuilt
 prepared audio and a warning; Rubber Band remains the initial DAW backend. `detect_transients` exposes the same linked,
 sorted source-frame event positions for analysis. Its request validation and
 conservative full stretch memory estimate apply even to detection-only calls.

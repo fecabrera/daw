@@ -1,7 +1,8 @@
 # Harmonic-rise regression — Integrated revision 6, 2026-11-08
 
-Status: automated regression checks pass; the user confirmed that the reported
-pitch bending is gone when listening at their exact stretch settings.
+Status: historical R6 result, superseded by the [revision-7 investigation](transient-lowend-r7.md).
+The remaining low-end issue reopened after R6 is now closed: the user listened
+to the revision-7 renders and confirmed that distortion and bending are fixed.
 
 A user reported pitch bending on a clean electric-guitar loop after adopting
 Combined. In its first ten seconds, revision 5 added four spectral events beyond
@@ -38,8 +39,9 @@ licensed audio or manifests are committed. Prior R5 packs remain historical.
 ## User listening confirmation — 2026-11-08
 
 The user listened to the updated audition at their exact stretch settings and
-confirmed that the pitch bending is gone. This closes the reported guitar
-listening regression. The numeric stretch/transpose settings were not supplied,
+initially confirmed that the pitch bending was gone. The user later reported
+remaining low-end distortion and bending on the same recording. The listening
+regression is reopened; the earlier confirmation is incomplete. The numeric stretch/transpose settings were not supplied,
 and no numeric ratings were given. This single-recording confirmation does not
 complete the broader listening acceptance gate or establish native DAW coverage.
 
@@ -63,3 +65,7 @@ Stretch revision 6 and detector energy-spectral-v5 identify the new output.
 Known saved Integrated revisions 2–5 rebuild with a warning on open; source
 manifests remain unchanged until Save. App engine preferences also migrate.
 Broader listening ratings, native DAW listening and Windows/Linux checks remain open.
+
+Broader listening acceptance was subsequently completed for revision 7 by
+[explicit user acceptance](transient-lowend-r7.md#broader-listening-acceptance--2026-11-08).
+The R6 statements above remain historical evidence.

@@ -124,3 +124,5 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Plate and Ambient Reverb](effects/reverbs.md): shared layouts, portable processing, standalone delivery, tails, and validation limits.
 
 - [Harmonic-rise regression and revision-6 auditions](validation/transient-harmonic-r6.md)
+
+- [Remaining guitar low-end regression and revision-7 auditions](validation/transient-lowend-r7.md).

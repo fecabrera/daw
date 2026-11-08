@@ -44,9 +44,16 @@ fn analyze(
 
 #[derive(Clone, Copy)]
 struct Region {
+    onset: usize,
     source_start: f64,
     output_start: f64,
     output_end: f64,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AttackGuard {
+    index: usize,
+    pub(crate) onset: usize,
 }
 
 /// Preserve the original speed around an attack; spend the requested extra time
@@ -100,6 +107,7 @@ impl Timing {
                 },
             );
             timing.regions.push(Region {
+                onset,
                 source_start: (onset - before) as f64,
                 output_start: onset as f64 * ratio - before as f64,
                 output_end: onset as f64 * ratio + after as f64,
@@ -107,12 +115,12 @@ impl Timing {
         }
         Ok(timing)
     }
-    /// Monotonic queries from the synthesis loop. The flag restores source phase
-    /// inside a protected attack so overlapping frames reconstruct that waveform.
-    pub(crate) fn at(&mut self, output: i64) -> (i64, bool) {
+    /// Monotonic queries from the synthesis loop. Guard identity distinguishes
+    /// adjacent regions even when a synthesis hop skips the gap between them.
+    pub(crate) fn at(&mut self, output: i64) -> (i64, Option<AttackGuard>) {
         let out = output as f64;
         if self.regions.is_empty() || out < 0. || out >= self.frames_out {
-            return ((out / self.ratio).round() as i64, false);
+            return ((out / self.ratio).round() as i64, None);
         }
         while self.cursor < self.regions.len() && out > self.regions[self.cursor].output_end {
             self.cursor += 1;
@@ -130,7 +138,10 @@ impl Timing {
             if out >= region.output_start {
                 return (
                     (region.source_start + out - region.output_start).round() as i64,
-                    true,
+                    Some(AttackGuard {
+                        index: self.cursor,
+                        onset: region.onset,
+                    }),
                 );
             }
             (region.source_start, region.output_start)
@@ -142,6 +153,6 @@ impl Timing {
         } else {
             source_hi
         };
-        (position.round() as i64, false)
+        (position.round() as i64, None)
     }
 }

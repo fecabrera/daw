@@ -322,7 +322,7 @@ fn cancellation_is_monotonic_through_each_pitch_stage_and_memory_is_preflighted(
     }
     request.stretch.memory_limit_bytes = 1;
     assert_eq!(request.process(&input), Err(Error::ResourceLimit));
-    request.stretch.memory_limit_bytes = 8 * 1024 * 1024 + input.len() * 12;
+    request.stretch.memory_limit_bytes = 10 * 1024 * 1024 + input.len() * 12;
     assert_eq!(request.process(&input), Err(Error::ResourceLimit));
 }
 

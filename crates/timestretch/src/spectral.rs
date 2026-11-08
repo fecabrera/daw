@@ -41,6 +41,9 @@ pub(crate) fn process(
     let mut spectra = buffer(channels * width, Complex::default())?;
     let mut previous = buffer(channels * bins, Complex::default())?;
     let mut rotations = buffer(bins, 0.0)?;
+    let mut preserved_bass = buffer(bins, false)?;
+    let mut history_spectrum = buffer(width, Complex::default())?;
+    let mut history_power = buffer(bins, 0.0)?;
     let mut magnitudes = buffer(bins, 0.0)?;
     let mut locked_rotations = buffer(bins, 0.0)?;
     let mut frequencies: Vec<_> = (0..bins)
@@ -56,6 +59,7 @@ pub(crate) fn process(
     }
     let mut last_source = 0i64;
     let mut first = true;
+    let mut previous_guard = None;
     // Synthesis centers extend past both boundaries; crop by output coordinate, not delay.
     let start = -(width as i64 / hop as i64) * hop as i64;
     let end = frames_out as i64 + half;
@@ -65,7 +69,30 @@ pub(crate) fn process(
             progress,
             0.15 + 0.75 * (center - start) as f32 / (end - start) as f32,
         )?;
-        let (source, attack) = timing.at(center);
+        let (source, guard) = timing.at(center);
+        let attack = guard.is_some();
+        let entering_guard = guard.is_some() && guard != previous_guard;
+        if let Some(guard) = guard.filter(|_| entering_guard) {
+            // End strictly before the onset: the centered synthesis window can
+            // already contain a new attack even on its first protected hop.
+            history_power.fill(0.0);
+            let end = guard.onset as i64 - i64::from(request.sample_rate / 500);
+            for channel in 0..channels {
+                for (i, value) in history_spectrum.iter_mut().enumerate() {
+                    let position = end - width as i64 + i as i64;
+                    let sample = if (0..frames_in as i64).contains(&position) {
+                        input[position as usize * channels + channel]
+                    } else {
+                        0.0
+                    };
+                    *value = Complex::new(f64::from(sample) * window[i], 0.0);
+                }
+                forward.process_with_scratch(&mut history_spectrum, &mut scratch);
+                for (power, value) in history_power.iter_mut().zip(&history_spectrum) {
+                    *power += value.norm_sqr();
+                }
+            }
+        }
         for channel in 0..channels {
             let spectrum = &mut spectra[channel * width..(channel + 1) * width];
             for (i, value) in spectrum.iter_mut().enumerate() {
@@ -102,11 +129,19 @@ pub(crate) fn process(
                         + frequencies[bin] * (hop as f64 - (source - last_source) as f64),
                 );
             }
-        }
-        // Unit-speed attack regions use original phases. Their guards include
-        // overlapping windows so resynthesis preserves the attack waveform.
-        if attack {
-            rotations.fill(0.0);
+            if entering_guard {
+                // Keep an existing low partial's phase. Its pre-onset power
+                // must be at least -6 dB relative to its current power; new
+                // attacks and silent bins still restore source phase.
+                preserved_bass[bin] = !first
+                    && bin > 0
+                    && bin as f64 * f64::from(request.sample_rate) / width as f64 <= 250.0
+                    && energy > 0.0
+                    && history_power[bin] >= energy * 0.25;
+            }
+            if attack && !preserved_bass[bin] {
+                rotations[bin] = 0.0;
+            }
         }
         peaks.clear();
         for bin in 1..bins - 1 {
@@ -146,6 +181,7 @@ pub(crate) fn process(
         // peak next frame must not resume a stale, independently advanced phase.
         rotations.copy_from_slice(&locked_rotations);
         first = false;
+        previous_guard = guard;
         last_source = source;
         center += hop as i64;
     }
@@ -269,8 +305,10 @@ fn analysis_width(
             (request.sample_rate as usize / 500)
                 .next_power_of_two()
                 .clamp(64, 512)
-        } else if total_energy > 0.0 && bass_energy >= total_energy * 0.5 && !mixed_broadband {
-            // Resolve neighboring fundamentals in bass-dominated tonal sources.
+        } else if total_energy > 0.0 && bass_energy >= total_energy * 0.1 && !mixed_broadband {
+            // Quieter fundamentals still need separation when upper harmonics
+            // carry most power. A -10 dB low band is significant; keep the
+            // broadband veto so drums do not inherit this long tonal window.
             ((request.sample_rate as usize * 320 / 1000).next_power_of_two()).clamp(8192, 65536)
         } else {
             width

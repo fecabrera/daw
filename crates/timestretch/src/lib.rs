@@ -10,7 +10,7 @@ use std::{fmt, ops::ControlFlow, str::FromStr};
 pub use transients::detect_transients;
 
 /// Processing identity for caches and reports; requests always use this implementation.
-pub const REVISION: u32 = 6;
+pub const REVISION: u32 = 7;
 pub const SAMPLE_RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,12 +222,12 @@ impl Request {
     }
     fn storage(self, frames: usize, output_frames: usize) -> Result<usize, Error> {
         let transient_storage = (frames / (self.sample_rate as usize * 30 / 1000) + 1)
-            .checked_mul(48)
+            .checked_mul(56)
             .ok_or(Error::ResourceLimit)?;
         output_frames
             .checked_mul(self.channels)
             .and_then(|n| n.checked_mul(12))
-            .and_then(|n| n.checked_add(8 * 1024 * 1024))
+            .and_then(|n| n.checked_add(10 * 1024 * 1024))
             .and_then(|n| n.checked_add(transient_storage))
             .ok_or(Error::ResourceLimit)
     }

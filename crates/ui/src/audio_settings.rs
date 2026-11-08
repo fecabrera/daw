@@ -800,7 +800,7 @@ mod tests {
             default_stretch_engine: daw_core::StretchEngine::INTEGRATED,
             ..Default::default()
         };
-        for revision in [2, 3, 4, 5] {
+        for revision in [2, 3, 4, 5, 6] {
             let mut saved = serde_json::to_value(&original).unwrap();
             saved["default_stretch_engine"]["revision"] = serde_json::json!(revision);
             let restored = settings::AppSettings::from_json(Some(&saved.to_string()));
