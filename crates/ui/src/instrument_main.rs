@@ -110,6 +110,12 @@ impl DawUi {
             self.instrument_ui.track_effects_target = false;
             ui.ctx().request_repaint();
         }
+        let selected = self.instrument_ui.selected_layers.contains(&bus.id);
+        if selected {
+            child
+                .painter()
+                .rect_filled(rect, 0.0, theme::selected_track_background(ui.ctx()));
+        }
         #[cfg(test)]
         let mut bounds = MainBounds {
             row: rect,
@@ -130,7 +136,7 @@ impl DawUi {
                 let (label, response) =
                     ui.allocate_exact_size(Vec2::new(TRACK_WIDTH, height), Sense::click());
                 ui.painter()
-                    .rect_filled(label, 0.0, theme::palette(ui.ctx()).panel);
+                    .rect_filled(label, 0.0, if selected { theme::selected_track_header_background(ui.ctx()) } else { theme::palette(ui.ctx()).panel });
                 let header_rect = label.shrink(7.0);
                 let mut header = ui.new_child(
                     egui::UiBuilder::new()

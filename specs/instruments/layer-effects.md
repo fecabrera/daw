@@ -30,6 +30,14 @@ Compatible layer-chain edits retain voices, oscillator phases, route smoothers, 
 
 ## UI
 
+Selected regular layers, Output and provider rows reuse the selected track
+header/lane theme helpers. Header/label fills are #262626 / #F7F7F7 / #E8EAEE
+and lane fills are #181818 / #F3F3F3 / #DFE2E7 in Dark/Light/Mist. Resolve
+membership through InstrumentUi::selected_layers so group selection receives the
+same fills as its outlines. Paint the lane background before controls/units and
+the selection outline after shared borders. Unselected rows retain their normal
+surfaces. Do not recolor unit bodies/headers or change selection, data or gestures.
+
 Regular layers and pinned Main share one saved display order for effects and component units in the same horizontal scroll area. Only audio sources remain first. Effects can precede or sit between Macro, LFO, Envelope and Amplitude. Effects process in their relative left-to-right order; moving control components across effects changes presentation only. The existing layer collapse control changes the height of components and effects together. The bottom effects lane continues to show track effects.
 
 The Effects catalog adds to the selected regular layer or Main in Instrument. Clicking the bottom effects lane targets track effects until a layer or Main is selected. Library drag targets resolve from layer geometry and reuse the common insertion preview, release-only commit, and cancellation. Empty layers and a hidden bottom lane remain valid destinations. Previewing does not construct effect instances.

@@ -432,6 +432,10 @@ impl DawUi {
                                         ui.spacing_mut().item_spacing.x = -1.0;
                                         ui.spacing_mut().item_spacing.y = 0.0;
                                         let lane = Rect::from_min_size(ui.next_widget_position(), Vec2::new(ui.available_width(), height));
+                                        let selected = self.instrument_ui.selected_layers.contains(&layer.id);
+                                        if selected {
+                                            ui.painter().rect_filled(lane, 0.0, theme::selected_track_background(ui.ctx()));
+                                        }
                                         let toolbar = lane_toolbar::bounds(lane);
                                         let collapse = lane_toolbar::show(
                                             ui, toolbar, &mut layer.collapsed,
@@ -448,7 +452,7 @@ impl DawUi {
                                         ui.painter().rect_filled(
                                             label,
                                             0.0,
-                                            theme::palette(ui.ctx()).panel,
+                                            if selected { theme::selected_track_header_background(ui.ctx()) } else { theme::palette(ui.ctx()).panel },
                                         );
                                         let mut header_ui = ui.new_child(
                                             egui::UiBuilder::new()

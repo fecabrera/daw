@@ -3577,7 +3577,7 @@ impl DawUi {
             margin: 6,
             ..Default::default()
         }
-        .track_frame(ui.ctx())
+        .track_frame(ui.ctx(), self.master_selected)
         .show(ui, |ui| {
             ui.set_min_width(TRACK_WIDTH - 14.0);
             ui.set_min_height(MASTER_HEIGHT - 14.0);
@@ -4474,7 +4474,7 @@ impl DawUi {
                                 margin: 6,
                                 ..Default::default()
                             }
-                            .track_frame(ui.ctx())
+                            .track_frame(ui.ctx(), self.track_selected(track.id))
                             .show(ui, |ui| {
                                 ui.set_min_width(panel_width - 14.0);
                                 ui.set_min_height(row_height - 14.0);
@@ -5657,7 +5657,12 @@ impl DawUi {
         self.create_midi_pattern_in_empty_lane(ui, track, rect);
         self.lane_bounds.insert(track_id, rect);
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
+        let background = if self.track_selected(track_id) {
+            theme::selected_track_background(ui.ctx())
+        } else {
+            theme::palette(ui.ctx()).background
+        };
+        painter.rect_filled(rect, 0.0, background);
         self.paint_grid(&painter, rect);
         // Keep row separators below clip shells and their selection outlines.
         let row = Rect::from_min_max(Pos2::new(rect.left() - TRACK_WIDTH, rect.top()), rect.max);

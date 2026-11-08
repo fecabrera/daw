@@ -4,6 +4,12 @@ The left toolbar lists **Effects** and **Chords**. **Clip settings** uses the to
 
 Timeline arranges audio and MIDI clips on tracks. Use Editor for MIDI notes, Instrument for MIDI sounds, and Mixer for track levels. Its horizontal scrollbar floats over the content, like the effects lane’s scrollbar; hover near the bottom of the timeline to reveal and expand it.
 
+Selected tracks have a highlighted Timeline lane background: #181818 in Dark,
+#F3F3F3 in Light, and #DFE2E7 in Mist. Each track in a multiple
+selection is highlighted. The musical grid and clips remain visible above it.
+Selected track headers use a separate raised shade: #262626 in Dark, #F7F7F7
+in Light, and #E8EAEE in Mist. Unselected headers retain their normal theme fill.
+
 Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Their names use the same spacing as group headers. Track gain and pan, and Master gain, use compact knobs without text-entry fields. Tracks start with one row: icon, name, Mute, Solo, Pan, Gain, then meters. In the expanded layout, the second row places Mute and Solo at the left; Pan then Gain sit at the right, immediately before the level meters. Master uses one row, with its gain knob on the right immediately before the level meters. Level meter rails align with the top and bottom padding of the other header controls. Hover or drag a knob to see its value in the tooltip. Master's meters align with the track meters at the right of the control column. Drag an audio or MIDI icon, track name, or blank header area to move the track. Release applies the move; Escape or focus loss cancels it.
 
 Each L/R meter bar has a held-peak marker. Click either bar or the gap between them to reset both held peaks and the clipping warning. This applies to tracks, groups, Returns and Master. Held levels are shared with Mixer.

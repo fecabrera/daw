@@ -210,6 +210,15 @@ Selecting the beat parent shows only its final Output and targets that bus for c
 
 Beat patterns use the shared Timeline/Editor overview double-click creation gesture. Without an active pattern, retain subtrack controls and a disabled quarter-beat grid across the lower ruler viewport. Use no other clip's steps, preserve scrolling, and bound placeholder painting to 2048 cells per row. Selecting a pattern restores its saved grid and steps.
 
+Selected Editor subtrack rows reuse the track/layer selection palette through
+selected_track_background and selected_track_header_background. Paint the lane
+fill across the row before cells, and the header fill across the left control
+column before controls. Use beat_subtrack_selected membership for every selected
+row. Retain normal unselected surfaces, step button states, clipping, shared
+selection outlines and existing interaction/history behavior. Dark/Light/Mist
+header fills are #262626 / #F7F7F7 / #E8EAEE; lane fills are #181818 / #F3F3F3 /
+#DFE2E7.
+
 Editor subtrack headers reuse the compact track `HeaderRows` geometry and shared
 `header_row` mix controls. Reserve the full mix region at the right inner inset;
 truncate the name in the remaining left region. Name length must not move the

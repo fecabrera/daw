@@ -156,7 +156,11 @@ impl DawUi {
             margin: 6,
             ..Default::default()
         }
-        .track_frame(ui.ctx())
+        .track_frame(
+            ui.ctx(),
+            self.editor_track()
+                .is_some_and(|track| self.track_selected(track.id)),
+        )
         .show(ui, |ui| {
             ui.set_min_width(TRACK_WIDTH - 14.0);
             ui.set_min_height(self.track_row_height() - 14.0);

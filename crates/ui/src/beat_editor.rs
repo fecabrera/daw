@@ -1014,6 +1014,14 @@ impl DawUi {
                         ui.allocate_space(rect.size());
                         continue;
                     }
+                    let selected = self.beat_subtrack_selected(row.id);
+                    if selected {
+                        ui.painter().rect_filled(
+                            rect,
+                            0.0,
+                            theme::selected_track_background(ui.ctx()),
+                        );
+                    }
                     let mut row_ui =
                         ui.new_child(egui::UiBuilder::new().id_salt(row.id).max_rect(rect));
                     row_ui.horizontal_top(|ui| {
@@ -1021,6 +1029,13 @@ impl DawUi {
                             ui.next_widget_position(),
                             Vec2::new(TRACK_WIDTH, height),
                         );
+                        if selected {
+                            ui.painter().rect_filled(
+                                rect,
+                                0.0,
+                                theme::selected_track_header_background(ui.ctx()),
+                            );
+                        }
                         // The background claims empty header space; child controls keep their
                         // own pointer and keyboard interactions above it.
                         let panel = ui.interact(

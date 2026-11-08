@@ -699,9 +699,13 @@ impl PanelStyle {
     }
 
     /// Track rows share their horizontal borders instead of stacking two strokes.
-    pub fn track_frame(&self, ctx: &egui::Context) -> Frame {
+    pub fn track_frame(&self, ctx: &egui::Context, selected: bool) -> Frame {
         Frame::new()
-            .fill(crate::theme::palette(ctx).panel)
+            .fill(if selected {
+                crate::theme::selected_track_header_background(ctx)
+            } else {
+                crate::theme::palette(ctx).panel
+            })
             .inner_margin(self.margin + 1)
     }
 

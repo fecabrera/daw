@@ -4,6 +4,71 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Selected lane shade refinement — 2026-11-08
+
+The user refined selected lanes to #181818 in Dark. The shared helper now uses
+that shade and a 3% black blend of Light/Mist backgrounds: #F3F3F3 / #DFE2E7.
+Timeline, Instrument layers/Output/provider lanes and Beat Editor subtracks use
+this helper. Header shades retain their separate mapping. Earlier lane shades
+below are historical. This changes color constants only; formatting, diff and
+UI compilation checks pass. No native screenshot check was performed.
+
+## Beat Editor selected subtrack shades — 2026-11-08
+
+Selected beat subtracks now share the track/layer header and lane shades across
+Dark, Light and Mist. Membership uses the existing shared subtrack selection,
+including multiple selected rows. Row fill precedes steps, header fill precedes
+controls, and the existing selection outline remains on top. Unselected surfaces,
+step states, gestures and project data are unchanged.
+
+All 76 existing beat-filtered UI tests pass (three existing ignored). Strict
+all-target UI Clippy, rustfmt and diff checks pass. No new tests were added for
+this appearance-only change. Native screenshot and Windows/Linux checks were
+not performed.
+
+## Instrument selected layer shades — 2026-11-08
+
+Selected regular layers, Output, LFO and Envelope now reuse the track header and
+lane color helpers in Dark/Light/Mist. Regular-layer multi-selection follows the
+same membership as the existing selection outlines. Paint row fills behind unit
+controls and keep label fills separate; unselected surfaces, unit bodies,
+selection strokes, gestures and project data retain their behavior.
+
+All 58 existing Instrument-filtered UI tests and 19 header tests pass. Strict
+all-target UI Clippy, rustfmt and diff checks pass. No new tests were added for
+this appearance-only change. Native screenshot and Windows/Linux checks were
+not performed.
+
+## Selected track header and lane shades — 2026-11-08
+
+The user clarified that the second swatch applies to selected track headers.
+Its dominant RGB is (38, 38, 38), #262626. Selected Timeline/Return, Master and
+Editor overview headers use that Dark shade; Light/Mist blend the panel 3%
+toward black (#F7F7F7 / #E8EAEE). Unselected header fills remain unchanged.
+The subsequent lane refinement sets selected Timeline lanes to #1A1A1A in Dark
+and a 4% black blend of the Light/Mist backgrounds (#F1F1F1 / #DDE0E4).
+Earlier lane swatches recorded below are historical. Shared multi-selection,
+grid/clip paint order, selection outlines and project data behavior are retained.
+
+All 19 existing header tests and 31 track-selection/shortcut tests pass for the
+header change. Strict all-target UI Clippy, rustfmt and diff checks pass. The
+subsequent lane adjustment changes color constants only. No new tests were added
+for these appearance-only changes; native screenshot and Windows/Linux checks
+were not performed.
+
+## Selected Timeline lane backgrounds — 2026-11-08
+
+Sampled the supplied reference PNG: its dominant opaque RGB is (27, 27, 27),
+#1B1B1B. Selected Timeline track lanes use that exact fill in Dark. Per the user's
+follow-up, Light/Mist use their theme backgrounds blended 5% toward black:
+#EEEEEE / #DBDDE2. Resolve selection through the existing multi-track helper,
+including Returns. Paint the grid and clips afterward; unselected lanes retain
+the normal theme background. No project fields or interaction behavior change.
+
+All 31 existing track-shortcut/selection tests pass. Strict all-target UI Clippy,
+rustfmt and diff checks pass. No new tests were added for this appearance-only
+change. Native screenshot and Windows/Linux checks were not performed.
+
 ## Editor overview held-peak markers — 2026-11-08
 
 The Editor track overview now supplies its track meter's held channel peaks to

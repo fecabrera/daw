@@ -1,5 +1,25 @@
 pub use daw_unit_ui::theme::*;
 use egui::{Color32, Context};
+
+/// Selected lanes share the supplied dark shade and subtle neutral/cool
+/// equivalents in light palettes.
+pub(super) fn selected_track_background(ctx: &Context) -> Color32 {
+    if ctx.global_style().visuals.dark_mode {
+        Color32::from_gray(24)
+    } else {
+        blend(palette(ctx).background, Color32::BLACK, 3)
+    }
+}
+
+/// Selected track headers and instrument labels contrast with the lane surface.
+pub(super) fn selected_track_header_background(ctx: &Context) -> Color32 {
+    if ctx.global_style().visuals.dark_mode {
+        Color32::from_gray(38)
+    } else {
+        blend(palette(ctx).panel, Color32::BLACK, 3)
+    }
+}
+
 /// Related clip colors resolved together for clips and their drag previews.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClipColors {

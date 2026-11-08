@@ -51,6 +51,11 @@ will be trimmed or removed. Undo restores the complete change.
 
 ## Manage subtracks
 
+Selected subtracks use the same header and lane colors as selected Timeline
+tracks and Instrument layers in Dark, Light and Mist. Each selected subtrack is
+highlighted, including when several are selected. Step buttons keep their own
+on/off and hover colors.
+
 Editor and Instrument share the same names, order, selection and mix controls. The **Tracks** panel in both views lists subtracks below their beat parent. Its right-pinned Mute, Solo, Pan and Gain controls change the corresponding track or subtrack without selecting it.
 Selecting a subtrack in Editor also selects its instrument when you return to
 Instrument, including after selecting the final Output.
