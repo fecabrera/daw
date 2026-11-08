@@ -38,6 +38,10 @@ Integrated improves separation between nearby bass notes when stretching or tran
 
 Projects saved with Integrated revisions 2 or 3 upgrade automatically when opened and rebuild their prepared audio. A warning identifies the upgrade. The sound can change. Opening leaves the saved file unchanged; Save stores the new version. Original recordings stay unchanged.
 
+Set **Settings > Time stretch > Default engine** to choose the engine
+for new projects. Rubber Band is the initial default. Changing this preference
+does not change the current project; opened projects keep their saved engine.
+
 The engine choice saves with the project and applies to audio clip stretching and transpose, including [Sampler duration and note pitch](../instruments/sampler.md). It is not a per-clip choice. Engine changes retain clip positions, source selection, and stretch ratios.
 
 ## Current limits

@@ -59,10 +59,11 @@ Audio settings changes prepare the required audio before replacing the session. 
 
 Open Settings from the app-name menu on macOS or File on Windows/Linux. Use Command+, on macOS or Ctrl+, on Windows/Linux.
 
-Settings groups controls into four categories:
+Settings groups controls into five categories:
 
 - **Appearance**: titlebar style where supported, theme, and accent color.
 - **Playback**: input/output devices, audio quality defaults, and seek cache profile.
+- **Time stretch**: the default engine for new projects.
 - **MIDI**: how notes are divided when splitting clips.
 - **Stem Separation**: local model selection and validation.
 
@@ -81,6 +82,12 @@ The main **Settings** window exposes **Output device** and **Input device** unde
 Input selection is saved for future recording. The app does not yet record or monitor input.
 
 Open **Audio quality defaults…** to choose concrete values for new projects: sample rate, output bit depth and buffer size. Initial values are **48 kHz, 32-bit float and 512 samples**. Apply saves these defaults; Cancel or Escape discards the draft, with Escape closing an open dropdown first. Applying defaults leaves the current project and playback unchanged. You can set defaults without a connected audio device.
+
+Under **Time stretch > Default engine**, choose **Rubber Band** (the
+initial default) or **Integrated (experimental)**. The choice is retained across
+app restarts and is copied into new blank projects, including the blank project
+shown after Close Project. It does not change the current project or playback.
+Use **File > Project Settings > Time stretch engine** to change an existing project.
 
 New blank projects copy these values. Opened projects use their saved **Project Settings**, including output bit depth. To change the current project, use **File > Project Settings**. Older projects without a saved output format use 32-bit float; older projects without a buffer value use 512 samples. Application defaults do not replace saved project values.
 

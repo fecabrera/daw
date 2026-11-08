@@ -117,7 +117,11 @@ fn main() -> eframe::Result {
                 .storage
                 .and_then(|storage| storage.get_string(daw_ui::settings::STORAGE_KEY));
             let settings = daw_ui::settings::AppSettings::from_json(stored.as_deref());
-            let mut ui = daw_ui::DawUi::new_with_audio_defaults(project, settings.audio_quality);
+            let mut ui = daw_ui::DawUi::new_with_project_defaults(
+                project,
+                settings.audio_quality,
+                settings.default_stretch_engine,
+            );
             ui.set_settings(&cc.egui_ctx, settings);
             #[cfg(target_os = "macos")]
             let (ui, menu) = {

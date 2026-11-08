@@ -497,6 +497,8 @@ mod tests {
             "Input device",
             "Audio quality defaults…",
             "Refresh devices",
+            "Time stretch",
+            "Default engine",
         ] {
             point(&shapes, label);
         }
@@ -629,6 +631,7 @@ mod tests {
     #[test]
     fn all_audio_preferences_round_trip_and_legacy_settings_keep_defaults() {
         let settings = settings::AppSettings {
+            default_stretch_engine: daw_core::StretchEngine::INTEGRATED,
             audio: AudioSettings {
                 output_device: Some(id("Speakers")),
                 input_device: Some(id("Microphone")),
@@ -648,6 +651,10 @@ mod tests {
         assert_eq!(legacy.audio, AudioSettings::default());
         assert_eq!(legacy.theme, settings::ColorTheme::Light);
         assert_eq!(legacy.accent, settings::AccentColor::Teal);
+        assert_eq!(
+            legacy.default_stretch_engine,
+            daw_core::StretchEngine::RUBBER_BAND
+        );
     }
     #[test]
     fn changing_defaults_only_seeds_future_projects() {
@@ -716,7 +723,11 @@ mod tests {
             output_sample_format: SampleFormat::I24,
             buffer_size_frames: 256,
         };
-        let mut app = DawUi::new_with_audio_defaults(Some(folder.clone()), defaults);
+        let mut app = DawUi::new_with_project_defaults(
+            Some(folder.clone()),
+            defaults,
+            daw_core::StretchEngine::INTEGRATED,
+        );
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
         while app.job.is_some() {
             app.poll();
@@ -726,7 +737,60 @@ mod tests {
         assert!(app.error.is_none(), "{:?}", app.error);
         assert_eq!(app.session.project.audio_quality(), saved);
         assert_eq!(app.settings.audio_quality, defaults);
+        assert_eq!(
+            app.session.project.stretch_engine,
+            daw_core::StretchEngine::RUBBER_BAND
+        );
+        assert_eq!(
+            app.settings.default_stretch_engine,
+            daw_core::StretchEngine::INTEGRATED
+        );
         assert!(!app.dirty);
         std::fs::remove_dir_all(folder).unwrap();
+    }
+    #[test]
+    fn default_stretch_engine_seeds_startup_new_and_close_without_editing_current_project() {
+        let ctx = egui::Context::default();
+        let mut app = DawUi::new_with_project_defaults(
+            None,
+            Default::default(),
+            daw_core::StretchEngine::INTEGRATED,
+        );
+        assert_eq!(
+            app.session.project.stretch_engine,
+            daw_core::StretchEngine::INTEGRATED
+        );
+        assert!(!app.dirty);
+        let before = app.session.project.clone();
+        let mut settings = app.settings();
+        settings.default_stretch_engine = daw_core::StretchEngine::RUBBER_BAND;
+        app.set_settings(&ctx, settings);
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+        for action in [crate::Action::New, crate::Action::CloseProject] {
+            app.pending = Some(action);
+            app.perform_pending();
+            assert_eq!(
+                app.session.project.stretch_engine,
+                daw_core::StretchEngine::RUBBER_BAND
+            );
+            assert!(!app.dirty);
+        }
+    }
+
+    #[test]
+    fn unsupported_default_engine_revision_does_not_discard_other_preferences() {
+        let settings = settings::AppSettings {
+            accent: settings::AccentColor::Teal,
+            ..Default::default()
+        };
+        let mut saved = serde_json::to_value(&settings).unwrap();
+        saved["default_stretch_engine"]["revision"] = serde_json::json!(u32::MAX);
+        let loaded = settings::AppSettings::from_json(Some(&saved.to_string()));
+        assert_eq!(loaded.accent, settings::AccentColor::Teal);
+        assert_eq!(
+            loaded.default_stretch_engine,
+            daw_core::StretchEngine::RUBBER_BAND
+        );
     }
 }

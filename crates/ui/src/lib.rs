@@ -1212,7 +1212,20 @@ impl DawUi {
         project: Option<PathBuf>,
         defaults: daw_core::AudioQuality,
     ) -> Self {
+        Self::new_with_project_defaults(project, defaults, daw_core::StretchEngine::default())
+    }
+    /// Seed blank projects before opening any saved project asynchronously.
+    pub fn new_with_project_defaults(
+        project: Option<PathBuf>,
+        defaults: daw_core::AudioQuality,
+        stretch_engine: daw_core::StretchEngine,
+    ) -> Self {
         let mut app = Self::default();
+        app.settings.default_stretch_engine = if stretch_engine.validate().is_ok() {
+            stretch_engine
+        } else {
+            Default::default()
+        };
         app.settings.audio_quality = if defaults.validate().is_ok() {
             defaults
         } else {
@@ -1220,6 +1233,7 @@ impl DawUi {
         };
         app.session.project = daw_core::Project::new_with_audio_quality(app.settings.audio_quality)
             .unwrap_or_default();
+        app.session.project.stretch_engine = app.settings.default_stretch_engine;
         if let Some(folder) = project {
             app.open(folder);
         }
@@ -1278,6 +1292,7 @@ impl DawUi {
                 self.session.project =
                     daw_core::Project::new_with_audio_quality(self.settings.audio_quality)
                         .unwrap_or_default();
+                self.session.project.stretch_engine = self.settings.default_stretch_engine;
                 self.history = None;
                 self.saved_navigation_revision = self.navigation_revision;
                 self.midi_editor.cancel();

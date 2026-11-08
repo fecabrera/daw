@@ -148,6 +148,8 @@ impl TitlebarStyle {
 pub struct AppSettings {
     pub audio: daw_output::AudioSettings,
     pub audio_quality: daw_core::AudioQuality,
+    /// Copied into new projects; existing projects keep their saved engine.
+    pub default_stretch_engine: daw_core::StretchEngine,
     pub separation_models: std::sync::Arc<daw_project::SeparationModels>,
     pub accent: AccentColor,
     pub theme: ColorTheme,
@@ -195,6 +197,9 @@ impl AppSettings {
         }
         if settings.audio_quality.validate().is_err() {
             settings.audio_quality = Default::default();
+        }
+        if settings.default_stretch_engine.validate().is_err() {
+            settings.default_stretch_engine = Default::default();
         }
         settings
     }
@@ -457,6 +462,23 @@ pub fn show(
                         .response.on_hover_text("Prepares exact seek history. Profiles change CPU and memory use; sound stays the same.");
                 },
             );
+            ui.separator();
+            ui.strong("Time stretch");
+            crate::rows::field(
+                ui, label_width,
+                |ui| { ui.label("Default engine"); },
+                |ui| {
+                    crate::menus::Dropdown::from_id_salt("default_stretch_engine")
+                        .selected_text(settings.default_stretch_engine.label())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for engine in [daw_core::StretchEngine::RUBBER_BAND, daw_core::StretchEngine::INTEGRATED] {
+                                ui.selectable_value(&mut settings.default_stretch_engine, engine, engine.label());
+                            }
+                        });
+                },
+            );
+            crate::rows::advice(ui, "Used for new projects. Change an existing project's engine in Project Settings.");
             ui.separator();
             ui.strong("MIDI");
             crate::rows::field(

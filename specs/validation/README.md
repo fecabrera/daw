@@ -4,6 +4,32 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Time stretch Settings section — 2026-11-07
+
+Moved the new-project engine preference from Playback to its own Time stretch
+section and renamed its field Default engine. Persistence and project creation
+behavior are unchanged. User guides and the settings contract use the new path.
+The focused audio-settings tests, formatting and diff checks passed. Native
+Settings appearance checks remain open.
+
+## Default time stretch engine for new projects — 2026-11-07
+
+App Settings Playback now exposes Default time stretch engine through the shared
+dropdown. Rubber Band is the initial default; Integrated retains its experimental
+label. The persisted preference seeds blank startup, New and Close projects.
+Desktop supplies defaults before starting any saved-project open operation.
+Opened projects retain their saved engine. Preference changes do not modify the
+current project, playback or dirty state. Missing fields use Rubber Band;
+unsupported engine revisions reset this preference without discarding others.
+
+`cargo test -p daw-ui --lib --locked` passed 932 tests with three existing manual
+checks ignored. Coverage includes settings rendering, preference round trips and
+legacy fallback, invalid revisions, initial startup, New/Close, current-project
+isolation and saved-project precedence. `cargo check -p daw-desktop --locked`,
+`cargo clippy -p daw-ui -p daw-desktop --all-targets --locked -- -D warnings`,
+formatting and diff checks passed. Native Settings interaction and restart checks
+on macOS, Windows and Linux remain open. DSP and project schema were unchanged.
+
 ## Looped audio crossfades — 2026-11-07
 
 Adjacent audio clips can now crossfade when either or both clips loop. Looped
