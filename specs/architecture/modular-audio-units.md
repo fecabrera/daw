@@ -233,6 +233,13 @@ This is the first working path. The ADSR Envelope is implemented under D31. Seri
 
 ### Shared stereo meter
 
+The Editor track overview reads both live levels and per-channel held peaks from
+its selected track meter and uses `meters::stereo_panel_held`, matching compact
+Timeline and Instrument headers. Keep its existing compact/expanded geometry.
+Each channel's shared held marker remains visible through silence; either rail
+or the gap resets both peaks and the shared clipping latch without editing the
+project or changing current meter levels.
+
 Track, Master, regular instrument layer and Output meters use [meters.rs](../../crates/ui/src/meters.rs). Mixer shows one scale for both channels. Timeline, Editor and Instrument headers show only the bars, without scale labels, ticks, or reserved scale width. Instrument buses follow the [layer meter contract](../instruments/layer-effects.md#layer-bus-level-meters). Both use a linear −60 to 0 dBFS display, with Mixer marking 0, −3, −6, −9, −12, −15, −18, −21, −24, −30, −35, −40, −45, −50, and −60. Emphasize zero. Add 1 dB subdivisions above −30 and 5 dB below it when spacing is at least 3 points. Fit labels inside the panel and omit interior labels that collide at short heights. Reserve a 24-point scale column only in Mixer; its strips are 120 points wide.
 
 In Mixer track and Master strips, center the gain field above the complete fader column and a matching read-only peak field above the complete stereo meter column. Both fields share a row and the standard centered 36-point numeric style; include the scale labels and tick marks in column centering. The peak field displays the highest L/R peak since its last reset in dBFS with one decimal place, −∞ for silence, and a plus sign above zero. It holds that maximum as the live bars fall, including pause, Stop, and view changes. Clicking the field resets it to −∞; subsequent output can raise it again. The output callback captures peaks with atomic maximum updates, so brief peaks between UI frames remain available. Track holds follow track IDs through reorder and live plan updates. Holds reset with a new output monitor or project and are not saved in project data. Reset clears the held peak and shared stereo clipping latch without changing gain or current meter bars.

@@ -469,8 +469,8 @@ impl DawUi {
                                         let mut controls = (Rect::NOTHING, Rect::NOTHING);
                                         let mut mixing_bounds = [Rect::NOTHING; 4];
                                         let meter_bounds = Rect::from_min_size(Pos2::new(header_ui.max_rect().right() - (meters::STEREO_WIDTH - meters::SCALE_WIDTH), header_ui.max_rect().top()), Vec2::new(meters::STEREO_WIDTH - meters::SCALE_WIDTH, ROW_HEIGHT - 14.0));
-                                        let levels = self.output.as_ref().and_then(|o| o.layer_meter(track.id, layer.id)).map_or([(0.0, false); 2], |m| m.levels());
-                                        let cleared = meters::stereo_panel(&mut header_ui, ROW_HEIGHT - 14.0, levels, |header_ui| {
+                                        let (levels, held) = self.output.as_ref().and_then(|o| o.layer_meter(track.id, layer.id)).map_or(([(0.0, false); 2], [0.0; 2]), |m| (m.levels(), m.held_peaks()));
+                                        let cleared = meters::stereo_panel_held(&mut header_ui, ROW_HEIGHT - 14.0, levels, held, |header_ui| {
                                         let header = rows::centered(
                                             header_ui,
                                             toolbars::CONTROL_HEIGHT,

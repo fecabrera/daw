@@ -63,6 +63,11 @@ Layer controls stay in the left column; installed components appear to their rig
 
 [Amplitude](../instruments/amplitude.md) controls the level of notes in a layer. Connect an Envelope to shape attack and release, or an LFO for repeated level changes. Without an active Amplitude contour, notes use a short gate. Turning Amplitude off bypasses its level shaping while retaining note gating.
 
+Layer and Output meters show the shared held-peak marker for each stereo
+channel. Peaks remain visible when the signal becomes silent. Click either
+rail or the gap between them to reset both held peaks and the clipping warning.
+This changes monitoring only.
+
 ## Effects
 
 The Effects catalog has the same six folders in every view:

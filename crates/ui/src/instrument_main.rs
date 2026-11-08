@@ -139,8 +139,8 @@ impl DawUi {
                 );
                 header.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                 if output {
-                let levels = self.output.as_ref().and_then(|o| if beat_output {o.track_meter(bus.id)} else {o.layer_meter(track, bus.id)}).map_or([(0.0, false); 2], |m| m.levels());
-                let cleared = meters::stereo_panel(&mut header, ROW_HEIGHT - 14.0, levels, |header| {
+                let (levels, held) = self.output.as_ref().and_then(|o| if beat_output {o.track_meter(bus.id)} else {o.layer_meter(track, bus.id)}).map_or(([(0.0, false); 2], [0.0; 2]), |m| (m.levels(), m.held_peaks()));
+                let cleared = meters::stereo_panel_held(&mut header, ROW_HEIGHT - 14.0, levels, held, |header| {
                 rows::centered(header, toolbars::CONTROL_HEIGHT, |ui| {
                     let icon = icons::header_icon_with_rotation(ui, icons::Lucide::Merge, Sense::hover(), std::f32::consts::FRAC_PI_2).on_hover_text("Instrument output");
                     icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));

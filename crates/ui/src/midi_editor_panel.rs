@@ -162,11 +162,14 @@ impl DawUi {
             ui.set_min_height(self.track_row_height() - 14.0);
             ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
             let track = self.editor_track().map(track_rows::header_snapshot);
-            let levels = track
+            let (levels, held) = track
                 .as_ref()
                 .and_then(|t| self.output.as_ref()?.track_meter(t.id))
-                .map_or([(0.0, false); 2], |meter| meter.levels());
-            let cleared = meters::stereo_panel(ui, self.track_row_height() - 14.0, levels, |ui| {
+                .map_or(([(0.0, false); 2], [0.0; 2]), |meter| {
+                    (meter.levels(), meter.held_peaks())
+                });
+            let height = self.track_row_height() - 14.0;
+            let cleared = meters::stereo_panel_held(ui, height, levels, held, |ui| {
                 let track = self.editor_track().map(track_rows::header_snapshot);
                 let mut header_rows = track_rows::HeaderRows::new(ui, self.track_rows_collapsed);
                 rows::centered(

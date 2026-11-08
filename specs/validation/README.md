@@ -4,6 +4,32 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Editor overview held-peak markers — 2026-11-08
+
+The Editor track overview now supplies its track meter's held channel peaks to
+the shared stereo_panel_held widget. Current levels, compact/expanded geometry
+and the existing reset path remain unchanged. Either rail or the inter-channel
+gap resets both held peaks and the clipping latch; telemetry does not edit the
+project.
+
+All 19 track-header tests and the shared channel/gap held-marker reset test pass.
+Strict all-target UI Clippy, rustfmt and diff checks pass. Native device and
+Windows/Linux execution were not repeated.
+
+## Instrument layer held-peak markers — 2026-11-08
+
+Regular layer and Output headers now pass the existing stereo meter's per-channel
+held peaks to the shared stereo_panel_held widget. This includes beat-instrument
+Output's existing track-meter binding. Silent live readings retain held markers;
+either rail or the inter-channel gap resets both holds and the clipping latch.
+Layout, project state, DSP and callback publication are unchanged. Provider lanes
+remain without audio meters.
+
+The existing layer/Output geometry test passes across Dark/Light/Mist, 1×/1.5×
+scale and compact/expanded rows. The shared held-marker channel/gap reset test,
+strict all-target UI Clippy, rustfmt and diff checks pass. No native device or
+Windows/Linux check was performed.
+
 ## Effects catalog availability on provider lanes — 2026-11-08
 
 Selecting an instrument LFO or Envelope lane keeps effect catalog rows and
