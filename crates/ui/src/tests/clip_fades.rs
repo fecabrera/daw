@@ -1084,3 +1084,165 @@ fn looped_crossfade_controls_and_waveforms_support_either_owner_direction() {
         }
     }
 }
+
+#[test]
+fn stretch_modifier_bypasses_fade_handles_at_clip_edges_in_both_views() {
+    let modifiers = egui::Modifiers {
+        alt: cfg!(target_os = "macos"),
+        ctrl: !cfg!(target_os = "macos"),
+        ..Default::default()
+    };
+    for editor in [false, true] {
+        for left in [true, false] {
+            let (mut app, track) = fixture();
+            app.session.project.tracks[0].clips[0].length_frames = 96000;
+            let clip = app.session.project.tracks[0].clips[0].clone();
+            let ctx = context();
+            if editor {
+                app.open_clip_editor(clip.id, track, &ctx);
+            }
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            let block = app.clip_block(app.lane_bounds[&track], &clip, clip.start_frame);
+            let origin = Pos2::new(
+                if left {
+                    block.left() + 1.0
+                } else {
+                    block.right() - 1.0
+                },
+                block.top() + 26.0,
+            );
+            let before = app.session.project.clone();
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerMoved(origin),
+                    egui::Event::PointerButton {
+                        pos: origin,
+                        pressed: true,
+                        button: egui::PointerButton::Primary,
+                        modifiers,
+                    },
+                ],
+            );
+            assert_eq!(
+                app.drag.as_ref().map(|drag| drag.mode),
+                Some(if left {
+                    ClipDragMode::StretchLeft
+                } else {
+                    ClipDragMode::StretchRight
+                }),
+                "editor={editor} left={left}"
+            );
+            let mode = app.drag.as_ref().unwrap().mode;
+            let target = origin + Vec2::new(if left { 40.0 } else { -40.0 }, 0.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);
+            let drag = app.drag.as_ref().expect("stretch remains active");
+            assert_eq!(drag.mode, mode, "fade handles must not capture the drag");
+            let previews = app.clip_drag_previews(drag, target, false);
+            assert_eq!(previews.len(), 1);
+            assert!(previews[0].valid);
+            assert!(previews[0].clip.length_frames < clip.length_frames);
+            assert_eq!(app.visible_fades(&clip, &ctx), clip.fades);
+            assert_eq!(app.session.project, before);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers,
+                }],
+            );
+            assert!(app.drag.is_none());
+            assert_eq!(app.session.project, before);
+        }
+    }
+}
+
+#[test]
+fn stretch_modifier_disables_existing_fade_and_crossfade_midpoints() {
+    for crossfade in [false, true] {
+        let (mut app, track) = fixture();
+        let clip = &mut app.session.project.tracks[0].clips[0];
+        clip.start_frame = 96000;
+        clip.length_frames = 96000;
+        clip.fades.fade_in = daw_core::ClipFade {
+            length_frames: 24000,
+            crossfade,
+            ..Default::default()
+        };
+        let clip = clip.clone();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        let block = app.clip_block(app.lane_bounds[&track], &clip, clip.start_frame);
+        let width = app.session.project.seconds(24000) as f32 * app.view_zoom();
+        let midpoint = Pos2::new(
+            block.left() + if crossfade { -width * 0.5 } else { width * 0.5 },
+            block.bottom() - 0.5 * (block.height() - crate::clip_fades::HANDLE_TOP),
+        );
+        let modifiers = egui::Modifiers {
+            alt: cfg!(target_os = "macos"),
+            ctrl: !cfg!(target_os = "macos"),
+            ..Default::default()
+        };
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::ModifiersChanged(modifiers),
+                egui::Event::PointerMoved(midpoint),
+                egui::Event::PointerButton {
+                    pos: midpoint,
+                    pressed: true,
+                    button: egui::PointerButton::Primary,
+                    modifiers,
+                },
+            ],
+        );
+        assert!(!matches!(
+            app.drag.as_ref().map(|drag| drag.mode),
+            Some(ClipDragMode::Fade { .. })
+        ));
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerButton {
+                pos: midpoint,
+                pressed: false,
+                button: egui::PointerButton::Primary,
+                modifiers,
+            }],
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::ModifiersChanged(Default::default()),
+                egui::Event::PointerMoved(midpoint),
+                button(midpoint, true),
+            ],
+        );
+        assert!(
+            matches!(
+                app.drag.as_ref().map(|drag| drag.mode),
+                Some(ClipDragMode::Fade { shape: true, .. })
+            ),
+            "crossfade={crossfade}"
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::ModifiersChanged(modifiers)],
+        );
+        assert!(matches!(
+            app.drag.as_ref().map(|drag| drag.mode),
+            Some(ClipDragMode::Fade { shape: true, .. })
+        ));
+    }
+}

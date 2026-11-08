@@ -513,6 +513,14 @@ impl DawUi {
         }
         None
     }
+    fn clip_fade_handles_enabled(&self, ctx: &egui::Context) -> bool {
+        !ctx.input(|input| clip_copy_modifier(input.modifiers))
+            || self
+                .drag
+                .as_ref()
+                .is_some_and(|drag| matches!(drag.mode, ClipDragMode::Fade { .. }))
+    }
+
     pub(super) fn paint_clip_fade_controls(
         &self,
         painter: &egui::Painter,
@@ -520,6 +528,7 @@ impl DawUi {
         clip: &Clip,
     ) {
         if !self.audio_clip(clip)
+            || !self.clip_fade_handles_enabled(painter.ctx())
             || !self
                 .session
                 .project
@@ -865,7 +874,7 @@ impl DawUi {
         block: Rect,
         lane: Rect,
     ) -> bool {
-        if !self.audio_clip(clip) {
+        if !self.audio_clip(clip) || !self.clip_fade_handles_enabled(ui.ctx()) {
             return false;
         }
         if let Some(drag) = &self.drag

@@ -126,6 +126,11 @@ Horizontal scrolling moves the timeline while track controls stay fixed. Pinch z
 
 ## Fades and crossfades
 
+Hold Option on macOS or Ctrl on Windows/Linux before dragging an edge to
+stretch. While held, fade and crossfade handles and midpoint controls are hidden
+and disabled in Timeline and Editor. A fade drag already in progress keeps its
+gesture until release or cancellation.
+
 Audio clips have square fade handles in the strip between the name header and
 waveform. Drag the left or right handle inward to create a fade. Drag it outward
 to crossfade with the adjacent audio clip. The join stays at the same timeline

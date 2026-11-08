@@ -97,7 +97,14 @@ preview and settings. Capture the fade gesture on press and retain its identity
 until release. Keep project data unchanged during handle previews. Release
 commits one core edit; Escape, focus loss or blocked editing cancels. Preserve
 existing trim, shared-boundary, header-loop and modifier-stretch gestures outside
-these hit areas. Handle gestures preserve an existing whole-clip selection when the owner is
+these hit areas. Before starting a gesture, the platform stretch modifier
+(Option on macOS, Ctrl on Windows/Linux) hides and disables fade/crossfade
+endpoint and midpoint handles in both views, including Editor's lower waveform.
+They must not capture hover or presses while that modifier is held; normal
+clip-edge stretch handling takes priority. Curves and waveform gain remain
+visible. An already captured fade gesture retains its identity and controls
+until release/cancellation, including if the modifier changes mid-drag.
+Handle gestures preserve an existing whole-clip selection when the owner is
 selected; otherwise select the owner alone. Capture selected audio snapshots on
 press and skip MIDI/beat clips. Apply one signed duration delta to each edge,
 including each edge's own Fade/Crossfade sign. Apply midpoint level and normalized

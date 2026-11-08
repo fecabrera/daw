@@ -4,6 +4,20 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Stretch modifier bypasses fade handles — 2026-11-08
+
+Holding Option on macOS or Ctrl on Windows/Linux before a gesture hides and
+disables fade/crossfade endpoints and midpoints in the shared Timeline/Editor
+controls. Clip-edge stretching takes priority. A captured fade gesture keeps its
+identity when modifiers change. Curves and waveform gain remain visible.
+
+Automated egui regression checks cover left/right edge stretch capture in both
+views, pointer movement that retains the stretch gesture and produces a shorter
+valid preview without fade edits, existing fade/crossfade midpoint bypass, restoration on modifier release,
+and retained active fade gestures. All 23 fade tests and nine group-stretch tests
+pass. Strict UI all-target Clippy, rustfmt and diff checks pass. Native UI and
+Windows/Linux execution were not repeated.
+
 ## Broader time-stretch listening acceptance — 2026-11-08
 
 **COMPLETE for Integrated revision 7, by explicit user acceptance.** After

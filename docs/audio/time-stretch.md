@@ -5,7 +5,7 @@ Time stretching changes audio duration while retaining pitch. Timeline clips and
 ## Stretch a clip
 
 1. Select the clip or group in Timeline or Editor's clip strip.
-2. Hold Option on macOS or Ctrl on Windows/Linux and drag an edge to the target duration.
+2. Hold Option on macOS or Ctrl on Windows/Linux and drag an edge to the target duration. Holding the modifier hides and disables fade/crossfade handles and midpoint controls so they cannot intercept the stretch gesture.
 3. Use Shift to bypass snapping if needed.
 4. Release to prepare the stretched audio. Escape cancels an active gesture.
 
