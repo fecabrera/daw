@@ -69,8 +69,10 @@ impl Project {
                     ));
                 }
                 path.push(track.id);
-            } else if track.group_collapsed {
-                return Err(Error("Only a group bus can be collapsed".into()));
+            } else if track.group_collapsed && track.kind != TrackKind::Beat {
+                return Err(Error(
+                    "Only a group bus or beat track can be collapsed".into(),
+                ));
             }
         }
         Ok(())

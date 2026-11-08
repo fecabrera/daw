@@ -289,6 +289,7 @@ pub struct Track {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_id: Option<Id>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    /// Saved disclosure state for track groups and beat folders.
     pub group_collapsed: bool,
     #[serde(default)]
     pub effects: Vec<EffectInstance>,
@@ -832,8 +833,10 @@ impl Project {
                 let group = self
                     .tracks
                     .iter_mut()
-                    .find(|t| t.id == track_id && t.kind == TrackKind::Group)
-                    .ok_or_else(|| Error("Group not found".into()))?;
+                    .find(|t| {
+                        t.id == track_id && matches!(t.kind, TrackKind::Group | TrackKind::Beat)
+                    })
+                    .ok_or_else(|| Error("Track group or beat track not found".into()))?;
                 group.group_collapsed = collapsed;
             }
             Edit::SetMasterEffects { effects, compact } => {

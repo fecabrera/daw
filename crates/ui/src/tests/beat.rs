@@ -3109,7 +3109,7 @@ fn beat_thumbnails_keep_first_and_sixty_first_rows_separate() {
 }
 
 #[test]
-fn timeline_beat_children_use_group_geometry_and_view_only_disclosure() {
+fn timeline_beat_children_use_group_geometry_and_saved_disclosure() {
     for theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -3122,14 +3122,11 @@ fn timeline_beat_children_use_group_geometry_and_view_only_disclosure() {
             app.view_mode = ViewMode::Timeline;
             app.track_rows_collapsed = collapsed;
             let group = Id::new_v4();
-            app.session
-                .project
-                .edit(Edit::GroupTracks {
-                    track_ids: vec![parent],
-                    group_id: group,
-                    name: "Beats".into(),
-                })
-                .unwrap();
+            app.edit(Edit::GroupTracks {
+                track_ids: vec![parent],
+                group_id: group,
+                name: "Beats".into(),
+            });
             app.dirty = false;
             let before = app.session.project.clone();
             frame(&mut app, &ctx, vec![]);
@@ -3178,8 +3175,23 @@ fn timeline_beat_children_use_group_geometry_and_view_only_disclosure() {
             ]);
             assert_eq!(panels[0].1.bottom(), panel.bottom());
             assert_eq!(panels[1].1.bottom(), panel.bottom());
+            let mut expanded = before.clone();
+            expanded
+                .tracks
+                .iter_mut()
+                .find(|track| track.id == parent)
+                .unwrap()
+                .group_collapsed = false;
+            assert_eq!(app.session.project, expanded);
+            assert!(app.dirty);
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            frame(&mut app, &ctx, vec![]);
             assert_eq!(app.session.project, before);
-            assert!(!app.dirty);
+            assert!(!app.timeline_beats.rows.contains_key(&child));
+            app.perform_history_action(HistoryAction::Redo, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(app.session.project, expanded);
+            assert!(app.timeline_beats.rows.contains_key(&child));
             app.session
                 .project
                 .edit(Edit::SetGroupCollapsed {
@@ -3204,7 +3216,6 @@ fn timeline_beat_children_use_group_geometry_and_view_only_disclosure() {
             click(&mut app, &ctx, toggle);
             assert!(!app.timeline_beats.rows.contains_key(&child));
             assert_eq!(app.session.project, before);
-            assert!(!app.dirty);
         }
     }
 }

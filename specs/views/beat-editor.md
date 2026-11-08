@@ -391,10 +391,14 @@ project/track/revision, focus, enabled UI and job/dialog guards still apply.
 
 ## Timeline beat hierarchy — 2026-11-08
 
-Timeline beat parents use the standard group disclosure arrow. Expansion starts
-collapsed, stays in UI state per project, and does not enter project history or
-mark the project dirty. Keep Timeline expansion independent of the shared Tracks
-browser. Hiding an enclosing track group hides all beat children and retains the
+Timeline beat parents use the standard group disclosure arrow. New beat tracks
+start collapsed. Persist disclosure in Track::group_collapsed through the shared
+Edit::SetGroupCollapsed transaction, just like track groups. Disclosure changes
+participate in save revisions, dirty state and Undo/Redo. This supersedes the
+initial view-only state. Accept the collapse field only on Group and Beat tracks;
+keep actual project-track parenting restricted to Group buses. Legacy beat
+manifests with no field use the existing serde default (expanded). Keep Timeline
+expansion independent of the shared Tracks browser. Hiding an enclosing track group hides all beat children and retains the
 beat parent's expansion choice.
 
 Show one child row per subtrack in canonical order. Reuse GroupPanel indentation,
@@ -416,6 +420,6 @@ placing new-track previews and computing enclosing group/reorder boundaries.
 Effect drops resolve to the subtrack's existing Main bus. Clips remain on the
 parent and retain their existing editing behavior. Mixer remains parent-only.
 
-Validate disclosure without project edits, nested parent extents, control
+Validate saved disclosure, legacy defaults, Undo/Redo, nested parent extents, control
 isolation, shared owner selection, and rejection of media/clip placement. Native
 visual and device checks remain separate from egui regressions.

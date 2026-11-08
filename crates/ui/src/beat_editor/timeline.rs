@@ -1,10 +1,9 @@
-//! View-only beat hierarchy. Child lanes never enter clip placement hit geometry.
+//! Saved beat hierarchy. Child lanes never enter clip placement hit geometry.
 use super::*;
 
 #[derive(Default)]
 pub(crate) struct TimelineState {
     project: Option<Id>,
-    open: HashSet<Id>,
     pub(crate) rows: HashMap<Id, (Id, Rect, Rect)>,
     #[cfg(test)]
     pub(crate) disclosure: HashMap<Id, Rect>,
@@ -39,16 +38,15 @@ impl DawUi {
                 ..Default::default()
             };
         }
-        self.timeline_beats
-            .open
-            .retain(|id| self.session.project.beat(*id).is_some());
         self.timeline_beats.rows.clear();
         #[cfg(test)]
         self.timeline_beats.disclosure.clear();
     }
 
     pub(crate) fn timeline_beat_open(&self, id: Id) -> bool {
-        self.timeline_beats.open.contains(&id)
+        self.session.project.tracks.iter().any(|track| {
+            track.id == id && track.kind == daw_core::TrackKind::Beat && !track.group_collapsed
+        })
     }
 
     pub(crate) fn timeline_beat_disclosure(&mut self, ui: &mut egui::Ui, id: Id, width: f32) {
@@ -67,8 +65,11 @@ impl DawUi {
         );
         #[cfg(test)]
         self.timeline_beats.disclosure.insert(id, response.rect);
-        if response.clicked() && !self.timeline_beats.open.remove(&id) {
-            self.timeline_beats.open.insert(id);
+        if response.clicked() {
+            self.edit(Edit::SetGroupCollapsed {
+                track_id: id,
+                collapsed: open,
+            });
         }
     }
 

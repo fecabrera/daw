@@ -6,7 +6,7 @@ Groups are nested stereo buses with the existing track controls, meters, effects
 
 ## Model and transactions
 
-`core::TrackKind::Group` identifies buses. `Track::group_id` stores the optional stable parent ID; `group_collapsed` stores presentation state. Missing fields default to no parent and expanded. The existing experimental manifest stores both fields; legacy projects remain flat.
+`core::TrackKind::Group` identifies buses. `Track::group_id` stores the optional stable parent ID; `group_collapsed` stores saved disclosure state for Group and Beat tracks. New beat tracks start collapsed; beat subtracks remain instruments, not project-track children. Missing fields default to no parent and expanded. The existing experimental manifest stores both fields; legacy projects remain flat.
 
 `Project::tracks` is preorder: parents precede their children and each subtree is contiguous. Validation rejects missing or non-group parents, cycles, split subtrees, group clips/instruments, and collapse on non-groups. General ID and effect validation still applies.
 

@@ -187,6 +187,7 @@ impl Project {
         let t = next.tracks.last_mut().unwrap();
         t.name = format!("Beat {count}");
         t.kind = TrackKind::Beat;
+        t.group_collapsed = true;
         t.beat = Some(Box::default());
         next.validate()?;
         *self = next;

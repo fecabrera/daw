@@ -4,6 +4,26 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Saved Timeline beat folder disclosure — 2026-11-08
+
+Beat folders now reuse the saved group collapse field and shared transaction.
+Disclosure updates dirty state and session history; Undo/Redo restores visible
+children. This supersedes the initial view-only disclosure recorded below. New
+beat tracks start closed. Legacy manifests without the field use the existing
+expanded default. Track parenting and rendering ownership are unchanged.
+
+All 175 core tests and 950 UI tests pass (three existing UI tests ignored).
+The new project integration test saves and reopens open, closed and open states
+while retaining parent, child and clip IDs. Core regressions cover serialization,
+legacy defaults, sibling visibility and invalid-target rollback. UI regressions
+cover dirty state and Undo/Redo across all themes and both header heights.
+
+Strict all-target core/project Clippy passes. Strict UI Clippy is blocked by the
+pre-existing unused linux_custom_available function in titlebar.rs; UI Clippy
+passes with only dead-code warnings allowed. Rustfmt and diff checks pass.
+Native save/reopen UI, audio-device and Windows/Linux checks were not performed.
+
+
 
 
 

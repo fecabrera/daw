@@ -294,3 +294,50 @@ fn large_selection_preview_retains_project_order() {
     assert!(project.track_move_layout(&[id], None, 0).is_err());
     assert_eq!(project.tracks[0].id, selection[0]);
 }
+
+#[test]
+fn beat_folder_collapse_uses_shared_edit_and_legacy_manifest_defaults() {
+    let mut project = Project::default();
+    let beat = project.add_beat_track().unwrap();
+    let audio = project.add_track().unwrap();
+    assert!(project.tracks[0].group_collapsed);
+    for collapsed in [false, true] {
+        project
+            .edit(Edit::SetGroupCollapsed {
+                track_id: beat,
+                collapsed,
+            })
+            .unwrap();
+        assert_eq!(project.tracks[0].group_collapsed, collapsed);
+        assert_eq!(
+            project.visible_tracks(),
+            [0, 1],
+            "beat disclosure must not hide sibling tracks"
+        );
+        let restored: Project =
+            serde_json::from_str(&serde_json::to_string(&project).unwrap()).unwrap();
+        assert_eq!(restored, project);
+        restored.validate().unwrap();
+    }
+    let before = project.clone();
+    assert!(
+        project
+            .edit(Edit::SetGroupCollapsed {
+                track_id: audio,
+                collapsed: true
+            })
+            .is_err()
+    );
+    assert_eq!(project, before);
+    let mut legacy = serde_json::to_value(&project).unwrap();
+    legacy["tracks"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("group_collapsed");
+    let legacy: Project = serde_json::from_value(legacy).unwrap();
+    assert!(
+        !legacy.tracks[0].group_collapsed,
+        "missing saved state follows the shared expanded default"
+    );
+    legacy.validate().unwrap();
+}
