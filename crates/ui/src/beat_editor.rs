@@ -2,6 +2,9 @@
 use super::*;
 use daw_core::{BeatEdit, BeatResolution, BeatSubtrack};
 
+mod timeline;
+pub(super) use timeline::TimelineState;
+
 const STEP_INSETS: Vec2 = Vec2::new(4.0, 3.0);
 const SUBTRACK_AUDITION_WIDTH: f32 = 16.0;
 

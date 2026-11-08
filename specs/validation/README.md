@@ -4,6 +4,33 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Timeline subtrack mix alignment — 2026-11-08
+
+Child headers now explicitly use the same content spacing as normal track
+frames. Their inherited zero horizontal gap beside meters had shifted M/S,
+Pan and Gain six points right. The geometry regression reproduced that shift
+before the fix and now verifies the normal track anchors and meter insets in
+Dark, Light and Mist, with compact and expanded headers inside nested groups.
+
+All three `cargo test -p daw-ui --lib timeline_beat` tests pass. Strict
+all-target UI Clippy, rustfmt and diff checks pass. Native visual and
+Windows/Linux checks were not performed.
+
+## Timeline beat subtrack hierarchy — 2026-11-08
+
+Beat parents now expand into indented subtrack headers and empty grid lanes.
+They share track-group borders, standard compact/expanded header layouts,
+subtrack mix controls, owner selection and held-peak meters. Disclosure is
+project-scoped UI state and starts collapsed. Clips remain on the parent.
+
+`cargo test -p daw-ui --lib` passes: 950 tests, three existing ignored.
+New regressions cover nested group extents, enclosing-group collapse/reopen,
+view-only disclosure across all three themes and both header heights, isolated
+M/S edits, shared owner selection, Shift multi-selection, Escape, rejected file
+drops and cancelled clip placement on child lanes. Strict all-target UI Clippy,
+rustfmt and diff checks pass. Native visual, pointer, audio-device and
+Windows/Linux checks were not performed.
+
 ## Shared Mute/Solo button groups — 2026-11-08
 
 Timeline and Editor track headers, Instrument layers, Beat Editor subtracks,

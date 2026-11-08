@@ -3107,3 +3107,200 @@ fn beat_thumbnails_keep_first_and_sixty_first_rows_separate() {
     assert!((ys[0] - ys[1]).abs() > 200.0);
     out.textures_delta.clear();
 }
+
+#[test]
+fn timeline_beat_children_use_group_geometry_and_view_only_disclosure() {
+    for theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
+        for collapsed in [true, false] {
+            let (mut app, ctx, parent, child, _) = setup();
+            app.settings.theme = theme;
+            theme::apply(&ctx, app.settings.clone());
+            app.view_mode = ViewMode::Timeline;
+            app.track_rows_collapsed = collapsed;
+            let group = Id::new_v4();
+            app.session
+                .project
+                .edit(Edit::GroupTracks {
+                    track_ids: vec![parent],
+                    group_id: group,
+                    name: "Beats".into(),
+                })
+                .unwrap();
+            app.dirty = false;
+            let before = app.session.project.clone();
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.timeline_beats.rows.contains_key(&child));
+            let toggle = app.timeline_beats.disclosure[&parent].center();
+            click(&mut app, &ctx, toggle);
+            let (owner, panel, lane) = app.timeline_beats.rows[&child];
+            assert_eq!(owner, parent);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            super::track_header::assert_header_meter_insets(&shapes, panel, &ctx);
+            let [mute, solo, pan, gain] = app.beat_ui.mix_bounds[&child];
+            assert!(
+                (gain.center().x - (panel.right() - 47.0)).abs() < 0.1,
+                "Gain must align with normal tracks: {gain:?}, panel {panel:?}"
+            );
+            assert!(
+                (pan.center().x - (panel.right() - 79.0)).abs() < 0.1,
+                "Pan must align with normal tracks"
+            );
+            if collapsed {
+                assert!((mute.center().x - (panel.right() - 131.5)).abs() < 0.1);
+                assert!((solo.center().x - (panel.right() - 110.5)).abs() < 0.1);
+            }
+            assert_eq!(panel.top(), app.lane_bounds[&parent].bottom());
+            assert_eq!(panel.height(), app.track_row_height());
+            assert_eq!(lane.left(), app.lane_bounds[&parent].left());
+            assert_eq!(
+                panel.left(),
+                lane.left() - TRACK_WIDTH + panels::GroupPanel::indent(2)
+            );
+            assert!(
+                !app.lane_bounds.contains_key(&child),
+                "child lanes cannot receive clips"
+            );
+            assert!(
+                app.file_target(lane.center(), app.timeline_bounds, false)
+                    .is_none()
+            );
+            let panels = app.track_panel_containers(&[
+                (group, Rect::from_min_size(Pos2::ZERO, Vec2::splat(10.0))),
+                (
+                    parent,
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(250.0, panel.top())),
+                ),
+                (child, panel),
+            ]);
+            assert_eq!(panels[0].1.bottom(), panel.bottom());
+            assert_eq!(panels[1].1.bottom(), panel.bottom());
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+            app.session
+                .project
+                .edit(Edit::SetGroupCollapsed {
+                    track_id: group,
+                    collapsed: true,
+                })
+                .unwrap();
+            frame(&mut app, &ctx, vec![]);
+            assert!(app.timeline_beats.rows.is_empty());
+            app.session
+                .project
+                .edit(Edit::SetGroupCollapsed {
+                    track_id: group,
+                    collapsed: false,
+                })
+                .unwrap();
+            frame(&mut app, &ctx, vec![]);
+            assert!(
+                app.timeline_beats.rows.contains_key(&child),
+                "enclosing collapse retains beat disclosure"
+            );
+            click(&mut app, &ctx, toggle);
+            assert!(!app.timeline_beats.rows.contains_key(&child));
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn timeline_beat_child_controls_edit_only_the_shared_subtrack_bus() {
+    let (mut app, ctx, parent, child, _) = setup();
+    let other = BeatSubtrack::new("Snare".into());
+    let other_id = other.id;
+    app.session
+        .project
+        .edit(Edit::Beat {
+            track_id: parent,
+            edit: BeatEdit::Add {
+                subtrack: Box::new(other),
+                index: 1,
+            },
+        })
+        .unwrap();
+    app.view_mode = ViewMode::Timeline;
+    frame(&mut app, &ctx, vec![]);
+    let before = app
+        .session
+        .project
+        .tracks
+        .iter()
+        .find(|track| track.id == parent)
+        .unwrap()
+        .clone();
+    let toggle = app.timeline_beats.disclosure[&parent].center();
+    click(&mut app, &ctx, toggle);
+    let [mute, solo, _, _] = app.beat_ui.mix_bounds[&child];
+    click(&mut app, &ctx, mute.center());
+    click(&mut app, &ctx, solo.center());
+    let beat = app.session.project.beat(parent).unwrap();
+    let row = beat.subtracks.iter().find(|row| row.id == child).unwrap();
+    assert!(row.muted && row.soloed);
+    let other = beat
+        .subtracks
+        .iter()
+        .find(|row| row.id == other_id)
+        .unwrap();
+    assert!(!other.muted && !other.soloed);
+    assert!(!before.muted && !before.soloed);
+    let after = app
+        .session
+        .project
+        .tracks
+        .iter()
+        .find(|track| track.id == parent)
+        .unwrap();
+    assert_eq!(after.clips, before.clips);
+    assert_eq!(
+        (after.gain_db, after.pan, after.muted, after.soloed),
+        (before.gain_db, before.pan, before.muted, before.soloed)
+    );
+    assert_eq!(app.selected_track, Some(parent));
+    assert!(app.timeline_beat_child_selected(child));
+    assert_eq!(app.instrument_ui.track, Some(child));
+    assert!(
+        matches!(app.timeline_beat_effect_target(child), daw_core::EffectChainTarget::Layer { track, .. } if track == child)
+    );
+    let other_header = app.timeline_beats.rows[&other_id].1;
+    let point = other_header.min + Vec2::new(30.0, 12.0);
+    shift_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+        true,
+    );
+    shift_frame(&mut app, &ctx, vec![button(point, false)], false);
+    assert!(app.timeline_beat_child_selected(child));
+    assert!(app.timeline_beat_child_selected(other_id));
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+    assert!(!app.has_selected_beat_subtracks());
+    let unchanged = app.session.project.clone();
+    let clip = &before.clips[0];
+    let start = app
+        .clip_block(app.lane_bounds[&parent], clip, clip.start_frame)
+        .min
+        + Vec2::new(20.0, 12.0);
+    let end = app.timeline_beats.rows[&child].2.center();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+    );
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    assert!(app.drag.is_some());
+    assert!(
+        app.move_group_preview(app.drag.as_ref().unwrap(), end, true)
+            .is_none()
+    );
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    assert_eq!(
+        app.session.project, unchanged,
+        "child lanes reject clip placement"
+    );
+}

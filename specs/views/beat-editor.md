@@ -387,3 +387,35 @@ MIDI previews retain their existing duration policies. Keep
 all decoding/preparation/rendering on the shared worker path. New requests replace
 older previews through the existing latest-request queue. The Editor view,
 project/track/revision, focus, enabled UI and job/dialog guards still apply.
+
+
+## Timeline beat hierarchy — 2026-11-08
+
+Timeline beat parents use the standard group disclosure arrow. Expansion starts
+collapsed, stays in UI state per project, and does not enter project history or
+mark the project dirty. Keep Timeline expansion independent of the shared Tracks
+browser. Hiding an enclosing track group hides all beat children and retains the
+beat parent's expansion choice.
+
+Show one child row per subtrack in canonical order. Reuse GroupPanel indentation,
+shared row heights and dividers, and the enclosing parent selection border,
+including nested track groups. Reuse HeaderRows, joined M/S, Pan/Gain controls,
+layer-meter handles, held peaks and reset interaction. Set child header content
+spacing to the track frame's six points horizontally and four points vertically;
+reserve the meter column with that spacing so M/S, Pan and Gain keep the same
+right anchors as normal tracks. Child headers and lanes use
+the shared selected colors in all themes. Header clicks select the real parent
+track and navigate the shared beat owner; Shift toggles child membership. Escape
+clears visible child selection before arrangement selection. Double-clicking the
+name uses the shared rename draft and transaction.
+
+Child lanes contain only the musical grid. Do not paint beat-hit previews or
+create independent clips. Keep child IDs out of lane_bounds and clip placement;
+reject clip moves and file drops over child rows. Include child height when
+placing new-track previews and computing enclosing group/reorder boundaries.
+Effect drops resolve to the subtrack's existing Main bus. Clips remain on the
+parent and retain their existing editing behavior. Mixer remains parent-only.
+
+Validate disclosure without project edits, nested parent extents, control
+isolation, shared owner selection, and rejection of media/clip placement. Native
+visual and device checks remain separate from egui regressions.

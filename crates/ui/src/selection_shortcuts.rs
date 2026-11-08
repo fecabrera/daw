@@ -62,7 +62,15 @@ impl DawUi {
             self.selected_track = None;
             self.selected_tracks.clear();
             self.master_selected = false;
-        } else if beat_editor && self.has_selected_beat_subtracks() {
+        } else if (beat_editor
+            || (self.view_mode == ViewMode::Timeline
+                && self
+                    .timeline_beats
+                    .rows
+                    .keys()
+                    .any(|id| self.timeline_beat_child_selected(*id))))
+            && self.has_selected_beat_subtracks()
+        {
             self.deselect_beat_subtracks();
         } else if self.selected_clip.is_some()
             || !self.selected_clips.is_empty()

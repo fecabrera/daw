@@ -828,6 +828,7 @@ pub struct DawUi {
     editor_transients: editor_transients::State,
     instrument_ui: instrument_panel::InstrumentUi,
     beat_ui: beat_editor::BeatUi,
+    timeline_beats: beat_editor::TimelineState,
     effects_catalog: catalog::Catalog,
     chords: chords_catalog::Chords,
     instrument_catalog: catalog::Catalog,
@@ -1002,6 +1003,7 @@ impl Default for DawUi {
             editor_transients: Default::default(),
             instrument_ui: Default::default(),
             beat_ui: Default::default(),
+            timeline_beats: Default::default(),
             #[cfg(test)]
             effects_bounds: Default::default(),
             #[cfg(test)]
@@ -3531,7 +3533,7 @@ impl DawUi {
         }
         control_panel.finish(ui);
         for (id, rect) in track_panels {
-            if self.track_selected(id) {
+            if self.track_selected(id) || self.timeline_beat_child_selected(id) {
                 panels::ControlPanel::selected_row(ui, rect, tracks.inner_rect);
             }
         }
@@ -3568,8 +3570,8 @@ impl DawUi {
         tracks.inner.iter().find_map(|(id, header)| {
             let row = Rect::from_min_max(header.min, Pos2::new(visible.right(), header.bottom()))
                 .intersect(visible);
-            row.contains(pointer)
-                .then_some((effects_panel::EffectTarget::Track(*id), row))
+            let target = self.timeline_beat_effect_target(*id);
+            row.contains(pointer).then_some((target, row))
         })
     }
     fn master_track(&mut self, ui: &mut egui::Ui) -> Rect {
@@ -4135,7 +4137,12 @@ impl DawUi {
             if mixer {
                 self.center_mixer_header(ui, &track.name);
             }
-            if track.kind == daw_core::TrackKind::Group {
+            if !mixer
+                && self.view_mode == ViewMode::Timeline
+                && track.kind == daw_core::TrackKind::Beat
+            {
+                self.timeline_beat_disclosure(ui, track.id, icon_width);
+            } else if track.kind == daw_core::TrackKind::Group {
                 if icons::disclosure_button(
                     ui,
                     !track.group_collapsed,
@@ -4423,6 +4430,9 @@ impl DawUi {
     }
     fn tracks_kind(&mut self, ui: &mut egui::Ui, returns: bool) -> Vec<(Id, Rect)> {
         let row_height = self.track_row_height();
+        if !returns {
+            self.reconcile_timeline_beats();
+        }
         let tracks: Vec<_> = self
             .session
             .project
@@ -4455,10 +4465,18 @@ impl DawUi {
                     || self.marquee.is_some()
                     || self.track_name_edit.is_some()
                     || ui.ctx().egui_wants_keyboard_input();
+                let has_children = self.timeline_beat_open(id);
                 if !interacting && !row.intersects(ui.clip_rect().expand(row_height)) {
                     let (panel, lane) = rows::placeholder(ui, id, TRACK_WIDTH, row_height, inset);
                     self.lane_bounds.insert(id, lane);
                     outlines.push((id, panel));
+                    if !returns && has_children {
+                        outlines.extend(self.timeline_beat_children(
+                            ui,
+                            id,
+                            row_index + 1 == count,
+                        ));
+                    }
                     continue;
                 }
                 // Only visible/interactive rows need an owned editing snapshot.
@@ -4640,6 +4658,9 @@ impl DawUi {
                     }
                     self.lane(ui, &track, inner.response.rect, row_index, count);
                 });
+                if !returns {
+                    outlines.extend(self.timeline_beat_children(ui, id, row_index + 1 == count));
+                }
             }
             if let Some((track, action)) = context_action {
                 // Finish painting before changing the tracks and their control state.
@@ -4836,6 +4857,9 @@ impl DawUi {
         pointer: Pos2,
         unsnapped: bool,
     ) -> Option<Vec<ClipPreview>> {
+        if self.timeline_beat_row_at(pointer) {
+            return None;
+        }
         let tracks = &self.session.project.tracks;
         let anchor_track = tracks.iter().position(|track| track.id == drag.track)?;
         let fallback;
@@ -5225,7 +5249,8 @@ impl DawUi {
         viewport: Rect,
         unsnapped: bool,
     ) -> Option<FileDropTarget> {
-        if !placement::drop_bounds(viewport).contains(pointer) {
+        if !placement::drop_bounds(viewport).contains(pointer) || self.timeline_beat_row_at(pointer)
+        {
             return None;
         }
         // Track controls always target frame zero, even when the timeline is scrolled.
@@ -5253,6 +5278,7 @@ impl DawUi {
             .lane_bounds
             .values()
             .map(Rect::bottom)
+            .chain(self.timeline_beat_bottom())
             .fold(viewport.top(), f32::max);
         if pointer.y < top || top >= viewport.bottom() {
             return None;
@@ -5413,6 +5439,7 @@ impl DawUi {
             .lane_bounds
             .values()
             .map(Rect::bottom)
+            .chain(self.timeline_beat_bottom())
             .fold(self.timeline_bounds.top(), f32::max);
         Some(Rect::from_min_size(
             Pos2::new(
@@ -5673,7 +5700,14 @@ impl DawUi {
             index > 0,
             false,
         );
-        if index + 1 == count && track.kind != daw_core::TrackKind::Return {
+        if index + 1 == count
+            && track.kind != daw_core::TrackKind::Return
+            && !(self.timeline_beat_open(track.id)
+                && track
+                    .beat
+                    .as_ref()
+                    .is_some_and(|beat| !beat.subtracks.is_empty()))
+        {
             // The final child and all enclosing groups share one bottom edge.
             // The pinned Master owns the Return bank's bottom divider.
             panels::GroupPanel::row_dividers(ui, row, 0, false, true);

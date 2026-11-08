@@ -6,12 +6,13 @@ impl DawUi {
     /// bounds remain separate, including placeholders above/below the viewport.
     pub(super) fn track_panel_containers(&self, rows: &[(Id, Rect)]) -> Vec<(Id, Rect)> {
         let mut panels = rows.to_vec();
-        if self
-            .session
-            .project
-            .tracks
-            .iter()
-            .all(|t| t.group_id.is_none())
+        if self.timeline_beats.rows.is_empty()
+            && self
+                .session
+                .project
+                .tracks
+                .iter()
+                .all(|track| track.group_id.is_none())
         {
             return panels;
         }
@@ -20,13 +21,18 @@ impl DawUi {
             .enumerate()
             .map(|(i, (id, _))| (*id, i))
             .collect();
-        let parents: HashMap<_, _> = self
+        let mut parents: HashMap<_, _> = self
             .session
             .project
             .tracks
             .iter()
             .map(|t| (t.id, t.group_id))
             .collect();
+        for track in &self.session.project.tracks {
+            if let Some(beat) = &track.beat {
+                parents.extend(beat.subtracks.iter().map(|row| (row.id, Some(track.id))));
+            }
+        }
         for index in (0..panels.len()).rev() {
             if let Some(parent) = parents.get(&panels[index].0).copied().flatten()
                 && let Some(&parent_index) = indices.get(&parent)
@@ -42,7 +48,7 @@ impl DawUi {
     pub(super) fn paint_track_group_edges(&self, ui: &egui::Ui, panels: &[(Id, Rect)], clip: Rect) {
         // The workspace owns the root left edge; adding an inner root stroke
         // would produce two adjacent borders. Only inset rows own a new edge.
-        let nested: HashSet<_> = self
+        let mut nested: HashSet<_> = self
             .session
             .project
             .tracks
@@ -50,6 +56,7 @@ impl DawUi {
             .filter(|t| t.group_id.is_some())
             .map(|t| t.id)
             .collect();
+        nested.extend(self.timeline_beats.rows.keys().copied());
         for (id, rect) in panels {
             if nested.contains(id) {
                 panels::ControlPanel::row_left_divider(ui, *rect, clip);
@@ -154,7 +161,18 @@ impl DawUi {
                 .rev()
                 .filter(|i| **i < end)
                 .find_map(|i| self.lane_bounds.get(&project.tracks[*i].id))
-                .map(Rect::bottom)
+                .map(|rect| {
+                    self.timeline_beats
+                        .rows
+                        .values()
+                        .filter(|(parent, _, _)| {
+                            visible
+                                .iter()
+                                .any(|i| *i < end && project.tracks[*i].id == *parent)
+                        })
+                        .map(|(_, _, lane)| lane.bottom())
+                        .fold(rect.bottom(), f32::max)
+                })
         };
         for &index in &visible {
             let track = &project.tracks[index];
@@ -201,11 +219,7 @@ impl DawUi {
                     .then_some((parent, slot, y));
             }
         }
-        let y = visible
-            .iter()
-            .rev()
-            .find_map(|i| self.lane_bounds.get(&project.tracks[*i].id))
-            .map(Rect::bottom)?;
+        let y = subtree_bottom(project.tracks.len())?;
         let slot = project.tracks.len() - moved.len();
         project
             .can_move_tracks(&selection, None, slot)

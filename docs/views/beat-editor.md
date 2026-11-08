@@ -57,7 +57,7 @@ highlighted, including when several are selected. Step buttons keep their own
 on/off and hover colors. Subtrack Mute and Solo use the shared joined M / S
 button group; each button remains independent.
 
-Editor and Instrument share the same names, order, selection and mix controls. The **Tracks** panel in both views lists subtracks below their beat parent. Its right-pinned Mute, Solo, Pan and Gain controls change the corresponding track or subtrack without selecting it.
+Editor and Instrument share the same names, order, selection and mix controls. Timeline also exposes these mix controls in expandable child rows under the beat parent. Its child lanes stay empty; beat hits remain in Editor. The **Tracks** panel in both views lists subtracks below their beat parent. Its right-pinned Mute, Solo, Pan and Gain controls change the corresponding track or subtrack without selecting it.
 Selecting a subtrack in Editor also selects its instrument when you return to
 Instrument, including after selecting the final Output.
 
