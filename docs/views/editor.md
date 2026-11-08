@@ -99,3 +99,20 @@ During transport looping, MIDI instrument releases and one-shot samples continue
 across the loop boundary. New notes retain normal instrument triggering behavior.
 Audio clips repeat only the looped region; track, group and Master effect tails
 continue into the next iteration.
+
+### Transient indicators
+
+Enable **Show transients** in the toolbar above the lower audio ruler. Thin
+vertical lines mark detected attacks, from the bottom of the clip header to the
+clip bottom. They are visual guides and do not capture clicks or drags.
+
+Analysis runs in the background. A spinner indicates work in progress. Results
+follow trims, loop phases, stretching and transpose using the displayed source
+audio. Changing this view option does not edit the project or affect playback.
+Markers describe the prepared source before clip gain, fades and channel controls.
+Quiet tonal attacks or hits less than 30 ms apart can be missed.
+
+Results are cached in memory. If a source exceeds the 128 MiB analysis memory
+limit or cannot be analyzed, a small status label provides details in its tooltip;
+editing and playback remain available. Toggle the option off and on to retry a
+failed analysis. Original recordings remain unchanged.

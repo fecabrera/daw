@@ -4,6 +4,32 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Editor transient indicators — 2026-11-08
+
+Implemented the [initial visual indicators](../views/audio-transients.md) with a
+Show transients toggle in the lower audio Editor toolbar. Markers span from the
+22-point header bottom through the fade-handle strip to the clip bottom, as
+requested in the user's screenshot feedback. They are noninteractive and do not
+appear in the overview or Timeline. Optional analysis uses the shared Combined
+routine through a storage-independent media worker adapter; source audio and
+project state remain unchanged.
+
+One cancellable worker, a bounded result channel and 32-entry weak-identity LRU
+cache keep derived results separate from playback/history. Required audio jobs
+cancel optional work. Generation checks reject stale project/cancelled results;
+new prepared owners invalidate transformed-audio results. The adapter preserves
+full-source detector history for resident and disk-backed PCM and admits at most
+128 MiB additional known analysis storage under the existing shared audio budget.
+Failures show a small status/tooltip and remain cached until retry.
+
+All 26 media tests pass (one existing ignored), and all 945 UI tests pass (three
+existing ignored). Focused checks cover storage parity, source preservation,
+input/resource/cancellation errors, worker/cache lifecycle, trim/loop/stretch
+mapping, toggle dirty-state behavior and exact marker header/bottom geometry.
+Shared waveform and existing fade/editor gesture coverage pass. Strict media/UI
+all-target Clippy, rustfmt and diff checks pass. No new third-party dependency
+versions were added. Native device and Windows/Linux execution were not repeated.
+
 ## Stretch modifier bypasses fade handles — 2026-11-08
 
 Holding Option on macOS or Ctrl on Windows/Linux before a gesture hides and

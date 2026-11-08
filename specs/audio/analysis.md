@@ -107,3 +107,10 @@ all six rates. Timestretch integration tests retain pitch, attack waveform,
 exact output and cancellation coverage. The existing paired benchmark and
 private Splice render comparisons check extraction parity. No editor markers or
 new user controls are introduced by this extraction.
+
+## Audio Editor consumer
+
+The [Editor indicators](../views/audio-transients.md) call the shared detector
+through the media storage adapter on an optional worker. The detector and its
+identities are unchanged. UI marker caching and mapping do not affect the stretch
+engine, playback or saved clip content.

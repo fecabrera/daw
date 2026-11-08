@@ -135,7 +135,7 @@ impl DawUi {
         } else {
             block
         };
-        paint_header(&clip_painter, header, &clip.name, colors, missing);
+        let painted_header = paint_header(&clip_painter, header, &clip.name, colors, missing);
         let body = Rect::from_min_max(
             Pos2::new(
                 block.left(),
@@ -218,6 +218,18 @@ impl DawUi {
         }
 
         if pattern.is_none() && beat.is_none() {
+            if let Some(audio) = audio {
+                self.paint_editor_transients(
+                    &clip_painter,
+                    Rect::from_min_max(
+                        Pos2::new(body.left(), painted_header.bottom().min(body.bottom())),
+                        body.max,
+                    ),
+                    clip,
+                    audio,
+                    if cached.is_none() { clip.stretch } else { None },
+                );
+            }
             self.paint_neighbor_crossfade_waveforms(&clip_painter, block, clip);
             self.paint_clip_fades(
                 &painter.with_clip_rect(block.intersect(painter.clip_rect())),

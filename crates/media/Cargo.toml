@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+audio-analysis.workspace = true
 timestretch.workspace = true
 daw-core.workspace = true
 daw-unit-core.workspace = true

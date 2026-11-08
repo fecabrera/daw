@@ -2124,6 +2124,7 @@ dependencies = [
 name = "daw-media"
 version = "0.1.0"
 dependencies = [
+ "audio-analysis",
  "daw-core",
  "daw-unit-core",
  "hound",

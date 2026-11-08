@@ -21,6 +21,7 @@ pub use clip_menu::ClipMenuAction;
 mod audio_editor;
 mod clip_paint;
 mod clip_settings;
+mod editor_transients;
 mod editor_viewport;
 mod fit_viewport;
 mod history;
@@ -824,6 +825,7 @@ struct LoopDrag {
 pub struct DawUi {
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
+    editor_transients: editor_transients::State,
     instrument_ui: instrument_panel::InstrumentUi,
     beat_ui: beat_editor::BeatUi,
     effects_catalog: catalog::Catalog,
@@ -997,6 +999,7 @@ impl Default for DawUi {
             effects_drag: None,
             selected_effects: HashSet::new(),
             midi_editor: Default::default(),
+            editor_transients: Default::default(),
             instrument_ui: Default::default(),
             beat_ui: Default::default(),
             #[cfg(test)]
@@ -2224,6 +2227,14 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.editor_transients
+            .poll(self.session.project.project_id, ui.ctx());
+        if self.view_mode != mixer::ViewMode::Edit
+            || self.job.is_some()
+            || self.background_media.required
+        {
+            self.editor_transients.cancel();
+        }
         self.sync_exciter_audition();
         self.collection_input_ready =
             ui.is_enabled() && ui.ctx().input(|i| i.focused) && !ui.ctx().text_edit_focused();
@@ -5862,6 +5873,7 @@ mod tests {
     mod compressed_import;
     mod editor_delete;
     mod editor_marquee;
+    mod editor_transients;
     mod editor_viewport;
     mod effects;
     mod envelope_units;

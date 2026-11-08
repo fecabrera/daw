@@ -62,6 +62,17 @@ impl DawUi {
             for clip in &track.clips {
                 let block = self.clip_block(lane, clip, clip.start_frame);
                 if block.intersect(lane).is_positive() {
+                    if self.editor_transients.enabled
+                        && self.drag.is_none()
+                        && self.job.is_none()
+                        && !self.background_media.required
+                        && let Some(audio) = self
+                            .session
+                            .audio_for_clip(clip)
+                            .or_else(|| self.session.audio.get(&clip.asset_id))
+                    {
+                        self.editor_transients.request(audio, ui.ctx());
+                    }
                     self.paint_clip(
                         &painter,
                         track.color,

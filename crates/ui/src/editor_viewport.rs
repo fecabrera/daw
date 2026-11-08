@@ -165,6 +165,11 @@ impl DawUi {
                 let enabled = (clip.is_some() || (!midi && !track.clips.is_empty()))
                     && self.editing_enabled()
                     && !self.midi_editor.dragging();
+                if track.kind == daw_core::TrackKind::Audio {
+                    self.editor_transients.toolbar(ui);
+                } else {
+                    self.editor_transients.cancel();
+                }
                 if track.kind == daw_core::TrackKind::Beat {
                     self.beat_pattern_options(ui, track);
                 }

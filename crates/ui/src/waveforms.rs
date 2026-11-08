@@ -152,21 +152,32 @@ pub fn preview_extrema(
             source_extrema(audio, start, count, channel)
         }
     };
+    source_windows(clip, local, count)
+        .into_iter()
+        .fold([0.0_f32; 2], |result, (start, count)| {
+            let peak = read(start, count);
+            [result[0].min(peak[0]), result[1].max(peak[1])]
+        })
+}
+
+/// At most two source intervals cover a visible local window. Whole repeated
+/// bases need inspection once, regardless of how many copies cover the window.
+pub(super) fn source_windows(clip: &Clip, local: u64, count: u64) -> [(u64, u64); 2] {
     let count = count.min(clip.length_frames.saturating_sub(local));
     if count == 0 {
-        return [0.0; 2];
+        return [(0, 0); 2];
     }
     let Some(repeat) = clip.repeat else {
-        return read(clip.source_frame(local), count);
+        return [(clip.source_frame(local), count), (0, 0)];
     };
     if count >= repeat.length_frames {
-        return read(clip.source_offset_frame, repeat.length_frames);
+        return [(clip.source_offset_frame, repeat.length_frames), (0, 0)];
     }
-    let position = repeat.position(local);
-    let first = count.min(repeat.length_frames - position);
-    let a = read(clip.source_offset_frame + position, first);
-    let b = read(clip.source_offset_frame, count - first);
-    [a[0].min(b[0]), a[1].max(b[1])]
+    let first = count.min(repeat.length_frames - repeat.position(local));
+    [
+        (clip.source_frame(local), first),
+        (clip.source_offset_frame, count - first),
+    ]
 }
 
 fn source_extrema(audio: &AudioData, start: u64, count: u64, channel: usize) -> [f32; 2] {
