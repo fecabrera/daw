@@ -11,3 +11,8 @@ Drag unit headers to reorder units within their lane. Hold Option on macOS or Ct
 Use a receiving unit's [modulation controls](../modulation/README.md) to assign a source. Pickers group these sources under LFO and Envelope. Adding a source creates no connections. LFOs produce shared signals. Envelopes keep Per note, Retrigger, and Legato modes; Per note remains specific to each playing voice. Existing scope and cycle checks still apply throughout the same instrument.
 
 Older projects move existing LFOs and envelopes from regular layers and Output into their matching lanes when opened. Their settings, assignments, and sound are retained. Lane layout, unit order, and controls save with the project. Projects saved with these lanes require the current application version.
+
+Selecting LFO or Envelope keeps the Effects catalog available. Drag effects to
+a regular layer, Output or the track effects lane. LFO and Envelope still reject
+effect drops; double-click or Enter does not add an effect to a selected control
+lane.

@@ -82,7 +82,7 @@ Select the destination track or Master before adding an effect. Double-click an 
 
 In Instrument, click a layer or Output to select it, then add effects from the Effects catalog. New effects append to that same layer lane. Drag effect headers or catalog effects between control components, including into an empty layer. Only audio sources stay pinned first. Collapse or expand the layer to change the size of the whole row. Drag effect headers between regular layers, Output, and the track effects lane to move them; hold Option on macOS or Ctrl on Windows/Linux to duplicate them. Selected effects transfer together. Layer effect settings save with the project.
 
-Output effects share the pinned Output lane with its control components. You can place an effect before Macro. LFO and Envelope lanes do not accept effects. Click the separate bottom effects lane to target track effects, or edit track effects in Timeline, Editor or Mixer.
+Output effects share the pinned Output lane with its control components. You can place an effect before Macro. LFO and Envelope lanes do not accept effects. Selecting either lane keeps the Effects catalog enabled, so you can drag effects to a regular layer, Output or the track effects lane. Dropping on LFO or Envelope cancels the addition. Click the separate bottom effects lane to target track effects, or edit track effects in Timeline, Editor or Mixer.
 
 Layer effects process that layer's notes together, after Amplitude and before layer gain/pan. Output effects process the combined layer sum before Output gain/pan. Track output effects process the instrument after Output. This lets you distort one layer while keeping another layer clean.
 

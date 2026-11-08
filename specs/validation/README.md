@@ -4,6 +4,26 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Effects catalog availability on provider lanes — 2026-11-08
+
+Selecting an instrument LFO or Envelope lane keeps effect catalog rows and
+keyboard browsing enabled. Library drags can use the track chain as their origin
+anchor and insert on the hovered eligible regular layer, Output or track effects
+lane. Direct additions still require an eligible selected destination; provider
+lane drops cancel without edits.
+
+A new egui regression covers both provider selections, Dark/Light themes, all
+three eligible destinations and rejected LFO/Envelope destinations. It also
+checks Enter rejection, preview-only hovering and unchanged invalid drops. All
+946 UI tests pass (three existing ignored). Strict all-target UI Clippy, rustfmt
+and diff checks pass. Native UI/device and Windows/Linux checks were not repeated.
+
+A follow-up focused regression also passes for both LFO and Envelope in Dark/Light
+themes: drag from the catalog over a valid regular layer, then release on a
+provider lane. The release clears the drag without inserting on the previous
+valid target, changing the project/revision or marking it dirty.
+
+
 ## Editor transient indicators — 2026-11-08
 
 Implemented the [initial visual indicators](../views/audio-transients.md) with a

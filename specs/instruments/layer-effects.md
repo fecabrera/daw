@@ -40,6 +40,11 @@ Installed effect dragging reorders or duplicates within a chain and moves/copies
 
 Drag activation, insertion previews, edge scrolling, copy modifiers, selection capture, cancellation, and release checks remain in `effects_reorder.rs`. Cross-layer edits stay pending until the instrument finishes drawing, then publish once without overwriting the model with its earlier UI snapshot. Empty destinations, including Main, are valid, including moves toward earlier rows and fast release. Focus and selection follow the destination. Restore the destination focus after all rows have painted; a source row visited later must not replace its pane bounds. Prepare destination chains against the previous layer chains before swapping bus state, matching globally unique effect IDs. Transfers between track and instrument buses use the same history matcher before either chain is swapped. Compatible processor histories move by stable effect ID between layer buses without callback allocation; changed latency placement still requires worker pre-roll.
 
+Selecting the LFO or Envelope lane leaves the Effects catalog draggable. The
+selected track chain can anchor a library drag while actual insertion uses the
+hovered eligible layer, Main or track lane. Catalog activation still requires an
+eligible selected destination; provider lanes reject direct additions and drops.
+
 ## Layer bus level meters
 
 Regular layer and Output headers reuse the track `meters::stereo_panel` and `reset_on_click` widgets with `daw-output::StereoMeter`. Keep the existing 250-point label width. Reserve the same 20-point stereo rail column and six-point content gap as tracks; each rail is eight points wide with four points between channels. Fit the rails to the 54-point inner height of the two-row header, with seven-point top/right insets, in both expanded and compact layers. Keep Pan then Gain immediately before the rails; Output retains Gain alone. Keep meters outside the horizontally scrolling units and exclude their press origin from layer reorder gestures. Render silent rails without an output device. Reuse track scale, tooltips, clipping colors and click/reset behavior; add no numeric field.

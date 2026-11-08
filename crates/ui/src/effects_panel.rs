@@ -399,14 +399,14 @@ impl DawUi {
                                 "effects",
                                 catalog::Interaction {
                                     rows_enabled: allowed
-                                        && self.effect_catalog_target().is_some()
+                                        && self.effects_target().is_some()
                                         && self
                                             .effects_drag
                                             .as_ref()
                                             .is_none_or(|drag| drag.is_library() && !drag.active)
                                         && selected.is_some(),
                                     keyboard_enabled: allowed
-                                        && self.effect_catalog_target().is_some()
+                                        && self.effects_target().is_some()
                                         && self.effects_drag.is_none()
                                         && selected.is_some()
                                         && !ui.input(|input| input.pointer.primary_down()),
@@ -432,7 +432,13 @@ impl DawUi {
                                 if allowed
                                     && (lane_visible || self.view_mode == ViewMode::Instrument)
                                 {
-                                    let target = self.effect_catalog_target();
+                                    // A provider lane cannot receive effects, but
+                                    // must not prevent dragging to another lane.
+                                    // Use the track chain only as a drag anchor;
+                                    // the hovered destination decides insertion.
+                                    let target = self
+                                        .effect_catalog_target()
+                                        .or_else(|| self.effects_target());
                                     let chain = target
                                         .and_then(|t| self.effect_chain(t))
                                         .map(|(e, _)| e.to_vec())

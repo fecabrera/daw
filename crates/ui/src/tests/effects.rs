@@ -7154,3 +7154,141 @@ fn shimmer_reverb_uses_shared_catalog_controls_on_track_master_and_instrument() 
         }
     }
 }
+
+#[test]
+fn provider_lane_selection_keeps_effect_catalog_draggable_to_audio_chains_only() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for envelope in [false, true] {
+            for destination in ["layer", "output", "track", "lfo", "envelope"] {
+                let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
+                let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+                let layer = instrument.layers[0].id;
+                let lfo = instrument.lfo_lane.id;
+                let envelope_lane = instrument.envelope_lane.id;
+                app.instrument_ui.selected_layer = Some(if envelope { envelope_lane } else { lfo });
+                app.instrument_ui.track_effects_target = false;
+                app.set_effects_lane_visible(destination == "track");
+                app.set_effects_catalog_visible(true);
+                frame(&mut app, &ctx, vec![]);
+                assert!(app.effect_catalog_target().is_none());
+                let before = app.session.project.clone();
+                let start = app.effects_bounds.entry.center();
+                click(&mut app, &ctx, start);
+                super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
+                assert_eq!(
+                    app.session.project, before,
+                    "Enter cannot add effects to a provider lane"
+                );
+                end_click_sequence(&mut app, &ctx);
+                let end = match destination {
+                    "layer" => {
+                        let bounds = &app.midi_editor.layer_bounds[&layer];
+                        Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y)
+                    }
+                    "output" => {
+                        let bounds = &app.instrument_ui.main_bounds;
+                        Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y)
+                    }
+                    "track" => app.effects_bounds.lane_viewport.center(),
+                    other => {
+                        let owner = if other == "lfo" { lfo } else { envelope_lane };
+                        let bounds = &app.instrument_ui.modulation_lane_bounds[&owner];
+                        Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y)
+                    }
+                };
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                assert!(
+                    app.effects_drag.is_some(),
+                    "{envelope} {destination}: catalog drag must arm"
+                );
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                assert_eq!(
+                    app.session.project, before,
+                    "hover must not edit the project"
+                );
+                frame(&mut app, &ctx, vec![button(end, false)]);
+                let track = &app.session.project.tracks[0];
+                let instrument = track.instrument.as_ref().unwrap();
+                assert_eq!(
+                    instrument.layers[0].effects.len(),
+                    usize::from(destination == "layer")
+                );
+                assert_eq!(
+                    instrument.main.effects.len(),
+                    usize::from(destination == "output")
+                );
+                assert_eq!(track.effects.len(), usize::from(destination == "track"));
+                if matches!(destination, "lfo" | "envelope") {
+                    assert_eq!(
+                        app.session.project, before,
+                        "provider lanes must reject effects"
+                    );
+                    assert!(!app.dirty);
+                } else {
+                    assert!(app.dirty);
+                }
+                assert!(app.effects_drag.is_none());
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn catalog_effect_drops_on_lfo_and_envelope_reject_a_previous_valid_layer_target() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for envelope in [false, true] {
+            let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
+            let track = app.session.project.tracks[0].id;
+            let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+            let layer = instrument.layers[0].id;
+            let provider = if envelope {
+                instrument.envelope_lane.id
+            } else {
+                instrument.lfo_lane.id
+            };
+            app.instrument_ui.selected_layer = Some(provider);
+            app.instrument_ui.track_effects_target = false;
+            app.set_effects_lane_visible(false);
+            app.set_effects_catalog_visible(true);
+            frame(&mut app, &ctx, vec![]);
+            let before = app.session.project.clone();
+            let revision = app.change_revision;
+            let start = app.effects_bounds.entry.center();
+            let bounds = &app.midi_editor.layer_bounds[&layer];
+            let valid = Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y);
+            let bounds = &app.instrument_ui.modulation_lane_bounds[&provider];
+            let rejected = Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(valid)]);
+            let drag = app.effects_drag.as_ref().expect("catalog drag active");
+            assert!(drag.active);
+            assert_eq!(
+                drag.target,
+                effects_panel::EffectTarget::Layer { track, layer }
+            );
+            assert_eq!(app.session.project, before);
+            // Release on the provider, not the last eligible row. The previous
+            // valid destination must not receive an accidental insertion.
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(rejected)]);
+            assert_eq!(app.session.project, before);
+            frame(&mut app, &ctx, vec![button(rejected, false)]);
+            assert!(app.effects_drag.is_none());
+            assert_eq!(
+                app.session.project, before,
+                "envelope={envelope}: rejected effect drop"
+            );
+            assert_eq!(app.change_revision, revision);
+            assert!(!app.dirty);
+            app.session.project.validate().unwrap();
+        }
+    }
+}

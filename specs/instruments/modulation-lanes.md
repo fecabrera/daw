@@ -14,7 +14,14 @@ Reuse the Output row implementation for their column labels, horizontally scroll
 
 Register a provider once through `Entry::provider`, with its `ModulationLaneKind` and installation function. This metadata drives double-click/Enter additions, catalog previews, valid releases and hints. Preview must not construct settings or assign UUIDs. Neither regular layers nor Output receive new Envelope/LFO additions. A dedicated lane rejects the entire mixed catalog group if any selected type is unsupported.
 
-Core transfer eligibility also checks the lane kind. A global provider can reorder or copy within its matching lane; it cannot move/copy to regular layers, Output or the other provider lane. Reuse component group transactions, insertion geometry, edge scrolling, release-only commits and cancellation. Preserve unit/route identities on reorder; copies receive fresh identities and retain incoming assignments. Shared selection, Delete/Backspace, retained removal, restoration and Undo/Redo apply unchanged. Effects catalog additions and effect drops cannot target control lanes.
+Core transfer eligibility also checks the lane kind. A global provider can reorder or copy within its matching lane; it cannot move/copy to regular layers, Output or the other provider lane. Reuse component group transactions, insertion geometry, edge scrolling, release-only commits and cancellation. Preserve unit/route identities on reorder; copies receive fresh identities and retain incoming assignments. Shared selection, Delete/Backspace, retained removal, restoration and Undo/Redo apply unchanged. Effects catalog additions and effect drops cannot target control lanes. Selecting
+one must not disable catalog rows or keyboard browsing. Keep catalog drag origins
+available through the selected track's effect chain when the selected lane has no
+effect destination. This is only an origin/validation anchor: hovering a valid
+regular layer or Output retargets insertion through the existing drag path; track
+effects retain their lane path. Double-click/Enter still use the selected catalog
+addition target and cannot fall back to adding effects to a control lane or an
+unrequested track chain. Invalid control-lane releases cancel without edits.
 
 ## Modulation and processing
 
