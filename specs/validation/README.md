@@ -4,6 +4,98 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Harmonic-rise fix — Integrated revision 6, 2026-11-08
+
+The [guitar regression report](transient-harmonic-r6.md) records the user's pitch
+bend report, the new broadband novelty requirement, revision/cache migration,
+automated checks and regenerated private auditions. Combined remains the default;
+its spectral supplement now rejects concentrated harmonic growth. The complete
+21.57-second recording matches Energy at all three tested ratios. All 378
+annotated synthetic attacks remain detected with no false positives. Source
+hashes match after rendering. The user also listened to the updated audition at
+their exact stretch settings and confirmed that the pitch bending is gone. This
+closes the reported guitar regression; broader listening acceptance remains open.
+R5 packs and results below are
+historical, superseded by the R6 pack for current auditions.
+
+## Revision-5 default detector and private Splice auditions — 2026-11-08
+
+By explicit user request, Combined is now the default inside the Integrated
+stretch engine, including pitch stages. Stretch identity is 5; the detector is
+energy-spectral-v4. Rubber Band remains the app's initial backend. Known saved
+Integrated revisions 2–4 upgrade with a sound-change warning, current preparation
+and R5 cache keys; opening leaves manifests unchanged. Known Integrated app
+preferences retain their choice while upgrading. Energy remains an explicit
+comparison baseline.
+
+Default adoption exposed a pitch admission mismatch and kick-cutoff novelty
+that shortened attack guards. Shared transient memory accounting is now 48 bytes
+per maximum event; Energy timestamps take priority within 30 ms; added spectral
+candidates need sustained difference-power growth after the first impulse block.
+The original attack residual threshold was not relaxed. Existing and new cutoff
+regressions pass. Prior failure/fix logs remain in ignored work storage.
+
+Added the headless `transient_listen` tool using existing dependencies. The
+[real-audio preparation report](transient-listening-r5.md) describes six user
+Splice recordings, 18 cases and 36 raw renders, blinded A/B/original auditions,
+private source/label diagnostics and blank human score sheets. Inputs were read
+only and all six SHA-256 hashes match after rendering. All output is under
+`work/transient-listening/splice-r5-current`; private recordings/paths are not
+committed. Existing output directories and source-directory writes are refused.
+No human scores were generated: listening status is pending, not PASS.
+
+Checks passed:
+
+- Portable debug/release all-target suites: 36 tests each; two standard ignored
+  acceptance matrices were also run explicitly in release and both passed.
+- Portable doctest (one); standalone no-reference tool suite (seven tests,
+  including real-pack structure/read-only/overwrite regression using synthetic
+  inputs); generated real-recording renders are finite and exact-length.
+- Core 133 tests (one existing ignored), media 23 (one existing ignored), engine
+  44, UI 938 (three existing ignored); focused app-preference migration and both
+  project-open/metadata migration integration checks passed.
+- Strict Clippy across timestretch, timestretch-cli, core, media, project and UI
+  all targets; formatting and diff checks passed.
+
+No human listening panel, LUFS-matched R2/R3 real-recording comparison, Windows/
+Linux native checks, native DAW device checks or full workspace release run was
+performed. This experimental default change does not establish full TS/IP or
+stable listening acceptance. Source/algorithm provenance remains recorded in
+`crates/timestretch/PROVENANCE.md`; no Rubber Band implementation was inspected.
+
+## Opt-in combined transient detector and benchmark — 2026-11-08
+
+Added independent energy/spectral detection using the existing RustFFT dependency,
+a shared source-onset analysis API and an optional portable stretch entry point.
+Default stretch/pitch processing remains the revision-4 Energy baseline; no DAW
+project migration or engine/cache revision change is introduced. Optional-mode
+reports/caches must carry the detector's separate identity.
+
+The [benchmark report](transient-detector-benchmark.md) records 126 paired synthetic
+inputs across six rates and mono/anti-phase gain-scaled stereo. Corrected Combined
+matched 378/378 annotated attacks with zero interior false detections; Energy
+matched 324/378 with zero false detections. All additional matches were masked
+noise attacks. Detector time rose about 17.84x (mean paired median 0.208 to
+3.714 ms per one-second input). On masked 48 kHz expansion fixtures, diagnostic
+onset error improved from 15 to 1 ms at 3/2 and from 10 to 1 ms at 2x. These
+results do not establish a general detection rate or perceived stretch quality.
+Initial end-boundary false detections and corrected artifacts are retained.
+
+`cargo test -p timestretch --all-targets --locked` and the release equivalent
+passed 35 tests each, with two existing ignored probes. Doctests passed (one).
+Strict all-target package Clippy, formatting, diff checks and the portable
+RustFFT-only normal dependency tree check passed. Tests cover default identity,
+error/cancellation/resource paths, short inputs, compression equality, linked
+stereo, gain/polarity invariance, synthetic event detection and existing stretch/
+pitch/bass/drum regressions. The specs now include validation/dispatch ordering,
+phase-vocoder loop control flow, detector merging/timing rules, memory ownership,
+boundaries, short/constant signals, failure handling and pitch-path dispatch.
+
+No real recordings, listening checks, designated-host performance gates, full
+TS/IP acceptance, Windows/Linux native checks or DAW integration checks were
+performed. No default adoption is claimed. Provenance records research context
+and confirms no Rubber Band implementation material was inspected or reused.
+
 ## CLI add named tracks — 2026-11-08
 
 `tracks --add NAME --type audio|midi|beat` appends an empty root-level track

@@ -82,7 +82,7 @@ Attack observations remain approximately 1 ms and stereo-linked. Compare against
 
 The maximum FFT workspace still fits the existing conservative 8 MiB allowance, excluding planner internals: at stereo width 65,536 the spectral arrays, scratch, windows, peak indices, and weights require less than 7 MiB. Analysis scratch is dropped before synthesis. Output/intermediate/attack-region storage remains separately accounted. Progress, cancellation, frame extent, gain homogeneity, stereo linking, and headroom retain their shared paths.
 
-`Session::open` upgrades saved `timestretch` revisions 2 and 3 to current revision 4 before validation and preparation. Rebuild complete clip and Sampler pitch buffers from source through normal worker opening; never relabel old buffers. Warn that sound can change. Save persists revision 4; opening does not write the source manifest. Unknown revisions, including 1 and future revisions, still fail. Rubber Band remains unchanged and the default. Cache matches require the new engine identity; failure/cancellation never publishes a partial session.
+`Session::open` upgrades saved `timestretch` revisions 2, 3, 4 and 5 to current revision 6 before validation and preparation. Rebuild complete clip and Sampler pitch buffers from source through normal worker opening; never relabel old buffers. Warn that sound can change. Save persists revision 6; opening does not write the source manifest. Unknown revisions, including 1 and future revisions, still fail. Rubber Band remains unchanged and the default. Cache matches require the current engine identity; failure/cancellation never publishes a partial session.
 
 ### Drum-aware bass selection — revision 4
 
@@ -92,7 +92,7 @@ Reuse the same summed-channel power bins and `spectral_flatness` calculation in 
 
 No extra FFT, resampler, gain adjustment, output limiter, time map, or channel-specific decision is added. Stereo/polarity and gain invariance retain shared power analysis. Keep the 80-block detector, pitch composition revision 2, exact output lengths, memory checks, and progress/cancellation paths. Compression retains the existing linear map; this change avoids applying a long window to noisy bass-heavy mixtures rather than extending unit-speed guards into compression.
 
-Add a zero-pitch 24/25 compressed drum regression: independently generated chirped kicks and weak noise hats, six-rate onset error within 5 ms, and a calibrated 48 kHz pre-echo energy ceiling of −30 dB over the 100 ms before the first kick relative to the following 100 ms. Other rates retain the onset gate and report pre-echo diagnostically; the existing normal-window engine itself does not meet that energy ceiling at all rates. Retain silent/anti-phase stereo checks and the full tonal bass matrix. Current processing identity is 4; opening revisions 2 or 3 explicitly upgrades and rebuilds preparation with a warning, as authorized.
+Add a zero-pitch 24/25 compressed drum regression: independently generated chirped kicks and weak noise hats, six-rate onset error within 5 ms, and a calibrated 48 kHz pre-echo energy ceiling of −30 dB over the 100 ms before the first kick relative to the following 100 ms. Other rates retain the onset gate and report pre-echo diagnostically; the existing normal-window engine itself does not meet that energy ceiling at all rates. Retain silent/anti-phase stereo checks and the full tonal bass matrix. Current processing identity is 5; opening revisions 2, 3 or 4 explicitly upgrades and rebuilds preparation with a warning, as authorized.
 
 ## Offline pitch processing
 
@@ -106,13 +106,13 @@ The filter removes frequencies that would cross output Nyquist during upward shi
 
 Before allocation, account for the larger of the intermediate stretch working set and `4*channels*(K+M) + filter_table_bytes`. `PitchRequest::working_memory_bytes(input_frames)` exposes the same checked estimate for host admission, including validation of rate, channel count and output length. The stretch estimate includes f64 overlap, intermediate f32 output, transient storage, and the existing conservative FFT allowance. Drop spectral scratch before allocating the filter table and final output. Immutable input, FFT planner internals, and allocator overhead retain their existing accounting limits. Checked arithmetic and fallible major-buffer allocation return `ResourceLimit`. Progress maps validation to 0–0.05, stretching to 0.05–0.8, table setup to 0.8–0.85, and output conversion to 0.85–1. Check cancellation during table setup and at most every 256 output frames, in addition to existing analysis/synthesis checkpoints. No partial output escapes.
 
-The stretch algorithm uses `REVISION = 4` for bass-aware analysis and attack detection. The new optional path has `PITCH_REVISION = 2`. Reports or consumer caches for nonzero pitch must include both revisions, the exact pitch offset, processing rate, channels, duration ratio, and source identity. This addition does not migrate or reinterpret saved DAW engine revisions. Timeline audio clips use their saved constant transpose; Sampler uses constant note offsets through the same API.
+The stretch algorithm uses `REVISION = 6` for bass/drum-aware analysis and the default combined detector. The new optional path has `PITCH_REVISION = 2`. Reports or consumer caches for nonzero pitch must include both revisions, the exact pitch offset, processing rate, channels, duration ratio, and source identity. The revision-6 default change migrates known legacy Integrated revisions as specified above. Timeline audio clips use their saved constant transpose; Sampler uses constant note offsets through the same API.
 
 ### Full-range pitch composition
 
 Offsets beyond ±24 use `Pitch::stages()`: at most six passes of at most 24 semitones whose sum equals the requested offset. Positive shifts put the remainder last; negative shifts put it first, so the final downward analysis starts above the lowest MIDI fundamentals. Apply the requested duration ratio only in the first pass; every later pass uses ratio 1. Each pass returns the same exact final `M`. Do not clamp MIDI notes or pitch offsets to two octaves.
 
-Large upward requests resample before spectral processing in each pass. For input length `N` and pass factor `s`, first resample to `K = max(1, round(N/s))`, using the same shared sinc filter and input step `N/K`, then use the existing stretcher at private ratio `M/K`. Raising the frequency before spectral analysis avoids analyzing the lowest MIDI fundamentals below the first useful spectral bins. Large downward requests retain the original stretch-then-resample order for each pass. Offsets within ±24 reuse the single-pass composition; zero-pitch, identity-duration requests remain sample-exact. The optional pitch revision is 2; the stretch revision is 4.
+Large upward requests resample before spectral processing in each pass. For input length `N` and pass factor `s`, first resample to `K = max(1, round(N/s))`, using the same shared sinc filter and input step `N/K`, then use the existing stretcher at private ratio `M/K`. Raising the frequency before spectral analysis avoids analyzing the lowest MIDI fundamentals below the first useful spectral bins. Large downward requests retain the original stretch-then-resample order for each pass. Offsets within ±24 reuse the single-pass composition; zero-pitch, identity-duration requests remain sample-exact. The optional pitch revision is 2; the stretch revision is 5.
 
 Only the previous pass output stays alive during the next pass. Preflight the maximum pass working set plus its retained input before processing. The upward-pass estimate covers the resampled intermediate and the larger of filter storage or stretch working storage. The public estimate and processing share these calculations. Map progress monotonically across passes; cancellation at any pass returns no output. Bound intermediate/filter sizes by the pass, not by the complete pitch factor. No new dependency or Rubber Band implementation material is used.
 
@@ -273,3 +273,217 @@ Review further primary publications before selecting transient/stereo/multi-reso
 ## Sampler consumer — 2026-10-17
 
 [Sampler](../instruments/sampler.md) reuses the selected project stretch backend/revision for its prepared region. The project worker first composes the input clip's trim/repeat/stretch mapping and selected region, then prepares root audio and each required supported MIDI pitch at the same constant duration ratio. Time sets milliseconds; Bars derives duration from project tempo. The existing positive-frame and 1/8–8 bounds apply, and failure/cancellation retains the original project and audio. Sampler uses `Request::with_pitch` for Integrated and the existing R3 pitch-factor argument for Rubber Band. MIDI note minus root note supplies offsets within ±127 semitones, covering all valid MIDI note/root pairs. Prepare distinct pitches used by referenced MIDI patterns, plus root audio, before publishing edits. Reuse cached variants with matching processing identity. This consumer adds no live stretching, ratio automation or pitch modulation. See the [Sampler pitch contract](../instruments/sampler.md#offline-note-pitch--2026-10-18).
+
+## Transient detector control flow and edge cases
+
+### Entry points and processing identity
+
+`Request::process` and `process_with_progress` select `TransientDetector::Combined`
+as of stretch revision 6, including the private spectral calls in PitchRequest.
+The current detector identity is `energy-spectral-v5`. Explicit
+`process_with_transient_detector(input, Energy, progress)` retains the baseline
+energy algorithm (`energy-r4`) for comparison. Explicit-mode callers must include
+the detector identity alongside processing revision, request and source identity
+in caches/reports. The Combined default was requested for the experimental Integrated
+engine; this does not change the app's Rubber Band backend default or certify
+listening acceptance. DAW Integrated revisions 2, 3, 4 and 5 upgrade to 6 with a
+warning and complete preparation rebuild on open. Saving persists revision 6;
+opening does not write the manifest. App default-engine preferences migrate known
+Integrated revisions without discarding the engine choice. Unknown revisions
+still fail in projects. Prepared cache keys use R6 and cannot relabel R4/R5 buffers.
+Pitch composition revision remains 2; its full cache identity includes stretch
+revision 6.
+
+`detect_transients(request, input, detector, progress)` exposes the same source
+analysis for evaluation. It returns sorted source-frame positions, not beats or
+confidence scores. It uses the request's conservative full stretch memory budget
+and output-length validation, even though detection alone does not allocate the
+rendered output. It performs analysis at ratio 1 and during compression too;
+the rendering path uses protection only during expansion.
+
+### Validation and rendering sequence
+
+1. Call the cancellation callback at progress zero. Validate sample rate,
+   interleaved channel layout and exact rounded output extent before processing.
+2. Check the existing output/overlap/FFT/region memory estimate. Revisions 5–6 account for
+   `48 * (floor(frames / floor(rate * 30/1000)) + 1)` transient bytes, including
+   combined candidate capacity and regions. This conservative estimate is shared
+   by pitch admission and processing, including explicit Energy comparisons. Exceeding the limit returns ResourceLimit before analysis. The
+   detector FFT workspace fits within the existing conservative 8 MiB allowance;
+   detector scratch is dropped before synthesis scratch is allocated. FFT planner
+   internals and allocator overhead retain the previously documented exclusions.
+3. Validate finite input with progress/cancellation checkpoints. No identity,
+   empty or constant shortcut bypasses input/request validation.
+4. For rendering, empty input or ratio 1 copies sample bits exactly, including
+   signed zero. Constant per-channel input produces exact constant output of the
+   requested length. Neither path runs transient detection or FFT synthesis.
+5. Otherwise select the existing source-wide analysis width. Timing::analyze
+   returns an empty protection map for ratio <= 1. For expansion, run the chosen
+   detector once in source order and build protected regions from its positions.
+6. Synthesize through the existing linked phase vocoder. Protected regions use
+   unit-speed source time and restore source phase; gaps use the existing
+   piecewise-linear timing map. Keep exact output extent and stereo linkage.
+
+The public detection-only entry validates and scans even constant/nonempty
+input. It does not apply the rendering shortcuts and finishes progress at one.
+Zero-valued input yields no events; a nonzero signal's start may be an event.
+
+### Energy scan and combined spectral evidence
+
+The baseline energy detector is unchanged: blocks contain `max(1, floor(rate /
+1000))` frames. Sum squared samples across both channels and divide by sample
+count. An attack must exceed six times the mean of the populated preceding 80
+observations and twice the maximum of the preceding two observations. Require
+at least `floor(rate * 30/1000)` frames since its previous attack. Update history
+after the decision. Startup uses populated observations; all-zero history does
+not impose an absolute amplitude threshold. Polarity cannot cancel summed power.
+
+Combined keeps all baseline candidates and adds spectral evidence:
+
+- Every four energy blocks, analyze a centered Hann window of
+  `clamp(next_power_of_two(floor(rate * 16/1000)), 256, 4096)` frames.
+- Analyze channels separately with the existing RustFFT library and sum bin
+  powers, never channel samples. Use bins from `max(2, floor(700 * width/rate))`
+  through the bin below Nyquist. DC, low-frequency bass and Nyquist are excluded.
+- At each eligible bin, compare current power against the maximum of that bin
+  and its immediate two neighbors in the previous spectrum. Sum only positive
+  differences. This is an independently chosen three-bin novelty reference,
+  not a claim to implement the full SuperFlux algorithm.
+- Require high-band power > `1e-5 * total power`, high-band power > twice its
+  previous value, and summed novelty > 0.35 * current high-band power.
+- Require novelty participation `(sum novelty)^2 / sum(novelty^2) >= 16`.
+  This gain-invariant measure rejects growth concentrated in a few harmonics.
+  Such growth can occur while a guitar note sustains and must not add a phase
+  reset. The test precedes position refinement and the refractory update; a
+  rejected candidate cannot suppress a later broadband event. Energy detection
+  remains unchanged, including its handling of tonal attacks.
+- Locate the event within that window using 1 ms blocks of summed squared
+  first differences of the original channel samples. Choose the block with the
+  largest positive difference from the preceding block; ties retain the earlier
+  block. Its first frame is the event position. The initial comparison value is
+  zero, so refinement is approximate and can favor the window's first block.
+- After refinement, compare mean squared first differences in the 8 ms before
+  the event with the interval from one energy block after the event to 8 ms
+  after it. Require the latter to exceed twice the former. Excluding the first
+  block prevents a single cutoff impulse being classified as a sustained attack.
+  Require both complete intervals; quiet very short impulses can rely on Energy.
+- Require the spectral stream's own 30 ms minimum event spacing. Collect Energy
+  and spectral positions separately. Suppress any spectral candidate less than
+  30 ms from an original Energy candidate, retaining the Energy timestamp even
+  when the spectral candidate is earlier. Sort the combined list and enforce
+  30 ms spacing. Thus added spectral evidence cannot shift a known Energy attack.
+  The v1 experiment's earliest-candidate precedence is superseded.
+
+### Boundary, failure and interaction behavior
+
+| Case | Defined behavior or limit |
+| --- | --- |
+| Incomplete centered spectral window | Skip spectral evidence. Do not invent attacks from zero-padding. Energy detection remains active. Quiet masked attacks near file boundaries can therefore be missed. |
+| First spectrum or previously silent spectrum | Store it as the reference without producing a spectral candidate. A later rising spectrum can qualify. Very short attacks from silence still rely on energy detection. |
+| Source shorter than one spectral window | Combined behaves as Energy. No input extension or output padding is added. |
+| Stereo, anti-phase, channel swap, silent channel | Shared power decisions; original channels remain separate through synthesis. No mono downmix for detection. |
+| Gain changes and headroom | Relative power tests preserve gain/polarity invariance mathematically. f64 analysis handles finite f32 headroom. Threshold-boundary rounding can affect classifications; no absolute floor, clipping or normalization is added. |
+| Vibrato and tonal beats | Neighbor-bin suppression and the high-band gate reduce false novelty; they are not a guarantee for every pitch, modulation depth or mixture. |
+| Events less than 30 ms apart | Coalesce. Original Energy positions take precedence within 30 ms; other surviving candidates retain earliest-first merging. Very dense events can still be suppressed. |
+| Compression | No protection-map change or detector work in rendering. Combined and Energy renders follow the same compression path. |
+| Output centers outside the requested extent | Use rounded linear inverse-ratio mapping with no attack flag. |
+| Protected region bounds | Before: at most half the synthesis-analysis width plus 2 ms. After: at most half width plus min(10 ms, quarter width). Clip guards to file bounds and one third of neighboring onset separation. Anchor onset at ratio * source onset. |
+| Timing map gaps | Interpolate between source/output region boundaries. If an output interval has no positive length, choose its upper source boundary. Timing queries are monotonically increasing from synthesis. |
+| Cancellation | Check in validation, every energy observation, and existing synthesis stages. Callback Break returns Cancelled with no partial result. FFT planning/one observation has no interior callback. |
+| Resource/invalid input | Retain typed errors, checked length arithmetic, fallible major buffers and no partial publication. Major allocations are budgeted; OS allocation failure/planner internals retain existing limits. |
+
+The benchmark and new tests do not establish complete TS acceptance or listening
+quality. See [detector benchmark](../validation/transient-detector-benchmark.md).
+
+### Phase-vocoder loop reference
+
+After width selection and optional attack-map construction, compute synthesis
+hop `max(1, round((width/8) * min(ratio, 1)))`. Source analysis centers come from
+the timing map, not from repeatedly rounding a fixed input hop. Allocate shared
+Hann windows, per-channel complex spectra, previous bins, shared rotations and
+frequencies, and f64 overlap accumulation. Compute window-square normalization
+weights by hop residue. Start synthesis at `-floor(width/hop)*hop`; continue while
+the center is below `frames_out + width/2`, cropping writes to `[0, frames_out)`.
+Source sample reads outside `[0, frames_in)` use zero. This rendering padding is
+separate from the combined detector's complete-window rule.
+
+For each center:
+
+1. Check cancellation and obtain the rounded source center and attack flag.
+2. Window and forward-transform each channel separately.
+3. For each positive-frequency bin, sum cross-channel products against the
+   previous spectra and sum channel power. Update instantaneous frequency only
+   after the first center and when the source center advances. Repeated rounded
+   centers retain their previous frequency estimate; no divide by zero occurs.
+4. Advance the shared phase rotation by frequency times `(output hop - source
+   advance)`, wrapping to `[-pi, pi)`. Attack regions zero the rotations to
+   restore source phases.
+5. Find non-DC/non-Nyquist power peaks using strict greater-than on the left
+   neighbor and greater-or-equal on the right. Assign bins to the nearest peak
+   region by integer midpoint; a boundary tie stays with the earlier peak. With
+   no peaks, use each bin's rotation. Apply the same rotation to both channels
+   and restore conjugate negative-frequency bins. DC/Nyquist are not peak-rotated.
+6. Inverse-transform, multiply by the Hann window and FFT normalization, and add
+   only in-range samples to f64 accumulation. Carry the rotations actually used
+   after peak locking, rather than stale independent-bin phase estimates.
+7. Advance by one synthesis hop. On completion, divide each output frame by its
+   hop-residue window-square weight. A non-positive weight or nonfinite f32
+   result returns NumericalFailure. Check cancellation every 4,096 output frames
+   and at completion; return exactly the precomputed integer output length.
+
+Width selection precedes both detection and synthesis. Its broadband decision
+has priority over bass-window selection. A significant noisy upper band vetoes
+the long bass window but does not select the shortest broadband window by itself.
+Analysis scratch for width selection is released before detector allocation.
+Silent/constant shortcuts avoid meaningless flatness ratios; nonconstant near-
+silent inputs use relative power decisions rather than a fixed amplitude floor.
+
+### Pitch-path dispatch reference
+
+PitchRequest validates its pitch/rate/layout/extent and preflights working memory
+before selecting a composition. Unison delegates to the default Combined stretch
+path. Within ±24 semitones, compute the intermediate extent, borrow the input
+when intermediate length equals input length, otherwise run the default Combined
+spectral path, then resample to the exact target extent. Large pitch shifts use
+the bounded stage schedule described above: positive stages resample first,
+negative stages stretch first. Only the first stage applies the requested duration
+ratio. Subtract retained previous-stage PCM from the next stage's memory budget;
+never discard that owner while a stage borrows it. Propagate cancellation and
+errors without returning a partial stage. All ordinary pitch stages use Combined in revision 6. The explicit detector
+comparison method is a Request API; it does not select an alternate detector
+inside PitchRequest.
+
+
+## Revision 5 default and real-audio listening workflow
+
+Revision 5 makes the combined detector the default inside Integrated, with no
+new production dependencies. It preserves the same phase vocoder, source-wide
+window choice, pitch resampler, exact lengths and linked stereo. The unchanged
+Energy detector remains an explicit comparison mode. New safeguards retain
+Energy event timestamps and reject spectral novelty caused by isolated cutoff
+impulses. The 48-byte-per-event conservative memory estimate is shared by all
+pitch layout/admission paths; returning to an unaccounted detector surcharge is
+not permitted.
+
+`timestretch-cli` provides `transient_listen` (usable with `--no-default-features`).
+Read a JSON corpus with id/path/rights/start_seconds and supported WAV inputs;
+canonicalize input paths, require a new output directory outside source parents,
+hash each source before/after processing, and never write to sources. Decode/
+resample through the tool's existing audio adapter. Limit excerpts to 1–30 seconds
+(default 10), retaining shorter inputs without repeating them. For each ratio
+(default 3/4, 3/2, 2), render Energy and Combined, validate finite exact-length
+outputs, and save raw float WAVs plus source onset positions and timing/hash data.
+
+Prepare A/B labels with a deterministic seed and keep mappings/diagnostics under
+private/. Use one common attenuation for both renders and their original
+reference if any sample exceeds 0.95. Do not limit or claim LUFS matching. Create
+a blank rating sheet and listening instructions. Only write the final report
+and instructions after all source hashes still match. A failed process can leave
+an incomplete output directory for diagnosis; it must not report a completed pack.
+Refuse existing output paths and source-directory outputs before writing. The
+manifest and all licensed audio/paths/results stay in ignored work storage.
+
+Human listeners must score the supplied recordings; automatic waveform metrics
+or larger detected-onset counts cannot fill ratings. A ready pack remains
+`awaiting human listening`. This Energy/Combined A/B workflow is additional to,
+and does not satisfy, the twelve-excerpt three-engine listening acceptance gate.

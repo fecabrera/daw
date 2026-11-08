@@ -15,7 +15,7 @@ pub fn process(audio: &Audio, ratio: Ratio, pitch: Pitch, engine: &str) -> Resul
             })?;
         (
             output,
-            json!({"algorithm":"linked-phase-vocoder", "revision":timestretch::REVISION, "pitch_revision":timestretch::PITCH_REVISION,"pitch_scale":pitch.factor(),"pitch_stages":pitch.stages().map(|p| p.semitones()).collect::<Vec<_>>(),"threads":1}),
+            json!({"algorithm":"linked-phase-vocoder", "revision":timestretch::REVISION,"transient_detector":timestretch::TransientDetector::Combined.revision(), "pitch_revision":timestretch::PITCH_REVISION,"pitch_scale":pitch.factor(),"pitch_stages":pitch.stages().map(|p| p.semitones()).collect::<Vec<_>>(),"threads":1}),
         )
     } else {
         reference(audio, ratio, pitch, engine)?

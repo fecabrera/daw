@@ -3,12 +3,14 @@
 #![forbid(unsafe_code)]
 mod pitch;
 mod spectral;
+mod spectral_attacks;
 mod transients;
 pub use pitch::{PITCH_REVISION, Pitch, PitchRequest};
 use std::{fmt, ops::ControlFlow, str::FromStr};
+pub use transients::{TransientDetector, detect_transients};
 
 /// Processing identity for caches and reports; requests always use this implementation.
-pub const REVISION: u32 = 4;
+pub const REVISION: u32 = 6;
 pub const SAMPLE_RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -155,6 +157,16 @@ impl Request {
     pub fn process_with_progress(
         self,
         input: &[f32],
+        progress: impl FnMut(f32) -> ControlFlow<()>,
+    ) -> Result<Vec<f32>, Error> {
+        self.process_with_transient_detector(input, TransientDetector::Combined, progress)
+    }
+    /// Explicit detector selection for comparison. Non-default output is identified by
+    /// TransientDetector::revision as well as REVISION; the default is Combined.
+    pub fn process_with_transient_detector(
+        self,
+        input: &[f32],
+        detector: TransientDetector,
         mut progress: impl FnMut(f32) -> ControlFlow<()>,
     ) -> Result<Vec<f32>, Error> {
         checkpoint(&mut progress, 0.0)?;
@@ -196,7 +208,7 @@ impl Request {
             checkpoint(&mut progress, 1.0)?;
             return Ok(output);
         }
-        spectral::process(self, input, output_frames, &mut progress)
+        spectral::process(self, input, output_frames, detector, &mut progress)
     }
     fn dimensions(self, input: &[f32]) -> Result<(usize, usize), Error> {
         if !SAMPLE_RATES.contains(&self.sample_rate) {
@@ -210,7 +222,7 @@ impl Request {
     }
     fn storage(self, frames: usize, output_frames: usize) -> Result<usize, Error> {
         let transient_storage = (frames / (self.sample_rate as usize * 30 / 1000) + 1)
-            .checked_mul(32)
+            .checked_mul(48)
             .ok_or(Error::ResourceLimit)?;
         output_frames
             .checked_mul(self.channels)

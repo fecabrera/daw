@@ -11,6 +11,7 @@ pub(crate) fn process(
     request: Request,
     input: &[f32],
     frames_out: usize,
+    detector: crate::TransientDetector,
     progress: &mut impl FnMut(f32) -> ControlFlow<()>,
 ) -> Result<Vec<f32>, Error> {
     let channels = request.channels;
@@ -20,7 +21,7 @@ pub(crate) fn process(
         ((request.sample_rate as usize * 40 / 1000).next_power_of_two()).clamp(1024, 8192);
     let width = analysis_width(request, input, tonal_width, progress)?;
     let mut timing =
-        crate::transients::Timing::analyze(request, input, width, frames_out, progress)?;
+        crate::transients::Timing::analyze(request, input, width, frames_out, detector, progress)?;
     let bins = width / 2 + 1;
     let half = (width / 2) as i64;
     // Limit both analysis and synthesis advances to 1/8 window, even at extremes.

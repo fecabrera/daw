@@ -198,6 +198,11 @@ impl AppSettings {
         if settings.audio_quality.validate().is_err() {
             settings.audio_quality = Default::default();
         }
+        if settings.default_stretch_engine.id == daw_core::StretchEngineId::Integrated
+            && matches!(settings.default_stretch_engine.revision, 2..=5)
+        {
+            settings.default_stretch_engine = daw_core::StretchEngine::INTEGRATED;
+        }
         if settings.default_stretch_engine.validate().is_err() {
             settings.default_stretch_engine = Default::default();
         }

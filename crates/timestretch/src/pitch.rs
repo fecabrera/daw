@@ -281,6 +281,7 @@ impl PitchRequest {
                 internal,
                 input,
                 intermediate,
+                crate::TransientDetector::Combined,
                 &mut |p| progress(0.05 + 0.75 * p),
             )?)
         };

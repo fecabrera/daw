@@ -99,6 +99,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).
 - [Timestretch, offline pitch, and independent implementation rule](audio/timestretch.md).
 - [Timestretch acceptance plan](acceptance/timestretch.md).
+- [Combined transient detector benchmark](validation/transient-detector-benchmark.md): initial energy/spectral comparison, measurements and limits.
+- [Revision-5 real-audio auditions](validation/transient-listening-r5.md): read-only private recording panel, automated checks and pending human ratings.
 - [Stem separation implementation](audio/stem-separation.md): local models, CoreML/CPU fallback, atomic import, disabled originals, and persistence.
 - [Stem separation backend evaluation](audio/stem-separation-evaluation.md): local quality, speed, memory, model-license evidence and original integration proposal.
 - [Charon CoreML benchmark](audio/stem-separation-coreml-evaluation.md): same-audio GPU/CPU quality, startup, memory, same-export control and reused-model measurements.
@@ -118,3 +120,5 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [All effect plugin builds](architecture/all-effect-plugin-builds.md): remaining ten products, fixed EQ bank, timing, meters, packaging, and CI.
 - [Shimmer Reverb](effects/shimmer-reverb.md): bounded pitch regeneration, shared editor, DSP stability and CLAP/VST3 products.
 - [Plate and Ambient Reverb](effects/reverbs.md): shared layouts, portable processing, standalone delivery, tails, and validation limits.
+
+- [Harmonic-rise regression and revision-6 auditions](validation/transient-harmonic-r6.md)

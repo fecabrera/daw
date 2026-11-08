@@ -58,6 +58,111 @@ impl Attacks {
     }
 }
 
+/// Detector identity must accompany explicit-mode renders and caches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransientDetector {
+    Energy,
+    Combined,
+}
+impl TransientDetector {
+    pub fn revision(self) -> &'static str {
+        match self {
+            Self::Energy => "energy-r4",
+            Self::Combined => "energy-spectral-v5",
+        }
+    }
+}
+
+/// Analyze interleaved PCM on the calling worker, with cancellation and request
+/// memory limits. Positions are sorted source-frame indices, linked across stereo.
+pub fn detect_transients(
+    request: crate::Request,
+    input: &[f32],
+    mode: TransientDetector,
+    mut progress: impl FnMut(f32) -> std::ops::ControlFlow<()>,
+) -> Result<Vec<usize>, crate::Error> {
+    crate::checkpoint(&mut progress, 0.0)?;
+    let (frames, output) = request.dimensions(input)?;
+    let memory = request.storage(frames, output)?;
+    if memory > request.memory_limit_bytes {
+        return Err(crate::Error::ResourceLimit);
+    }
+    request.validate_samples(input, &mut progress)?;
+    let result = analyze(request, input, mode, &mut progress)?;
+    crate::checkpoint(&mut progress, 1.0)?;
+    Ok(result)
+}
+fn analyze(
+    request: crate::Request,
+    input: &[f32],
+    mode: TransientDetector,
+    progress: &mut impl FnMut(f32) -> std::ops::ControlFlow<()>,
+) -> Result<Vec<usize>, crate::Error> {
+    let frames = input.len() / request.channels;
+    let mut energy = Attacks::new(request.sample_rate);
+    let count = frames / energy.refractory + 1;
+    let mut onsets = Vec::new();
+    onsets
+        .try_reserve_exact(
+            count
+                .checked_mul(if mode == TransientDetector::Combined {
+                    2
+                } else {
+                    1
+                })
+                .ok_or(crate::Error::ResourceLimit)?,
+        )
+        .map_err(|_| crate::Error::ResourceLimit)?;
+    let mut spectral_onsets = Vec::new();
+    if mode == TransientDetector::Combined {
+        spectral_onsets
+            .try_reserve_exact(count)
+            .map_err(|_| crate::Error::ResourceLimit)?;
+    }
+    let mut spectral = if mode == TransientDetector::Combined && frames > 0 {
+        Some(crate::spectral_attacks::Detector::new(request.sample_rate)?)
+    } else {
+        None
+    };
+    for source in (0..frames).step_by(energy.block) {
+        crate::checkpoint(progress, 0.10 + 0.05 * source as f32 / frames as f32)?;
+        if energy.advance(input, request.channels, source as i64) {
+            onsets.push(source);
+        }
+        if let Some(detector) = &mut spectral
+            && source.is_multiple_of(energy.block * 4)
+            && let Some(at) = detector.observe(input, request.channels, source)
+        {
+            spectral_onsets.push(at);
+        }
+    }
+    // Preserve baseline timing around existing attacks. Additional spectral
+    // evidence may fill gaps, but must not move a known energy attack earlier.
+    let energy_count = onsets.len();
+    for at in spectral_onsets {
+        let i = onsets[..energy_count].partition_point(|&event| event < at);
+        let near = onsets[..energy_count]
+            .get(i)
+            .is_some_and(|event| at.abs_diff(*event) < energy.refractory)
+            || i.checked_sub(1)
+                .and_then(|i| onsets.get(i))
+                .is_some_and(|event| at.abs_diff(*event) < energy.refractory);
+        if !near {
+            onsets.push(at);
+        }
+    }
+    onsets.sort_unstable();
+    let mut used = 0;
+    for i in 0..onsets.len() {
+        if used == 0 || onsets[i] - onsets[used - 1] >= energy.refractory {
+            onsets[used] = onsets[i];
+            used += 1;
+        }
+    }
+    onsets.truncate(used);
+    Ok(onsets)
+}
+
 #[derive(Clone, Copy)]
 struct Region {
     source_start: f64,
@@ -80,6 +185,7 @@ impl Timing {
         input: &[f32],
         width: usize,
         frames_out: usize,
+        detector: TransientDetector,
         progress: &mut impl FnMut(f32) -> std::ops::ControlFlow<()>,
     ) -> Result<Self, crate::Error> {
         let frames = input.len() / request.channels;
@@ -94,18 +200,7 @@ impl Timing {
         if ratio <= 1.0 {
             return Ok(timing);
         }
-        let mut detector = Attacks::new(request.sample_rate);
-        let count = frames / detector.refractory + 1;
-        let mut onsets = Vec::new();
-        onsets
-            .try_reserve_exact(count)
-            .map_err(|_| crate::Error::ResourceLimit)?;
-        for source in (0..frames).step_by(detector.block) {
-            crate::checkpoint(progress, 0.10 + 0.05 * source as f32 / frames as f32)?;
-            if detector.advance(input, request.channels, source as i64) {
-                onsets.push(source);
-            }
-        }
+        let onsets = analyze(request, input, detector, progress)?;
         timing
             .regions
             .try_reserve_exact(onsets.len())

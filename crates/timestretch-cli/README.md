@@ -49,3 +49,31 @@ Original tool/adapters are BSD-2-Clause. Reference-enabled distributions include
 ## Processing identity
 
 Each engine runs its current implementation. Reports record its processing identity and build metadata for reproducibility. Engine output is raw: no loudness matching, normalization, or limiting.
+
+
+## Private real-audio detector listening pack
+
+```sh
+cargo run -p timestretch-cli --release --no-default-features --bin transient_listen -- \
+  --manifest corpus.json --output-dir new-listening-pack --seconds 10
+```
+
+Use a JSON array of `{ "id": "drums", "path": "recording.wav", "rights": "private authorized evaluation", "start_seconds": 0 }` entries.
+The output directory must not exist and must be outside source directories.
+Sources are read-only, their SHA-256 hashes are checked before/after, and no
+licensed/private recordings or generated audio should be committed or redistributed.
+The tool uses the existing WAV/resampling adapter and renders Energy versus the
+revision-6 default Combined detector. Default ratios are 3/4, 3/2 and 2; sample
+rate is 48 kHz; excerpt duration is 1–30 seconds (default 10), with no repetition
+of short recordings.
+
+Use only `audition/` while scoring. `LISTENING.md` describes the procedure and
+`ratings.csv` starts blank. Keep `private/` hidden until independent listener
+ratings are complete; it includes label mappings, source paths/hashes, detector
+positions and render diagnostics. A single common attenuation prevents audition
+clipping without limiting or claiming loudness matching. No scores are inferred
+and a prepared pack remains awaiting human listening. Failed runs can leave an
+incomplete diagnostic folder; choose a new directory to rerun.
+
+This two-detector test is not the full twelve-recording three-engine acceptance
+panel. The main `timestretch` binary remains the package's default run target.

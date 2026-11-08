@@ -67,3 +67,70 @@ A subsequent zero-pitch 96→100 BPM drum report exposed a gap in revision 3: ki
 Revision 4 reuses the existing spectral-flatness equation and channel-power analysis in 250–1,000 Hz, 1–4 kHz, and 4 kHz–Nyquist bands. At least 0.1% of total power and energy-weighted band flatness above 0.15 veto the long bass window, retaining normal tonal resolution for mixtures. Global broadband selection still takes precedence. These bands, thresholds, and fixtures are an independent conservative design from the observed tonal/percussive ambiguity, not a reference implementation. No new external source was consulted; no Rubber Band implementation material was inspected or reused. References remain public-API calls only. The linked phase vocoder, overlap schedule, 80-block energy history, pitch filter, and allocation/preflight/cancellation paths are unchanged. Stretch revision is 4; pitch composition revision remains 2.
 
 This source-wide choice can trade low-note separation for attack localization in mixed material. It does not solve every masked/dense attack, independently preserve frequency bands, or establish reference-quality parity. Compression pre-echo remains a listening target beyond the calibrated regression case.
+
+## Experimental combined transient detector — 2026-11-08
+
+Research context read in this conversation: Böck and Widmer, [Maximum Filter
+Vibrato Suppression for Onset Detection](https://www.dafx.de/paper-archive/2013/papers/09.dafx2013_submission_12.pdf), DAFx 2013 (search-result abstract describing spectral trajectories and maximum filtering), and the previously recorded Röbel DAFx 2003 paper abstract. No SuperFlux implementation source or reference-engine DSP was inspected. Prior exposure remains as stated above; this is not formal independent-authorship certification.
+
+The new detector is independently designed here: linked channel power FFTs in
+nominal 16 ms windows every four energy observations; power growth and positive
+three-bin-maximum novelty above 700 Hz; difference-energy block localization;
+separate refractory checks followed by earliest-event merging with the unchanged
+energy detector. Window/band/threshold/refinement choices and synthetic fixtures
+are original engineering choices, not a transcription of a paper algorithm.
+RustFFT 6.4.1 is reused through its existing public API; no new dependency or
+license is introduced. Combined is opt-in and has a separate detector identity;
+default revision-4 stretch/pitch paths retain the energy detector.
+
+The first benchmark exposed spurious end-of-file spectral novelty on sustained
+signals. Requiring a complete, unpadded window removes that artificial boundary
+from the novelty test. This deliberately limits masked-edge detection rather
+than changing evaluation annotations or suppressing false positives in metrics.
+Initial and corrected CSVs remain in the ignored benchmark directory. No Rubber
+Band implementation code, tests, comments, tables or pseudocode were read or reused.
+
+## Revision 5 default and private real-audio auditions — 2026-11-08
+
+The user explicitly requested making Combined the default. Default Request and
+PitchRequest spectral processing now use Combined; the unchanged Energy detector
+remains available for direct comparison. Stretch revision 5 invalidates prepared
+R4 data. Existing DAW Integrated revisions 2–4 normalize to 5 and rebuild through
+the existing project-open workers with a warning. Rubber Band remains the app's
+initial backend and no native reference implementation material was inspected.
+
+Default-adoption regressions exposed two issues not established by the earlier
+opt-in fixture panel: pitch memory admission omitted the extra event capacity,
+and a spectral candidate at a kick cutoff shortened adjacent guards and increased
+attack residual from the allowed <0.02 to about 0.0526. The estimate is now a shared
+48 bytes per maximum event (conservative for either mode). Combined retains Energy
+timestamps within 30 ms, and additional spectral candidates require sustained
+first-difference power growth over the following 1–8 ms against the preceding
+8 ms, excluding the first impulse block. The cutoff regression remains unchanged
+and an explicit detection regression was added. These are independent fixes from
+local test failures, not reference-engine code or threshold relaxation. The final
+detector comparison identity is energy-spectral-v4; earlier local v1/v2/v3 artifacts
+are historical and must not be confused with final R5 auditions.
+
+The real-audio panel reads six recordings from the user's Splice library with
+explicit read-only authorization. All derived files, source paths, hashes, label
+mappings and blank ratings remain in ignored work storage. No private recording
+is redistributed or added to the repository. Source contents are SHA-256 checked
+before and after. The listening tool and its generators are independently written,
+using existing Hound/Rubato/SHA-256 APIs; no new production dependency is added.
+No human ratings have been supplied. Automated preparation does not certify
+perceived quality, stable acceptance, or reference-engine parity.
+
+### Harmonic-rise rejection — revision 6, 2026-11-08
+
+A user-reported clean guitar regression exposed four supplemental spectral
+candidates in a ten-second excerpt. Growth was concentrated in a few harmonic
+bins. Each extra candidate causes a whole-spectrum phase reset and can disturb
+sustained notes. Add an independently chosen novelty participation test:
+`(sum positive novelty)^2 >= 16 * sum(positive novelty squared)`. This is the
+effective count of equally powered bins, with no absolute gain threshold. Keep
+the original energy scan and broadband masked-attack tests. This conservative
+supplement can miss narrowband masked attacks; it does not introduce signal
+separation or guarantee artifact-free polyphonic stretching. No reference-engine
+implementation material was inspected or reused. Stretch revision 6 and detector
+identity energy-spectral-v5 invalidate prior prepared audio.

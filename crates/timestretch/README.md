@@ -46,3 +46,46 @@ cargo test -p timestretch --release -- --include-ignored
 ```
 
 The expanded release suite includes the six-rate tone and short-input matrices. See [provenance](PROVENANCE.md), [license](LICENSE), and [dependency notices](licenses). No Rubber Band implementation code may be copied, translated, adapted, or indirectly reused under any circumstances.
+
+## Experimental detector comparison
+
+Default processing is revision 6 with the combined energy/spectral detector
+(`energy-spectral-v5`), including pitch composition. To compare the unchanged
+energy baseline, call `Request::process_with_transient_detector` with
+`TransientDetector::Energy` and a progress/cancellation callback. Explicit-mode
+callers must include the detector identity as well as processing revision in
+caches/reports. DAW Integrated revisions 2–5 upgrade to revision 6 with rebuilt
+prepared audio and a warning; Rubber Band remains the initial DAW backend. `detect_transients` exposes the same linked,
+sorted source-frame event positions for analysis. Its request validation and
+conservative full stretch memory estimate apply even to detection-only calls.
+
+Run the independent synthetic benchmark (no Rubber Band or DAW dependency):
+
+```sh
+cargo run -p timestretch --release --example transient_benchmark > detection.csv 2> render.csv
+cargo test -p timestretch --example transient_benchmark
+```
+
+Detection CSV records seeded fixture hashes, matched/missed/false events and
+median/min/max runtime. Rendering diagnostics go to stderr together with Cargo
+build messages. Timings are local measurements, not portable performance gates.
+See the repository's `specs/audio/timestretch.md` for control flow and edge cases.
+
+## Private real-audio listening comparisons
+
+The standalone tool includes `transient_listen`. It reads WAV files without
+writing to their directories and creates raw renders, blinded A/B auditions,
+original references, a blank rating sheet and private hash/mapping reports in a
+new output directory. Never place outputs inside a source directory.
+
+```sh
+cargo run -p timestretch-cli --release --no-default-features --bin transient_listen -- \
+  --manifest corpus.json --output-dir ./new-listening-pack --seconds 10
+```
+
+The manifest is a JSON array of objects with `id`, `path`, `rights` and optional
+`start_seconds`. Relative paths resolve from the manifest directory. Ratios
+default to 3/4, 3/2 and 2/1; sample rate defaults to 48 kHz. Output directories
+must not exist. Keep licensed/private recordings and renders out of version
+control. `LISTENING.md` describes the human rating procedure; a prepared pack
+is not a passed listening test. No ratings are generated automatically.

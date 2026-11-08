@@ -93,6 +93,32 @@ fn expansion_retains_attacks_on_kicks_noise_and_mixed_material() {
 }
 
 #[test]
+fn combined_rejects_kick_cutoffs_and_preserves_energy_attack_timestamps() {
+    for rate in [48000, 96000] {
+        let input = percussion(rate, false, true);
+        let request = Request::new(rate, 1, Ratio::new(2, 1).unwrap());
+        let energy = timestretch::detect_transients(
+            request,
+            &input,
+            timestretch::TransientDetector::Energy,
+            |_| ControlFlow::Continue(()),
+        )
+        .unwrap();
+        let combined = timestretch::detect_transients(
+            request,
+            &input,
+            timestretch::TransientDetector::Combined,
+            |_| ControlFlow::Continue(()),
+        )
+        .unwrap();
+        assert_eq!(
+            combined, energy,
+            "cutoff novelty must not add attack guards at {rate}"
+        );
+    }
+}
+
+#[test]
 fn transient_processing_preserves_stereo_gain_and_cancellation() {
     let mono = percussion(48000, false, true);
     let ratio = Ratio::new(3, 2).unwrap();

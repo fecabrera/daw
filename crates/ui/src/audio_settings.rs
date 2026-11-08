@@ -793,4 +793,22 @@ mod tests {
             daw_core::StretchEngine::RUBBER_BAND
         );
     }
+    #[test]
+    fn legacy_integrated_app_default_upgrades_without_losing_preferences() {
+        let original = settings::AppSettings {
+            accent: settings::AccentColor::Teal,
+            default_stretch_engine: daw_core::StretchEngine::INTEGRATED,
+            ..Default::default()
+        };
+        for revision in [2, 3, 4, 5] {
+            let mut saved = serde_json::to_value(&original).unwrap();
+            saved["default_stretch_engine"]["revision"] = serde_json::json!(revision);
+            let restored = settings::AppSettings::from_json(Some(&saved.to_string()));
+            assert_eq!(
+                restored.default_stretch_engine,
+                daw_core::StretchEngine::INTEGRATED
+            );
+            assert_eq!(restored.accent, settings::AccentColor::Teal);
+        }
+    }
 }

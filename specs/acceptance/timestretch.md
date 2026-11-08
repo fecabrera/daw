@@ -183,3 +183,37 @@ An experimental standalone release needs automated engine/tool gates and an expe
 | Ignored `work/timestretch-*` | Local renders, benchmarks, corpus metadata, and listening evidence |
 
 Run portable package tests first, then applicable formatting, strict Clippy, independent package builds, reference/tool tests, and platform checks. Only DAW adapter changes require DAW workspace/CLI smoke, packaging, and native integration checks. The core crate must test without Rubber Band/C++/libclang; reference-enabled tooling may need native prerequisites. Record commands, artifacts, gates, coverage, and unresolved cases in [validation](../validation/README.md) while housed here; standalone release evidence must remain usable after extraction. The validation record supplies implementation results and limits.
+
+## Experimental combined detector comparison
+
+This comparison supplements, and does not replace, existing TS/IP and listening
+gates. Revision 5 adopts Combined by explicit user request for the experimental
+Integrated engine; human listening acceptance remains pending. The app's Rubber
+Band backend default is unchanged.
+
+| ID | Coverage and comparison |
+| --- | --- |
+| TD-01 | Keep Energy as an explicit baseline and test Combined as the revision-6 default for stretch/pitch. Identity sample bits, compression equality, exact output lengths, linked stereo, errors and cancellation must retain their contracts. |
+| TD-02 | Compare Energy and Combined against independently annotated generated onsets across six rates, mono and anti-phase stereo with gain scaling. Record missed/false matches and timing, plus seeds and fixture fingerprints. Include stationary bass beats, vibrato, silence, dense attacks and masked noise attacks. |
+| TD-03 | Record warmed repeated detector and whole-stretch runtimes, output lengths and diagnostic localization. State timer scope, host/build, trial count/order and metric limitations. Do not equate matched onsets with improved subjective stretching. |
+| TD-04 | Exercise incomplete windows, short/empty inputs, legacy Energy defaults, invalid/nonfinite input, memory denial and cancellation. State that spectral evidence is unavailable near file edges and that 30 ms merging can suppress dense events. |
+| TD-05 | Preserve initial failures and rerun unchanged annotations after detector fixes. Keep optional mode separately identified in reports/caches. Default experimental adoption does not establish stable/listening acceptance; no full-gate PASS is implied by synthetic results or unscored audition packs. |
+
+
+### Revision-5 private real-recording panel
+
+`transient_listen` prepares private Energy/Combined comparisons and never generates
+human ratings. Keep licensed input files read-only; hash them before/after and
+store all excerpts, outputs, mappings, paths and ratings in ignored work storage.
+The initial user-provided panel uses six Splice recordings (two drums, bass,
+pluck, pad and mixed material), ten seconds each, at ratios 3/4, 3/2 and 2. That
+is 18 A/B cases, 36 raw renders and matching audition pairs with original references.
+Use deterministic hidden labels, disclosed common attenuation, a blank 1–5 score
+sheet and three independent listeners. Do not infer correctness from the number
+of detected attacks. More detections can include false positives.
+
+Automated checks establish finite/exact-length renders, input-hash preservation,
+expected compression equality, output path/overwrite guards and generated pack
+structure. Listening status remains pending until scores and notes are supplied.
+This smaller two-detector panel has no vocals, no R2/R3 references and no LUFS
+matching; it cannot pass the full listening gate above.

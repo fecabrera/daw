@@ -3331,7 +3331,7 @@ fn stretch_engine_switch_is_atomic_saved_and_cache_scoped() {
                 48000,
                 512,
                 StretchEngine {
-                    revision: 5,
+                    revision: 7,
                     ..StretchEngine::INTEGRATED
                 }
             )
@@ -4664,7 +4664,7 @@ fn integrated_legacy_revisions_upgrade_and_rebuild_without_writing_on_open() {
     session.save(&folder).unwrap();
     let path = folder.join("project.json");
     let mut saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    for revision in [2, 3] {
+    for revision in [2, 3, 4, 5] {
         saved["stretch_engine"]["revision"] = serde_json::json!(revision);
         let original = serde_json::to_vec_pretty(&saved).unwrap();
         fs::write(&path, &original).unwrap();
@@ -4674,7 +4674,7 @@ fn integrated_legacy_revisions_upgrade_and_rebuild_without_writing_on_open() {
             opened
                 .warnings
                 .iter()
-                .any(|w| w.contains(&format!("upgraded from revision {revision} to 4")))
+                .any(|w| w.contains(&format!("upgraded from revision {revision} to 6")))
         );
         assert_eq!(fs::read(&path).unwrap(), original);
         let clip = &opened.project.tracks[0].clips[0];
@@ -4691,7 +4691,7 @@ fn integrated_legacy_revisions_upgrade_and_rebuild_without_writing_on_open() {
                 .any(|w| w.contains("upgraded"))
         );
     }
-    for revision in [0, 1, 5] {
+    for revision in [0, 1, 7] {
         saved["stretch_engine"]["revision"] = serde_json::json!(revision);
         fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
         assert!(Session::open(&folder).is_err());
@@ -5163,7 +5163,7 @@ fn metadata_inspection_validates_manifest_and_normalizes_legacy_revisions_in_mem
     assert!(daw_project::inspect_project(&fixture.0).is_err());
     project.sample_rate_hz = 48_000;
     project.stretch_engine = daw_core::StretchEngine::INTEGRATED;
-    for revision in [2, 3] {
+    for revision in [2, 3, 4, 5] {
         project.stretch_engine.revision = revision;
         let original = serde_json::to_vec(&project).unwrap();
         fs::write(&path, &original).unwrap();
