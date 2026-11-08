@@ -2,6 +2,59 @@
 use daw_core::{Project, Track, TrackKind};
 use std::fmt::Write;
 
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub(super) enum AddType {
+    Audio,
+    Midi,
+    Beat,
+}
+
+pub(super) fn parse_name(value: &str) -> Result<String, String> {
+    if value.trim().is_empty() || value.chars().any(char::is_control) {
+        Err("Track name must contain text and no control characters".into())
+    } else {
+        Ok(value.to_owned())
+    }
+}
+
+pub(super) fn add(
+    folder: &std::path::Path,
+    name: &str,
+    track_type: AddType,
+) -> daw_project::Result<()> {
+    let mut session = daw_project::Session::open_document(folder)?.into_editor_session();
+    let id = match track_type {
+        AddType::Audio => session.project.add_track(),
+        AddType::Midi => session.project.add_midi_track(),
+        AddType::Beat => session.project.add_beat_track(),
+    }
+    .map_err(|error| daw_project::Error(error.to_string()))?;
+    session
+        .project
+        .tracks
+        .iter_mut()
+        .find(|track| track.id == id)
+        .unwrap()
+        .name = name.to_owned();
+    session
+        .project
+        .validate()
+        .map_err(|error| daw_project::Error(error.to_string()))?;
+    session.save(folder)?;
+    for warning in &session.warnings {
+        eprintln!("Warning: {warning}");
+    }
+    // The save has committed. A closed output pipe must not turn that into a
+    // reported write failure or invite a duplicate retry.
+    use std::io::Write as _;
+    if let Err(error) = writeln!(std::io::stdout().lock(), "Added track: {name:?}\nID: {id}")
+        && error.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        eprintln!("Warning: Track saved, but cannot write confirmation: {error}");
+    }
+    Ok(())
+}
+
 fn kind(track: &Track) -> &'static str {
     match track.kind {
         TrackKind::Audio => "Audio",
@@ -136,7 +189,63 @@ fn detail(text: &mut String, project: &Project, track: &Track) {
             clip.name, clip.id, clip.asset_id, clip.start_frame, project.seconds(clip.start_frame),
             clip.end(), project.seconds(clip.end()), clip.length_frames,
             project.seconds(clip.length_frames), clip.muted).unwrap();
+        writeln!(text, "    Gain: {:.2} dB", clip.gain_db).unwrap();
+        if project
+            .assets
+            .iter()
+            .any(|asset| asset.id == clip.asset_id && asset.is_audio())
+        {
+            writeln!(
+                text,
+                "    Channels: L={} R={} Swap L/R={}\n    Polarity: {}",
+                clip.channels.left,
+                clip.channels.right,
+                clip.channels.swapped,
+                if clip.channels.inverted {
+                    "Inverted"
+                } else {
+                    "Normal"
+                }
+            )
+            .unwrap();
+            fade_detail(text, project, clip, true);
+            fade_detail(text, project, clip, false);
+        }
     }
+}
+
+fn fade_detail(text: &mut String, project: &Project, clip: &daw_core::Clip, left: bool) {
+    let fade = if left {
+        clip.fades.fade_in
+    } else {
+        clip.fades.fade_out
+    };
+    let label = if left { "Fade in" } else { "Fade out" };
+    let limit = project.clip_fade_limit(clip.id, left, fade.crossfade);
+    let mode = if fade.length_frames == 0 {
+        "Automatic"
+    } else if fade.crossfade {
+        "Crossfade"
+    } else {
+        "Fade"
+    };
+    let effective = if fade.length_frames == 0 || (fade.crossfade && limit == 0) {
+        (u64::from(project.sample_rate_hz) / 200)
+            .max(1)
+            .min(clip.length_frames / 2)
+    } else {
+        fade.length_frames.min(limit)
+    };
+    let position = if fade.crossfade {
+        1.0 - fade.midpoint_position
+    } else {
+        fade.midpoint_position
+    };
+    writeln!(text, "    {label}: {mode}{}\n      Saved duration: {} frames ({:.3} ms)\n      Effective duration: {} frames ({:.3} ms)\n      Shape: {:+.2}%\n      Position: {:.2}%",
+        if fade.crossfade && fade.length_frames > 0 && limit == 0 { " (inactive; automatic boundary fade)" } else { "" },
+        fade.length_frames, project.seconds(fade.length_frames) * 1000.0,
+        effective, project.seconds(effective) * 1000.0,
+        (fade.midpoint - 0.5) * 200.0, position * 100.0).unwrap();
 }
 
 #[cfg(test)]
@@ -233,5 +342,65 @@ mod tests {
             assert!(!output.contains('\x1b'));
             assert!(output.contains("Bass\\tlead\\n\\u{1b}[31m"));
         }
+    }
+    #[test]
+    fn clip_details_report_gain_channels_polarity_and_saved_and_effective_fades() {
+        let mut project = project();
+        let mut asset = project.assets[0].clone();
+        asset.id = daw_core::Id::new_v4();
+        asset.midi_pattern = None;
+        asset.decoded_frame_count = 96_000;
+        let mut clip = project.tracks[2].clips[0].clone();
+        clip.id = daw_core::Id::new_v4();
+        clip.asset_id = asset.id;
+        clip.start_frame = 0;
+        clip.length_frames = 48_000;
+        clip.gain_db = -3.5;
+        clip.channels.left = false;
+        clip.channels.swapped = true;
+        clip.channels.inverted = true;
+        clip.fades.fade_in = daw_core::ClipFade {
+            length_frames: 4800,
+            midpoint: 0.7,
+            midpoint_position: 0.25,
+            crossfade: false,
+        };
+        project.assets.push(asset);
+        project.tracks[1].clips.push(clip.clone());
+        let before = project.clone();
+        let output = describe(&project, Some("Bäss synth")).unwrap();
+        for value in [
+            "Gain: -3.50 dB",
+            "Channels: L=false R=true Swap L/R=true",
+            "Polarity: Inverted",
+            "Fade in: Fade",
+            "Saved duration: 4800 frames (100.000 ms)",
+            "Shape: +40.00%",
+            "Position: 25.00%",
+            "Fade out: Automatic",
+            "Effective duration: 240 frames (5.000 ms)",
+        ] {
+            assert!(output.contains(value), "missing {value}: {output}");
+        }
+        assert_eq!(project, before);
+        project.tracks[1].clips[0].fades.fade_out = daw_core::ClipFade {
+            length_frames: 1000,
+            crossfade: true,
+            ..Default::default()
+        };
+        let output = describe(&project, Some("Bäss synth")).unwrap();
+        assert!(output.contains("Fade out: Crossfade (inactive; automatic boundary fade)"));
+        assert!(output.contains("Saved duration: 1000 frames"));
+        let mut neighbor = clip.clone();
+        neighbor.id = daw_core::Id::new_v4();
+        neighbor.start_frame = clip.end();
+        project.tracks[1].clips.push(neighbor);
+        let active = describe(&project, Some("Bäss synth")).unwrap();
+        assert!(active.contains("Fade out: Crossfade\n"));
+        assert!(active.contains("Effective duration: 1000 frames (20.833 ms)"));
+        let midi = describe(&project, Some("Bäss synth")).unwrap();
+        let midi = midi.split("Type: MIDI").nth(1).unwrap();
+        assert!(midi.contains("Gain: 0.00 dB"));
+        assert!(!midi.contains("Channels:"));
     }
 }

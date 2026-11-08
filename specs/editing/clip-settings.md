@@ -108,3 +108,14 @@ selection takes precedence: clear it first, then clear clips on a later press.
 Text input, popups, active clip/note/range gestures, disabled editing, dialogs,
 jobs and focus loss retain their existing guards. Cancel active gestures without
 also clearing clip selection on that press.
+
+## CLI clip details
+
+The named-track `tracks` command reports saved clip gain for every clip. Audio
+clips additionally report L/R enable flags, swapping and polarity, plus both
+fade modes, saved frame/ms durations, metadata-limited effective frame/ms
+durations and UI-mapped Shape/Position percentages. Preserve saved values when
+showing inactive crossfades and identify their automatic boundary fallback.
+Reuse Project::clip_fade_limit for bounds. Inspection does not decode media,
+probe source availability, edit the project or prepare audio. Omit audio-only
+fields for MIDI/beat clips. The summary track list remains unchanged.

@@ -15,13 +15,23 @@ struct Args {
 }
 #[derive(Subcommand)]
 enum Command {
-    /// List saved tracks or show every exact name match without loading audio.
+    /// List tracks, inspect an exact name, or add an empty named track.
+    #[command(
+        long_about = "List tracks or inspect saved metadata. Use --add NAME --type audio|midi|beat to append an empty track and save the project. Save and close the desktop project before adding tracks; there is no cross-process editor synchronization."
+    )]
     Tracks {
         /// Project folder; defaults to the current directory.
         #[arg(long, default_value = ".")]
         project: PathBuf,
         /// Exact, case-sensitive track name. Quote names containing spaces.
+        #[arg(conflicts_with = "add")]
         track_name: Option<String>,
+        /// Append an empty named track and save the project.
+        #[arg(long, requires = "track_type", value_parser = tracks::parse_name)]
+        add: Option<String>,
+        /// Kind of track to add; required with --add.
+        #[arg(long = "type", value_enum, requires = "add")]
+        track_type: Option<tracks::AddType>,
     },
     /// Copy original media into a saved project and save its source locations.
     #[command(
@@ -64,16 +74,26 @@ fn main() {
         Command::Tracks {
             project,
             track_name,
-        } => daw_project::inspect_project(&project)
-            .and_then(|project| tracks::describe(&project, track_name.as_deref()))
-            .and_then(|text| {
-                use std::io::Write;
-                match std::io::stdout().lock().write_all(text.as_bytes()) {
-                    Ok(()) => Ok(()),
-                    Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
-                    Err(error) => Err(daw_project::Error(format!("Cannot write tracks: {error}"))),
-                }
-            }),
+            add,
+            track_type,
+        } => {
+            if let Some(name) = add {
+                tracks::add(&project, &name, track_type.expect("clap requires --type"))
+            } else {
+                daw_project::inspect_project(&project)
+                    .and_then(|project| tracks::describe(&project, track_name.as_deref()))
+                    .and_then(|text| {
+                        use std::io::Write;
+                        match std::io::stdout().lock().write_all(text.as_bytes()) {
+                            Ok(()) => Ok(()),
+                            Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+                            Err(error) => {
+                                Err(daw_project::Error(format!("Cannot write tracks: {error}")))
+                            }
+                        }
+                    })
+            }
+        }
         Command::CollectSources { project, dry_run } => collect_sources::run(&project, dry_run),
         Command::Validate { project } => daw_project::Session::open(&project).map(|session| {
             for warning in &session.warnings {
@@ -191,6 +211,7 @@ mod tests {
         let Command::Tracks {
             project,
             track_name,
+            ..
         } = Args::try_parse_from(["daw-cli", "tracks"]).unwrap().command
         else {
             panic!("tracks command");
@@ -204,6 +225,7 @@ mod tests {
             let Command::Tracks {
                 project,
                 track_name,
+                ..
             } = Args::try_parse_from(arguments).unwrap().command
             else {
                 panic!("tracks command");

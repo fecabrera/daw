@@ -4,6 +4,39 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## CLI add named tracks — 2026-11-08
+
+`tracks --add NAME --type audio|midi|beat` appends an empty root-level track
+and saves the selected project (`--project`, default current directory).
+Arguments require add/type together, reject a positional inspection name and
+reject blank/control-character names. Duplicate names remain allowed. Loading
+uses the document path without audio preparation; shared core constructors and
+Session save own validation, defaults, source handling and disk publication.
+Success prints the escaped name/ID after commit; postcommit stdout failures
+produce warnings. Users must save and close desktop projects first.
+
+`cargo test -p daw-cli --locked` passed seven unit and five integration tests.
+The new executable-level test covers all types, fresh identity, name persistence,
+empty root placement, existing-track preservation, duplicate-name inspection,
+invalid arguments with unchanged manifest bytes and missing-project failure.
+CLI all-target Clippy, formatting and diff checks passed. No native/device checks
+apply to this headless operation.
+
+## CLI clip gain, channels, polarity and fade details — 2026-11-08
+
+Named-track details now report gain per clip. Audio clip details also include
+L/R enable flags, swapping, polarity and both fade modes, saved/effective
+frame/ms durations and UI Shape/Position percentages. Bounds reuse core
+metadata calculations; inactive joins retain saved values and identify the
+automatic boundary-fade fallback. Inspection still performs no audio/file
+availability checks, preparation or edits. Summary-list output is unchanged.
+
+`cargo test -p daw-cli --locked` passed seven unit tests and four integration
+tests. New coverage includes non-default gain/channel/polarity settings,
+explicit and automatic fades, active/inactive crossfades, non-audio omissions
+and read-only output. CLI all-target Clippy, formatting and diff checks passed.
+No native/device checks apply to this text-only change.
+
 ## Channel swap and small Invert checkboxes — 2026-11-08
 
 Channels now includes a Small-text Invert checkbox beside the compact L/R

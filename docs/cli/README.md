@@ -6,7 +6,7 @@ Build from the repository root with `cargo build -p daw-cli`. The executable is 
 
 | Command | Purpose |
 | --- | --- |
-| [tracks](tracks.md) | List tracks or show details for a track name. |
+| [tracks](tracks.md) | List tracks, inspect a track name, or add an empty audio/MIDI/beat track. |
 | [collect-sources](collect-sources.md) | Copy original media into a saved project. |
 | [validate](validate.md) | Check a project and its referenced audio. |
 | [render](render.md) | Export the saved mix as WAV, MP3 or AAC. |
