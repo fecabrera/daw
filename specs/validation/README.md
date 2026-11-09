@@ -4,6 +4,19 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## macOS strict Clippy titlebar fix — 2026-11-08
+
+Gate linux_custom_available to Windows/Linux, matching its toolbar/settings
+callers. macOS previously compiled the unused private helper and failed
+-D warnings. No warning suppression or CI relaxation is required; this resolves
+the titlebar dead-code exception recorded in earlier checks below.
+
+On macOS, `cargo clippy --locked --workspace --all-targets -- -D warnings`
+passes. The strict all-target daw-ui Clippy check also passes. Both existing
+macOS-applicable titlebar tests pass via
+`cargo test --locked -p daw-ui titlebar::tests`. Rustfmt and diff checks pass.
+Windows/Linux native checks were not rerun for this compile-gating change.
+
 ## Left-aligned subtrack names — 2026-11-08
 
 The shared full-width name button centered short text, creating variable left

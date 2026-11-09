@@ -19,6 +19,10 @@ window manager supplies its regular titlebar, above the ordinary DAW menu/view
 toolbar. No explicit `GtkHeaderBar` is installed. The UI exposes the Linux titlebar selector only
 after this host registers its capability. Fresh Linux settings default to Custom; saved mode choices are retained.
 
+The internal GTK capability query compiles only on Windows/Linux, matching its
+shared toolbar callers. macOS excludes the helper so strict all-target Clippy
+does not report an unused function; warning checks remain enabled.
+
 GTK objects, GL contexts and painter lifetime stay on the main thread. The
 painter is destroyed with a current GLArea context before unloading its GL
 library. Worker repaint callbacks publish an atomic deadline; a main-thread

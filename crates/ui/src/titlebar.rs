@@ -59,6 +59,7 @@ pub fn enable_linux_custom(ctx: &egui::Context) {
     ctx.data_mut(|data| data.insert_temp(egui::Id::new("gtk_titlebar_host"), true));
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub(crate) fn linux_custom_available(ctx: &egui::Context) -> bool {
     cfg!(target_os = "linux")
         && ctx.data(|data| {
