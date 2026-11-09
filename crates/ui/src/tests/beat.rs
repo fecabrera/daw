@@ -3479,3 +3479,163 @@ fn subtrack_name_buttons_hover_and_select_once_in_timeline_and_editor() {
         }
     }
 }
+
+fn timeline_subtrack_shortcut_fixture() -> (DawUi, egui::Context, Id, [Id; 3]) {
+    let (mut app, ctx, parent, first, _) = setup();
+    app.use_native_menu();
+    let mut ids = vec![first];
+    for index in 1..3 {
+        let mut row = BeatSubtrack::new(format!("Row {index}"));
+        row.muted = index == 1;
+        row.soloed = index == 1;
+        ids.push(row.id);
+        app.edit(Edit::Beat {
+            track_id: parent,
+            edit: BeatEdit::Add {
+                subtrack: Box::new(row),
+                index,
+            },
+        });
+    }
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let arrow = app.timeline_beats.disclosure[&parent].center();
+    click(&mut app, &ctx, arrow);
+    let point = app.beat_ui.headers[&first].center();
+    click(&mut app, &ctx, point);
+    let point = app.beat_ui.headers[&ids[1]].center();
+    shift_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+        true,
+    );
+    shift_frame(&mut app, &ctx, vec![button(point, false)], true);
+    shift_frame(&mut app, &ctx, vec![], false);
+    assert!(app.beat_subtrack_selected(first) && app.beat_subtrack_selected(ids[1]));
+    (app, ctx, parent, ids.try_into().unwrap())
+}
+
+#[test]
+fn timeline_subtrack_mix_shortcuts_toggle_selected_buses_as_one_history_edit() {
+    let (mut app, ctx, parent, ids) = timeline_subtrack_shortcut_fixture();
+    let layer = app.session.project.beat(parent).unwrap().subtracks[1]
+        .instrument
+        .layers[0]
+        .id;
+    // Cached Instrument selection must not redirect Timeline actions to source layers.
+    app.instrument_ui.track = Some(ids[1]);
+    app.instrument_ui.selected_layer = Some(layer);
+    app.instrument_ui.selected_layers.insert(layer);
+    let original = app.session.project.clone();
+    let mut expected = original.clone();
+    for key in [egui::Key::M, egui::Key::S] {
+        let before = expected.clone();
+        for row in &mut expected.tracks[0].beat.as_mut().unwrap().subtracks[..2] {
+            if key == egui::Key::M {
+                row.muted = !row.muted;
+            } else {
+                row.soloed = !row.soloed;
+            }
+        }
+        super::instrument_catalog::key(&mut app, &ctx, key, false, false);
+        assert!(
+            !app.session.project.tracks[0].muted && !app.session.project.tracks[0].soloed,
+            "subtrack shortcuts must leave the beat parent unchanged"
+        );
+        assert_eq!(app.session.project, expected);
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.session.project, before,
+            "one Undo restores the whole selected group"
+        );
+        app.perform_history_action(HistoryAction::Redo, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.session.project, expected);
+    }
+    let parent_lane = app.lane_bounds[&parent];
+    let point = Pos2::new(
+        parent_lane.left() - TRACK_WIDTH + 60.0,
+        parent_lane.center().y,
+    );
+    click(&mut app, &ctx, point);
+    assert!(
+        !app.has_selected_beat_subtracks(),
+        "explicit parent selection must clear child routing"
+    );
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::M, false, false);
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::S, false, false);
+    expected.tracks[0].muted = true;
+    expected.tracks[0].soloed = true;
+    assert_eq!(app.session.project, expected);
+}
+
+#[test]
+fn timeline_subtrack_mix_shortcuts_retain_input_guards_and_mixer_parent_scope() {
+    let (mut app, ctx, parent, ids) = timeline_subtrack_shortcut_fixture();
+    let original = app.session.project.clone();
+    for (modifiers, repeat) in [
+        (egui::Modifiers::COMMAND, false),
+        (egui::Modifiers::ALT, false),
+        (egui::Modifiers::CTRL, false),
+    ] {
+        for key in [egui::Key::M, egui::Key::S] {
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat,
+                        modifiers,
+                    },
+                    egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: false,
+                        repeat: false,
+                        modifiers,
+                    },
+                ],
+            );
+            assert_eq!(app.session.project, original);
+        }
+    }
+    for key in [egui::Key::M, egui::Key::S] {
+        let event = |repeat, pressed| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&mut app, &ctx, vec![event(false, true)]);
+        let held = app.session.project.clone();
+        frame(&mut app, &ctx, vec![event(true, true), event(false, false)]);
+        assert_eq!(
+            app.session.project, held,
+            "held keys must not toggle repeatedly"
+        );
+        super::instrument_catalog::key(&mut app, &ctx, key, false, false);
+    }
+    assert_eq!(app.session.project, original);
+    app.begin_beat_rename(ids[0], "Kick".into());
+    frame(&mut app, &ctx, vec![]);
+    assert!(ctx.text_edit_focused());
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::M, false, false);
+    assert_eq!(app.session.project, original);
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
+    app.set_view_mode(ViewMode::Mixer, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    app.perform_track_action(TrackAction::Mute, &ctx);
+    assert!(app.session.project.tracks[0].muted);
+    assert_eq!(
+        app.session.project.beat(parent),
+        original.beat(parent),
+        "Mixer keeps whole-track scope even with cached child selection"
+    );
+}

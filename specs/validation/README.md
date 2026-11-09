@@ -4,6 +4,20 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Timeline beat-subtrack mix shortcuts — 2026-11-09
+
+Route Timeline M/S and Track menu mix actions to selected beat-subtrack buses
+when their expanded parent is the sole selected project track. Apply all selected
+bus toggles in one undoable batch. Explicit parent-header selection clears child
+selection and restores parent scope; Mixer keeps whole-track scope.
+
+The regression tests reproduce the original parent-toggle failure. They now
+verify mixed-state multi-selection, unchanged parent/unselected buses and source
+settings, one-step Undo/Redo, parent reselection, modifier/held-key/text-input
+guards and Mixer scope. All 954 UI library tests pass (three existing ignored).
+Strict UI all-target Clippy, rustfmt and diff checks pass on macOS. Native UI,
+audio-device and Windows/Linux checks were not performed.
+
 ## macOS strict Clippy titlebar fix — 2026-11-08
 
 Gate linux_custom_available to Windows/Linux, matching its toolbar/settings

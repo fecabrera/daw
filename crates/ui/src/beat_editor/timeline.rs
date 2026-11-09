@@ -10,6 +10,55 @@ pub(crate) struct TimelineState {
 }
 
 impl DawUi {
+    pub(crate) fn timeline_beat_mix_action(&mut self, action: TrackAction) -> bool {
+        let Some(parent) = self.selected_track else {
+            return false;
+        };
+        if self.beat_ui.track != Some(parent)
+            || self.beat_ui.output_selected
+            || !self.timeline_beat_open(parent)
+            || self
+                .session
+                .project
+                .tracks
+                .iter()
+                .any(|track| track.id != parent && self.track_selected(track.id))
+        {
+            return false;
+        }
+        let Some(beat) = self.session.project.beat(parent) else {
+            return false;
+        };
+        let edits: Vec<_> = beat
+            .subtracks
+            .iter()
+            .filter(|row| self.beat_ui.selected.contains(&row.id))
+            .map(|row| Edit::Beat {
+                track_id: parent,
+                edit: BeatEdit::SetMix {
+                    id: row.id,
+                    gain_db: row.instrument.main.gain_db,
+                    pan: row.instrument.main.pan,
+                    muted: if action == TrackAction::Mute {
+                        !row.muted
+                    } else {
+                        row.muted
+                    },
+                    soloed: if action == TrackAction::Solo {
+                        !row.soloed
+                    } else {
+                        row.soloed
+                    },
+                },
+            })
+            .collect();
+        if edits.is_empty() {
+            return false;
+        }
+        self.edit(Edit::Batch(edits));
+        true
+    }
+
     pub(crate) fn timeline_beat_row_at(&self, pointer: Pos2) -> bool {
         self.view_mode == ViewMode::Timeline
             && self

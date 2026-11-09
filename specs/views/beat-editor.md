@@ -427,6 +427,15 @@ track and navigate the shared beat owner; Shift toggles child membership. Escape
 clears visible child selection before arrangement selection. Double-clicking the
 name uses the shared rename draft and transaction.
 
+In Timeline, route M/S and the matching Track menu actions to the selected
+subtrack buses when their expanded beat parent is the only selected project
+track. Toggle each selected bus independently through one Edit::Batch of
+BeatEdit::SetMix edits. Preserve parent mix flags, unselected buses, gain, pan
+and source-layer settings. Ignore cached Instrument layer selection. Keep the
+standard shortcut guards for text editing, modifiers, held keys, pointer
+gestures, dialogs and jobs. Explicit parent-header selection clears child
+selection and restores parent scope. Mixer retains whole-track scope.
+
 Child lanes contain only the musical grid. Do not paint beat-hit previews or
 create independent clips. Keep child IDs out of lane_bounds and clip placement;
 reject clip moves and file drops over child rows. Include child height when

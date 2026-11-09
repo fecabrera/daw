@@ -4588,6 +4588,9 @@ impl DawUi {
                                 self.selected_track = Some(track.id);
                             }
                         }
+                        if track.kind == daw_core::TrackKind::Beat {
+                            self.navigate_beat_owner(track.id, None, false);
+                        }
                     }
                     if ui.is_enabled()
                         && self.editing_enabled()

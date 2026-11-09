@@ -177,6 +177,12 @@ impl DawUi {
             }
             return;
         }
+        if self.view_mode == ViewMode::Timeline
+            && matches!(action, TrackAction::Mute | TrackAction::Solo)
+            && self.timeline_beat_mix_action(action)
+        {
+            return;
+        }
         if self.view_mode == ViewMode::Instrument
             && matches!(action, TrackAction::Mute | TrackAction::Solo)
         {
