@@ -40,7 +40,7 @@ fn cached_markers_paint_only_in_lower_editor_without_project_edits() {
         .expect("lower clip body");
     assert!(lines.iter().all(|line| {
         (line[0].y - (block.top() + crate::clip_paint::HEADER_HEIGHT)).abs() < 0.01
-            && (line[1].y - block.bottom()).abs() < 0.01
+            && (line[1].y - (block.bottom() - 0.5)).abs() < 0.01
     }));
     assert_eq!(app.selected_clip, Some(id));
     assert_eq!(app.session.project, before);

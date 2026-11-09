@@ -867,28 +867,6 @@ impl DawUi {
                 Stroke::new(1.0, theme::palette(ui.ctx()).border),
             );
         }
-        // Keep the whole selection stroke above row fills and shared dividers.
-        for selected in self.instrument_ui.selected_layers.iter().copied() {
-            if selected == settings.main.id {
-                panels::ControlPanel::selected_row(
-                    ui,
-                    Rect::from_min_size(
-                        main_rect.min,
-                        Vec2::new(layer_header_width, main_label_height),
-                    ),
-                    main_rect,
-                );
-            } else if let Some((_, row)) = layer_rows.iter().find(|(id, _)| *id == selected) {
-                panels::ControlPanel::selected_row(
-                    ui,
-                    Rect::from_min_max(
-                        row.min,
-                        Pos2::new(row.left() + layer_header_width, row.bottom()),
-                    ),
-                    scroll.inner_rect,
-                );
-            }
-        }
         #[cfg(test)]
         {
             self.instrument_catalog_bounds.layer_viewport = scroll.inner_rect;

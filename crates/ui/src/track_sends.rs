@@ -294,9 +294,6 @@ impl DawUi {
                             {
                                 self.perform_track_action(action, ui.ctx());
                             }
-                            if self.track_selected(track.id) {
-                                panels::selection_border(ui, r);
-                            }
                             rows.push((track.id, r));
                         });
                     }

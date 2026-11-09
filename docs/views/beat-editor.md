@@ -53,11 +53,12 @@ will be trimmed or removed. Undo restores the complete change.
 
 Selected subtracks use the same header and lane colors as selected Timeline
 tracks and Instrument layers in Dark, Light and Mist. Each selected subtrack is
-highlighted, including when several are selected. Step buttons keep their own
-on/off and hover colors. Subtrack Mute and Solo use the shared joined M / S
+highlighted without a selection outline, including when several are selected. Step buttons keep their own
+on/off and hover colors. Dividers separate subtrack rows across both headers and the step grid. The separator below the ruler also spans the headers to the left toolbar. Subtrack Mute and Solo use the shared joined M / S
 button group; each button remains independent.
 
 Editor and Instrument share the same names, order, selection and mix controls. Timeline also exposes these mix controls in expandable child rows under the beat parent. Its child lanes stay empty; beat hits remain in Editor. Projects save each Timeline beat folder’s open/closed state. The **Tracks** panel in both views lists subtracks below their beat parent. Its right-pinned Mute, Solo, Pan and Gain controls change the corresponding track or subtrack without selecting it.
+Subtrack names use the same hoverable name buttons as other tracks and align to the standard left padding. Hover to see the full name. A single click selects; double-click the name to rename it.
 Selecting a subtrack in Editor also selects its instrument when you return to
 Instrument, including after selecting the final Output.
 

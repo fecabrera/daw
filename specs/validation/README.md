@@ -4,6 +4,206 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Left-aligned subtrack names — 2026-11-08
+
+The shared full-width name button centered short text, creating variable left
+gaps in Beat Editor headers. Anchor text with a trailing grow atom and zero
+internal atom gap. Names now start at the standard seven-point row inset while
+retaining the full hover/click area. Mixer already used this alignment and keeps
+its existing icon/name centering.
+
+The strengthened geometry check reproduces the old inset error and now verifies
+the same text inset for different subtrack names in Dark, Light and Mist.
+All 952 UI library tests pass (three existing ignored), including hover/click,
+rename and Mixer header checks. UI Clippy passes with dead-code warnings allowed
+for the existing titlebar warning below. Rustfmt and diff checks pass. Native
+visual and Windows/Linux checks were not performed.
+
+## Visible Beat Editor header separators — 2026-11-08
+
+The ruler extension was clipped by the right-hand canvas despite having correct
+line coordinates. Selected beat-row backgrounds also covered the header column's
+earlier right divider. Return the beat pane bounds to the full-width edit_view
+parent and paint both separators there after the canvas rows.
+
+The strengthened regression fails before the fix because the ruler line's clip
+rectangle excludes the header column. It now checks visible clip coverage and
+that the final right divider paints after the selected header fill in all themes.
+The check passes after the fix. All 952 UI library tests pass (three existing
+ignored). UI Clippy passes with dead-code warnings allowed for the existing
+titlebar warning below. Rustfmt and diff checks pass. Native visual and
+Windows/Linux checks were not performed.
+
+## Beat row dividers and shared name buttons — 2026-11-08
+
+Beat Editor now paints one neutral divider across each subtrack boundary,
+including the header, audition gutter and step grid. Paint after row fills and
+clip to the scrolling pane. Extend the ruler's existing bottom separator across
+the fixed header column to the left toolbar edge without adding a second line.
+
+Ordinary track and beat-subtrack labels now share rows::name_button. Timeline
+and Editor children gain full-name-area hover and single-click selection, full
+name tooltips and existing rename/focus handling. Preserve Editor reorder
+gestures and avoid duplicate Shift selection from the outer header handler.
+
+All 952 UI library tests pass (three existing ignored). Existing layout checks
+now verify one full-width divider per boundary and the ruler extension across
+all themes, including a selected row. The new regression covers hover feedback,
+single-click selection without Rename, one Shift toggle and unchanged project
+data in Timeline and Editor across all themes. Existing track/Mixer label and
+subtrack rename/reorder checks pass. UI Clippy passes with dead-code warnings
+allowed for the pre-existing titlebar warning below. Rustfmt and diff checks
+pass. Native visual/pointer and Windows/Linux checks were not performed.
+
+## Crossfade gap follows the owning fade — 2026-11-08
+
+The one-point visual gap now follows the crossfade owner's visible endpoint,
+using the existing limited/preview header geometry. A left clip's fade-out moves
+the gap right; a right clip's fade-in moves it left. Paint remains continuous
+across the logical clip seam. Split each logical block into at most three
+disjoint regions without changing clip timing, waveform clocks or hit bounds.
+Square body corners at logical crossfade seams avoid rounding notches.
+
+All 951 UI library tests pass (three existing ignored). The crossfade regression
+checks both owner directions and both saved clip orders: no gap at the logical
+seam, an exact one-point gap at the fade endpoint, one shading layer per point,
+and retained waveform geometry. Existing ordinary-gap and new-track preview
+checks pass. UI Clippy passes with dead-code warnings allowed for the existing
+titlebar warning below. Rustfmt and diff checks pass. Native visual and
+Windows/Linux checks were not performed.
+
+## Background-only track and layer selection — 2026-11-08
+
+Remove selection outlines from Timeline tracks/groups, pinned Return/Master
+rows, beat subtracks, Instrument layer/Output/provider headers, and Mixer and
+Inspector strips. Keep shared header/lane selection fills and neutral structural
+dividers. Selected Mixer strip bodies now use the shared selected header shade.
+Unit selection outlines and drop-target feedback retain their existing behavior.
+The user accepted the Material 200 clip header appearance before this change.
+
+All 951 UI library tests pass (three existing ignored). Updated checks cover
+selected backgrounds and absent row/strip strokes, group and layer membership,
+Return-bank clipping/dividers, scrolled groups and layer/Output selection.
+Existing selected-effect outline checks still pass. UI Clippy passes with
+dead-code warnings allowed for the pre-existing titlebar warning below.
+Rustfmt and diff checks pass. Native visual and Windows/Linux checks were not
+performed.
+
+## Material 200 selected clip header trial — 2026-11-08
+
+Switch selected clip headers from Material 100 to exact Material 200 shades for
+the user's visual comparison. Retain family matching, neutral/legacy handling,
+contrast text, borderless selection and one-point clip gaps. Update the palette
+regression to check each default family's exact 200 value.
+
+All 951 UI library tests pass (three existing ignored). UI Clippy passes with
+dead-code warnings allowed for the pre-existing titlebar warning below.
+Rustfmt and diff checks pass. Native visual acceptance remains with the user;
+no native visual or Windows/Linux checks were performed.
+
+## Material 100 selected clip headers — 2026-11-08
+
+Selected headers now use exact Material Design 2014 shade 100 values, replacing
+the earlier white blend. The palette pairs all 16 default Material 400 track
+colors with their corresponding 100 shades and includes Brown, Grey and Blue
+Grey. Custom RGB values select the nearest 400 family by squared RGB distance.
+Legacy blue selects Blue Grey 100; muted and missing-source headers use Grey 100.
+Body/content colors and stored project colors remain unchanged. Palette values
+come from the [Material UI color reference](https://mui.com/material-ui/customization/color/#color-palette).
+
+All 951 UI library tests pass (three existing ignored). The new palette test
+checks each default family against its exact 100 hex value, plus additional
+families and custom RGB fallback. Existing cross-theme paint checks pass.
+UI Clippy passes with dead-code warnings allowed for the pre-existing titlebar
+warning below. Rustfmt and diff checks pass. No dependencies were added. Native
+visual and Windows/Linux checks were not performed.
+
+## One-point clip gaps — 2026-11-08
+
+Shared clip painting now crops half a logical point from each block edge,
+leaving a one-point gap between touching clips in Timeline, track overview and
+audio editor. Keep frame ranges, source clocks, content coordinates and editing
+hit areas unchanged. Fade handles retain their existing full paint/hit bounds.
+Waveforms, fade layers and transient markers respect the visible crop.
+
+All 950 UI library tests pass (three existing ignored). Existing paint checks now
+verify the half-point crop across themes and selection states, and the transient
+marker check uses the visible bottom edge. UI Clippy passes with dead-code
+warnings allowed for the pre-existing titlebar warning below. Rustfmt and diff
+checks pass. Native visual and Windows/Linux checks were not performed.
+
+## Brighter selected clip headers — 2026-11-08
+
+Increase the selected header blend toward white from 20% to 40% for a clearer
+selection difference. The shared helper retains contrast text and existing clip
+body colors. This supersedes the earlier 20% shade below. UI compilation,
+rustfmt and diff checks pass. No tests were added for this color-constant change.
+Native visual checks were not performed.
+
+## Remove clip selection strokes — 2026-11-08
+
+Selected clips now use only the lighter header as their selection indicator.
+Remove selection strokes from Timeline, overview, audio editor, crossfade
+extensions and lower MIDI patterns. This supersedes the header-color border
+recorded below. Retain unselected lower MIDI pattern boundaries.
+
+All 950 UI library tests pass (three existing ignored). Updated paint checks
+verify absent selected strokes, retained lighter headers, group selection,
+missing/muted clips, crossfade extensions and lower MIDI scrolling/selection.
+UI Clippy passes with dead-code warnings allowed for the pre-existing titlebar
+warning below. Rustfmt and diff checks pass. Native visual and Windows/Linux
+checks were not performed.
+
+## Selected clip border color — 2026-11-08
+
+Selected clips now use a two-point inside border matching their lighter header
+fill, replacing the accent selection outline. Shared header appearance resolution
+keeps muted and missing-source borders consistent with the actual fill.
+Crossfade neighbors and selected lower MIDI patterns use the same color rule.
+
+All 950 UI library tests pass (three existing ignored). Updated checks cover
+primary/group selection, crossfade extension, all themes, inherited/custom and
+missing-source colors, muted clips and lower MIDI header/body continuity. UI
+Clippy passes with dead-code warnings allowed for the pre-existing titlebar
+warning below. Rustfmt and diff checks pass. Native visual and Windows/Linux
+checks were not performed.
+
+## Clip header top corners — 2026-11-08
+
+Shared clip header fills now round only the top two corners, retaining the
+two-point radius. Bottom corners are square where the header meets content.
+The existing Timeline/overview painting test passes across Dark, Light and Mist,
+custom/inherited colors and primary/group/no selection, with an explicit corner
+geometry check. Rustfmt and diff checks pass. Native visual checks were not
+performed.
+
+## Selected clip header shade — 2026-11-08
+
+Selected clip headers now blend their resolved color 20% toward white, with
+contrast text recalculated for the header. One shared painter applies this to
+Timeline, overview, audio editor, lower MIDI headers and crossfade neighbors.
+Body and content colors remain unchanged, including muted translucent bodies.
+
+All 950 UI library tests pass (three existing ignored). Existing paint checks
+cover primary/group selection across all themes, custom and inherited colors,
+muted clips, legacy colors, missing sources and drag previews. UI Clippy passes
+with dead-code warnings allowed for the pre-existing titlebar warning below.
+Rustfmt and diff checks pass. Native visual and Windows/Linux checks were not
+performed.
+
+## Borderless clip shells — 2026-11-08
+
+The shared clip painter now omits neutral outlines for every clip type in
+Timeline, track overview and audio editor. Selected clips retain the shared
+selection outline. Existing header/body fills, content and interaction geometry
+remain unchanged. The separate lower MIDI pattern outlines retain their contract.
+
+All 950 UI library tests pass (three existing ignored). The shared Timeline/
+overview paint test now checks absent unselected outlines and selected/group
+outlines in Dark, Light and Mist. UI Clippy passes with dead-code warnings
+allowed for the pre-existing titlebar warning described below. Rustfmt and diff
+checks pass. Native visual and Windows/Linux checks were not performed.
+
 ## Saved Timeline beat folder disclosure — 2026-11-08
 
 Beat folders now reuse the saved group collapse field and shared transaction.

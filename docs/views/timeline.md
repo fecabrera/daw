@@ -4,7 +4,7 @@ The left toolbar lists **Effects** and **Chords**. **Clip settings** uses the to
 
 Timeline arranges audio and MIDI clips on tracks. Use Editor for MIDI notes, Instrument for MIDI sounds, and Mixer for track levels. Its horizontal scrollbar floats over the content, like the effects lane’s scrollbar; hover near the bottom of the timeline to reveal and expand it.
 
-Selected tracks have a highlighted Timeline lane background: #181818 in Dark,
+Selected tracks use background highlights without a selection outline. The Timeline lane background is #181818 in Dark,
 #F3F3F3 in Light, and #DFE2E7 in Mist. Each track in a multiple
 selection is highlighted. The musical grid and clips remain visible above it.
 Selected track headers use a separate raised shade: #262626 in Dark, #F7F7F7
@@ -12,7 +12,9 @@ in Light, and #E8EAEE in Mist. Unselected headers retain their normal theme fill
 
 Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Their names use the same spacing as group headers. Track gain and pan, and Master gain, use compact knobs without text-entry fields. Tracks start with one row: icon, name, Mute, Solo, Pan, Gain, then meters. In the expanded layout, the second row places Mute and Solo at the left; Pan then Gain sit at the right, immediately before the level meters. Master uses one row, with its gain knob on the right immediately before the level meters. Level meter rails align with the top and bottom padding of the other header controls. Hover or drag a knob to see its value in the tooltip. Master's meters align with the track meters at the right of the control column. Drag an audio or MIDI icon, track name, or blank header area to move the track. Release applies the move; Escape or focus loss cancels it.
 
-Click the arrow beside a beat track to show or hide its subtracks. They start collapsed. Subtracks appear inside the parent, with the same indentation and selection style as track groups. Each row has Mute, Solo, Pan, Gain and level meters shared with Editor and Instrument. Click a subtrack header to select it; Shift-click selects several. Escape clears subtrack selection. The child timeline lanes stay empty; arrange clips on the parent and edit beat hits in Editor. The project saves each beat folder’s open/closed state. Expanding or collapsing it supports Undo/Redo, like track groups.
+Click the arrow beside a beat track to show or hide its subtracks. They start collapsed. Subtracks appear inside the parent, with the same indentation and selection style as track groups. Each row has Mute, Solo, Pan, Gain and level meters shared with Editor and Instrument. Subtrack names use the same hoverable name buttons as other tracks. A single click selects; double-click the name to rename it. Click a subtrack header to select it; Shift-click selects several. Escape clears subtrack selection. The child timeline lanes stay empty; arrange clips on the parent and edit beat hits in Editor. The project saves each beat folder’s open/closed state. Expanding or collapsing it supports Undo/Redo, like track groups.
+
+Touching clips have a one-point visual gap. At a crossfade, the gap follows the owning clip’s fade endpoint. Audio, MIDI and beat clips have no selection border. Selected clips use the Material 200 shade of their color family in the header. Headers have rounded top corners and square bottom corners. The same style applies in the track overview and audio editor.
 
 **M** and **S** share one joined button group with a divider. They remain independent: either or both can be enabled. The same group appears in Editor, Instrument, Beat Editor, the Tracks panel and Mixer.
 
@@ -163,7 +165,7 @@ through the overlap region. The original side between the curves keeps its norma
 side between the curves receives two layers of shading; the upper and lower
 regions receive one layer.
 Drag the crossing point vertically to change the gain where the curves meet, or horizontally to change its time. Raising the crossing can increase the transition level; lowering it can reduce it. Both waveforms keep their colors. Their heights follow the fade curves, including while you drag a handle. Ordinary fades also reduce the displayed waveform height toward silence. Audio waveform bodies and crossfade headers have no extra border;
-selected clips retain a selection outline across the full visible crossfade. Clip
+selected clips keep their lighter header color across the full visible crossfade. Clip
 timing stays unchanged. For an ordinary fade, a dark vertical guide runs from its duration handle
 through the waveform, marking the fade-in end or fade-out start. Crossfades show
 a vertical guide at each edge only while the crossover is hovered. Both guides

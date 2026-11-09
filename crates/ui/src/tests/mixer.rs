@@ -145,7 +145,7 @@ fn mixer_centers_icon_and_short_or_truncated_label_as_one_group() {
 #[test]
 fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_states() {
     let (mut app, track) = fixture();
-    let next_track = app.session.project.add_track().unwrap();
+    app.session.project.add_track().unwrap();
     app.view_mode = crate::mixer::ViewMode::Mixer;
     // A clip override must not replace the track's default clip color.
     app.session.project.tracks[0].clips[0].color = Some(daw_core::DEFAULT_TRACK_COLORS[0]);
@@ -250,48 +250,21 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                         if points[0].y == points[1].y && (points[0].y - strip.top()).abs() <= 1.0
                             && *stroke == egui::Stroke::new(1.0, theme::palette(&ctx).border)
                 )).count(), 1, "One shared thin top border");
-                if selected {
-                    let outline = theme::selection_outline(&ctx);
-                    let path = shapes
-                        .iter()
-                        .find_map(|shape| match &shape.shape {
-                            egui::Shape::Path(path)
-                                if path.points[1]
-                                    == Pos2::new(
-                                        strip.left() + outline.width / 2.0,
-                                        strip.top() + outline.width / 2.0,
-                                    )
-                                    && path.stroke.color
-                                        == egui::epaint::ColorMode::Solid(outline.color)
-                                    && path.stroke.width == outline.width =>
-                            {
-                                Some(path)
-                            }
-                            _ => None,
-                        })
-                        .unwrap();
-                    assert_eq!(
-                        path.points[1].x - path.stroke.width / 2.0,
-                        strip.left(),
-                        "Selected left outline must meet the track left without a gap"
-                    );
-                    assert_eq!(
-                        path.points[1].y - path.stroke.width / 2.0,
-                        strip.top(),
-                        "Selected top outline must meet the track top without a gap"
-                    );
-                    assert_eq!(
-                        path.points[2].x + path.stroke.width / 2.0,
-                        app.mixer_bounds[&next_track].left(),
-                        "Selected right outline must meet the next strip without a gap"
-                    );
-                }
-                assert_eq!(shapes.iter().any(|shape| matches!(&shape.shape,
-                    egui::Shape::LineSegment { points, stroke }
-                        if points[0] == Pos2::new(strip.left() + 1.0, strip.bottom() - theme::selection_outline(&ctx).width / 2.0)
-                            && points[1] == Pos2::new(strip.right() - 1.0, strip.bottom() - theme::selection_outline(&ctx).width / 2.0)
-                            && *stroke == theme::selection_outline(&ctx)
-                )), selected);
+                assert!(!shapes.iter().any(|shape| match &shape.shape {
+                    egui::Shape::Path(path) =>
+                        path.stroke.color
+                            == egui::epaint::ColorMode::Solid(theme::selection_outline(&ctx).color)
+                            && path.stroke.width == 2.0,
+                    egui::Shape::LineSegment { stroke, .. } =>
+                        *stroke == theme::selection_outline(&ctx),
+                    _ => false,
+                }));
+                let background = if selected {
+                    theme::selected_track_header_background(&ctx)
+                } else {
+                    theme::palette(&ctx).panel
+                };
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == strip && rect.fill == background)));
                 assert!(!app.dirty);
             }
         }

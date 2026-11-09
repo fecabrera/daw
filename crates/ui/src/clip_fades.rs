@@ -679,21 +679,24 @@ impl DawUi {
                     ),
                 );
                 let painter = painter.with_clip_rect(painter.clip_rect().intersect(block));
+                let colors = theme::clip_colors(track.color, other.color);
+                let colors = if other.muted {
+                    colors.dimmed(painter.ctx())
+                } else {
+                    colors
+                };
                 if background {
                     let header = self.clip_fade_header_rect(rect, other, painter.ctx());
-                    let colors = theme::clip_colors(track.color, other.color);
-                    clip_paint::paint_header(&painter, header, &other.name, colors, false);
-                }
-                self.paint_clip_fade_layer(&painter, rect, other, background);
-                if !background && self.clip_selected(other.id) {
-                    let visual = self.clip_fade_header_rect(rect, other, painter.ctx());
-                    painter.rect_stroke(
-                        Rect::from_min_max(visual.min, Pos2::new(visual.right(), rect.bottom())),
-                        2.0,
-                        theme::selection_outline(painter.ctx()),
-                        StrokeKind::Inside,
+                    clip_paint::paint_header(
+                        &painter,
+                        header,
+                        &other.name,
+                        colors,
+                        false,
+                        self.clip_selected(other.id),
                     );
                 }
+                self.paint_clip_fade_layer(&painter, rect, other, background);
             }
         }
     }

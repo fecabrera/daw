@@ -215,7 +215,7 @@ selected_track_background and selected_track_header_background. Paint the lane
 fill across the row before cells, and the header fill across the left control
 column before controls. Use beat_subtrack_selected membership for every selected
 row. Retain normal unselected surfaces, step button states, clipping, shared
-selection outlines and existing interaction/history behavior. Dark/Light/Mist
+background selection and existing interaction/history behavior. Dark/Light/Mist
 header fills are #262626 / #F7F7F7 / #E8EAEE; lane fills are #181818 / #F3F3F3 /
 #DFE2E7.
 
@@ -236,10 +236,24 @@ while retaining the displayed track. Text editing and active
 gestures take priority; Escape cancels those without clearing subtrack selection.
 Respect disabled UI, focus and existing job/dialog guards.
 
-Use `ControlPanel::selected_row` for subtrack selection outlines, exactly as Tracks
-does. Paint outlines after all row and control-column dividers, with the original
-row/container bounds and pane clipping. Retain the shared two-point inside stroke
-and corner radius; a neutral divider must not overwrite the right edge.
+Subtrack selection uses the shared header/lane background fills without an
+accent selection outline, exactly as Tracks and Instrument layers do. Retain
+neutral row and control-column dividers and the original row/container geometry.
+Paint a single one-point row separator across the header, audition gutter and
+step grid at each row boundary, after row fills/controls. Reuse
+ControlPanel::row_dividers with a top edge for rows after the first and one
+bottom edge on the last row. Clip to the scrolling pane and omit offscreen
+separator painting; retain all row bounds for reordering. Continue the ruler's
+existing bottom separator across the fixed header column to the left toolbar
+edge, on the same bottom-minus-half-point pixel. Return the beat pane bounds
+from edit_canvas to edit_view. Paint the extension from the full-width parent
+painter after the canvas; expanding a canvas painter's clip does not expose the
+fixed header column. Restore the neutral header-column right divider from that
+same parent after row backgrounds, so selected fills cannot cover it. Keep both
+lines fixed to the pane and retain a single boundary pixel. Validate clip-rect
+coverage at the visible line and divider paint order, not geometry alone.
+
+
 
 Editor subtrack selection covers the whole header panel. A primary press in empty
 space or on a control selects that row using shared plain/Shift selection. Name
@@ -402,7 +416,7 @@ expansion independent of the shared Tracks browser. Hiding an enclosing track gr
 beat parent's expansion choice.
 
 Show one child row per subtrack in canonical order. Reuse GroupPanel indentation,
-shared row heights and dividers, and the enclosing parent selection border,
+shared row heights and dividers, and the enclosing parent panel bounds,
 including nested track groups. Reuse HeaderRows, joined M/S, Pan/Gain controls,
 layer-meter handles, held peaks and reset interaction. Set child header content
 spacing to the track frame's six points horizontally and four points vertically;
@@ -423,3 +437,25 @@ parent and retain their existing editing behavior. Mixer remains parent-only.
 Validate saved disclosure, legacy defaults, Undo/Redo, nested parent extents, control
 isolation, shared owner selection, and rejection of media/clip placement. Native
 visual and device checks remain separate from egui regressions.
+
+
+## Shared subtrack name buttons — 2026-11-08
+
+Track and subtrack names reuse rows::name_button for their full-width, standard
+height, frameless selected/hover visuals, truncation and text bounds. Anchor text
+to the leading edge with a trailing grow atom and no internal atom gap; do not
+center short names inside the full-width button. Editor subtrack text starts at
+the shared seven-point row inset. Keep stable
+text IDs and existing Mixer colors/alignment. Both Timeline children and Editor
+subtracks use the same presentation; inline editing reuses beat_rename_input.
+Timeline child clicks retain the parent/owner selection handler. Editor name
+clicks retain beat_select and its focus handling; exclude the name response from
+the outer header press handler so Shift membership toggles once. Single clicks
+select without opening Rename. Timeline double-click Rename requires the text
+bounds, matching project track names; preserve Editor's existing blank-header
+Rename gesture. Tooltips expose the full name. Cursor feedback follows supported
+gestures: Timeline children use PointingHand; reorderable Editor names use Grab.
+Do not add Timeline child reordering or change clip selection/model data.
+
+Validate full-name-area hover/click, plain selection, one Shift toggle, unchanged
+project/dirty state and no single-click Rename in both views and all themes.

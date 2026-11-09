@@ -402,11 +402,21 @@ impl DawUi {
         let response = self
             .beat_rename_input(ui, track, row, rows::NAME_FONT_SIZE)
             .unwrap_or_else(|| {
-                ui.add(
-                    egui::Label::new(egui::RichText::new(&row.name).size(rows::NAME_FONT_SIZE))
-                        .truncate()
-                        .sense(Sense::click_and_drag()),
+                rows::name_button(
+                    ui,
+                    ("beat_name_text", row.id),
+                    &row.name,
+                    rows::NAME_FONT_SIZE,
+                    self.beat_subtrack_selected(row.id),
+                    Sense::click_and_drag(),
+                    None,
                 )
+                .0
+                .on_hover_text(format!(
+                    "{}\nDrag to reorder. Double-click the name to edit.",
+                    row.name
+                ))
+                .on_hover_cursor(egui::CursorIcon::Grab)
             });
         #[cfg(test)]
         {
@@ -1322,6 +1332,18 @@ impl DawUi {
                     });
                     ui.advance_cursor_after_rect(rect);
                 }
+                // Draw one shared boundary across headers, audition gutter and step grid.
+                // Keep it above row fills while retaining full-list reorder geometry.
+                for (index, (_, row)) in row_bounds.iter().enumerate() {
+                    if row.intersects(ui.clip_rect()) {
+                        panels::ControlPanel::row_dividers(
+                            ui,
+                            *row,
+                            index > 0,
+                            index + 1 == row_bounds.len(),
+                        );
+                    }
+                }
                 self.finish_beat_rows(
                     ui,
                     track.id,
@@ -1329,15 +1351,6 @@ impl DawUi {
                     ui.clip_rect(),
                     BeatDragPane::Editor,
                 );
-                for (id, row) in &row_bounds {
-                    if self.beat_subtrack_selected(*id) {
-                        panels::ControlPanel::selected_row(
-                            ui,
-                            Rect::from_min_size(row.min, Vec2::new(TRACK_WIDTH, row.height())),
-                            ui.clip_rect(),
-                        );
-                    }
-                }
             });
         let grid = Rect::from_min_max(
             viewport.min + Vec2::new(TRACK_WIDTH + track_overview::LABEL_WIDTH, 0.0),

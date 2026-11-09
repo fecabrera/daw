@@ -3,6 +3,37 @@ use super::*;
 use daw_core::MidiPattern;
 
 pub(super) const HEADER_HEIGHT: f32 = 22.0;
+/// Half on each clip edge leaves one logical point between touching clips.
+pub(super) const PAINT_INSET: f32 = 0.5;
+
+/// Up to two visual boundaries split a logical clip into at most three paint regions.
+/// Keep the logical seam continuous when a crossfade owns audio beyond that seam.
+fn clip_paint_regions(block: Rect, visual: Rect) -> [Rect; 3] {
+    let mut regions = [Rect::NOTHING; 3];
+    let mut count = 0;
+    let mut cursor = block.left();
+    let mut boundaries = [visual.left(), visual.right()];
+    boundaries.sort_by(f32::total_cmp);
+    let mut emit = |left: f32, right: f32| {
+        if right > left {
+            regions[count] = Rect::from_min_max(
+                Pos2::new(left, block.top() + PAINT_INSET),
+                Pos2::new(right, block.bottom() - PAINT_INSET),
+            );
+            count += 1;
+        }
+    };
+    for boundary in boundaries {
+        let left = (boundary - PAINT_INSET).clamp(block.left(), block.right());
+        let right = (boundary + PAINT_INSET).clamp(block.left(), block.right());
+        if right > cursor {
+            emit(cursor, left.max(cursor));
+            cursor = right;
+        }
+    }
+    emit(cursor, block.right());
+    regions
+}
 
 /// Shared temporal painting with separate MIDI pitch and unbounded beat-row coordinates.
 enum NotePreview<'a> {
@@ -120,173 +151,174 @@ impl DawUi {
         } else {
             colors
         };
-        painter.rect_filled(
-            block,
-            2.0,
-            if missing && !clip.muted {
-                theme::palette(painter.ctx()).missing
-            } else {
-                colors.body
-            },
-        );
-        let clip_painter = painter.with_clip_rect(block.intersect(lane));
         let header = if pattern.is_none() && beat.is_none() {
             self.clip_fade_header_rect(block, clip, painter.ctx())
         } else {
             block
         };
-        let painted_header = paint_header(&clip_painter, header, &clip.name, colors, missing);
-        let body = Rect::from_min_max(
-            Pos2::new(
-                block.left(),
-                (block.top() + clip_fades::WAVEFORM_TOP).min(block.bottom()),
-            ),
-            block.max,
-        );
-        if pattern.is_none() && beat.is_none() {
-            if let Some(audio) = audio {
-                waveforms::paint_background(&clip_painter, body, audio, colors);
-            }
-            self.paint_clip_fade_background(&clip_painter, block, clip);
-            self.paint_neighbor_crossfades(&clip_painter, block, clip, true);
-        }
-        if missing {
-            clip_painter.text(
-                block.center(),
-                egui::Align2::CENTER_CENTER,
-                "Missing source",
-                egui::FontId::proportional(13.0),
-                theme::palette(painter.ctx()).warning,
-            );
-        } else if let Some(beat) = beat {
-            let rows: Vec<_> = self
-                .session
-                .project
-                .tracks
-                .iter()
-                .filter_map(|track| track.beat.as_ref())
-                .find(|container| container.id == beat.instrument_id)
-                .map(|container| container.subtracks.iter().map(|row| row.id).collect())
-                .unwrap_or_default();
-            let step_frames = self
-                .session
-                .project
-                .midi_frame(beat.pattern.resolution.step_ticks());
-            let step_frames = clip.stretch.map_or(step_frames, |stretch| {
-                stretch.scale(step_frames).unwrap_or(0)
-            });
-            let pixels = self.session.project.seconds(step_frames) as f32 * self.view_zoom();
-            // Staged source-growth IDs are disposable. Do not retain their overview
-            // allocations in the live-source cache across pointer frames.
-            let level = if live_beat.is_none() {
-                crate::beat_thumbnail::Cache::default().level(
-                    (self.session.project.project_id, self.change_revision),
-                    clip.asset_id,
-                    &rows,
-                    &beat.pattern,
-                    pixels,
-                )
+        let body_corners = egui::CornerRadius {
+            nw: if header.left() == block.left() { 2 } else { 0 },
+            sw: if header.left() == block.left() { 2 } else { 0 },
+            ne: if header.right() == block.right() {
+                2
             } else {
-                self.beat_ui.thumbnails.borrow_mut().level(
-                    (self.session.project.project_id, self.change_revision),
-                    clip.asset_id,
-                    &rows,
-                    &beat.pattern,
-                    pixels,
-                )
-            };
-            self.paint_pattern_notes(
-                &clip_painter,
+                0
+            },
+            se: if header.right() == block.right() {
+                2
+            } else {
+                0
+            },
+        };
+        // Crossfade ownership moves the visual boundary into the adjacent clip.
+        // Split only painting at that boundary; clocks and gesture bounds stay unchanged.
+        for region in clip_paint_regions(block, header) {
+            if !region.is_positive() {
+                continue;
+            }
+            let clip_painter = painter.with_clip_rect(region.intersect(lane));
+            clip_painter.rect_filled(
                 block,
-                clip,
-                NotePreview::Beat(&level),
-                colors.waveform,
+                body_corners,
+                if missing && !clip.muted {
+                    theme::palette(painter.ctx()).missing
+                } else {
+                    colors.body
+                },
             );
-        } else if let Some(pattern) = pattern {
-            self.paint_midi_notes(&clip_painter, block, clip, pattern, colors.waveform);
-        } else if let Some(audio) = audio {
-            waveforms::paint_peaks_with_gain(
-                &clip_painter,
-                body,
-                audio,
-                clip,
-                f64::from(self.session.project.sample_rate_hz) / f64::from(self.view_zoom()),
-                colors,
-                if cached.is_none() { clip.stretch } else { None },
-                self.waveform_fade_gain(clip, painter.ctx()),
+            let painted_header =
+                paint_header(&clip_painter, header, &clip.name, colors, missing, selected);
+            let body = Rect::from_min_max(
+                Pos2::new(
+                    block.left(),
+                    (block.top() + clip_fades::WAVEFORM_TOP).min(block.bottom()),
+                ),
+                block.max,
             );
-        }
-
-        if pattern.is_none() && beat.is_none() {
-            if let Some(audio) = audio {
-                self.paint_editor_transients(
+            if pattern.is_none() && beat.is_none() {
+                if let Some(audio) = audio {
+                    waveforms::paint_background(&clip_painter, body, audio, colors);
+                }
+                self.paint_clip_fade_background(&clip_painter, block, clip);
+                self.paint_neighbor_crossfades(&clip_painter, block, clip, true);
+            }
+            if missing {
+                clip_painter.text(
+                    block.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Missing source",
+                    egui::FontId::proportional(13.0),
+                    theme::palette(painter.ctx()).warning,
+                );
+            } else if let Some(beat) = beat {
+                let rows: Vec<_> = self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .filter_map(|track| track.beat.as_ref())
+                    .find(|container| container.id == beat.instrument_id)
+                    .map(|container| container.subtracks.iter().map(|row| row.id).collect())
+                    .unwrap_or_default();
+                let step_frames = self
+                    .session
+                    .project
+                    .midi_frame(beat.pattern.resolution.step_ticks());
+                let step_frames = clip.stretch.map_or(step_frames, |stretch| {
+                    stretch.scale(step_frames).unwrap_or(0)
+                });
+                let pixels = self.session.project.seconds(step_frames) as f32 * self.view_zoom();
+                // Staged source-growth IDs are disposable. Do not retain their overview
+                // allocations in the live-source cache across pointer frames.
+                let level = if live_beat.is_none() {
+                    crate::beat_thumbnail::Cache::default().level(
+                        (self.session.project.project_id, self.change_revision),
+                        clip.asset_id,
+                        &rows,
+                        &beat.pattern,
+                        pixels,
+                    )
+                } else {
+                    self.beat_ui.thumbnails.borrow_mut().level(
+                        (self.session.project.project_id, self.change_revision),
+                        clip.asset_id,
+                        &rows,
+                        &beat.pattern,
+                        pixels,
+                    )
+                };
+                self.paint_pattern_notes(
                     &clip_painter,
-                    Rect::from_min_max(
-                        Pos2::new(body.left(), painted_header.bottom().min(body.bottom())),
-                        body.max,
-                    ),
+                    block,
                     clip,
+                    NotePreview::Beat(&level),
+                    colors.waveform,
+                );
+            } else if let Some(pattern) = pattern {
+                self.paint_midi_notes(&clip_painter, block, clip, pattern, colors.waveform);
+            } else if let Some(audio) = audio {
+                waveforms::paint_peaks_with_gain(
+                    &clip_painter,
+                    body,
                     audio,
+                    clip,
+                    f64::from(self.session.project.sample_rate_hz) / f64::from(self.view_zoom()),
+                    colors,
                     if cached.is_none() { clip.stretch } else { None },
+                    self.waveform_fade_gain(clip, painter.ctx()),
                 );
             }
-            self.paint_neighbor_crossfade_waveforms(&clip_painter, block, clip);
-            self.paint_clip_fades(
-                &painter.with_clip_rect(block.intersect(painter.clip_rect())),
-                block,
-                clip,
-            );
-        }
 
-        if let Some(repeat) = clip.repeat {
-            let step = self.session.project.seconds(repeat.length_frames) as f32 * self.view_zoom();
-            if step >= 4.0 {
-                let first = repeat.length_frames - repeat.phase_frame;
-                let visible = self.session.project.frames(f64::from(
-                    (lane.left() - block.left()).max(0.0) / self.view_zoom(),
-                ));
-                let skipped = visible.saturating_sub(first) / repeat.length_frames;
-                let mut local = first.saturating_add(skipped.saturating_mul(repeat.length_frames));
-                while local < clip.length_frames {
-                    let x = block.left()
-                        + self.session.project.seconds(local) as f32 * self.view_zoom();
-                    if x > lane.right() {
-                        break;
+            if pattern.is_none() && beat.is_none() {
+                if let Some(audio) = audio {
+                    self.paint_editor_transients(
+                        &clip_painter,
+                        Rect::from_min_max(
+                            Pos2::new(body.left(), painted_header.bottom().min(body.bottom())),
+                            body.max,
+                        ),
+                        clip,
+                        audio,
+                        if cached.is_none() { clip.stretch } else { None },
+                    );
+                }
+                self.paint_neighbor_crossfade_waveforms(&clip_painter, block, clip);
+                self.paint_clip_fades(&clip_painter, block, clip);
+            }
+
+            if let Some(repeat) = clip.repeat {
+                let step =
+                    self.session.project.seconds(repeat.length_frames) as f32 * self.view_zoom();
+                if step >= 4.0 {
+                    let first = repeat.length_frames - repeat.phase_frame;
+                    let visible = self.session.project.frames(f64::from(
+                        (lane.left() - block.left()).max(0.0) / self.view_zoom(),
+                    ));
+                    let skipped = visible.saturating_sub(first) / repeat.length_frames;
+                    let mut local =
+                        first.saturating_add(skipped.saturating_mul(repeat.length_frames));
+                    while local < clip.length_frames {
+                        let x = block.left()
+                            + self.session.project.seconds(local) as f32 * self.view_zoom();
+                        if x > lane.right() {
+                            break;
+                        }
+                        if x >= lane.left() {
+                            clip_painter.line_segment(
+                                [Pos2::new(x, block.top()), Pos2::new(x, block.bottom())],
+                                Stroke::new(1.0, colors.text.gamma_multiply(0.25)),
+                            );
+                        }
+                        let Some(next) = local.checked_add(repeat.length_frames) else {
+                            break;
+                        };
+                        local = next;
                     }
-                    if x >= lane.left() {
-                        clip_painter.line_segment(
-                            [Pos2::new(x, block.top()), Pos2::new(x, block.bottom())],
-                            Stroke::new(1.0, colors.text.gamma_multiply(0.25)),
-                        );
-                    }
-                    let Some(next) = local.checked_add(repeat.length_frames) else {
-                        break;
-                    };
-                    local = next;
                 }
             }
-        }
-        if pattern.is_none() && beat.is_none() {
-            self.paint_neighbor_crossfades(painter, block, clip, false);
-        }
-        let outline = if header != block {
-            Rect::from_min_max(header.min, Pos2::new(header.right(), block.bottom()))
-        } else {
-            block
-        };
-        // Audio uses its fill and fade geometry. Keep only the explicit
-        // selection outline; neutral rectangles add an unrelated waveform border.
-        if selected || pattern.is_some() || beat.is_some() {
-            clip_painter.rect_stroke(
-                outline,
-                2.0,
-                if selected {
-                    theme::selection_outline(painter.ctx())
-                } else {
-                    Stroke::new(1.0, theme::palette(painter.ctx()).divider)
-                },
-                StrokeKind::Inside,
-            );
+            if pattern.is_none() && beat.is_none() {
+                self.paint_neighbor_crossfades(&clip_painter, block, clip, false);
+            }
         }
         if pattern.is_none() && beat.is_none() {
             self.paint_clip_fade_controls(painter, block, clip);
@@ -411,6 +443,30 @@ impl DawUi {
     }
 }
 
+/// Resolve header appearance consistently across clip painters.
+pub(super) fn header_colors(
+    ctx: &egui::Context,
+    colors: theme::ClipColors,
+    missing: bool,
+    selected: bool,
+) -> theme::ClipColors {
+    let colors = if missing {
+        theme::ClipColors {
+            header: theme::palette(ctx).border,
+            selection_header: theme::GREY_200,
+            text: theme::palette(ctx).text,
+            ..colors
+        }
+    } else {
+        colors
+    };
+    if selected {
+        colors.selected_header()
+    } else {
+        colors
+    }
+}
+
 /// Shared audio/MIDI clip title strip, also used inside the Sampler preview.
 pub(super) fn paint_header(
     painter: &egui::Painter,
@@ -418,19 +474,22 @@ pub(super) fn paint_header(
     name: &str,
     colors: theme::ClipColors,
     missing: bool,
+    selected: bool,
 ) -> Rect {
+    let colors = header_colors(painter.ctx(), colors, missing, selected);
     let header = Rect::from_min_max(
         block.min,
         Pos2::new(block.right(), block.top() + HEADER_HEIGHT),
     );
     painter.rect_filled(
         header,
-        2.0,
-        if missing {
-            theme::palette(painter.ctx()).border
-        } else {
-            colors.header
+        egui::CornerRadius {
+            nw: 2,
+            ne: 2,
+            sw: 0,
+            se: 0,
         },
+        colors.header,
     );
     painter
         .with_clip_rect(header.intersect(painter.clip_rect()))
@@ -439,11 +498,7 @@ pub(super) fn paint_header(
             egui::Align2::LEFT_CENTER,
             name,
             egui::FontId::proportional(11.0),
-            if missing {
-                theme::palette(painter.ctx()).text
-            } else {
-                colors.text
-            },
+            colors.text,
         );
     header
 }

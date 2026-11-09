@@ -534,7 +534,7 @@ fn layer_target_resets_when_tracks_change_and_remains_visible_when_catalog_has_f
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     let label = app.midi_editor.layer_bounds[&layers[1]].label;
     assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-        egui::Shape::Rect(rect) if rect.rect == label && rect.stroke == theme::selection_outline(&ctx))));
+        egui::Shape::Rect(rect) if rect.rect == label && rect.fill == theme::selected_track_header_background(&ctx))));
     let other = app.session.project.add_midi_track().unwrap();
     app.set_view_mode(ViewMode::Timeline, &ctx);
     app.select_track(other, false);

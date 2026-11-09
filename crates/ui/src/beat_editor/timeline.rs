@@ -181,6 +181,7 @@ impl DawUi {
             let enabled =
                 ui.is_enabled() && self.edit_environment_available() && !self.beat_dragging();
             let mut name_response = None;
+            let mut name_text = Rect::NOTHING;
             let cleared =
                 meters::stereo_panel_held(&mut header, height - 14.0, levels, held, |ui| {
                     ui.add_enabled_ui(enabled, |ui| {
@@ -210,14 +211,22 @@ impl DawUi {
                                                 rows::NAME_FONT_SIZE,
                                             )
                                             .unwrap_or_else(|| {
-                                                ui.add(
-                                                    egui::Label::new(
-                                                        egui::RichText::new(&row.name)
-                                                            .size(rows::NAME_FONT_SIZE),
-                                                    )
-                                                    .truncate()
-                                                    .sense(Sense::click()),
-                                                )
+                                                let (response, text) = rows::name_button(
+                                                    ui,
+                                                    ("beat_name_text", row.id),
+                                                    &row.name,
+                                                    rows::NAME_FONT_SIZE,
+                                                    selected,
+                                                    Sense::click(),
+                                                    None,
+                                                );
+                                                name_text = text.unwrap_or(Rect::NOTHING);
+                                                response
+                                                    .on_hover_text(format!(
+                                                        "{}\nDouble-click the name to edit.",
+                                                        row.name
+                                                    ))
+                                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
                                             }),
                                         );
                                 });
@@ -263,7 +272,17 @@ impl DawUi {
                     ui.input(|input| input.modifiers.shift),
                 );
             }
-            if name_response.is_some_and(|response| response.double_clicked()) && enabled {
+            #[cfg(test)]
+            if let Some(response) = &name_response {
+                self.beat_ui.headers.insert(row.id, response.rect);
+            }
+            if name_response.is_some_and(|response| {
+                response.double_clicked()
+                    && response
+                        .interact_pointer_pos()
+                        .is_some_and(|point| name_text.contains(point))
+            }) && enabled
+            {
                 self.begin_beat_rename(row.id, row.name.clone());
             }
             if (gain, pan, muted, soloed) != (row.mix.gain_db, row.mix.pan, row.muted, row.soloed) {

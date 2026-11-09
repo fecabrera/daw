@@ -29,20 +29,6 @@ fn send_controls_height(count: usize) -> f32 {
         + toolbars::CONTROL_HEIGHT
 }
 
-// Leave the bottom edge to the single mixer/status separator.
-fn strip_edges(ui: &egui::Ui, rect: Rect, stroke: Stroke) {
-    let edge = rect.shrink(stroke.width / 2.0);
-    ui.painter().line(
-        vec![
-            Pos2::new(edge.left(), rect.bottom()),
-            edge.left_top(),
-            edge.right_top(),
-            Pos2::new(edge.right(), rect.bottom()),
-        ],
-        stroke,
-    );
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ViewMode {
     #[default]
@@ -519,24 +505,6 @@ impl DawUi {
                 Stroke::new(1.0, theme::palette(ui.ctx()).border),
             );
         }
-        // The workspace and status panel own the shared horizontal borders.
-        for (id, rect) in outlines {
-            if self.track_selected(id) {
-                let outline = theme::selection_outline(ui.ctx());
-                let mut outline_rect = rect.shrink(1.0);
-                // Reach the next strip's divider without leaving header fill outside the stroke.
-                outline_rect.max.x = rect.right();
-                // Meet the track's left and top edges without an inset row of fill.
-                outline_rect.min = rect.min;
-                strip_edges(&tracks_ui, outline_rect, outline);
-                // Replace this portion of the shared line; do not add another row.
-                tracks_ui.painter().hline(
-                    rect.shrink(1.0).x_range(),
-                    bounds.bottom() - outline.width / 2.0,
-                    outline,
-                );
-            }
-        }
         if let Some((track, action)) = action {
             if matches!(
                 action,
@@ -634,7 +602,16 @@ impl DawUi {
     ) -> Option<Rect> {
         let mut rack_bounds = None;
         let palette = theme::palette(ui.ctx());
-        ui.painter().rect_filled(rect, 0.0, palette.panel);
+        let selected = track.map_or(self.master_selected, |track| self.track_selected(track.id));
+        ui.painter().rect_filled(
+            rect,
+            0.0,
+            if selected {
+                theme::selected_track_header_background(ui.ctx())
+            } else {
+                palette.panel
+            },
+        );
         if let Some(track) = track {
             let colors = theme::clip_colors(track.color, None);
             ui.painter().rect_filled(

@@ -3370,17 +3370,15 @@ impl DawUi {
                 Rect::NOTHING
             };
         }
-        let master_label = if self.timeline_master_visible {
+        if self.timeline_master_visible {
             let mut master_ui = ui.new_child(
                 egui::UiBuilder::new()
                     .id_salt("master_track")
                     .max_rect(master_rect),
             );
             master_ui.set_clip_rect(master_rect.intersect(ui.clip_rect()));
-            Some(self.master_track(&mut master_ui))
-        } else {
-            None
-        };
+            self.master_track(&mut master_ui);
+        }
 
         let return_count = self
             .session
@@ -3533,23 +3531,6 @@ impl DawUi {
             );
         }
         control_panel.finish(ui);
-        for (id, rect) in track_panels {
-            if self.track_selected(id) || self.timeline_beat_child_selected(id) {
-                panels::ControlPanel::selected_row(ui, rect, tracks.inner_rect);
-            }
-        }
-        // Return outlines share the regular track/Master final paint pass so
-        // column borders and pinned dividers cannot cover their edges.
-        for &(id, row) in &return_rows {
-            if self.track_selected(id) {
-                panels::ControlPanel::selected_row(ui, row, return_rect);
-            }
-        }
-        if self.master_selected
-            && let Some(master_label) = master_label
-        {
-            panels::ControlPanel::selected_row(ui, master_label, master_rect);
-        }
         self.timeline_scrollbar_at(ui, scrollbar_rect, "timeline_scrollbar");
         let pointer = ui.input(|i| i.pointer.latest_pos())?;
         let master = master_rect.intersect(ui.clip_rect());
@@ -4242,7 +4223,6 @@ impl DawUi {
         Some(response)
     }
     fn track_name_label(&mut self, ui: &mut egui::Ui, track: &daw_core::Track, mixer: bool) {
-        let width = ui.available_width();
         let inspector = mixer && self.view_mode == ViewMode::Timeline;
         let reorder = (!mixer && self.view_mode == ViewMode::Timeline)
             || (self.view_mode == ViewMode::Mixer && track.kind == daw_core::TrackKind::Return);
@@ -4258,41 +4238,21 @@ impl DawUi {
             return;
         }
         {
-            use egui::AtomExt as _;
             let mixer_colors = mixer.then(|| theme::clip_colors(track.color, None));
-            let text_id = ui.make_persistent_id(("track_name_text", track.id));
-            let mut atoms = egui::Atoms::new(
-                egui::RichText::new(&track.name)
-                    .font(egui::FontId::proportional(font_size))
-                    .color(mixer_colors.map_or(theme::palette(ui.ctx()).text, |colors| colors.text))
-                    .atom_id(text_id),
-            );
-            if mixer_colors.is_some() {
-                atoms.push_right(egui::Atom::grow());
-            }
-            let mut button = egui::Button::new(atoms)
-                .sense(if inspector {
+            let (response, text_rect) = rows::name_button(
+                ui,
+                ("track_name_text", track.id),
+                &track.name,
+                font_size,
+                self.track_selected(track.id),
+                if inspector {
                     Sense::hover()
                 } else {
                     Sense::click_and_drag()
-                })
-                .selected(self.track_selected(track.id))
-                .frame(false)
-                .truncate();
-            if let Some(colors) = mixer_colors {
-                // The strip already paints its header; keep the name at the row inset.
-                button = button
-                    .fill(colors.header)
-                    .stroke(Stroke::NONE)
-                    .frame(false)
-                    .gap(0.0);
-            }
-            let output = button
-                .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
-                .atom_ui(ui);
-            let text_rect = output.rect(text_id);
-            let response = output
-                .response
+                },
+                mixer_colors,
+            );
+            let response = response
                 .on_hover_text(if inspector {
                     track.name.clone()
                 } else if reorder {
@@ -6057,7 +6017,8 @@ mod tests {
         app.select_clip(clip.id, track, false);
         let before = format!("{:?}", app.session.project);
         let ctx = context();
-        let clip_colors = theme::clip_colors(app.session.project.tracks[0].color, clip.color);
+        let clip_colors =
+            theme::clip_colors(app.session.project.tracks[0].color, clip.color).selected_header();
         let mut initial_lane = None;
         for color_theme in [
             settings::ColorTheme::Dark,
@@ -6102,10 +6063,10 @@ mod tests {
             assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == clip_colors.text)));
             assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment {stroke, ..} if stroke.color == palette.grid)));
             assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment {stroke, ..} if stroke.color == clip_colors.waveform)));
-            assert!(has_preview_outline(
+            assert!(!has_preview_outline(
                 &shapes,
                 app.clip_block(lane, &clip, 0),
-                settings.accent.color()
+                clip_colors.header
             ));
             assert_eq!(format!("{:?}", app.session.project), before);
             assert!(!app.dirty);
@@ -6124,7 +6085,7 @@ mod tests {
                 |s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == theme::LIGHT.missing)
             )
         );
-        assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == theme::LIGHT.text)));
+        assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == theme::ClipColors { header: theme::LIGHT.border, selection_header: theme::GREY_200, ..Default::default() }.selected_header().text)));
         app.open_settings();
         assert!(!app.file_action_enabled(FileAction::New));
         assert_eq!(app.settings().theme, settings::ColorTheme::Light);
@@ -6149,7 +6110,11 @@ mod tests {
             &app.session.project.tracks[0].clips[0],
             0,
         );
-        assert!(has_preview_outline(&shapes, block, color));
+        assert!(!has_preview_outline(
+            &shapes,
+            block,
+            clip_paint::header_colors(&ctx, theme::ClipColors::default(), true, true).header
+        ));
         assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Path(path) if path.stroke.color == egui::epaint::ColorMode::Solid(color))));
         assert!(!app.dirty);
         app.open_settings();
@@ -6560,7 +6525,7 @@ mod tests {
         shift_frame(&mut app, &ctx, vec![button(end, false)], true);
         shift_frame(&mut app, &ctx, vec![], false);
         assert_eq!(app.selected_clips, HashSet::from(ids));
-        // Selection outlines cover every member, including clips on different tracks.
+        // Selection adds no borders, including missing-source clips across tracks.
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         for entry in app.selected_clip_snapshots() {
             let block = app.clip_block(
@@ -6569,10 +6534,10 @@ mod tests {
                 entry.clip.start_frame,
             );
             assert!(
-                shapes
+                !shapes
                     .iter()
                     .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
-                if rect.rect == block && rect.stroke == theme::SELECTION_OUTLINE))
+                if rect.rect == block && rect.stroke == Stroke::new(2.0, clip_paint::header_colors(&ctx, theme::ClipColors::default(), true, true).header)))
             );
         }
         assert!(!app.dirty);
@@ -8926,7 +8891,10 @@ mod tests {
                 Vec2::new(1280.0, 800.0),
             );
             assert_eq!(app.selected_track, Some(second), "{name}");
-            assert!(has_preview_outline(&shapes, panel, theme::ACCENT), "{name}");
+            assert!(
+                !has_preview_outline(&shapes, panel, theme::ACCENT),
+                "{name}"
+            );
             assert_eq!(app.selected_clips, HashSet::from([clip]));
             assert_eq!(app.selected_clip, Some(clip));
             assert!(!app.dirty);
@@ -12423,13 +12391,14 @@ mod tests {
                     assert_eq!(colors.channel, colors.body);
                     assert_eq!(colors.text, palette.secondary);
                     assert_eq!(colors.waveform, palette.secondary);
+                    let header_colors = colors.selected_header();
                     frame(&mut app, &ctx, vec![]);
                     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                     assert!(shapes.iter().any(
-                        |s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == colors.header)
+                        |s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == header_colors.header)
                     ));
                     assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == colors.waveform)));
-                    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == colors.text)));
+                    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == header_colors.text)));
                     let lane = if view == ViewMode::Edit {
                         app.midi_editor.content.bounds
                     } else {
@@ -12438,7 +12407,7 @@ mod tests {
                     app.midi_editor.content_active = view == ViewMode::Edit;
                     let block = app.clip_block(lane, &app.session.project.tracks[0].clips[0], 0);
                     app.midi_editor.content_active = false;
-                    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == block && r.stroke == theme::selection_outline(&ctx))));
+                    assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == block && r.stroke.width > 0.0)));
                     assert!(colors.body.a() > 0 && colors.body.a() < 255);
                     let grid_index = shapes.iter().rposition(|s| matches!(&s.shape, egui::Shape::LineSegment { points, stroke } if points[0].x == points[1].x && points[0].x > block.left() && points[0].x < block.right() && points[0].y <= block.top() && points[1].y >= block.bottom() && [palette.grid, palette.grid_subdivision, palette.border].contains(&stroke.color))).expect("Grid crosses the disabled clip");
                     let egui::Shape::LineSegment { points, .. } = &shapes[grid_index].shape else {
@@ -12553,7 +12522,11 @@ mod tests {
                 color: None,
             });
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            for color in [theme::CLIP, theme::CLIP_HEADER, theme::CLIP_CHANNEL] {
+            for color in [
+                theme::CLIP,
+                theme::ClipColors::default().selected_header().header,
+                theme::CLIP_CHANNEL,
+            ] {
                 assert!(has_fill(&shapes, color));
             }
             app.session.audio.clear();

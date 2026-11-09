@@ -59,7 +59,11 @@ pub(super) fn fixture() -> (DawUi, Id, Id, Id) {
 }
 #[test]
 fn editor_and_timeline_share_clip_painting_and_group_selection() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+    for color_theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
         for override_color in [
             None,
             Some(daw_core::RgbColor {
@@ -118,19 +122,27 @@ fn editor_and_timeline_share_clip_painting_and_group_selection() {
                         })
                         .collect::<Vec<_>>();
                     let body = shell.iter().find(|rect| rect.fill == colors.body).unwrap();
-                    let outline = shell.iter().find(|rect| rect.stroke.width > 0.0).unwrap();
-                    let expected_stroke = if selection == 0 {
-                        Stroke::new(1.0, theme::palette(&ctx).divider)
+                    let body_shape = shapes.iter().find(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == block && rect.fill == colors.body)).unwrap();
+                    assert_eq!(body_shape.clip_rect, block.shrink(0.5).intersect(lane));
+                    let outline = shell.iter().find(|rect| rect.stroke.width > 0.0);
+                    assert!(outline.is_none(), "clip selection must not add an outline");
+                    let header_colors = if selection == 0 {
+                        colors
                     } else {
-                        theme::selection_outline(&ctx)
+                        colors.selected_header()
                     };
-                    assert_eq!(outline.stroke, expected_stroke);
-                    assert_eq!(outline.corner_radius, egui::CornerRadius::same(2));
+                    if selection != 0 {
+                        assert!(header_colors.header.r() >= colors.header.r());
+                        assert!(header_colors.header.g() >= colors.header.g());
+                        assert!(header_colors.header.b() >= colors.header.b());
+                        assert_ne!(header_colors.header, colors.header);
+                    }
                     let header = shapes
                         .iter()
                         .find_map(|shape| match &shape.shape {
                             egui::Shape::Rect(rect)
-                                if rect.fill == colors.header && rect.rect.min == block.min =>
+                                if rect.fill == header_colors.header
+                                    && rect.rect.min == block.min =>
                             {
                                 Some(rect)
                             }
@@ -138,6 +150,15 @@ fn editor_and_timeline_share_clip_painting_and_group_selection() {
                         })
                         .unwrap();
                     assert_eq!(header.rect.height(), 22.0);
+                    assert_eq!(
+                        header.corner_radius,
+                        egui::CornerRadius {
+                            nw: 2,
+                            ne: 2,
+                            sw: 0,
+                            se: 0
+                        }
+                    );
                     let title = shapes
                         .iter()
                         .find_map(|shape| match &shape.shape {
@@ -152,7 +173,7 @@ fn editor_and_timeline_share_clip_painting_and_group_selection() {
                         })
                         .unwrap();
                     assert_eq!(title.pos.x - block.left(), 7.0);
-                    assert_eq!(title.fallback_color, colors.text);
+                    assert_eq!(title.fallback_color, header_colors.text);
                     let notes = shapes
                         .iter()
                         .filter_map(|shape| match &shape.shape {
@@ -197,7 +218,7 @@ fn editor_and_timeline_share_clip_painting_and_group_selection() {
                         body.corner_radius,
                         header.fill,
                         header.corner_radius,
-                        outline.stroke,
+                        outline.map(|rect| rect.stroke),
                         title.fallback_color,
                         title.galley.job.sections[0].format.font_id.clone(),
                         title.pos.y - block.top(),
@@ -1226,7 +1247,7 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
 }
 
 #[test]
-fn layer_shift_selection_toggles_outlines_and_keeps_output_exclusive() {
+fn layer_shift_selection_toggles_backgrounds_and_keeps_output_exclusive() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, _) = layer_header_fixture();
         let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
@@ -1254,7 +1275,8 @@ fn layer_shift_selection_toggles_outlines_and_keeps_output_exclusive() {
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         for id in [ids[0], ids[2]] {
             let label = app.midi_editor.layer_bounds[&id].label;
-            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == label && rect.stroke == theme::selection_outline(&ctx))));
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == label && rect.stroke == theme::selection_outline(&ctx))));
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == label && rect.fill == theme::selected_track_header_background(&ctx))));
         }
         // Repeated Shift-clicks on a name toggle membership without starting Rename.
         for count in [3, 2] {
@@ -4462,12 +4484,8 @@ fn edit_shows_only_selected_tracks_patterns_with_shared_geometry_and_contiguous_
         assert!((note_a.left() - a.left() - 120.0).abs() < 0.1);
         assert!((note_b.left() - b.left() - 120.0).abs() < 0.1);
         for (block, clip, selected) in [(a, first, true), (b, second.id, false)] {
-            let stroke = if selected {
-                theme::selection_outline(&ctx)
-            } else {
-                Stroke::new(1.0, theme::palette(&ctx).divider)
-            };
-            assert!(
+            let stroke = Stroke::new(1.0, theme::palette(&ctx).divider);
+            assert_eq!(
                 shapes
                     .iter()
                     .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
@@ -4475,7 +4493,7 @@ fn edit_shows_only_selected_tracks_patterns_with_shared_geometry_and_contiguous_
                     && (r.rect.right() - block.right()).abs() < 0.1
                     && (r.rect.top() - app.midi_editor.pattern_header_bounds[&clip].top()).abs() < 0.1
                     && (r.rect.bottom() - app.midi_editor.content.bounds.bottom()).abs() < 0.1
-                    && r.stroke == stroke))
+                    && r.stroke == stroke)), !selected
             );
         }
         let transform = (app.midi_editor.zoom, app.midi_editor.scroll);

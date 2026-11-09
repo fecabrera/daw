@@ -435,14 +435,6 @@ impl ControlPanel {
         );
     }
 
-    /// Paint after neutral dividers, without an inset or a replacement edge at the clip limit.
-    pub(super) fn selected_row(ui: &Ui, row: Rect, clip: Rect) {
-        paint_selection_border(
-            &ui.painter().with_clip_rect(clip.intersect(ui.clip_rect())),
-            row,
-        );
-    }
-
     pub(super) fn finish(self, ui: &Ui) {
         self.finish_edge(ui, self.rect.right() - 0.5);
     }

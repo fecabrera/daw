@@ -314,7 +314,7 @@ fn empty_main_accepts_catalog_drops_across_its_label_and_body() {
 }
 
 #[test]
-fn layer_and_main_selection_strokes_stay_flush_and_paint_after_shared_dividers() {
+fn layer_and_main_selection_uses_backgrounds_without_outlines() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
             for main in [false, true] {
@@ -331,48 +331,8 @@ fn layer_and_main_selection_strokes_stay_flush_and_paint_after_shared_dividers()
                 } else {
                     app.midi_editor.layer_bounds[&layer].label
                 };
-                let outline = shapes
-                    .iter()
-                    .find_map(|s| match &s.shape {
-                        egui::Shape::Rect(r)
-                            if r.stroke == theme::selection_outline(&ctx)
-                                && label.contains_rect(r.rect) =>
-                        {
-                            Some((s.clip_rect, r))
-                        }
-                        _ => None,
-                    })
-                    .unwrap();
-                assert_eq!(outline.1.rect, label);
-                assert_eq!(outline.1.stroke_kind, egui::StrokeKind::Inside);
-                assert!(
-                    outline.0.contains_rect(outline.1.rect),
-                    "main {main} compact {compact}: clip {:?}, rect {:?}, label {:?}",
-                    outline.0,
-                    outline.1.rect,
-                    label
-                );
-                assert_eq!(outline.1.stroke.width, 2.0);
-                let selection_index=shapes.iter().position(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.rect==label && r.stroke==theme::selection_outline(&ctx))).unwrap();
-                // Neither the final column divider nor later row fills may cut the stroke.
-                assert!(!shapes[selection_index + 1..].iter().any(|s| {
-                    match &s.shape {
-                        egui::Shape::LineSegment { points, stroke } => {
-                            *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
-                                && points[0].x == label.right() - 0.5
-                                && points[1].x == label.right() - 0.5
-                                && points[0].y < label.center().y
-                                && points[1].y > label.center().y
-                        }
-                        egui::Shape::Rect(r) => {
-                            r.fill != egui::Color32::TRANSPARENT
-                                && r.rect
-                                    .intersect(s.clip_rect)
-                                    .contains(label.right_center() - Vec2::new(1.0, 0.0))
-                        }
-                        _ => false,
-                    }
-                }));
+                assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == label && r.stroke == theme::selection_outline(&ctx))));
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == label && r.fill == theme::selected_track_header_background(&ctx))));
                 assert!(!app.dirty);
             }
         }

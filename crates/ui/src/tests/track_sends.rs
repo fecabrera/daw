@@ -722,7 +722,7 @@ fn mixer_send_stacks_align_plus_at_the_bottom_for_different_send_counts() {
 }
 
 #[test]
-fn return_selection_outlines_paint_after_shared_borders_and_pinned_dividers() {
+fn return_selection_backgrounds_keep_shared_borders_and_pinned_dividers() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for count in [1, 2, 12] {
             for expanded in [false, true] {
@@ -753,45 +753,62 @@ fn return_selection_outlines_paint_after_shared_borders_and_pinned_dividers() {
                         Pos2::new(lane.left(), lane.bottom()),
                     );
                     let Some(selected) = shapes.iter().enumerate().find(|(_, shape)| matches!(&shape.shape,
-                        egui::Shape::Rect(rect) if rect.rect == header && rect.stroke == theme::selection_outline(&ctx)
+                        egui::Shape::Rect(rect) if rect.rect == header && rect.fill == theme::selected_track_header_background(&ctx)
                     )) else { continue; };
                     let clipped = header.intersect(selected.1.clip_rect);
                     if !clipped.is_positive() {
                         continue;
                     }
                     visible += 1;
-                    // The final outline may be clipped by the Return viewport,
-                    // but must not be inset or covered by a later neutral edge.
+                    assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == header && rect.stroke == theme::selection_outline(&ctx))));
+                    // Selected fills retain the full row bounds; neutral dividers remain above them.
                     assert_eq!(
                         selected.1.clip_rect.right().min(header.right()),
                         header.right()
                     );
-                    for (index, shape) in shapes.iter().enumerate() {
-                        if let egui::Shape::LineSegment { points, stroke } = &shape.shape
-                            && stroke.color == palette.border
-                            && points[0].x == points[1].x
-                            && (points[0].x - header.right()).abs() <= 1.0
-                            && points[0].y.min(points[1].y) < clipped.bottom()
-                            && points[0].y.max(points[1].y) > clipped.top()
-                        {
-                            assert!(
-                                index < selected.0,
-                                "Return outline must paint above the shared column border"
-                            );
-                        }
-                        if let egui::Shape::LineSegment { points, stroke } = &shape.shape
-                            && stroke.color == palette.border
-                            && points[0].y == points[1].y
-                            && points[0].y >= clipped.top() - 1.0
-                            && points[0].y <= clipped.bottom()
-                            && points[0].x.min(points[1].x) <= header.left()
-                            && points[0].x.max(points[1].x) >= header.right()
-                        {
-                            assert!(
-                                index < selected.0,
-                                "Return outline must paint above pinned dividers"
-                            );
-                        }
+                    let column = shapes
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, shape)| match &shape.shape {
+                            egui::Shape::LineSegment { points, stroke }
+                                if stroke.color == palette.border
+                                    && points[0].x == points[1].x
+                                    && (points[0].x - header.right()).abs() <= 1.0
+                                    && points[0].y.min(points[1].y) < clipped.bottom()
+                                    && points[0].y.max(points[1].y) > clipped.top() =>
+                            {
+                                Some(index)
+                            }
+                            _ => None,
+                        })
+                        .max()
+                        .expect("continuous neutral column border");
+                    assert!(
+                        column > selected.0,
+                        "final column border remains above selected fill"
+                    );
+                    let horizontal = shapes
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, shape)| match &shape.shape {
+                            egui::Shape::LineSegment { points, stroke }
+                                if stroke.color == palette.border
+                                    && points[0].y == points[1].y
+                                    && points[0].y >= clipped.top() - 1.0
+                                    && points[0].y <= clipped.bottom()
+                                    && points[0].x.min(points[1].x) <= header.left()
+                                    && points[0].x.max(points[1].x) >= header.right() =>
+                            {
+                                Some(index)
+                            }
+                            _ => None,
+                        })
+                        .max();
+                    if let Some(index) = horizontal {
+                        assert!(
+                            index > selected.0,
+                            "final horizontal divider remains above selected fill"
+                        );
                     }
                 }
                 assert!(visible > 0);

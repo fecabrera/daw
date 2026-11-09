@@ -203,6 +203,7 @@ impl DawUi {
                                     &input.name,
                                     colors,
                                     false,
+                                    false,
                                 );
                                 if let Some(audio) = self.session.audio_for_clip(&clip) {
                                     waveforms::paint(

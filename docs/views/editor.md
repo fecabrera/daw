@@ -6,6 +6,8 @@ Select the displayed track to work with its effects. The Effects catalog and lan
 
 For beat tracks, the lower editor shows the [beat step grid](beat-editor.md) and shared subtrack headers.
 
+Clips in the track overview and audio editor have a one-point visual gap between them and stay borderless when selected. At a crossfade, the gap follows the owning clip’s fade endpoint. Selecting a clip uses the Material 200 shade of its color family in the header. Headers have rounded top corners and square bottom corners.
+
 MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
 
 Press Escape to deselect clips and clear a selected time range. The displayed track,
@@ -20,7 +22,7 @@ the beat editor, it first clears selected subtracks; press it again to deselect 
 4. Hold Command on macOS or Ctrl on Windows/Linux and drag in the piano roll to draw a note.
 5. Drag a note body to move it or an edge to change its length. Double-click a note to delete it.
 
-Each pattern has a named header below the lower ruler and one continuous outline around its header and visible note area. Click a header to select that pattern without changing zoom or scroll. Double-click a header to select and fit that clip to the lower editor width. Headers stay visible when you scroll the piano keys vertically.
+Each pattern has a named header below the lower ruler and a lighter header when selected. Unselected patterns have a continuous border around their header and visible note area. Click a header to select that pattern without changing zoom or scroll. Double-click a header to select and fit that clip to the lower editor width. Headers stay visible when you scroll the piano keys vertically.
 
 In the piano roll, notes take priority over clip edges. You can resize a note that reaches a clip boundary. Hold Command on macOS or Ctrl on Windows/Linux to draw in empty space at a clip edge; this disables clip-edge dragging beside the notes.
 

@@ -467,13 +467,40 @@ fn crossfade_shading_is_applied_once_regardless_of_saved_clip_order() {
                 "crossfade must not receive duplicate background fill"
             );
             let header = app.clip_fade_header_rect(block, &owner, &ctx);
+            let seam = if left { block.left() } else { block.right() };
+            let gap = if left { header.left() } else { header.right() };
+            let header_painted = |x| {
+                let point = Pos2::new(x, block.top() + 10.0);
+                shapes.iter().any(|shape| {
+                    shape.clip_rect.contains(point)
+                        && matches!(&shape.shape, egui::Shape::Rect(rect)
+                        if rect.rect.height() == crate::clip_paint::HEADER_HEIGHT
+                            && rect.fill.a() == 255 && rect.rect.contains(point))
+                })
+            };
+            for offset in [-0.25, 0.25] {
+                assert!(
+                    header_painted(seam + offset),
+                    "crossfade must bridge the logical seam"
+                );
+                assert!(
+                    !header_painted(gap + offset),
+                    "gap must follow the owner's fade endpoint"
+                );
+            }
+            for offset in [-0.75, 0.75] {
+                assert!(
+                    header_painted(gap + offset),
+                    "only one point is excluded at the fade endpoint"
+                );
+            }
             let visual_outline =
                 Rect::from_min_max(header.min, Pos2::new(header.right(), block.bottom()));
             let outline_probe = Pos2::new(probe.x, block.top() + 1.0);
-            assert!(shapes.iter().any(|shape| shape.clip_rect.contains(outline_probe)
+            assert!(!shapes.iter().any(|shape| shape.clip_rect.contains(outline_probe)
                 && matches!(&shape.shape, egui::Shape::Rect(rect)
-                    if rect.rect == visual_outline && rect.stroke == theme::selection_outline(&ctx))),
-                "the owner selection outline must span the crossover in the neighbor's paint pass");
+                    if rect.rect == visual_outline && rect.stroke == Stroke::new(2.0, theme::clip_colors(app.session.project.tracks[0].color, owner.color).selected_header().header))),
+                "selected crossfades must not add a clip outline");
             if left {
                 assert_eq!(header.left(), block.left() - width);
             } else {

@@ -2,6 +2,46 @@ use egui::{Align, InnerResponse, Layout, Ui, Vec2};
 
 pub const NAME_FONT_SIZE: f32 = 13.0;
 
+/// Shared full-width track/subtrack name button with text anchored to the row inset.
+pub(super) fn name_button(
+    ui: &mut Ui,
+    id: impl egui::AsIdSalt,
+    name: &str,
+    font_size: f32,
+    selected: bool,
+    sense: egui::Sense,
+    colors: Option<crate::theme::ClipColors>,
+) -> (egui::Response, Option<egui::Rect>) {
+    use egui::AtomExt as _;
+    let width = ui.available_width();
+    let text_id = ui.make_persistent_id(id);
+    let mut atoms = egui::Atoms::new(
+        egui::RichText::new(name)
+            .font(egui::FontId::proportional(font_size))
+            .color(colors.map_or(crate::theme::palette(ui.ctx()).text, |colors| colors.text))
+            .atom_id(text_id),
+    );
+    atoms.push_right(egui::Atom::grow());
+    let mut button = egui::Button::new(atoms)
+        .sense(sense)
+        .selected(selected)
+        .frame(false)
+        .truncate()
+        .gap(0.0);
+    if let Some(colors) = colors {
+        button = button
+            .fill(colors.header)
+            .stroke(egui::Stroke::NONE)
+            .frame(false)
+            .gap(0.0);
+    }
+    let output = button
+        .min_size(Vec2::new(width, crate::toolbars::CONTROL_HEIGHT))
+        .atom_ui(ui);
+    let text = output.rect(text_id);
+    (output.response, text)
+}
+
 /// Shared inline name field for track, beat-subtrack and instrument-layer headers.
 /// Select the complete Unicode name when the caller starts a rename.
 pub(super) fn name_input(

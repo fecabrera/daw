@@ -87,7 +87,7 @@ fn panel_multi_selection_toggles_with_shift_or_command_without_changing_clips() 
         assert_eq!(app.selected_tracks, HashSet::from([tracks[0], tracks[1]]));
         assert_eq!(app.selected_track, Some(tracks[1]));
         for id in &tracks[..2] {
-            assert!(has_preview_outline(
+            assert!(!has_preview_outline(
                 &shapes,
                 panel(&app, *id),
                 theme::ACCENT
@@ -103,7 +103,7 @@ fn panel_multi_selection_toggles_with_shift_or_command_without_changing_clips() 
         ));
         let shapes = click_panel(&mut app, &ctx, tracks[2], Default::default(), true);
         assert_eq!(app.selected_tracks, HashSet::from([tracks[2]]));
-        assert!(has_preview_outline(
+        assert!(!has_preview_outline(
             &shapes,
             panel(&app, tracks[2]),
             theme::ACCENT

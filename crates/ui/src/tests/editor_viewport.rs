@@ -571,6 +571,7 @@ fn midi_pattern_headers_stay_visible_and_select_without_refitting() {
         app.midi_editor.content.zoom = 150.0;
         app.midi_editor.content.scroll = 0.5;
         let before = app.session.project.clone();
+        let border = Stroke::new(1.0, theme::palette(&ctx).divider);
         app.dirty = false;
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let a = app.midi_editor.pattern_header_bounds[&first];
@@ -579,12 +580,8 @@ fn midi_pattern_headers_stay_visible_and_select_without_refitting() {
         assert_eq!(a.bottom(), app.midi_editor.content.bounds.top());
         assert_eq!(b.height(), 22.0);
         for (header, selected) in [(a, true), (b, false)] {
-            let stroke = if selected {
-                theme::selection_outline(&ctx)
-            } else {
-                Stroke::new(1.0, theme::palette(&ctx).divider)
-            };
-            assert!(
+            let stroke = border;
+            assert_eq!(
                 shapes
                     .iter()
                     .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
@@ -592,15 +589,20 @@ fn midi_pattern_headers_stay_visible_and_select_without_refitting() {
                 && (r.rect.right() - header.right()).abs() < 0.1
                 && (r.rect.top() - header.top()).abs() < 0.1
                 && (r.rect.bottom() - app.midi_editor.content.bounds.bottom()).abs() < 0.1
-                && r.rect.height() > 100.0 && r.stroke == stroke))
+                && r.rect.height() > 100.0 && r.stroke == stroke)),
+                !selected
             );
         }
         // The header/body join must not have its own outlined rectangle or horizontal edge.
         let join = app.midi_editor.content.bounds.top();
-        assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r)
-            if [theme::selection_outline(&ctx), Stroke::new(1.0, theme::palette(&ctx).divider)].contains(&r.stroke)
+        assert!(
+            !shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+            if r.stroke.width > 0.0
                 && r.rect.width() > 20.0
-                && ((r.rect.top() - join).abs() < 0.1 || (r.rect.bottom() - join).abs() < 0.1))));
+                && ((r.rect.top() - join).abs() < 0.1 || (r.rect.bottom() - join).abs() < 0.1)))
+        );
         // Scroll the piano keys vertically; headers remain pinned below the ruler.
         let point = app.midi_editor.content.bounds.center();
         frame(
@@ -620,12 +622,14 @@ fn midi_pattern_headers_stay_visible_and_select_without_refitting() {
         assert_eq!(app.midi_editor.pattern_header_bounds[&second], b);
         let scrolled = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(
-            scrolled
+            !scrolled
                 .iter()
                 .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
             if (r.rect.top() - a.top()).abs() < 0.1
+                && (r.rect.left() - a.left()).abs() < 0.1
+                && (r.rect.right() - a.right()).abs() < 0.1
                 && (r.rect.bottom() - app.midi_editor.content.bounds.bottom()).abs() < 0.1
-                && r.stroke == theme::selection_outline(&ctx)))
+                && r.stroke.width > 0.0))
         );
         let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
         let content = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);

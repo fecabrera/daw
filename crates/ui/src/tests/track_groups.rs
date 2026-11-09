@@ -689,7 +689,7 @@ fn nested_track_panels_share_container_edges_and_keep_timeline_lanes_aligned() {
                     ));
                 }
                 for rect in expected {
-                    assert!(shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx) && r.stroke_kind == egui::StrokeKind::Inside)),"missing group/child outline {rect:?}");
+                    assert!(!shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))),"group/child selection must not add an outline {rect:?}");
                 }
                 assert!(!shapes.iter().any(|s| matches!(&s.shape,
                     egui::Shape::LineSegment {points,stroke} if *stroke == Stroke::new(1.0,theme::palette(&ctx).border)
@@ -739,7 +739,7 @@ fn inset_child_drops_keep_the_parent_and_group_append_preview_uses_the_container
 }
 
 #[test]
-fn scrolled_group_outlines_retain_offscreen_headers_and_virtual_child_bounds() {
+fn scrolled_groups_retain_offscreen_headers_and_virtual_child_bounds_without_outlines() {
     let mut app = DawUi::default();
     let ids: Vec<_> = (0..24)
         .map(|_| app.session.project.add_track().unwrap())
@@ -780,9 +780,9 @@ fn scrolled_group_outlines_retain_offscreen_headers_and_virtual_child_bounds() {
             app.lane_bounds[ids.last().unwrap()].bottom(),
         ),
     );
-    let outline = shapes.iter().find(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))).unwrap();
-    assert!(rect.top() < outline.clip_rect.top());
-    assert!(rect.bottom() > outline.clip_rect.bottom());
+    assert!(!shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))));
+    assert!(rect.top() < app.timeline_bounds.top());
+    assert!(rect.bottom() > app.timeline_bounds.bottom());
     assert!(
         app.lane_bounds
             .values()

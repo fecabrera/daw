@@ -41,9 +41,6 @@ impl DawUi {
 
     pub(super) fn master_selection(&mut self, ui: &egui::Ui, rect: Rect) {
         self.master_selection_input(ui, rect);
-        if self.master_selected {
-            panels::selection_border(ui, rect);
-        }
     }
 
     pub(super) fn master_selection_input(&mut self, ui: &egui::Ui, rect: Rect) {

@@ -1,5 +1,7 @@
 # Mixer
 
+Selected tracks use a highlighted strip background without a selection outline.
+
 Mixer controls track levels and the final project output. It uses the same track settings as Timeline, so edits in either view apply to playback and export.
 
 The Return and Master toggles stay at the bottom of the upper right toolbar.

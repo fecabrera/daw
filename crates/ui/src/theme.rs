@@ -1,5 +1,7 @@
 pub use daw_unit_ui::theme::*;
 use egui::{Color32, Context};
+mod material;
+pub(super) use material::GREY_200;
 
 /// Selected lanes share the supplied dark shade and subtle neutral/cool
 /// equivalents in light palettes.
@@ -25,12 +27,23 @@ pub(super) fn selected_track_header_background(ctx: &Context) -> Color32 {
 pub struct ClipColors {
     pub body: Color32,
     pub header: Color32,
+    pub selection_header: Color32,
     pub channel: Color32,
     pub waveform: Color32,
     pub text: Color32,
 }
 
 impl ClipColors {
+    /// Use the resolved Material 200 header while retaining clip body and content colors.
+    pub fn selected_header(self) -> Self {
+        let header = self.selection_header;
+        Self {
+            header,
+            text: blend(header, contrast_color(header), 90),
+            ..self
+        }
+    }
+
     /// Match disabled units with a neutral header and secondary foregrounds.
     /// Translucent body/channel surfaces retain the underlying musical grid.
     pub fn dimmed(self, ctx: &Context) -> Self {
@@ -38,6 +51,7 @@ impl ClipColors {
         Self {
             body: colors.panel.gamma_multiply(0.5),
             header: unit_header_fill(ctx, false),
+            selection_header: material::GREY_200,
             channel: colors.panel.gamma_multiply(0.5),
             waveform: colors.secondary,
             text: colors.secondary,
@@ -50,6 +64,7 @@ impl Default for ClipColors {
         Self {
             body: CLIP,
             header: CLIP_HEADER,
+            selection_header: material::BLUE_GREY_200,
             channel: CLIP_CHANNEL,
             waveform: WAVEFORM,
             text: CLIP_TEXT,
@@ -75,6 +90,7 @@ fn clip_palette(body: Color32) -> ClipColors {
     ClipColors {
         body,
         header,
+        selection_header: material::shade_200(body),
         channel: blend(body, contrast_color(body), 6),
         waveform: blend(body, contrast_color(body), 75),
         text: blend(header, contrast_color(header), 90),

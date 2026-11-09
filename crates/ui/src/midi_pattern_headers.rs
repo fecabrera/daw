@@ -55,7 +55,14 @@ impl DawUi {
             } else {
                 colors
             };
-            clip_paint::paint_header(&painter, header, &clip.name, colors, false);
+            clip_paint::paint_header(
+                &painter,
+                header,
+                &clip.name,
+                colors,
+                false,
+                self.clip_selected(clip.id),
+            );
         }
         self.editor_clip_marquee(ui, &selection, lane, track.id);
         lane
@@ -150,18 +157,14 @@ impl DawUi {
         for clip in &track.clips {
             let block = self.clip_block(viewport, clip, clip.start_frame);
             let block = Rect::from_min_max(block.min, Pos2::new(block.right(), viewport.bottom()));
-            if block.intersects(viewport) {
-                self.paint_midi_pattern_outline(painter, block, clip.id);
+            if block.intersects(viewport) && !self.clip_selected(clip.id) {
+                painter.rect_stroke(
+                    block,
+                    0.0,
+                    Stroke::new(1.0, theme::palette(painter.ctx()).divider),
+                    StrokeKind::Inside,
+                );
             }
         }
-    }
-
-    fn paint_midi_pattern_outline(&self, painter: &egui::Painter, block: Rect, clip: Id) {
-        let stroke = if self.clip_selected(clip) {
-            theme::selection_outline(painter.ctx())
-        } else {
-            Stroke::new(1.0, theme::palette(painter.ctx()).divider)
-        };
-        painter.rect_stroke(block, 0.0, stroke, StrokeKind::Inside);
     }
 }

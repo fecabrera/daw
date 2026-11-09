@@ -1133,7 +1133,7 @@ fn editor_blank_subtrack_header_double_click_renames_without_changing_mix() {
 }
 
 #[test]
-fn editor_subtrack_outlines_match_track_style() {
+fn editor_subtrack_selection_uses_background_without_outline() {
     for color in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, _, row, _) = setup();
         app.set_settings(
@@ -1151,13 +1151,8 @@ fn editor_subtrack_outlines_match_track_style() {
             Pos2::new(app.midi_editor.panel_bounds.left(), step.top() - 3.0),
             Vec2::new(TRACK_WIDTH, 32.0),
         );
-        let shape = shapes.iter().find(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))).expect("full subtrack selection outline");
-        let egui::Shape::Rect(outline) = &shape.shape else {
-            unreachable!()
-        };
-        assert_eq!(outline.corner_radius, egui::CornerRadius::same(2));
-        assert_eq!(outline.stroke_kind, egui::StrokeKind::Inside);
-        assert!(shape.clip_rect.contains_rect(rect));
+        assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))));
+        assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rect && r.fill == theme::selected_track_header_background(&ctx))));
     }
 }
 
@@ -2165,7 +2160,23 @@ fn preview_steps_share_row_geometry_and_four_point_insets_with_a_fixed_grid_sepa
         settings::ColorTheme::Light,
         settings::ColorTheme::Mist,
     ] {
-        let (mut app, ctx, _, row, _) = setup();
+        let (mut app, ctx, parent, row, _) = setup();
+        let mut rows = vec![row];
+        for index in 1..3 {
+            let child = BeatSubtrack::new(format!("Subtrack {index}"));
+            rows.push(child.id);
+            app.session
+                .project
+                .edit(Edit::Beat {
+                    track_id: parent,
+                    edit: BeatEdit::Add {
+                        subtrack: Box::new(child),
+                        index,
+                    },
+                })
+                .unwrap();
+        }
+        app.navigate_beat_owner(parent, Some(rows[1]), false);
         app.set_settings(
             &ctx,
             settings::AppSettings {
@@ -2201,6 +2212,87 @@ fn preview_steps_share_row_geometry_and_four_point_insets_with_a_fixed_grid_sepa
             )),
             "one shared-style divider spans the grid viewport"
         );
+        assert_eq!(
+            shapes
+                .iter()
+                .filter(|shape| shape.clip_rect.contains(Pos2::new(
+                    app.midi_editor.panel_bounds.center().x,
+                    ruler.bottom() - 0.5
+                )) && matches!(&shape.shape,
+                    egui::Shape::LineSegment { points, stroke }
+                        if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                            && (points[0].x - app.midi_editor.panel_bounds.left()).abs() < 0.1
+                            && (points[1].x - app.midi_editor.panel_bounds.right()).abs() < 0.1
+                            && (points[0].y - (ruler.bottom() - 0.5)).abs() < 0.1
+                            && (points[1].y - points[0].y).abs() < 0.1
+                ))
+                .count(),
+            1,
+            "ruler separator extends across headers to the left toolbar"
+        );
+        let selected_header = app.beat_ui.header_panels[&rows[1]];
+        let selected_fill = shapes.iter().position(|shape| matches!(&shape.shape,
+            egui::Shape::Rect(rect) if rect.rect == selected_header && rect.fill == theme::selected_track_header_background(&ctx)
+        )).expect("selected subtrack header background");
+        let right_probe = Pos2::new(selected_header.right() - 0.5, selected_header.center().y);
+        let divider = shapes.iter().enumerate().rfind(|(_, shape)| shape.clip_rect.contains(right_probe) && matches!(&shape.shape,
+            egui::Shape::LineSegment { points, stroke }
+                if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                    && (points[0].x - right_probe.x).abs() < 0.1
+                    && (points[1].x - right_probe.x).abs() < 0.1
+                    && points[0].y <= selected_header.top() && points[1].y >= selected_header.bottom()
+        )).expect("continuous visible header right divider").0;
+        assert!(
+            divider > selected_fill,
+            "right divider must paint after selected backgrounds"
+        );
+        for (index, id) in rows.iter().enumerate() {
+            let header = app.beat_ui.header_panels[id];
+            let name = &app
+                .session
+                .project
+                .beat(parent)
+                .unwrap()
+                .subtracks
+                .iter()
+                .find(|row| row.id == *id)
+                .unwrap()
+                .name;
+            let label_left = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text)
+                        if text.galley.text() == name && header.contains(text.pos) =>
+                    {
+                        Some(text.pos.x + text.galley.rect.left())
+                    }
+                    _ => None,
+                })
+                .expect("subtrack header label");
+            assert!(
+                (label_left - header.left() - 7.0).abs() < 0.1,
+                "subtrack labels share the standard left inset"
+            );
+            let y = if index + 1 == rows.len() {
+                header.bottom() - 0.5
+            } else {
+                app.beat_ui.header_panels[&rows[index + 1]].top() + 0.5
+            };
+            let dividers = shapes
+                .iter()
+                .filter(|shape| {
+                    matches!(&shape.shape,
+                        egui::Shape::LineSegment { points, stroke }
+                            if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                                && (points[0].x - header.left()).abs() < 0.1
+                                && points[1].x >= ruler.right()
+                                && (points[0].y - y).abs() < 0.1
+                                && (points[1].y - y).abs() < 0.1
+                    )
+                })
+                .count();
+            assert_eq!(dividers, 1, "one row divider must span the header and grid");
+        }
         app.midi_editor.content.fitted = false;
         app.midi_editor.content.scroll = 0.5;
         app.midi_editor.content.zoom *= 2.0;
@@ -3314,4 +3406,76 @@ fn timeline_beat_child_controls_edit_only_the_shared_subtrack_bus() {
         app.session.project, unchanged,
         "child lanes reject clip placement"
     );
+}
+
+#[test]
+fn subtrack_name_buttons_hover_and_select_once_in_timeline_and_editor() {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
+        for color in [
+            settings::ColorTheme::Dark,
+            settings::ColorTheme::Light,
+            settings::ColorTheme::Mist,
+        ] {
+            let (mut app, ctx, parent, child, _) = setup();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color,
+                    ..Default::default()
+                },
+            );
+            app.view_mode = view;
+            if view == ViewMode::Timeline {
+                frame(&mut app, &ctx, vec![]);
+                let point = app.timeline_beats.disclosure[&parent].center();
+                click(&mut app, &ctx, point);
+            }
+            app.deselect_beat_subtracks();
+            frame(&mut app, &ctx, vec![]);
+            let bounds = app.beat_ui.headers[&child];
+            assert!(bounds.width() > 30.0, "the full name area is interactive");
+            let point = Pos2::new(bounds.right() - 2.0, bounds.center().y);
+            let before = app.session.project.clone();
+            app.dirty = false;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    events: vec![egui::Event::PointerMoved(point)],
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            assert_eq!(
+                output.platform_output.cursor_icon,
+                if view == ViewMode::Timeline {
+                    egui::CursorIcon::PointingHand
+                } else {
+                    egui::CursorIcon::Grab
+                }
+            );
+            output.textures_delta.clear();
+            click(&mut app, &ctx, point);
+            assert!(app.beat_subtrack_selected(child));
+            assert!(
+                !app.beat_renaming(child),
+                "single clicks select without Rename"
+            );
+            let toggle = Pos2::new(bounds.left() + 2.0, bounds.center().y);
+            shift_frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(toggle), button(toggle, true)],
+                true,
+            );
+            shift_frame(&mut app, &ctx, vec![button(toggle, false)], true);
+            shift_frame(&mut app, &ctx, vec![], false);
+            assert!(
+                !app.beat_subtrack_selected(child),
+                "Shift-click toggles exactly once"
+            );
+            assert!(!app.beat_renaming(child));
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+        }
+    }
 }

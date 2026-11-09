@@ -862,7 +862,7 @@ fn tracks_and_layers_share_the_control_panel_surface_header_and_final_border() {
                     egui::Shape::Text(text) if text.galley.text() == title
                         && (text.pos.x - column.left() - f32::from(theme::TOOLBAR_PADDING)).abs() < 0.1)));
                 if view == ViewMode::Timeline {
-                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
                         egui::Shape::Rect(rect) if rect.stroke == theme::selection_outline(&ctx)
                             && rect.rect.right() == column.right())));
                 } else {
@@ -937,7 +937,7 @@ fn timeline_row_dividers_share_track_panel_bounds_at_different_scales_and_scroll
                         .iter()
                         .find_map(|shape| match &shape.shape {
                             egui::Shape::Rect(rect)
-                                if rect.stroke == theme::selection_outline(&ctx)
+                                if rect.fill == theme::selected_track_header_background(&ctx)
                                     && rect.rect.right() == lane.left()
                                     && rect.rect.center().y == lane.center().y =>
                             {
@@ -1085,7 +1085,7 @@ fn shortened_clip_previews_restore_lane_dividers_at_the_shared_row_coordinates()
 }
 
 #[test]
-fn timeline_track_and_master_selection_strokes_remain_flush_above_column_dividers() {
+fn timeline_track_and_master_selection_uses_fill_without_outline() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for master in [false, true] {
             let mut app = DawUi::default();
@@ -1114,31 +1114,8 @@ fn timeline_track_and_master_selection_strokes_remain_flush_above_column_divider
                     Pos2::new(lane.left(), lane.bottom()),
                 )
             };
-            let index = shapes.iter().position(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.rect==rect && r.stroke==theme::selection_outline(&ctx))).expect("flush selection outline");
-            let egui::Shape::Rect(outline) = &shapes[index].shape else {
-                unreachable!()
-            };
-            assert_eq!(outline.stroke.width, 2.0);
-            assert_eq!(outline.stroke_kind, egui::StrokeKind::Inside);
-            assert!(shapes[index].clip_rect.contains_rect(rect));
-            assert!(!shapes[index + 1..].iter().any(|s| {
-                match &s.shape {
-                    egui::Shape::LineSegment { points, stroke } => {
-                        *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
-                            && points[0].x == rect.right() - 0.5
-                            && points[1].x == rect.right() - 0.5
-                            && points[0].y < rect.center().y
-                            && points[1].y > rect.center().y
-                    }
-                    egui::Shape::Rect(r) => {
-                        r.fill != egui::Color32::TRANSPARENT
-                            && r.rect
-                                .intersect(s.clip_rect)
-                                .contains(rect.right_center() - Vec2::new(1.0, 0.0))
-                    }
-                    _ => false,
-                }
-            }));
+            assert!(!shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))));
+            assert!(shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Rect(r) if r.rect == rect && r.fill == theme::selected_track_header_background(&ctx))));
             assert!(!app.dirty);
         }
     }
