@@ -6,6 +6,12 @@ Use **Multiband EQ** for targeted tonal corrections, resonant cuts and boosts, a
 
 The band, **+**, and **Out** strips follow the Oscillator layout. Each band keeps its four smaller knobs in one column.
 
+The **Response** graph sits before the band strips and spans the three standard control rows. It shows each band's response, the combined EQ curve, and a live output spectrum. The spectrum uses both stereo channels and clears when the unit is off. Compact and collapsed units hide the graph.
+
+Drag a numbered band point left or right to change Frequency. For Bell and shelf bands, drag up or down to change Gain. Hold Command on macOS or Ctrl on Windows/Linux when starting the drag to adjust only Q: up or right increases Q; down or left decreases it. Hold Shift for fine adjustment. The selected point shows Frequency, Gain where available, and Q.
+
+Dragging previews the curve and sound. Release to apply the values; Escape or loss of focus cancels and restores the original values. In the DAW, release creates one Undo step. Audible previews use the audio preparation worker and can follow the pointer with a delay in large projects. Standalone plugins send normal host parameter gestures during the preview. Modulation indicators retain the saved base values while the curves follow effective values.
+
 Click **+** to add a band. Right-click a band or its controls for **Enable band**/**Disable band**, checked **Solo**, and **Remove band**. There is no fixed band-count limit; more bands use more processing time. You can remove every band and use only Output Gain.
 
 Each band has four knobs:

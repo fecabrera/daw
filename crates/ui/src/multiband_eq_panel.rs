@@ -23,6 +23,7 @@ pub(super) struct Bounds {
     pub meters: Vec<Rect>,
     pub add: Rect,
     pub output: Rect,
+    pub graph: daw_unit_ui::eq_graph::Bounds,
 }
 
 #[cfg(test)]
@@ -44,6 +45,7 @@ pub(super) fn show(
         |id| levels(id).into(),
         level,
         (Id::nil(), &mut Default::default()),
+        None,
     )
 }
 #[allow(clippy::too_many_arguments)]
@@ -56,6 +58,7 @@ pub(super) fn show_audition<'a>(
     levels: impl Fn(Id) -> meters::OutputLevel<'a>,
     level: meters::OutputLevel<'a>,
     audition: (Id, &mut std::collections::HashSet<(Id, Id)>),
+    spectrum: Option<daw_unit_core::SpectrumReading>,
 ) -> (Bounds, egui::Response) {
     let (effect, solos) = audition;
     let ids: Vec<_> = settings.bands.iter().map(|b| b.id).collect();
@@ -77,6 +80,7 @@ pub(super) fn show_audition<'a>(
         meters: Vec::new(),
         add: Rect::NOTHING,
         output: Rect::NOTHING,
+        graph: Default::default(),
     };
     let mut enabled = settings.enabled;
     let mut collapsed = settings.collapsed;
@@ -100,6 +104,7 @@ pub(super) fn show_audition<'a>(
                 &levels,
                 &mut bounds,
                 &mut selected,
+                spectrum.as_ref(),
             );
             if !compact {
                 let rail = meters::effect_output_level(
@@ -150,8 +155,14 @@ fn body<'a>(
     levels: &impl Fn(Id) -> meters::OutputLevel<'a>,
     bounds: &mut Bounds,
     selected: &mut [bool],
+    spectrum: Option<&daw_unit_core::SpectrumReading>,
 ) {
     let body_height = crate::envelope_panel::body_height(compact);
+    let effective: Vec<_> = settings
+        .bands
+        .iter()
+        .map(|b| live(Some(b.id)).map(|v| [v[0], v[1], v[2]]))
+        .collect();
     let markers: Vec<_> = settings
         .bands
         .iter()
@@ -201,6 +212,14 @@ fn body<'a>(
                     settings,
                     (compact, body_height),
                     daw_unit_ui::multiband_eq::Controls {
+                        graph: daw_unit_ui::eq_graph::Input {
+                            live_edits: false,
+                            spectrum,
+                            sample_rate_hz: spectrum.map_or(48_000, |s| s.sample_rate_hz),
+                            effective: &effective,
+                            output_gain_db: live(None).map(|v| v[0]),
+                            response: daw_equalizer::band_response,
+                        },
                         solos: selected,
                         add_enabled: true,
                         markers: &markers,
@@ -237,6 +256,7 @@ fn body<'a>(
         bounds.bands = shared.bands;
         bounds.knobs = shared.knobs;
         bounds.output = shared.output;
+        bounds.graph = shared.graph;
         let output = bounds.output;
         if settings.modulation_open {
             panels::unit_divider(ui, output.right(), output.y_range().into());

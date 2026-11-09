@@ -1,3 +1,4 @@
+mod eq_graph_preview;
 mod time_signature_control;
 mod view_panels;
 pub use view_panels::ViewPanel;
@@ -827,6 +828,7 @@ struct LoopDrag {
 }
 
 pub struct DawUi {
+    eq_graph_preview: eq_graph_preview::State,
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
     editor_transients: editor_transients::State,
@@ -972,6 +974,7 @@ pub struct DawUi {
 impl Default for DawUi {
     fn default() -> Self {
         Self {
+            eq_graph_preview: Default::default(),
             view_mode: mixer::ViewMode::default(),
             chords: Default::default(),
             effects_catalog: effects_catalog::catalog(),
@@ -2531,14 +2534,27 @@ impl DawUi {
         self.cancel_released_effect_drag(ui);
         strip_reorder::end_frame(&ctx);
         self.strip_dragging = strip_reorder::dragging(&ctx);
-        if self.sync_needed && !self.reconcile_background_media() {
-            let plan = self.session.plan();
-            if let Some(output) = &mut self.output {
-                if let Ok(()) = output.sync(plan) {
-                    self.sync_needed = false
+        let wanted = self
+            .eq_graph_preview
+            .desired(&self.session.project, ctx.cumulative_frame_nr());
+        if (self.sync_needed
+            || self
+                .eq_graph_preview
+                .needs_sync(&wanted, self.output.is_some()))
+            && !self.reconcile_background_media()
+        {
+            match eq_graph_preview::State::plan(&self.session, wanted.as_ref()) {
+                Ok(plan) => {
+                    let success = self
+                        .output
+                        .as_mut()
+                        .is_none_or(|output| output.sync(plan).is_ok());
+                    if success {
+                        self.sync_needed = false;
+                        self.eq_graph_preview.synced(wanted, self.output.is_some());
+                    }
                 }
-            } else {
-                self.sync_needed = false;
+                Err(error) => self.error = Some(error),
             }
         }
         if self.background_media.required {

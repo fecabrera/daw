@@ -6,6 +6,7 @@ rust-version.workspace = true
 license = "BSD-2-Clause"
 
 [dependencies]
+daw-equalizer.workspace = true
 daw-unit-core.workspace = true
 daw-drive-plugin = { package = "daw-multiband-eq-plugin", path = "../multiband-eq-plugin" }
 daw-plugin-support.workspace = true

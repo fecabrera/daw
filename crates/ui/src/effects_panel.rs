@@ -1017,7 +1017,35 @@ impl DawUi {
                                         },
                                         output_level,
                                         (effect.id, &mut self.exciter_audition.solos),
+                                        self.output
+                                            .as_ref()
+                                            .and_then(|o| o.effect_spectrum(effect.id))
+                                            .or_else(|| {
+                                                Some(daw_unit_core::SpectrumReading {
+                                                    sample_rate_hz: self
+                                                        .session
+                                                        .project
+                                                        .sample_rate_hz,
+                                                    ..Default::default()
+                                                })
+                                            }),
                                     );
+                                    if !self.background_media.required
+                                        && let (Some(target), Some(preview)) =
+                                            (target, bounds.graph.preview.as_ref())
+                                        && let Some(before) =
+                                            settings.bands.iter().find(|b| b.id == preview.id)
+                                        && before != preview
+                                    {
+                                        self.eq_graph_preview.offer(
+                                            ui.ctx().cumulative_frame_nr(),
+                                            self.session.project.project_id,
+                                            target,
+                                            effect.id,
+                                            before.clone(),
+                                            preview.clone(),
+                                        );
+                                    }
                                     if bounds.solo_changed
                                         && let Some(output) = &self.output
                                     {

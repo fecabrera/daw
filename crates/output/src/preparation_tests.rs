@@ -1017,6 +1017,7 @@ fn controlled_output(rate: u32) -> (AudioOutput, Callback) {
         loudness_meters: bindings.loudness,
         source_meters: bindings.sources,
         band_meters: bindings.bands,
+        spectra: bindings.spectra,
         modulation_meters: bindings.modulation,
         live_pitches: bindings.live_pitches,
     };

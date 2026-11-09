@@ -4,7 +4,10 @@ use daw_unit_core::{MultibandEqBand, MultibandEqSettings};
 use daw_unit_ui::{control_capture, layout::*, meters, multiband_eq};
 use egui::{Rect, Response, Ui, Vec2};
 pub const SIZE: Vec2 = Vec2::new(
-    2.0 * UNIT_STRIP_WIDTH + COMPACT_BUTTON_SIZE + 2.0 * PANEL_MARGIN as f32,
+    daw_unit_ui::eq_graph::WIDTH
+        + 2.0 * UNIT_STRIP_WIDTH
+        + COMPACT_BUTTON_SIZE
+        + 2.0 * PANEL_MARGIN as f32,
     unit_control_height() + 2.0 * PANEL_MARGIN as f32,
 );
 #[cfg(test)]
@@ -91,6 +94,7 @@ pub fn render(
         &std::array::from_fn(|_| Default::default()),
     )
 }
+#[cfg(test)]
 pub fn render_audition(
     ui: &mut Ui,
     settings: &mut MultibandEqSettings,
@@ -98,6 +102,18 @@ pub fn render_audition(
     slots: &mut u64,
     levels: &[meters::OutputLevel<'_>; 64],
     solos: &[std::sync::Arc<std::sync::atomic::AtomicBool>; 64],
+) -> Bounds {
+    render_visual(ui, settings, level, slots, levels, solos, None)
+}
+#[allow(clippy::too_many_arguments)]
+pub fn render_visual(
+    ui: &mut Ui,
+    settings: &mut MultibandEqSettings,
+    level: meters::OutputLevel<'_>,
+    slots: &mut u64,
+    levels: &[meters::OutputLevel<'_>; 64],
+    solos: &[std::sync::Arc<std::sync::atomic::AtomicBool>; 64],
+    spectrum: Option<&daw_unit_core::SpectrumReading>,
 ) -> Bounds {
     let owner = ui.make_persistent_id("eq-slot-order");
     let reordering = daw_unit_ui::strip_reorder::active(ui, owner);
@@ -121,6 +137,14 @@ pub fn render_audition(
                         &mut view,
                         (false, unit_control_height()),
                         multiband_eq::Controls {
+                            graph: daw_unit_ui::eq_graph::Input {
+                                live_edits: true,
+                                spectrum,
+                                sample_rate_hz: spectrum.map_or(48_000, |s| s.sample_rate_hz),
+                                effective: &[],
+                                output_gain_db: None,
+                                response: daw_equalizer::band_response,
+                            },
                             solos: &mut selected,
                             add_enabled: indices.len() < 64,
                             markers: &[],
@@ -239,6 +263,15 @@ pub fn render_audition(
             response
         })
     });
+    for (id, parameter, response) in &b.graph.edits {
+        let slot = (id.as_u128() - 1) as usize;
+        let offset = match parameter {
+            0 => 3,
+            1 => 2,
+            _ => 4,
+        };
+        controls[5 * slot + offset] = Some(response.clone());
+    }
     if let Some((slot, mut response)) = direct {
         response.mark_changed();
         controls[slot] = Some(response);

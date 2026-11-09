@@ -2,6 +2,7 @@
 pub mod ambient_reverb;
 pub mod drive;
 pub mod drive_v2;
+pub mod eq_graph;
 pub mod fonts;
 pub mod gain;
 mod icons;

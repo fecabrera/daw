@@ -68,6 +68,7 @@ pub(super) struct Bindings {
     pub loudness: HashMap<Id, Arc<daw_unit_core::LoudnessMeter>>,
     pub sources: source_meters::Sources,
     pub bands: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
+    pub spectra: effect_spectrum::Spectra,
     pub modulation: HashMap<ModulationTarget, ModulationMeter>,
     pub live_pitches: daw_engine::LiveMidiPitches,
 }
@@ -82,6 +83,7 @@ impl Bindings {
             loudness: loudness_meters(plan, &previous.loudness),
             sources: source_meters::prepare(plan, &previous.sources),
             bands: band_meters(plan, &previous.bands),
+            spectra: effect_spectrum::prepare(plan, &previous.spectra),
             modulation: modulation_meters(plan, &previous.modulation),
             live_pitches: daw_engine::LiveMidiPitches::prepare(
                 &plan.project,
@@ -373,6 +375,7 @@ impl Worker {
                     effect_audition::bind(&mut renderer, &bindings.exciter_solos);
                     bind_effect_meters(&mut renderer, &bindings.effects);
                     bind_band_meters(&mut renderer, &bindings.bands);
+                    effect_spectrum::bind(&mut renderer, &bindings.spectra);
                     bind_output_meters(&mut renderer, &bindings.outputs);
                     bind_loudness_meters(&mut renderer, &bindings.loudness);
                     source_meters::bind(&mut renderer, &bindings.sources);

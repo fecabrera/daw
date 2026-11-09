@@ -1,4 +1,8 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+mod spectrum;
+pub use spectrum::{
+    FrequencyResponse, SPECTRUM_BINS, SpectrumMeter, SpectrumReading, spectrum_frequency,
+};
 mod multiband_compressor;
 pub use multiband_compressor::*;
 mod plate_reverb;

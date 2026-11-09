@@ -7,6 +7,46 @@ use daw_unit_core::{
 };
 use fundsp::{audionode::AudioNode, svf::*};
 
+/// Settled response of the exact portable SVF topology, for control-thread graphs.
+pub fn band_response(band: &MultibandEqBand, rate: u32) -> daw_unit_core::FrequencyResponse {
+    let params = SvfParams {
+        sample_rate: f64::from(rate),
+        cutoff: f64::from(
+            band.frequency_hz
+                .clamp(20.0, (rate as f32 * 0.49).min(20_000.0)),
+        ),
+        q: f64::from(band.q),
+        gain: 10_f64.powf(f64::from(band.gain_db) / 20.0),
+    };
+    let mut c = SvfCoefs::default();
+    match band.mode {
+        EqBandMode::Bell => BellMode::new().update(&params, &mut c),
+        EqBandMode::LowShelf => LowshelfMode::new().update(&params, &mut c),
+        EqBandMode::HighShelf => HighshelfMode::new().update(&params, &mut c),
+        EqBandMode::LowPass => LowpassMode::new().update(&params, &mut c),
+        EqBandMode::HighPass => HighpassMode::new().update(&params, &mut c),
+        EqBandMode::Notch => NotchMode::new().update(&params, &mut c),
+    }
+    // H(z)=D+C(zI−A)⁻¹B from the SVF's two integrator states.
+    let (a, b, c2, d) = (2.0 * c.a1 - 1.0, -2.0 * c.a2, 2.0 * c.a2, 1.0 - 2.0 * c.a3);
+    let (b1, b2) = (2.0 * c.a2, 2.0 * c.a3);
+    let direct = c.m0 + c.m1 * c.a2 + c.m2 * c.a3;
+    let (c1, c2out) = (
+        c.m1 * c.a1 + c.m2 * c.a2,
+        -c.m1 * c.a2 + c.m2 * (1.0 - c.a3),
+    );
+    let det = a * d - b * c2;
+    daw_unit_core::FrequencyResponse {
+        numerator: [
+            direct,
+            -direct * (a + d) + c1 * b1 + c2out * b2,
+            direct * det + c1 * (-d * b1 + b * b2) + c2out * (c2 * b1 - a * b2),
+        ],
+        denominator: [1.0, -a - d, det],
+        sample_rate_hz: rate,
+    }
+}
+
 #[derive(Clone)]
 enum Filter {
     Bell(FixedSvf<f64, BellMode<f64>>),
@@ -332,6 +372,7 @@ impl ModulationDestination for Output {
 pub struct MultibandEq {
     audition_allowed: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     output_monitor: daw_unit_core::LevelMonitor<3>,
+    spectrum: crate::spectrum::Spectrum,
     bands: Vec<RoutedDestination<Band>>,
     output: RoutedDestination<Output>,
     audition: Ramp<1>,
@@ -343,6 +384,7 @@ impl Clone for MultibandEq {
         Self {
             audition_allowed: None,
             output_monitor: self.output_monitor.clone(),
+            spectrum: self.spectrum.clone(),
             bands: self.bands.clone(),
             output: self.output.clone(),
             bypass: self.bypass.clone(),
@@ -356,6 +398,7 @@ impl MultibandEq {
         Self {
             audition_allowed: None,
             output_monitor: daw_unit_core::LevelMonitor::new(c.sample_rate_hz, s.enabled),
+            spectrum: crate::spectrum::Spectrum::new(c.sample_rate_hz, s.enabled),
             bands: s
                 .bands
                 .iter()
@@ -381,6 +424,10 @@ impl MultibandEq {
             fade_frames: (c.sample_rate_hz / 200).max(1),
         }
     }
+    /// Attach prepared display-only spectrum storage on the control thread.
+    pub fn set_spectrum_meter(&mut self, meter: std::sync::Arc<daw_unit_core::SpectrumMeter>) {
+        self.spectrum.attach(meter);
+    }
     /// Enable fixed-slot suspension after bypass ramps. Call during preparation.
     /// This does not change the DAW's variable-topology band lifecycle.
     pub fn prepare_fixed_band_slots(&mut self) {
@@ -391,6 +438,7 @@ impl MultibandEq {
     /// Retarget a prepared topology without allocation. IDs and order must match.
     /// Route/topology changes still use a worker-prepared processor and `inherit`.
     pub fn retarget(&mut self, s: &MultibandEqSettings) {
+        self.spectrum.set_enabled(s.enabled);
         if s.bands.len() != self.bands.len()
             || !self
                 .bands
@@ -427,6 +475,7 @@ impl MultibandEq {
     }
     /// Global bypass must also update every band's meter lifecycle.
     pub fn retarget_enabled(&mut self, enabled: bool) {
+        self.spectrum.set_enabled(enabled);
         for band in &mut self.bands {
             band.destination.monitor.set_enabled(enabled);
             if !enabled {
@@ -476,6 +525,12 @@ impl MultibandEq {
     }
     /// Transfer histories into a prepared topology. Removed owners stay in the retired processor.
     pub fn inherit(&mut self, previous: &mut Self) {
+        let spectrum_enabled = self.spectrum.is_enabled();
+        if self.spectrum.is_connected() {
+            previous.spectrum.retarget(&mut self.spectrum);
+        }
+        std::mem::swap(&mut self.spectrum, &mut previous.spectrum);
+        self.spectrum.set_enabled(spectrum_enabled);
         self.audition = previous.audition.clone();
         let enabled = self.output_monitor.is_enabled();
         std::mem::swap(&mut self.output_monitor, &mut previous.output_monitor);
@@ -556,6 +611,7 @@ impl MultibandEq {
         let mix = self.bypass.advance()[0];
         let output = std::array::from_fn(|ch| input[ch] + (wet[ch] - input[ch]) * mix);
         self.output_monitor.sample_output(output);
+        self.spectrum.sample(output);
         output
     }
     pub fn band_parameters(&self, id: ModulationTargetId) -> Option<[f32; 3]> {
@@ -582,6 +638,7 @@ impl EffectUnit for MultibandEq {
         self.process_at(input, &[], ModulationContext::default())
     }
     fn reset(&mut self) {
+        self.spectrum.reset();
         self.output_monitor.reset();
         for b in &mut self.bands {
             b.destination.reset();
@@ -631,6 +688,41 @@ mod tests {
             }
         }
         10.0 * (power[1] / power[0]).log10() as f32
+    }
+    #[test]
+    fn plotted_response_matches_backend_transfer_at_all_rates_and_modes() {
+        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+            for mode in EqBandMode::ALL {
+                for q in [0.1, std::f32::consts::FRAC_1_SQRT_2, 10.0] {
+                    let band = MultibandEqBand {
+                        mode,
+                        frequency_hz: 1200.0,
+                        gain_db: 12.0,
+                        q,
+                        ..Default::default()
+                    };
+                    let curve = band_response(&band, rate);
+                    let params = SvfParams {
+                        sample_rate: f64::from(rate),
+                        cutoff: 1200.0,
+                        q: f64::from(q),
+                        gain: 10_f64.powf(12.0 / 20.0),
+                    };
+                    let mut filter = Filter::new(mode, &params);
+                    for hz in [30.0, 500.0, 1190.0, 2000.0, 15000.0] {
+                        let expected = filter!(&mut filter, node, node.response(0, hz))
+                            .unwrap()
+                            .norm();
+                        let db = (20.0 * expected.max(1e-7).log10()) as f32;
+                        assert!(
+                            (curve.db(hz as f32) - db).abs() < 0.02,
+                            "{mode:?} {rate} {q} {hz}: {} vs {db}",
+                            curve.db(hz as f32)
+                        );
+                    }
+                }
+            }
+        }
     }
     #[test]
     fn modes_have_expected_response_at_all_project_rates() {

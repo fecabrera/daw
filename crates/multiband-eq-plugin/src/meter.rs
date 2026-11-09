@@ -2,6 +2,7 @@
 use daw_unit_core::{BandMeter, MeterStorage, PeakHold, PeakMeter};
 use std::sync::Arc;
 pub struct OutputMeter {
+    pub spectrum: Arc<daw_unit_core::SpectrumMeter>,
     pub band_level_resets: std::sync::atomic::AtomicU64,
     pub audition_allowed: Arc<std::sync::atomic::AtomicBool>,
     pub solos: [Arc<std::sync::atomic::AtomicBool>; 64],
@@ -13,6 +14,7 @@ pub struct OutputMeter {
 impl Default for OutputMeter {
     fn default() -> Self {
         Self {
+            spectrum: Arc::default(),
             band_level_resets: std::sync::atomic::AtomicU64::new(0),
             audition_allowed: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             solos: std::array::from_fn(|_| Arc::default()),
@@ -34,7 +36,7 @@ impl OutputMeter {
         self.output.boost_peaks()
     }
 }
-pub const METER_VALUES: usize = 141;
+pub const METER_VALUES: usize = 142 + daw_unit_core::SPECTRUM_BINS;
 pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
     let mut v = [0.0; METER_VALUES];
     v[0] = f64::from(m.readings()[0]);
@@ -50,9 +52,21 @@ pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
         v[77 + i] = f64::from(m.eq_bands[i].boost_peaks()[0].peak());
         v[13 + i] = f64::from(m.eq_bands[i].readings()[0]);
     }
+    let spectrum = m.spectrum.reading();
+    v[141] = f64::from(spectrum.sample_rate_hz);
+    for i in 0..daw_unit_core::SPECTRUM_BINS {
+        v[142 + i] = f64::from(spectrum.magnitudes[i]);
+    }
     v
 }
 pub fn receive_meter(m: &OutputMeter, v: [f32; METER_VALUES]) {
+    m.spectrum.store(daw_unit_core::SpectrumReading {
+        sample_rate_hz: match v[141] as u32 {
+            rate @ (44100 | 48000 | 88200 | 96000 | 176400 | 192000) => rate,
+            _ => 48000,
+        },
+        magnitudes: std::array::from_fn(|i| v[142 + i]),
+    });
     m.output.clear();
     m.output.store([v[1], 0.0, 0.0]);
     m.output.initialize([v[0], 0.0, 0.0]);
@@ -95,6 +109,7 @@ impl MeterStorage for OutputMeter {
         self.output.initialize(v);
     }
     fn clear(&self) {
+        self.spectrum.clear();
         self.output.clear();
         self.reduction.clear();
         self.bands.clear();

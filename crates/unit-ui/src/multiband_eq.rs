@@ -269,6 +269,7 @@ pub fn output(
 }
 
 pub struct Controls<'a> {
+    pub graph: crate::eq_graph::Input<'a>,
     pub solos: &'a mut [bool],
     pub add_enabled: bool,
     pub markers: &'a [[Option<knobs::ModulationMarker>; 3]],
@@ -277,6 +278,7 @@ pub struct Controls<'a> {
     pub output_level: Option<meters::OutputLevel<'a>>,
 }
 pub struct Bounds {
+    pub graph: crate::eq_graph::Bounds,
     pub sections: Vec<Rect>,
     pub bands: Vec<Rect>,
     pub band_responses: Vec<egui::Response>,
@@ -298,6 +300,7 @@ pub fn show(
     controls: Controls<'_>,
 ) -> Bounds {
     let mut bounds = Bounds {
+        graph: Default::default(),
         sections: vec![],
         bands: vec![],
         band_responses: vec![],
@@ -313,6 +316,8 @@ pub fn show(
     };
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(crate::theme::TOOLBAR_PADDING));
+        bounds.graph =
+            crate::eq_graph::show(ui, settings, dimensions.1, !dimensions.0, controls.graph);
         for (i, band) in settings.bands.iter_mut().enumerate() {
             let mut unused = false;
             let empty = std::array::from_fn(|_| None);
@@ -336,7 +341,7 @@ pub fn show(
             if b.remove {
                 bounds.remove = Some(i);
             }
-            if i > 0 {
+            if i > 0 || !dimensions.0 {
                 panels::unit_divider(ui, b.section.left(), b.section.y_range().into());
             }
             bounds.sections.push(b.section);
@@ -354,7 +359,7 @@ pub fn show(
                 panels::unit_add_strip(ui, dimensions.1, "Add EQ band")
             })
             .inner;
-        if !settings.bands.is_empty() {
+        if !settings.bands.is_empty() || !dimensions.0 {
             panels::unit_divider(
                 ui,
                 add.response.rect.left(),

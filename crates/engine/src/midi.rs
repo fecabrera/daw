@@ -1549,6 +1549,15 @@ impl MidiTrackRuntime {
             bus.chain.suspend_analysis(value);
         }
     }
+    pub fn set_effect_spectrum_meter(
+        &mut self,
+        id: Id,
+        meter: &std::sync::Arc<daw_unit_core::SpectrumMeter>,
+    ) {
+        for bus in &mut self.layer_effects {
+            bus.chain.set_spectrum_meter(id, meter);
+        }
+    }
     pub fn set_effect_output_meter(
         &mut self,
         id: Id,

@@ -494,7 +494,7 @@ mod audition_tests {
             assert!((values[1] - 0.7).abs() < 1e-6);
         }
         if let Some(requests) = data.model.output_meter.band_level_reset_requests() {
-            let level_offset = if daw_drive_plugin::METER_VALUES == 141 {
+            let level_offset = if data.model.output_meter.band_reset_requests().is_none() {
                 77
             } else {
                 205

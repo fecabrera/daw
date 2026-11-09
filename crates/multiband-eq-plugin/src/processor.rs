@@ -53,6 +53,7 @@ impl Processor {
         })
     }
     pub fn set_output_meter(&mut self, meter: std::sync::Arc<crate::OutputMeter>) {
+        self.drive.set_spectrum_meter(meter.spectrum.clone());
         self.drive.set_audition_gate(meter.audition_allowed.clone());
         self.drive.set_output_peak_meter(meter.output.clone());
         for band in &self.settings.bands {

@@ -329,3 +329,78 @@ fn eq_band_reorder_works_in_regular_layer_and_output_lanes() {
         }
     }
 }
+
+#[test]
+fn multiband_eq_graph_preview_is_atomic_cancellable_and_one_undo_step() {
+    for master in [false, true] {
+        for cancel in [false, true] {
+            let (mut app, ctx) = fixture(false, master);
+            let original = settings(&app).clone();
+            let start = app.effects_bounds.multiband_eq_units[0].graph.nodes[0].center();
+            let end = start + Vec2::new(20.0, -15.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(settings(&app), &original);
+            assert!(!app.dirty);
+            let preview_plan = app.eq_graph_preview.published_plan(&app.session);
+            let target = if master {
+                daw_core::EffectChainTarget::Master
+            } else {
+                daw_core::EffectChainTarget::Track(app.session.project.tracks[0].id)
+            };
+            let (chain, _) = preview_plan.project.effect_chain(target).unwrap();
+            let daw_core::EffectSettings::MultibandEq(preview) = &chain[0].unit else {
+                panic!()
+            };
+            assert!(preview.bands[0].frequency_hz > original.bands[0].frequency_hz);
+            assert!(preview.bands[0].gain_db > original.bands[0].gain_db);
+            let renderer = daw_engine::Renderer::new(preview_plan.clone());
+            let actual = renderer
+                .modulation_snapshot(daw_engine::ModulationTarget::EffectBand {
+                    effect: chain[0].id,
+                    band: original.bands[0].id,
+                })
+                .unwrap();
+            assert_eq!(actual[0], preview.bands[0].gain_db);
+            assert_eq!(actual[1], preview.bands[0].frequency_hz);
+
+            if cancel {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            if cancel {
+                assert_eq!(settings(&app), &original);
+                assert!(!app.dirty);
+                let restored = app.eq_graph_preview.published_plan(&app.session);
+                let (chain, _) = restored.project.effect_chain(target).unwrap();
+                let daw_core::EffectSettings::MultibandEq(actual) = &chain[0].unit else {
+                    panic!()
+                };
+                assert_eq!(actual, &original);
+            } else {
+                let changed = settings(&app).clone();
+                assert!(changed.bands[0].frequency_hz > original.bands[0].frequency_hz);
+                assert!(changed.bands[0].gain_db > original.bands[0].gain_db);
+                assert_eq!(changed.modulations, original.modulations);
+                app.perform_history_action(HistoryAction::Undo, &ctx);
+                assert_eq!(settings(&app), &original);
+                app.perform_history_action(HistoryAction::Redo, &ctx);
+                assert_eq!(settings(&app), &changed);
+            }
+        }
+    }
+}

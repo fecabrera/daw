@@ -1,5 +1,6 @@
 mod audition;
 mod audition_stream;
+mod effect_spectrum;
 pub use audition_stream::{AuditionStream, AuditionStreamWriter, audition_stream};
 mod cache_schedule;
 mod devices;
@@ -514,6 +515,7 @@ pub struct AudioOutput {
     loudness_meters: HashMap<Id, Arc<daw_unit_core::LoudnessMeter>>,
     source_meters: source_meters::Sources,
     band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
+    spectra: effect_spectrum::Spectra,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
     live_pitches: daw_engine::LiveMidiPitches,
 }
@@ -614,6 +616,7 @@ impl AudioOutput {
             loudness,
             sources,
             bands: changes,
+            spectra,
             modulation,
             live_pitches,
         } = preparation::Bindings::prepare(&plan, &Default::default());
@@ -626,6 +629,7 @@ impl AudioOutput {
             effect_audition::bind(&mut state.renderer, &exciter_solos);
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_band_meters(&mut state.renderer, &changes);
+            effect_spectrum::bind(&mut state.renderer, &spectra);
             bind_output_meters(&mut state.renderer, &outputs);
             bind_loudness_meters(&mut state.renderer, &loudness);
             source_meters::bind(&mut state.renderer, &sources);
@@ -701,6 +705,7 @@ impl AudioOutput {
             effect_meters: reductions,
             exciter_solos,
             band_meters: changes,
+            spectra,
             output_meters: outputs,
             loudness_meters: loudness,
             source_meters: sources,
@@ -738,6 +743,7 @@ impl AudioOutput {
             effects: self.effect_meters.clone(),
             exciter_solos: self.exciter_solos.clone(),
             bands: self.band_meters.clone(),
+            spectra: self.spectra.clone(),
             outputs: self.output_meters.clone(),
             loudness: self.loudness_meters.clone(),
             sources: self.source_meters.clone(),
@@ -850,6 +856,13 @@ impl AudioOutput {
         self.layer_meters.get(&(track, layer)).map(AsRef::as_ref)
     }
     /// Display-only block snapshots. No synthetic animation when playback is stopped.
+    pub fn effect_spectrum(&self, effect: Id) -> Option<daw_unit_core::SpectrumReading> {
+        let mut reading = self.spectra.get(&effect)?.reading();
+        if !self.status.playing.load(Ordering::Relaxed) {
+            reading.magnitudes.fill(0.0);
+        }
+        Some(reading)
+    }
     pub fn modulation_values(&self, key: ModulationTarget) -> Option<[f32; 5]> {
         self.modulation_snapshot(key)
             .map(|v| std::array::from_fn(|i| v[i]))
@@ -1072,6 +1085,7 @@ impl AudioOutput {
                     self.effect_meters = ready.bindings.effects;
                     self.exciter_solos = ready.bindings.exciter_solos;
                     self.band_meters = ready.bindings.bands;
+                    self.spectra = ready.bindings.spectra;
                     self.output_meters = ready.bindings.outputs;
                     self.loudness_meters = ready.bindings.loudness;
                     self.source_meters = ready.bindings.sources;

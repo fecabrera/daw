@@ -4,6 +4,37 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Multiband EQ response graph — 2026-11-09
+
+Added the shared three-row graph before the band bank, exact SVF response curves,
+64-bin stereo output spectrum and UUID-targeted band-point gestures. Held drags
+preview audio through transient validated DAW plans or bounded native host
+gestures. Escape restores starting values; DAW release makes one history edit.
+Command/Ctrl-drag adjusts only Q, increasing right/up and decreasing left/down.
+Prepared renderer attachment retains visible FFT frames through repeated updates.
+
+Completed focused checks:
+
+- Affected EQ, plugin, shared UI, editor and DAW tests passed. Coverage includes
+  backend transfer-response parity, all six sample rates, opposite-phase stereo,
+  output telemetry, bypass clearing, live preview, cancellation and history.
+- `cargo test -p daw-engine --test midi multiband_eq_spectrum --offline`: passed.
+  Both tests cover all bus scopes, unchanged PCM, allocation-free callbacks and
+  inheritance, and nonzero published frames through repeated parameter updates.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop -p daw-cli --offline`: passed.
+- `python3 tools/check_cli.py`: passed, including import, export codecs,
+  repeatability, missing sources, group buses, overwrite and exit codes.
+- `git diff --check`: passed.
+
+Inspected a software-rendered preview of the actual shared egui paint commands.
+This is not native window, host automation, device or platform acceptance.
+The macOS package command stopped at its committed-source requirement. No commit
+was made and the existing application bundle was retained.
+
 ## Oscillator Cents and Width modulation — 2026-11-09
 
 Added UUID-targeted Cents/Width and untargeted Out Cents through the shared

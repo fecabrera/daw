@@ -2241,6 +2241,7 @@ dependencies = [
 name = "daw-multiband-eq-editor"
 version = "0.1.0"
 dependencies = [
+ "daw-equalizer",
  "daw-multiband-eq-plugin",
  "daw-plugin-support",
  "daw-plugin-window",
@@ -2685,6 +2686,7 @@ version = "0.1.0"
 dependencies = [
  "daw-core",
  "daw-engine",
+ "daw-equalizer",
  "daw-media",
  "daw-output",
  "daw-project",

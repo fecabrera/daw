@@ -857,3 +857,6 @@ mod transition_tests {
 
 mod multiband;
 pub use multiband::MultibandEq;
+
+mod spectrum;
+pub use multiband::band_response;

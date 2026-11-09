@@ -12,7 +12,8 @@ fn show_body(
     let mut visible = model
         .visible_band_slots
         .load(std::sync::atomic::Ordering::Relaxed);
-    let result = body::render_audition(
+    let spectrum = model.output_meter.spectrum.reading();
+    let result = body::render_visual(
         ui,
         settings,
         daw_unit_ui::meters::OutputLevel::new(
@@ -27,6 +28,7 @@ fn show_body(
                 .with_reset_mask(&model.output_meter.band_level_resets, 1_u64 << i)
         }),
         &model.output_meter.solos,
+        Some(&spectrum),
     );
     model
         .visible_band_slots
@@ -118,6 +120,7 @@ fn paint_reference(
     settings: &mut daw_unit_core::MultibandEqSettings,
     model: &Model,
 ) {
+    let spectrum = model.output_meter.spectrum.reading();
     let level = daw_unit_ui::meters::OutputLevel::new(
         model.output_meter.readings()[0],
         Some(&model.output_meter.boost_peaks()[0]),
@@ -146,6 +149,14 @@ fn paint_reference(
                 &mut view,
                 (false, daw_unit_ui::layout::unit_control_height()),
                 daw_unit_ui::multiband_eq::Controls {
+                    graph: daw_unit_ui::eq_graph::Input {
+                        live_edits: true,
+                        spectrum: Some(&spectrum),
+                        sample_rate_hz: spectrum.sample_rate_hz,
+                        effective: &[],
+                        output_gain_db: None,
+                        response: daw_equalizer::band_response,
+                    },
                     solos: &mut [],
                     add_enabled: indices.len() < 64,
                     markers: &[],
@@ -646,5 +657,130 @@ mod band_peak_tests {
         let (_, after) = frame(vec![button(pos + egui::vec2(30.0, 30.0), false)]);
         assert_eq!(before, after);
         assert!(model.pop().is_none());
+    }
+}
+
+#[cfg(test)]
+mod graph_binding_tests {
+    use super::*;
+    use daw_drive_plugin::Parameter as P;
+    fn frame(
+        ctx: &egui::Context,
+        editor: &mut Editor,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
+        ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(WIDTH as f32, HEIGHT as f32),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| editor.show(ui),
+        )
+    }
+    #[test]
+    fn graph_drag_previews_live_with_balanced_host_gestures_and_escape_restores_values() {
+        for cancel in [false, true] {
+            let ctx = egui::Context::default();
+            daw_unit_ui::theme::configure(&ctx);
+            daw_unit_ui::fonts::configure(&ctx);
+            let model = std::sync::Arc::new(Model::default());
+            let mut editor = Editor::new(model.clone(), || {});
+            let mut out = frame(&ctx, &mut editor, vec![]);
+            let start = out
+                .shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "1" => {
+                        Some(t.pos + t.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            out.textures_delta.clear();
+            let end = start + egui::vec2(22.0, -16.0);
+            let mut out = frame(
+                &ctx,
+                &mut editor,
+                vec![
+                    egui::Event::PointerMoved(start),
+                    egui::Event::PointerButton {
+                        pos: start,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+            out.textures_delta.clear();
+            let mut out = frame(&ctx, &mut editor, vec![egui::Event::PointerMoved(end)]);
+            out.textures_delta.clear();
+            let mut events = Vec::new();
+            while let Some(e) = model.pop() {
+                events.push(e);
+            }
+            assert_eq!(events.len(), 4, "live Begin/Value for Frequency and Gain");
+            assert!(!events.iter().any(|e| matches!(e, Edit::End(_))));
+            if cancel {
+                let mut out = frame(
+                    &ctx,
+                    &mut editor,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+                out.textures_delta.clear();
+            }
+            let mut out = frame(
+                &ctx,
+                &mut editor,
+                vec![egui::Event::PointerButton {
+                    pos: end,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                }],
+            );
+            out.textures_delta.clear();
+            while let Some(e) = model.pop() {
+                events.push(e);
+            }
+            for p in [P::ALL[3], P::ALL[4]] {
+                let trace: Vec<_> = events
+                    .iter()
+                    .filter(|e| match e {
+                        Edit::Begin(v) | Edit::Value(v, _) | Edit::End(v) => *v == p,
+                        _ => false,
+                    })
+                    .copied()
+                    .collect();
+                assert_eq!(trace.first(), Some(&Edit::Begin(p)));
+                assert_eq!(trace.last(), Some(&Edit::End(p)));
+                let values: Vec<_> = trace
+                    .iter()
+                    .filter_map(|e| {
+                        if let Edit::Value(_, v) = e {
+                            Some(*v)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                assert!(values[0] > p.info().default);
+                if cancel {
+                    assert_eq!(values.last(), Some(&p.info().default));
+                    assert_eq!(trace.len(), 4);
+                } else {
+                    assert_eq!(trace.len(), 3);
+                }
+            }
+        }
     }
 }

@@ -209,6 +209,20 @@ impl<T: MeterStorage> UnitMeter<T> {
         self.handle = Some(handle);
     }
 
+    /// Transfer prepared handles without dropping a final owner on the callback.
+    pub fn retarget(&mut self, prepared: &mut Self, reading: T::Reading) {
+        let enabled = prepared.enabled;
+        std::mem::swap(&mut self.handle, &mut prepared.handle);
+        self.set_enabled(enabled);
+        if let Some(handle) = &self.handle {
+            if enabled {
+                handle.initialize(reading);
+            } else {
+                handle.clear();
+            }
+        }
+    }
+
     pub fn set_enabled(&mut self, enabled: bool) {
         if self.enabled != enabled {
             self.enabled = enabled;
@@ -216,6 +230,10 @@ impl<T: MeterStorage> UnitMeter<T> {
                 handle.clear();
             }
         }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
     }
 
     /// False for bypassed units and processors without a monitoring consumer.

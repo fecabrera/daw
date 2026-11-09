@@ -730,6 +730,19 @@ impl Renderer {
         }
     }
     /// Bind output monitoring independently of reduction and signed band meters.
+    pub fn set_effect_spectrum_meter(
+        &mut self,
+        id: Id,
+        meter: std::sync::Arc<daw_unit_core::SpectrumMeter>,
+    ) {
+        self.master_effects.set_spectrum_meter(id, &meter);
+        for midi in self.midi.iter_mut().flatten() {
+            midi.set_effect_spectrum_meter(id, &meter);
+        }
+        for chain in &mut self.effects {
+            chain.set_spectrum_meter(id, &meter);
+        }
+    }
     pub fn set_effect_output_peak_meter(
         &mut self,
         id: Id,

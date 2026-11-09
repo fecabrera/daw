@@ -5702,3 +5702,103 @@ fn oscillator_cents_width_modulation_has_stereo_live_export_seek_and_allocation_
         }
     }
 }
+
+#[test]
+fn multiband_eq_spectrum_is_display_only_allocation_free_and_scoped_to_every_bus() {
+    use std::sync::Arc;
+    for rate in SAMPLE_RATES {
+        for owner in ["track", "layer", "main", "master"] {
+            let mut p = plan(Waveform::Sine, rate);
+            let effect = EffectInstance::multiband_equalizer();
+            let id = effect.id;
+            match owner {
+                "track" => p.project.tracks[0].effects.push(effect),
+                "layer" => p.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+                    .effects
+                    .push(effect),
+                "main" => p.project.tracks[0]
+                    .instrument
+                    .as_mut()
+                    .unwrap()
+                    .main
+                    .effects
+                    .push(effect),
+                _ => p.project.master.effects.push(effect),
+            }
+            let meter = Arc::new(daw_unit_core::SpectrumMeter::default());
+            let mut actual = Renderer::new(p.clone());
+            actual.set_effect_spectrum_meter(id, meter.clone());
+            actual.play();
+            let mut reference = Renderer::new(p.clone());
+            reference.play();
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            for _ in 0..rate / 3 {
+                assert_eq!(actual.next_sample(), reference.next_sample());
+            }
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            let reading = meter.reading();
+            assert_eq!(reading.sample_rate_hz, rate);
+            assert!(
+                reading.magnitudes.iter().any(|v| *v > 0.05),
+                "{owner} {rate}"
+            );
+            let mut next = Renderer::new(p);
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            next.inherit(&mut actual);
+            for _ in 0..1024 {
+                assert_eq!(next.next_sample(), reference.next_sample());
+            }
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            assert!(meter.reading().magnitudes.iter().any(|v| *v > 0.05));
+        }
+    }
+}
+
+#[test]
+fn multiband_eq_spectrum_keeps_published_frames_through_repeated_band_point_updates() {
+    use std::sync::Arc;
+    for rate in SAMPLE_RATES {
+        let mut p = plan(Waveform::Sine, rate);
+        let effect = EffectInstance::multiband_equalizer();
+        let id = effect.id;
+        p.project.tracks[0].effects.push(effect);
+        let meter = Arc::new(daw_unit_core::SpectrumMeter::default());
+        let mut current = Renderer::new(p.clone());
+        current.set_effect_spectrum_meter(id, meter.clone());
+        current.play();
+        for _ in 0..rate / 3 {
+            current.next_sample();
+        }
+        assert!(meter.reading().magnitudes.iter().any(|v| *v > 0.05));
+        for step in 0..12 {
+            let EffectSettings::MultibandEq(s) = &mut p.project.tracks[0].effects[0].unit else {
+                panic!()
+            };
+            s.bands[0].frequency_hz = 200.0 + step as f32 * 150.0;
+            s.bands[0].gain_db = step as f32 * 0.5;
+            let mut next = Renderer::new(p.clone());
+            next.set_effect_spectrum_meter(id, meter.clone());
+            assert!(
+                meter.reading().magnitudes.iter().any(|v| *v > 0.05),
+                "preparation cleared {rate} {step}"
+            );
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            next.inherit(&mut current);
+            assert!(
+                meter.reading().magnitudes.iter().any(|v| *v > 0.05),
+                "inheritance cleared {rate} {step}"
+            );
+            for _ in 0..128 {
+                next.next_sample();
+            }
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            current = next;
+        }
+    }
+}
