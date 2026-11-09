@@ -7,9 +7,11 @@ use daw_unit_core::{
 #[derive(Clone)]
 pub struct OscillatorLevel {
     base: ModulationRamp,
-    offsets: ModulationSmoother<2>,
+    offsets: ModulationSmoother<3>,
     pitch: ModulationRamp,
+    cents: ModulationRamp,
     effective_pitch: f32,
+    effective_cents: f32,
     frames: u32,
     effective_gain: f32,
 }
@@ -29,7 +31,9 @@ impl OscillatorLevel {
             base: ModulationRamp::new(gain),
             offsets: ModulationSmoother::new(context),
             pitch: ModulationRamp::new(0.0),
+            cents: ModulationRamp::new(0.0),
             effective_pitch: 0.0,
+            effective_cents: 0.0,
             frames: (context.sample_rate_hz / 200).max(1),
             effective_gain: gain,
         }
@@ -42,10 +46,24 @@ impl OscillatorLevel {
             0.0
         };
         self.pitch = ModulationRamp::new(pitch);
-        self.effective_pitch = pitch;
+        self.effective_pitch = pitch + self.cents.target() / 100.0;
+        self
+    }
+    pub fn with_cents(mut self, cents: f32) -> Self {
+        let cents = if cents.is_finite() {
+            cents.clamp(-100.0, 100.0)
+        } else {
+            0.0
+        };
+        self.cents = ModulationRamp::new(cents);
+        self.effective_cents = cents;
+        self.effective_pitch = self.pitch.target() + cents / 100.0;
         self
     }
     /// Last processed common transpose; excludes source transpose and source modulation.
+    pub fn effective_cents(&self) -> f32 {
+        self.effective_cents
+    }
     pub fn effective_pitch(&self) -> f32 {
         self.effective_pitch
     }
@@ -60,6 +78,7 @@ impl OscillatorLevel {
     pub fn retarget(&mut self, next: &Self) {
         self.base.set(next.base.target(), self.frames);
         self.pitch.set(next.pitch.target(), self.frames);
+        self.cents.set(next.cents.target(), self.frames);
     }
     /// Begin a fresh note without changing the base gain transition.
     pub fn note_on(&mut self) {
@@ -68,7 +87,9 @@ impl OscillatorLevel {
     pub fn reset(&mut self) {
         self.base.reset();
         self.pitch.reset();
-        self.effective_pitch = self.pitch.target();
+        self.cents.reset();
+        self.effective_cents = self.cents.target();
+        self.effective_pitch = self.pitch.target() + self.cents.target() / 100.0;
         self.offsets.reset();
         self.effective_gain = self.base.target();
     }
@@ -79,8 +100,11 @@ impl OscillatorLevel {
 }
 impl ModulationDestination for OscillatorLevel {
     type Audio = f32;
-    const MODULATION_PARAMETERS: &'static [ModulationParameter] =
-        &[ModulationParameter::Level, ModulationParameter::Pitch];
+    const MODULATION_PARAMETERS: &'static [ModulationParameter] = &[
+        ModulationParameter::Level,
+        ModulationParameter::Pitch,
+        ModulationParameter::OscillatorCents,
+    ];
     const MODULATION_SCOPE: ModulationScope = ModulationScope::PerNote;
     fn process_with_modulation(
         &mut self,
@@ -88,11 +112,15 @@ impl ModulationDestination for OscillatorLevel {
         modulation: &ModulationInputs,
         _: ModulationContext,
     ) -> f32 {
-        let [offset, pitch_offset] = self.offsets.process([
+        let [offset, pitch_offset, cents_offset] = self.offsets.process([
             modulation.offset(ModulationParameter::Level),
             modulation.offset(ModulationParameter::Pitch),
+            modulation.offset(ModulationParameter::OscillatorCents),
         ]);
-        self.effective_pitch = self.pitch.next_value() + pitch_offset.clamp(-96.0, 96.0) as f32;
+        self.effective_cents = (self.cents.next_value() + cents_offset as f32).clamp(-100.0, 100.0);
+        self.effective_pitch = self.pitch.next_value()
+            + self.effective_cents / 100.0
+            + pitch_offset.clamp(-96.0, 96.0) as f32;
         let base = self.base.next_value();
         self.effective_gain = if offset == 0.0 {
             base
@@ -111,6 +139,39 @@ mod tests {
         Modulation, ModulationBehavior, ModulationRange, ModulationRoute, ModulationSourceId,
         ModulationValue, process_modulation,
     };
+    #[test]
+    fn output_cents_compose_with_pitch_and_smooth_without_gain_changes() {
+        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+            let context = ProcessingContext {
+                sample_rate_hz: rate,
+                max_block_frames: 512,
+            };
+            let mut unit = OscillatorLevel::new(0.0, context)
+                .with_pitch(12.0)
+                .with_cents(-100.0);
+            assert_eq!(unit.effective_pitch(), 11.0);
+            let target = OscillatorLevel::new(0.0, context)
+                .with_cents(100.0)
+                .with_pitch(-12.0);
+            unit.retarget(&target);
+            for n in 0..rate / 200 {
+                let gain = unit.process_with_modulation(
+                    1.0,
+                    &ModulationInputs::neutral(1.0),
+                    Default::default(),
+                );
+                assert_eq!(gain, 1.0);
+                assert!((-11.0..=11.0).contains(&unit.effective_pitch()));
+                if n == 0 {
+                    assert!(unit.effective_pitch() > 10.0);
+                }
+            }
+            assert_eq!(unit.effective_pitch(), -11.0);
+            unit.reset();
+            assert_eq!(unit.effective_pitch(), -11.0);
+        }
+    }
+
     #[test]
     fn common_pitch_resolves_shared_and_local_routes_and_smooths_retargets() {
         for rate in [44100, 48000, 88200, 96000, 176400, 192000] {

@@ -368,6 +368,10 @@ pub fn destination(parameter: Parameter) -> KnobSpec {
             .endpoint_labels("0.01", "20"),
         Parameter::Pitch => knobs::pitch_spec(),
         Parameter::Amplitude => knobs::marked_gain_spec(),
+        Parameter::OscillatorCents => knobs::cents_spec(),
+        Parameter::OscillatorWidth => KnobSpec::new("Unison width", 0.0..=100.0, 100.0, 1.0)
+            .value_label(|v| format!("{v:.0}%"))
+            .format(|v| format!("{v:.0}%")),
         Parameter::OscillatorGain => knobs::marked_gain_spec().named("Oscillator gain"),
         Parameter::SamplerGain => knobs::marked_gain_spec().named("Gain"),
         Parameter::NoiseLevel => knobs::marked_gain_spec()
@@ -745,6 +749,22 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
                 },
                 |v| format!("{v:+.0}°"),
                 ["−180", "+180"],
+            ),
+            Parameter::OscillatorCents => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.0} cents"),
+                ["−100", "+100"],
+            ),
+            Parameter::OscillatorWidth => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.0}%"),
+                ["−100", "+100"],
             ),
             Parameter::Amplitude => (AmountMapping::Depth, signed_depth, ["−100", "+100"]),
             Parameter::DriveInput

@@ -190,6 +190,8 @@ pub enum ModulationParameter {
     ShimmerDepth,
     ShimmerLowDamp,
     ShimmerHighDamp,
+    OscillatorCents,
+    OscillatorWidth,
 }
 impl ModulationParameter {
     pub const SHIMMER_REVERB: [Self; 12] = [
@@ -258,7 +260,12 @@ impl ModulationParameter {
         Self::DryWet,
     ];
     pub const SATURATOR: [Self; 3] = [Self::SaturatorDrive, Self::Level, Self::DryWet];
-    pub const OSCILLATOR: [Self; 2] = [Self::Pitch, Self::OscillatorGain];
+    pub const OSCILLATOR: [Self; 4] = [
+        Self::Pitch,
+        Self::OscillatorGain,
+        Self::OscillatorCents,
+        Self::OscillatorWidth,
+    ];
     pub const ENVELOPE: [Self; 9] = [
         Self::EnvelopeAttack,
         Self::EnvelopeDecay,
@@ -469,6 +476,8 @@ impl ModulationParameter {
             Self::LfoDepth => "Depth",
             Self::LfoRate => "Rate",
             Self::Amplitude => "Amplitude",
+            Self::OscillatorCents => "Cents",
+            Self::OscillatorWidth => "Width",
             Self::Pitch => "Pitch",
             Self::Frequency => "Frequency",
             Self::Resonance => "Resonance",
@@ -549,6 +558,7 @@ impl ModulationParameter {
             Self::CompressorRatio => 19.0,
             Self::CompressorKnee => 24.0,
             Self::CompressorAttack | Self::CompressorRelease => 6.0,
+            Self::OscillatorCents | Self::OscillatorWidth => 100.0,
             Self::Pitch => 48.0,
             Self::Frequency
             | Self::LfoRate
@@ -635,6 +645,8 @@ impl ModulationParameter {
             Self::CompressorThreshold | Self::CompressorKnee => "dB",
             Self::CompressorRatio => ":1",
             Self::CompressorAttack | Self::CompressorRelease => "oct",
+            Self::OscillatorCents => "cents",
+            Self::OscillatorWidth => "%",
             Self::Pitch => "semitones",
             Self::Frequency
             | Self::ColorFrequency

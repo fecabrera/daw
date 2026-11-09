@@ -126,6 +126,10 @@ pub(super) struct MidiEditor {
     #[cfg(test)]
     pub(crate) oscillator_strip_bounds: Vec<Rect>,
     #[cfg(test)]
+    pub(crate) oscillator_controls: Vec<[Rect; 6]>,
+    #[cfg(test)]
+    pub(crate) oscillator_output_cents_bounds: Rect,
+    #[cfg(test)]
     pub(crate) oscillator_power_bounds: Vec<Rect>,
     #[cfg(test)]
     pub(crate) add_oscillator_bounds: Rect,
@@ -210,6 +214,10 @@ impl Default for MidiEditor {
             oscillator_bounds: Vec::new(),
             #[cfg(test)]
             oscillator_strip_bounds: Vec::new(),
+            #[cfg(test)]
+            oscillator_controls: Vec::new(),
+            #[cfg(test)]
+            oscillator_output_cents_bounds: Rect::NOTHING,
             #[cfg(test)]
             oscillator_power_bounds: Vec::new(),
             #[cfg(test)]

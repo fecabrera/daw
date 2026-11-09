@@ -681,6 +681,9 @@ fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_sa
             [
                 (daw_core::ModulationParameter::Pitch, false),
                 (daw_core::ModulationParameter::OscillatorGain, false),
+                (daw_core::ModulationParameter::OscillatorCents, false),
+                (daw_core::ModulationParameter::OscillatorWidth, false),
+                (daw_core::ModulationParameter::OscillatorCents, true),
                 (daw_core::ModulationParameter::Level, true),
                 (daw_core::ModulationParameter::Pitch, true),
             ]
@@ -748,14 +751,36 @@ fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_sa
             false,
         );
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let second = label(
-            &shapes,
-            &if whole_unit {
-                parameter.label().into()
-            } else {
-                format!("Osc 2 · {}", parameter.label())
-            },
-        );
+        let target_label = if whole_unit {
+            parameter.label().to_string()
+        } else {
+            format!("Osc 2 · {}", parameter.label())
+        };
+        let mut shapes = shapes;
+        if !shapes
+            .iter()
+            .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == target_label))
+        {
+            let point = label(&shapes, "Osc 2 · Pitch");
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::MouseWheel {
+                        phase: egui::TouchPhase::Move,
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: Vec2::new(0.0, -500.0),
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+            for _ in 0..12 {
+                frame(&mut app, &ctx, vec![]);
+            }
+            shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        }
+        let second = label(&shapes, &target_label);
         click(&mut app, &ctx, second, false);
         let l = &mut app.session.project.tracks[0]
             .instrument
@@ -775,6 +800,9 @@ fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_sa
             layer: l.id,
             unit: l.envelopes[0].id,
         });
+        if parameter == daw_core::ModulationParameter::OscillatorWidth {
+            l.oscillators[1].unison = daw_core::OscillatorUnison::Four;
+        }
         l.oscillator_modulations[0].amount = 0.25;
         l.oscillator_modulation_open = false;
         let original = l.clone();

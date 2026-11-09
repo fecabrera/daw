@@ -784,6 +784,7 @@ fn oscillator_unit_level_follows_moves_and_copies_into_empty_units() {
         let i = p.tracks[0].instrument.as_mut().unwrap();
         i.layers[0].oscillator_level_db = -9.0;
         i.layers[0].oscillator_pitch_semitones = 12.0;
+        i.layers[0].oscillator_cents = -27.5;
         i.layers[1].oscillators.clear();
         p.edit(Edit::TransferInstrumentComponent {
             track_id: track,
@@ -797,6 +798,7 @@ fn oscillator_unit_level_follows_moves_and_copies_into_empty_units() {
         let i = p.tracks[0].instrument.as_ref().unwrap();
         assert_eq!(i.layers[1].oscillator_level_db, -9.0);
         assert_eq!(i.layers[1].oscillator_pitch_semitones, 12.0);
+        assert_eq!(i.layers[1].oscillator_cents, -27.5);
         if copy {
             assert_eq!(i.layers[0].oscillator_level_db, -9.0);
         }

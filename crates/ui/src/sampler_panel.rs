@@ -1,5 +1,6 @@
 //! Sampler presentation and drop adapters. Audio preparation belongs to Session workers.
 use super::*;
+use crate::rows::staged_input;
 use daw_core::{
     InstrumentComponent, InstrumentLayerSettings, SamplerMode, SamplerSettings, SamplerTrigger,
 };
@@ -13,12 +14,6 @@ struct RangeDrag {
     origin: u64,
     mode: LoopDragMode,
     preview: [u64; 2],
-}
-#[derive(Clone)]
-struct InputDraft<T> {
-    saved: T,
-    value: T,
-    generation: u64,
 }
 pub(super) struct Bounds {
     pub track: Id,
@@ -607,49 +602,6 @@ impl DawUi {
             .map_err(|e| e.to_string())
         });
     }
-}
-/// Keep drag previews local and let the standard input own text entry and stepping.
-fn staged_input<T: Copy + PartialEq + Send + Sync + 'static>(
-    ui: &mut egui::Ui,
-    key: &str,
-    saved: &mut T,
-    add: impl FnOnce(&mut egui::Ui, &mut T) -> egui::Response,
-) -> (egui::Response, T) {
-    let id = ui.make_persistent_id(key);
-    let mut draft = ui
-        .data_mut(|d| d.get_temp::<InputDraft<T>>(id))
-        .unwrap_or(InputDraft {
-            saved: *saved,
-            value: *saved,
-            generation: 0,
-        });
-    if draft.saved != *saved {
-        draft.saved = *saved;
-        draft.value = *saved;
-        draft.generation = draft.generation.wrapping_add(1);
-    }
-    // Capture Escape before TextEdit consumes it. A new widget generation discards
-    // its pending text, so losing focus on the next frame cannot commit that text.
-    let cancelled =
-        !ui.is_enabled() || ui.input(|i| !i.focused || i.key_pressed(egui::Key::Escape));
-    let response = ui
-        .push_id(draft.generation, |ui| add(ui, &mut draft.value))
-        .inner;
-    if cancelled {
-        draft.value = *saved;
-        draft.generation = draft.generation.wrapping_add(1);
-        response.surrender_focus();
-    } else if response.drag_stopped()
-        || (response.changed() && !ui.input(|i| i.pointer.primary_down()))
-    {
-        *saved = draft.value;
-        draft.saved = *saved;
-    } else if !response.dragged() && !response.has_focus() {
-        draft.value = *saved;
-    }
-    let preview = draft.value;
-    ui.data_mut(|d| d.insert_temp(id, draft));
-    (response, preview)
 }
 fn small_input_text(ui: &mut egui::Ui) {
     let font = fonts::numeric(egui::TextStyle::Small.resolve(ui.style()).size);

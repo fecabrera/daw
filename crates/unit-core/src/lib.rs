@@ -118,7 +118,7 @@ impl Waveform {
 }
 
 mod oscillator;
-pub use oscillator::OscillatorSettings;
+pub use oscillator::{OscillatorSettings, OscillatorUnison};
 
 pub const INSTRUMENT_STATE_VERSION: u32 = 4;
 
@@ -147,6 +147,7 @@ pub struct InstrumentLayerSettings {
     pub oscillator_level_db: f32,
     /// Common transpose for all oscillator sources, in semitones.
     pub oscillator_pitch_semitones: f32,
+    pub oscillator_cents: f32,
     pub oscillator_collapsed: bool,
     pub oscillator_modulation_open: bool,
     pub oscillator_modulations: Vec<Modulation>,
@@ -173,6 +174,7 @@ impl Default for InstrumentLayerSettings {
             oscillator_enabled: true,
             oscillator_level_db: 0.0,
             oscillator_pitch_semitones: 0.0,
+            oscillator_cents: 0.0,
             oscillator_collapsed: false,
             oscillator_modulation_open: false,
             oscillator_modulations: Vec::new(),
@@ -204,6 +206,8 @@ impl InstrumentLayerSettings {
                 .noise
                 .as_ref()
                 .is_none_or(|n| n.valid() && self.oscillators.is_empty() && self.sampler.is_none())
+            && self.oscillator_cents.is_finite()
+            && (-100.0..=100.0).contains(&self.oscillator_cents)
             && self.oscillator_pitch_semitones.is_finite()
             && (-48.0..=48.0).contains(&self.oscillator_pitch_semitones)
             && self.oscillator_level_db.is_finite()
@@ -287,6 +291,8 @@ struct SavedLayer {
     oscillator_level_db: f32,
     #[serde(default)]
     oscillator_pitch_semitones: f32,
+    #[serde(default)]
+    oscillator_cents: f32,
     #[serde(default = "default_unit_enabled")]
     envelope_enabled: bool,
     #[serde(default)]
@@ -353,6 +359,7 @@ impl SavedLayer {
             oscillator_enabled: self.oscillator_enabled,
             oscillator_level_db: self.oscillator_level_db,
             oscillator_pitch_semitones: self.oscillator_pitch_semitones,
+            oscillator_cents: self.oscillator_cents,
             oscillator_collapsed: self.oscillator_collapsed,
             oscillator_modulation_open: self.oscillator_modulation_open,
             oscillator_modulations: self.oscillator_modulations,
@@ -665,6 +672,7 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
                     .gain_db
                     .ok_or_else(|| serde::de::Error::missing_field("gain_db"))?,
                 muted: saved.muted,
+                ..OscillatorSettings::default()
             }]
         };
         let mut layer = InstrumentLayerSettings {

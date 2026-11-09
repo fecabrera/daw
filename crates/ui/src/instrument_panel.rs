@@ -613,6 +613,8 @@ impl DawUi {
                                                             #[cfg(test)] {
                                                                 self.midi_editor.oscillator_bounds.clear();
                                                                 self.midi_editor.oscillator_strip_bounds.clear();
+            self.midi_editor.oscillator_controls.clear();
+            self.midi_editor.oscillator_output_cents_bounds = Rect::NOTHING;
                                                                 self.midi_editor.oscillator_power_bounds.clear();
                                                                 self.midi_editor.oscillator_panel_bounds = Rect::NOTHING;
                                                             }
@@ -1274,6 +1276,11 @@ impl DawUi {
             id: None,
             label: "Pitch".into(),
         });
+        targets.push(crate::modulation_panel::Target {
+            parameter: daw_core::ModulationParameter::OscillatorCents,
+            id: None,
+            label: "Cents".into(),
+        });
         let unit_enabled = layer.oscillator_enabled;
         let InstrumentLayerSettings {
             oscillators,
@@ -1282,6 +1289,7 @@ impl DawUi {
             oscillator_enabled: enabled,
             oscillator_level_db: level,
             oscillator_pitch_semitones: output_pitch,
+            oscillator_cents: output_cents,
             oscillator_collapsed: collapsed,
             ..
         } = layer;
@@ -1292,6 +1300,8 @@ impl DawUi {
         #[cfg(test)]
         {
             self.midi_editor.oscillator_bounds.clear();
+            self.midi_editor.oscillator_controls.clear();
+            self.midi_editor.oscillator_output_cents_bounds = Rect::NOTHING;
             self.midi_editor.oscillator_strip_bounds.clear();
             self.midi_editor.oscillator_power_bounds.clear();
             self.midi_editor.oscillator_level_bounds = Rect::NOTHING;
@@ -1314,48 +1324,44 @@ impl DawUi {
                     let mut previous_column: Option<Rect> = None;
                     for (index, oscillator) in oscillators.iter_mut().enumerate() {
                         let target_routes: Vec<_> = routes.iter().filter(|r| r.target == Some(oscillator.id)).copied().collect();
-                        let live = self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Oscillator { track, layer: layer_id, oscillator: oscillator.id }))
-                            .map_or([None; 4], |v| [v[0], v[1], v[2], v[3]].map(|v| v.is_finite().then_some(v)));
+                        let live = self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Oscillator { track, layer: layer_id, oscillator: oscillator.id }))
+                            .map_or([None; 8], |v| std::array::from_fn(|i| v[i].is_finite().then_some(v[i])));
                         let marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::Pitch,
-                            f32::from(oscillator.transpose), unit_enabled && !oscillator.muted, None, [live[0], live[1]]);
+                            f32::from(oscillator.transpose) + oscillator.cents / 100.0, unit_enabled && !oscillator.muted, None, [live[0], live[1]]);
                         let gain_marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::OscillatorGain, oscillator.gain_db, unit_enabled && !oscillator.muted, None, [live[2], live[3]]);
+                        let cents_marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::OscillatorCents, oscillator.cents, unit_enabled && !oscillator.muted, None, [live[4], live[5]]);
+                        let width_marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::OscillatorWidth, oscillator.width, unit_enabled && !oscillator.muted && oscillator.unison != daw_core::OscillatorUnison::Off, None, [live[6], live[7]]);
                         let strip = ui.scope_builder(
                             egui::UiBuilder::new()
                                 .id_salt(("oscillator-strip", track, oscillator.id))
                                 .sense(Sense::click_and_drag()),
                             |ui| {
-                                panels::unit_strip(ui, strip_height,
+                                daw_unit_ui::layout::unit_strip_with_width(ui, strip_height, daw_unit_ui::layout::unit_columns_width(2),
                                             egui::UiBuilder::new()
                                                 .id_salt(("oscillator-settings", track, oscillator.id))
                                                 .sense(Sense::click_and_drag()),
                                             |ui| {
-                                                let mut responses = Vec::with_capacity(4);
+                                                let mut responses = Vec::with_capacity(7);
                                                 if !compact {
-                                                    responses.extend([
-                                                        knobs::row(
-                                                            ui,
-                                                            &mut oscillator.waveform,
-                                                            knobs::CHOICE_SIZE,
-                                                            |ui, waveform| crate::oscillator_preview::show(ui, waveform, unit_enabled && !oscillator.muted),
-                                                        ),
-                                                        knobs::row(
-                                                            ui,
-                                                            &mut oscillator.transpose,
-                                                            knobs::CHOICE_SIZE,
-                                                            |ui, value| {
-                                                                let mut scalar = f32::from(*value);
-                                                                let response = ui.add(knobs::Knob::new(&mut scalar, knobs::pitch_spec()).modulated(marker.as_ref(), modulation_open));
-                                                                if response.changed() { *value = scalar as i8; }
-                                                                response
-                                                            },
-                                                        ),
-                                                        knobs::row(
-                                                            ui,
-                                                            &mut oscillator.gain_db,
-                                                            knobs::CHOICE_SIZE,
-                                                            |ui, value| ui.add(knobs::Knob::new(value, knobs::marked_gain_spec()).modulated(gain_marker.as_ref(), modulation_open)),
-                                                        ),
-                                                    ]);
+                                                    daw_unit_ui::layout::unit_columns(ui, 2, |ui, column| {
+                                                        for row in 0..3 {
+                                                            responses.push(knobs::row(ui, oscillator, knobs::CHOICE_SIZE, |ui, oscillator| {
+                                                                match (column, row) {
+                                                                    (0, 0) => crate::oscillator_preview::show(ui, &mut oscillator.waveform, unit_enabled && !oscillator.muted),
+                                                                    (0, 1) => {
+                                                                        let mut scalar = f32::from(oscillator.transpose);
+                                                                        let r = ui.add(knobs::Knob::new(&mut scalar, knobs::pitch_spec()).modulated(marker.as_ref(), modulation_open));
+                                                                        if r.changed() { oscillator.transpose = scalar as i8; } r
+                                                                    }
+                                                                    (0, 2) => ui.add(knobs::Knob::new(&mut oscillator.gain_db, knobs::marked_gain_spec()).modulated(gain_marker.as_ref(), modulation_open)),
+                                                                    (1, 0) => crate::oscillator_controls::unison(ui, oscillator),
+                                                                    (1, 1) => ui.add(knobs::Knob::new(&mut oscillator.cents, crate::parameter_knobs::destination(daw_core::ModulationParameter::OscillatorCents)).modulated(cents_marker.as_ref(), modulation_open)),
+                                                                    _ => ui.add_enabled(oscillator.unison != daw_core::OscillatorUnison::Off,
+                                                                        knobs::Knob::new(&mut oscillator.width, crate::parameter_knobs::destination(daw_core::ModulationParameter::OscillatorWidth)).modulated(width_marker.as_ref(), modulation_open)),
+                                                                }
+                                                            }));
+                                                        }
+                                                    });
                                                 }
                                                 responses.push(
                                                     crate::rows::centered(
@@ -1415,6 +1421,9 @@ impl DawUi {
                             self.midi_editor
                                 .oscillator_strip_bounds
                                 .push(strip.response.rect);
+                            if column.inner.len() >= 6 {
+                                self.midi_editor.oscillator_controls.push(std::array::from_fn(|i| column.inner[i].rect));
+                            }
                         }
                         // The column covers gaps; knob responses cover their interactive faces.
                         for response in column
@@ -1451,12 +1460,14 @@ impl DawUi {
                     }
                     add = add_strip.inner.clicked();
                     let level_routes: Vec<_> = routes.iter().filter(|r| r.target.is_none()).copied().collect();
-                    let live = self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::OscillatorLevel { track, layer: layer_id }))
-                        .map_or([None; 4], |v| [v[0], v[1], v[2], v[3]].map(|v| v.is_finite().then_some(v)));
+                    let live = self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::OscillatorLevel { track, layer: layer_id }))
+                        .map_or([None; 6], |v| std::array::from_fn(|i| v[i].is_finite().then_some(v[i])));
                     let level_marker = crate::modulation_panel::marker(&level_routes, sources, daw_core::ModulationParameter::Level, *level, unit_enabled, None, [live[0],live[1]]);
-                    let pitch_marker = crate::modulation_panel::marker(&level_routes,sources,daw_core::ModulationParameter::Pitch,*output_pitch,unit_enabled,None,[live[2],live[3]]);
+                    let pitch_marker = crate::modulation_panel::marker(&level_routes,sources,daw_core::ModulationParameter::Pitch,*output_pitch + *output_cents / 100.0,unit_enabled,None,[live[2],live[3]]);
+                    let output_cents_marker = crate::modulation_panel::marker(&level_routes, sources, daw_core::ModulationParameter::OscillatorCents, *output_cents, unit_enabled, None, [live[4], live[5]]);
                     let mut level_rect = Rect::NOTHING;
                     let mut pitch_rect = Rect::NOTHING;
+                    let mut cents_rect = Rect::NOTHING;
                     let output_strip = ui.scope_builder(egui::UiBuilder::new()
                         .id_salt(("oscillator-output", track, layer_id))
                         .sense(Sense::click_and_drag()), |ui| {
@@ -1471,7 +1482,10 @@ impl DawUi {
                                             } else if row == 1 {
                                                 let response = ui.add(knobs::Knob::new(output_pitch,knobs::pitch_spec().named("Oscillator output pitch")).modulated(pitch_marker.as_ref(),modulation_open));
                                                 pitch_rect = response.rect; response
-                                            } else { ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), Sense::hover()) }
+                                            } else {
+                                                let response = ui.add(knobs::Knob::new(output_cents, crate::parameter_knobs::destination(daw_core::ModulationParameter::OscillatorCents).named("Oscillator output cents")).modulated(output_cents_marker.as_ref(),modulation_open));
+                                                cents_rect = response.rect; response
+                                            }
                                         });
                                     }
                                 }
@@ -1481,10 +1495,11 @@ impl DawUi {
                     panels::unit_divider(ui, output_strip.response.rect.left(), output_strip.response.rect.y_range().into());
                     source_strip = Some(output_strip.response.rect);
                     let meter_rect = if compact { Rect::NOTHING } else { meters::unit_monitor_rail(output_strip.response.rect, panels::PanelStyle::default().margin) };
-                    self.start_installed_component_drag(ui, &output_strip.response, &[level_rect,pitch_rect,meter_rect], track, layer_id, daw_core::InstrumentComponent::Oscillators);
+                    self.start_installed_component_drag(ui, &output_strip.response, &[level_rect,pitch_rect,cents_rect,meter_rect], track, layer_id, daw_core::InstrumentComponent::Oscillators);
                     #[cfg(test)] {
                         self.midi_editor.oscillator_level_bounds = level_rect;
                         self.midi_editor.oscillator_pitch_bounds = pitch_rect;
+                        self.midi_editor.oscillator_output_cents_bounds = cents_rect;
                         self.midi_editor.oscillator_output_bounds = output_strip.response.rect;
                     }
                     if open {

@@ -1,5 +1,40 @@
 use crate::{SILENT_GAIN_DB, UNIT_STATE_VERSION, Waveform};
 use serde::{Deserialize, Serialize};
+/// Prepared voice count. Off retains the original single-oscillator path.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OscillatorUnison {
+    #[default]
+    Off,
+    Two,
+    Four,
+    Eight,
+}
+impl OscillatorUnison {
+    pub const ALL: [Self; 4] = [Self::Off, Self::Two, Self::Four, Self::Eight];
+    pub const fn voices(self) -> usize {
+        match self {
+            Self::Off => 1,
+            Self::Two => 2,
+            Self::Four => 4,
+            Self::Eight => 8,
+        }
+    }
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Two => "2 voices",
+            Self::Four => "4 voices",
+            Self::Eight => "8 voices",
+        }
+    }
+}
+fn default_detune() -> f32 {
+    10.0
+}
+fn default_width() -> f32 {
+    100.0
+}
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct OscillatorSettings {
     pub id: uuid::Uuid,
@@ -7,6 +42,10 @@ pub struct OscillatorSettings {
     pub waveform: Waveform,
     /// Semitone transposition. Host MIDI pitch remains separate from source state.
     pub transpose: i8,
+    pub cents: f32,
+    pub unison: OscillatorUnison,
+    pub detune_cents: f32,
+    pub width: f32,
     pub gain_db: f32,
     pub muted: bool,
 }
@@ -17,6 +56,10 @@ impl Default for OscillatorSettings {
             version: UNIT_STATE_VERSION,
             waveform: Waveform::Sine,
             transpose: 0,
+            cents: 0.0,
+            unison: OscillatorUnison::Off,
+            detune_cents: default_detune(),
+            width: default_width(),
             gain_db: -12.0,
             muted: false,
         }
@@ -27,6 +70,12 @@ impl OscillatorSettings {
         !self.id.is_nil()
             && self.version == UNIT_STATE_VERSION
             && (-48..=48).contains(&self.transpose)
+            && self.cents.is_finite()
+            && (-100.0..=100.0).contains(&self.cents)
+            && self.detune_cents.is_finite()
+            && (0.0..=100.0).contains(&self.detune_cents)
+            && self.width.is_finite()
+            && (0.0..=100.0).contains(&self.width)
             && self.gain_db.is_finite()
             && (SILENT_GAIN_DB..=12.0).contains(&self.gain_db)
     }
@@ -41,6 +90,14 @@ struct SavedOscillator {
     version: u32,
     waveform: Waveform,
     transpose: i8,
+    #[serde(default)]
+    cents: f32,
+    #[serde(default)]
+    unison: OscillatorUnison,
+    #[serde(default = "default_detune")]
+    detune_cents: f32,
+    #[serde(default = "default_width")]
+    width: f32,
     gain_db: f32,
     #[serde(default)]
     muted: bool,
@@ -57,6 +114,10 @@ impl SavedOscillator {
             version: self.version,
             waveform: self.waveform,
             transpose: self.transpose,
+            cents: self.cents,
+            unison: self.unison,
+            detune_cents: self.detune_cents,
+            width: self.width,
             gain_db: self.gain_db,
             muted: self.muted,
         }
@@ -95,6 +156,127 @@ mod tests {
         InstrumentSettings, Modulation, ModulationDestinationSettings, ModulationParameter,
     };
     use serde_json::json;
+
+    #[test]
+    fn oscillator_cents_width_routes_validate_roundtrip_duplicate_and_remove_by_id() {
+        let mut layer = crate::InstrumentLayerSettings {
+            oscillators: vec![OscillatorSettings::default()],
+            ..Default::default()
+        };
+        for parameter in [
+            ModulationParameter::OscillatorCents,
+            ModulationParameter::OscillatorWidth,
+        ] {
+            let mut route = Modulation::new(parameter);
+            route.target = Some(layer.oscillators[0].id);
+            route.amount = -100.0;
+            layer.oscillator_modulations.push(route);
+        }
+        let mut output = Modulation::new(ModulationParameter::OscillatorCents);
+        output.amount = 100.0;
+        layer.oscillator_modulations.push(output);
+        assert!(layer.valid());
+        assert_eq!(
+            serde_json::from_value::<crate::InstrumentLayerSettings>(
+                serde_json::to_value(&layer).unwrap()
+            )
+            .unwrap(),
+            layer
+        );
+        let copy = layer.duplicate();
+        assert!(copy.valid());
+        for route in &copy.oscillator_modulations[..2] {
+            assert_eq!(route.target, Some(copy.oscillators[0].id));
+        }
+        assert_eq!(copy.oscillator_modulations[2].target, None);
+        layer.oscillator_modulations[1].target = None;
+        assert!(!layer.valid());
+        layer.oscillator_modulations[1].target = Some(layer.oscillators[0].id);
+        for invalid in [f32::NAN, f32::INFINITY, -100.1, 100.1] {
+            layer.oscillator_modulations[0].amount = invalid;
+            assert!(!layer.valid());
+        }
+        layer.oscillator_modulations[0].amount = 100.0;
+        layer.remove_oscillator(layer.oscillators[0].id);
+        assert_eq!(layer.oscillator_modulations, vec![output]);
+    }
+
+    #[test]
+    fn oscillator_fine_tuning_and_unison_round_trip_and_reject_invalid_bounds() {
+        let legacy: OscillatorSettings = serde_json::from_value(json!({
+            "version":1,"waveform":"sine","transpose":0,"gain_db":-12.0
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                legacy.cents,
+                legacy.unison,
+                legacy.detune_cents,
+                legacy.width
+            ),
+            (0.0, OscillatorUnison::Off, 10.0, 100.0)
+        );
+        let mut instrument = InstrumentSettings::default();
+        instrument.layers[0].oscillator_cents = -37.5;
+        for mode in OscillatorUnison::ALL {
+            instrument.layers[0].oscillators = vec![OscillatorSettings {
+                cents: 72.5,
+                unison: mode,
+                detune_cents: 23.5,
+                width: 61.0,
+                ..Default::default()
+            }];
+            assert!(instrument.valid());
+            let copy = instrument.layers[0].duplicate();
+            assert_eq!(copy.oscillator_cents, -37.5);
+            let mut copied_source = copy.oscillators[0].clone();
+            assert_ne!(copied_source.id, instrument.layers[0].oscillators[0].id);
+            copied_source.id = instrument.layers[0].oscillators[0].id;
+            assert_eq!(copied_source, instrument.layers[0].oscillators[0]);
+            let saved = serde_json::to_value(&instrument).unwrap();
+            assert_eq!(
+                serde_json::from_value::<InstrumentSettings>(saved).unwrap(),
+                instrument
+            );
+        }
+        let mut saved = serde_json::to_value(&instrument).unwrap();
+        saved["layers"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("oscillator_cents");
+        assert_eq!(
+            serde_json::from_value::<InstrumentSettings>(saved)
+                .unwrap()
+                .layers[0]
+                .oscillator_cents,
+            0.0
+        );
+        for value in [f32::NAN, f32::INFINITY, -100.1, 100.1] {
+            instrument.layers[0].oscillator_cents = value;
+            assert!(!instrument.valid());
+            let source = OscillatorSettings {
+                cents: value,
+                ..Default::default()
+            };
+            assert!(!source.valid());
+        }
+        for value in [f32::NAN, f32::INFINITY, -0.1, 100.1] {
+            assert!(
+                !OscillatorSettings {
+                    detune_cents: value,
+                    ..Default::default()
+                }
+                .valid()
+            );
+            assert!(
+                !OscillatorSettings {
+                    width: value,
+                    ..Default::default()
+                }
+                .valid()
+            );
+        }
+    }
 
     #[test]
     fn legacy_lists_assign_repeatable_unique_ids_and_preserve_explicit_ids() {

@@ -100,7 +100,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Audio device preferences](audio/devices.md): machine-local device selection and output format/buffer negotiation.
 
 - [Shared modulation contract](modulation/contract.md).
-- [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).
+- [Oscillator modulation](modulation/oscillator-pitch.md).
 - [Timestretch, offline pitch, and independent implementation rule](audio/timestretch.md).
 - [Timestretch acceptance plan](acceptance/timestretch.md).
 - [Combined transient detector benchmark](validation/transient-detector-benchmark.md): initial energy/spectral comparison, measurements and limits.

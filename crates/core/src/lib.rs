@@ -4,6 +4,7 @@ pub use clip_channels::ClipChannels;
 mod fades;
 pub use fades::{ClipFade, ClipFades};
 mod time_signature;
+pub use daw_unit_core::OscillatorUnison;
 pub use daw_unit_core::{
     AMBIENT_REVERB_TYPE_ID, AmbientHighPassSlope, AmbientReverbSettings, ReverbFilterSlope,
 };

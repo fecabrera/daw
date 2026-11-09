@@ -4,6 +4,93 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Oscillator Cents and Width modulation — 2026-11-09
+
+Added UUID-targeted Cents/Width and untargeted Out Cents through the shared
+per-note destination contract. Signed amounts use cents and percentage points;
+processed values stay within the base control bounds. Common provider caching,
+route ramps, offset smoothing, compatible history, signed amount knobs, markers,
+range arcs, and full processed snapshots remain shared. Existing telemetry slots
+and serialized route names retain their meanings. Width in Off retains its
+connections without introducing stereo spread.
+
+Completed checks:
+
+- `cargo test -p daw-unit-core -p daw-oscillator --offline`: passed. Covers valid
+  and invalid routes, save/reopen, fresh duplicate targets, removal, per-note/shared
+  resolution, cancellation, bounds and reset at all six project rates.
+- `cargo test -p daw-engine --test midi oscillator_cents_width_modulation --offline`:
+  passed. Covers source/Out Cents and Width, live/export/seek parity, processed
+  extrema, unchanged base settings, phase continuity and allocation-free rendering
+  and compatible inheritance at all six project rates.
+- Extended egui oscillator connection test: passed in both themes, including
+  source/Out destination selection, popup scrolling, markers and saved expansion.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `cargo build -p daw-desktop -p daw-cli --offline`: passed.
+- `python3 tools/check_cli.py`: passed.
+
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+
+Native listening, device output, and native/platform gesture verification remain open. The debug executable is
+rebuilt; `.app` packaging retains its committed-source gate. No commit was made.
+
+## Oscillator fine tuning and unison — 2026-11-09
+
+Added per-source Cents and Off/2/4/8-voice stereo unison, with Detune and Width.
+Unison/Detune share one framed input group. Sources use the shared 161-point
+two-column strip; Out retains its fixed strip and adds Cents below Pitch.
+Settings retain legacy defaults and survive serialization, duplication, and
+whole-unit transfers. Continuous tuning/width changes preserve phase with 5 ms
+ramps; voice-count changes publish prepared state.
+
+Completed checks:
+
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test -p daw-oscillator --offline`: passed; fine tuning, all four waveforms,
+  all voice counts, stereo/mono width endpoints, deterministic reset, compatible
+  retargeting, bounds, and output Cents composition at all six project rates.
+- `cargo test -p daw-ui --offline`: passed; shared strip dimensions,
+  decimal Detune layout, control rows, source addition/removal/reordering,
+  existing Pitch/Gain edits, and Out controls.
+- Engine oscillator tests passed for live/export/seek stereo parity and
+  allocation-free continuous retargeting at all six project rates.
+- `cargo build -p daw-cli -p daw-desktop --offline`: passed.
+- `python3 tools/check_cli.py`: passed.
+
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+
+Initial runs exposed old single-column test coordinates and a zero-input test
+that expected unity output. Corrected those tests and the per-frame test-control
+bounds reset; the final full runs above include these corrections.
+Native listening, device output, Windows/Linux UI, and native gesture checks
+remain open. `sh tools/package_macos.sh debug` refuses tracked uncommitted
+changes through its source-revision check. The debug executable is rebuilt;
+the existing `.app` bundle is unchanged. No commit was made.
+
+## Oscillator control presentation — 2026-11-09
+
+Width now shows its percentage above the face, using the same shared knob
+presentation as Plate Reverb. Waveform and Unison/Detune use standard 22-point
+input height, 11-point text and standard dropdown arrows. Their centered
+70-point input footprints retain the shared 161-point source strip. Unison
+reuses the shared selector label row and joined input frame. The existing bounds
+regression covers Off/2/4/8 and decimal Detune without clipping or row movement.
+
+Completed checks after these changes:
+
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+
+Native visual/gesture verification remains open. The debug executable is rebuilt;
+the `.app` remains unchanged under the source-revision packaging gate described above.
+
 ## Beat trims retain hidden steps — 2026-11-09
 
 Verified that the existing beat trim path already retains the complete source.

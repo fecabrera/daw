@@ -37,6 +37,7 @@ mod separation_models;
 pub use history::HistoryAction;
 mod granulizer_panel;
 mod noise_panel;
+mod oscillator_controls;
 mod oscillator_preview;
 mod resize;
 mod sampler_panel;

@@ -1925,11 +1925,7 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(!shapes.iter().any(|s| matches!(&s.shape,
             egui::Shape::Text(t) if t.galley.text() == "Add source")));
-        let oscillator = app.midi_editor.layer_bounds[&second].oscillators[0];
-        let pitch = Pos2::new(
-            oscillator.center().x,
-            oscillator.top() + knobs::CHOICE_SIZE * 1.5 + theme::TOOLBAR_PADDING as f32,
-        );
+        let pitch = app.midi_editor.oscillator_controls[0][1].center();
         click_note_or_lane(&mut app, &ctx, pitch);
         frame(
             &mut app,
@@ -2738,8 +2734,8 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
         for count in 1..=2 {
             for strip in &app.midi_editor.oscillator_strip_bounds {
                 assert!(
-                    (strip.width() - midi_editor::UNIT_STRIP_WIDTH).abs() < 0.1,
-                    "strip width must not change when the source count changes"
+                    (strip.width() - daw_unit_ui::layout::unit_columns_width(2)).abs() < 0.1,
+                    "strip width must not change when the source count changes: {strip:?}"
                 );
             }
             let button = app.midi_editor.add_oscillator_bounds;
@@ -2783,11 +2779,7 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
             instrument: Some(settings),
         });
         frame(&mut app, &ctx, vec![]);
-        let second = app.midi_editor.oscillator_bounds[1];
-        let transpose = Pos2::new(
-            second.center().x,
-            second.top() + knobs::CHOICE_SIZE * 1.5 + theme::TOOLBAR_PADDING as f32,
-        );
+        let transpose = app.midi_editor.oscillator_controls[1][1].center();
         click_note_or_lane(&mut app, &ctx, transpose);
         for pressed in [true, false] {
             frame(
@@ -2813,7 +2805,7 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
         );
         for index in [1, 0, 0] {
             for strip in &app.midi_editor.oscillator_strip_bounds {
-                assert!((strip.width() - midi_editor::UNIT_STRIP_WIDTH).abs() < 0.1);
+                assert!((strip.width() - daw_unit_ui::layout::unit_columns_width(2)).abs() < 0.1);
             }
             let bounds = app.midi_editor.oscillator_bounds[index];
             // Cover strip padding as well as interactive knob faces.
@@ -3057,7 +3049,10 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
                 _ => None,
             })
             .expect("painted Power icon");
-        assert_eq!(add_icon.size(), power_icon.size());
+        // Image edges snap to physical pixels; odd-width double strips can shift one edge.
+        assert!(
+            (add_icon.size() - power_icon.size()).abs().max_elem() <= 1.0 / ctx.pixels_per_point()
+        );
         assert!((columns[1].right() - add_strip.left()).abs() < 0.1);
         assert!((columns[1].top() - add_strip.top()).abs() < 0.1);
         assert!((columns[1].bottom() - add_strip.bottom()).abs() < 0.1);
@@ -6352,6 +6347,8 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
                 egui::Shape::Circle(circle)
                     if (circle.radius - (knobs::SIZE / 2.0 - 5.0)).abs() < 0.01
                         && app.midi_editor.oscillator_strip_bounds[0].contains(circle.center)
+                        && circle.center.x
+                            < app.midi_editor.oscillator_strip_bounds[0].center().x
                         && !app
                             .midi_editor
                             .oscillator_power_bounds
@@ -8462,5 +8459,45 @@ fn midi_trimming_hides_notes_and_expansion_restores_them_in_both_views() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn oscillator_fine_tuning_and_joined_unison_fit_shared_columns() {
+    for mode in daw_core::OscillatorUnison::ALL {
+        let (mut app, _, _, _) = fixture();
+        let source = &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .oscillators[0];
+        source.unison = mode;
+        source.detune_cents = 99.9;
+        let ctx = context();
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let controls = app.midi_editor.oscillator_controls[0];
+        let strip = app.midi_editor.oscillator_strip_bounds[0];
+        for rect in controls {
+            assert!(strip.contains_rect(rect), "{strip:?}: {rect:?}");
+        }
+        for row in 0..3 {
+            assert!(
+                (controls[row].center().y - controls[row + 3].center().y).abs() < 20.0,
+                "{controls:?}"
+            );
+            assert!(controls[row].right() < controls[row + 3].left());
+        }
+        assert!(
+            (controls[3].width() - 70.0).abs() < 0.6,
+            "{:?}",
+            controls[3]
+        );
+        assert!(
+            app.midi_editor
+                .oscillator_output_bounds
+                .contains_rect(app.midi_editor.oscillator_output_cents_bounds)
+        );
     }
 }

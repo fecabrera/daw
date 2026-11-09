@@ -72,7 +72,7 @@ need a selection retain their usual empty-selection prompts.
 
 - [Normalize clip gain](editing/normalize-gain.md): set audio clips to individual peak or loudness targets.
 
-- [Modulation](modulation/README.md), [Audio sidechains](modulation/audio-sidechain.md), and [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).
+- [Modulation](modulation/README.md), [Audio sidechains](modulation/audio-sidechain.md), and [Oscillator modulation](modulation/oscillator-pitch.md).
 - [Track sends and Returns](editing/track-sends.md): shared effects and parallel routing.
 - [Track groups](editing/track-groups.md): shared processing buses and nested track organization.
 - [Undo and redo](editing/undo-redo.md).

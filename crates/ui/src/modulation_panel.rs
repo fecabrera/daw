@@ -559,6 +559,8 @@ pub(super) fn marker(
             ModulationParameter::Amplitude
                 | ModulationParameter::Pitch
                 | ModulationParameter::OscillatorGain
+                | ModulationParameter::OscillatorCents
+                | ModulationParameter::OscillatorWidth
         ) && source.unwrap().scope == ModulationScope::PerNote
         {
             "requires shared source"
@@ -739,6 +741,8 @@ pub(super) fn marker(
             offsets.map(|o| (base + o).round().clamp(1.0, 40.0))
         }
         ModulationParameter::LfoRate => offsets.map(|o| (base * 2.0_f32.powf(o)).max(0.0)),
+        ModulationParameter::OscillatorCents => offsets.map(|o| (base + o).clamp(-100.0, 100.0)),
+        ModulationParameter::OscillatorWidth => offsets.map(|o| (base + o).clamp(0.0, 100.0)),
         ModulationParameter::Pitch => offsets.map(|o| base + o.clamp(-96.0, 96.0)),
         ModulationParameter::StereoSpreadLowerFrequency
         | ModulationParameter::StereoSpreadUpperFrequency
@@ -907,6 +911,8 @@ pub(super) fn marker(
         | ModulationParameter::CompressorRelease => {
             format!("{value:.1} ms")
         }
+        ModulationParameter::OscillatorCents => format!("{value:+.1} cents"),
+        ModulationParameter::OscillatorWidth => format!("{value:.0}%"),
         ModulationParameter::Pitch => format!("{value:+.2} semitones"),
         ModulationParameter::StereoSpreadLowerFrequency
         | ModulationParameter::StereoSpreadUpperFrequency

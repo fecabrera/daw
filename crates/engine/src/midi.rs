@@ -407,11 +407,20 @@ impl LayerVoice {
                 }
                 s.source.set_base_gain(s.gain);
                 s.source.set_output_pitch_ratio(output_pitch_ratio);
-                process_modulation(&mut s.source, &mut s.routes, 0.0, local, shared, context)
+                process_modulation(
+                    &mut s.source,
+                    &mut s.routes,
+                    [0.0; 2],
+                    local,
+                    shared,
+                    context,
+                )
             })
-            .sum::<f32>();
-        let sources = sources * output_gain;
-        let mut stereo = self.sampler.as_mut().map_or([sources; 2], |s| {
+            .fold([0.0; 2], |sum, sample| {
+                [sum[0] + sample[0], sum[1] + sample[1]]
+            });
+        let sources = sources.map(|v| v * output_gain);
+        let mut stereo = self.sampler.as_mut().map_or(sources, |s| {
             process_modulation(
                 s,
                 &mut self.sampler_routes,
@@ -791,6 +800,7 @@ impl MidiTrackRuntime {
             for settings in sources {
                 settings.id.hash(&mut hash);
                 format!("{:?}", settings.waveform).hash(&mut hash);
+                settings.unison.hash(&mut hash);
             }
         }
         project.tempo_bpm.to_bits().hash(&mut hash);
@@ -968,7 +978,8 @@ impl MidiTrackRuntime {
                                     max_block_frames: project.buffer_size_frames,
                                 },
                             )
-                            .with_pitch(layer.oscillator_pitch_semitones),
+                            .with_pitch(layer.oscillator_pitch_semitones)
+                            .with_cents(layer.oscillator_cents),
                             oscillator_level_routes: layer
                                 .oscillator_modulations
                                 .iter()
@@ -1295,6 +1306,7 @@ impl MidiTrackRuntime {
                             &mut source.routes,
                             &mut target.routes,
                         );
+                        source.source.retarget(&target.source);
                         if source.transpose != target.transpose {
                             source.transpose = target.transpose;
                             source.frequency_target = note_frequency(voice.pitch, source.transpose);
@@ -1666,9 +1678,11 @@ impl MidiTrackRuntime {
             .map(|l| l.amplitude.effective_gain())
             .fold(0.0, f32::max)
     }
-    /// Active-voice output Level dB and common Pitch semitone extrema.
-    pub fn oscillator_level_values(&self, layer: Id) -> [f32; 4] {
+    /// Active-voice extrema: Level dB (0–1), combined Pitch semitones (2–3), Cents (4–5).
+    pub fn oscillator_level_values(&self, layer: Id) -> [f32; 6] {
         let mut range = [
+            f32::INFINITY,
+            f32::NEG_INFINITY,
             f32::INFINITY,
             f32::NEG_INFINITY,
             f32::INFINITY,
@@ -1691,13 +1705,21 @@ impl MidiTrackRuntime {
                 let pitch = l.oscillator_level.effective_pitch();
                 range[2] = range[2].min(pitch);
                 range[3] = range[3].max(pitch);
+                let cents = l.oscillator_level.effective_cents();
+                range[4] = range[4].min(cents);
+                range[5] = range[5].max(cents);
             }
         }
         range.map(|v| if v.is_finite() { v } else { f32::NAN })
     }
-    /// Active-voice transpose and gain (dB) extrema. Exclude MIDI pitch, velocity and layer mixing.
-    pub fn oscillator_values(&self, layer: Id, oscillator: Id) -> [f32; 4] {
+    /// Active-voice extrema: transpose (0–1), gain dB (2–3), Cents (4–5), Width percent (6–7).
+    /// Exclude MIDI pitch, velocity and layer mixing.
+    pub fn oscillator_values(&self, layer: Id, oscillator: Id) -> [f32; 8] {
         let mut range = [
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
             f32::INFINITY,
             f32::NEG_INFINITY,
             f32::INFINITY,
@@ -1726,6 +1748,12 @@ impl MidiTrackRuntime {
                 };
                 range[2] = range[2].min(db);
                 range[3] = range[3].max(db);
+                let cents = source.source.effective_cents();
+                range[4] = range[4].min(cents);
+                range[5] = range[5].max(cents);
+                let width = source.source.effective_width();
+                range[6] = range[6].min(width);
+                range[7] = range[7].max(width);
             }
         }
         range.map(|v| if v.is_finite() { v } else { f32::NAN })

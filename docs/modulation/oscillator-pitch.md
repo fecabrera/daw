@@ -1,6 +1,6 @@
-# Oscillator pitch and gain modulation
+# Oscillator modulation
 
-Use Envelope, LFO, or Macro to change an oscillator's pitch or gain while retaining its base knob settings.
+Use Envelope, LFO, or Macro to change an oscillator's pitch, cents, width, or gain while retaining its base knob settings.
 
 ## Connect pitch modulation
 
@@ -14,7 +14,7 @@ Positive values raise pitch and negative values lower it. Twelve semitones equal
 
 A Per note Envelope gives each voice its own pitch contour. Retrigger/Legato Envelopes, LFOs, and Macros provide shared movement. Output sources are also available within the same instrument.
 
-Add more connections for other oscillators or combine sources on one Pitch control. Power disables a connection; right-click removes it. Removing an oscillator removes its pitch and gain connections. Reordering oscillators keeps their connections attached.
+Add more connections for other oscillators or combine sources on one Pitch control. Power disables a connection; right-click removes it. Removing an oscillator removes its connections. Reordering oscillators keeps their connections attached.
 
 ## Read pitch movement
 
@@ -43,3 +43,11 @@ Its marker opens the same connections. Live dots show the lowest and highest act
 Select **Pitch** as Destination to transpose all oscillator sources together. Use **Osc N · Pitch** for one source. Output Pitch adds to each source's tuning and modulation, preserving their intervals. Set Amount from −48 to +48 semitones. Per note and shared sources are supported, including sources in Output. The knob's live dots show the common transpose, excluding the MIDI note and individual source Pitch.
 
 Output Pitch and its connections save with the layer. Moving or copying the complete Oscillator unit into an empty destination carries the connections. A merge retains the destination's output controls and connections; an individual source transfer leaves the output connections in place.
+
+## Modulate Cents and Width
+
+Select **Osc N · Cents** for fine tuning on one source, or **Cents** for all oscillator sources through Out. Amount spans −100 to +100 cents. There are 100 cents in one semitone. Cents adds to coarse Pitch without changing the saved knobs.
+
+Select **Osc N · Width** to vary a source’s unison spread. Amount spans −100 to +100 percentage points. For example, a base Width of 50% and a full source value with Amount +25% produces 75%. Width affects unison modes 2, 4, and 8; Off retains the connection without a stereo spread.
+
+These destinations accept per-note Envelopes and shared Envelope, LFO, and Macro sources, including sources in Output. Multiple connections add. Processed Cents stays within −100..+100; Width stays within 0..100%. The knobs show the shared assignment marker, possible-range arc, and lowest/highest processed voice values. Click a marker to open its connections. Changes are smoothed and retain oscillator phase.

@@ -20,7 +20,7 @@ fn shape(waveform: Waveform, phase: f32) -> f32 {
 pub(super) fn show(ui: &mut Ui, waveform: &mut Waveform, enabled: bool) -> Response {
     let (rect, mut response) =
         ui.allocate_exact_size(Vec2::splat(crate::knobs::CHOICE_SIZE), Sense::hover());
-    let graph = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 30.0));
+    let graph = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 26.0));
     let palette = crate::theme::palette(ui.ctx());
     let painter = ui.painter_at(graph);
     painter.rect_filled(graph, 2.0, palette.background);
@@ -47,36 +47,34 @@ pub(super) fn show(ui: &mut Ui, waveform: &mut Waveform, enabled: bool) -> Respo
     ui.interact(graph, response.id.with("preview"), Sense::hover()).on_hover_text(
         "One oscillator cycle (0–100% phase). Pitch changes its duration, not its shape. This preview excludes gain, modulation and downstream processing.");
     let before = *waveform;
-    let dropdown = ui
-        .scope_builder(
-            egui::UiBuilder::new().max_rect(egui::Rect::from_min_max(
-                rect.min + egui::vec2(0.0, 34.0),
-                rect.max,
-            )),
-            |ui| {
-                ui.spacing_mut().interact_size.y = 18.0;
-                ui.spacing_mut().button_padding = egui::vec2(2.0, 2.0);
-                ui.spacing_mut().icon_width = 8.0;
-                ui.spacing_mut().icon_spacing = 2.0;
-                crate::menus::Dropdown::from_id_salt("waveform")
-                    .small_items()
-                    .selected_text(egui::RichText::new(waveform.label()).small())
-                    .width(rect.width())
-                    .truncate()
-                    .show_ui(ui, |ui| {
-                        for choice in Waveform::ALL {
-                            if ui
-                                .selectable_value(waveform, choice, choice.label())
-                                .clicked()
-                            {
-                                ui.close();
-                            }
-                        }
-                    })
-                    .response
-            },
+    let input = crate::oscillator_controls::input_bounds(rect);
+    let mut selector = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt("waveform-selector")
+            .max_rect(egui::Rect::from_min_max(
+                input.min + egui::vec2(0.0, 30.0),
+                input.max,
+            ))
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    let dropdown = crate::menus::Dropdown::from_id_salt("waveform")
+        .small_items()
+        .selected_text(
+            egui::RichText::new(waveform.label()).size(daw_unit_ui::layout::HEADER_FONT_SIZE),
         )
-        .inner;
+        .width(input.width())
+        .truncate()
+        .show_ui(&mut selector, |ui| {
+            for choice in Waveform::ALL {
+                if ui
+                    .selectable_value(waveform, choice, choice.label())
+                    .clicked()
+                {
+                    ui.close();
+                }
+            }
+        })
+        .response;
     dropdown.widget_info(|| {
         egui::WidgetInfo::labeled(
             egui::WidgetType::ComboBox,

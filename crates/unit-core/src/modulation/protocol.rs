@@ -306,6 +306,8 @@ impl ModulationDestinationSettings for crate::InstrumentLayerSettings {
     const MODULATION_PARAMETERS: &'static [ModulationParameter] = &[
         ModulationParameter::Pitch,
         ModulationParameter::OscillatorGain,
+        ModulationParameter::OscillatorCents,
+        ModulationParameter::OscillatorWidth,
         ModulationParameter::Level,
     ];
     const MODULATION_SCOPE: ModulationScope = ModulationScope::PerNote;
@@ -317,7 +319,11 @@ impl ModulationDestinationSettings for crate::InstrumentLayerSettings {
             self.modulations(),
             &ModulationParameter::OSCILLATOR,
             &self.oscillators.iter().map(|s| s.id).collect::<Vec<_>>(),
-            &[ModulationParameter::Level, ModulationParameter::Pitch],
+            &[
+                ModulationParameter::Level,
+                ModulationParameter::Pitch,
+                ModulationParameter::OscillatorCents,
+            ],
         )
     }
 }

@@ -538,6 +538,7 @@ impl Renderer {
             .map(|v| std::array::from_fn(|i| v[i]))
     }
     /// Full readings. EQ/Compressor use their parameter-list order; unused slots contain NaN.
+    /// Oscillator adds Cents extrema in 4/5 and Width in 6/7; OscillatorLevel adds Cents in 4/5.
     /// Granulizer uses slot 0 for scan, 1/2 for gain extrema, 3..11 for parameters,
     /// and 11..27 for up to sixteen grain positions from one active voice.
     pub fn modulation_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {

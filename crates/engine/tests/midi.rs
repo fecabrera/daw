@@ -5506,3 +5506,199 @@ mod ambient_reverb_modulation;
 
 #[path = "support/shimmer_reverb_modulation.rs"]
 mod shimmer_reverb_modulation;
+
+#[test]
+fn oscillator_unison_preserves_stereo_export_seek_and_allocation_free_tuning_updates() {
+    for rate in SAMPLE_RATES {
+        let mut p = plan(Waveform::Saw, rate);
+        let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+        layer.oscillator_cents = -25.0;
+        layer.oscillators[0].cents = 50.0;
+        layer.oscillators[0].unison = OscillatorUnison::Eight;
+        layer.oscillators[0].detune_cents = 17.0;
+        let mut offline = vec![[0.0; 2]; (rate / 20) as usize];
+        Renderer::new(p.clone()).render_offline(&mut offline);
+        assert!(offline.iter().any(|v| (v[0] - v[1]).abs() > 0.001));
+        let mut current = Renderer::new(p.clone());
+        current.play();
+        ALLOCATIONS.with(|n| n.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        for (n, expected) in offline.iter().enumerate() {
+            let actual = current.next_sample();
+            if n > (rate / 200) as usize {
+                for ch in 0..2 {
+                    assert!((actual[ch] - expected[ch]).abs() < 0.000002);
+                }
+            }
+        }
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        let mut reference = Renderer::new(p.clone());
+        reference.play();
+        current.seek(u64::from(rate / 40));
+        reference.seek(u64::from(rate / 40));
+        for n in 0..rate / 20 {
+            let actual = current.next_sample();
+            let expected = reference.next_sample();
+            if n > rate / 50 {
+                assert_eq!(actual, expected);
+            }
+        }
+        let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+        layer.oscillator_cents = 75.0;
+        layer.oscillators[0].cents = -50.0;
+        layer.oscillators[0].width = 0.0;
+        layer.oscillators[0].detune_cents = 40.0;
+        let mut next = Renderer::new(p.clone());
+        assert!(next.can_inherit_without_preroll(&current));
+        ALLOCATIONS.with(|n| n.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        next.inherit(&mut current);
+        for n in 0..rate / 20 {
+            let sample = next.next_sample();
+            assert!(sample.iter().all(|v| v.is_finite()));
+            if n > rate / 200 {
+                assert_eq!(sample[0], sample[1]);
+            }
+        }
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        p.project.tracks[0].instrument.as_mut().unwrap().layers[0].oscillators[0].unison =
+            OscillatorUnison::Two;
+        // A topology change publishes the prepared voice bank rather than retargeting it.
+        let mut changed = Renderer::new(p);
+        changed.inherit(&mut next);
+        for _ in 0..rate / 20 {
+            assert!(changed.next_sample().iter().all(|v| v.is_finite()));
+        }
+    }
+}
+
+#[test]
+fn oscillator_cents_width_modulation_has_stereo_live_export_seek_and_allocation_free_history() {
+    use daw_engine::ModulationTarget;
+    for rate in SAMPLE_RATES {
+        for shared in [false, true] {
+            let mut p = plan(Waveform::Saw, rate);
+            let track = p.project.tracks[0].id;
+            let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
+            let provider = if shared {
+                instrument.main.macro_module.add();
+                instrument.main.macro_module.controls[0].settings.value = 1.0;
+                ModulationSourceId {
+                    layer: instrument.main.id,
+                    unit: instrument.main.macro_module.controls[0].id,
+                }
+            } else {
+                let layer = &mut instrument.layers[0];
+                layer.envelopes[0].settings.attack.time_ms = 0.0;
+                layer.envelopes[0].settings.decay.time_ms = 0.0;
+                layer.envelopes[0].settings.sustain = 1.0;
+                ModulationSourceId {
+                    layer: layer.id,
+                    unit: layer.envelopes[0].id,
+                }
+            };
+            let layer = &mut instrument.layers[0];
+            layer.oscillators[0].unison = OscillatorUnison::Eight;
+            let oscillator = layer.oscillators[0].id;
+            let target = ModulationTarget::Oscillator {
+                track,
+                layer: layer.id,
+                oscillator,
+            };
+            let output = ModulationTarget::OscillatorLevel {
+                track,
+                layer: layer.id,
+            };
+            for (parameter, destination, amount) in [
+                (ModulationParameter::OscillatorCents, Some(oscillator), 50.0),
+                (
+                    ModulationParameter::OscillatorWidth,
+                    Some(oscillator),
+                    -100.0,
+                ),
+                (ModulationParameter::OscillatorCents, None, 25.0),
+            ] {
+                let mut route = Modulation::new(parameter);
+                route.source = Some(provider);
+                route.target = destination;
+                route.amount = amount;
+                layer.oscillator_modulations.push(route);
+            }
+            p.project.validate().unwrap();
+            let mut offline = vec![[0.0; 2]; (rate / 10) as usize];
+            Renderer::new(p.clone()).render_offline(&mut offline);
+            let mut live = Renderer::new(p.clone());
+            live.play();
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            for (n, expected) in offline.iter().enumerate() {
+                let actual = live.next_sample();
+                if n > (rate / 50) as usize {
+                    for ch in 0..2 {
+                        assert!((actual[ch] - expected[ch]).abs() < 0.000002);
+                    }
+                    assert_eq!(actual[0], actual[1]);
+                }
+            }
+            let values = live.modulation_snapshot(target).unwrap();
+            let out = live.modulation_snapshot(output).unwrap();
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            for v in &values[4..6] {
+                assert!((*v - 50.0).abs() < 0.001);
+            }
+            for v in &values[6..8] {
+                assert!(v.abs() < 0.001);
+            }
+            for v in &out[4..6] {
+                assert!((*v - 25.0).abs() < 0.001);
+            }
+            let mut reference = Renderer::new(p.clone());
+            reference.play();
+            live.seek(u64::from(rate / 20));
+            reference.seek(u64::from(rate / 20));
+            for n in 0..rate / 20 {
+                let a = live.next_sample();
+                let b = reference.next_sample();
+                if n > rate / 50 {
+                    assert_eq!(a, b);
+                }
+            }
+            let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+            assert_eq!(layer.oscillators[0].cents, 0.0);
+            assert_eq!(layer.oscillators[0].width, 100.0);
+            assert_eq!(layer.oscillator_cents, 0.0);
+            layer.oscillator_modulations[0].amount = -100.0;
+            layer.oscillator_modulations[1].amount = 100.0;
+            layer.oscillator_modulations[2].amount = -100.0;
+            let mut next = Renderer::new(p);
+            assert!(next.can_inherit_without_preroll(&live));
+            let phase_reference = reference.next_sample();
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            next.inherit(&mut live);
+            let first = next.next_sample();
+            for ch in 0..2 {
+                assert!((first[ch] - phase_reference[ch]).abs() < 0.002);
+            }
+            for _ in 0..rate / 20 {
+                assert!(next.next_sample().iter().all(|v| v.is_finite()));
+            }
+            let values = next.modulation_snapshot(target).unwrap();
+            let out = next.modulation_snapshot(output).unwrap();
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            for v in &values[4..6] {
+                assert!((*v + 100.0).abs() < 0.001);
+            }
+            for v in &values[6..8] {
+                assert!((*v - 100.0).abs() < 0.001);
+            }
+            for v in &out[4..6] {
+                assert!((*v + 100.0).abs() < 0.001);
+            }
+        }
+    }
+}

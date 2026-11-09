@@ -428,6 +428,20 @@ pub fn pitch_spec() -> KnobSpec {
         .bipolar()
         .format(|value| format!("{value:.0} semitones"))
 }
+/// Fine tuning shared by per-source and common Oscillator output controls.
+pub fn cents_spec() -> KnobSpec {
+    KnobSpec::new("Cents", -100.0..=100.0, 0.0, 1.0)
+        .bipolar()
+        .endpoint_labels("−100", "+100")
+        .value_label(|v| {
+            if v == 0.0 {
+                "0".into()
+            } else {
+                format!("{v:+.1}")
+            }
+        })
+        .format(|v| format!("{v:+.1} cents"))
+}
 pub fn waveform(ui: &mut Ui, value: &mut daw_unit_core::Waveform) -> Response {
     let mut scalar = daw_unit_core::Waveform::ALL
         .iter()
