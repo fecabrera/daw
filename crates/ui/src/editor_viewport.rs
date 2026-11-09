@@ -2,6 +2,43 @@
 //! notes, waveform mapping, snapping, and seeking keep the shared project clock.
 use super::*;
 
+/// First source cycle, including a shortened first cycle after a loop-phase trim.
+pub(super) fn original_cycle_end(clip: &Clip) -> u64 {
+    clip.start_frame
+        .saturating_add(clip.repeat.map_or(clip.length_frames, |repeat| {
+            repeat.length_frames - repeat.phase_frame
+        }))
+        .min(clip.end())
+}
+
+impl DawUi {
+    pub(super) fn editor_original_span(&self, lane: Rect, clip: &Clip) -> Rect {
+        // Restrict only the repeat boundary. Preserve the lane clip around
+        // original edges so shared fade handles remain whole at clip seams.
+        let right = if clip.repeat.is_some() {
+            lane.left()
+                + self
+                    .musical_timeline()
+                    .pixel_at_frame(original_cycle_end(clip)) as f32
+        } else {
+            lane.right()
+        };
+        Rect::from_min_max(lane.min, Pos2::new(right.min(lane.right()), lane.bottom()))
+    }
+
+    pub(super) fn editor_repeat_at(
+        &self,
+        track: &daw_core::Track,
+        lane: Rect,
+        pointer: Pos2,
+    ) -> bool {
+        let frame = self.ruler_frame(lane, pointer);
+        track.clips.iter().any(|clip| {
+            clip.repeat.is_some() && frame >= original_cycle_end(clip) && frame < clip.end()
+        })
+    }
+}
+
 pub(super) struct EditorViewport {
     pub clip: Option<Id>,
     pub zoom: f32,

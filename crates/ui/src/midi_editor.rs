@@ -595,7 +595,7 @@ impl DawUi {
                 }
                 self.midi_pattern_edges(ui, track, note_viewport);
                 self.update_midi_notes(ui);
-                self.editor_note_selection(ui, note_viewport);
+                self.editor_note_selection(ui, note_viewport, track);
                 let x = grid_left
                     + (self
                         .session
@@ -758,7 +758,7 @@ impl DawUi {
             self.midi_editor.live_pitches.clear();
         }
     }
-    fn editor_note_selection(&mut self, ui: &egui::Ui, viewport: Rect) {
+    fn editor_note_selection(&mut self, ui: &egui::Ui, viewport: Rect, track: &daw_core::Track) {
         if !self.midi_editor.dragging()
             && self.drag.is_none()
             && ui.is_enabled()
@@ -767,6 +767,7 @@ impl DawUi {
             && let Some((origin, modifiers)) = primary_press(ui)
             && !modifiers.command
             && viewport.contains(origin)
+            && !self.editor_repeat_at(track, viewport, origin)
             && !self
                 .midi_editor
                 .note_regions
@@ -976,6 +977,18 @@ impl DawUi {
         }
         let painter = ui.painter_at(viewport);
         let palette = theme::palette(ui.ctx());
+        let colors = theme::clip_colors(track.color, clip.color);
+        let selected_note_color = clip_paint::header_colors(
+            ui.ctx(),
+            if clip.muted {
+                colors.dimmed(ui.ctx())
+            } else {
+                colors
+            },
+            false,
+            true,
+        )
+        .header;
         let beat_width = self.editor_beat_width(clip);
         let step = self.editor_step(clip);
         let base = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
@@ -1002,14 +1015,27 @@ impl DawUi {
                 let end = clip.stretch.map_or(end, |s| s.scale(end).unwrap_or(0));
                 if start < clip.source_offset_frame + base && end > clip.source_offset_frame {
                     let y = canvas.top() + f32::from(127 - note.pitch) * NOTE_HEIGHT;
+                    let band = Rect::from_min_max(
+                        Pos2::new(visible.left(), y + 1.0),
+                        Pos2::new(visible.right(), y + NOTE_HEIGHT - 2.0),
+                    );
+                    let color = if track.midi_options.contains_pitch(note.pitch) {
+                        colors.header
+                    } else {
+                        palette.secondary
+                    };
+                    painter.rect_filled(band, 0.0, theme::dimmed_repeat_color(ui.ctx(), color));
                     painter.rect_filled(
-                        Rect::from_min_max(
-                            Pos2::new(visible.left(), y + 1.0),
-                            Pos2::new(visible.right(), y + NOTE_HEIGHT - 2.0),
-                        ),
+                        band.intersect(self.editor_original_span(lane, clip)),
                         0.0,
-                        if track.midi_options.contains_pitch(note.pitch) {
-                            theme::clip_colors(track.color, clip.color).header
+                        if self
+                            .midi_editor
+                            .selected_notes
+                            .contains(&(clip.id, note.id))
+                        {
+                            selected_note_color
+                        } else if track.midi_options.contains_pitch(note.pitch) {
+                            colors.header
                         } else {
                             palette.secondary
                         },
@@ -1057,7 +1083,7 @@ impl DawUi {
             }
             #[cfg(test)]
             {
-                if Some(clip.id) == self.selected_clip && repetition == first {
+                if Some(clip.id) == self.selected_clip && repetition == 0 {
                     self.midi_editor.grid_bounds = grid;
                 }
             }
@@ -1069,7 +1095,12 @@ impl DawUi {
             }
             let note_painter = ui.painter_at(note_viewport);
             let mut note_ui = ui.new_child(egui::UiBuilder::new());
-            if self.drag.is_some()
+            if repetition > 0
+                || (clip.repeat.is_some()
+                    && ui
+                        .input(|i| i.pointer.press_origin())
+                        .is_some_and(|origin| origin.x >= span.right()))
+                || self.drag.is_some()
                 || self.midi_editor.drag.is_some()
                 || self.midi_editor.draw.is_some()
                 || self.midi_editor.selection.is_some()
@@ -1086,9 +1117,11 @@ impl DawUi {
                 if !rect.intersects(note_viewport) {
                     continue;
                 }
-                self.midi_editor
-                    .note_regions
-                    .push(((clip.id, note.id), rect.intersect(note_viewport)));
+                if repetition == 0 {
+                    self.midi_editor
+                        .note_regions
+                        .push(((clip.id, note.id), rect.intersect(note_viewport)));
+                }
                 #[cfg(test)]
                 {
                     self.midi_editor
@@ -1096,7 +1129,7 @@ impl DawUi {
                         .entry((clip.id, note.id))
                         .or_default()
                         .push(rect.intersect(note_viewport));
-                    if Some(clip.id) == self.selected_clip {
+                    if Some(clip.id) == self.selected_clip && repetition == 0 {
                         self.midi_editor
                             .note_bounds
                             .insert(note.id, rect.intersect(note_viewport));
@@ -1123,30 +1156,28 @@ impl DawUi {
                         ),
                     )
                 });
-                note_painter.rect_filled(
-                    rect.shrink(1.0),
-                    2.0,
-                    if !track.midi_options.contains_pitch(note.pitch) {
+                note_painter.rect_filled(rect.shrink(1.0), 2.0, {
+                    let original = if selected && repetition == 0 {
+                        selected_note_color
+                    } else if !track.midi_options.contains_pitch(note.pitch) {
                         palette.secondary
-                    } else if Some(clip.id) == self.selected_clip {
-                        theme::accent(ui.ctx())
                     } else {
-                        theme::clip_colors(track.color, clip.color).header
-                    },
-                );
-                note_painter.rect_stroke(
-                    rect,
-                    2.0,
-                    Stroke::new(
-                        if selected { 2.0 } else { 1.0 },
-                        if selected {
-                            palette.text
-                        } else {
-                            palette.border
-                        },
-                    ),
-                    StrokeKind::Inside,
-                );
+                        colors.header
+                    };
+                    if repetition > 0 {
+                        theme::dimmed_repeat_color(ui.ctx(), original)
+                    } else {
+                        original
+                    }
+                });
+                if !selected || repetition > 0 {
+                    note_painter.rect_stroke(
+                        rect,
+                        2.0,
+                        Stroke::new(1.0, palette.border),
+                        StrokeKind::Inside,
+                    );
+                }
                 response.clone().on_hover_text(format!(
                     "{} · velocity {}",
                     note_name(note.pitch),
@@ -1253,7 +1284,8 @@ impl DawUi {
                     );
                 }
             }
-            if self.drag.is_none()
+            if repetition == 0
+                && self.drag.is_none()
                 && !self.midi_editor.dragging()
                 && ui.is_enabled()
                 && ui.input(|i| i.focused)
@@ -1262,6 +1294,7 @@ impl DawUi {
                 && let Some((pointer, modifiers)) = primary_press(ui)
                 && modifiers.command
                 && grid.intersect(note_viewport).contains(pointer)
+                && (clip.repeat.is_none() || pointer.x < span.right())
                 && !pattern
                     .notes
                     .iter()

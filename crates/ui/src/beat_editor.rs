@@ -94,6 +94,10 @@ pub(super) struct BeatUi {
     #[cfg(test)]
     pub steps: std::collections::HashMap<(Id, u32), Rect>,
     #[cfg(test)]
+    pub clip_steps: std::collections::HashMap<(Id, Id, u32), Rect>,
+    #[cfg(test)]
+    pub repeated_steps: Vec<(Id, Id, u32, Rect)>,
+    #[cfg(test)]
     pub disabled_steps: Vec<(Id, Rect)>,
     #[cfg(test)]
     pub audition_steps: std::collections::HashMap<Id, Rect>,
@@ -855,7 +859,7 @@ impl DawUi {
             .iter()
             .find(|c| Some(c.id) == self.selected_clip)
             .cloned();
-        let mut pattern = active
+        let pattern = active
             .as_ref()
             .and_then(|c| {
                 self.session
@@ -866,23 +870,19 @@ impl DawUi {
             })
             .and_then(|a| a.beat_pattern.as_ref())
             .map(|s| s.pattern.clone());
-        let editable = pattern.is_some();
-        if !editable {
-            pattern = Some(daw_core::BeatPattern::default());
-        }
-        let original = pattern.clone();
+        let mut changed_pattern = None;
         let mut audition = None;
         let mut direct_audition = None;
-        if let Some(pattern) = &pattern {
-            self.beat_ui
-                .step_index
-                .prepare(active.as_ref().map(|c| c.asset_id), pattern);
-        }
+        self.beat_ui
+            .step_index
+            .retain(track.clips.iter().map(|c| c.asset_id));
         #[cfg(test)]
         {
             self.beat_ui.headers.clear();
             self.beat_ui.mix_bounds.clear();
             self.beat_ui.steps.clear();
+            self.beat_ui.clip_steps.clear();
+            self.beat_ui.repeated_steps.clear();
             self.beat_ui.disabled_steps.clear();
             self.beat_ui.audition_steps.clear();
         }
@@ -896,11 +896,29 @@ impl DawUi {
         let last_frame = clock.frame_at_pixel(f64::from(width)).max(0) as u64;
         // Use the clip's saved source mapping for trims, repeats and stretches.
         let mut cells = Vec::new();
-        if editable && let (Some(clip), Some(pattern)) = (&active, &pattern) {
+        for (clip_index, clip) in track.clips.iter().enumerate() {
+            if clip.end() <= first_frame || clip.start_frame >= last_frame {
+                continue;
+            }
+            let Some(pattern) = self
+                .session
+                .project
+                .assets
+                .iter()
+                .find(|a| a.id == clip.asset_id)
+                .and_then(|a| a.beat_pattern.as_ref())
+                .map(|source| &source.pattern)
+            else {
+                continue;
+            };
+            self.beat_ui.step_index.prepare(clip.asset_id, pattern);
             let clock = self.musical_timeline();
             let visible = clock.frame_at_pixel(0.0).max(0) as u64;
             let base = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
-            let first = visible.saturating_sub(clip.start_frame) / base;
+            let first = visible
+                .saturating_sub(clip.start_frame)
+                .saturating_add(clip.repeat.map_or(0, |r| r.phase_frame))
+                / base;
             let count = clip.repeat.map_or(1, |_| clip.length_frames / base + 2);
             let visible_frames = clock.frame_delta(f64::from(ui.available_width())).max(0) as u64;
             let last = count.min(first.saturating_add(visible_frames / base + 3));
@@ -948,17 +966,19 @@ impl DawUi {
                     if finish <= 0 || local >= i128::from(clip.length_frames) {
                         continue;
                     }
-                    cells.push((
+                    cells.push(crate::beat_grid::Cell {
+                        clip_index: Some(clip_index),
                         tick,
-                        clip.start_frame + local.max(0) as u64,
-                        clip.start_frame + finish.min(i128::from(clip.length_frames)) as u64,
-                        true,
-                    ));
+                        start_frame: clip.start_frame + local.max(0) as u64,
+                        end_frame: clip.start_frame
+                            + finish.min(i128::from(clip.length_frames)) as u64,
+                        step_ticks,
+                        editable: repetition == 0,
+                    });
                 }
             }
         }
-        // Keep an empty disabled grid outside the selected clip as well as when
-        // no clip is selected. Other clips never supply content to this display.
+        // Gaps retain an empty disabled grid. Each clip supplies its own content.
         let step_ticks = pattern
             .as_ref()
             .map_or(BeatResolution::Sixteenth.step_ticks(), |p| {
@@ -979,6 +999,12 @@ impl DawUi {
             ((clock.quarter_beats(last_frame) * steps_per_beat).ceil() as u64).saturating_add(1);
         let stride = last.saturating_sub(first).div_ceil(2048).max(1) as usize;
         let seconds_per_step = 60.0 / f64::from(self.session.project.tempo_bpm) / steps_per_beat;
+        let mut occupied: Vec<_> = track
+            .clips
+            .iter()
+            .map(|clip| (clip.start_frame, clip.end()))
+            .collect();
+        occupied.sort_unstable();
         for index in (first..last).step_by(stride) {
             let start = self.session.project.frames(index as f64 * seconds_per_step);
             let end = self
@@ -989,15 +1015,37 @@ impl DawUi {
                 continue;
             }
             let tick = (index % u64::from(grid_steps)) as u32 * step_ticks;
-            if editable && let Some(clip) = &active {
-                if start < clip.start_frame {
-                    cells.push((tick, start, end.min(clip.start_frame), false));
+            // Subtract every clip, including partial boundary cells. Gaps alone
+            // receive empty placeholders; another clip supplies its own source/grid.
+            let mut cursor = start;
+            for &(clip_start, clip_end) in &occupied {
+                if clip_end <= cursor || clip_start >= end {
+                    continue;
                 }
-                if end > clip.end() {
-                    cells.push((tick, start.max(clip.end()), end, false));
+                if cursor < clip_start {
+                    cells.push(crate::beat_grid::Cell {
+                        clip_index: None,
+                        tick,
+                        start_frame: cursor,
+                        end_frame: clip_start.min(end),
+                        step_ticks,
+                        editable: false,
+                    });
                 }
-            } else {
-                cells.push((tick, start, end, false));
+                cursor = cursor.max(clip_end);
+                if cursor >= end {
+                    break;
+                }
+            }
+            if cursor < end {
+                cells.push(crate::beat_grid::Cell {
+                    clip_index: None,
+                    tick,
+                    start_frame: cursor,
+                    end_frame: end,
+                    step_ticks,
+                    editable: false,
+                });
             }
         }
         let viewport = ui.available_rect_before_wrap();
@@ -1170,7 +1218,7 @@ impl DawUi {
                         );
                         let preview = ui
                             .add_enabled_ui(self.editing_enabled(), |ui| {
-                                beat_step_button(ui, preview_cell, "", false)
+                                beat_step_button(ui, preview_cell, "", false, None)
                             })
                             .inner
                             .on_hover_text(format!("Audition {}", row.name));
@@ -1193,140 +1241,180 @@ impl DawUi {
                             Pos2::new(ui.clip_rect().right(), top.y + height),
                         );
                         ui.set_clip_rect(grid_clip.intersect(ui.clip_rect()));
-                        ui.add_enabled_ui(editable, |ui| {
-                            if let Some(pattern) = &mut pattern {
-                                for &(tick, frame, end, cell_editable) in &cells {
-                                    ui.scope(|ui| {
-                                        if !cell_editable {
-                                            ui.disable();
-                                        }
-                                        let timeline = self.musical_timeline();
-                                        let left = self.midi_editor.content.left
-                                            + timeline.pixel_at_frame(frame) as f32;
-                                        let right = self.midi_editor.content.left
-                                            + timeline.pixel_at_frame(end) as f32;
-                                        let cell = Rect::from_min_max(
-                                            Pos2::new(left, top.y),
-                                            Pos2::new(right, top.y + height),
-                                        );
-                                        if !cell.intersects(ui.clip_rect()) {
-                                            return;
-                                        }
-                                        let step = cell_editable
-                                            .then(|| {
-                                                self.beat_ui.step_index.get(row.id, tick).cloned()
-                                            })
-                                            .flatten();
-                                        let response = beat_step_button(
-                                            ui,
-                                            cell,
-                                            if tick.is_multiple_of(daw_core::MIDI_TICKS_PER_BEAT) {
-                                                "·"
-                                            } else {
-                                                ""
-                                            },
-                                            step.is_some(),
-                                        );
-                                        if cell_editable && let Some(clip) = &active {
-                                            let frame =
-                                                self.session.project.transport.playhead_frame;
-                                            if frame >= clip.start_frame && frame < clip.end() {
-                                                let position =
-                                                    clip.source_frame(frame - clip.start_frame);
-                                                let source = clip.stretch.map_or(position, |s| {
-                                                    s.original_frame(position)
-                                                });
-                                                if source >= self.session.project.midi_frame(tick)
-                                                    && source
-                                                        < self.session.project.midi_frame(
-                                                            tick + pattern.resolution.step_ticks(),
-                                                        )
-                                                {
-                                                    ui.painter().rect_stroke(
-                                                        response.rect,
-                                                        2.0,
-                                                        Stroke::new(
-                                                            1.0,
-                                                            ui.visuals().selection.bg_fill,
-                                                        ),
-                                                        egui::StrokeKind::Inside,
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        response.widget_info(|| {
-                                            egui::WidgetInfo::selected(
-                                                egui::WidgetType::Button,
-                                                ui.is_enabled(),
-                                                step.is_some(),
-                                                format!(
-                                                    "{} step {}",
-                                                    row.name,
-                                                    tick / pattern.resolution.step_ticks() + 1
-                                                ),
-                                            )
-                                        });
-                                        #[cfg(test)]
-                                        {
-                                            if cell_editable || !editable {
-                                                self.beat_ui
-                                                    .steps
-                                                    .insert((row.id, tick), response.rect);
-                                            }
-                                            if !cell_editable {
-                                                self.beat_ui
-                                                    .disabled_steps
-                                                    .push((row.id, response.rect));
-                                            }
-                                        }
-                                        // Egui's hit radius can reach past the clip end into
-                                        // disabled cells. Only pointer clicks inside this cell edit it.
-                                        let pointer_inside = ui.input(|i| {
-                                            !i.pointer.button_clicked(egui::PointerButton::Primary)
-                                                || i.pointer.interact_pos().is_some_and(|p| {
-                                                    cell.contains(p) && p.x < cell.right()
-                                                })
-                                        });
-                                        if response.clicked()
-                                            && pointer_inside
-                                            && let Ok(next) = pattern.with_step(
-                                                row.id,
-                                                tick,
-                                                if step.is_some() { None } else { Some(100) },
-                                            )
-                                        {
-                                            *pattern = next;
-                                            self.beat_ui.step_index.edited(pattern);
-                                            if step.is_none() && self.midi_editor.audition_enabled {
-                                                audition = Some(row.id);
-                                            }
-                                        }
-                                        if let Some(step) = step {
-                                            menus::ContextMenu::new(&response)
-                                                .close_behavior(
-                                                    egui::PopupCloseBehavior::CloseOnClickOutside,
-                                                )
-                                                .show(|ui| {
-                                                    let mut velocity = step.velocity;
-                                                    ui.label("Velocity");
-                                                    ui.add(
-                                                        egui::DragValue::new(&mut velocity)
-                                                            .range(1..=127),
-                                                    );
-                                                    if velocity != step.velocity
-                                                        && let Ok(next) = pattern.with_step(
-                                                            row.id,
-                                                            tick,
-                                                            Some(velocity),
-                                                        )
-                                                    {
-                                                        *pattern = next;
-                                                        self.beat_ui.step_index.edited(pattern);
-                                                    }
-                                                });
-                                        }
+                        ui.scope(|ui| {
+                            for cell_data in &cells {
+                                let crate::beat_grid::Cell {
+                                    tick,
+                                    start_frame: frame,
+                                    end_frame: end,
+                                    step_ticks,
+                                    editable: cell_editable,
+                                    ..
+                                } = *cell_data;
+                                let cell_clip =
+                                    cell_data.clip_index.map(|index| &track.clips[index]);
+                                ui.scope(|ui| {
+                                    if !cell_editable {
+                                        ui.disable();
+                                        let original = ui.visuals().selection.bg_fill;
+                                        ui.visuals_mut().selection.bg_fill =
+                                            theme::dimmed_repeat_color(ui.ctx(), original);
+                                    }
+                                    let timeline = self.musical_timeline();
+                                    let left = self.midi_editor.content.left
+                                        + timeline.pixel_at_frame(frame) as f32;
+                                    let right = self.midi_editor.content.left
+                                        + timeline.pixel_at_frame(end) as f32;
+                                    let cell = Rect::from_min_max(
+                                        Pos2::new(left, top.y),
+                                        Pos2::new(right, top.y + height),
+                                    );
+                                    if !cell.intersects(ui.clip_rect()) {
+                                        return;
+                                    }
+                                    let step = cell_clip.and_then(|clip| {
+                                        self.beat_ui
+                                            .step_index
+                                            .get(clip.asset_id, row.id, tick)
+                                            .cloned()
                                     });
-                                }
+                                    let response = beat_step_button(
+                                        ui,
+                                        cell,
+                                        if tick.is_multiple_of(daw_core::MIDI_TICKS_PER_BEAT) {
+                                            "·"
+                                        } else {
+                                            ""
+                                        },
+                                        step.is_some(),
+                                        (!cell_editable && cell_clip.is_some() && step.is_some())
+                                            .then_some(ui.visuals().selection.bg_fill),
+                                    );
+                                    if cell_editable && let Some(clip) = cell_clip {
+                                        let frame = self.session.project.transport.playhead_frame;
+                                        if frame >= clip.start_frame && frame < clip.end() {
+                                            let position =
+                                                clip.source_frame(frame - clip.start_frame);
+                                            let source = clip
+                                                .stretch
+                                                .map_or(position, |s| s.original_frame(position));
+                                            if source >= self.session.project.midi_frame(tick)
+                                                && source
+                                                    < self
+                                                        .session
+                                                        .project
+                                                        .midi_frame(tick + step_ticks)
+                                            {
+                                                ui.painter().rect_stroke(
+                                                    response.rect,
+                                                    2.0,
+                                                    Stroke::new(
+                                                        1.0,
+                                                        ui.visuals().selection.bg_fill,
+                                                    ),
+                                                    egui::StrokeKind::Inside,
+                                                );
+                                            }
+                                        }
+                                    }
+                                    response.widget_info(|| {
+                                        egui::WidgetInfo::selected(
+                                            egui::WidgetType::Button,
+                                            ui.is_enabled(),
+                                            step.is_some(),
+                                            format!("{} step {}", row.name, tick / step_ticks + 1),
+                                        )
+                                    });
+                                    #[cfg(test)]
+                                    {
+                                        if let Some(clip) = cell_clip {
+                                            if cell_editable {
+                                                self.beat_ui
+                                                    .clip_steps
+                                                    .insert((clip.id, row.id, tick), response.rect);
+                                            } else {
+                                                self.beat_ui.repeated_steps.push((
+                                                    clip.id,
+                                                    row.id,
+                                                    tick,
+                                                    response.rect,
+                                                ));
+                                            }
+                                        }
+                                        if cell_editable || track.clips.is_empty() {
+                                            self.beat_ui
+                                                .steps
+                                                .insert((row.id, tick), response.rect);
+                                        }
+                                        if !cell_editable {
+                                            self.beat_ui
+                                                .disabled_steps
+                                                .push((row.id, response.rect));
+                                        }
+                                    }
+                                    // Egui's hit radius can reach past the clip end into
+                                    // disabled cells. Only pointer clicks inside this cell edit it.
+                                    let pointer_inside = ui.input(|i| {
+                                        !i.pointer.button_clicked(egui::PointerButton::Primary)
+                                            || i.pointer.interact_pos().is_some_and(|p| {
+                                                cell.contains(p) && p.x < cell.right()
+                                            })
+                                    });
+                                    if cell_editable
+                                        && response.clicked()
+                                        && pointer_inside
+                                        && let Some(clip) = cell_clip
+                                        && let Some(pattern) = self
+                                            .session
+                                            .project
+                                            .assets
+                                            .iter()
+                                            .find(|a| a.id == clip.asset_id)
+                                            .and_then(|a| a.beat_pattern.as_ref())
+                                        && let Ok(next) = pattern.pattern.with_step(
+                                            row.id,
+                                            tick,
+                                            if step.is_some() { None } else { Some(100) },
+                                        )
+                                    {
+                                        changed_pattern = Some((clip.id, next));
+                                        if step.is_none() && self.midi_editor.audition_enabled {
+                                            audition = Some(row.id);
+                                        }
+                                    }
+                                    if cell_editable
+                                        && let (Some(step), Some(clip)) = (step, cell_clip)
+                                    {
+                                        menus::ContextMenu::new(&response)
+                                            .close_behavior(
+                                                egui::PopupCloseBehavior::CloseOnClickOutside,
+                                            )
+                                            .show(|ui| {
+                                                let mut velocity = step.velocity;
+                                                ui.label("Velocity");
+                                                ui.add(
+                                                    egui::DragValue::new(&mut velocity)
+                                                        .range(1..=127),
+                                                );
+                                                if velocity != step.velocity
+                                                    && let Some(pattern) = self
+                                                        .session
+                                                        .project
+                                                        .assets
+                                                        .iter()
+                                                        .find(|a| a.id == clip.asset_id)
+                                                        .and_then(|a| a.beat_pattern.as_ref())
+                                                    && let Ok(next) = pattern.pattern.with_step(
+                                                        row.id,
+                                                        tick,
+                                                        Some(velocity),
+                                                    )
+                                                {
+                                                    changed_pattern = Some((clip.id, next));
+                                                }
+                                            });
+                                    }
+                                });
                             }
                         });
                     });
@@ -1357,13 +1445,9 @@ impl DawUi {
             viewport.max,
         );
         panels::ControlPanel::row_left_divider(ui, grid, viewport);
-        if pattern != original
-            && let (Some(clip), Some(pattern)) = (active, pattern)
-        {
-            self.edit(Edit::ReplaceBeatPattern {
-                clip_id: clip.id,
-                pattern,
-            });
+        if let Some((clip_id, pattern)) = changed_pattern {
+            self.editor_select_clip(clip_id, track.id);
+            self.edit(Edit::ReplaceBeatPattern { clip_id, pattern });
         }
         if let Some(row) = audition {
             self.audition_beat_step(track.id, row);
@@ -1536,9 +1620,19 @@ fn resolution_name_in_meter(
 }
 
 /// Share cell appearance and outer insets between pattern steps and row audition.
-fn beat_step_button(ui: &mut egui::Ui, cell: Rect, label: &str, selected: bool) -> egui::Response {
-    ui.put(
-        cell.shrink2(STEP_INSETS),
-        egui::Button::new(label).selected(selected),
-    )
+fn beat_step_button(
+    ui: &mut egui::Ui,
+    cell: Rect,
+    label: &str,
+    selected: bool,
+    fill: Option<egui::Color32>,
+) -> egui::Response {
+    let button = egui::Button::new(label).selected(selected);
+    // Disabled button classes otherwise replace the selected fill with grey.
+    let button = if let Some(fill) = fill {
+        button.fill(fill)
+    } else {
+        button
+    };
+    ui.put(cell.shrink2(STEP_INSETS), button)
 }

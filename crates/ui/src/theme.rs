@@ -34,6 +34,18 @@ pub struct ClipColors {
 }
 
 impl ClipColors {
+    /// Reduce repeat contrast against the editor surface while retaining its hue.
+    pub fn repeated(self, ctx: &Context) -> Self {
+        Self {
+            body: dimmed_repeat_color(ctx, self.body),
+            header: dimmed_repeat_color(ctx, self.header),
+            selection_header: dimmed_repeat_color(ctx, self.selection_header),
+            channel: dimmed_repeat_color(ctx, self.channel),
+            waveform: dimmed_repeat_color(ctx, self.waveform),
+            text: dimmed_repeat_color(ctx, self.text),
+        }
+    }
+
     /// Use the resolved Material 200 header while retaining clip body and content colors.
     pub fn selected_header(self) -> Self {
         let header = self.selection_header;
@@ -57,6 +69,10 @@ impl ClipColors {
             text: colors.secondary,
         }
     }
+}
+
+pub(super) fn dimmed_repeat_color(ctx: &Context, color: Color32) -> Color32 {
+    blend(color, palette(ctx).background, 45)
 }
 
 impl Default for ClipColors {

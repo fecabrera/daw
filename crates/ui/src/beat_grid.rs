@@ -25,44 +25,47 @@ pub(super) fn visible_slots(
     first..last.max(first)
 }
 
+/// A visible source cell. Repetitions retain content but cannot edit the source.
+pub(super) struct Cell {
+    pub clip_index: Option<usize>,
+    pub tick: u32,
+    pub start_frame: u64,
+    pub end_frame: u64,
+    pub step_ticks: u32,
+    pub editable: bool,
+}
+
 #[derive(Default)]
 pub(super) struct StepIndex {
-    asset: Option<Id>,
-    steps: HashMap<(Id, u32), BeatStep>,
+    sources: HashMap<Id, HashMap<(Id, u32), BeatStep>>,
     #[cfg(test)]
     pub builds: usize,
 }
 
 impl StepIndex {
-    pub fn prepare(&mut self, asset: Option<Id>, pattern: &BeatPattern) {
-        if self.asset != asset {
-            self.rebuild(pattern);
-            self.asset = asset;
+    pub fn retain(&mut self, assets: impl Iterator<Item = Id>) {
+        let assets: std::collections::HashSet<_> = assets.collect();
+        self.sources.retain(|id, _| assets.contains(id));
+    }
+
+    pub fn prepare(&mut self, asset: Id, pattern: &BeatPattern) {
+        if let std::collections::hash_map::Entry::Vacant(entry) = self.sources.entry(asset) {
+            entry.insert(
+                pattern
+                    .steps
+                    .iter()
+                    .map(|step| ((step.subtrack_id, step.start_tick), step.clone()))
+                    .collect(),
+            );
+            #[cfg(test)]
+            {
+                self.builds += 1;
+            }
         }
     }
 
-    pub fn get(&self, row: Id, tick: u32) -> Option<&BeatStep> {
-        self.steps.get(&(row, tick))
-    }
-
-    /// Update repeated cells during this paint. Publication supplies a fresh asset ID.
-    pub fn edited(&mut self, pattern: &BeatPattern) {
-        self.rebuild(pattern);
-        self.asset = None;
-    }
-
-    fn rebuild(&mut self, pattern: &BeatPattern) {
-        self.steps.clear();
-        self.steps.extend(
-            pattern
-                .steps
-                .iter()
-                .map(|step| ((step.subtrack_id, step.start_tick), step.clone())),
-        );
-        #[cfg(test)]
-        {
-            self.builds += 1;
-        }
+    pub fn get(&self, asset: Id, row: Id, tick: u32) -> Option<&BeatStep> {
+        self.sources.get(&asset)?.get(&(row, tick))
     }
 }
 

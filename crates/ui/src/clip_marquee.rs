@@ -14,6 +14,19 @@ impl DawUi {
             .as_ref()
             .is_some_and(|marquee| marquee.pane == response.id);
         if !active {
+            if ui
+                .input(|input| input.pointer.press_origin())
+                .is_some_and(|origin| {
+                    self.session
+                        .project
+                        .tracks
+                        .iter()
+                        .find(|t| t.id == track)
+                        .is_some_and(|track| self.editor_repeat_at(track, lane, origin))
+                })
+            {
+                return;
+            }
             if !response.drag_started()
                 || ui.input(|input| input.modifiers.command)
                 || self.portion_drag.is_some()

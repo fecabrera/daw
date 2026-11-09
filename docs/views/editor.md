@@ -8,6 +8,8 @@ For beat tracks, the lower editor shows the [beat step grid](beat-editor.md) and
 
 Clips in the track overview and audio editor have a one-point visual gap between them and stay borderless when selected. At a crossfade, the gap follows the owning clip’s fade endpoint. Selecting a clip uses the Material 200 shade of its color family in the header. Headers have rounded top corners and square bottom corners.
 
+The lower editor shows every clip on the displayed track, including beat patterns. Looped sections after each clip’s first cycle use dimmer versions of their original colors and are read-only. Edit notes, steps, or audio controls in the first cycle; those source changes also appear in its repetitions. Scrolling to a later cycle does not make it editable. Use the overview above to move, trim, loop or stretch the complete clip.
+
 MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
 
 Press Escape to deselect clips and clear a selected time range. The displayed track,
@@ -30,6 +32,8 @@ Drag a header to move the selected patterns. Drag a header edge to loop them, or
 
 Right-click a header or border for the shared clip menu, including Velocity and Delete note when a note is selected.
 
+Selecting a clip keeps its notes in their original colors. Selected notes use the same lighter color as that clip’s selected header and have no outline.
+
 A plain empty-space drag selects notes with a rectangle. Shift-click toggles individual notes; Shift-drag toggles notes within the rectangle. Delete or Backspace removes selected notes. Hold Option on macOS or Ctrl on Windows/Linux while moving notes to copy them. Escape cancels an active gesture.
 
 To select several clips, drag a rectangle from empty space in the clip overview,
@@ -45,7 +49,7 @@ Timeline and Editor offer the same clip selection, time-range selection, copy/pa
 
 The left panel stays visible while you scroll the piano roll. Its track header is beside the clip strip and uses the same selected-header background as Timeline. The options section below it aligns with the lower editor toolbar. Both editor panes use the same floating horizontal scrollbar as the effects lane. It appears over the content and does not reduce the editing area. Hover near the bottom of a pane to reveal and expand its scrollbar. The track name uses the same label and icon as Timeline. Double-click its text to rename the track. Use the Tracks panel to switch tracks. In the two-row layout, the label fills the first row from the track icon to the gap before the meters. With no selected track, the editor stays blank below the ruler. Mute, Solo, Gain, Pan, and the stereo meters work as they do in Timeline. Each channel shows its shared held-peak marker, which remains visible through silence. Click either rail or the gap between them to reset both held peaks and the clipping warning. Gain and Pan use the same compact knobs as track and layer headers, without text-entry fields. With two rows, Mute and Solo sit at the left of the second row; Pan then Gain sit at the right, immediately before the meters. Level meter rails align with the top and bottom padding of the other header controls. Use the expand/collapse button beside Fit all clips and zoom in the playback toolbar to switch between two rows and one row. In one row, the header shows icon, track name, Mute, Solo, Pan, Gain, then meters. The clip overview shrinks with the header; the lower editor gains the space. One row is the default. Timeline and Editor share this choice for the app session. Hover or drag a knob to see its value.
 
-For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to **Off**, which disables Scale and Snap to scale. Select a root to enable those controls. Choose a scale to dim the piano keys and notes outside it. Enable **Snap to scale** to constrain newly drawn notes and pitch moves. Major is the initial scale and snapping starts off. Returning Root to Off removes the dimming and bypasses snapping; it retains your scale and snapping choices.
+For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to **Off**, which disables Scale and Snap to scale. Select a root to enable those controls. Choose a scale to dim the piano keys and unselected notes outside it. Enable **Snap to scale** to constrain newly drawn notes and pitch moves. Major is the initial scale and snapping starts off. Returning Root to Off removes the dimming and bypasses snapping; it retains your scale and snapping choices.
 
 Each MIDI track keeps its own Root, Scale, and Snap to scale settings. Save the project to retain them after reopening. Changing these settings marks the project modified and supports Undo/Redo. Duplicating a MIDI track copies its options. Older projects start with Root Off, Major, and snapping off.
 
@@ -73,7 +77,7 @@ The lower audio editor shows the selected track’s clips, including when no cli
 
 Double-click a lower waveform clip header to select and fit that clip. Double-clicking the waveform body keeps the current zoom and scroll.
 
-The lower waveform editor supports the same clip gestures as the overview. Drag a clip header to move the selected clips. Drag a header edge to loop them, or a waveform edge to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Drag the dividing line between adjacent waveforms to move their shared boundary while keeping their outer endpoints fixed. These gestures preview changes and apply them on release; Escape or focus loss cancels. Zoom and scroll stay unchanged. A failed stretch keeps the original clips and audio. Dragging inside a waveform body does not move or select clips. If a shared-boundary trim removes the selected clip, the remaining clips stay visible at the same zoom and scroll.
+The first cycle in the lower waveform editor supports the same clip gestures as the overview. Drag a clip header to move the selected clips. Drag a header edge to loop them, or a waveform edge to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Drag the dividing line between adjacent waveforms to move their shared boundary while keeping their outer endpoints fixed. These gestures preview changes and apply them on release; Escape or focus loss cancels. Zoom and scroll stay unchanged. A failed stretch keeps the original clips and audio. Dragging inside a waveform body does not move or select clips. If a shared-boundary trim removes the selected clip, the remaining clips stay visible at the same zoom and scroll.
 
 Audio clips also share the [fade and crossfade handles](timeline.md#fades-and-crossfades). The midpoint circle moves horizontally and vertically to change the S-curve shape; the area above the curve is greyed out.
 

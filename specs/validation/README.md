@@ -4,6 +4,86 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## MIDI note selection colors — 2026-11-09
+
+Selecting a MIDI clip no longer recolors its notes with the application accent.
+Unselected notes retain their clip color or the existing out-of-scale secondary
+color. Selected notes use the same resolved Material 200 color as their own
+selected clip header, including the neutral shade for muted clips, with no note
+stroke. Selection overrides scale dimming. Dense coverage follows the same fill
+rules; later repetitions retain the dimmed unselected source color.
+
+The new interaction/paint regression checks primary clip changes, inherited and
+overridden colors, Dark/Light/Mist, muted clips, selected out-of-scale notes,
+matching header/note fills, absent selected-note strokes and unchanged project
+data/dirty state. Existing scale and repeat-color expectations were updated.
+
+All workspace test targets compile with `cargo test --locked --workspace --no-run
+--message-format=json` and its `--release` counterpart. The workspace UI test
+binaries pass in both profiles: 958 tests, three existing ignored. Strict workspace
+Clippy, rustfmt and diff checks pass. The preceding non-UI workspace coverage
+remains applicable to this UI-only change. Native visual/gesture and Windows/Linux
+checks were not performed.
+
+## Hue-preserving editor repetitions — 2026-11-09
+
+Repeated beat hits, MIDI notes/headers and audio clips retain dimmer versions of
+their original colors. This supersedes the neutral-grey treatment recorded below.
+The shared repeat palette blends resolved colors 45% toward the editor background
+in Dark, Light and Mist. Disabled beat hits retain an explicit colored fill before
+the standard disabled-control tint. Audio painting uses an explicit repeat
+appearance; it no longer borrows the muted-clip palette. Read-only boundaries,
+source mapping and project data remain unchanged.
+
+Updated the existing visual/input regressions to verify colored repeat fills,
+waveform colors, all three themes, and the existing read-only gestures.
+
+All workspace test targets compile with `cargo test --locked --workspace --no-run
+--message-format=json` and its `--release` counterpart. The workspace UI test
+binaries pass in both profiles: 957 tests, three existing ignored. Strict workspace
+Clippy, rustfmt and diff checks pass. Retain the preceding non-UI workspace test
+coverage below; this revision changes UI painting only. Native visual/gesture
+and Windows/Linux checks were not performed.
+
+## All beat patterns and read-only editor repetitions — 2026-11-09
+
+The beat lower editor now shows all clips on the displayed track, independent
+of clip selection. Each clip uses its own source, subdivision, offset, stretch
+and loop phase. A step edit selects its clip and retains the viewport. Gaps
+retain empty disabled cells; immutable source indices are cached by asset ID.
+
+Beat, MIDI and audio lower editors show later repetitions in neutral grey and
+accept edits only in the first source cycle. Phase trims shorten that cycle;
+scrolling does not make a later cycle editable. MIDI repeated notes stay out of
+selection regions and reject drawing, selection, deletion, movement and resizing.
+Audio repeated regions reject clip, fade and marquee gestures. Overview and
+Timeline arrangement editing remain available.
+
+Regression coverage includes distinct beat grids and sources, selection-free
+viewing, unchanged other clips, cached lookups, grey hit/note rendering in Dark,
+Light and Mist, phase trims, stretch, scroll, rejected clicks/menus/drags and
+retained waveform/prepared-audio mapping. Older tests that required editing
+later repetitions or hiding unselected beat patterns are superseded.
+
+The final UI library suite passes in debug and release: 957 tests, three existing
+ignored, including the repeat-boundary hit-radius checks.
+`cargo clippy --locked --workspace --all-targets -- -D warnings`, rustfmt and
+diff checks pass on macOS.
+
+The initial workspace debug and release runs stopped on an earlier compiled
+version of the new mixed-grid assertion, which measured minimum button widths
+rather than grid positions. The corrected assertion compares step centers with
+pixel-rounding tolerance. All workspace test artifacts were rebuilt with
+`cargo test --locked --workspace --no-run --message-format=json` and its
+`--release` counterpart. The corrected workspace UI binary and the 13 binaries
+not reached by each initial run were rerun with their package working directories
+and manifest environment. All 14 pass in each profile. Earlier passing workspace
+binaries remain covered. Final boundary guards were checked by rerunning the
+workspace UI binaries in both profiles. `cargo test --locked --workspace --doc`
+and its `--release` counterpart pass.
+
+Native visual/gesture, audio-device and Windows/Linux checks were not performed.
+
 ## Timeline beat-subtrack mix shortcuts — 2026-11-09
 
 Route Timeline M/S and Track menu mix actions to selected beat-subtrack buses

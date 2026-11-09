@@ -6,6 +6,17 @@ pub(super) const HEADER_HEIGHT: f32 = 22.0;
 /// Half on each clip edge leaves one logical point between touching clips.
 pub(super) const PAINT_INSET: f32 = 0.5;
 
+pub(super) enum ClipAppearance {
+    Normal(bool),
+    Repeated,
+}
+
+impl From<bool> for ClipAppearance {
+    fn from(selected: bool) -> Self {
+        Self::Normal(selected)
+    }
+}
+
 /// Up to two visual boundaries split a logical clip into at most three paint regions.
 /// Keep the logical seam continuous when a crossfade owns audio beyond that seam.
 fn clip_paint_regions(block: Rect, visual: Rect) -> [Rect; 3] {
@@ -103,9 +114,10 @@ impl DawUi {
         track_color: daw_core::RgbColor,
         block: Rect,
         clip: &Clip,
-        selected: bool,
+        appearance: ClipAppearance,
         prepared: Option<PreparedClipSource<'_>>,
     ) {
+        let selected = matches!(appearance, ClipAppearance::Normal(true));
         let cached = prepared
             .and_then(|source| match source {
                 PreparedClipSource::Audio(audio) => Some(audio),
@@ -148,6 +160,11 @@ impl DawUi {
         };
         let colors = if clip.muted {
             colors.dimmed(painter.ctx())
+        } else {
+            colors
+        };
+        let colors = if matches!(appearance, ClipAppearance::Repeated) {
+            colors.repeated(painter.ctx())
         } else {
             colors
         };

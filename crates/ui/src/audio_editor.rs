@@ -39,7 +39,8 @@ impl DawUi {
         if let Some(track) = track {
             for clip in &track.clips {
                 let block = self.clip_block(lane, clip, clip.start_frame);
-                let visible = block.intersect(lane).intersect(ui.clip_rect());
+                let original = self.editor_original_span(lane, clip).intersect(lane);
+                let visible = block.intersect(original).intersect(ui.clip_rect());
                 if !visible.is_positive() {
                     continue;
                 }
@@ -54,7 +55,7 @@ impl DawUi {
                     .inner
                     .on_hover_cursor(egui::CursorIcon::PointingHand);
                 let clicked = response.clicked();
-                self.clip_lane_response(ui, track.id, clip, block, lane, response);
+                self.clip_lane_response(ui, track.id, clip, block, original, response);
                 if clicked {
                     ui.ctx().request_repaint();
                 }
@@ -73,14 +74,28 @@ impl DawUi {
                     {
                         self.editor_transients.request(audio, ui.ctx());
                     }
+                    let original = self.editor_original_span(lane, clip);
                     self.paint_clip(
-                        &painter,
+                        &painter.with_clip_rect(original.intersect(lane)),
                         track.color,
                         block,
                         clip,
-                        self.clip_selected(clip.id),
+                        self.clip_selected(clip.id).into(),
                         None,
                     );
+                    if clip.repeat.is_some() {
+                        let repeated =
+                            Rect::from_min_max(Pos2::new(original.right(), block.top()), block.max)
+                                .intersect(lane);
+                        self.paint_clip(
+                            &painter.with_clip_rect(repeated),
+                            track.color,
+                            block,
+                            clip,
+                            clip_paint::ClipAppearance::Repeated,
+                            None,
+                        );
+                    }
                 }
             }
         }

@@ -208,7 +208,7 @@ Instrument and Editor share the [Tracks hierarchy](instrument-tracks.md). Beat p
 
 Selecting the beat parent shows only its final Output and targets that bus for compatible catalog units. There are no kit-wide source, LFO or Envelope rows or Add layer action. The parent remains the selected real project track for effects and arrangement. Source/sample navigation must select the matching subtrack owner when opening a nested instrument. Parent disclosure is independent of Output collapse and does not change audio/history.
 
-Beat patterns use the shared Timeline/Editor overview double-click creation gesture. Without an active pattern, retain subtrack controls and a disabled quarter-beat grid across the lower ruler viewport. Use no other clip's steps, preserve scrolling, and bound placeholder painting to 2048 cells per row. Selecting a pattern restores its saved grid and steps.
+Beat patterns use the shared Timeline/Editor overview double-click creation gesture. Retain subtrack controls without an active pattern. Show all clips on the displayed track using their own sources and grids. Use a disabled quarter-beat grid in gaps when no clip is selected; bound placeholder painting to 2048 cells per row. Selecting a pattern restores its saved grid controls.
 
 Selected Editor subtrack rows reuse the track/layer selection palette through
 selected_track_background and selected_track_header_background. Paint the lane
@@ -290,13 +290,28 @@ changes, edits, Escape and existing job/dialog/focus guards cancel stale preview
 Reuse `instrument_lanes_header` for the Beat subtracks title and Plus action so
 button artwork, size, right inset, enablement and tooltip match Instrument.
 
-Keep disabled placeholder cells visible outside the selected clip's timeline range
-as well as when no pattern is selected. Use the selected stretched step interval, or 1/4 beat
-without a selected pattern. Clip placeholders at selected-range boundaries so they
-do not overlap active cells. They show no saved hits, playhead highlights or edit
-actions. Other clips never supply their pattern content to the placeholder grid.
-Changing the viewport or selecting/deselecting clips must not leave blank regions
-before or after the active pattern. Keep the existing placeholder paint bound.
+Show all clips from the displayed beat track in the lower step grid, independent
+of clip selection. Map each through its own source offset, stretch, repeat base,
+phase and resolution. Index immutable steps by asset ID and retain indices while
+those assets remain referenced by the displayed track. Cull offscreen clips,
+rows and slots before widget creation. Clicking a first-cycle cell or changing
+its velocity selects that clip through editor_select_clip, retains both viewport
+transforms, and publishes only that clip’s ReplaceBeatPattern source edit.
+
+Only repetition zero accepts edits, keyboard activation, velocity menus or
+automatic audition. Later repetitions retain their saved hit state, use disabled
+buttons with their original selection fill dimmed toward the editor background
+through theme::dimmed_repeat_color, and have no playhead highlight. Derive
+repetition identity from the clip origin and phase, not the first visible cycle.
+A phase-trimmed first cycle ends at start + repeat length - phase. Scrolling must
+never promote a later repetition to an editable cycle. Source edits update all
+repetitions of that clip; other source users retain their content.
+
+Empty disabled placeholders fill gaps outside every clip. Subtract all clip
+ranges, including partial boundary cells, so placeholders cannot overlap saved
+content. Use the selected stretched step interval, or 1/4 beat without selection.
+Placeholders show no hits, playhead highlights or edit actions. Retain the existing
+placeholder paint bound and preserve content when selecting/deselecting clips.
 
 Pointer edits must stay inside the active cell's allocated time range, with its
 right edge exclusive. Egui's extended hit radius must not allow a click in the

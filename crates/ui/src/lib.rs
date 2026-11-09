@@ -5352,7 +5352,7 @@ impl DawUi {
                 track_color,
                 block,
                 &clip,
-                false,
+                false.into(),
                 Some(PreparedClipSource::Audio(audio)),
             );
         } else {
@@ -5505,7 +5505,14 @@ impl DawUi {
                         .map(PreparedClipSource::Midi)
                         .or_else(|| asset.beat_pattern.as_ref().map(PreparedClipSource::Beat))
                 });
-            self.paint_clip(&ghost, track_color, block, &preview.clip, false, source);
+            self.paint_clip(
+                &ghost,
+                track_color,
+                block,
+                &preview.clip,
+                false.into(),
+                source,
+            );
             painter.rect_stroke(
                 block,
                 2.0,
@@ -5691,7 +5698,14 @@ impl DawUi {
             }) {
                 clip_painter.multiply_opacity(0.35);
             }
-            self.paint_clip(&clip_painter, track.color, block, clip, selected, None);
+            self.paint_clip(
+                &clip_painter,
+                track.color,
+                block,
+                clip,
+                selected.into(),
+                None,
+            );
             self.clip_lane_interaction(ui, track_id, clip, block, rect);
         }
         let x = rect.left()

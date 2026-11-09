@@ -31,6 +31,7 @@ impl DawUi {
         for clip in &track.clips {
             let block = self.clip_block(lane, clip, clip.start_frame);
             let header = Rect::from_min_max(block.min, Pos2::new(block.right(), lane.bottom()));
+            let original = self.editor_original_span(lane, clip).intersect(lane);
             let visible = header.intersect(lane);
             if !visible.is_positive() {
                 continue;
@@ -42,13 +43,13 @@ impl DawUi {
             let response = ui
                 .add_enabled_ui(self.edit_shortcuts_available(ui.ctx()), |ui| {
                     ui.interact(
-                        visible,
+                        visible.intersect(original),
                         ui.id().with(("midi-pattern-header", clip.id)),
                         Sense::click_and_drag(),
                     )
                 })
                 .inner;
-            self.clip_lane_response(ui, track.id, clip, header, lane, response);
+            self.clip_lane_response(ui, track.id, clip, header, original, response);
             let colors = theme::clip_colors(track.color, clip.color);
             let colors = if clip.muted {
                 colors.dimmed(ui.ctx())
@@ -56,13 +57,26 @@ impl DawUi {
                 colors
             };
             clip_paint::paint_header(
-                &painter,
+                &painter.with_clip_rect(original),
                 header,
                 &clip.name,
                 colors,
                 false,
                 self.clip_selected(clip.id),
             );
+            if clip.repeat.is_some() {
+                let repeated =
+                    Rect::from_min_max(Pos2::new(original.right(), header.top()), header.max)
+                        .intersect(lane);
+                clip_paint::paint_header(
+                    &painter.with_clip_rect(repeated),
+                    header,
+                    &clip.name,
+                    colors.repeated(ui.ctx()),
+                    false,
+                    false,
+                );
+            }
         }
         self.editor_clip_marquee(ui, &selection, lane, track.id);
         lane
@@ -123,8 +137,10 @@ impl DawUi {
                         .filter(Rect::is_positive)
                         .collect();
                 }
+                let original = self.editor_original_span(lane, clip);
                 for (segment, hit) in hits
                     .into_iter()
+                    .map(|hit| hit.intersect(original))
                     .enumerate()
                     .filter(|(_, hit)| hit.is_positive())
                 {

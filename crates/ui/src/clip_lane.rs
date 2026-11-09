@@ -34,6 +34,17 @@ impl DawUi {
         lane: Rect,
         response: egui::Response,
     ) {
+        if self.midi_editor.content_active
+            && clip.repeat.is_some()
+            && !response.context_menu_opened()
+            && ui
+                .input(|input| input.pointer.press_origin())
+                .is_some_and(|origin| origin.x >= self.editor_original_span(lane, clip).right())
+        {
+            // Egui's extended hit radius must not reach an original control
+            // from the first pixels of a read-only repetition.
+            return;
+        }
         if self.clip_fade_interaction(ui, track_id, clip, block, lane) {
             return;
         }

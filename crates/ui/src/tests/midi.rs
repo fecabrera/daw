@@ -4590,7 +4590,7 @@ fn editing_an_unselected_pattern_keeps_the_viewport_and_other_source_users() {
 }
 
 #[test]
-fn looped_trimmed_patterns_show_and_edit_each_visible_repetition() {
+fn looped_trimmed_patterns_show_repetitions_but_only_edit_the_first_cycle() {
     let (mut app, track, clip, note) = fixture();
     app.session.project.tracks[0].clips[0].source_offset_frame = 24_000;
     app.session.project.tracks[0].clips[0].repeat = Some(daw_core::ClipLoop {
@@ -4609,9 +4609,35 @@ fn looped_trimmed_patterns_show_and_edit_each_visible_repetition() {
         assert!((rect.left() - lane.left() - index as f32 * 240.0).abs() < 0.1);
         assert!((rect.width() - 120.0).abs() < 0.1);
     }
-    let point = notes[1].center() + Vec2::new(150.0, -18.0);
-    // This empty row is in repetition 1; it maps back to source tick 2640.
-    draw_click(&mut app, &ctx, point);
+    let original_point = notes[0].center() + Vec2::new(150.0, -18.0);
+    let repeated_point = notes[1].center();
+    let empty_repeated = repeated_point + Vec2::new(150.0, -18.0);
+    let before = app.session.project.clone();
+    draw_click(&mut app, &ctx, empty_repeated);
+    for button_kind in [egui::PointerButton::Primary, egui::PointerButton::Secondary] {
+        for pressed in [true, false] {
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(repeated_point),
+                    egui::Event::PointerButton {
+                        pos: repeated_point,
+                        button: button_kind,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+        }
+    }
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(
+        app.session.project, before,
+        "repeated notes and empty rows are read-only"
+    );
+    assert!(app.midi_editor.selected_notes().is_empty());
+    draw_click(&mut app, &ctx, original_point);
     let added = pattern(&app)
         .notes
         .iter()
@@ -7551,7 +7577,11 @@ fn scale_selection_dims_outside_keys_and_notes_in_both_themes_without_retuning()
                     .midi_options
                     .contains_pitch(pitch)
                 {
-                    theme::accent(&ctx)
+                    theme::clip_colors(
+                        app.session.project.tracks[0].color,
+                        app.session.project.tracks[0].clips[0].color,
+                    )
+                    .header
                 } else {
                     palette.secondary
                 };
@@ -8089,5 +8119,215 @@ fn noise_catalog_controls_layout_power_and_collapse_follow_source_conventions() 
                 .iter()
                 .all(|r| !r.is_positive())
         );
+    }
+}
+
+#[test]
+fn scrolled_stretched_midi_repeats_keep_dimmed_colors_and_reject_note_drags() {
+    for theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
+        let (mut app, track, clip, note) = fixture();
+        let asset = app.session.project.tracks[0].clips[0].asset_id;
+        app.session
+            .project
+            .assets
+            .iter_mut()
+            .find(|a| a.id == asset)
+            .unwrap()
+            .midi_pattern
+            .as_mut()
+            .unwrap()
+            .notes[0]
+            .length_ticks = 2880;
+        let current = &mut app.session.project.tracks[0].clips[0];
+        current.stretch = Some(daw_core::ClipStretch::new(1, 2).unwrap());
+        current.repeat = Some(daw_core::ClipLoop {
+            length_frames: 192_000,
+            phase_frame: 12_000,
+        });
+        current.length_frames = 480_000;
+        app.session.project.validate().unwrap();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme,
+                ..Default::default()
+            },
+        );
+        app.open_clip_editor(clip, track, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        app.midi_editor.content.fitted = false;
+        app.midi_editor.content.zoom = 80.0;
+        app.midi_editor.content.scroll = 0.0;
+        let painted = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let repeated = app.midi_editor.track_note_bounds[&(clip, note)][1];
+        let boundary = app.midi_editor.track_note_bounds[&(clip, note)][0].right_center()
+            + Vec2::new(0.5, 0.0);
+        let dimmed = theme::dimmed_repeat_color(
+            &ctx,
+            theme::clip_colors(
+                app.session.project.tracks[0].color,
+                app.session.project.tracks[0].clips[0].color,
+            )
+            .header,
+        );
+        assert!(
+            painted
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+            if r.fill == dimmed && r.rect.contains(repeated.center())))
+        );
+        let before = app.session.project.clone();
+        for origin in [
+            boundary,
+            repeated.center(),
+            Pos2::new(repeated.right() - 1.0, repeated.center().y),
+        ] {
+            let end = origin + Vec2::new(30.0, -18.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(origin), button(origin, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert!(!app.midi_editor.dragging());
+            assert!(app.drag.is_none());
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert_eq!(app.session.project, before);
+            for pressed in [true, false] {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(origin),
+                        egui::Event::PointerButton {
+                            pos: origin,
+                            button: egui::PointerButton::Secondary,
+                            pressed,
+                            modifiers: Default::default(),
+                        },
+                    ],
+                );
+            }
+            assert_eq!(
+                app.session.project, before,
+                "repeat-boundary secondary clicks are read-only"
+            );
+        }
+        app.midi_editor.content.scroll = 4.0;
+        frame(&mut app, &ctx, vec![]);
+        let repeated = app.midi_editor.track_note_bounds[&(clip, note)][0];
+        draw_click(&mut app, &ctx, repeated.center() + Vec2::new(0.0, -18.0));
+        assert_eq!(
+            app.session.project, before,
+            "scrolling cannot enable drawing in a repeat"
+        );
+        assert!(app.midi_editor.selected_notes().is_empty());
+    }
+}
+
+#[test]
+fn midi_clip_selection_preserves_note_colors_and_selected_notes_match_the_header_without_strokes() {
+    for color_theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
+        for (override_color, muted) in [
+            (None, false),
+            (
+                Some(daw_core::RgbColor {
+                    r: 40,
+                    g: 180,
+                    b: 220,
+                }),
+                false,
+            ),
+            (None, true),
+            (
+                Some(daw_core::RgbColor {
+                    r: 40,
+                    g: 180,
+                    b: 220,
+                }),
+                true,
+            ),
+        ] {
+            let (mut app, track, clip, note) = fixture();
+            app.session.project.tracks[0].clips[0].color = override_color;
+            app.session.project.tracks[0].clips[0].muted = muted;
+            let other = app.session.project.add_midi_pattern(track, 96_000).unwrap();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.open_clip_editor(clip, track, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            app.midi_editor.content.fitted = false;
+            app.midi_editor.content.zoom = 240.0;
+            app.midi_editor.content.scroll = 0.0;
+            let before = app.session.project.clone();
+            app.dirty = false;
+            let colors = theme::clip_colors(app.session.project.tracks[0].color, override_color);
+            let selected_fill = if muted {
+                theme::GREY_200
+            } else {
+                colors.selection_header
+            };
+            for selected_clip in [other, clip] {
+                app.editor_select_clip(selected_clip, track);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                let bounds = app.midi_editor.track_note_bounds[&(clip, note)][0];
+                assert!(
+                    shapes
+                        .iter()
+                        .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                    if r.rect == bounds.shrink(1.0) && r.fill == colors.header)),
+                    "clip selection must not recolor unselected notes"
+                );
+            }
+            let point = app.midi_editor.track_note_bounds[&(clip, note)][0].center();
+            click_note_or_lane(&mut app, &ctx, point);
+            assert!(app.midi_editor.selected_notes().contains(&(clip, note)));
+            for root in [None, Some(2)] {
+                app.session.project.tracks[0].midi_options.root = root;
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                let bounds = app.midi_editor.track_note_bounds[&(clip, note)][0];
+                assert!(
+                    shapes
+                        .iter()
+                        .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                    if r.rect == bounds.shrink(1.0) && r.fill == selected_fill
+                    && r.stroke.width == 0.0)),
+                    "selected note uses the Material 200 header shade"
+                );
+                assert!(
+                    !shapes
+                        .iter()
+                        .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                    if r.rect == bounds && r.stroke.width > 0.0)),
+                    "selected note has no outline"
+                );
+                let header = app.midi_editor.pattern_header_bounds[&clip];
+                assert!(
+                    shapes
+                        .iter()
+                        .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                    if r.fill == selected_fill && r.rect.contains(header.center()))),
+                    "selected note and clip header share the same fill"
+                );
+            }
+            app.session.project.tracks[0].midi_options.root = None;
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+        }
     }
 }

@@ -173,7 +173,7 @@ impl DawUi {
                 track.color,
                 block,
                 clip,
-                self.clip_selected(clip.id),
+                self.clip_selected(clip.id).into(),
                 pattern,
             );
             self.clip_lane_interaction(ui, track.id, clip, block, lane);

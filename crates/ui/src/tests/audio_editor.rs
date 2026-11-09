@@ -80,6 +80,15 @@ fn check_clip_peaks(app: &DawUi, shapes: &[egui::epaint::ClippedShape], body: Re
     for fraction in [0.1, 0.35, 0.7] {
         let x = (body.left() + body.width() * fraction).floor();
         let local = ((f64::from(x - body.left()) * frames_per_pixel).max(0.0)) as u64;
+        let color = if clip.repeat.is_some()
+            && clip.start_frame + local >= crate::editor_viewport::original_cycle_end(clip)
+        {
+            theme::clip_colors(track.color, clip.color)
+                .repeated(&context())
+                .waveform
+        } else {
+            color
+        };
         for channel in 0..usize::from(audio.metadata.channels) {
             let [min, max] = waveforms::preview_extrema(
                 audio,
@@ -959,4 +968,88 @@ fn audio_track_without_initial_clip_selection_has_waveforms_and_full_scroll_exte
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
     assert!(app.job.is_none());
+}
+
+#[test]
+fn repeated_audio_sections_keep_dimmed_colors_and_reject_lower_editor_gestures() {
+    let (mut app, ctx, track, clip_id) = audio_fixture();
+    let clip = &mut app.session.project.tracks[0].clips[0];
+    clip.source_offset_frame = 0;
+    clip.repeat = Some(daw_core::ClipLoop {
+        length_frames: 2400,
+        phase_frame: 600,
+    });
+    clip.length_frames = 7200;
+    app.session.project.validate().unwrap();
+    app.midi_editor.content.fitted = false;
+    app.midi_editor.content.zoom = 3000.0;
+    app.midi_editor.content.scroll = 0.1;
+    let painted = shapes(&mut app, &ctx);
+    let lane = app.midi_editor.content.bounds;
+    let clip = &app.session.project.tracks[0].clips[0];
+    let block = content_block(&app, clip_id);
+    let end = crate::editor_viewport::original_cycle_end(clip);
+    let x = lane.left()
+        + (app.session.project.seconds(end) - app.midi_editor.content.scroll) as f32
+            * app.midi_editor.content.zoom;
+    let original = Rect::from_min_max(block.min, Pos2::new(x, block.bottom()));
+    let dimmed = theme::clip_colors(app.session.project.tracks[0].color, clip.color)
+        .repeated(&ctx)
+        .waveform;
+    assert!(painted.iter().any(
+        |s| matches!(s.shape, egui::Shape::LineSegment { stroke, .. }
+        if stroke.color == dimmed && s.clip_rect.left() >= original.right() - 0.1)
+    ));
+    let before = app.session.project.clone();
+    app.dirty = false;
+    for point in [
+        Pos2::new(original.right() + 1.0, block.top() + 8.0),
+        Pos2::new(block.right() - 1.0, block.top() + 30.0),
+        Pos2::new(original.right() + 30.0, block.center().y),
+    ] {
+        click(&mut app, &ctx, point);
+        for pressed in [true, false] {
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point + Vec2::new(25.0, 0.0))],
+        );
+        assert!(app.drag.is_none());
+        frame(
+            &mut app,
+            &ctx,
+            vec![button(point + Vec2::new(25.0, 0.0), false)],
+        );
+        assert_eq!(app.session.project, before);
+        assert!(!egui::Popup::is_any_open(&ctx));
+    }
+    assert!(!app.dirty);
+    app.selected_clip = None;
+    app.selected_clips.clear();
+    click(
+        &mut app,
+        &ctx,
+        Pos2::new(original.left() + 20.0, block.center().y),
+    );
+    assert_eq!(app.selected_clip, Some(clip_id));
+    assert_eq!(app.selected_track, Some(track));
 }

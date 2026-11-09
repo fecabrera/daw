@@ -10,7 +10,7 @@ Use beat tracks to build rhythms from independently configured instruments. Mixe
 4. Switch to Instrument, open **Tracks**, and select the subtrack. Add Oscillator, Sampler or Granulizer to its layer through the shared component catalog. Each subtrack is an instrument; there is no audio/MIDI type choice.
 5. Return to Editor and click steps to enable or disable them. Turn on the headphones button above the step rows to hear each step you enable. Press Play to hear the pattern.
 
-Editor keeps the selected track's clip overview above the step rows. Empty disabled steps fill the visible area outside the selected pattern. Without an active clip, all steps stay visible but disabled, and subtrack controls remain available; select a clip, or double-click empty space in the track overview to create a pattern.
+Editor keeps the selected track's clip overview above the step rows. The step grid shows every clip on that track, even with no clip selected. Each clip uses its own pattern and subdivision. Click a step in a clip’s first cycle to select and edit that clip without moving the viewport. Later cycles show the same hits in a dimmer version of their original color and are read-only. Edit the first cycle to update its repetitions. Empty disabled steps fill the gaps between clips. Subtrack controls remain available without a selected clip; double-click empty space in the track overview to create a pattern.
 
 Click the standalone step in the gutter before a subtrack’s pattern steps to
 preview that instrument. It works with automatic audition off and without a
