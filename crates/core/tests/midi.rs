@@ -511,7 +511,7 @@ fn repeated_tempo_and_rate_changes_keep_rounded_source_ends_valid() {
 }
 
 #[test]
-fn source_resize_crops_notes_preserves_project_timing_and_isolates_copies() {
+fn source_resize_retains_notes_preserves_project_timing_and_isolates_copies() {
     let (mut project, track, clip) = fixture();
     let source = project.tracks[0].clips[0].clone();
     let copy = Clip {
@@ -540,10 +540,12 @@ fn source_resize_crops_notes_preserves_project_timing_and_isolates_copies() {
         .midi_pattern
         .as_ref()
         .unwrap();
-    assert_eq!(pattern.length_ticks, 2400);
+    assert_eq!(pattern.length_ticks, 3840);
+    assert_eq!(next.source_offset_frame, 12_000);
+    assert_eq!(next.asset_id, source.asset_id);
     assert_eq!(
         (pattern.notes[0].start_tick, pattern.notes[0].length_ticks),
-        (0, 240)
+        (240, 480)
     );
     assert_eq!(preview.tracks[0].clips[1].asset_id, copy.asset_id);
     assert_eq!(
@@ -566,7 +568,7 @@ fn source_resize_crops_notes_preserves_project_timing_and_isolates_copies() {
         .edit(Edit::ResizeMidiPattern {
             clip_id: clip,
             start_tick: -480,
-            end_tick: 2400,
+            end_tick: 3840,
         })
         .unwrap();
     let current = &project.tracks[0].clips[0];
@@ -578,14 +580,16 @@ fn source_resize_crops_notes_preserves_project_timing_and_isolates_copies() {
         .midi_pattern
         .as_ref()
         .unwrap();
-    assert_eq!(pattern.notes[0].start_tick, 480);
+    assert_eq!(pattern.notes[0].start_tick, 240);
+    assert_eq!(pattern.notes[0].length_ticks, 480);
+    assert_eq!(current.source_offset_frame, 0);
     assert_eq!(current.start_frame, source.start_frame);
     let before = format!("{project:?}");
     for (start_tick, end_tick) in [
         (0, 0),
         (0, -1),
         (i64::MIN, i64::MAX),
-        (0, i64::from(u32::MAX) + 1),
+        (0, i64::from(u32::MAX) + 3840),
     ] {
         assert!(
             project
@@ -602,7 +606,7 @@ fn source_resize_crops_notes_preserves_project_timing_and_isolates_copies() {
         .edit(Edit::ResizeMidiPattern {
             clip_id: clip,
             start_tick: 0,
-            end_tick: 7200,
+            end_tick: 8160,
         })
         .unwrap();
     assert_eq!(project.tracks[0].clips[1].start_frame, 204_000);
@@ -794,7 +798,7 @@ fn stretched_trimmed_source_resize_preserves_retained_note_project_frames() {
         .unwrap();
     assert_eq!(current.start_frame, 30_000);
     assert_eq!(current.end(), original.end());
-    assert_eq!(current.source_offset_frame, original.source_offset_frame);
+    assert_eq!(current.source_offset_frame, 0);
     assert_eq!(
         current.start_frame - current.source_offset_frame
             + current

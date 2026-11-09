@@ -31,10 +31,10 @@ impl MidiNoteSplit {
 // Geometry-only splits do not consume this budget.
 const MAX_SPLIT_OCCURRENCES: usize = 4096;
 
-struct Occurrence {
-    note: MidiNote,
-    start: u64,
-    end: u64,
+pub(crate) struct Occurrence {
+    pub(crate) note: MidiNote,
+    pub(crate) start: u64,
+    pub(crate) end: u64,
 }
 
 impl Project {
@@ -372,7 +372,7 @@ fn split_resource_error() -> Error {
     Error("MIDI split exceeds the 4,096 loop-occurrence budget; shorten the looping clip before splitting".into())
 }
 
-fn note_occurrences(
+pub(crate) fn note_occurrences(
     project: &Project,
     clip: &Clip,
     pattern: &MidiPattern,
@@ -417,7 +417,7 @@ fn note_occurrences(
     Ok(occurrences)
 }
 
-fn piece_pattern(
+pub(crate) fn piece_pattern(
     project: &Project,
     occurrences: &[Occurrence],
     piece_start: u64,

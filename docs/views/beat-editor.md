@@ -35,6 +35,46 @@ Each subtrack has one active voice. A new hit replaces its previous voice. Note-
 
 Pattern edits affect only the active clip and create a new source. Other clips keep their previous content. A grid change that would create an invalid source range or overlap another clip is rejected without changing the project. Moving, copying or pasting a beat clip onto a different beat track is currently rejected. Same-track arrangement gestures remain available.
 
+## Merge beat patterns
+
+Select two or more adjacent beat clips on the same track. Choose **Merge** from
+the **Clip** menu or a selected clip's context menu. Press **Command+J** on macOS
+or **Ctrl+J** on Windows and Linux. This works in Timeline and Editor.
+
+Small gaps caused by sample rounding are accepted when the edges resolve to the
+same musical position at the pattern’s timing precision.
+
+Select one beat clip, including a looped or trimmed clip, and use **Merge** to rebuild its visible
+hits into one unlooped pattern. It keeps the same clip start and length, clears
+the source offset and preserves lane assignments, velocities, subdivision and
+stretch. Hits outside the trimmed range stay in the original source. Undo
+restores the trim and loop. The grid, length and hit limits below also apply to
+single clips.
+
+The clips must have matching subdivision, stretch, gain, transpose and enabled
+state. Clip bounds, source offsets and loop bounds must align with that
+subdivision. Merge creates one unlooped pattern with the first clip's name and
+color. It keeps visible hits, lane assignments and velocities, including repeated
+sections. Hidden hits stay in the original sources; they do not enter the merged
+pattern. Lane instruments, mix controls and stop connections stay unchanged.
+The result retains the common stretch and subdivision, so hit duration stays the
+same. Undo restores the original clips in one step.
+
+The result supports up to 16 source bars before stretch and 4,096 visible hit
+occurrences. Merge rejects a partial or off-grid hit, incompatible settings or an
+oversized result and leaves the clips unchanged.
+
+## Trim and restore beat steps
+
+Trimming either clip edge hides steps outside the visible range. It retains their
+positions, lane assignments and velocities. Drag the edge back to restore them,
+including after saving and reopening. This works in Timeline and Editor, and
+Undo/Redo restores the previous range without changing the stored steps.
+
+Steps hidden by a shorter source length or coarser subdivision also stay stored.
+Expand the range or restore the finer subdivision to reveal them. Use **Merge**
+when you want a new pattern that contains only the visible hits.
+
 ## Extend a beat clip
 
 In Timeline or Editor’s track overview, drag either edge of an unlooped clip’s

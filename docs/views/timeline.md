@@ -101,6 +101,11 @@ Hold Command on macOS, or Ctrl on Windows and Linux, and drag across a track to 
 
 Drag a waveform edge to trim. Drag a header edge to repeat the current range. Hold the copy/stretch modifier while dragging an edge to [stretch duration](../audio/time-stretch.md). Group edits preserve relative timing and apply together. Drag the dividing line between touching waveforms to move their shared boundary while keeping their outer endpoints fixed.
 
+MIDI trims retain hidden notes and complete note lengths. Drag an edge back to
+restore them; expansion beyond the source adds empty space. Saving and reopening
+retain those hidden notes. **Merge** consolidates only the visible range when
+you want a new pattern without the hidden content.
+
 Copy with Command+C on macOS or Ctrl+C on Windows/Linux. Paste with Command+V or Ctrl+V at the playhead on the selected track. Copies keep their source content, trim, repeats, stretch, and color override.
 
 Split the selected clips at the playhead with Clip > Split at playhead, or with Command+T on macOS or Ctrl+T on Windows/Linux. The same command is available in Editor. It is disabled when no clip is selected, when the playhead is not inside a selected clip, and in Mixer and Instrument. If several clips are selected, every selected clip that crosses the playhead is split together. The original clip ends at the playhead and a new clip starts there. Audio keeps its recording, trim, loop, and stretch. Right-click a clip and choose Split at playhead to split that clip, or the whole selection when the clicked clip is selected.
@@ -108,6 +113,33 @@ Split the selected clips at the playhead with Clip > Split at playhead, or with 
 MIDI notes that cross the playhead follow Settings > MIDI > Split MIDI notes. Split into two is the default: the note becomes two notes. Preserve first keeps the part before the playhead on the original clip and does not continue it. The choice is saved on this computer, not in the project. Undo restores both pieces in one step. If a looping MIDI clip needs note rewriting, one split operation can unfold up to 4,096 note occurrences across the selection. A larger operation reports an error and leaves the project unchanged. Shorten the looping clips before retrying. Splitting between notes does not have this limit.
 
 Duplicating into new track space creates fresh track defaults. Group paste also creates fresh tracks when needed and preserves gaps between tracks. A new MIDI track starts with an empty instrument and needs a source before it makes sound. Existing destination tracks keep their settings. Moving MIDI clips to new track space retains their instrument.
+
+## Merge MIDI clips
+
+Select two or more MIDI clips that touch on the same track. Choose **Merge**
+from the **Clip** menu or a selected clip's context menu. You can also press
+**Command+J** on macOS or **Ctrl+J** on Windows and Linux. This works in Timeline
+and Editor. Tiny gaps caused by sample rounding are accepted when both edges
+resolve to the same musical position at the pattern’s timing precision.
+
+You can also select one MIDI clip, including a looped or trimmed clip, and use
+**Merge**. This rebuilds only its visible notes in one unlooped pattern. Notes
+outside the trimmed range stay in the original source. The clip keeps its start,
+length, name and color; its source offset resets to zero. Undo restores the trim
+and loop.
+
+The clips must have matching gain, transpose, enabled state and channel settings.
+Merge creates one clip with the first clip's name and color. It keeps the visible
+notes, including trimmed and repeated sections, in one unlooped pattern. Notes
+remain separate at the old clip boundaries. Source patterns stay unchanged.
+The merged clip is selected. Undo restores the original clips in one step.
+
+One merge can contain up to 4,096 visible note occurrences. A larger operation
+reports an error and leaves the clips unchanged. Shorten the selection before
+retrying.
+
+Beat patterns also support **Merge** with the same command and shortcut. See
+[Merge beat patterns](beat-editor.md#merge-beat-patterns) for grid and length limits.
 
 ## Navigate and play
 

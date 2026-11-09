@@ -1,4 +1,5 @@
 mod clip_channels;
+mod merge;
 pub use clip_channels::ClipChannels;
 mod fades;
 pub use fades::{ClipFade, ClipFades};
@@ -41,6 +42,7 @@ pub use daw_unit_core::{
 };
 pub use daw_unit_core::{STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
 mod beat;
+mod beat_merge;
 mod beat_project;
 mod beat_resize;
 pub use beat_resize::PatternTrimBounds;
@@ -50,6 +52,7 @@ pub use beat::{
     BeatStep, BeatSubtrack, BeatTrigger,
 };
 mod midi;
+mod midi_trim;
 pub use chords::{CHORD_ROOTS, Chord, ChordKind};
 mod midi_options;
 pub use daw_unit_core::{

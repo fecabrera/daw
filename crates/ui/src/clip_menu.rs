@@ -6,6 +6,7 @@ pub enum ClipMenuAction {
     Import,
     AddMidi,
     Split,
+    Merge,
     Separate,
     Normalize,
     Edit,
@@ -14,10 +15,11 @@ pub enum ClipMenuAction {
 }
 
 impl ClipMenuAction {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Import,
         Self::AddMidi,
         Self::Split,
+        Self::Merge,
         Self::Separate,
         Self::Normalize,
         Self::Edit,
@@ -26,7 +28,7 @@ impl ClipMenuAction {
     ];
     pub const GROUPS: [&'static [Self]; 3] = [
         &[Self::Import, Self::AddMidi],
-        &[Self::Split, Self::Separate, Self::Normalize],
+        &[Self::Split, Self::Merge, Self::Separate, Self::Normalize],
         &[Self::Edit, Self::ToggleMuted, Self::Delete],
     ];
 
@@ -35,6 +37,7 @@ impl ClipMenuAction {
             Self::Import => "Import clip…",
             Self::AddMidi => "Add MIDI pattern",
             Self::Split => "Split at playhead",
+            Self::Merge => "Merge",
             Self::Separate => "Stem separation",
             Self::Normalize => "Normalize gain",
             Self::Edit => "Edit clip",
@@ -47,6 +50,7 @@ impl ClipMenuAction {
         match self {
             Self::Import => FileAction::Import.shortcut(),
             Self::Split => Some(ClipAction::Split.shortcut()),
+            Self::Merge => Some(ClipAction::Merge.shortcut()),
             _ => None,
         }
     }
@@ -129,6 +133,10 @@ impl DawUi {
             return false;
         };
         match action {
+            ClipMenuAction::Merge => self
+                .session
+                .project
+                .can_merge_pattern_clips(&self.menu_clip_targets(clip.id)),
             ClipMenuAction::Split => !self
                 .clips_crossed_by_playhead(&self.menu_clip_targets(clip.id))
                 .is_empty(),
@@ -178,6 +186,7 @@ impl DawUi {
         };
         let (id, muted) = (clip.id, clip.muted);
         match action {
+            ClipMenuAction::Merge => self.merge_clips(&self.menu_clip_targets(id)),
             ClipMenuAction::Split => self.split_at(&self.menu_clip_targets(id)),
             ClipMenuAction::Separate => self.separate_clip(id),
             ClipMenuAction::Normalize => {

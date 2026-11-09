@@ -447,15 +447,17 @@ pub enum ClipAction {
     Copy,
     Paste,
     Split,
+    Merge,
 }
 impl ClipAction {
-    pub const ALL: [Self; 3] = [Self::Copy, Self::Paste, Self::Split];
+    pub const ALL: [Self; 4] = [Self::Copy, Self::Paste, Self::Split, Self::Merge];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Copy => "Copy",
             Self::Paste => "Paste",
             Self::Split => "Split at playhead",
+            Self::Merge => "Merge",
         }
     }
 
@@ -466,6 +468,7 @@ impl ClipAction {
                 Self::Copy => egui::Key::C,
                 Self::Paste => egui::Key::V,
                 Self::Split => egui::Key::T,
+                Self::Merge => egui::Key::J,
             },
         )
     }
@@ -2074,6 +2077,13 @@ impl DawUi {
                             .iter()
                             .any(|track| track.clips.iter().any(|clip| self.clip_selected(clip.id)))
                 }
+                ClipAction::Merge => {
+                    self.view_mode.has_clip_lanes()
+                        && self
+                            .session
+                            .project
+                            .can_merge_pattern_clips(&self.selected_clip_ids())
+                }
                 ClipAction::Split => {
                     self.view_mode.has_clip_lanes()
                         && !self
@@ -2100,6 +2110,7 @@ impl DawUi {
         match action {
             ClipAction::Copy => self.copy_clip(ctx),
             ClipAction::Paste => self.paste_clip(),
+            ClipAction::Merge => self.merge_clips(&self.selected_clip_ids()),
             ClipAction::Split => {
                 let ids = self.selected_clip_ids();
                 self.split_at(&ids);
@@ -2131,6 +2142,32 @@ impl DawUi {
                 })
             })
             .collect()
+    }
+
+    fn merge_clips(&mut self, ids: &[Id]) {
+        if !self.editing_enabled() {
+            return;
+        }
+        let (project, id) = match self.session.project.merge_pattern_clips(ids) {
+            Ok(merged) => merged,
+            Err(error) => {
+                self.fail(error);
+                return;
+            }
+        };
+        let track = project
+            .tracks
+            .iter()
+            .find(|track| track.clips.iter().any(|clip| clip.id == id))
+            .unwrap()
+            .id;
+        if self.prepare_audio_edit(&project, Some((track, vec![id]))) {
+            return;
+        }
+        self.session.project = project;
+        self.select_clip(id, track, false);
+        self.prune_clip_selection();
+        self.changed();
     }
 
     fn split_at(&mut self, ids: &[Id]) {
@@ -2196,7 +2233,7 @@ impl DawUi {
             .as_ref()
             .map(|clipboard| clipboard.token.as_str());
         let native_menu = self.native_menu;
-        let (copy, paste, split) = ctx.input_mut(|input| {
+        let (copy, paste, split, merge) = ctx.input_mut(|input| {
             let copy = input
                 .events
                 .iter()
@@ -2216,6 +2253,7 @@ impl DawUi {
                 input.consume_shortcut(&ClipAction::Copy.shortcut()) || copy,
                 (input.consume_shortcut(&ClipAction::Paste.shortcut()) && !native_paste) || paste,
                 !native_menu && input.consume_shortcut(&ClipAction::Split.shortcut()),
+                !native_menu && input.consume_shortcut(&ClipAction::Merge.shortcut()),
             )
         });
         if copy {
@@ -2226,6 +2264,9 @@ impl DawUi {
         }
         if split {
             self.perform_clip_action(ClipAction::Split, ctx);
+        }
+        if merge {
+            self.perform_clip_action(ClipAction::Merge, ctx);
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
@@ -5883,6 +5924,7 @@ mod tests {
     mod clip_duplication;
     mod clip_fades;
     mod clip_menu;
+    mod clip_merge;
     mod clip_portion;
     mod clip_settings;
     mod clip_split;

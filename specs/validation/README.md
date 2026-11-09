@@ -4,6 +4,171 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Beat trims retain hidden steps — 2026-11-09
+
+Verified that the existing beat trim path already retains the complete source.
+Added regressions; no runtime behavior or source format change was required.
+Core checks cover both-edge trims, serialization/reopen and exact restoration at
+all six project rates with fractional tempo and optional stretch, shared-source
+copies, retained lane settings, and steps hidden by source length/subdivision.
+The egui test drives left/right trims and expansion in Timeline and Editor,
+checks hidden/revealed step hit regions and unchanged sources, and exercises
+preview-only movement and undo/redo.
+
+Completed checks:
+
+- `cargo test -p daw-core --test beat_trim --offline`: passed.
+- `cargo test -p daw-ui beat_trimming_hides --offline`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check` and `git diff HEAD --check`: passed.
+
+Native gesture/device checks remain unverified. No desktop rebuild is needed for
+these test and documentation changes; the previous runtime build remains current.
+
+## MIDI trims retain hidden notes — 2026-11-09
+
+This supersedes the earlier source-cropping behavior. MIDI edge trims now change
+the visible source window, retaining all notes and full crossing gates. Restoring
+an edge reuses hidden content. Only expansion beyond the retained source pads a
+new immutable asset; other source users remain unchanged. Merge still materializes
+only visible notes into a new pattern.
+
+Core checks cover left/right/two-edge trims, crossing and wholly hidden notes,
+serialization/reopen, restored source identity and geometry, shared copies,
+stretch, six project rates and fractional tempo, loop bases and source tick-limit
+restoration. Existing expansion, directional group-overlap and failure checks
+remain covered. The egui regression drives inward trims and restoration in both
+Timeline and Editor, checks hidden-note hit regions, release-only publication,
+unchanged source content and undo/redo.
+
+Completed checks:
+
+- `cargo test -p daw-core --offline`: passed.
+- `cargo test -p daw-ui midi_trimming_hides --offline`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test -p daw-ui pattern_edge_resize_previews --offline`: passed with retained-source assertions.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed; rebuilt the desktop executable.
+- `cargo fmt --all --check` and `git diff HEAD --check`: passed.
+
+Native gestures and device playback remain unverified. The packaged app bundle
+remains unchanged; source packaging requires committed tracked changes.
+
+## Consolidate a single pattern through Merge — 2026-11-09
+
+Merge now accepts a single MIDI or beat clip and consolidates its visible range,
+including loops and trims. MIDI source-edge trims already create a shorter full
+source, so eligibility also accepts full-length unlooped patterns without trim
+provenance. Single clips reuse existing bounded consolidation, menu/shortcut,
+preparation and history paths. Existing beat grid, 16-source-bar and
+4,096-occurrence limits remain in effect.
+
+Core regressions cover phased repetitions, MIDI stretch baking, retained beat
+stretch/lane bindings, left/right/two-edge trims, boundary-clipped MIDI notes,
+unique repeated-note/step IDs, preserved settings and frame range, unchanged
+original assets and rejection of an oversized single beat loop. Automated egui
+coverage exercises MIDI/beat single loops and three trim cases in Timeline and
+Editor through the shortcut, Clip command and clicked context menu, with one-step
+undo/redo and stable clip selection. Source-edge trims followed by serialization
+and reopen are covered, as are full-length single patterns.
+
+Completed checks:
+
+- `cargo test -p daw-core --offline merge`: passed.
+- `cargo test -p daw-ui clip_merge --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed; updated the desktop executable.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+
+Native UI interaction and device playback remain unverified.
+The packaged app bundle remains unchanged because the source-packaging preflight
+requires committed tracked changes. No commit was made.
+
+## Merge adjacency after sample rounding — 2026-11-09
+
+The provided 48 kHz, 130 BPM project has two beat clips separated by two sample
+frames: the first ends at 177,230 and the next starts at 177,232. Exact frame
+adjacency disabled Merge even though both edges resolve to the same nearest MIDI
+tick. A read-only probe reproduced the disabled command on the supplied manifest.
+After the fix, that same manifest enables Merge and produces one validated clip.
+The probe did not write the project or its media; its temporary example was removed.
+
+Shared MIDI/beat adjacency now accepts gaps only when both edges round to the
+same MIDI tick relative to the first clip. Exact outer frame bounds are retained.
+Overlaps and gaps of a full tick remain rejected. Core regressions cover the
+130 BPM geometry, hit positions/velocities, preserved duration, MIDI rounding
+and overlap/gap rejection. An egui regression checks menu availability, dispatch
+and undo with that geometry in Timeline and Editor.
+
+Completed checks:
+
+- `cargo test -p daw-core --offline merge`: passed.
+- Read-only supplied-manifest probe: Merge enabled and resulting project validated.
+
+- `cargo test -p daw-ui clip_merge --offline`: all three tests passed.
+- `cargo build -p daw-desktop --offline`: passed; updated the standalone executable.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check` and `git diff HEAD --check`: passed.
+
+Native UI and device playback remain unverified. The packaged app bundle was not
+rebuilt; the existing source-packaging preflight requires committed changes.
+
+## Beat pattern Merge — 2026-11-09
+
+Extended the shared Merge command to adjacent beat clips in Timeline and Editor.
+Core regressions cover three-clip groups at all six project rates and two tempos,
+retained container/lane/settings/assets, serialization, shared-source ID copies,
+phased loops, source offsets, common stretch, hidden hits, mismatched grids,
+off-grid bounds, other tracks/types, the 16-source-bar limit and the aggregate
+4,096-hit limit. Existing egui Merge tests now cover both beat and MIDI patterns,
+including shortcut/menu/context dispatch, selection, undo/redo and edit guards.
+
+Completed checks:
+
+- `cargo test -p daw-core --offline`: passed.
+- `cargo test -p daw-ui clip_merge --offline`: passed for MIDI and beat cases.
+- `cargo fmt --all --check`: passed.
+- `git diff HEAD --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+
+Native menu/shortcut, device playback and Windows/Linux checks remain open.
+macOS app packaging remains unavailable while tracked changes are uncommitted,
+as required by the source-packaging preflight recorded below. No commit was made.
+
+## MIDI clip Merge — 2026-11-09
+
+Added Merge to the Clip menu and shared clip context menus, with Command+J on
+macOS and Ctrl+J on Windows/Linux. Core regressions cover three adjacent clips,
+selection order, retained identity/assets, serialization, source offsets, phased
+stretched loops, unique unfolded note IDs, invalid groups and bounded expansion.
+Automated egui tests cover Timeline/Editor menus, shortcut dispatch, merged
+selection, undo/redo and view/blocked-edit guards.
+
+Completed checks:
+
+- `cargo test -p daw-core --offline`: passed.
+- `cargo test -p daw-ui clip_merge --offline`: both tests passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `git diff --check`: passed.
+
+`sh tools/package_macos.sh debug` stopped at the source-packaging preflight:
+tracked edits must be committed before packaging. No commit was created.
+Native menu/shortcut interaction, device playback and Windows/Linux behavior
+were not checked manually.
+
 ## MIDI note selection colors — 2026-11-09
 
 Selecting a MIDI clip no longer recolors its notes with the application accent.

@@ -3863,6 +3863,7 @@ fn pattern_edge_resize_previews_commits_and_cancels_preserving_note_timing() {
         app.session.project.tracks[0].clips[0].length_frames,
         108_000
     );
+    let expanded_source = app.session.project.tracks[0].clips[0].asset_id;
     frame(&mut app, &ctx, vec![]);
     let rect = app.midi_editor.pattern_bounds;
     let start = Pos2::new(rect.left() + 1.0, rect.top() + 24.0);
@@ -3875,8 +3876,17 @@ fn pattern_edge_resize_previews_commits_and_cancels_preserving_note_timing() {
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
     assert_eq!(pattern(&app).notes[0].start_tick, 960);
     frame(&mut app, &ctx, vec![button(end, false)]);
-    assert_eq!(pattern(&app).length_ticks, 3360);
-    assert_eq!(pattern(&app).notes[0].start_tick, 0);
+    assert_eq!(pattern(&app).length_ticks, 4320);
+    assert_eq!(pattern(&app).notes[0].start_tick, 960);
+    assert_eq!(pattern(&app).notes[0].length_ticks, 960);
+    assert_eq!(
+        app.session.project.tracks[0].clips[0].asset_id,
+        expanded_source
+    );
+    assert_eq!(
+        app.session.project.tracks[0].clips[0].source_offset_frame,
+        24_000
+    );
     assert_eq!(app.session.project.tracks[0].clips[0].start_frame, 24_000);
     frame(&mut app, &ctx, vec![]);
     let before = format!("{:?}", app.session.project);
@@ -8328,6 +8338,129 @@ fn midi_clip_selection_preserves_note_colors_and_selected_notes_match_the_header
             app.session.project.tracks[0].midi_options.root = None;
             assert_eq!(app.session.project, before);
             assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn midi_trimming_hides_notes_and_expansion_restores_them_in_both_views() {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
+        for left in [false, true] {
+            let (mut app, track, clip_id, middle) = fixture();
+            let first = Id::new_v4();
+            let last = Id::new_v4();
+            app.session
+                .project
+                .edit(Edit::ReplaceMidiPattern {
+                    clip_id,
+                    pattern: MidiPattern {
+                        length_ticks: 3840,
+                        notes: vec![
+                            MidiNote {
+                                id: first,
+                                start_tick: 0,
+                                length_ticks: 480,
+                                pitch: 60,
+                                velocity: 100,
+                            },
+                            MidiNote {
+                                id: middle,
+                                start_tick: 480,
+                                length_ticks: 2880,
+                                pitch: 64,
+                                velocity: 90,
+                            },
+                            MidiNote {
+                                id: last,
+                                start_tick: 3360,
+                                length_ticks: 480,
+                                pitch: 60,
+                                velocity: 80,
+                            },
+                        ],
+                    },
+                })
+                .unwrap();
+            app.session.project.tracks[0].clips[0].start_frame = 48_000;
+            let ctx = context();
+            app.set_view_mode(view, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            let before = app.session.project.clone();
+            let hidden = if left { first } else { last };
+            let drag_edge = |app: &mut DawUi, delta: f32| {
+                if view.has_track_overview() {
+                    app.midi_editor.zoom = 120.0;
+                    app.midi_editor.scroll = 0.0;
+                } else {
+                    app.zoom = 120.0;
+                    app.scroll = 0.0;
+                }
+                frame(app, &ctx, vec![]);
+                let current = app.session.project.tracks[0].clips[0].clone();
+                let lane = app.lane_bounds[&track];
+                let block = if view.has_track_overview() {
+                    app.midi_editor.clip_bounds[&clip_id]
+                } else {
+                    app.clip_block(lane, &current, current.start_frame)
+                };
+                let origin = Pos2::new(
+                    if left {
+                        block.left() + 1.0
+                    } else {
+                        block.right() - 1.0
+                    },
+                    block.top() + 30.0,
+                );
+                let end = origin + Vec2::new(delta, 0.0);
+                let unchanged = app.session.project.clone();
+                arrangement_frame(
+                    app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(origin), button(origin, true)],
+                    false,
+                );
+                arrangement_frame(app, &ctx, vec![egui::Event::PointerMoved(end)], false);
+                assert_eq!(app.session.project, unchanged);
+                arrangement_frame(app, &ctx, vec![button(end, false)], false);
+                finish_import(app, &ctx);
+                assert!(app.error.is_none(), "{:?}", app.error);
+            };
+            drag_edge(&mut app, if left { 60.0 } else { -60.0 });
+            let cropped = app.session.project.clone();
+            assert_eq!(cropped.assets, before.assets);
+            assert_eq!(
+                cropped.tracks[0].clips[0].asset_id,
+                before.tracks[0].clips[0].asset_id
+            );
+            assert_eq!(cropped.tracks[0].clips[0].length_frames, 72_000);
+            if view == ViewMode::Edit {
+                assert!(
+                    app.midi_editor
+                        .track_note_bounds
+                        .get(&(clip_id, hidden))
+                        .is_none_or(|v| v.is_empty())
+                );
+                assert!(
+                    app.midi_editor
+                        .track_note_bounds
+                        .get(&(clip_id, middle))
+                        .is_some_and(|v| !v.is_empty())
+                );
+            }
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            assert_eq!(app.session.project, before);
+            app.perform_history_action(HistoryAction::Redo, &ctx);
+            assert_eq!(app.session.project, cropped);
+            drag_edge(&mut app, if left { -60.0 } else { 60.0 });
+            assert_eq!(app.session.project, before);
+            if view == ViewMode::Edit {
+                assert!(
+                    app.midi_editor
+                        .track_note_bounds
+                        .get(&(clip_id, hidden))
+                        .is_some_and(|v| !v.is_empty())
+                );
+            }
         }
     }
 }

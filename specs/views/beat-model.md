@@ -84,7 +84,13 @@ source. Keep other source users unchanged. Copy the original clip metadata,
 retain its stretch, keep the opposite endpoint exact, and change only its frame
 range, source offset and (when grown) asset ID. Extend the stored grid by whole
 bars while retaining the exact dragged frame range. Hidden hits remain stored and
-can reappear when the source grows.
+can reappear when the source grows. Inward trims on either edge must leave the
+complete stored step vector, source ID and source metadata unchanged. Preserve
+step IDs, subtrack IDs, start ticks and velocities, including steps hidden by
+source length or subdivision. Expansion within the retained source restores
+those steps without creating a new asset. These guarantees survive save/reopen
+and undo/redo and apply to the shared Timeline/Editor gesture path. Merge is the
+explicit operation that writes visible hits only into a fresh source.
 
 For left expansion beyond source zero, prepend whole bars and shift every stored
 hit by their tick count. Set the source offset to hide unused leading padding.
@@ -109,3 +115,58 @@ Keep this path allocation-free and use the latency-compensated feed wrap when
 processing lookahead is active. This applies to MIDI and beat instruments. Nonlooping clip boundaries retain
 their existing behavior. Audio clips repeat only the selected region; existing
 track, group and Master effect histories continue through the wrap.
+
+## Merge adjacent beat patterns
+
+`Project::merge_pattern_clips` dispatches MIDI and beat sources through their
+shared selection validation and final snapshot publication. `merge_beat_clips`
+accepts one or more clips on one beat track through the shared eligibility rule.
+Single clips consolidate their visible range, including loops and trims; current
+bounds do not need to prove prior trimming. This also permits full-length single
+patterns and remains consistent after source-edge trims and save/reopen.
+Shared adjacency accepts
+sample-rounding gaps when both edges map to the same nearest MIDI tick relative
+to the first clip, while retaining the exact outer frame range. Reject larger
+musical gaps and all overlaps. All sources retain their
+beat container binding. Require matching gain, transpose, mute, channels,
+subdivision and stretch. Validate clip bounds, source offsets and repeat
+length/phase against the common subdivision in source ticks. Convert frame
+coordinates to nearest ticks; reject partial gates or off-grid hits.
+
+Reuse Split/MIDI Merge's bounded occurrence mapping for source windows, phases
+and stretched repetitions. Construct one embedded `BeatPatternSource` containing
+visible hits only. Retain subtrack IDs, velocities and unique step IDs; use fresh
+IDs for additional occurrences of shared steps. Do not awaken hidden hits or
+rewrite existing assets, lane instruments, stop links or mix settings. Preserve
+the earliest clip's ID, name and color. Clear source offset and repeat, retain
+the common stretch, and preserve the exact selected frame range. The source uses
+the common subdivision so each gate retains its one-step duration.
+
+Round source length up to whole four-quarter-note bars, sufficient to cover the
+retained frame range after stretch. Reject results beyond 16 source bars or 4,096
+visible hit occurrences. Reject the full operation without project mutation on
+error. Publish through existing preparation/history, select only the merged
+clip, and undo/redo as one edit. Expose the same Merge command, Command+J/Ctrl+J,
+context menus, native dispatch and view/text/gesture guards as MIDI Merge.
+
+Single-clip consolidation uses the same occurrence, grid, length and hit limits
+as group Merge. Materialize only the visible source window and repetitions;
+retain lane IDs, velocities, subdivision and stretch. Preserve clip identity,
+start and length, name/color and mix settings; clear repeat and source offset.
+Keep original assets and lane instruments unchanged. The shared menu/shortcut
+and preparation/history paths publish one selected clip and restore the original
+trim, repeat and source reference with one undo.
+
+### Hidden-step trim regression coverage
+
+`crates/core/tests/beat_trim.rs` checks both-edge trims, serialization/reopen and
+restoration at all six project rates with fractional tempo and optional stretch.
+Require identical project/source data after restoring the original range,
+including source-sharing copies and beat instrument/lane settings. Combined
+length/subdivision masking must retain every stored step and reveal the original
+IDs/velocities when source length and resolution permit them again.
+
+The paired egui regression drives actual inward trims and expansion in Timeline
+and Editor. Check preview-only movement, source identity/content, hidden/revealed
+step hit regions, and undo/redo. This verifies the existing retention path;
+no new DSP, source format or rendering implementation is required.

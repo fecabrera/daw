@@ -278,7 +278,7 @@ impl NativeMenu {
         for (index, action) in ClipAction::ALL
             .into_iter()
             .enumerate()
-            .filter(|(_, action)| *action != ClipAction::Split)
+            .filter(|(_, action)| matches!(action, ClipAction::Copy | ClipAction::Paste))
         {
             let key = action.shortcut().logical_key.name().to_lowercase();
             // SAFETY: The selector is defined above, with an NSMenuItem argument.

@@ -3773,3 +3773,99 @@ fn beat_repetitions_dim_saved_hit_colors_and_reject_edits_after_scrolling() {
         }
     }
 }
+
+#[test]
+fn beat_trimming_hides_steps_and_expansion_restores_them_in_both_views() {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
+        for left in [false, true] {
+            let (mut app, ctx, track, row, clip_id) = setup();
+            let pattern = BeatPattern::default()
+                .with_step(row, 0, Some(71))
+                .unwrap()
+                .with_step(row, 960, Some(91))
+                .unwrap()
+                .with_step(row, 3360, Some(127))
+                .unwrap();
+            app.session
+                .project
+                .edit(Edit::ReplaceBeatPattern { clip_id, pattern })
+                .unwrap();
+            app.session.project.tracks[0].clips[0].start_frame = 48_000;
+            app.set_view_mode(view, &ctx);
+            app.history = None;
+            frame(&mut app, &ctx, vec![]);
+            let before = app.session.project.clone();
+            let hidden_tick = if left { 0 } else { 3360 };
+            let drag_edge = |app: &mut DawUi, delta: f32| {
+                if view.has_track_overview() {
+                    app.midi_editor.zoom = 120.0;
+                    app.midi_editor.scroll = 0.0;
+                    app.midi_editor.content.zoom = 120.0;
+                    app.midi_editor.content.scroll = 0.0;
+                    app.midi_editor.content.fitted = false;
+                } else {
+                    app.zoom = 120.0;
+                    app.scroll = 0.0;
+                }
+                frame(app, &ctx, vec![]);
+                let current = app.session.project.tracks[0].clips[0].clone();
+                let lane = app.lane_bounds[&track];
+                let block = if view.has_track_overview() {
+                    app.midi_editor.clip_bounds[&clip_id]
+                } else {
+                    app.clip_block(lane, &current, current.start_frame)
+                };
+                let origin = Pos2::new(
+                    if left {
+                        block.left() + 1.0
+                    } else {
+                        block.right() - 1.0
+                    },
+                    block.top() + 30.0,
+                );
+                let end = origin + Vec2::new(delta, 0.0);
+                let unchanged = app.session.project.clone();
+                frame(
+                    app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(origin), button(origin, true)],
+                );
+                frame(app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                assert_eq!(app.session.project, unchanged);
+                frame(app, &ctx, vec![button(end, false)]);
+                finish_import(app, &ctx);
+                assert!(app.error.is_none(), "{:?}", app.error);
+            };
+            drag_edge(&mut app, if left { 60.0 } else { -60.0 });
+            let cropped = app.session.project.clone();
+            assert_eq!(cropped.assets, before.assets);
+            assert_eq!(cropped.beat(track), before.beat(track));
+            assert_eq!(
+                cropped.tracks[0].clips[0].asset_id,
+                before.tracks[0].clips[0].asset_id
+            );
+            assert_eq!(cropped.tracks[0].clips[0].length_frames, 72_000);
+            if view == ViewMode::Edit {
+                assert!(
+                    !app.beat_ui
+                        .clip_steps
+                        .contains_key(&(clip_id, row, hidden_tick))
+                );
+                assert!(app.beat_ui.clip_steps.contains_key(&(clip_id, row, 960)));
+            }
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            assert_eq!(app.session.project, before);
+            app.perform_history_action(HistoryAction::Redo, &ctx);
+            assert_eq!(app.session.project, cropped);
+            drag_edge(&mut app, if left { -60.0 } else { 60.0 });
+            assert_eq!(app.session.project, before);
+            if view == ViewMode::Edit {
+                assert!(
+                    app.beat_ui
+                        .clip_steps
+                        .contains_key(&(clip_id, row, hidden_tick))
+                );
+            }
+        }
+    }
+}

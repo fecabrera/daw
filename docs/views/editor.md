@@ -30,6 +30,12 @@ In the piano roll, notes take priority over clip edges. You can resize a note th
 
 Drag a header to move the selected patterns. Drag a header edge to loop them, or an edge beside the notes to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Changes preview during the drag and apply on release; Escape cancels. These gestures keep the lower editor’s zoom and scroll.
 
+Trimming a MIDI clip hides notes outside its visible range. It keeps the complete
+notes, including notes that cross an edge. Drag the edge back to restore them.
+Expansion beyond the original source adds empty space. Hidden notes survive
+saving and reopening. Use **Merge** to consolidate only the visible notes into
+a new pattern.
+
 Right-click a header or border for the shared clip menu, including Velocity and Delete note when a note is selected.
 
 Selecting a clip keeps its notes in their original colors. Selected notes use the same lighter color as that clip’s selected header and have no outline.
@@ -44,6 +50,13 @@ Dragging a clip still moves it; dragging in the piano-roll note area still selec
 notes. The overview and lower pane keep their own zoom and scroll.
 
 Timeline and Editor offer the same clip selection, time-range selection, copy/paste, split, move, trim, loop, and stretch actions. Delete or Backspace removes all selected clips when clip editing is active. Note and beat-step editing keep Delete in their own pane. Click a clip header to switch back to clip deletion; selecting notes gives note deletion priority. A selected time range takes precedence and removes only that range. Clip deletion supports Undo and keeps source media. Text fields, active gestures, dialogs and unfocused windows retain their existing keyboard protection. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Editor's clip moves keep their track assignments. Shift bypasses grid snapping.
+
+To join adjacent MIDI clips, select them and choose **Merge** from the **Clip**
+menu or a selected clip’s context menu. Press **Command+J** on macOS or **Ctrl+J**
+on Windows and Linux. See [Merge MIDI clips](timeline.md#merge-midi-clips) for limits.
+The same command joins [adjacent beat patterns](beat-editor.md#merge-beat-patterns).
+Select one looped or trimmed MIDI or beat clip to consolidate its visible range
+with **Merge**, using the same menus and shortcut.
 
 ## Track and scale controls
 

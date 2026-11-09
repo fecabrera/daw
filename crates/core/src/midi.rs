@@ -152,24 +152,30 @@ impl Project {
         let frames_per_tick = f64::from(self.sample_rate_hz) * 60.0
             / (f64::from(self.tempo_bpm) * f64::from(MIDI_TICKS_PER_BEAT))
             * stretch;
-        let visible_ticks = (clip.length_frames as f64 / frames_per_tick)
+        let base_frames = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
+        let visible_ticks = (base_frames.min(clip.length_frames) as f64 / frames_per_tick)
             .floor()
             .max(1.0) as i64;
-        let length = i64::from(pattern.length_ticks);
-        let inward = (length - 1).min(visible_ticks - 1);
+        let inward = visible_ticks - 1;
+        let left_capacity = (clip.source_offset_frame as f64 / frames_per_tick
+            + f64::from(u32::MAX - pattern.length_ticks))
+        .floor() as i64;
+        let source_end = u128::from(clip.source_offset_frame) + u128::from(base_frames);
+        let right_capacity = (f64::from(u32::MAX) - source_end as f64 / frames_per_tick)
+            .floor()
+            .max(0.0) as i64;
         let edge_frame = match edge {
             ClipEdge::Left => clip.start_frame,
             ClipEdge::Right => clip.end(),
         };
         let (min_delta, max_delta) = match edge {
             ClipEdge::Left => (
-                (length - i64::from(u32::MAX))
-                    .max(-((clip.start_frame as f64 / frames_per_tick).floor() as i64)),
+                (-left_capacity).max(-((clip.start_frame as f64 / frames_per_tick).floor() as i64)),
                 inward,
             ),
             ClipEdge::Right => (
                 -inward,
-                (i64::from(u32::MAX) - length)
+                right_capacity
                     .min(((u64::MAX - edge_frame) as f64 / frames_per_tick).floor() as i64),
             ),
         };
@@ -183,7 +189,7 @@ impl Project {
         })
     }
 
-    /// Body trims resize MIDI content and extend beat sources; audio keeps source bounds.
+    /// Body trims retain MIDI content and extend pattern sources only when needed.
     /// Prepare each selected source from the original project, then resolve neighbors once.
     pub fn trimmed_clips(&self, clips: &[Clip], edge: ClipEdge) -> Result<Self> {
         let mut next = self.clone();
@@ -264,7 +270,7 @@ impl Project {
         Ok(next)
     }
 
-    /// Resize the edited source and its clip as one transaction. Other source users stay intact.
+    /// Resize the visible MIDI window, padding its source when needed. Other users stay intact.
     pub fn resized_midi_pattern(
         &self,
         clip_id: Id,
@@ -278,111 +284,6 @@ impl Project {
             end_tick,
         })?;
         Ok(next)
-    }
-
-    pub(crate) fn apply_midi_pattern_resize(
-        &mut self,
-        clip_id: Id,
-        start_tick: i64,
-        end_tick: i64,
-    ) -> Result<()> {
-        let length_ticks = end_tick
-            .checked_sub(start_tick)
-            .and_then(|n| u32::try_from(n).ok())
-            .filter(|n| *n > 0)
-            .ok_or_else(|| Error("Pattern length exceeds supported bounds".into()))?;
-        let (track_id, mut clip) = self
-            .tracks
-            .iter()
-            .find_map(|track| {
-                track
-                    .clips
-                    .iter()
-                    .find(|c| c.id == clip_id)
-                    .map(|c| (track.id, c.clone()))
-            })
-            .ok_or_else(|| Error("Clip not found".into()))?;
-        let original = self
-            .assets
-            .iter()
-            .find(|a| a.id == clip.asset_id && a.midi_pattern.is_some())
-            .ok_or_else(|| Error("Clip is not a MIDI pattern".into()))?;
-        let old_pattern = original.midi_pattern.as_ref().unwrap();
-        old_pattern.validate()?;
-        if start_tick == 0 && end_tick == i64::from(old_pattern.length_ticks) {
-            return Ok(());
-        }
-        let notes = old_pattern
-            .notes
-            .iter()
-            .filter_map(|note| {
-                let start = i64::from(note.start_tick).max(start_tick);
-                let end = i64::from(note.start_tick + note.length_ticks).min(end_tick);
-                (end > start).then(|| MidiNote {
-                    start_tick: (start - start_tick) as u32,
-                    length_ticks: (end - start) as u32,
-                    ..note.clone()
-                })
-            })
-            .collect();
-        let old_available = clip
-            .source_length(original.decoded_frame_count)
-            .ok_or_else(|| Error("Stretched MIDI source exceeds supported bounds".into()))?;
-        let previous_length = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
-        let ended_at_source =
-            clip.source_offset_frame.checked_add(previous_length) == Some(old_available);
-        let asset = self.midi_asset(
-            original.name.clone(),
-            MidiPattern {
-                length_ticks,
-                notes,
-            },
-        )?;
-        let available = clip
-            .source_length(asset.decoded_frame_count)
-            .filter(|n| *n > 0)
-            .ok_or_else(|| Error("Pattern resize would make the clip empty".into()))?;
-        // Move the source origin with its left boundary. Subtracting start_tick
-        // from retained notes then preserves their project timing (within frame rounding).
-        let start_ticks = u32::try_from(start_tick.unsigned_abs())
-            .map_err(|_| Error("Pattern start exceeds supported bounds".into()))?;
-        let shift = self.midi_frame(start_ticks);
-        let shift = clip
-            .stretch
-            .map_or(Some(shift), |s| s.scale(shift))
-            .ok_or_else(|| Error("Pattern start exceeds supported bounds".into()))?;
-        clip.start_frame = if start_tick < 0 {
-            clip.start_frame.checked_sub(shift)
-        } else {
-            clip.start_frame.checked_add(shift)
-        }
-        .ok_or_else(|| Error("Pattern resize exceeds timeline bounds".into()))?;
-        clip.asset_id = asset.id;
-        clip.source_offset_frame = clip.source_offset_frame.min(available - 1);
-        let remaining = available - clip.source_offset_frame;
-        let length = if ended_at_source {
-            remaining
-        } else {
-            // A trimmed clip's visible edge follows the same requested duration
-            // change as the source, without exposing unavailable source frames.
-            (i128::from(previous_length) + i128::from(available) - i128::from(old_available))
-                .clamp(1, i128::from(remaining)) as u64
-        };
-        if let Some(repeat) = &mut clip.repeat {
-            repeat.length_frames = length;
-            repeat.phase_frame = repeat.phase_frame.min(length - 1);
-            clip.length_frames = u64::try_from(
-                i128::from(clip.length_frames) + i128::from(available) - i128::from(old_available),
-            )
-            .ok()
-            .filter(|n| *n > 0)
-            .ok_or_else(|| Error("Pattern resize would make the clip empty".into()))?
-            .max(length);
-        } else {
-            clip.length_frames = length;
-        }
-        self.assets.push(asset);
-        self.apply_placements(&[crate::ClipPlacement { track_id, clip }])
     }
 
     pub(crate) fn bound_retimed_midi_sources(&mut self) -> Result<()> {
