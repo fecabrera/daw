@@ -4,6 +4,44 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Linux GTK keyboard and touch input — 2026-11-10
+
+The GTK host forwards key presses and releases before input-method filtering,
+so printable shortcuts such as Space reach the shared UI. BackSpace maps to
+Backspace. Direct touchscreen contacts supply egui touch events and one pointer
+for taps and drags. Cancellation clears the pointer and cancels shared editing
+gestures without clicking. Touchpad scrolling preserves surface-point units and
+UI zoom; touchpad pinch events supply incremental zoom. Touch coordinates account
+for the native surface offset and titlebar layout.
+
+Completed automated checks:
+
+- `cargo test -p daw-desktop --locked --offline`: pass. Covers key mappings,
+  touchpad scroll units/zoom, multiple contacts and cancelled pointer state.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: pass.
+- `cargo test --workspace --locked --offline`: pass.
+- `cargo test --workspace --release --locked --offline`: pass, including all
+  GTK desktop input tests in release mode.
+- `cargo fmt --all --check` and `git diff --check`: pass.
+- `cargo build -p daw-desktop --locked --offline`: pass.
+- `target/debug/daw-desktop --smoke-test`: pass on the native GTK display.
+  Renders the app and switches Custom → Native → Custom without user preferences.
+  This check covers window integration, not physical input events.
+- Explicit `GDK_BACKEND=wayland` window smoke test: pass.
+- Explicit X11 smoke test with `LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=cairo`
+  (the CI graphics settings): pass. The first X11 run with default graphics
+  settings failed with `renderer unavailable`; accelerated X11 remains unverified.
+- `cargo build -p daw-desktop --release --locked --offline`: pass.
+- Release Wayland smoke with software rendering: pass. Three release Wayland
+  runs with default graphics settings failed the titlebar visibility check,
+  including a repeat after workspace tests finished. Release window transitions
+  with default graphics settings need separate native investigation. This change
+  does not modify rendering or titlebar switching.
+
+Physical keyboard shortcuts, touchscreen taps/drags/cancellation, touchpad pinch
+and scrolling, and full IM composition still need native input checks on Wayland
+and X11. Automated event-mapping checks do not establish physical-device parity.
+
 ## Mixer selection uses header foreground only — 2026-11-09
 
 Mixer strip bodies keep their normal panel fill during selection. Header titles

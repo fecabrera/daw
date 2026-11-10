@@ -1,7 +1,7 @@
 //! GTK input and clipboard event mapping for the Linux desktop.
 use super::*;
 
-fn modifiers(value: gdk::ModifierType) -> egui::Modifiers {
+pub(super) fn modifiers(value: gdk::ModifierType) -> egui::Modifiers {
     egui::Modifiers {
         alt: value.contains(gdk::ModifierType::ALT_MASK),
         ctrl: value.contains(gdk::ModifierType::CONTROL_MASK),
@@ -16,6 +16,10 @@ fn key(value: gdk::Key) -> Option<egui::Key> {
     egui::Key::from_name(match name.as_str() {
         "Return" | "KP_Enter" => "Enter",
         "ISO_Left_Tab" => "Tab",
+        "BackSpace" => "Backspace",
+        "KP_Delete" => "Delete",
+        "KP_Home" => "Home",
+        "KP_End" => "End",
         "space" => "Space",
         "Left" => "ArrowLeft",
         "Right" => "ArrowRight",
@@ -37,6 +41,7 @@ pub(super) fn connect_input(
     window: &gtk4::ApplicationWindow,
     state: &Rc<RefCell<State>>,
 ) {
+    super::touch::connect_touch(area, window, state);
     let motion = gtk4::EventControllerMotion::new();
     let input = state.clone();
     motion.connect_motion(move |controller, x, y| {
@@ -73,7 +78,10 @@ pub(super) fn connect_input(
         }
         let mut state = input.borrow_mut();
         let pos = egui::pos2(x as f32, y as f32) / state.ctx.zoom_factor();
-        if gesture.current_button() == 1
+        let touch = gesture
+            .current_event()
+            .is_some_and(|event| event.event_type() == gdk::EventType::TouchBegin);
+        if (gesture.current_button() == 1 || touch)
             && state.ui.settings().titlebar == TitlebarStyle::Custom
             && state.ui.header_layout(&state.ctx).can_drag(pos)
         {
@@ -90,7 +98,13 @@ pub(super) fn connect_input(
                     event.position(),
                 )
             {
-                toplevel.begin_move(&device, 1, surface_x, surface_y, event.time());
+                toplevel.begin_move(
+                    &device,
+                    if touch { 0 } else { 1 },
+                    surface_x,
+                    surface_y,
+                    event.time(),
+                );
             }
             gesture.set_state(gtk4::EventSequenceState::Claimed);
             return;
@@ -125,10 +139,16 @@ pub(super) fn connect_input(
             .input
             .events
             .push(egui::Event::ModifiersChanged(modifiers));
+        let surface_units = controller.current_event().is_some_and(|event| {
+            event
+                .downcast_ref::<gdk::ScrollEvent>()
+                .is_some_and(|scroll| scroll.unit() == gdk::ScrollUnit::Surface)
+        });
+        let (unit, delta) = scroll_delta(x, y, surface_units, state.ctx.zoom_factor());
         state.input.events.push(egui::Event::MouseWheel {
             phase: egui::TouchPhase::Move,
-            unit: egui::MouseWheelUnit::Line,
-            delta: egui::vec2(-x as f32, -y as f32),
+            unit,
+            delta,
             modifiers,
         });
         state.ctx.request_repaint();
@@ -144,10 +164,13 @@ pub(super) fn connect_input(
         state.ctx.request_repaint();
     });
     let keyboard = gtk4::EventControllerKey::new();
-    keyboard.set_im_context(Some(&im));
+    // An attached IM context filters printable keys before key-pressed. Forward
+    // keys first so Space and letter shortcuts also work outside text fields.
+    keyboard.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    let press_im = im.clone();
     let input = state.clone();
     let weak_area = area.downgrade();
-    keyboard.connect_key_pressed(move |_, value, _, flags| {
+    keyboard.connect_key_pressed(move |controller, value, _, flags| {
         let mods = modifiers(flags);
         let mut state = input.borrow_mut();
         state.input.events.push(egui::Event::ModifiersChanged(mods));
@@ -183,10 +206,16 @@ pub(super) fn connect_input(
             });
         }
         state.ctx.request_repaint();
+        // Filtering can emit commit synchronously and borrow state again.
+        drop(state);
+        if let Some(event) = controller.current_event() {
+            press_im.filter_keypress(&event);
+        }
         glib::Propagation::Stop
     });
     let input = state.clone();
-    keyboard.connect_key_released(move |_, value, _, flags| {
+    let release_im = im.clone();
+    keyboard.connect_key_released(move |controller, value, _, flags| {
         let mut state = input.borrow_mut();
         let mods = modifiers(flags);
         state.input.events.push(egui::Event::ModifiersChanged(mods));
@@ -200,6 +229,10 @@ pub(super) fn connect_input(
             });
         }
         state.ctx.request_repaint();
+        drop(state);
+        if let Some(event) = controller.current_event() {
+            release_im.filter_keypress(&event);
+        }
     });
     area.add_controller(keyboard);
     let focus = gtk4::EventControllerFocus::new();
@@ -268,6 +301,20 @@ pub(super) fn connect_input(
     area.add_controller(drop);
 }
 
+fn scroll_delta(
+    x: f64,
+    y: f64,
+    surface_units: bool,
+    zoom: f32,
+) -> (egui::MouseWheelUnit, egui::Vec2) {
+    let delta = egui::vec2(-x as f32, -y as f32);
+    if surface_units {
+        (egui::MouseWheelUnit::Point, delta / zoom)
+    } else {
+        (egui::MouseWheelUnit::Line, delta)
+    }
+}
+
 fn pointer_button(
     state: &mut State,
     button: u32,
@@ -303,5 +350,38 @@ impl egui::DroppedFile for NativeFile {
     }
     fn bytes(&self) -> Result<Vec<u8>, String> {
         std::fs::read(&self.0).map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn touchpad_scroll_uses_points_and_ui_zoom_while_wheel_uses_lines() {
+        assert_eq!(
+            scroll_delta(4.0, -8.0, true, 2.0),
+            (egui::MouseWheelUnit::Point, egui::vec2(-2.0, 4.0))
+        );
+        assert_eq!(
+            scroll_delta(1.0, -2.0, false, 2.0),
+            (egui::MouseWheelUnit::Line, egui::vec2(-1.0, 2.0))
+        );
+    }
+
+    #[test]
+    fn gtk_shortcut_and_editing_keys_map_to_egui() {
+        for (native, expected) in [
+            (gdk::Key::space, egui::Key::Space),
+            (gdk::Key::BackSpace, egui::Key::Backspace),
+            (gdk::Key::Return, egui::Key::Enter),
+            (gdk::Key::ISO_Left_Tab, egui::Key::Tab),
+            (gdk::Key::Left, egui::Key::ArrowLeft),
+            (gdk::Key::Delete, egui::Key::Delete),
+            (gdk::Key::s, egui::Key::S),
+            (gdk::Key::S, egui::Key::S),
+        ] {
+            assert_eq!(key(native), Some(expected));
+        }
     }
 }

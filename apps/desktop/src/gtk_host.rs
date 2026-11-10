@@ -23,6 +23,8 @@ mod input;
 mod preferences;
 #[path = "gtk_host/textures.rs"]
 mod textures;
+#[path = "gtk_host/touch.rs"]
+mod touch;
 
 struct State {
     ui: DawUi,

@@ -28,7 +28,22 @@ painter is destroyed with a current GLArea context before unloading its GL
 library. Worker repaint callbacks publish an atomic deadline; a main-thread
 16 ms timer queues rendering when due. Existing audio and project workers remain
 shared. GTK input mapping covers pointer buttons/motion, modifiers, keys,
-committed IM text, scroll, clipboard text and local file hover/drop. Title/unused
+committed IM text, scroll, clipboard text and local file hover/drop. The keyboard
+controller forwards key presses and releases before it manually filters them
+through the IM context. This preserves printable shortcuts such as Space while
+still receiving committed text; no state borrow spans synchronous IM callbacks.
+GTK BackSpace maps to egui Backspace. Surface scroll units remain points, scaled
+by UI zoom; discrete wheel units remain lines. GTK touchpad pinch scale changes
+produce egui zoom events; direct touches use egui multitouch zoom instead.
+
+Direct touchscreen sequences run through a capture controller before GTK click
+emulation. Stable sequence IDs feed egui touch events; only the first contact
+also supplies pointer presses, movement and release. Remaining contacts do not
+create extra clicks. Surface coordinates map into GLArea coordinates and UI zoom.
+Cancellation and focus loss cancel active contacts. The primary cancellation
+sends Escape to cancel shared editing gestures and releases outside the UI to
+clear the held pointer without activating a button. Unused custom-header touches
+continue to GTK's native window-drag gesture. Title/unused
 header gestures use shared hit-testing for native dragging and double-click
 maximize. Root close requests enter the existing unsaved-project guard before
 GTK closes. Titlebar switching is deferred until after the current snapshot. The host hides
