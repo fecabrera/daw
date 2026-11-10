@@ -204,7 +204,10 @@ impl DawUi {
             let mut header = ui.new_child(
                 egui::UiBuilder::new()
                     .id_salt(("timeline-beat", row.id))
-                    .max_rect(panel.shrink(7.0))
+                    .max_rect(Rect::from_min_max(
+                        panel.min + Vec2::new(23.0, 7.0),
+                        panel.max - Vec2::splat(7.0),
+                    ))
                     .layout(egui::Layout::top_down(egui::Align::Min)),
             );
             header.set_clip_rect(panel.intersect(ui.clip_rect()));
@@ -219,6 +222,19 @@ impl DawUi {
                     theme::palette(ui.ctx()).panel
                 },
             );
+            if let Some(track) = self
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|track| track.id == parent)
+            {
+                panels::GroupPanel::track_color_strip(
+                    ui,
+                    panel,
+                    theme::clip_colors(track.color, None).body,
+                );
+            }
             let meter = self
                 .output
                 .as_ref()
@@ -234,7 +250,8 @@ impl DawUi {
             let cleared =
                 meters::stereo_panel_held(&mut header, height - 14.0, levels, held, |ui| {
                     ui.add_enabled_ui(enabled, |ui| {
-                        let mut layout = track_rows::HeaderRows::new(ui, self.track_rows_collapsed);
+                        let mut layout =
+                            track_rows::HeaderRows::track(ui, self.track_rows_collapsed);
                         rows::centered(
                             &mut layout.name,
                             if self.track_rows_collapsed {
@@ -281,13 +298,13 @@ impl DawUi {
                                 });
                             },
                         );
-                        let (knobs, toggles) = mix_controls::header_row(
+                        let (knobs, toggles) = mix_controls::track_header_row(
                             &mut layout.mix,
-                            &mut gain,
-                            &mut pan,
+                            (&mut gain, &mut pan),
                             &mut muted,
                             &mut soloed,
                             ["Mute subtrack", "Solo within this beat instrument"],
+                            self.track_rows_collapsed,
                         );
                         #[cfg(test)]
                         self.beat_ui.mix_bounds.insert(

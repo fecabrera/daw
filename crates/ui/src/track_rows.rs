@@ -8,6 +8,14 @@ pub(super) struct HeaderRows {
 
 impl HeaderRows {
     pub fn new(ui: &mut egui::Ui, collapsed: bool) -> Self {
+        Self::with_knobs(ui, collapsed, true)
+    }
+
+    pub fn track(ui: &mut egui::Ui, collapsed: bool) -> Self {
+        Self::with_knobs(ui, collapsed, !collapsed)
+    }
+
+    fn with_knobs(ui: &mut egui::Ui, collapsed: bool, knobs: bool) -> Self {
         let height = if collapsed {
             knobs::SIZE
         } else {
@@ -18,9 +26,11 @@ impl HeaderRows {
         // One joined 44-point mute/solo group, a six-point group gap,
         // and two 28-point knob slots separated by four points.
         let mix_width = 2.0 * toolbars::CONTROL_HEIGHT
-            + mix_controls::GROUP_GAP
-            + 2.0 * knobs::SIZE
-            + mix_controls::KNOB_GAP;
+            + if knobs {
+                mix_controls::GROUP_GAP + 2.0 * knobs::SIZE + mix_controls::KNOB_GAP
+            } else {
+                0.0
+            };
         let (name, mix) = if collapsed {
             let mix = Rect::from_min_max(Pos2::new(body.right() - mix_width, body.top()), body.max);
             (

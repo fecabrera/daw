@@ -103,6 +103,30 @@ pub(super) struct GainPanResponse {
     pub bounds: [Rect; 2],
 }
 
+/// Compact Timeline/Editor headers expose only Mute and Solo.
+pub(super) fn track_header_row(
+    ui: &mut Ui,
+    mix: (&mut f32, &mut f32),
+    muted: &mut bool,
+    soloed: &mut bool,
+    tooltips: [&str; 2],
+    compact: bool,
+) -> (GainPanResponse, [Response; 2]) {
+    if compact {
+        rows::centered(ui, knobs::SIZE, |ui| {
+            (
+                GainPanResponse {
+                    bounds: [Rect::NOTHING; 2],
+                },
+                mute_solo(ui, muted, soloed, tooltips),
+            )
+        })
+        .inner
+    } else {
+        header_row(ui, mix.0, mix.1, muted, soloed, tooltips)
+    }
+}
+
 /// Compact instrument row, using the same control sizes and gaps as track headers.
 pub(super) fn named_row<R>(
     ui: &mut Ui,

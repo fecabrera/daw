@@ -58,6 +58,8 @@ fn row_toggle_shares_compact_layout_between_timeline_and_editor_without_project_
             click(&mut app, &ctx, toggle);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             assert!(app.track_rows_collapsed);
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Circle(c) if app.master_bounds.contains(c.center))));
             for track in [audio, midi] {
                 let lane = app.lane_bounds[&track];
                 assert_eq!(lane.height(), MASTER_HEIGHT);
@@ -102,9 +104,8 @@ fn row_toggle_shares_compact_layout_between_timeline_and_editor_without_project_
                 let [mute, solo] = app.midi_editor.mix_bounds;
                 assert!(app.midi_editor.name_bounds.right() < mute.left());
                 assert!(mute.right() <= solo.left());
-                assert!(solo.right() < pan.left());
-                assert!(pan.right() < gain.left());
-                for rect in [app.midi_editor.name_bounds, mute, solo, pan, gain] {
+                assert_eq!([gain, pan], [Rect::NOTHING; 2]);
+                for rect in [app.midi_editor.name_bounds, mute, solo] {
                     assert!(header.contains_rect(rect));
                     assert!(
                         (rect.center().y - header.center().y).abs() <= 0.5 / scale,
@@ -157,34 +158,10 @@ fn compact_headers_keep_mixing_controls_and_drop_targets_on_their_track() {
         }
         assert!(app.session.project.tracks[0].muted);
         assert!(app.session.project.tracks[0].soloed);
-        for (offset, pan) in [(79.0, true), (47.0, false)] {
-            let point = Pos2::new(panel.right() - offset, panel.center().y);
-            click(&mut app, &ctx, point);
-            frame(
-                &mut app,
-                &ctx,
-                vec![egui::Event::Key {
-                    key: egui::Key::ArrowUp,
-                    physical_key: None,
-                    pressed: true,
-                    repeat: false,
-                    modifiers: Default::default(),
-                }],
-            );
-            frame(
-                &mut app,
-                &ctx,
-                vec![egui::Event::Key {
-                    key: egui::Key::ArrowUp,
-                    physical_key: None,
-                    pressed: false,
-                    repeat: false,
-                    modifiers: Default::default(),
-                }],
-            );
-            let t = &app.session.project.tracks[0];
-            assert!(if pan { t.pan > 0.0 } else { t.gain_db > 0.0 });
-        }
+        assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Circle(c) if panel.contains(c.center))));
+        assert_eq!(app.session.project.tracks[0].pan, 0.0);
+        assert_eq!(app.session.project.tracks[0].gain_db, 0.0);
         assert!(!app.session.project.tracks[1].muted);
         assert_eq!(app.session.project.tracks[1].gain_db, 0.0);
         if !editor {
@@ -536,7 +513,9 @@ fn header_mute_solo_align_with_knobs_and_stay_on_the_left() {
                     })
                     .expect("mute/solo label in header");
                 let point = text.galley.rect.translate(text.pos.to_vec2()).center();
-                let x = panel.left() + 18.5 + index as f32 * 21.0;
+                let x = panel.left()
+                    + if scope == "timeline" { 34.5 } else { 18.5 }
+                    + index as f32 * 21.0;
                 assert!(
                     point.distance(Pos2::new(x, panel.top() + 47.0)) < 1.0,
                     "{scope} {label}: {point:?}, panel {panel:?}"
@@ -747,10 +726,10 @@ fn header_spacing_selects_clips_but_names_and_controls_keep_their_actions() {
     double_click(&mut app, &ctx, Pos2::new(left + 110.0, y)); // Blank name area.
     assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[1]]));
     app.select_clip(ids[2], tracks[1], false);
-    double_click(&mut app, &ctx, Pos2::new(left + 18.0, y + 29.0)); // Mute button.
+    double_click(&mut app, &ctx, Pos2::new(left + 34.0, y + 29.0)); // Mute button.
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
     assert!(!app.session.project.tracks[0].muted);
-    double_click(&mut app, &ctx, Pos2::new(left + 50.0, y)); // Visible name text.
+    double_click(&mut app, &ctx, Pos2::new(left + 66.0, y)); // Visible name text.
     assert_eq!(app.track_name_edit.as_ref().unwrap().track, tracks[0]);
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
 }

@@ -135,7 +135,8 @@ impl DawUi {
             });
         // Master has no parent. All other tracks show their immediate output bus.
         let strips = if track.is_some() { 2 } else { 1 };
-        let height = (mixer::MIN_HEIGHT + self.mixer_send_height()).max(ui.available_height());
+        let height = (mixer::MIN_HEIGHT + self.mixer_send_height() + self.mixer_gutter_height())
+            .max(ui.available_height());
         egui::ScrollArea::both()
             .id_salt("timeline-track-mixer-scroll")
             .auto_shrink([false, false])

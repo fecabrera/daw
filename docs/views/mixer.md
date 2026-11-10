@@ -16,7 +16,9 @@ Select a track, group or Master to change the effect target. Add effects from th
 
 ## Track controls
 
-Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Each track and group header centers its icon and semibold name together. Icons use the same contrasting text color as their header names. Selected strips use the selection background. Master’s icon matches its label. The icon-to-label gap matches the vertical padding around the icon. Master uses the same centered layout and semibold text, with the neutral unit-header background color.
+Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Each track and group header centers its icon and semibold name together. All track, group, Return and Master headers use the same light text color for names and icons. Selected strips use the selection background. Master’s icon matches its label. The icon-to-label gap matches the vertical padding around the icon. Master uses the same centered layout and semibold text, with the neutral unit-header background color.
+
+Nested tracks have a colored gutter above their headers. Each gutter connects to its parent header and uses that parent’s color. Deeper groups add another gutter, up to three visible nesting levels. Header sizes stay the same, and the lower output controls remain aligned.
 
 Each non-Master strip shows its output destination just below its header, with a right-arrow icon and a bordered label. Its horizontal and vertical spacing matches the send controls. A track or nested group shows its immediate parent group’s name. Root tracks, root groups and Returns show **Master**. The same labels appear in Timeline’s Track mixer. These labels are read-only.
 

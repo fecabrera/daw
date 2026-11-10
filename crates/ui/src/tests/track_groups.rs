@@ -13,6 +13,189 @@ fn grouped_fixture() -> (DawUi, egui::Context, Id, [Id; 3]) {
     (app, ctx, group, ids)
 }
 #[test]
+fn track_color_strips_cover_headers_and_only_the_group_nesting_gutter() {
+    for color_theme in settings::ColorTheme::ALL {
+        for rows_collapsed in [false, true] {
+            let (mut app, ctx, inner, ids) = grouped_fixture();
+            let outer = Id::new_v4();
+            app.edit(Edit::GroupTracks {
+                track_ids: vec![inner, ids[2]],
+                group_id: outer,
+                name: "Outer".into(),
+            });
+            for (i, track) in app.session.project.tracks.iter_mut().enumerate() {
+                track.color = daw_core::RgbColor {
+                    r: 40 + i as u8 * 30,
+                    g: 100,
+                    b: 170,
+                };
+            }
+            app.track_rows_collapsed = rows_collapsed;
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.select_track(outer, false);
+            app.select_track(ids[1], true);
+            for collapsed in [false, true] {
+                app.session
+                    .project
+                    .tracks
+                    .iter_mut()
+                    .find(|t| t.id == inner)
+                    .unwrap()
+                    .group_collapsed = collapsed;
+                frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280., 900.));
+                app.dirty = false;
+                let before = app.session.project.clone();
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280., 900.));
+                let left = app.timeline_bounds.left() - TRACK_WIDTH;
+                for index in app.session.project.visible_tracks() {
+                    let track = &app.session.project.tracks[index];
+                    let lane = app.lane_bounds[&track.id];
+                    let x = left + app.session.project.track_depth(track.id).min(3) as f32 * 8.;
+                    let header = Rect::from_min_max(
+                        Pos2::new(x, lane.top()),
+                        Pos2::new(x + 16., lane.bottom()),
+                    );
+                    let color = theme::clip_colors(track.color, None).body;
+                    let stripe = shapes.iter().position(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == header && r.fill == color)).unwrap();
+                    let title = shapes.iter().position(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == track.name)).unwrap();
+                    assert!(
+                        stripe < title,
+                        "the stripe must remain behind controls/text"
+                    );
+                    assert!(shapes[title].clip_rect.left() >= header.right());
+                    if let egui::Shape::Text(text) = &shapes[title].shape {
+                        assert!(text.pos.x >= header.right());
+                    }
+                    if track.kind == TrackKind::Group {
+                        let bottom = app
+                            .session
+                            .project
+                            .track_subtree(track.id)
+                            .unwrap()
+                            .filter_map(|i| app.lane_bounds.get(&app.session.project.tracks[i].id))
+                            .map(Rect::bottom)
+                            .fold(lane.bottom(), f32::max);
+                        let gutter = Rect::from_min_max(
+                            Pos2::new(x, lane.bottom()),
+                            Pos2::new(x + 8., bottom),
+                        );
+                        let painted = shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == gutter && r.fill == color));
+                        assert_eq!(painted, bottom > lane.bottom());
+                    }
+                }
+                assert_eq!(app.session.project, before);
+                assert!(!app.dirty);
+            }
+        }
+    }
+}
+
+#[test]
+fn mixer_group_gutters_connect_ancestor_colors_and_keep_header_height_and_output_alignment() {
+    for color_theme in settings::ColorTheme::ALL {
+        for height in [450.0, 1000.0] {
+            let (mut app, ctx, inner, ids) = grouped_fixture();
+            let outer = Id::new_v4();
+            app.edit(Edit::GroupTracks {
+                track_ids: vec![inner, ids[2]],
+                group_id: outer,
+                name: "Outer".into(),
+            });
+            app.view_mode = ViewMode::Mixer;
+            app.settings.theme = color_theme;
+            theme::apply(&ctx, app.settings.clone());
+            for (index, track) in app.session.project.tracks.iter_mut().enumerate() {
+                track.color = daw_core::DEFAULT_TRACK_COLORS[index];
+            }
+            for collapsed in [false, true] {
+                app.session
+                    .project
+                    .tracks
+                    .iter_mut()
+                    .find(|t| t.id == inner)
+                    .unwrap()
+                    .group_collapsed = collapsed;
+                let size = Vec2::new(1500.0, height);
+                frame_shapes(&mut app, &ctx, vec![], size);
+                app.dirty = false;
+                let before = app.session.project.clone();
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+                let mut fader_y = None;
+                for index in app.session.project.visible_tracks() {
+                    let track = &app.session.project.tracks[index];
+                    let strip = app.mixer_bounds[&track.id];
+                    let mut ancestors = Vec::new();
+                    let mut parent = track.group_id;
+                    while let Some(id) = parent {
+                        let group = app
+                            .session
+                            .project
+                            .tracks
+                            .iter()
+                            .find(|t| t.id == id)
+                            .unwrap();
+                        ancestors.push(group);
+                        parent = group.group_id;
+                    }
+                    let top = strip.top() + ancestors.len().min(3) as f32 * 12.0;
+                    let header = Rect::from_min_size(
+                        Pos2::new(strip.left(), top),
+                        Vec2::new(strip.width(), 24.0),
+                    );
+                    let header_color = theme::clip_colors(track.color, None).header;
+                    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == header && r.fill == header_color)));
+                    for (level, ancestor) in ancestors.into_iter().rev().take(3).enumerate() {
+                        let gutter = Rect::from_min_size(
+                            strip.min + Vec2::new(0.0, level as f32 * 12.0),
+                            Vec2::new(strip.width(), 12.0),
+                        );
+                        let color = theme::clip_colors(ancestor.color, None).header;
+                        assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == gutter && r.fill == color)));
+                        assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { points, .. }
+                            if points[0].x == strip.left() + 0.5 && points[0].y < gutter.bottom() && points[1].y > gutter.top())));
+                    }
+                    let title = shapes
+                        .iter()
+                        .find_map(|s| match &s.shape {
+                            egui::Shape::Text(t)
+                                if t.galley.text() == track.name && header.contains(t.pos) =>
+                            {
+                                Some(t)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert!(
+                        (title.pos.y + title.galley.size().y / 2.0 - header.center().y).abs() < 1.0
+                    );
+                    assert!(
+                        title
+                            .galley
+                            .job
+                            .sections
+                            .iter()
+                            .all(|section| section.format.color == crate::mixer::HEADER_TEXT)
+                    );
+                    let fader = app.mixer_faders[&Some(track.id)];
+                    if let Some(y) = fader_y {
+                        assert_eq!(fader.top(), y);
+                    }
+                    fader_y = Some(fader.top());
+                }
+                assert_eq!(app.session.project, before);
+                assert!(!app.dirty);
+            }
+        }
+    }
+}
+
+#[test]
 fn group_actions_reuse_selection_effect_targets_history_and_collapse_in_both_views() {
     for mode in [ViewMode::Timeline, ViewMode::Mixer] {
         let (mut app, ctx, group, ids) = grouped_fixture();
@@ -205,7 +388,7 @@ fn group_and_master_titles_align_with_their_view_and_group_disclosures_have_no_f
                             Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
                             lane.left_bottom(),
                         ),
-                        7.0,
+                        23.0,
                     )
                 } else {
                     (app.mixer_bounds[&group], 4.0)
@@ -240,7 +423,11 @@ fn group_and_master_titles_align_with_their_view_and_group_disclosures_have_no_f
                     app.master_bounds.top(),
                     app.master_bounds.bottom(),
                 );
-                assert!(aligned(master, app.master_bounds), "{mode:?}: {master:?}");
+                if mode == ViewMode::Timeline {
+                    assert!((master.left() - app.master_bounds.left() - 7.0 - 34.0).abs() < 1.0);
+                } else {
+                    assert!(aligned(master, app.master_bounds), "{mode:?}: {master:?}");
+                }
                 if mode == ViewMode::Timeline {
                     let gain_center = Pos2::new(
                         app.master_bounds.right() - 47.0,
@@ -332,7 +519,7 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                                     ),
                                 lane.top(),
                                 lane.bottom(),
-                                7.0,
+                                23.0,
                                 lane.top() + 18.0,
                             )
                         }
@@ -350,10 +537,19 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                             let strip = id.map_or(app.master_bounds, |id| app.mixer_bounds[&id]);
                             (
                                 strip.left(),
-                                strip.top(),
+                                strip.top()
+                                    + id.map_or(0.0, |id| {
+                                        app.session.project.track_depth(id).min(3) as f32
+                                            * crate::mixer::GROUP_GUTTER_HEIGHT
+                                    }),
                                 strip.bottom(),
                                 4.0,
-                                strip.top() + 12.0,
+                                strip.top()
+                                    + id.map_or(0.0, |id| {
+                                        app.session.project.track_depth(id).min(3) as f32
+                                            * crate::mixer::GROUP_GUTTER_HEIGHT
+                                    })
+                                    + 12.0,
                             )
                         }
                     };
@@ -383,10 +579,7 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                         assert!((name.left() - left - inset - 34.0).abs() < 1.0);
                     }
                     let color = if mode == ViewMode::Mixer {
-                        id.and_then(|id| app.session.project.tracks.iter().find(|t| t.id == id))
-                            .map_or(theme::palette(&ctx).text, |track| {
-                                theme::clip_colors(track.color, None).text
-                            })
+                        crate::mixer::HEADER_TEXT
                     } else {
                         theme::palette(&ctx).secondary
                     };
@@ -538,7 +731,7 @@ fn track_type_icons_reuse_release_only_dragging_and_cancellation() {
 
 #[test]
 fn group_name_and_blank_header_drags_move_the_complete_subtree() {
-    for start_x in [45.0, 130.0] {
+    for start_x in [61.0, 130.0] {
         let (mut app, ctx, group, ids) = grouped_fixture();
         let original = app.session.project.clone();
         let header_left = app.timeline_bounds.left() - TRACK_WIDTH;
@@ -685,13 +878,13 @@ fn nested_track_panels_share_container_edges_and_keep_timeline_lanes_aligned() {
                     app.lane_bounds[&ids[1]].bottom()
                 };
                 let inner_rect = Rect::from_min_max(
-                    Pos2::new(left + 16.0, app.lane_bounds[&inner].top()),
+                    Pos2::new(left + 8.0, app.lane_bounds[&inner].top()),
                     Pos2::new(right, inner_bottom),
                 );
                 let mut expected = vec![outer_rect, inner_rect];
                 if !collapsed {
                     expected.push(Rect::from_min_max(
-                        Pos2::new(left + 32.0, app.lane_bounds[&ids[1]].top()),
+                        Pos2::new(left + 16.0, app.lane_bounds[&ids[1]].top()),
                         inner_rect.max,
                     ));
                 }
@@ -728,7 +921,7 @@ fn inset_child_drops_keep_the_parent_and_group_append_preview_uses_the_container
     let (app, _, group, ids) = grouped_fixture();
     let child = app.lane_bounds[&ids[1]];
     let header_left = child.left() - TRACK_WIDTH;
-    let header_x = header_left + 16.0 + 7.0 + toolbars::CONTROL_HEIGHT * 0.5;
+    let header_x = header_left + 8.0 + 23.0 + toolbars::CONTROL_HEIGHT * 0.5;
     let (parent, index, y) = app
         .track_drop_target(ids[0], Pos2::new(header_x, child.bottom() - 2.0))
         .unwrap();

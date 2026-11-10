@@ -4,6 +4,85 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Mixer hierarchy gutters and header text — 2026-11-10
+
+Mixer headers remain 24 points tall. Nested strips add connected 12-point bands
+in ancestor header colors above their own headers, with the same three-level
+display cap as Timeline. Dividers start below the ancestor bands. Nested headers
+also have a 1-point top border matching their side divider. Track, group,
+Return and Master names and icons use one light foreground. Output destinations
+follow the shifted headers; faders, meters and sends remain aligned, including
+in short windows. The shared strip presentation also applies to Track mixer.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (977 passed, 3 ignored), covering
+  themes, nesting/collapse, connected gutter paint, fixed header height,
+  output alignment at short/tall heights, header foregrounds, destinations,
+  selection, renaming and disclosure.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
+## Track header content padding and compact controls — 2026-11-10
+
+Timeline track and beat-subtrack content starts after the 16-point color strip
+plus the existing 7-point inset. Right meter insets and row heights remain fixed.
+Edge-drop depth follows the shifted icon position. Compact Timeline and Editor
+track headers hide Pan and Gain, including Timeline Master gain, while retaining
+Mute/Solo, meters and saved mix values. Expanded headers retain the knobs.
+This supersedes the unchanged control positions recorded below.
+
+Completed checks:
+
+- UI tests in the debug workspace run: 976 passed, 3 ignored. Coverage includes
+  themes and display scales, grouped/beat header padding, compact Mute/Solo,
+  hidden mix knobs, preserved mix values, meter alignment, renaming and dragging.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
+## Track hierarchy spacing and color strips — 2026-11-10
+
+Shared nested-panel indentation is 8 points per level, capped at 24 points.
+Timeline edge-drop depth follows that same step. Every Timeline track header,
+including nested headers, has a 16-point leading strip in its resolved track
+color. Expanded Group and Beat parents continue their color through the 8-point
+gutter beside visible descendants; beat subtrack headers inherit parent color.
+The indentation cap prevents deeper gutters from painting over child headers.
+Control positions, fixed lane alignment, selection fills and project data remain.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (976 passed, 3 ignored), covering
+  themes, row heights, nested/collapsed groups, color inheritance and strip paint
+  order, beat disclosure, selection, drag/drop and unchanged project state.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt
+(`sh tools/package_macos.sh debug`) stopped at the source-revision gate because
+tracked changes are uncommitted. The executable was rebuilt; the app bundle was
+not updated.
+
 ## Harmonic Lift band level meters — 2026-11-10
 
 Low, Low Mid, Mid, High Mid, Presence and High now have shared horizontal level

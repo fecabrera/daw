@@ -25,7 +25,12 @@ To group existing tracks:
 2. Choose **Track > Group selected tracks**, press Command+G on macOS or Ctrl+G on Windows/Linux, or use the track context menu.
 3. Use the borderless arrow beside the left-aligned group name to hide or show its children in Timeline and Mixer. Hidden tracks continue to play.
 
-In Timeline, child track panels sit inside their group with a left margin. The group panel encloses all visible children. Selection uses background highlights without an outline. Their right edges line up, and the last child shares the group's bottom border. Nested groups use the same layout.
+In Timeline, child track panels sit inside their group with a left margin that increases for the first three nesting levels. The group panel encloses all visible children. Selection uses background highlights without an outline. Their right edges line up, and the last child shares the group's bottom border. Nested groups use the same layout.
+
+A track-color strip marks each header. For expanded groups, that color continues
+along the nesting gutter beside the children. Nested headers retain their own
+track colors. Beat subtrack headers inherit their beat parent's color.
+Icons, disclosure arrows and controls sit to the right of the color strip.
 
 The new group starts at 0 dB, with pan centered and Mute and Solo off. It starts without effects. Children keep their clips, instruments, effects, levels, and identities. Grouping tracks that are apart brings them together in their existing order.
 

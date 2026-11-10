@@ -70,9 +70,9 @@ pub(super) fn unit_add_strip(
 pub(super) struct GroupPanel;
 
 impl GroupPanel {
-    /// Retain usable controls in deeply nested groups.
+    /// Eight-point nesting, capped at three levels to retain usable controls.
     pub(super) fn indent(depth: usize) -> f32 {
-        depth.min(3) as f32 * 2.0 * f32::from(crate::theme::TOOLBAR_PADDING)
+        depth.min(3) as f32 * 8.0
     }
 
     /// Inset the left edge while keeping every control column's right edge aligned.
@@ -81,6 +81,18 @@ impl GroupPanel {
             row.min + Vec2::new(Self::indent(depth), 0.0),
             egui::pos2(row.left() + width, row.bottom()),
         )
+    }
+
+    /// Color is paint-only; the header controls retain their existing geometry.
+    pub(super) fn track_color_strip(ui: &Ui, panel: Rect, color: Color32) {
+        ui.painter().rect_filled(
+            Rect::from_min_max(
+                panel.min,
+                egui::pos2((panel.left() + 16.0).min(panel.right()), panel.bottom()),
+            ),
+            0.0,
+            color,
+        );
     }
 
     /// Group boundaries start at the row's depth; a header with visible children uses their

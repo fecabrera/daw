@@ -175,7 +175,7 @@ impl DawUi {
             let height = self.track_row_height() - 14.0;
             let cleared = meters::stereo_panel_held(ui, height, levels, held, |ui| {
                 let track = self.editor_track().map(track_rows::header_snapshot);
-                let mut header_rows = track_rows::HeaderRows::new(ui, self.track_rows_collapsed);
+                let mut header_rows = track_rows::HeaderRows::track(ui, self.track_rows_collapsed);
                 rows::centered(
                     &mut header_rows.name,
                     if self.track_rows_collapsed {
@@ -203,13 +203,13 @@ impl DawUi {
                     let (controls, buttons) = header_rows
                         .mix
                         .add_enabled_ui(!self.midi_editor.dragging(), |ui| {
-                            mix_controls::header_row(
+                            mix_controls::track_header_row(
                                 ui,
-                                &mut track.gain_db,
-                                &mut track.pan,
+                                (&mut track.gain_db, &mut track.pan),
                                 &mut track.muted,
                                 &mut track.soloed,
                                 ["Mute track", "Solo track"],
+                                self.track_rows_collapsed,
                             )
                         })
                         .inner;

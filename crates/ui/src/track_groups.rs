@@ -46,6 +46,38 @@ impl DawUi {
         panels
     }
     pub(super) fn paint_track_group_edges(&self, ui: &egui::Ui, panels: &[(Id, Rect)], clip: Rect) {
+        let painter = ui.painter_at(clip);
+        let groups: HashMap<_, _> = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .filter(|track| matches!(track.kind, TrackKind::Group | TrackKind::Beat))
+            .map(|track| (track.id, track))
+            .collect();
+        for (id, panel) in panels {
+            let Some(track) = groups.get(id) else {
+                continue;
+            };
+            let Some(header) = self.lane_bounds.get(id) else {
+                continue;
+            };
+            if panel.bottom() <= header.bottom() {
+                continue;
+            }
+            let depth = self.session.project.track_depth(*id);
+            // At the indentation cap, children have no separate gutter to paint.
+            let width = panels::GroupPanel::indent(depth + 1) - panels::GroupPanel::indent(depth);
+            if width > 0.0 {
+                let gutter = Rect::from_min_max(
+                    Pos2::new(panel.left(), header.bottom()),
+                    Pos2::new(panel.left() + width, panel.bottom()),
+                );
+                if gutter.intersects(clip) {
+                    painter.rect_filled(gutter, 0.0, theme::clip_colors(track.color, None).body);
+                }
+            }
+        }
         // The workspace owns the root left edge; adding an inner root stroke
         // would produce two adjacent borders. Only inset rows own a new edge.
         let mut nested: HashSet<_> = self
@@ -195,9 +227,9 @@ impl DawUi {
                 let mut parent = track.group_id;
                 // Pointer position inside the fixed header chooses an ancestor boundary.
                 let header_left = rect.left() - TRACK_WIDTH;
-                let header_anchor = 7.0 + toolbars::CONTROL_HEIGHT * 0.5;
+                let header_anchor = 23.0 + toolbars::CONTROL_HEIGHT * 0.5;
                 let desired = ((pointer.x - header_left - header_anchor).max(0.0)
-                    / (2.0 * f32::from(theme::TOOLBAR_PADDING)))
+                    / panels::GroupPanel::indent(1))
                 .round() as usize;
                 while project.track_depth(project.tracks[anchor].id) > desired {
                     let ancestor = parent?;

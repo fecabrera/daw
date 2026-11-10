@@ -3644,8 +3644,12 @@ impl DawUi {
                 .map_or([0.0; 2], |output| output.status.meter.held_peaks());
             let cleared = meters::stereo_panel_held(ui, MASTER_HEIGHT - 14.0, levels, held, |ui| {
                 rows::centered(ui, knobs::SIZE, |ui| {
-                    let name_width =
-                        (ui.available_width() - knobs::SIZE - ui.spacing().item_spacing.x).max(1.0);
+                    let gain_width = if self.track_rows_collapsed {
+                        0.0
+                    } else {
+                        knobs::SIZE + ui.spacing().item_spacing.x
+                    };
+                    let name_width = (ui.available_width() - gain_width).max(1.0);
                     ui.allocate_ui_with_layout(
                         Vec2::new(name_width, knobs::SIZE),
                         egui::Layout::left_to_right(egui::Align::Center),
@@ -3654,6 +3658,9 @@ impl DawUi {
                             self.master_name(ui);
                         },
                     );
+                    if self.track_rows_collapsed {
+                        return;
+                    }
                     let previous = self.session.project.master.gain_db;
                     let knob = knobs::header_gain(ui, &mut self.session.project.master.gain_db);
                     if knob.changed() {
@@ -4152,7 +4159,7 @@ impl DawUi {
             if mixer {
                 self.center_mixer_header(ui, "Master");
             }
-            let tint = mixer.then(|| theme::palette(ui.ctx()).text);
+            let tint = mixer.then_some(mixer::HEADER_TEXT);
             let response = icons::header_icon_tinted(
                 ui,
                 icons::Lucide::BoomBox,
@@ -4170,7 +4177,13 @@ impl DawUi {
             response.on_hover_text("Master output");
             ui.add(
                 egui::Label::new(
-                    egui::RichText::new("Master").font(crate::fonts::semibold(font_size)),
+                    egui::RichText::new("Master")
+                        .font(crate::fonts::semibold(font_size))
+                        .color(if mixer {
+                            mixer::HEADER_TEXT
+                        } else {
+                            theme::palette(ui.ctx()).text
+                        }),
                 )
                 .halign(egui::Align::Min),
             );
@@ -4180,7 +4193,7 @@ impl DawUi {
         self.track_name_layout(ui, track, self.view_mode == ViewMode::Mixer);
     }
     fn track_name_layout(&mut self, ui: &mut egui::Ui, track: &daw_core::Track, mixer: bool) {
-        let tint = mixer.then(|| theme::clip_colors(track.color, None).text);
+        let tint = mixer.then_some(mixer::HEADER_TEXT);
         let icon_width = if mixer {
             icons::TOOLBAR_ICON_SIZE
         } else {
@@ -4309,7 +4322,10 @@ impl DawUi {
             return;
         }
         {
-            let mixer_colors = mixer.then(|| theme::clip_colors(track.color, None));
+            let mixer_colors = mixer.then(|| theme::ClipColors {
+                text: mixer::HEADER_TEXT,
+                ..theme::clip_colors(track.color, None)
+            });
             let (response, text_rect) = rows::name_button(
                 ui,
                 ("track_name_text", track.id),
@@ -4525,8 +4541,19 @@ impl DawUi {
                                 ..Default::default()
                             }
                             .track_frame(ui.ctx(), self.track_selected(track.id))
+                            .inner_margin(egui::Margin {
+                                left: 23,
+                                right: 7,
+                                top: 7,
+                                bottom: 7,
+                            })
                             .show(ui, |ui| {
-                                ui.set_min_width(panel_width - 14.0);
+                                panels::GroupPanel::track_color_strip(
+                                    ui,
+                                    panel,
+                                    theme::clip_colors(track.color, None).body,
+                                );
+                                ui.set_min_width(panel_width - 30.0);
                                 ui.set_min_height(row_height - 14.0);
                                 ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                                 let levels = self
@@ -4547,7 +4574,7 @@ impl DawUi {
                                     |ui| {
                                         let mut mute = track.muted;
                                         let mut solo = track.soloed;
-                                        let mut header_rows = track_rows::HeaderRows::new(
+                                        let mut header_rows = track_rows::HeaderRows::track(
                                             ui,
                                             self.track_rows_collapsed,
                                         );
@@ -4592,16 +4619,16 @@ impl DawUi {
                                         }
                                         let mut gain = track.gain_db;
                                         let mut pan = track.pan;
-                                        mix_controls::header_row(
+                                        mix_controls::track_header_row(
                                             &mut header_rows.mix,
-                                            &mut gain,
-                                            &mut pan,
+                                            (&mut gain, &mut pan),
                                             &mut mute,
                                             &mut solo,
                                             [
                                                 "Mute (M toggles selected tracks)",
                                                 "Solo (S toggles selected tracks)",
                                             ],
+                                            self.track_rows_collapsed,
                                         );
                                         let updated = gain != track.gain_db
                                             || pan != track.pan
@@ -8571,7 +8598,7 @@ mod tests {
             let lane = app.lane_bounds[&tracks[0]];
             // Track names follow the same icon slot and gap as group names.
             assert!(
-                (name_bounds.left() - (lane.left() - TRACK_WIDTH + 41.0)).abs() < 1.0,
+                (name_bounds.left() - (lane.left() - TRACK_WIDTH + 57.0)).abs() < 1.0,
                 "name {name_bounds:?}, lane {lane:?}"
             );
             let button_center = |label: &str| {
@@ -8614,8 +8641,8 @@ mod tests {
             assert!((mute.y - (lane.top() + 47.0)).abs() < 1.0);
             assert!((solo.y - mute.y).abs() < 1.0);
             assert!(mute.x < solo.x);
-            assert!((solo.x - (lane.left() - TRACK_WIDTH + 39.5)).abs() < 1.0);
-            let header = Pos2::new(lane.left() - TRACK_WIDTH + 18.0, lane.top() + 18.0);
+            assert!((solo.x - (lane.left() - TRACK_WIDTH + 55.5)).abs() < 1.0);
+            let header = Pos2::new(lane.left() - TRACK_WIDTH + 34.0, lane.top() + 18.0);
             let destination = Pos2::new(header.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
             frame(
                 &mut app,
@@ -8992,8 +9019,8 @@ mod tests {
             ("bottom padding", Vec2::new(30.0, 66.0)),
             ("between rows", Vec2::new(60.0, 31.0)),
             ("name", Vec2::new(110.0, 18.0)),
-            ("mute", Vec2::new(18.0, 47.0)),
-            ("solo", Vec2::new(46.0, 47.0)),
+            ("mute", Vec2::new(34.0, 47.0)),
+            ("solo", Vec2::new(62.0, 47.0)),
             ("gain knob", Vec2::new(TRACK_WIDTH - 47.0, 47.0)),
             ("pan knob", Vec2::new(TRACK_WIDTH - 79.0, 47.0)),
             ("left meter", Vec2::new(226.0, 20.0)),
@@ -9128,7 +9155,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let name = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 50.0,
+            app.timeline_bounds.left() - TRACK_WIDTH + 66.0,
             app.lane_bounds[&track].top() + 18.0,
         );
         let key = |key| egui::Event::Key {
@@ -12561,7 +12588,7 @@ mod tests {
     }
 
     #[test]
-    fn saved_colors_render_on_clips_and_drag_previews_with_neutral_track_panels() {
+    fn saved_colors_render_on_clips_previews_and_track_header_strips() {
         let source = TestWav::new();
         let mut audio = daw_media::decode_wav(&source.0).unwrap();
         audio.metadata.channels = 2;
@@ -12609,11 +12636,21 @@ mod tests {
             let lane = app.lane_bounds[&track];
             assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
                 if rect.fill == theme::PANEL && rect.rect.top() == lane.top() && rect.rect.right() <= lane.left())));
+            let stripe = Rect::from_min_max(
+                Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
+                Pos2::new(lane.left() - TRACK_WIDTH + 16., lane.bottom()),
+            );
+            assert!(
+                shapes
+                    .iter()
+                    .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                if rect.rect == stripe && rect.fill == theme::clip_colors(track_color, None).body))
+            );
             assert!(
                 !shapes
                     .iter()
                     .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
-                if rect.fill == colors.body && rect.rect.right() <= lane.left()))
+                if rect.fill == colors.body && rect.rect.right() <= lane.left() && rect.rect != stripe))
             );
             for color in [colors.body, colors.header, colors.channel] {
                 assert!(has_fill(&shapes, color));

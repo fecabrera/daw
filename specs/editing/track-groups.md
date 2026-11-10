@@ -4,6 +4,23 @@
 
 Groups are nested stereo buses with the existing track controls, meters, effects lane, effect processors, and unit drag behavior. Sources and clips stay on ordinary audio/MIDI tracks. Timeline supports track membership changes through the existing release-only track drag gesture. Group movement includes its complete subtree. Ungroup retains children; deletion removes the subtree. Edits are undoable.
 
+Shared `panels::GroupPanel` geometry indents children by 8 logical points per
+nesting level, capped at three levels (24 points). Keep right edges aligned.
+Track headers, beat subtrack rows and other nested panels using this helper
+share the same spacing; toolbar padding does not determine this indentation.
+
+Timeline track headers have a 16-point leading background strip in the track's
+resolved base clip-body color, including nested headers. Beat subtrack headers
+inherit their parent track color. Expanded Group and Beat parents continue
+their color below the header as an 8-point gutter through visible descendants.
+Use the remaining actual indentation width at the three-level cap, so deeper
+groups do not paint over child headers. Clip gutters to the scrolling viewport
+and preserve continuation when an ancestor header is virtualized offscreen.
+Reserve the 16-point strip before the existing seven-point left content inset.
+Keep icons, disclosure arrows, labels and controls outside the strip. Preserve
+the right meter inset, selection fills, row heights and project data. Edge-drop depth uses
+the same shared eight-point step as the painted hierarchy.
+
 ## Model and transactions
 
 `core::TrackKind::Group` identifies buses. `Track::group_id` stores the optional stable parent ID; `group_collapsed` stores saved disclosure state for Group and Beat tracks. New beat tracks start collapsed; beat subtracks remain instruments, not project-track children. Missing fields default to no parent and expanded. The existing experimental manifest stores both fields; legacy projects remain flat.
@@ -38,9 +55,9 @@ Keep the native macOS and egui Track menus in this grouped order: Add audio trac
 
 Group/Ungroup use Command+G / Command+Shift+G (Ctrl equivalents off macOS) through shared `TrackAction::shortcut`/`matches_shortcut`. Text fields, modal jobs/dialogs, active drags, focus loss, and held-key repeats keep their existing guards. Native dispatch consumes the forwarded egui event once. Group/Ungroup use `TrackAction`, including native macOS menu dispatch, context menus, selection guards, and history. Timeline and Mixer use `visible_tracks`, shared names, `mix_controls`, existing faders/knobs/meters, and shared selection background fills without selection outlines. Audio, MIDI, Group, and Master headings align left in Timeline. Mixer centers the icon and visible name as one group; name editors retain left-aligned text. Group arrows use a borderless disclosure button with the catalog folder chevron painter, standard icon size, secondary idle color, hover/focus text color, tooltip, and expanded-state accessibility. Keep the 28×22-point hit area in Timeline and use the compact icon width below in Mixer; isolate collapse clicks from name dragging. Audio, MIDI, and Master headers use Audio Lines, Keyboard Music, and Boom Box through the shared header artwork painter. Timeline retains the 28-point icon slot, default artwork colors and shared 6-point gap before each name, including nested tracks. Mixer uses the compact geometry and contrast colors below. Timeline type icons start the existing guarded track drag handler; Mixer icons identify the track type without introducing reordering there. Reuse name editing, selection, previews, and cancellation. Reserve the full content-column width inside shared `meters::stereo_panel` before laying out controls, so short Master headers cannot shrink the column and pull the meters left. Track, group, nested-track, and Master meters share the control column's right inset. Timeline track drag reuses name/blank-header input without a visible grip, insertion-line painting, edge scrolling, cancellation, and release-only commit; core validates parent and insertion boundaries.
 
-Mixer track-type icons and group disclosure arrows use the corresponding track header’s contrast text color from `clip_colors`; Master uses the theme’s primary text color for both icon and label. Keep that color during hover and focus. Use an explicit optional tint in the shared header painter, retaining the same artwork and Timeline/layer geometry and behavior. Mixer header rows measure the truncated label with the same font and wrap policy as its button, then reserve leading space to center the 16-point icon plus 4-point gap and visible text as one group. Name buttons retain left-aligned text next to the icon. Long names stay on one line within the 4-point minimum strip insets. Keep the 4-point icon-to-label gap and vertical padding in a 24-point header. Apply this to audio/MIDI, groups and Master without changing the control spacing below. Retain name-edit, selection and group-collapse interactions.
+Mixer track-type icons, group disclosure arrows, header labels and Master use the same fixed white foreground on their colored or neutral headers. Keep that color during hover and focus. Use an explicit optional tint in the shared header painter, retaining the same artwork and Timeline/layer geometry and behavior. Mixer header rows measure the truncated label with the same font and wrap policy as its button, then reserve leading space to center the 16-point icon plus 4-point gap and visible text as one group. Name buttons retain left-aligned text next to the icon. Long names stay on one line within the 4-point minimum strip insets. Keep the 4-point icon-to-label gap and vertical padding in a 24-point header. Apply this to audio/MIDI, groups and Master without changing the control spacing below. Retain name-edit, selection and group-collapse interactions.
 
-Timeline insets each complete child control panel, including the name, mix controls, and meters, by twice the shared toolbar padding per hierarchy level (16 logical points, capped at 48 to retain usable controls). Remove the old name-only indent. Keep all timeline lanes at the fixed control-column boundary. Extend each group selection rectangle through its last visible descendant, using the shared selection painter and unclipped subtree geometry even when its header is virtualized offscreen. Nested row dividers own only their inset left edge; the workspace owns the root left edge and shared right border. The last child and all enclosing groups share the same bottom boundary. Do not add a second root-group left stroke. Group append previews use the full container bottom. Before/after drops use the hovered row's parent and the inset header position to choose ancestor scope, retaining that parent when reordering a child at its bottom edge.
+Timeline insets each complete child control panel, including the name, mix controls, and meters, by 8 logical points per hierarchy level (capped at 24 to retain usable controls). Remove the old name-only indent. Keep all timeline lanes at the fixed control-column boundary. Extend each group selection rectangle through its last visible descendant, using the shared selection painter and unclipped subtree geometry even when its header is virtualized offscreen. Nested row dividers own only their inset left edge; the workspace owns the root left edge and shared right border. The last child and all enclosing groups share the same bottom boundary. Do not add a second root-group left stroke. Group append previews use the full container bottom. Before/after drops use the hovered row's parent and the inset header position to choose ancestor scope, retaining that parent when reordering a child at its bottom edge.
 
 Timeline and Editor track headers and regular Instrument layer headers use the shared 22-point gain/pan knobs centered in 28-point slots. Reuse `mix_controls::header_row` for a common second row: Mute/Solo at the left, Pan then Gain at the right, with a six-point M/S gap and four-point knob-slot gap. Retain the scaled `unit-ui` mappings, fine input, reset, capture and shared hover/drag tooltips. Keep Timeline/Editor track headers at 68 points, retain layer expanded/collapsed heights and fixed Output placement, and keep selection/drag guards. Layer collapse stays at its first-row right inset. Output has only the right-aligned gain knob, without Pan, Mute or Solo. Timeline Master uses a single 42-point row with icon/name at the left and gain immediately before the meters at the right. Track header rails use their full 54-point content height; Master rails use 28 points. Retain seven-point outer meter insets, the six-point gap before meters and four-point stereo channel gap. Scale-free header meters omit the five-point endpoint-label inset; scaled meters retain their label space. Preserve meter mappings, reset, tooltips and clipping indicators. Track/layer/Output/Editor headers have no gain/pan text inputs or numeric draft state. The Editor dropdown fills its first row after the icon to the six-point gap before the meters. Mixer strips and unit/plugin body knobs retain their existing sizes and layout.
 
@@ -118,3 +135,27 @@ existing outlines. Keep shared selection_border for those callers; do not mask
 or change it globally. Tests must verify background highlights and absence of
 track/layer selection strokes across themes, scrolling and multiple selection,
 while retaining structural borders and unit interaction coverage.
+
+Compact Timeline and Editor track headers reserve only the Mute/Solo group beside the name and meters. Hide Pan and Gain, including Timeline Master gain, without changing their saved values. Expanded headers retain their mix knobs. Beat subtracks in Timeline follow the same mode. Instrument and lower Beat Editor mix controls retain their existing layout.
+
+## Mixer hierarchy gutters
+
+Keep each mixer header 24 points tall. Indent nested headers downward by 12 points
+per group level (half the header height), capped at three displayed levels.
+Paint each ancestor's 12-point horizontal band across all descendant strips with
+that ancestor's resolved clip-header background color. Continue bands through
+nested groups and retain them when the ancestor is horizontally offscreen.
+Start strip dividers at the strip's own header, leaving ancestor bands connected.
+Nested headers have a 1-point top border matching the side divider's color and
+inset; root headers retain the shared workspace top border.
+Collapse hides descendant strips and their bands; root tracks, Returns and
+Master have no ancestor bands. Keep centered icon/name geometry and existing
+header hit behavior. Use fixed white text and icons for every header, independent
+of track color, theme, hover and selection. Name editing retains standard input
+styling. Preserve colored header fills and neutral Master fill.
+
+Keep output faders, meters and send controls aligned at the bottom. Include the
+maximum displayed gutter height in the minimum scrollable content height so
+nested headers and destinations cannot overlap the lower controls. Apply the
+shared strip presentation to Mixer and Timeline's Track mixer. No project,
+selection, routing or saved mix values change during painting.

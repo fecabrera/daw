@@ -143,7 +143,7 @@ fn mixer_centers_icon_and_short_or_truncated_label_as_one_group() {
 }
 
 #[test]
-fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_states() {
+fn mixer_headers_keep_track_colors_and_light_text_across_themes_and_selection() {
     let (mut app, track) = fixture();
     app.session.project.add_track().unwrap();
     app.view_mode = crate::mixer::ViewMode::Mixer;
@@ -183,7 +183,7 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                 let point = name.pos + name.galley.rect.center().to_vec2();
                 let uri = icons::Lucide::AudioLines
                     .size(16.0)
-                    .color(colors.text)
+                    .color(crate::mixer::HEADER_TEXT)
                     .uri();
                 let egui::load::TexturePoll::Ready { texture } = ctx
                     .try_load_texture(
@@ -218,7 +218,7 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                         .job
                         .sections
                         .iter()
-                        .all(|section| section.format.color == colors.text
+                        .all(|section| section.format.color == crate::mixer::HEADER_TEXT
                             && section.format.font_id.size == 11.0)
                 );
                 assert!(shapes.iter().any(|shape| matches!(&shape.shape,
@@ -2055,6 +2055,22 @@ fn assert_destination_row(
     strip: Rect,
     destination: Option<&str>,
 ) {
+    let header_top = shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Rect(r)
+                if r.stroke.is_empty()
+                    && r.rect.width() == strip.width()
+                    && r.rect.height() == panels::HEADER_HEIGHT
+                    && r.rect.left() == strip.left()
+                    && r.rect.top() >= strip.top()
+                    && r.rect.top() <= strip.top() + 36.0 =>
+            {
+                Some(r.rect.top())
+            }
+            _ => None,
+        })
+        .expect("fixed-height mixer header");
     let borders: Vec<_> = shapes
         .iter()
         .filter_map(|shape| match &shape.shape {
@@ -2064,8 +2080,8 @@ fn assert_destination_row(
                     && (r.rect.height() - toolbars::CONTROL_HEIGHT).abs() < 0.1
                     && r.rect.left() >= strip.left()
                     && r.rect.right() <= strip.right()
-                    && r.rect.top() >= strip.top() + panels::HEADER_HEIGHT
-                    && r.rect.top() < strip.top() + panels::HEADER_HEIGHT + 16.0 =>
+                    && r.rect.top() >= header_top + panels::HEADER_HEIGHT
+                    && r.rect.top() < header_top + panels::HEADER_HEIGHT + 16.0 =>
             {
                 Some(r.rect)
             }
@@ -2090,7 +2106,7 @@ fn assert_destination_row(
     let row = borders[0];
     assert!((row.left() - strip.left() - 8.0).abs() < 0.1);
     assert!((strip.right() - row.right() - 8.0).abs() < 0.1);
-    assert!((row.top() - strip.top() - panels::HEADER_HEIGHT - 8.0).abs() < 0.1);
+    assert!((row.top() - header_top - panels::HEADER_HEIGHT - 8.0).abs() < 0.1);
     if let Some(send) = shapes.iter().find_map(|shape| match &shape.shape {
         egui::Shape::Text(t)
             if t.galley.text() == "Return 1" && strip.contains(t.pos) && t.pos.y > row.bottom() =>

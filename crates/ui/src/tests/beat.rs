@@ -3254,18 +3254,34 @@ fn timeline_beat_children_use_group_geometry_and_saved_disclosure() {
             assert_eq!(owner, parent);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             super::track_header::assert_header_meter_insets(&shapes, panel, &ctx);
+            let color = theme::clip_colors(
+                app.session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|t| t.id == parent)
+                    .unwrap()
+                    .color,
+                None,
+            )
+            .body;
+            let stripe =
+                Rect::from_min_max(panel.min, Pos2::new(panel.left() + 16., panel.bottom()));
+            let gutter = Rect::from_min_max(
+                Pos2::new(panel.left() - 8., panel.top()),
+                Pos2::new(panel.left(), panel.bottom()),
+            );
+            for expected in [stripe, gutter] {
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == expected && r.fill == color)));
+            }
             let [mute, solo, pan, gain] = app.beat_ui.mix_bounds[&child];
-            assert!(
-                (gain.center().x - (panel.right() - 47.0)).abs() < 0.1,
-                "Gain must align with normal tracks: {gain:?}, panel {panel:?}"
-            );
-            assert!(
-                (pan.center().x - (panel.right() - 79.0)).abs() < 0.1,
-                "Pan must align with normal tracks"
-            );
+            assert!(mute.left() >= panel.left() + 23.0);
+            assert!(mute.right() <= solo.left());
             if collapsed {
-                assert!((mute.center().x - (panel.right() - 131.5)).abs() < 0.1);
-                assert!((solo.center().x - (panel.right() - 110.5)).abs() < 0.1);
+                assert_eq!([pan, gain], [Rect::NOTHING; 2]);
+            } else {
+                assert!((gain.center().x - (panel.right() - 47.0)).abs() < 0.1);
+                assert!((pan.center().x - (panel.right() - 79.0)).abs() < 0.1);
             }
             assert_eq!(panel.top(), app.lane_bounds[&parent].bottom());
             assert_eq!(panel.height(), app.track_row_height());

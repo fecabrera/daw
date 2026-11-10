@@ -2,6 +2,8 @@ use super::*;
 use crate::panels::HEADER_HEIGHT;
 
 pub(super) const STRIP_WIDTH: f32 = 120.0;
+pub(super) const HEADER_TEXT: egui::Color32 = egui::Color32::WHITE;
+pub(super) const GROUP_GUTTER_HEIGHT: f32 = HEADER_HEIGHT / 2.0;
 const STRIP_BORDER: f32 = 1.0;
 const OUT_PADDING: f32 = 8.0;
 const STRIP_PADDING: Vec2 = Vec2::new(4.0, OUT_PADDING + STRIP_BORDER);
@@ -331,9 +333,26 @@ impl DawUi {
         self.mixer_scroll_content(&mut body);
     }
 
+    pub(super) fn mixer_gutter_height(&self) -> f32 {
+        self.session
+            .project
+            .visible_tracks()
+            .into_iter()
+            .map(|i| {
+                self.session
+                    .project
+                    .track_depth(self.session.project.tracks[i].id)
+                    .min(3)
+            })
+            .max()
+            .unwrap_or(0) as f32
+            * GROUP_GUTTER_HEIGHT
+    }
+
     fn mixer_scroll_content(&mut self, ui: &mut egui::Ui) {
         let base_height = MIN_HEIGHT - toolbars::CONTROL_HEIGHT - OUT_CONTROL_SPACING;
-        let height = (base_height + self.mixer_send_height()).max(ui.available_height());
+        let height = (base_height + self.mixer_send_height() + self.mixer_gutter_height())
+            .max(ui.available_height());
         egui::ScrollArea::vertical()
             .id_salt("mixer_vertical")
             .auto_shrink([false, false])
@@ -617,16 +636,51 @@ impl DawUi {
             || theme::unit_header_fill(ui.ctx(), false),
             |track| theme::clip_colors(track.color, None).header,
         );
+        // The first three ancestor bands mirror Timeline's nesting cap. Paint
+        // each ancestor across every descendant so the gutter stays connected
+        // when its parent scrolls outside the viewport.
+        let mut ancestors = Vec::new();
+        let mut parent = track.and_then(|track| track.group_id);
+        while let Some(id) = parent {
+            let Some(group) = self
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|track| track.id == id)
+            else {
+                break;
+            };
+            ancestors.push(group);
+            parent = group.group_id;
+        }
+        let header_top = rect.top() + ancestors.len().min(3) as f32 * GROUP_GUTTER_HEIGHT;
+        for (level, group) in ancestors.into_iter().rev().take(3).enumerate() {
+            ui.painter().rect_filled(
+                Rect::from_min_size(
+                    Pos2::new(rect.left(), rect.top() + level as f32 * GROUP_GUTTER_HEIGHT),
+                    Vec2::new(rect.width(), GROUP_GUTTER_HEIGHT),
+                ),
+                0.0,
+                theme::clip_colors(group.color, None).header,
+            );
+        }
         ui.painter().rect_filled(
-            Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEADER_HEIGHT)),
+            Rect::from_min_size(
+                Pos2::new(rect.left(), header_top),
+                Vec2::new(rect.width(), HEADER_HEIGHT),
+            ),
             0.0,
             header_fill,
         );
         let border = Stroke::new(STRIP_BORDER, palette.border);
+        if header_top > rect.top() {
+            ui.painter().hline(rect.x_range(), header_top + 0.5, border);
+        }
         // The toolbar or open catalog owns the workspace's left separator.
         if left_divider {
             ui.painter()
-                .vline(rect.left() + 0.5, rect.y_range(), border);
+                .vline(rect.left() + 0.5, header_top..=rect.bottom(), border);
         }
         // The right toolbar owns the single outer divider in both workspaces.
         if track.is_none() && !matches!(self.view_mode, ViewMode::Timeline | ViewMode::Mixer) {
@@ -637,7 +691,7 @@ impl DawUi {
         let content_rect = Rect::from_min_max(
             Pos2::new(
                 inner.left(),
-                rect.top() + (HEADER_HEIGHT - toolbars::CONTROL_HEIGHT) / 2.0,
+                header_top + (HEADER_HEIGHT - toolbars::CONTROL_HEIGHT) / 2.0,
             ),
             inner.max,
         );
@@ -659,7 +713,7 @@ impl DawUi {
         content.spacing_mut().item_spacing.y = OUT_CONTROL_SPACING;
         if let Some(track) = track {
             content.add_space(
-                (rect.top() + HEADER_HEIGHT + OUT_CONTROL_SPACING - content.cursor().top())
+                (header_top + HEADER_HEIGHT + OUT_CONTROL_SPACING - content.cursor().top())
                     .max(0.0),
             );
             // Match the send rows' inset within the strip's shared content padding.
@@ -672,7 +726,8 @@ impl DawUi {
         // Align all faders, meters, and bottom controls, including Master.
         let rack_height = self.mixer_send_height();
         let fader_height =
-            (inner.height() - FIXED_CONTROL_HEIGHT - rack_height).clamp(MIN_FADER_HEIGHT, 220.0);
+            (inner.height() - FIXED_CONTROL_HEIGHT - rack_height - self.mixer_gutter_height())
+                .clamp(MIN_FADER_HEIGHT, 220.0);
         let numeric_height = numeric_field_height(&content);
         let controls_height = knobs::PAN_VISIBLE_HEIGHT
             + 2.0 * numeric_height
