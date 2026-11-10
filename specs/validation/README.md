@@ -4,6 +4,50 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Multiband EQ muted response colors — 2026-11-10
+
+The shared graph now uses `palette.secondary` for the combined response curve
+and unselected band points, matching unselected unit-header text. Selected
+enabled points retain the accent color. This supersedes the active strip-label
+color choice recorded below and applies to the DAW and standalone editors.
+
+Completed checks:
+
+- `cargo test -p daw-unit-ui --offline`: passed (39 tests).
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance and plugin-host checks remain unverified. The macOS packaging
+attempt (`sh tools/package_macos.sh debug`) stopped at the source-revision gate
+because tracked changes are uncommitted. The executable was rebuilt; the app
+bundle was not updated.
+
+## Multiband EQ response colors — 2026-11-10 (superseded)
+
+The shared graph uses the active strip-label text color for the enabled combined
+response curve and unselected enabled band points. Selected points retain the
+accent color; disabled bands and units remain muted. This applies to the DAW and
+standalone editors.
+
+Completed checks:
+
+- `cargo test -p daw-unit-ui --offline`: passed (39 tests).
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance and plugin-host checks remain unverified. The macOS packaging
+attempt (`sh tools/package_macos.sh debug`) stopped at the source-revision gate
+because tracked changes are uncommitted. The executable was rebuilt; the app
+bundle was not updated.
+
 ## Rollback mixer selection styling — 2026-11-10
 
 Undo only the previous mixer selection presentation change. Restore selected

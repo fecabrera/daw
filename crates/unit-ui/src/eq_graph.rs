@@ -373,7 +373,7 @@ pub fn show(
                     )
                 })
                 .collect(),
-            Stroke::new(1.5, if s.enabled { accent } else { palette.secondary }),
+            Stroke::new(1.5, palette.secondary),
         ));
         for (i, b) in view.iter().enumerate() {
             let base = drag
@@ -381,7 +381,7 @@ pub fn show(
                 .filter(|d| d.id == b.id)
                 .map_or(&s.bands[i], |d| &d.preview);
             let center = point(plot, base);
-            let color = if s.enabled && b.enabled {
+            let color = if s.enabled && b.enabled && selected == Some(b.id) {
                 accent
             } else {
                 palette.secondary

@@ -6,7 +6,7 @@ Use **Multiband EQ** for targeted tonal corrections, resonant cuts and boosts, a
 
 The band, **+**, and **Out** strips follow the Oscillator layout. Each band keeps its four smaller knobs in one column.
 
-The **Response** graph sits before the band strips and spans the three standard control rows. It shows each band's response, the combined EQ curve, and a live output spectrum. The spectrum uses both stereo channels and clears when the unit is off. Compact and collapsed units hide the graph.
+The **Response** graph sits before the band strips and spans the three standard control rows. It shows each band's response, the combined EQ curve, and a live output spectrum. The combined curve and unselected band points use the unselected unit-header text color. The selected point uses the accent color; disabled bands and units remain muted. The spectrum uses both stereo channels and clears when the unit is off. Compact and collapsed units hide the graph.
 
 Drag a numbered band point left or right to change Frequency. For Bell and shelf bands, drag up or down to change Gain. Hold Command on macOS or Ctrl on Windows/Linux when starting the drag to adjust only Q: up or right increases Q; down or left decreases it. Hold Shift for fine adjustment. The selected point shows Frequency, Gain where available, and Q.
 
