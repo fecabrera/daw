@@ -4151,7 +4151,7 @@ impl DawUi {
             if mixer {
                 self.center_mixer_header(ui, "Master");
             }
-            let tint = mixer.then(|| theme::header_title_color(ui.ctx(), self.master_selected));
+            let tint = mixer.then(|| theme::palette(ui.ctx()).text);
             let response = icons::header_icon_tinted(
                 ui,
                 icons::Lucide::BoomBox,
@@ -4169,9 +4169,7 @@ impl DawUi {
             response.on_hover_text("Master output");
             ui.add(
                 egui::Label::new(
-                    egui::RichText::new("Master")
-                        .font(crate::fonts::semibold(font_size))
-                        .color(tint.unwrap_or_else(|| theme::palette(ui.ctx()).text)),
+                    egui::RichText::new("Master").font(crate::fonts::semibold(font_size)),
                 )
                 .halign(egui::Align::Min),
             );
@@ -4181,8 +4179,7 @@ impl DawUi {
         self.track_name_layout(ui, track, self.view_mode == ViewMode::Mixer);
     }
     fn track_name_layout(&mut self, ui: &mut egui::Ui, track: &daw_core::Track, mixer: bool) {
-        let tint =
-            mixer.then(|| theme::header_title_color(ui.ctx(), self.track_selected(track.id)));
+        let tint = mixer.then(|| theme::clip_colors(track.color, None).text);
         let icon_width = if mixer {
             icons::TOOLBAR_ICON_SIZE
         } else {
@@ -4311,11 +4308,7 @@ impl DawUi {
             return;
         }
         {
-            let mixer_colors = mixer.then(|| {
-                let mut colors = theme::clip_colors(track.color, None);
-                colors.text = theme::header_title_color(ui.ctx(), self.track_selected(track.id));
-                colors
-            });
+            let mixer_colors = mixer.then(|| theme::clip_colors(track.color, None));
             let (response, text_rect) = rows::name_button(
                 ui,
                 ("track_name_text", track.id),

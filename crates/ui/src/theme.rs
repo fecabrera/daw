@@ -3,16 +3,6 @@ use egui::{Color32, Context};
 mod material;
 pub(super) use material::GREY_200;
 
-/// Unit and mixer titles share foreground-only selection feedback.
-pub(super) fn header_title_color(ctx: &Context, selected: bool) -> Color32 {
-    let colors = palette(ctx);
-    if selected {
-        colors.text
-    } else {
-        colors.secondary
-    }
-}
-
 /// Selected lanes share the supplied dark shade and subtle neutral/cool
 /// equivalents in light palettes.
 pub(super) fn selected_track_background(ctx: &Context) -> Color32 {

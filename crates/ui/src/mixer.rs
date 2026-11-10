@@ -603,7 +603,16 @@ impl DawUi {
     ) -> Option<Rect> {
         let mut rack_bounds = None;
         let palette = theme::palette(ui.ctx());
-        ui.painter().rect_filled(rect, 0.0, palette.panel);
+        let selected = track.map_or(self.master_selected, |track| self.track_selected(track.id));
+        ui.painter().rect_filled(
+            rect,
+            0.0,
+            if selected {
+                theme::selected_track_header_background(ui.ctx())
+            } else {
+                palette.panel
+            },
+        );
         let header_fill = track.map_or_else(
             || theme::unit_header_fill(ui.ctx(), false),
             |track| theme::clip_colors(track.color, None).header,

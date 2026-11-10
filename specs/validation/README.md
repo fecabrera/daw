@@ -4,6 +4,32 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Rollback mixer selection styling — 2026-11-10
+
+Undo only the previous mixer selection presentation change. Restore selected
+strip body backgrounds and inherited clip contrast colors for track/group/Return
+header text and icons. Restore normal Master text in both selection states.
+Keep the earlier neutral Master header fill and all unit-card/header styling,
+modulation separators and Add-button behavior. Remove the last change's shared
+foreground helper without changing unit-title selection behavior.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (972 passed, 3 ignored), including
+  restored selection-fill and header-contrast assertions across themes and
+  retained neutral Master header coverage in both mixer layouts.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified.
+macOS packaging stopped at its existing requirement to commit tracked changes
+before packaging. The executable is rebuilt; the `.app` bundle is not updated.
+No commit was made.
+
 ## Linux GTK keyboard and touch input — 2026-11-10
 
 The GTK host forwards key presses and releases before input-method filtering,
@@ -43,6 +69,8 @@ and scrolling, and full IM composition still need native input checks on Wayland
 and X11. Automated event-mapping checks do not establish physical-device parity.
 
 ## Mixer selection uses header foreground only — 2026-11-09
+
+Superseded by the 2026-11-10 rollback of mixer selection styling.
 
 Mixer strip bodies keep their normal panel fill during selection. Header titles
 and icons use the same shared foreground rule as unit titles: secondary when

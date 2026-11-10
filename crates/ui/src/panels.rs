@@ -647,8 +647,11 @@ impl PanelStyle {
             );
         }
         let palette = crate::theme::palette(ui.ctx());
-        let header_text =
-            crate::theme::header_title_color(ui.ctx(), crate::unit_selection::is_selected(ui));
+        let header_text = if crate::unit_selection::is_selected(ui) {
+            palette.text
+        } else {
+            palette.secondary
+        };
         let title_rect = Rect::from_min_max(
             header_rect.min + Vec2::new(1.0, HEADER_HEIGHT + 1.0),
             header_rect.max - Vec2::splat(1.0),
