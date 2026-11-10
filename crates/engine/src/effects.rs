@@ -1088,6 +1088,9 @@ impl EffectChain {
         meter: &Arc<daw_unit_core::BandMeter<3>>,
     ) {
         match self.index.get(&effect).and_then(|&i| self.units.get_mut(i)) {
+            Some((_, Some(RuntimeEffect::HarmonicLift(unit)))) => {
+                unit.set_band_level_meter(band, meter.clone())
+            }
             Some((_, Some(RuntimeEffect::MultibandEq(unit)))) => {
                 unit.set_band_peak_meter(band, meter.clone())
             }

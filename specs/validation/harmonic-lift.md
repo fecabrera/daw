@@ -4,6 +4,14 @@
 
 Native nine-strip effect, six fixed harmonic branches, linked maximizer, aligned Normal/HQ paths, built-in placement and standalone CLAP/VST3 integration. See the [implementation specification](../effects/harmonic-lift.md).
 
+## Branch monitoring — 2026-11-10
+
+Six shared band rails now display processed branch contributions with separate
+held peaks in the DAW and standalone editors. They use existing strip margins
+and scoped monitor handles. The Maximizer reduction rail and output monitors
+remain separate. Current checks and native limits are recorded in the
+[workspace validation log](README.md#harmonic-lift-band-level-meters--2026-11-10).
+
 ## Automated checks — 2026-11-03
 
 - Workspace compile check passed on macOS arm64.

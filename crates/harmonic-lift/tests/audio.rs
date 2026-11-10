@@ -12,6 +12,61 @@ fn unit(rate: u32, s: &Settings) -> HarmonicLift {
     )
 }
 #[test]
+fn branch_levels_follow_gain_and_power_before_global_processing() {
+    use daw_unit_core::BandMeter;
+    use std::sync::Arc;
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        for quality in [HarmonicQuality::Normal, HarmonicQuality::Hq] {
+            let mut s = Settings {
+                quality,
+                ..Default::default()
+            };
+            for band in &mut s.bands {
+                band.enabled = true;
+            }
+            let run = |s: &Settings| {
+                let mut u = unit(rate, s);
+                let meters: [_; 6] = std::array::from_fn(|_| Arc::new(BandMeter::<3>::default()));
+                for (band, meter) in s.bands.iter().zip(&meters) {
+                    u.set_band_level_meter(band.id, meter.clone());
+                }
+                for frame in 0..2048 {
+                    let value = s
+                        .bands
+                        .iter()
+                        .map(|b| {
+                            (std::f32::consts::TAU * b.frequency_hz * frame as f32 / rate as f32)
+                                .sin()
+                                * 0.03
+                        })
+                        .sum::<f32>();
+                    u.process_sample([value, -value * 0.5]);
+                }
+                meters.each_ref().map(|m| m.boost_peaks()[0].peak())
+            };
+            let base = run(&s);
+            assert!(base.into_iter().all(|v| v > 0.0));
+            let mut boosted = s.clone();
+            for b in &mut boosted.bands {
+                b.gain_db = 6.0;
+            }
+            for (gain, plain) in run(&boosted).into_iter().zip(base) {
+                assert!((gain / plain - 10_f32.powf(6.0 / 20.0)).abs() < 1e-5);
+            }
+            let mut global = s.clone();
+            global.drive = 1.0;
+            global.push = 1.0;
+            global.dry_wet = 0.0;
+            global.level_db = -40.0;
+            assert_eq!(run(&global), base);
+            s.bands[3].enabled = false;
+            let disabled = run(&s);
+            assert_eq!(disabled[3], 0.0);
+            assert!(disabled.iter().enumerate().all(|(i, v)| i == 3 || *v > 0.0));
+        }
+    }
+}
+#[test]
 fn neutral_dry_and_bypass_have_fixed_sample_alignment_at_all_rates() {
     for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
         for quality in [HarmonicQuality::Normal, HarmonicQuality::Hq] {

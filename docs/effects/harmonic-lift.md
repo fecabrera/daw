@@ -23,6 +23,14 @@ Each branch has an independent Power button, Frequency, and Gain. All branches s
 
 The first five branches emphasize a frequency region. High adds shaped high-pass content. The asymmetric shaping adds both even and odd harmonics.
 
+Each band strip has a horizontal level meter above Frequency. It shows that
+branch after Gain and Power, before the shared Drive and Maximizer stages.
+The meter follows the louder stereo channel. Its grey marker holds the highest
+sample; click the rail to reset it. The rails use the [shared level colors and
+scale](output-meter.md). Compact and collapsed units hide the band rails.
+Turning the unit off clears them. The Maximizer reduction rail and the unit's
+stereo output meter keep their separate readings.
+
 ## Maximizer and output
 
 - **Drive** adds global saturation with high-frequency emphasis. At 0%, this stage passes the wet signal through.

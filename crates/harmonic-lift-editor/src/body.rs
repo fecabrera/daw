@@ -22,7 +22,7 @@ pub fn show(
     _: &[Option<daw_unit_ui::knobs::ModulationMarker>; P::COUNT - 1],
     level: meters::OutputLevel<'_>,
 ) -> Bounds {
-    render(ui, s, level, 0.0.into(), [0.0; 3].into())
+    render(ui, s, level, 0.0.into(), [0.0; 3].into(), [0.0.into(); 6])
 }
 pub fn render(
     ui: &mut Ui,
@@ -30,6 +30,7 @@ pub fn render(
     level: meters::OutputLevel<'_>,
     reduction: meters::GainReduction<'_>,
     _: meters::BandGainChange<'_>,
+    band_levels: [meters::OutputLevel<'_>; 6],
 ) -> Bounds {
     let before = PluginState::from_settings(s).ok();
     let (b, captured) = control_capture::scope(ui, |ui| {
@@ -42,6 +43,7 @@ pub fn render(
                 bands: &std::array::from_fn(|_| std::array::from_fn(|_| None)),
                 reduction,
                 level,
+                band_levels,
             },
         )
     });
@@ -56,11 +58,16 @@ pub fn render(
             r
         })
     });
+    let mut readouts: Vec<_> = b
+        .band_meters
+        .iter()
+        .enumerate()
+        .filter_map(|(i, rect)| control_capture::at(&captured, *rect).map(|r| (32 << i, r)))
+        .collect();
+    readouts.extend(control_capture::at(&captured, b.reduction).map(|r| (2, r)));
     Bounds {
         sections: b.sections,
         controls,
-        readouts: control_capture::at(&captured, b.reduction)
-            .map(|r| vec![(2, r)])
-            .unwrap_or_default(),
+        readouts,
     }
 }

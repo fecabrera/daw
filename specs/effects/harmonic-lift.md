@@ -32,15 +32,44 @@ The 2× FIR pair is generated during preparation from normalized Kaiser-windowed
 
 ## Presentation and monitoring
 
-The nine fixed strips use the shared 90-point width, standard 52-point knobs, strip height, margins, footer alignment and dividers. Quality uses `Dropdown::small_items()`. Each branch has Frequency and Gain plus footer Power. Input and Out have no independent footer Power. Maximizer has Drive, Push and Limit Level with a thin top reduction rail. Out uses the standard rail, held peak and palette. DAW selection, collapse, bypass and modulation use existing shells.
+The nine fixed strips use the shared 90-point width, standard 52-point knobs, strip height, margins, cards and footer alignment. Quality uses `Dropdown::small_items()`. Each branch has Frequency and Gain plus footer Power, with a four-point horizontal level rail in its existing top margin. Input and Out have no independent footer Power. Maximizer retains Drive, Push and Limit Level with its top reduction rail. The DAW uses the stereo gap output meter; standalone Out retains its horizontal output rail. DAW selection, collapse, bypass and modulation use existing shells.
 
 `UnitMeter<PeakMeter>` publishes smoothed reduction with 10 ms attack and 300 ms release. `LevelMonitor<3>` publishes final output. Bypass immediately clears and masks both meters while audio completes its ramp. Meter clicks do not change the project or start drags.
+
+Six independent `LevelMonitor<3>` instances publish branch contribution levels
+after asymmetric shaping, 10 Hz high-pass, Gain and smoothed Power, before global
+Drive, Push, Limit Level, final Level and Dry/Wet. Core captures the larger
+absolute stereo contribution for each branch. Normal uses the native-rate peak;
+HQ uses the maximum across its two internal frames. Blend these peaks with the
+current quality crossfade. These are internal tap readings before output-path
+latency alignment, not a reconstruction or analysis of the final output.
+
+Reuse shared instant attack, 300 ms release, held sample peaks, bypass masking
+and secondary-grey inactive-band colors. A branch Power transition fades its
+contribution to zero; its held peak remains resettable. Unit bypass clears all
+branch readings/holds and stops publication. Clones detach handles; compatible
+inheritance preserves release history and moves prepared handles without
+allocation or final-owner retirement in the callback.
+
+The DAW discovers branches through `EffectSettings::band_ids`, scopes handles by
+effect and branch UUID, and binds them with the existing individual-band meter
+path. `unit-ui::harmonic_lift` paints all six through `band_output_level`, so the
+DAW output-rail suppression policy does not hide them. Hide branch rails in
+compact/collapsed views without moving controls or changing unit dimensions.
 
 ## Standalone contract
 
 `plugins/harmonic-lift/unit.toml` is the checked manifest and identity source. Automation IDs 100–125 cover Bypass, Wet Input, Quality, six ordered Power/Frequency/Gain triplets, Drive, Push, Limit Level, Level and Dry/Wet. Deterministic local branch IDs bind these fixed roles. Binary state uses `DAWHARML`, envelope version 1, settings version 1, and 26 bounded float64 values. It contains no DAW routes, paths, project IDs or DSP history.
 
 Both formats report 49 frames latency at every rate and a conservative four-second tail. They reuse the shared native editor/window and narrow format sources via concrete dependency aliases. The packager discovers the manifest, and CI builds the product on macOS, Windows and Linux. Native host attachment and SDK validator acceptance remain separate platform checks.
+
+Meter transport retains the existing 13-value common prefix and appends six
+current/held branch pairs at indices `13 + 2*i` and `14 + 2*i`, for 25 values.
+Reset bits 5–10 select the six independent branch holds; existing output,
+reduction and common band reset bits retain their meanings. CLAP shares prepared
+handles; VST3 uses the existing bounded control-thread telemetry messages.
+Editor readouts send reset masks only, with no automation gesture or state edit.
+Parameter IDs, state bytes and viewport dimensions stay unchanged.
 
 ## Validation
 

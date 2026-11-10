@@ -1422,6 +1422,17 @@ impl DawUi {
                                                 output.gain_reduction_meter(effect.id)
                                             }),
                                         );
+                                        let band_levels = std::array::from_fn(|i| {
+                                            let band = settings.bands[i].id;
+                                            meters::OutputLevel::new(
+                                                self.output.as_ref().map_or(0.0, |o| {
+                                                    o.eq_individual_band_level(effect.id, band)
+                                                }),
+                                                self.output.as_ref().and_then(|o| {
+                                                    o.individual_band_level_peak(effect.id, band)
+                                                }),
+                                            )
+                                        });
                                         let (_bounds, header) = crate::harmonic_lift_panel::show(
                                             ui,
                                             settings,
@@ -1441,7 +1452,7 @@ impl DawUi {
                                                 ))
                                                 })
                                             },
-                                            output_level,
+                                            (output_level, band_levels),
                                         );
                                         let power = _bounds.power;
 

@@ -291,6 +291,7 @@ fn band_meters(
                 effect.unit,
                 daw_core::EffectSettings::MultibandEq(_)
                     | daw_core::EffectSettings::MultibandCompressor(_)
+                    | daw_core::EffectSettings::HarmonicLift(_)
             );
             group
                 .into_iter()
@@ -2605,6 +2606,48 @@ mod modulation_meter_tests {
 #[cfg(test)]
 mod multiband_meter_tests {
     use super::*;
+    #[test]
+    fn harmonic_branch_handles_bind_and_retain_scoped_identity() {
+        let mut plan = crate::tests::transport_plan();
+        let mut first = daw_core::EffectInstance::harmonic_lift();
+        let daw_core::EffectSettings::HarmonicLift(s) = &mut first.unit else {
+            unreachable!()
+        };
+        for band in &mut s.bands {
+            band.enabled = true;
+        }
+        let band = s.bands[0].id;
+        let mut second = first.clone();
+        second.id = Id::new_v4();
+        let first_key = ModulationTarget::EffectBand {
+            effect: first.id,
+            band,
+        };
+        let second_key = ModulationTarget::EffectBand {
+            effect: second.id,
+            band,
+        };
+        plan.project.tracks[0].effects.push(first);
+        plan.project.master.effects.push(second);
+        let handles = band_meters(&plan, &Default::default());
+        assert_eq!(handles.len(), 14);
+        assert!(!Arc::ptr_eq(&handles[&first_key], &handles[&second_key]));
+        let mut renderer = Renderer::new(plan.clone());
+        bind_band_meters(&mut renderer, &handles);
+        renderer.play();
+        for _ in 0..2048 {
+            renderer.next_sample();
+        }
+        assert!(handles[&first_key].boost_peaks()[0].peak() > 0.);
+        assert!(handles[&second_key].boost_peaks()[0].peak() > 0.);
+        let retained = band_meters(&plan, &handles);
+        assert!(Arc::ptr_eq(&handles[&first_key], &retained[&first_key]));
+        plan.project.tracks[0].effects.clear();
+        let removed = band_meters(&plan, &retained);
+        assert!(!removed.contains_key(&first_key));
+        assert!(Arc::ptr_eq(&handles[&second_key], &removed[&second_key]));
+    }
+
     #[test]
     fn individual_band_handles_are_scoped_retained_pruned_and_bound_through_the_shared_path() {
         let mut plan = crate::tests::transport_plan();

@@ -27,6 +27,12 @@ fn show_body(
             Some(&model.output_meter.bands),
         )
         .for_unit(settings.enabled),
+        std::array::from_fn(|i| {
+            daw_unit_ui::meters::OutputLevel::new(
+                model.output_meter.branches[i].readings()[0],
+                Some(&model.output_meter.branches[i].boost_peaks()[0]),
+            )
+        }),
     )
 }
 fn paint_extra(
@@ -69,6 +75,12 @@ fn paint_reference(ui: &mut egui::Ui, s: &mut daw_unit_core::HarmonicLiftSetting
             bands: &std::array::from_fn(|_| std::array::from_fn(|_| None)),
             reduction,
             level,
+            band_levels: std::array::from_fn(|i| {
+                daw_unit_ui::meters::OutputLevel::new(
+                    model.output_meter.branches[i].readings()[0],
+                    Some(&model.output_meter.branches[i].boost_peaks()[0]),
+                )
+            }),
         },
     );
 }
@@ -109,6 +121,66 @@ fn assert_builtin_defaults() {
         daw_drive_plugin::PluginState::from_settings(&native).unwrap(),
         daw_drive_plugin::PluginState::from_settings(&builtin).unwrap()
     );
+}
+
+#[cfg(test)]
+#[test]
+fn branch_meter_clicks_request_only_the_matching_peak_reset() {
+    use daw_unit_core::MeterStorage;
+    use std::sync::atomic::Ordering;
+    for band in 0..6 {
+        let ctx = egui::Context::default();
+        daw_unit_ui::theme::configure(&ctx);
+        daw_unit_ui::fonts::configure(&ctx);
+        let model = Model::default();
+        for meter in &model.output_meter.branches {
+            meter.store([1.5, 0., 0.]);
+        }
+        let mut settings = daw_drive_plugin::PluginState::default().to_settings();
+        let before = settings.clone();
+        let mut rect = egui::Rect::NOTHING;
+        for phase in 0..3 {
+            let events = if phase == 0 {
+                vec![]
+            } else {
+                vec![
+                    egui::Event::PointerMoved(rect.center()),
+                    egui::Event::PointerButton {
+                        pos: rect.center(),
+                        button: egui::PointerButton::Primary,
+                        pressed: phase == 1,
+                        modifiers: Default::default(),
+                    },
+                ]
+            };
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, body::SIZE)),
+                    events,
+                    focused: true,
+                    ..Default::default()
+                },
+                |ui| {
+                    let bounds = show_body(ui, &mut settings, &model);
+                    rect = bounds
+                        .readouts
+                        .iter()
+                        .find(|(mask, _)| *mask == 32 << band)
+                        .unwrap()
+                        .1
+                        .rect;
+                    paint_extra(ui, &bounds, &model, &settings);
+                },
+            );
+            out.textures_delta.clear();
+            assert_eq!(
+                model.meter_reset.load(Ordering::Acquire),
+                if phase == 2 { 32 << band } else { 0 }
+            );
+            assert_eq!(model.pop(), None);
+            assert_eq!(settings, before);
+        }
+    }
 }
 
 #[cfg(test)]

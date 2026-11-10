@@ -134,6 +134,7 @@ struct Core {
     coefficient: f64,
     rate: f64,
     reduction: f32,
+    branch_peaks: [f32; 6],
     maximizer: Ramp,
     fade: u32,
 }
@@ -150,6 +151,7 @@ impl Core {
             coefficient: (-std::f64::consts::TAU * 10. / rate).exp(),
             rate,
             reduction: 0.,
+            branch_peaks: [0.; 6],
             maximizer: Ramp::new(f32::from(active)),
             fade,
         }
@@ -163,6 +165,7 @@ impl Core {
         limit: f32,
     ) -> [f64; 2] {
         let mut wet = input;
+        self.branch_peaks.fill(0.);
         for (i, b) in bands.iter().enumerate() {
             for ch in 0..2 {
                 let v = if i == 5 {
@@ -177,7 +180,9 @@ impl Core {
                 };
                 let branch =
                     self.post[i][ch].high(shaped, 10., std::f64::consts::FRAC_1_SQRT_2, self.rate);
-                wet[ch] += f64::from(b[2]) * gain(b[1]) * branch;
+                let contribution = f64::from(b[2]) * gain(b[1]) * branch;
+                wet[ch] += contribution;
+                self.branch_peaks[i] = self.branch_peaks[i].max(finite(contribution).abs());
             }
         }
         for (ch, v) in wet.iter_mut().enumerate() {
@@ -211,6 +216,7 @@ impl Core {
         }
         self.envelope = 0.;
         self.reduction = 0.;
+        self.branch_peaks.fill(0.);
     }
 }
 #[derive(Clone)]
@@ -228,6 +234,7 @@ pub struct HarmonicLift {
     bypass: Ramp,
     fade: u32,
     output: LevelMonitor<3>,
+    branch_levels: [LevelMonitor<3>; 6],
     meter: UnitMeter<PeakMeter>,
     reduction: f32,
     attack: f32,
@@ -264,6 +271,7 @@ impl HarmonicLift {
             bypass: Ramp::new(f32::from(s.enabled)),
             fade: (c.sample_rate_hz / 200).max(1),
             output: LevelMonitor::new(c.sample_rate_hz, s.enabled),
+            branch_levels: std::array::from_fn(|_| LevelMonitor::new(c.sample_rate_hz, s.enabled)),
             meter: UnitMeter::new(s.enabled),
             reduction: 0.,
             attack: (-1. / (0.01 * c.sample_rate_hz as f32)).exp(),
@@ -288,10 +296,19 @@ impl HarmonicLift {
         self.controls.destination.retarget(s, self.fade);
         self.bypass.set(f32::from(s.enabled), self.fade);
         self.output.set_enabled(s.enabled);
+        for meter in &mut self.branch_levels {
+            meter.set_enabled(s.enabled);
+        }
         self.meter.set_enabled(s.enabled);
         true
     }
     pub fn inherit(&mut self, old: &mut Self) {
+        for i in 0..6 {
+            if self.bands[i].destination.id == old.bands[i].destination.id {
+                old.branch_levels[i].retarget(&mut self.branch_levels[i]);
+                std::mem::swap(&mut self.branch_levels[i], &mut old.branch_levels[i]);
+            }
+        }
         for (next, previous) in self.bands.iter_mut().zip(&mut old.bands) {
             if next.destination.id != previous.destination.id {
                 continue;
@@ -346,12 +363,23 @@ impl HarmonicLift {
         // Fixed alignment lets a quality edit crossfade without reinitializing history.
         let normal = self.normal[self.cursor];
         self.normal[self.cursor] = self.core.sample(driven, bands, drive, push, limit);
-        let frames = self
-            .oversampling
-            .up(driven)
-            .map(|frame| self.hq_core.sample(frame, bands, drive, push, limit));
+        let mut hq_peaks = [0.0_f32; 6];
+        let frames = self.oversampling.up(driven).map(|frame| {
+            let output = self.hq_core.sample(frame, bands, drive, push, limit);
+            for (peak, value) in hq_peaks.iter_mut().zip(self.hq_core.branch_peaks) {
+                *peak = peak.max(value);
+            }
+            output
+        });
         let hq = self.oversampling.down(frames);
         let quality = f64::from(self.quality_blend.next_value());
+        for (i, meter) in self.branch_levels.iter_mut().enumerate() {
+            if meter.is_enabled() {
+                let normal = self.core.branch_peaks[i];
+                let peak = normal + (hq_peaks[i] - normal) * quality as f32;
+                meter.sample([peak, 0., 0.]);
+            }
+        }
         let wet = std::array::from_fn::<_, 2, _>(|ch| normal[ch] + (hq[ch] - normal[ch]) * quality);
         self.cursor = (self.cursor + 1) % LATENCY;
         let enabled = f64::from(self.bypass.next_value());
@@ -391,6 +419,11 @@ impl HarmonicLift {
     }
     pub fn set_output_peak_meter(&mut self, m: Arc<BandMeter<3>>) {
         self.output.attach_peak(m);
+    }
+    pub fn set_band_level_meter(&mut self, id: ModulationTargetId, meter: Arc<BandMeter<3>>) {
+        if let Some(i) = self.bands.iter().position(|b| b.destination.id == id) {
+            self.branch_levels[i].attach_peak(meter);
+        }
     }
     pub fn set_gain_reduction_peak_meter(&mut self, m: Arc<PeakMeter>) {
         self.meter.attach(m, self.reduction);
@@ -440,6 +473,9 @@ impl EffectUnit for HarmonicLift {
         self.bypass.reset();
         self.reduction = 0.;
         self.output.reset();
+        for meter in &mut self.branch_levels {
+            meter.reset();
+        }
         self.meter.publish(0.);
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {

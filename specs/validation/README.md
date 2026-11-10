@@ -4,6 +4,45 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Harmonic Lift band level meters — 2026-11-10
+
+Low, Low Mid, Mid, High Mid, Presence and High now have shared horizontal level
+rails and held-peak indicators above Frequency. They measure each shaped branch
+after Gain/Power and before global Drive/Maximizer/output mixing. Compact and
+collapsed views hide them; unit bypass clears them. Maximizer reduction, stereo
+gap output and standalone Out monitoring retain their roles and geometry.
+
+DAW handles use the existing effect/branch UUID discovery and binding path.
+Standalone telemetry retains its 13-value prefix and appends six current/held
+pairs. Branch reset masks emit no parameter gestures or state changes.
+
+Completed checks:
+
+- Portable Harmonic Lift tests: passed (9 tests), including branch gain/power,
+  downstream-control isolation, both quality modes and all six project rates.
+- Harmonic Lift plugin/editor tests: passed, including telemetry roundtrip,
+  independent reset, unchanged state/parameter fixtures, shared mesh parity and
+  reset-only editor clicks.
+- Focused engine test: passed with unchanged monitored/reference PCM, detached
+  snapshots, bypass/inheritance clearing and no callback allocation/retirement.
+- Focused output binding test: passed for scoped UUIDs, retention and pruning.
+- Focused DAW UI test: passed for six band rails plus retained reduction, with
+  compact/collapsed visibility and no project edit.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop -p daw-cli --offline`: passed.
+- `cargo build -p daw-harmonic-lift-clap -p daw-harmonic-lift-vst3 --release --offline`:
+  passed.
+- `python3 tools/check_cli.py`: passed.
+- `git diff --check`: passed.
+
+Native appearance and external-host checks remain unverified. The macOS
+packaging attempt (`sh tools/package_macos.sh debug`) stopped at the source
+revision gate because tracked changes are uncommitted.
+Desktop and plugin binaries were rebuilt; the app bundle was not updated.
+
 ## Remove DAW strip output rails — 2026-11-10
 
 DAW shells suppress only horizontal output-level rails through the shared body

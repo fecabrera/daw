@@ -1644,6 +1644,40 @@ fn begin_effect_drag(app: &mut DawUi, ctx: &egui::Context, point: Pos2, end: Pos
     frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
 }
 #[test]
+fn harmonic_lift_has_six_band_rails_and_keeps_the_maximizer_rail() {
+    for compact in [false, true] {
+        for collapsed in [false, true] {
+            let (mut app, _, ctx, _) = chain_fixture(compact, false);
+            let mut effect = daw_core::EffectInstance::harmonic_lift();
+            let daw_core::EffectSettings::HarmonicLift(s) = &mut effect.unit else {
+                unreachable!()
+            };
+            s.collapsed = collapsed;
+            app.session.project.tracks[0].effects = vec![effect];
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280., 800.));
+            let unit = app.effects_bounds.chain[0].1;
+            let rails: Vec<_> = shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Rect(r)
+                        if unit.contains_rect(r.rect)
+                            && r.rect.size() == Vec2::new(70., 4.)
+                            && r.fill == theme::palette(&ctx).input =>
+                    {
+                        Some(r.rect)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(rails.len(), if !compact && !collapsed { 7 } else { 0 });
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
 fn instrument_gap_meters_cover_sources_and_amplitude_but_exclude_modulators() {
     for source in ["oscillator", "sampler", "noise"] {
         let (mut app, ctx) = categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");

@@ -15,6 +15,7 @@ pub struct Bounds {
     /// Drive, Push, Limit Level, output Level and Dry/Wet.
     pub controls: [Rect; 25],
     pub output_meter: Rect,
+    pub band_meters: [Rect; 6],
     pub reduction: Rect,
     pub header: Rect,
     pub power: Rect,
@@ -25,6 +26,7 @@ impl Default for Bounds {
             sections: [Rect::NOTHING; 9],
             controls: [Rect::NOTHING; 25],
             output_meter: Rect::NOTHING,
+            band_meters: [Rect::NOTHING; 6],
             reduction: Rect::NOTHING,
             header: Rect::NOTHING,
             power: Rect::NOTHING,
@@ -36,6 +38,7 @@ pub struct Controls<'a> {
     pub bands: &'a [[Option<ModulationMarker>; 2]; 6],
     pub reduction: meters::GainReduction<'a>,
     pub level: meters::OutputLevel<'a>,
+    pub band_levels: [meters::OutputLevel<'a>; 6],
 }
 pub fn show(
     ui: &mut Ui,
@@ -188,6 +191,19 @@ pub fn show(
                 .rect;
         }
         if !compact {
+            for (i, name) in HARMONIC_BAND_NAMES.iter().enumerate() {
+                let rail = meters::unit_monitor_rail(b.sections[i + 1], panels::PANEL_MARGIN);
+                let response = meters::band_output_level(
+                    ui,
+                    rail,
+                    c.band_levels[i],
+                    s.enabled,
+                    s.bands[i].enabled,
+                    name,
+                );
+                crate::control_capture::record(ui, &response);
+                b.band_meters[i] = rail;
+            }
             b.output_meter = meters::effect_output_level(
                 ui,
                 b.sections[8],

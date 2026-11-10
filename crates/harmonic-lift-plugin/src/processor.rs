@@ -52,6 +52,9 @@ impl Processor {
         self.drive.set_output_peak_meter(meter.output.clone());
         self.drive
             .set_gain_reduction_peak_meter(meter.reduction.clone());
+        for (band, handle) in self.settings.bands.iter().zip(&meter.branches) {
+            self.drive.set_band_level_meter(band.id, handle.clone());
+        }
     }
     pub fn state(&self) -> PluginState {
         self.state

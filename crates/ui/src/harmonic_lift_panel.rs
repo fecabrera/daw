@@ -14,8 +14,9 @@ pub(super) fn show<'a>(
     reduction: meters::GainReduction<'a>,
     sources: &[Source],
     live: impl Fn(Option<Id>) -> Option<daw_engine::ModulationSnapshot>,
-    level: meters::OutputLevel<'_>,
+    levels: (meters::OutputLevel<'_>, [meters::OutputLevel<'_>; 6]),
 ) -> (Bounds, egui::Response) {
+    let (level, band_levels) = levels;
     let bases = [
         s.input_db, s.drive, s.push, s.limit_db, s.level_db, s.dry_wet,
     ];
@@ -84,6 +85,7 @@ pub(super) fn show<'a>(
                         bands: &bands,
                         reduction,
                         level,
+                        band_levels,
                     },
                 );
                 if s.modulation_open {
