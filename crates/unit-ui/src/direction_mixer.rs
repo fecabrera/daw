@@ -32,7 +32,7 @@ pub fn show(
     };
     ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing = egui::Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-                let _strip = egui::Frame::new().inner_margin(PANEL_MARGIN).show(ui, |ui| {
+                let _strip = crate::layout::unit_strip_frame(ui).inner_margin(PANEL_MARGIN).show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(PANEL_MARGIN));
                         ui.set_min_height(body_height);

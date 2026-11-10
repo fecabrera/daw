@@ -1,7 +1,6 @@
 use crate::{
     icons,
     knobs::{self, Knob},
-    layout as panels,
     layout::UNIT_STRIP_WIDTH,
     meters, parameter_knobs, rows, theme,
 };
@@ -75,7 +74,7 @@ pub fn show(
 
         for (index, name) in ["Low", "Mid", "High"].into_iter().enumerate() {
             let strip = ui.push_id(index, |ui| {
-                egui::Frame::new().inner_margin(margin).show(ui, |ui| {
+                crate::layout::unit_strip_frame(ui).inner_margin(margin).show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
                         ui.set_min_height(body_height);
@@ -100,7 +99,7 @@ pub fn show(
                 bounds.meters[index] = rail;
                 meters::band_level_rail(ui, rail, name, levels[index], settings.bands[index].enabled);
             }
-            if index > 0 { panels::unit_divider(ui, strip.left(), strip.y_range().into()); }
+
         }
 
     });

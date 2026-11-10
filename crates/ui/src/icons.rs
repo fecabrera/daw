@@ -314,25 +314,6 @@ pub fn circular_button(
     draw_circular_button(ui, icon, name, selected, rect, response)
 }
 
-/// Full-strip interaction with the same centered circular control as standalone buttons.
-pub fn circular_strip_button(
-    ui: &mut Ui,
-    icon: Lucide,
-    name: &str,
-    size: Vec2,
-    diameter: f32,
-) -> Response {
-    let (strip, response) = ui.allocate_exact_size(size, egui::Sense::click());
-    if ui.is_enabled()
-        && (response.hovered() || response.is_pointer_button_down_on() || response.has_focus())
-    {
-        ui.painter()
-            .rect_filled(strip, 0.0, ui.style().visuals.widgets.hovered.weak_bg_fill);
-    }
-    let circle = egui::Rect::from_center_size(strip.center(), Vec2::splat(diameter));
-    draw_circular_button(ui, icon, name, None, circle, response)
-}
-
 /// Header dot toggle with the same painting as unit enable controls.
 pub fn dot_toggle(
     ui: &mut Ui,

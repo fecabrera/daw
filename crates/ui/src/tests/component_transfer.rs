@@ -56,12 +56,10 @@ fn source(app: &DawUi, owner: Id, c: InstrumentComponent) -> Pos2 {
         .find(|(id, kind, _)| *id == owner && *kind == c)
         .unwrap()
         .2;
-    if r.width() < 40.0 {
-        r.center()
-    } else if matches!(c, InstrumentComponent::Oscillator(_)) {
+    if matches!(c, InstrumentComponent::Oscillator(_)) {
         egui::pos2(r.left() + 2.0, r.center().y)
     } else {
-        egui::pos2(r.left() + 35.0, r.top() + 10.0)
+        unit_title_point(r)
     }
 }
 
@@ -382,7 +380,7 @@ fn component_reorder_scrolls_both_owner_viewports_without_editing_the_preview() 
 }
 
 #[test]
-fn component_click_selection_uses_effect_outlines_and_stays_out_of_project_data() {
+fn component_click_selection_keeps_no_outline_and_stays_out_of_project_data() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
             for main in [false, true] {
@@ -396,17 +394,33 @@ fn component_click_selection_uses_effect_outlines_and_stays_out_of_project_data(
                         &ctx,
                         vec![egui::Event::PointerMoved(p), event(p, true, false)],
                     );
-                    let shapes = frame_shapes(
-                        &mut app,
-                        &ctx,
-                        vec![event(p, false, false)],
-                        Vec2::new(1280.0, 800.0),
-                    );
+                    frame(&mut app, &ctx, vec![event(p, false, false)]);
                     assert_eq!(
                         app.instrument_ui.selected_components,
                         HashSet::from([(owner, moving)]),
                         "main {main} compact {compact} collapsed {collapsed}"
                     );
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    let header = app
+                        .instrument_ui
+                        .component_bounds
+                        .iter()
+                        .find(|(o, c, _)| *o == owner && *c == moving)
+                        .unwrap()
+                        .2;
+                    let title = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(t)
+                                if t.angle != 0.0
+                                    && header.contains(t.visual_bounding_rect().center()) =>
+                            {
+                                Some(t)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert_eq!(title.fallback_color, theme::palette(&ctx).text);
                     let rect = app
                         .instrument_ui
                         .component_slots
@@ -415,7 +429,7 @@ fn component_click_selection_uses_effect_outlines_and_stays_out_of_project_data(
                         .unwrap()
                         .2;
                     assert!(
-                        shapes
+                        !shapes
                             .iter()
                             .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
                         if r.rect == rect && r.stroke == theme::selection_outline(&ctx)))
@@ -1103,7 +1117,7 @@ fn component_group_shift_selection_toggles_replaces_and_stays_in_one_lane() {
                     .find(|(id, c, _)| *id == owner && *c == unit)
                     .unwrap()
                     .2;
-                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))));
+                assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))));
             }
             click_component(&mut app, &ctx, owner, first, true);
             assert_eq!(

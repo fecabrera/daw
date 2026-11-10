@@ -113,7 +113,7 @@ pub fn show(
                             rows::centered(ui, if compact { body_height } else { icons::COMPACT_BUTTON_SIZE }, |ui| rows::unit_label(ui, name));
                         })
                     }).inner.response.rect;
-                    if section > 0 { panels::unit_divider(ui, strip.left(), strip.y_range().into()); }
+
                     if section == 2 && !compact {
                         let rail = meters::effect_output_level(ui, strip, PANEL_MARGIN, level, s.enabled);
                          { b.meter = rail; }

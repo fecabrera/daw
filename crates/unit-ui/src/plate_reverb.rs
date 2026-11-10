@@ -266,9 +266,7 @@ pub fn show(
                 })
                 .response
                 .rect;
-            if section > 0 {
-                panels::unit_divider(ui, strip.left(), strip.y_range().into());
-            }
+
             if section == 5 && !compact {
                 b.meter =
                     meters::effect_output_level(ui, strip, panels::PANEL_MARGIN, level, s.enabled);

@@ -47,7 +47,7 @@ pub(super) fn unit(
     envelope.collapsed = collapsed;
     modulation_panel::toggle(
         ui,
-        &result.header,
+        &result,
         envelope.collapsed,
         &mut envelope.modulation_open,
     );
@@ -73,8 +73,7 @@ pub(super) fn unit(
 pub(super) fn body_height(compact: bool) -> f32 {
     if compact {
         crate::ROW_HEIGHT
-            - panels::HEADER_HEIGHT
-            - 2.0
+            - 2.0 * panels::UNIT_VERTICAL_MARGIN
             - 2.0 * f32::from(panels::PanelStyle::default().margin)
     } else {
         control_height()
@@ -116,145 +115,141 @@ pub(super) fn body(
     let mut bounds = [Rect::NOTHING; 4];
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-        let strip = egui::Frame::new().inner_margin(margin).show(ui, |ui| {
-            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
-                ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
-                ui.set_min_height(body_height(compact));
-                if !compact {
-                    knobs::row(ui, &mut settings.timing, knobs::CHOICE_SIZE, timing);
-                    crate::modulation_panel::selector_row(ui, "Mode", |ui| {
-                        let local_inputs = envelope
-                            .modulations
-                            .iter()
-                            .filter_map(|r| r.source)
-                            .any(|id| {
-                                controls.sources.iter().any(|s| {
-                                    s.id == id && s.scope == daw_unit_core::ModulationScope::PerNote
-                                })
-                            });
-                        note_mode(ui, mode, shared_only, local_inputs)
-                    });
-                    ui.allocate_exact_size(
-                        Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
-                        Sense::hover(),
+        daw_unit_ui::layout::unit_strip_frame(ui)
+            .inner_margin(margin)
+            .show(ui, |ui| {
+                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
+                    ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
+                    ui.set_min_height(body_height(compact));
+                    if !compact {
+                        knobs::row(ui, &mut settings.timing, knobs::CHOICE_SIZE, timing);
+                        crate::modulation_panel::selector_row(ui, "Mode", |ui| {
+                            let local_inputs = envelope
+                                .modulations
+                                .iter()
+                                .filter_map(|r| r.source)
+                                .any(|id| {
+                                    controls.sources.iter().any(|s| {
+                                        s.id == id
+                                            && s.scope == daw_unit_core::ModulationScope::PerNote
+                                    })
+                                });
+                            note_mode(ui, mode, shared_only, local_inputs)
+                        });
+                        ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
+                            Sense::hover(),
+                        );
+                    }
+                    rows::centered(
+                        ui,
+                        if compact {
+                            body_height(true)
+                        } else {
+                            icons::COMPACT_BUTTON_SIZE
+                        },
+                        |ui| rows::unit_label(ui, "Timing"),
                     );
-                }
-                rows::centered(
-                    ui,
-                    if compact {
-                        body_height(true)
-                    } else {
-                        icons::COMPACT_BUTTON_SIZE
-                    },
-                    |ui| rows::unit_label(ui, "Timing"),
-                );
+                });
             });
-        });
-        panels::unit_divider(
-            ui,
-            strip.response.rect.right(),
-            strip.response.rect.y_range().into(),
-        );
+
         let relative = settings.timing == EnvelopeTiming::Note;
         for (index, name) in ["Attack", "Decay", "Sustain", "Release"]
             .into_iter()
             .enumerate()
         {
             let strip = ui.push_id(("envelope-stage", index), |ui| {
-                egui::Frame::new().inner_margin(margin).show(ui, |ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
-                        ui.set_min_height(body_height(compact));
-                        if !compact {
-                            match index {
-                                0 => stage_controls(
-                                    ui,
-                                    &mut settings.attack,
-                                    defaults.attack,
-                                    relative.then_some(&mut settings.attack_note),
-                                    [
-                                        if relative {
-                                            Parameter::EnvelopeAttackNote
-                                        } else {
-                                            Parameter::EnvelopeAttack
-                                        },
-                                        Parameter::EnvelopeAttackCurve,
-                                    ],
-                                    &markers,
-                                    &mut envelope.modulation_open,
-                                ),
-                                1 => stage_controls(
-                                    ui,
-                                    &mut settings.decay,
-                                    defaults.decay,
-                                    relative.then_some(&mut settings.decay_note),
-                                    [
-                                        if relative {
-                                            Parameter::EnvelopeDecayNote
-                                        } else {
-                                            Parameter::EnvelopeDecay
-                                        },
-                                        Parameter::EnvelopeDecayCurve,
-                                    ],
-                                    &markers,
-                                    &mut envelope.modulation_open,
-                                ),
-                                3 => stage_controls(
-                                    ui,
-                                    &mut settings.release,
-                                    defaults.release,
-                                    None,
-                                    [Parameter::EnvelopeRelease, Parameter::EnvelopeReleaseCurve],
-                                    &markers,
-                                    &mut envelope.modulation_open,
-                                ),
-                                _ => {
-                                    parameter_knob(
+                daw_unit_ui::layout::unit_strip_frame(ui)
+                    .inner_margin(margin)
+                    .show(ui, |ui| {
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                            ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
+                            ui.set_min_height(body_height(compact));
+                            if !compact {
+                                match index {
+                                    0 => stage_controls(
                                         ui,
-                                        &mut settings.sustain,
-                                        Parameter::EnvelopeSustain,
+                                        &mut settings.attack,
+                                        defaults.attack,
+                                        relative.then_some(&mut settings.attack_note),
+                                        [
+                                            if relative {
+                                                Parameter::EnvelopeAttackNote
+                                            } else {
+                                                Parameter::EnvelopeAttack
+                                            },
+                                            Parameter::EnvelopeAttackCurve,
+                                        ],
                                         &markers,
                                         &mut envelope.modulation_open,
-                                    );
-                                    for _ in 0..2 {
-                                        ui.allocate_exact_size(
-                                            Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
-                                            Sense::hover(),
+                                    ),
+                                    1 => stage_controls(
+                                        ui,
+                                        &mut settings.decay,
+                                        defaults.decay,
+                                        relative.then_some(&mut settings.decay_note),
+                                        [
+                                            if relative {
+                                                Parameter::EnvelopeDecayNote
+                                            } else {
+                                                Parameter::EnvelopeDecay
+                                            },
+                                            Parameter::EnvelopeDecayCurve,
+                                        ],
+                                        &markers,
+                                        &mut envelope.modulation_open,
+                                    ),
+                                    3 => stage_controls(
+                                        ui,
+                                        &mut settings.release,
+                                        defaults.release,
+                                        None,
+                                        [
+                                            Parameter::EnvelopeRelease,
+                                            Parameter::EnvelopeReleaseCurve,
+                                        ],
+                                        &markers,
+                                        &mut envelope.modulation_open,
+                                    ),
+                                    _ => {
+                                        parameter_knob(
+                                            ui,
+                                            &mut settings.sustain,
+                                            Parameter::EnvelopeSustain,
+                                            &markers,
+                                            &mut envelope.modulation_open,
                                         );
+                                        for _ in 0..2 {
+                                            ui.allocate_exact_size(
+                                                Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
+                                                Sense::hover(),
+                                            );
+                                        }
                                     }
                                 }
                             }
-                        }
-                        let footer_height = if compact {
-                            body_height(true)
-                        } else {
-                            icons::COMPACT_BUTTON_SIZE
-                        };
-                        rows::centered(ui, footer_height, |ui| {
-                            ui.add_sized(
-                                Vec2::new(ui.available_width(), icons::COMPACT_BUTTON_SIZE),
-                                egui::Label::new(
-                                    egui::RichText::new(name).size(panels::HEADER_FONT_SIZE),
-                                )
-                                .halign(egui::Align::Center),
-                            );
-                        });
+                            let footer_height = if compact {
+                                body_height(true)
+                            } else {
+                                icons::COMPACT_BUTTON_SIZE
+                            };
+                            rows::centered(ui, footer_height, |ui| {
+                                ui.add_sized(
+                                    Vec2::new(ui.available_width(), icons::COMPACT_BUTTON_SIZE),
+                                    egui::Label::new(
+                                        egui::RichText::new(name).size(panels::HEADER_FONT_SIZE),
+                                    )
+                                    .halign(egui::Align::Center),
+                                );
+                            });
+                        })
+                        .inner
                     })
-                    .inner
-                })
             });
             bounds[index] = strip.response.rect;
-            if index > 0 {
-                panels::unit_divider(
-                    ui,
-                    strip.response.rect.left(),
-                    bounds[index - 1].top()..=strip.response.rect.bottom(),
-                );
-            }
         }
         if open {
-            panels::unit_divider(ui, ui.cursor().left(), bounds[0].y_range().into());
             modulation_panel::body(
                 ui,
                 &mut envelope.modulations,

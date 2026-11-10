@@ -268,21 +268,18 @@ pub(super) fn provider_sources(
         })
         .collect()
 }
-pub(super) fn toggle(
+pub(super) fn toggle<R>(
     ui: &mut Ui,
-    header: &egui::Response,
+    unit: &panels::UnitResponse<R>,
     collapsed: bool,
     open: &mut bool,
 ) -> Rect {
     if collapsed {
         return Rect::NOTHING;
     }
-    let rect = Rect::from_min_max(
-        egui::pos2(header.rect.right() - 26.0, header.rect.top() + 1.0),
-        egui::pos2(
-            header.rect.right() - 1.0,
-            header.rect.top() + panels::HEADER_HEIGHT - 1.0,
-        ),
+    let rect = Rect::from_min_size(
+        unit.modulation_header.min + Vec2::splat(1.0),
+        Vec2::splat(panels::HEADER_HEIGHT - 2.0),
     );
     let hit_size = Vec2::splat(panels::HEADER_HEIGHT - 2.0);
     let hit_rect = Rect::from_center_size(rect.center(), hit_size);
@@ -360,8 +357,14 @@ pub(super) fn targeted_body_with_sources<'a>(
     let reordering = crate::strip_reorder::active(ui, owner);
     let original = routes.clone();
     let mut slots = Vec::new();
+    const SEPARATOR_WIDTH: f32 = 2.0;
+    const SEPARATOR_MARGIN: f32 = 4.0;
+    // Adjacent card insets supply the ordinary strip gap; reserve only the extra width.
+    let separator_space =
+        SEPARATOR_WIDTH + 2.0 * SEPARATOR_MARGIN - daw_unit_ui::layout::UNIT_STRIP_GAP;
     let body = ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
+        ui.add_space(separator_space);
         for (index, route) in routes.iter_mut().enumerate() {
             let strip = ui.scope_builder(
                 egui::UiBuilder::new()
@@ -371,62 +374,72 @@ pub(super) fn targeted_body_with_sources<'a>(
                     ui.add_enabled_ui(!reordering, |ui| {
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
-                            egui::Frame::new().inner_margin(10).show(ui, |ui| {
-                                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                                    ui.spacing_mut().item_spacing.y =
-                                        f32::from(theme::TOOLBAR_PADDING);
-                                    ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
-                                    ui.set_min_height(crate::envelope_panel::body_height(compact));
-                                    if !compact {
-                                        let sources = sources_for_target(route.target);
-                                        selector_row(ui, "Source", |ui| {
-                                            source_picker_with_audio(
-                                                ui,
-                                                &mut route.source,
-                                                &mut route.sidechain,
-                                                sources,
-                                                scope,
-                                            )
-                                        });
-                                        selector_row(ui, "Destination", |ui| {
-                                            destination_picker(
-                                                ui,
-                                                route,
-                                                targets,
-                                                scope,
-                                                &sources_for_target,
-                                            )
-                                        });
-                                        let spec = crate::parameter_knobs::amount(route.parameter);
-                                        knobs::row(
-                                            ui,
-                                            &mut route.amount,
-                                            knobs::CHOICE_SIZE,
-                                            |ui, value| ui.add(Knob::new(value, spec)),
-                                        );
-                                    }
-                                    rows::centered(
-                                        ui,
-                                        if compact {
-                                            crate::envelope_panel::body_height(true)
-                                        } else {
-                                            icons::COMPACT_BUTTON_SIZE
-                                        },
+                            daw_unit_ui::layout::unit_strip_frame(ui)
+                                .inner_margin(10)
+                                .show(ui, |ui| {
+                                    ui.with_layout(
+                                        egui::Layout::top_down(egui::Align::Min),
                                         |ui| {
-                                            if rows::power_label(
-                                                ui,
-                                                &format!("Mod {}", index + 1),
-                                                "Toggle modulation connection",
-                                                route.enabled,
-                                            )
-                                            .clicked()
-                                            {
-                                                route.enabled = !route.enabled;
+                                            ui.spacing_mut().item_spacing.y =
+                                                f32::from(theme::TOOLBAR_PADDING);
+                                            ui.set_width(
+                                                crate::midi_editor::UNIT_STRIP_WIDTH - 20.0,
+                                            );
+                                            ui.set_min_height(crate::envelope_panel::body_height(
+                                                compact,
+                                            ));
+                                            if !compact {
+                                                let sources = sources_for_target(route.target);
+                                                selector_row(ui, "Source", |ui| {
+                                                    source_picker_with_audio(
+                                                        ui,
+                                                        &mut route.source,
+                                                        &mut route.sidechain,
+                                                        sources,
+                                                        scope,
+                                                    )
+                                                });
+                                                selector_row(ui, "Destination", |ui| {
+                                                    destination_picker(
+                                                        ui,
+                                                        route,
+                                                        targets,
+                                                        scope,
+                                                        &sources_for_target,
+                                                    )
+                                                });
+                                                let spec =
+                                                    crate::parameter_knobs::amount(route.parameter);
+                                                knobs::row(
+                                                    ui,
+                                                    &mut route.amount,
+                                                    knobs::CHOICE_SIZE,
+                                                    |ui, value| ui.add(Knob::new(value, spec)),
+                                                );
                                             }
+                                            rows::centered(
+                                                ui,
+                                                if compact {
+                                                    crate::envelope_panel::body_height(true)
+                                                } else {
+                                                    icons::COMPACT_BUTTON_SIZE
+                                                },
+                                                |ui| {
+                                                    if rows::power_label(
+                                                        ui,
+                                                        &format!("Mod {}", index + 1),
+                                                        "Toggle modulation connection",
+                                                        route.enabled,
+                                                    )
+                                                    .clicked()
+                                                    {
+                                                        route.enabled = !route.enabled;
+                                                    }
+                                                },
+                                            );
                                         },
                                     );
                                 });
-                            });
                             if let Some(settings) = &mut route.sidechain {
                                 crate::audio_sidechain::body(ui, route.id, settings, compact);
                             }
@@ -445,33 +458,33 @@ pub(super) fn targeted_body_with_sources<'a>(
                     ui.close();
                 }
             });
-            if index > 0 {
-                panels::unit_divider(
-                    ui,
-                    strip.response.rect.left(),
-                    strip.response.rect.y_range().into(),
-                );
-            }
         }
         let add_strip = ui
             .add_enabled_ui(!reordering, |ui| {
-                icons::circular_strip_button(
+                daw_unit_ui::layout::unit_add_button(
                     ui,
-                    icons::Lucide::Plus,
                     "Add modulation",
                     Vec2::new(
                         icons::COMPACT_BUTTON_SIZE + 20.0,
                         crate::envelope_panel::body_height(compact) + 20.0,
                     ),
-                    icons::COMPACT_BUTTON_SIZE,
                 )
             })
             .inner;
-        if !routes.is_empty() {
-            panels::unit_divider(ui, add_strip.rect.left(), add_strip.rect.y_range().into());
-        }
+
         add = add_strip.clicked();
     });
+    // The divider is decorative; it does not own an input response.
+    let modulation = body.response.rect;
+    let separator_right =
+        modulation.left() + separator_space + daw_unit_ui::layout::UNIT_STRIP_GAP * 0.5
+            - SEPARATOR_MARGIN;
+    let separator = Rect::from_min_max(
+        egui::pos2(separator_right - SEPARATOR_WIDTH, modulation.top()),
+        egui::pos2(separator_right, modulation.bottom()),
+    );
+    ui.painter()
+        .rect_filled(separator, 0.0, theme::unit_header_fill(ui.ctx(), false));
     crate::strip_reorder::finish(
         ui,
         owner,
@@ -992,6 +1005,136 @@ pub(super) fn marker(
 mod tests {
     use super::*;
     use daw_core::EnvelopeMode;
+    #[test]
+    fn open_modulation_has_one_full_height_header_colored_separator_with_four_point_margins() {
+        for light in [false, true] {
+            for compact in [false, true] {
+                for collapsed in [false, true] {
+                    for open in [false, true] {
+                        for populated in [false, true] {
+                            let ctx = egui::Context::default();
+                            crate::fonts::configure(&ctx);
+                            crate::theme::configure(&ctx);
+                            if light {
+                                ctx.set_theme(egui::Theme::Light);
+                            }
+                            let mut routes = if populated {
+                                vec![Modulation::new(ModulationParameter::Pitch)]
+                            } else {
+                                vec![]
+                            };
+                            let before = routes.clone();
+                            let (mut enabled, mut closed) = (true, collapsed);
+                            let mut boundary = None;
+                            let mut panel = Rect::NOTHING;
+                            let mut output = ctx.run_ui(
+                                egui::RawInput {
+                                    screen_rect: Some(Rect::from_min_size(
+                                        egui::Pos2::ZERO,
+                                        Vec2::new(900.0, 400.0),
+                                    )),
+                                    ..Default::default()
+                                },
+                                |ui| {
+                                    panel = panels::PanelStyle {
+                                        margin: 0,
+                                        ..Default::default()
+                                    }
+                                    .unit(
+                                        ui,
+                                        ("Modulated unit", compact),
+                                        panels::unit_height(compact),
+                                        &mut enabled,
+                                        &mut closed,
+                                        |ui| {
+                                            ui.horizontal_top(|ui| {
+                                                ui.spacing_mut().item_spacing.x = 0.0;
+                                                boundary = Some(
+                                                    panels::unit_strip(
+                                                        ui,
+                                                        crate::envelope_panel::body_height(compact),
+                                                        egui::UiBuilder::new(),
+                                                        |_| {},
+                                                    )
+                                                    .response
+                                                    .rect
+                                                    .right(),
+                                                );
+                                                if open {
+                                                    body(
+                                                        ui,
+                                                        &mut routes,
+                                                        &[],
+                                                        &[ModulationParameter::Pitch],
+                                                        ModulationScope::PerNote,
+                                                        compact,
+                                                    );
+                                                }
+                                            });
+                                        },
+                                    )
+                                    .response
+                                    .rect;
+                                },
+                            );
+                            output.textures_delta.clear();
+                            let separators: Vec<_> = output
+                                .shapes
+                                .iter()
+                                .filter_map(|shape| match &shape.shape {
+                                    egui::Shape::Rect(rect)
+                                        if rect.rect.width() == 2.0
+                                            && rect.rect.top() == panel.top()
+                                            && rect.rect.bottom() == panel.bottom()
+                                            && rect.fill
+                                                == theme::unit_header_fill(&ctx, false) =>
+                                    {
+                                        Some(rect)
+                                    }
+                                    _ => None,
+                                })
+                                .collect();
+                            assert_eq!(separators.len(), usize::from(open && !collapsed));
+                            if let Some(separator) = separators.first() {
+                                // Previous card ends two points before its slot boundary.
+                                assert_eq!(separator.rect.left() - (boundary.unwrap() - 2.0), 4.0);
+                                let first_modulation_card = output
+                                    .shapes
+                                    .iter()
+                                    .filter_map(|shape| match &shape.shape {
+                                        egui::Shape::Rect(rect)
+                                            if rect.fill == theme::palette(&ctx).panel
+                                                && rect.rect.left() > separator.rect.right()
+                                                && rect.rect.height() == panel.height() - 8.0 =>
+                                        {
+                                            Some(rect.rect)
+                                        }
+                                        _ => None,
+                                    })
+                                    .min_by(|a, b| a.left().total_cmp(&b.left()));
+                                if populated {
+                                    assert_eq!(
+                                        first_modulation_card.unwrap().left()
+                                            - separator.rect.right(),
+                                        4.0
+                                    );
+                                } else {
+                                    // The transparent Add slot retains the same standard card inset.
+                                    let add_card_left = panel.right()
+                                        - panels::HEADER_HEIGHT
+                                        - (icons::COMPACT_BUTTON_SIZE + 20.0);
+                                    assert_eq!(add_card_left - separator.rect.right(), 4.0);
+                                }
+                                assert_eq!(separator.corner_radius, egui::CornerRadius::ZERO);
+                                assert_eq!(separator.stroke.width, 0.0);
+                            }
+                            assert_eq!(routes, before, "painting must not edit modulation routes");
+                        }
+                    }
+                }
+            }
+        }
+    }
     fn source(mode: EnvelopeMode) -> Source {
         Source {
             audio: false,

@@ -2795,6 +2795,15 @@ impl DawUi {
             && (action != FileAction::CollectSources || self.collection_enabled())
     }
 
+    // A stationary header press blocks actions, but should not dim unrelated controls.
+    fn unit_header_press_style(&self, ui: &mut egui::Ui) {
+        if self.effects_drag.as_ref().is_some_and(|drag| !drag.active)
+            && self.edit_environment_available()
+        {
+            ui.visuals_mut().disabled_alpha = 1.0;
+        }
+    }
+
     fn editing_enabled(&self) -> bool {
         !self.beat_dragging()
             && !self.strip_dragging
@@ -4032,6 +4041,7 @@ impl DawUi {
     fn ruler(&mut self, ui: &mut egui::Ui, control_panel: &panels::ControlPanel) {
         rows::centered(ui, RULER_HEIGHT, |ui| {
             control_panel.header(ui, "Tracks", |ui| {
+                self.unit_header_press_style(ui);
                 if icons::button(
                     ui,
                     icons::Lucide::CopyPlus,
@@ -4141,7 +4151,7 @@ impl DawUi {
             if mixer {
                 self.center_mixer_header(ui, "Master");
             }
-            let tint = mixer.then(|| theme::palette(ui.ctx()).text);
+            let tint = mixer.then(|| theme::header_title_color(ui.ctx(), self.master_selected));
             let response = icons::header_icon_tinted(
                 ui,
                 icons::Lucide::BoomBox,
@@ -4158,8 +4168,12 @@ impl DawUi {
             });
             response.on_hover_text("Master output");
             ui.add(
-                egui::Label::new(egui::RichText::new("Master").size(font_size))
-                    .halign(egui::Align::Min),
+                egui::Label::new(
+                    egui::RichText::new("Master")
+                        .font(crate::fonts::semibold(font_size))
+                        .color(tint.unwrap_or_else(|| theme::palette(ui.ctx()).text)),
+                )
+                .halign(egui::Align::Min),
             );
         });
     }
@@ -4167,7 +4181,8 @@ impl DawUi {
         self.track_name_layout(ui, track, self.view_mode == ViewMode::Mixer);
     }
     fn track_name_layout(&mut self, ui: &mut egui::Ui, track: &daw_core::Track, mixer: bool) {
-        let tint = mixer.then(|| theme::clip_colors(track.color, None).text);
+        let tint =
+            mixer.then(|| theme::header_title_color(ui.ctx(), self.track_selected(track.id)));
         let icon_width = if mixer {
             icons::TOOLBAR_ICON_SIZE
         } else {
@@ -4296,7 +4311,11 @@ impl DawUi {
             return;
         }
         {
-            let mixer_colors = mixer.then(|| theme::clip_colors(track.color, None));
+            let mixer_colors = mixer.then(|| {
+                let mut colors = theme::clip_colors(track.color, None);
+                colors.text = theme::header_title_color(ui.ctx(), self.track_selected(track.id));
+                colors
+            });
             let (response, text_rect) = rows::name_button(
                 ui,
                 ("track_name_text", track.id),
@@ -5934,6 +5953,44 @@ impl DawUi {
 
 #[cfg(test)]
 mod tests {
+    /// Use the visible title, below the power hit area, in short compact shells.
+    fn unit_title_point(header: Rect) -> Pos2 {
+        Pos2::new(
+            header.center().x,
+            header
+                .center()
+                .y
+                .max(header.top() + 33.0)
+                .min(header.bottom() - 5.0),
+        )
+    }
+    fn unit_slot_point(slot: Rect) -> Pos2 {
+        Pos2::new(
+            slot.left() + 12.0,
+            slot.center()
+                .y
+                .max(slot.top() + 45.0)
+                .min(slot.bottom() - 17.0),
+        )
+    }
+    fn unit_panel(ctx: &egui::Context, header: Rect) -> Rect {
+        unit_geometry(ctx, header).1
+    }
+    fn unit_modulation_point(ctx: &egui::Context, header: Rect) -> Pos2 {
+        let right = unit_geometry(ctx, header).2;
+        Pos2::new(right.center().x, right.top() + panels::HEADER_HEIGHT * 0.5)
+    }
+    fn unit_geometry(ctx: &egui::Context, header: Rect) -> (Rect, Rect, Rect) {
+        ctx.data(|d| {
+            d.get_temp::<(u64, Vec<(Rect, Rect, Rect)>)>(egui::Id::new("unit-test-geometry"))
+        })
+        .unwrap()
+        .1
+        .into_iter()
+        .rev()
+        .find(|(h, _, _)| *h == header)
+        .unwrap_or_else(|| panic!("Missing unit geometry for {header:?}"))
+    }
     mod audio_editor;
     mod background_audio;
     mod beat;
@@ -9226,7 +9283,10 @@ mod tests {
         }
     }
     fn frame(app: &mut DawUi, ctx: &egui::Context, events: Vec<egui::Event>) {
-        frame_sized(app, ctx, events, Vec2::new(1280.0, 800.0));
+        let size = ctx
+            .data(|d| d.get_temp::<Vec2>(egui::Id::new("test-frame-size")))
+            .unwrap_or(Vec2::new(1280.0, 800.0));
+        frame_sized(app, ctx, events, size);
     }
     fn frame_sized(app: &mut DawUi, ctx: &egui::Context, events: Vec<egui::Event>, size: Vec2) {
         frame_shapes(app, ctx, events, size);

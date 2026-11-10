@@ -54,80 +54,88 @@ pub fn show(
             for (index, name) in ["Drive", "Color"].into_iter().enumerate() {
                 let strip = ui
                     .push_id(index, |ui| {
-                        egui::Frame::new().inner_margin(MARGIN).show(ui, |ui| {
-                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                                ui.set_width(STRIP_WIDTH - 2.0 * MARGIN as f32);
-                                ui.set_min_height(if compact {
-                                    compact_height
-                                } else {
-                                    BODY_HEIGHT
-                                });
-                                if !compact {
-                                    for row in 0..3 {
-                                        let slot = index * 3 + row;
-                                        let enabled = index == 0
-                                            || row == 0
-                                            || settings.color_shape != DriveColorShape::Off;
-                                        let response = ui
-                                            .add_enabled_ui(enabled, |ui| {
-                                                if slot == 3 {
-                                                    knobs::row(
-                                                        ui,
-                                                        &mut settings.color_shape,
-                                                        knobs::CHOICE_SIZE,
-                                                        |ui, value| {
-                                                            let mut position = value.index() as f32;
-                                                            let response = ui.add(Knob::new(
-                                                                &mut position,
-                                                                KnobSpec::new(
-                                                                    "Color shape",
-                                                                    0.0..=3.0,
-                                                                    0.0,
-                                                                    1.0,
-                                                                )
-                                                                .stepped(1.0)
-                                                                .cyclic()
-                                                                .diagrams(shape_diagram)
-                                                                .format(|v| shape(v).name().into()),
-                                                            ));
-                                                            if response.changed() {
-                                                                *value = shape(position);
-                                                            }
-                                                            response
-                                                        },
-                                                    )
-                                                } else {
-                                                    let (value, parameter, marker) = match slot {
-                                                        0 => (
-                                                            &mut settings.volume_db,
-                                                            Parameter::Volume,
-                                                            0,
-                                                        ),
-                                                        1 => (
-                                                            &mut settings.gain,
-                                                            Parameter::DriveGain,
-                                                            1,
-                                                        ),
-                                                        2 => {
-                                                            (&mut settings.tone, Parameter::Tone, 2)
-                                                        }
-                                                        4 => (
-                                                            &mut settings.color_strength,
-                                                            Parameter::ColorStrength,
-                                                            3,
-                                                        ),
-                                                        _ => (
-                                                            &mut settings.color_frequency_hz,
-                                                            Parameter::ColorFrequency,
-                                                            4,
-                                                        ),
-                                                    };
-                                                    knobs::row(
-                                                        ui,
-                                                        value,
-                                                        knobs::CHOICE_SIZE,
-                                                        |ui, value| {
-                                                            ui.add(
+                        crate::layout::unit_strip_frame(ui)
+                            .inner_margin(MARGIN)
+                            .show(ui, |ui| {
+                                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                    ui.set_width(STRIP_WIDTH - 2.0 * MARGIN as f32);
+                                    ui.set_min_height(if compact {
+                                        compact_height
+                                    } else {
+                                        BODY_HEIGHT
+                                    });
+                                    if !compact {
+                                        for row in 0..3 {
+                                            let slot = index * 3 + row;
+                                            let enabled = index == 0
+                                                || row == 0
+                                                || settings.color_shape != DriveColorShape::Off;
+                                            let response = ui
+                                                .add_enabled_ui(enabled, |ui| {
+                                                    if slot == 3 {
+                                                        knobs::row(
+                                                            ui,
+                                                            &mut settings.color_shape,
+                                                            knobs::CHOICE_SIZE,
+                                                            |ui, value| {
+                                                                let mut position =
+                                                                    value.index() as f32;
+                                                                let response = ui.add(Knob::new(
+                                                                    &mut position,
+                                                                    KnobSpec::new(
+                                                                        "Color shape",
+                                                                        0.0..=3.0,
+                                                                        0.0,
+                                                                        1.0,
+                                                                    )
+                                                                    .stepped(1.0)
+                                                                    .cyclic()
+                                                                    .diagrams(shape_diagram)
+                                                                    .format(|v| {
+                                                                        shape(v).name().into()
+                                                                    }),
+                                                                ));
+                                                                if response.changed() {
+                                                                    *value = shape(position);
+                                                                }
+                                                                response
+                                                            },
+                                                        )
+                                                    } else {
+                                                        let (value, parameter, marker) = match slot
+                                                        {
+                                                            0 => (
+                                                                &mut settings.volume_db,
+                                                                Parameter::Volume,
+                                                                0,
+                                                            ),
+                                                            1 => (
+                                                                &mut settings.gain,
+                                                                Parameter::DriveGain,
+                                                                1,
+                                                            ),
+                                                            2 => (
+                                                                &mut settings.tone,
+                                                                Parameter::Tone,
+                                                                2,
+                                                            ),
+                                                            4 => (
+                                                                &mut settings.color_strength,
+                                                                Parameter::ColorStrength,
+                                                                3,
+                                                            ),
+                                                            _ => (
+                                                                &mut settings.color_frequency_hz,
+                                                                Parameter::ColorFrequency,
+                                                                4,
+                                                            ),
+                                                        };
+                                                        knobs::row(
+                                                            ui,
+                                                            value,
+                                                            knobs::CHOICE_SIZE,
+                                                            |ui, value| {
+                                                                ui.add(
                                                                 Knob::new(
                                                                     value,
                                                                     parameter_knobs::destination(
@@ -139,28 +147,28 @@ pub fn show(
                                                                     &mut settings.modulation_open,
                                                                 ),
                                                             )
-                                                        },
-                                                    )
-                                                }
-                                            })
-                                            .inner;
-                                        bounds.knobs[index][row] = response.rect;
-                                        bounds.controls[slot] = Some(response);
+                                                            },
+                                                        )
+                                                    }
+                                                })
+                                                .inner;
+                                            bounds.knobs[index][row] = response.rect;
+                                            bounds.controls[slot] = Some(response);
+                                        }
                                     }
-                                }
-                                rows::centered(
-                                    ui,
-                                    if compact {
-                                        compact_height
-                                    } else {
-                                        crate::layout::COMPACT_BUTTON_SIZE
-                                    },
-                                    |ui| {
-                                        bounds.labels[index] = rows::unit_label(ui, name).rect;
-                                    },
-                                );
-                            });
-                        })
+                                    rows::centered(
+                                        ui,
+                                        if compact {
+                                            compact_height
+                                        } else {
+                                            crate::layout::COMPACT_BUTTON_SIZE
+                                        },
+                                        |ui| {
+                                            bounds.labels[index] = rows::unit_label(ui, name).rect;
+                                        },
+                                    );
+                                });
+                            })
                     })
                     .inner
                     .response
@@ -174,23 +182,12 @@ pub fn show(
                         settings.enabled,
                     );
                 }
-                if index > 0 {
-                    divider(ui, strip.left(), strip.y_range());
-                }
             }
         })
         .response;
     bounds.rect = response.rect;
     bounds
 }
-pub fn divider(ui: &Ui, x: f32, range: egui::Rangef) {
-    ui.painter().vline(
-        x,
-        range,
-        egui::Stroke::new(1.0, theme::unit_separator(ui.ctx())),
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

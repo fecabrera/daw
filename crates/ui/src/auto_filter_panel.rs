@@ -42,8 +42,7 @@ fn show_panel(
     let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(ui, (if internal_lfo { "Auto-filter" } else { "Filter" }, compact), height, &mut enabled, &mut collapsed, |ui| {
         ui.horizontal_top(|ui| { ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING)); bounds = daw_unit_ui::auto_filter::show(ui, settings, (compact, crate::envelope_panel::body_height(compact)), &markers, internal_lfo, level);
 if modulation_open {
-                let rect = bounds.sections[2];
-                panels::unit_divider(ui, rect.right(), rect.y_range().into());
+
                 crate::modulation_panel::body(ui, &mut settings.modulations, sources, if internal_lfo { &Parameter::AUTO_FILTER } else { &Parameter::FILTER }, <daw_unit_core::AutoFilterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
             }
 })
@@ -52,7 +51,7 @@ if modulation_open {
     settings.collapsed = collapsed;
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
-    crate::modulation_panel::toggle(ui,&result.header,settings.collapsed,&mut settings.modulation_open);
+    crate::modulation_panel::toggle(ui,&result,settings.collapsed,&mut settings.modulation_open);
     (bounds, result.header)
     }).inner
 }

@@ -171,6 +171,11 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                 if selected {
                     app.select_track(track, false);
                 }
+                let title_color = if selected {
+                    theme::palette(&ctx).text
+                } else {
+                    theme::palette(&ctx).secondary
+                };
                 let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                 let strip = app.mixer_bounds[&track];
                 let name = shapes
@@ -183,7 +188,7 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                 let point = name.pos + name.galley.rect.center().to_vec2();
                 let uri = icons::Lucide::AudioLines
                     .size(16.0)
-                    .color(colors.text)
+                    .color(title_color)
                     .uri();
                 let egui::load::TexturePoll::Ready { texture } = ctx
                     .try_load_texture(
@@ -218,7 +223,7 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                         .job
                         .sections
                         .iter()
-                        .all(|section| section.format.color == colors.text
+                        .all(|section| section.format.color == title_color
                             && section.format.font_id.size == 11.0)
                 );
                 assert!(shapes.iter().any(|shape| matches!(&shape.shape,
@@ -259,12 +264,8 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                         *stroke == theme::selection_outline(&ctx),
                     _ => false,
                 }));
-                let background = if selected {
-                    theme::selected_track_header_background(&ctx)
-                } else {
-                    theme::palette(&ctx).panel
-                };
-                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == strip && rect.fill == background)));
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == strip && rect.fill == theme::palette(&ctx).panel)));
+                assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == strip && rect.fill == theme::selected_track_header_background(&ctx))));
                 assert!(!app.dirty);
             }
         }
@@ -2004,16 +2005,34 @@ fn mixer_output_destinations_follow_groups_in_both_views_without_master_rows() {
                 frame(&mut app, &ctx, vec![]);
                 let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                 let strip = app.mixer_bounds[&id];
-                assert_destination_row(&shapes, &ctx, strip, Some(destination));
-                if app.master_bounds.is_positive() {
-                    assert_destination_row(&shapes, &ctx, app.master_bounds, None);
+                assert_destination_row(
+                    &shapes,
+                    &ctx,
+                    strip,
+                    Some(destination),
+                    app.track_selected(id),
+                );
+                if app.master_bounds.is_positive()
+                    && (view == ViewMode::Mixer
+                        || app
+                            .effects_bounds
+                            .track_mixer
+                            .contains(app.master_bounds.min))
+                {
+                    assert_destination_row(
+                        &shapes,
+                        &ctx,
+                        app.master_bounds,
+                        None,
+                        app.master_selected,
+                    );
                 }
                 assert_eq!(app.session.project, before);
                 assert!(!app.dirty);
             }
             app.select_master();
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            assert_destination_row(&shapes, &ctx, app.master_bounds, None);
+            assert_destination_row(&shapes, &ctx, app.master_bounds, None, app.master_selected);
         }
         app.set_view_mode(ViewMode::Mixer, &ctx);
         let long_name = "A group destination name that exceeds the strip width";
@@ -2026,7 +2045,13 @@ fn mixer_output_destinations_follow_groups_in_both_views_without_master_rows() {
             .name = long_name.into();
         frame(&mut app, &ctx, vec![]);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        assert_destination_row(&shapes, &ctx, app.mixer_bounds[&track], Some(long_name));
+        assert_destination_row(
+            &shapes,
+            &ctx,
+            app.mixer_bounds[&track],
+            Some(long_name),
+            app.track_selected(track),
+        );
         app.session
             .project
             .edit(Edit::MoveTrack {
@@ -2037,7 +2062,13 @@ fn mixer_output_destinations_follow_groups_in_both_views_without_master_rows() {
             .unwrap();
         let before = app.session.project.clone();
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        assert_destination_row(&shapes, &ctx, app.mixer_bounds[&track], Some(&outer_name));
+        assert_destination_row(
+            &shapes,
+            &ctx,
+            app.mixer_bounds[&track],
+            Some(&outer_name),
+            app.track_selected(track),
+        );
         assert_eq!(app.session.project, before);
         assert!(!app.dirty);
     }
@@ -2048,7 +2079,33 @@ fn assert_destination_row(
     ctx: &egui::Context,
     strip: Rect,
     destination: Option<&str>,
+    selected: bool,
 ) {
+    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::Rect(rect) if rect.rect == strip && rect.fill == theme::palette(ctx).panel)));
+    let header = Rect::from_min_size(strip.min, Vec2::new(strip.width(), panels::HEADER_HEIGHT));
+    let title = shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if header.contains(text.visual_bounding_rect().center()) => {
+                Some(text)
+            }
+            _ => None,
+        })
+        .expect("mixer strip title");
+    let foreground = if selected {
+        theme::palette(ctx).text
+    } else {
+        theme::palette(ctx).secondary
+    };
+    assert!(
+        title
+            .galley
+            .job
+            .sections
+            .iter()
+            .all(|section| section.format.color == foreground)
+    );
     let borders: Vec<_> = shapes
         .iter()
         .filter_map(|shape| match &shape.shape {
@@ -2068,6 +2125,16 @@ fn assert_destination_row(
         .collect();
     let Some(destination) = destination else {
         assert!(borders.is_empty());
+        let header =
+            Rect::from_min_size(strip.min, Vec2::new(strip.width(), panels::HEADER_HEIGHT));
+        assert!(
+            shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Rect(rect) if rect.rect == header
+                    && rect.fill == theme::unit_header_fill(ctx, false)
+                    && rect.stroke.is_empty()
+            )),
+            "Master strip header must use the neutral unit-header fill"
+        );
         return;
     };
     assert_eq!(borders.len(), 1, "one full-width bordered output indicator");

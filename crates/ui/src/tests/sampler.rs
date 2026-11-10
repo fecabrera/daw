@@ -728,7 +728,7 @@ fn sampler_dropdowns_replace_mode_knobs_and_preserve_standard_strip_geometry() {
             assert!((b.gain.center().x - strip.center().x).abs() <= 1.0);
             assert!(b.gain.bottom() < footer.top());
             assert!(!strip.intersects(b.trigger));
-            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { points, stroke }
+            assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { points, stroke }
                 if (points[0].x - strip.left()).abs() < 0.01 && (points[1].x - strip.left()).abs() < 0.01
                     && (points[0].y - strip.top()).abs() < 0.01 && (points[1].y - strip.bottom()).abs() < 0.01
                     && stroke.width == 1.0 && stroke.color == theme::unit_separator(&ctx))));
@@ -1108,12 +1108,14 @@ fn sampler_gain_modulation_reuses_header_strips_source_picker_marker_and_saved_v
         frame(&mut app, &ctx, vec![]);
         assert!(state(&app).modulation_open && app.dirty);
         assert!((app.instrument_ui.samplers[0].panel.height() - panel.height()).abs() < 0.01);
-        click(
-            &mut app,
-            &ctx,
-            Pos2::new(panel.right() + 18.0, panel.center().y + 12.0),
-            false,
+        let add = Pos2::new(
+            app.instrument_ui.samplers[0].panel.right()
+                - panels::HEADER_HEIGHT
+                - 2.0
+                - (icons::COMPACT_BUTTON_SIZE + 20.0) * 0.5,
+            panel.center().y,
         );
+        click(&mut app, &ctx, add, false);
         assert_eq!(state(&app).modulations.len(), 1);
         let route = state(&app).modulations[0];
         assert_eq!(route.parameter, daw_core::ModulationParameter::SamplerGain);

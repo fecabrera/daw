@@ -131,12 +131,15 @@ fn macro_panel_uses_one_knob_per_strip_plus_power_add_and_shared_route_controls(
             (unit.unwrap(), output.shapes)
         };
         let (unit, shapes) = draw(&mut module, false, vec![]);
-        assert_eq!(unit.response.rect.height(), panels::unit_height(false));
+        assert_eq!(
+            unit.response.rect.height(),
+            panels::unit_height(false) - 2.0 * panels::UNIT_VERTICAL_MARGIN
+        );
         let knob_count = shapes.iter().filter(|s| matches!(&s.shape, egui::Shape::Circle(c) if (c.radius - 9.0).abs() < 0.01 && c.center.y < unit.header.rect.bottom() + 60.0)).count();
         assert_eq!(knob_count, 2);
         let first_knob = Pos2::new(
-            unit.response.rect.left() + 1.0 + midi_editor::UNIT_STRIP_WIDTH * 0.5,
-            unit.header.rect.bottom() + 10.0 + knobs::CHOICE_SIZE * 0.5,
+            unit.header.rect.right() + 1.0 + midi_editor::UNIT_STRIP_WIDTH * 0.5,
+            unit.header.rect.top() + 1.0 + 10.0 + knobs::CHOICE_SIZE * 0.5,
         );
         draw(
             &mut module,
@@ -161,7 +164,7 @@ fn macro_panel_uses_one_knob_per_strip_plus_power_add_and_shared_route_controls(
         assert!((module.controls[0].settings.value - 0.01).abs() < 1e-6);
         assert_eq!(module.controls[1].settings.value, 0.0);
         let plus = Pos2::new(
-            unit.response.rect.right() - 1.0 - (icons::COMPACT_BUTTON_SIZE + 20.0) * 0.5,
+            unit.modulation_header.left() - 2.0 - (icons::COMPACT_BUTTON_SIZE + 20.0) * 0.5,
             unit.response.rect.center().y + panels::HEADER_HEIGHT * 0.5,
         );
         draw(
@@ -181,7 +184,10 @@ fn macro_panel_uses_one_knob_per_strip_plus_power_add_and_shared_route_controls(
         assert!(text_rect(&shapes, "Destination").is_positive());
         assert!(text_rect(&shapes, "Macro 1").is_positive());
         let (compact, shapes) = draw(&mut module, true, vec![]);
-        assert_eq!(compact.response.rect.height(), panels::unit_height(true));
+        assert_eq!(
+            compact.response.rect.height(),
+            panels::unit_height(true) - 2.0 * panels::UNIT_VERTICAL_MARGIN
+        );
         assert!(text_rect(&shapes, "Macro 3").is_positive());
         module.collapsed = true;
         let (collapsed, _) = draw(&mut module, false, vec![]);
@@ -193,7 +199,8 @@ fn macro_panel_uses_one_knob_per_strip_plus_power_add_and_shared_route_controls(
         }
         let (empty, _) = draw(&mut module, false, vec![]);
         assert!(empty.response.rect.width() >= midi_editor::UNIT_STRIP_WIDTH);
-        assert!(empty.power.rect.right() < empty.header.rect.right() - 26.0);
+        assert!(empty.header.rect.contains_rect(empty.power.rect));
+        assert!(empty.modulation_header.left() >= empty.header.rect.right());
     }
 }
 #[test]

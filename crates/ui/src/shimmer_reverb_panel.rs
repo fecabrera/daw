@@ -65,8 +65,7 @@ fn show_inner(
                     tempo,
                 );
                 if open {
-                    let last = b.sections[daw_unit_ui::shimmer_reverb::STRIP_COUNT - 1];
-                    panels::unit_divider(ui, last.right(), last.y_range().into());
+
                     crate::modulation_panel::body(
                         ui,
                         &mut s.modulations,
@@ -81,7 +80,7 @@ fn show_inner(
     );
     s.enabled = enabled;
     s.collapsed = collapsed;
-    crate::modulation_panel::toggle(ui, &result.header, collapsed, &mut s.modulation_open);
+    crate::modulation_panel::toggle(ui, &result, collapsed, &mut s.modulation_open);
     b.power = result.power.rect;
     (b, result.header)
 }

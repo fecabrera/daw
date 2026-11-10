@@ -85,7 +85,7 @@ fn show_inner(
     settings.collapsed = collapsed;
     crate::modulation_panel::toggle(
         ui,
-        &result.header,
+        &result,
         settings.collapsed,
         &mut settings.modulation_open,
     );
@@ -118,9 +118,7 @@ fn body(
         bounds.bands = shared.bands;
         bounds.meters = shared.meters;
         bounds.sections = shared.sections;
-        let last_strip = bounds.sections[2];
         if open {
-            panels::unit_divider(ui, last_strip.right(), last_strip.y_range().into());
             crate::modulation_panel::body(
                 ui,
                 &mut settings.modulations,
@@ -206,7 +204,8 @@ mod tests {
                                         UNIT_STRIP_WIDTH
                                             - 2.0 * f32::from(panels::PanelStyle::default().margin)
                                     );
-                                    assert!(rail.top() >= bounds.header.bottom());
+                                    assert!(rail.left() >= bounds.header.right());
+                                    assert!(rail.top() >= bounds.header.top());
                                     assert!(rail.bottom() < bounds.knobs[index][0].top());
                                     assert!(
                                         (rail.center().x - bounds.knobs[index][0].center().x).abs()

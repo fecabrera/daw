@@ -442,7 +442,7 @@ pub fn show(
                 drag = None;
             }
         }
-        ui.add_space(f32::from(theme::TOOLBAR_PADDING));
+        // The normal item gap already separates the graph from its footer.
         rows::centered(ui, layout::COMPACT_BUTTON_SIZE, |ui| {
             rows::unit_label(ui, "Response")
         });

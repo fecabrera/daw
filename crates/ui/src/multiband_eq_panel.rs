@@ -137,7 +137,7 @@ pub(super) fn show_audition<'a>(
     settings.collapsed = collapsed;
     modulation_panel::toggle(
         ui,
-        &result.header,
+        &result,
         settings.collapsed,
         &mut settings.modulation_open,
     );
@@ -257,9 +257,7 @@ fn body<'a>(
         bounds.knobs = shared.knobs;
         bounds.output = shared.output;
         bounds.graph = shared.graph;
-        let output = bounds.output;
         if settings.modulation_open {
-            panels::unit_divider(ui, output.right(), output.y_range().into());
             let mut targets: Vec<_> = settings
                 .bands
                 .iter()
@@ -343,6 +341,25 @@ mod tests {
         );
         output.textures_delta.clear();
         result.unwrap()
+    }
+    #[test]
+    fn graph_band_and_output_strips_have_the_same_standard_height() {
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            let ctx = egui::Context::default();
+            crate::theme::configure(&ctx);
+            crate::fonts::configure(&ctx);
+            ctx.set_theme(theme);
+            let mut settings = MultibandEqSettings::default();
+            let bounds = frame(&ctx, &mut settings, vec![], false);
+            for strip in bounds.bands.iter().chain(std::iter::once(&bounds.output)) {
+                assert_eq!(bounds.graph.section.top(), strip.top());
+                assert_eq!(bounds.graph.section.bottom(), strip.bottom());
+            }
+            assert_eq!(
+                bounds.header.height(),
+                panels::unit_height(false) - 2.0 * panels::UNIT_VERTICAL_MARGIN
+            );
+        }
     }
     fn click(ctx: &egui::Context, s: &mut MultibandEqSettings, point: egui::Pos2) {
         for pressed in [true, false] {

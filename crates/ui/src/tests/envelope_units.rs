@@ -89,7 +89,7 @@ fn legacy_envelope_panels_keep_independent_settings_power_and_collapse() {
             bounds.filter_envelope_panel.size()
         );
         assert_eq!(
-            bounds.envelope_panel.right() - 1.0,
+            bounds.envelope_panel.right() + panels::UNIT_GAP,
             bounds.filter_envelope_panel.left()
         );
         assert_eq!(bounds.amplitude_panel, Rect::NOTHING);
@@ -153,12 +153,16 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         app.dirty = false;
         let bounds = &app.midi_editor.layer_bounds[&layer];
         let header = bounds.amplitude_header;
+        let closed_panel = unit_panel(&ctx, header);
         let height = bounds.amplitude_panel.height();
-        assert_eq!(header.width(), midi_editor::UNIT_STRIP_WIDTH);
-        assert_eq!(height, panels::unit_height(false));
+        assert_eq!(header.width(), panels::UNIT_LEFT_HEADER_WIDTH);
+        assert_eq!(
+            height,
+            panels::unit_height(false) - 2.0 * panels::UNIT_VERTICAL_MARGIN
+        );
         let point = Pos2::new(
-            header.right() - 13.0,
-            header.top() + panels::HEADER_HEIGHT * 0.5,
+            unit_modulation_point(&ctx, header).x,
+            unit_modulation_point(&ctx, header).y,
         );
         click(&mut app, &ctx, point, false);
         assert!(app.dirty);
@@ -172,11 +176,14 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
                 .collapsed
         );
         let expanded = app.midi_editor.layer_bounds[&layer].amplitude_header;
-        assert!(expanded.width() > header.width());
+        assert!(unit_panel(&ctx, expanded).width() > closed_panel.width());
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         label(&shapes, "Level");
         label(&shapes, "0.0 dB");
-        let add = Pos2::new(header.right() + 18.0, header.bottom() + 109.0);
+        let add = Pos2::new(
+            closed_panel.right() - panels::HEADER_HEIGHT + 18.0,
+            closed_panel.top() + 109.0,
+        );
         click(&mut app, &ctx, add, false);
         assert_eq!(
             app.session.project.tracks[0]
@@ -247,7 +254,10 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         click(
             &mut app,
             &ctx,
-            Pos2::new(expanded.right() - 20.0, add.y),
+            Pos2::new(
+                unit_panel(&ctx, expanded).right() - panels::HEADER_HEIGHT - 20.0,
+                add.y,
+            ),
             false,
         );
         assert_eq!(
@@ -302,7 +312,14 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let footer = label(&shapes, "Mod 1");
         let level = label(&shapes, "Level");
-        assert!((level.x - header.left() - midi_editor::UNIT_STRIP_WIDTH * 0.5).abs() < 1.0);
+        assert!(
+            (level.x
+                - header.right()
+                - daw_unit_ui::layout::UNIT_STRIP_GAP * 0.5
+                - midi_editor::UNIT_STRIP_WIDTH * 0.5)
+                .abs()
+                < 1.0
+        );
         assert!(
             (footer.y - level.y).abs() < 0.1,
             "Modulation and regular footers must align: mod {footer:?}, level {level:?}"
@@ -314,12 +331,19 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
             app.midi_editor.layer_bounds[&layer]
                 .amplitude_panel
                 .height(),
-            panels::unit_height(true)
+            panels::unit_height(true) - 2.0 * panels::UNIT_VERTICAL_MARGIN
         );
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         label(&shapes, "Mod 1");
         let level = label(&shapes, "Level");
-        assert!((level.x - header.left() - midi_editor::UNIT_STRIP_WIDTH * 0.5).abs() < 1.0);
+        assert!(
+            (level.x
+                - header.right()
+                - daw_unit_ui::layout::UNIT_STRIP_GAP * 0.5
+                - midi_editor::UNIT_STRIP_WIDTH * 0.5)
+                .abs()
+                < 1.0
+        );
         app.session.project.tracks[0]
             .instrument
             .as_mut()
@@ -332,18 +356,11 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         restored.validate().unwrap();
         app.dirty = false;
         let expanded = app.midi_editor.layer_bounds[&layer].amplitude_header;
-        click(
-            &mut app,
-            &ctx,
-            Pos2::new(expanded.right() - 13.0, point.y),
-            false,
-        );
+        click(&mut app, &ctx, unit_modulation_point(&ctx, expanded), false);
         assert!(app.dirty);
         assert_eq!(
-            app.midi_editor.layer_bounds[&layer]
-                .amplitude_header
-                .width(),
-            header.width()
+            app.midi_editor.layer_bounds[&layer].amplitude_panel.width(),
+            closed_panel.width()
         );
         assert_eq!(
             app.midi_editor.layer_bounds[&layer]
@@ -370,20 +387,24 @@ fn auto_filter_expansion_keeps_regular_controls_and_lists_only_shared_envelopes(
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     let header = app.effects_bounds.auto_filter_units[0].header;
+    let closed_panel = unit_panel(&ctx, header);
     let point = Pos2::new(
-        header.right() - 13.0,
-        header.top() + panels::HEADER_HEIGHT * 0.5,
+        unit_modulation_point(&ctx, header).x,
+        unit_modulation_point(&ctx, header).y,
     );
     click(&mut app, &ctx, point, false);
     assert!(app.dirty);
     assert!(app.effects_drag.is_none());
     let expanded = app.effects_bounds.auto_filter_units[0].header;
-    assert!(expanded.width() > header.width());
+    assert!(unit_panel(&ctx, expanded).width() > closed_panel.width());
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     for text in ["Cutoff", "LFO", "Out"] {
         label(&shapes, text);
     }
-    let point = Pos2::new(header.right() + 18.0, header.bottom() + 109.0);
+    let point = Pos2::new(
+        closed_panel.right() - panels::HEADER_HEIGHT + 18.0,
+        closed_panel.top() + 109.0,
+    );
     click(&mut app, &ctx, point, false);
     let daw_core::EffectSettings::AutoFilter(f) = &app.session.project.tracks[0].effects[0].unit
     else {
@@ -426,10 +447,8 @@ fn modulation_visibility_is_saved_per_unit_and_follows_replacement_project_value
         ];
         frame(&mut app, &ctx, vec![]);
         let closed = app.session.project.clone();
-        let amplitude_width = app.midi_editor.layer_bounds[&layer]
-            .amplitude_header
-            .width();
-        let filter_width = app.effects_bounds.auto_filter_units[0].header.width();
+        let amplitude_width = app.midi_editor.layer_bounds[&layer].amplitude_panel.width();
+        let filter_width = unit_panel(&ctx, app.effects_bounds.auto_filter_units[0].header).width();
         for amplitude in [true, false] {
             app.dirty = false;
             let header = if amplitude {
@@ -441,8 +460,8 @@ fn modulation_visibility_is_saved_per_unit_and_follows_replacement_project_value
                 &mut app,
                 &ctx,
                 Pos2::new(
-                    header.right() - 13.0,
-                    header.top() + panels::HEADER_HEIGHT * 0.5,
+                    unit_modulation_point(&ctx, header).x,
+                    unit_modulation_point(&ctx, header).y,
                 ),
                 false,
             );
@@ -458,13 +477,16 @@ fn modulation_visibility_is_saved_per_unit_and_follows_replacement_project_value
         frame(&mut reopened, &fresh, vec![]);
         assert!(
             reopened.midi_editor.layer_bounds[&layer]
-                .amplitude_header
+                .amplitude_panel
                 .width()
                 > amplitude_width
         );
-        assert!(reopened.effects_bounds.auto_filter_units[0].header.width() > filter_width);
+        assert!(
+            unit_panel(&fresh, reopened.effects_bounds.auto_filter_units[0].header).width()
+                > filter_width
+        );
         assert_eq!(
-            reopened.effects_bounds.auto_filter_units[1].header.width(),
+            unit_panel(&fresh, reopened.effects_bounds.auto_filter_units[1].header).width(),
             filter_width
         );
         assert!(!reopened.dirty);
@@ -473,12 +495,12 @@ fn modulation_visibility_is_saved_per_unit_and_follows_replacement_project_value
         frame(&mut reopened, &fresh, vec![]);
         assert_eq!(
             reopened.midi_editor.layer_bounds[&layer]
-                .amplitude_header
+                .amplitude_panel
                 .width(),
             amplitude_width
         );
         assert_eq!(
-            reopened.effects_bounds.auto_filter_units[0].header.width(),
+            unit_panel(&fresh, reopened.effects_bounds.auto_filter_units[0].header).width(),
             filter_width
         );
         assert!(!reopened.dirty);
@@ -590,19 +612,21 @@ fn drive_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() 
             .push(daw_core::EffectInstance::drive());
         frame(&mut app, &ctx, vec![]);
         let header = app.effects_bounds.drive_units[0].header;
+        let closed_panel = unit_panel(&ctx, header);
         let height = app.effects_bounds.drive_units[0].labels[0].bottom() - header.top();
-        click(
-            &mut app,
-            &ctx,
-            Pos2::new(header.right() - 13.0, header.center().y),
-            false,
-        );
+        click(&mut app, &ctx, unit_modulation_point(&ctx, header), false);
         frame(&mut app, &ctx, vec![]);
-        assert!(app.effects_bounds.drive_units[0].header.width() > header.width());
+        assert!(
+            unit_panel(&ctx, app.effects_bounds.drive_units[0].header).width()
+                > closed_panel.width()
+        );
         click(
             &mut app,
             &ctx,
-            Pos2::new(header.right() + 18.0, header.bottom() + 109.0),
+            Pos2::new(
+                closed_panel.right() - panels::HEADER_HEIGHT + 18.0,
+                closed_panel.top() + 109.0,
+            ),
             false,
         );
         let daw_core::EffectSettings::Drive(d) = &mut app.session.project.tracks[0].effects[0].unit
@@ -669,7 +693,10 @@ fn drive_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() 
             panic!()
         };
         assert!(d.modulation_open && !reopened.dirty);
-        assert!(reopened.effects_bounds.drive_units[0].header.width() > header.width());
+        assert!(
+            unit_panel(&ctx, reopened.effects_bounds.drive_units[0].header).width()
+                > closed_panel.width()
+        );
     }
 }
 
@@ -695,14 +722,10 @@ fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_sa
         add_component(&mut app, &ctx, layer, 0);
         add_legacy_envelope(&mut app, &ctx, layer);
         let header = app.midi_editor.layer_bounds[&layer].oscillator_header;
+        let closed_panel = unit_panel(&ctx, header);
         let regular = app.midi_editor.oscillator_strip_bounds.clone();
         app.dirty = false;
-        click(
-            &mut app,
-            &ctx,
-            Pos2::new(header.right() - 13.0, header.center().y),
-            false,
-        );
+        click(&mut app, &ctx, unit_modulation_point(&ctx, header), false);
         assert!(app.dirty);
         let l = &app.session.project.tracks[0]
             .instrument
@@ -713,14 +736,17 @@ fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_sa
         assert_eq!(app.midi_editor.oscillator_strip_bounds, regular);
         assert!(
             app.midi_editor.layer_bounds[&layer]
-                .oscillator_header
+                .oscillator_panel
                 .width()
-                > header.width()
+                > closed_panel.width()
         );
         click(
             &mut app,
             &ctx,
-            Pos2::new(header.right() + 18.0, header.bottom() + 109.0),
+            Pos2::new(
+                closed_panel.right() - panels::HEADER_HEIGHT + 18.0,
+                closed_panel.top() + 109.0,
+            ),
             false,
         );
         let l = &app.session.project.tracks[0]
@@ -742,8 +768,8 @@ fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_sa
             &mut app,
             &ctx,
             Pos2::new(
-                header.right() + 45.0,
-                header.bottom()
+                closed_panel.right() - panels::HEADER_HEIGHT + 45.0,
+                closed_panel.top()
                     + 10.0
                     + knobs::CHOICE_SIZE * 1.5
                     + f32::from(theme::TOOLBAR_PADDING),
@@ -915,19 +941,20 @@ fn eq_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() {
             .push(daw_core::EffectInstance::equalizer());
         frame(&mut app, &ctx, vec![]);
         let header = app.effects_bounds.units[0].header;
+        let closed_panel = unit_panel(&ctx, header);
         let height = app.effects_bounds.units[0].bands[0].bottom() - header.top();
-        click(
-            &mut app,
-            &ctx,
-            Pos2::new(header.right() - 13.0, header.center().y),
-            false,
-        );
+        click(&mut app, &ctx, unit_modulation_point(&ctx, header), false);
         frame(&mut app, &ctx, vec![]);
-        assert!(app.effects_bounds.units[0].header.width() > header.width());
+        assert!(
+            unit_panel(&ctx, app.effects_bounds.units[0].header).width() > closed_panel.width()
+        );
         click(
             &mut app,
             &ctx,
-            Pos2::new(header.right() + 18.0, header.bottom() + 109.0),
+            Pos2::new(
+                closed_panel.right() - panels::HEADER_HEIGHT + 18.0,
+                closed_panel.top() + 109.0,
+            ),
             false,
         );
         let daw_core::EffectSettings::Eq3(d) = &mut app.session.project.tracks[0].effects[0].unit
@@ -992,7 +1019,10 @@ fn eq_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() {
             panic!()
         };
         assert!(d.modulation_open && !reopened.dirty);
-        assert!(reopened.effects_bounds.units[0].header.width() > header.width());
+        assert!(
+            unit_panel(&ctx, reopened.effects_bounds.units[0].header).width()
+                > closed_panel.width()
+        );
     }
 }
 
@@ -1012,7 +1042,7 @@ fn eq_modulation_compact_headers_keep_shared_footers_without_knobs_or_level_rail
         app.session.project.tracks[0].effects_compact = true;
         frame(&mut app, &ctx, vec![]);
         let bounds = &app.effects_bounds.units[0];
-        assert!(bounds.header.width() > 3.0 * midi_editor::UNIT_STRIP_WIDTH);
+        assert!(unit_panel(&ctx, bounds.header).width() > 3.0 * midi_editor::UNIT_STRIP_WIDTH);
         assert!(bounds.knobs.iter().flatten().all(|r| !r.is_positive()));
         assert!(bounds.meters.iter().all(|r| !r.is_positive()));
         assert!(bounds.bands.iter().all(|r| r.is_positive()));
@@ -1039,19 +1069,21 @@ fn compressor_modulation_reuses_strips_markers_and_saved_visibility_in_both_them
             .push(daw_core::EffectInstance::compressor());
         frame(&mut app, &ctx, vec![]);
         let header = app.effects_bounds.compressor_units[0].header;
+        let closed_panel = unit_panel(&ctx, header);
         let height = app.effects_bounds.compressor_units[0].sections[0].bottom() - header.top();
-        click(
-            &mut app,
-            &ctx,
-            Pos2::new(header.right() - 13.0, header.center().y),
-            false,
-        );
+        click(&mut app, &ctx, unit_modulation_point(&ctx, header), false);
         frame(&mut app, &ctx, vec![]);
-        assert!(app.effects_bounds.compressor_units[0].header.width() > header.width());
+        assert!(
+            unit_panel(&ctx, app.effects_bounds.compressor_units[0].header).width()
+                > closed_panel.width()
+        );
         click(
             &mut app,
             &ctx,
-            Pos2::new(header.right() + 18.0, header.bottom() + 109.0),
+            Pos2::new(
+                closed_panel.right() - panels::HEADER_HEIGHT + 18.0,
+                closed_panel.top() + 109.0,
+            ),
             false,
         );
         let daw_core::EffectSettings::Compressor(d) =
@@ -1120,7 +1152,10 @@ fn compressor_modulation_reuses_strips_markers_and_saved_visibility_in_both_them
             panic!()
         };
         assert!(d.modulation_open && !reopened.dirty);
-        assert!(reopened.effects_bounds.compressor_units[0].header.width() > header.width());
+        assert!(
+            unit_panel(&ctx, reopened.effects_bounds.compressor_units[0].header).width()
+                > closed_panel.width()
+        );
     }
 }
 
@@ -1147,7 +1182,10 @@ fn compressor_modulation_preserves_compact_and_collapsed_unit_geometry() {
                     assert!(bounds.sections.iter().all(|r| !r.is_positive()));
                 } else {
                     assert!(bounds.sections.iter().all(|r| r.is_positive()));
-                    assert!(bounds.header.width() > 3.0 * midi_editor::UNIT_STRIP_WIDTH);
+                    assert!(
+                        unit_panel(&ctx, bounds.header).width()
+                            > 3.0 * midi_editor::UNIT_STRIP_WIDTH
+                    );
                 }
                 assert!(
                     bounds
@@ -1181,20 +1219,22 @@ fn limiter_modulation_reuses_header_strips_markers_and_saved_compact_collapse_la
         frame(&mut app, &ctx, vec![]);
         let b = &app.effects_bounds.limiter_units[0];
         let header = b.header;
+        let closed_panel = unit_panel(&ctx, header);
         let meter_width = b.meter.width();
         let height = b.sections[0].bottom() - header.top();
-        click(
-            &mut app,
-            &ctx,
-            Pos2::new(header.right() - 13.0, header.center().y),
-            false,
-        );
+        click(&mut app, &ctx, unit_modulation_point(&ctx, header), false);
         frame(&mut app, &ctx, vec![]);
-        assert!(app.effects_bounds.limiter_units[0].header.width() > header.width());
+        assert!(
+            unit_panel(&ctx, app.effects_bounds.limiter_units[0].header).width()
+                > closed_panel.width()
+        );
         click(
             &mut app,
             &ctx,
-            Pos2::new(header.right() + 18.0, header.bottom() + 109.0),
+            Pos2::new(
+                closed_panel.right() - panels::HEADER_HEIGHT + 18.0,
+                closed_panel.top() + 109.0,
+            ),
             false,
         );
         let daw_core::EffectSettings::Limiter(s) =
@@ -1301,20 +1341,21 @@ fn ott_modulation_reuses_header_strips_markers_and_saved_compact_collapse_layout
         frame(&mut app, &ctx, vec![]);
         let b = &app.effects_bounds.ott_units[0];
         let header = b.header;
+        let closed_panel = unit_panel(&ctx, header);
         let meter_widths = b.meters.map(|r| r.width());
         let height = b.sections[0].bottom() - header.top();
-        click(
-            &mut app,
-            &ctx,
-            Pos2::new(header.right() - 13.0, header.center().y),
-            false,
-        );
+        click(&mut app, &ctx, unit_modulation_point(&ctx, header), false);
         frame(&mut app, &ctx, vec![]);
-        assert!(app.effects_bounds.ott_units[0].header.width() > header.width());
+        assert!(
+            unit_panel(&ctx, app.effects_bounds.ott_units[0].header).width() > closed_panel.width()
+        );
         click(
             &mut app,
             &ctx,
-            Pos2::new(header.right() + 18.0, header.bottom() + 109.0),
+            Pos2::new(
+                closed_panel.right() - panels::HEADER_HEIGHT + 18.0,
+                closed_panel.top() + 109.0,
+            ),
             false,
         );
         let daw_core::EffectSettings::Ott(s) = &mut app.session.project.tracks[0].effects[0].unit
@@ -1626,7 +1667,7 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
                 .unwrap()
                 .2;
             let toggle = Pos2::new(
-                rect.right() - 13.0,
+                rect.right() - panels::HEADER_HEIGHT * 0.5,
                 rect.top() + panels::HEADER_HEIGHT * 0.5,
             );
             click(&mut app, &ctx, toggle, false);
@@ -1684,14 +1725,14 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
                 .unwrap()
                 .2;
             let toggle = Pos2::new(
-                rect.right() - 13.0,
+                rect.right() - panels::HEADER_HEIGHT * 0.5,
                 rect.top() + panels::HEADER_HEIGHT * 0.5,
             );
             click(&mut app, &ctx, toggle, false);
             assert!(!get(&app).modulation_open);
             let attack = Pos2::new(
-                rect.left() + 135.0,
-                rect.top() + panels::HEADER_HEIGHT + 10.0 + knobs::CHOICE_SIZE * 0.5,
+                rect.left() + panels::HEADER_HEIGHT + 135.0,
+                rect.top() + 1.0 + 10.0 + knobs::CHOICE_SIZE * 0.5,
             );
             let marker = knobs::modulation_marker_rect(Rect::from_center_size(
                 attack,
@@ -1718,6 +1759,7 @@ fn auto_filter_lfo_targets_are_selectable_and_saved_in_both_themes() {
                 .push(daw_core::EffectInstance::auto_filter());
             frame(&mut app, &ctx, vec![]);
             let header = app.effects_bounds.auto_filter_units[0].header;
+            let closed_panel = unit_panel(&ctx, header);
             let daw_core::EffectSettings::AutoFilter(settings) =
                 &mut app.session.project.tracks[0].effects[0].unit
             else {
@@ -1732,8 +1774,8 @@ fn auto_filter_lfo_targets_are_selectable_and_saved_in_both_themes() {
                 &mut app,
                 &ctx,
                 Pos2::new(
-                    header.right() + 45.0,
-                    header.bottom()
+                    closed_panel.right() - panels::HEADER_HEIGHT + 45.0,
+                    closed_panel.top()
                         + 10.0
                         + knobs::CHOICE_SIZE * 1.5
                         + f32::from(theme::TOOLBAR_PADDING),

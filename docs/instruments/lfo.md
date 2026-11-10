@@ -17,6 +17,8 @@ An LFO (low-frequency oscillator) repeats a control pattern. It does not generat
 
 Hz rate is independent of tempo. Note rate follows tempo and offers straight, dotted, and triplet durations. Phase shifts the waveform's starting position. Uni moves from zero to positive values; Bi moves above and below zero. Smooth rounds abrupt changes. Depth controls the contribution without changing a destination's base setting.
 
+The **Mode** dropdown below Depth chooses the restart behavior. It is hidden in compact and collapsed views; its setting is retained.
+
 Restart chooses the clock behavior:
 
 - **Transport:** follow project time.

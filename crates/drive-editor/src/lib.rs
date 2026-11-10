@@ -169,7 +169,7 @@ impl Editor {
             egui::Sense::click(),
         );
         ui.painter()
-            .rect_filled(ui.max_rect(), 0.0, theme::palette(ui.ctx()).panel);
+            .rect_filled(ui.max_rect(), 0.0, theme::unit_separator(ui.ctx()));
         if let Some(state) = self.model.current() {
             for (slot, p) in Parameter::ALL[1..].iter().copied().enumerate() {
                 if !self.active[slot] {
@@ -387,7 +387,7 @@ mod tests {
         model.output_meter.store([1.5, 0.0, 0.0]);
         model.output_meter.initialize([0.25, 0.0, 0.0]);
         frame(&ctx, &mut editor, vec![], true);
-        let pos = Pos2::new(45.0, 4.0);
+        let pos = Pos2::new(45.0, daw_unit_ui::layout::UNIT_STRIP_VERTICAL_MARGIN + 2.0);
         for pressed in [true, false] {
             frame(
                 &ctx,

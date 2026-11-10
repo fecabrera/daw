@@ -404,7 +404,7 @@ fn every_first_component_shares_one_divider_with_the_layers_column() {
                             .2;
                         assert_eq!(
                             first.left(),
-                            label.right() - 1.0,
+                            label.right() + panels::UNIT_GAP,
                             "{} main {main} compact {compact} collapsed {collapsed}",
                             entry.name
                         );
@@ -677,7 +677,9 @@ fn main_unit_header_fills_reach_the_shared_top_edge_without_moving_controls() {
                             .iter()
                             .find_map(|s| match &s.shape {
                                 egui::Shape::Rect(r)
-                                    if r.fill == fill && r.rect.contains(point) =>
+                                    if r.fill == fill
+                                        && r.rect == *header
+                                        && r.rect.contains(point) =>
                                 {
                                     Some(r.rect)
                                 }
@@ -686,15 +688,15 @@ fn main_unit_header_fills_reach_the_shared_top_edge_without_moving_controls() {
                             .expect("unit header fill");
                         assert_eq!(
                             cap.top(),
-                            main.row.top(),
+                            main.row.top() + panels::UNIT_VERTICAL_MARGIN,
                             "Main header must not expose the omitted frame edge"
                         );
                         assert_eq!(
                             header.top(),
-                            main.row.top() + 1.0,
+                            main.row.top() + panels::UNIT_VERTICAL_MARGIN,
                             "retain frame and control geometry"
                         );
-                        assert_eq!(cap.bottom(), header.top() + panels::HEADER_HEIGHT);
+                        assert_eq!(cap, *header);
                     }
                     assert_eq!(main.label.height(), panels::unit_height(compact));
                     assert!(!app.dirty);

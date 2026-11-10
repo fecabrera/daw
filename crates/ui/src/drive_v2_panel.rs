@@ -94,6 +94,8 @@ fn show_inner(
                     &markers,
                     level,
                 );
+                #[cfg(not(test))]
+                let _ = shared;
                 #[cfg(test)]
                 {
                     bounds.meter = shared.meter;
@@ -103,7 +105,6 @@ fn show_inner(
                     bounds.clip = shared.clip;
                 }
                 if open {
-                    daw_unit_ui::drive::divider(ui, shared.rect.right(), shared.rect.y_range());
                     crate::modulation_panel::body(
                         ui,
                         &mut s.modulations,
@@ -118,7 +119,7 @@ fn show_inner(
     );
     s.enabled = enabled;
     s.collapsed = collapsed;
-    crate::modulation_panel::toggle(ui, &result.header, s.collapsed, &mut s.modulation_open);
+    crate::modulation_panel::toggle(ui, &result, s.collapsed, &mut s.modulation_open);
     bounds.power = result.power.rect;
     (bounds, result.header)
 }

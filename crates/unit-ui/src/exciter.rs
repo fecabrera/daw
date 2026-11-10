@@ -276,7 +276,7 @@ fn output(
     })
     .response
     .rect;
-    panels::unit_divider(ui, b.output.left(), b.output.y_range().into());
+
     if !compact {
         b.meter = meters::effect_output_level(ui, b.output, panels::PANEL_MARGIN, level, s.enabled);
     }
@@ -304,14 +304,14 @@ pub fn show(
             };
             let band = band(ui, &mut s.bands[i], i, dimensions, controls);
             if band.remove { remove = Some(s.bands[i].id); }
-            panels::unit_divider(ui, band.section.left(), band.section.y_range().into());
+
             b.band_responses.push(band.response.unwrap());
             b.bands.push(band.section); b.modes.push(band.mode); b.knobs.push(band.knobs);
             b.power.push(band.power); b.solo.push(band.solo);
         }
         let add = panels::unit_add_strip(ui, dimensions.1, "Add exciter band");
         b.add = add.inner.rect;
-        panels::unit_divider(ui, add.response.rect.left(), add.response.rect.y_range().into());
+
         if add.inner.clicked() { s.add_band(); }
         output(ui, s, dimensions, c.output_markers, c.level, &mut b);
     }).response.rect;

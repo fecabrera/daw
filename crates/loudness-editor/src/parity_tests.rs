@@ -98,7 +98,7 @@ fn editor_meshes_match_builtin_body_in_every_theme_scale_and_parameter_snapshot(
                     ui.painter().rect_filled(
                         ui.max_rect(),
                         0.0,
-                        daw_unit_ui::theme::palette(ui.ctx()).panel,
+                        daw_unit_ui::theme::unit_separator(ui.ctx()),
                     );
                     super::paint_reference(ui, &mut settings, &model);
                 });

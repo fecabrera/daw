@@ -152,7 +152,7 @@ impl DawUi {
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing =
                         Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-                    let preview = egui::Frame::new().inner_margin(margin).show(ui, |ui| {
+                    daw_unit_ui::layout::unit_strip_frame(ui).inner_margin(margin).show(ui, |ui| {
                         ui.vertical(|ui| {
                             ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
                             ui.set_width(270.0);
@@ -347,15 +347,11 @@ impl DawUi {
                             });
                         })
                     });
-                    panels::unit_divider(
-                        ui,
-                        preview.response.rect.right(),
-                        preview.response.rect.y_range().into(),
-                    );
+
                     if s.granulizer.is_some() {
                         bounds.grains = crate::granulizer_panel::controls(ui, s, sources, live.as_ref(), compact);
                     }
-                    let strip = egui::Frame::new().inner_margin(margin).show(ui, |ui| {
+                    let strip = daw_unit_ui::layout::unit_strip_frame(ui).inner_margin(margin).show(ui, |ui| {
                         ui.vertical(|ui| {
                             ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
                             ui.set_min_height(envelope_panel::body_height(compact));
@@ -393,7 +389,7 @@ impl DawUi {
                     });
                     bounds.controls = strip.response.rect;
                     if open {
-                        panels::unit_divider(ui, strip.response.rect.right(), strip.response.rect.y_range().into());
+
                         let parameters = s.parameters();
                         modulation_panel::body(ui, &mut s.modulations, sources,
                             parameters,
@@ -427,8 +423,7 @@ impl DawUi {
             );
         }
 
-        let toggle =
-            modulation_panel::toggle(ui, &result.header, s.collapsed, &mut s.modulation_open);
+        let toggle = modulation_panel::toggle(ui, &result, s.collapsed, &mut s.modulation_open);
         bounds.panel = result.response.rect.intersect(ui.clip_rect());
         let carrying = ui.input(|i| !i.raw.hovered_files.is_empty())
             || self

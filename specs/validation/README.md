@@ -4,6 +4,430 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Mixer selection uses header foreground only — 2026-11-09
+
+Mixer strip bodies keep their normal panel fill during selection. Header titles
+and icons use the same shared foreground rule as unit titles: secondary when
+unselected and normal label text when selected. Apply this to tracks, groups,
+Returns and Master, including Timeline’s Track mixer. Preserve track-colored
+headers, neutral Master headers, geometry and selection behavior.
+
+Completed checks:
+
+- Updated mixer color assertions to check fixed body fills and secondary/normal
+  header foregrounds across themes, inherited track colors and selection states.
+  Destination/header checks cover both Mixer and Timeline’s Track mixer, including
+  selected/unselected Master; icon geometry checks retain theme/scale coverage.
+- `cargo test -p daw-ui --offline`: passed (972 passed, 3 ignored).
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. macOS packaging stopped at its existing
+requirement to commit tracked changes before packaging. The executable is rebuilt;
+the `.app` bundle is not updated. No commit was made.
+
+## Full-height modulation boundary separator — 2026-11-09
+
+The shared DAW modulation body paints a single two-point vertical divider before
+its route/Add strips, using the neutral unit-header background color. Leave four
+points of clear space on each side, for a ten-point card-to-card boundary gap.
+Reserve six extra layout points at this boundary while retaining strip sizes and
+interaction behavior. Span the complete unit body in full and compact layouts;
+hide the divider when closed or collapsed.
+
+The focused shared-body paint check covers themes, full/compact layouts,
+open/closed/collapsed states and empty/populated route lists. It checks exact
+width, both side margins, flush top/bottom endpoints, header color, square ends
+and unchanged route data. Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (972 passed, 3 ignored).
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. macOS packaging stopped at its existing
+requirement to commit tracked changes before packaging. The executable is rebuilt;
+the `.app` bundle is not updated. No commit was made.
+
+## Transparent unit Add controls — 2026-11-09
+
+Unit Add controls now share one portable renderer across sources, Macro,
+modulation connections and variable-band effects/standalone bodies. Remove all
+strip/card and circle fills. Enabled hover, pressed and focus states use the
+active strip-label foreground; idle/disabled controls stay muted. Preserve full
+strip hit areas, circle/Plus size, tooltips and release-only activation.
+
+Completed checks:
+
+- DAW UI suite passed (971 passed, 3 ignored). Existing oscillator checks now
+  verify centered Plus strokes, transparent idle/hover surfaces and active-label
+  hover color while retaining full-strip add interaction coverage.
+- Shared interaction matrix passed in Dark, Light and Mist: idle/hover/pressed/
+  focused/disabled paint stays transparent; enabled foreground uses the active
+  label color; disabled controls do not brighten or activate; clicks occur only
+  on release. Strip geometry remains unchanged.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo build -p daw-desktop --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. macOS packaging stopped at its existing requirement to commit tracked
+changes before packaging. The executable is rebuilt; the `.app` bundle is not
+updated. No commit was made.
+
+## Neutral Master strip header — 2026-11-09
+
+Master strip headers now use the shared neutral unit-header fill in Mixer and
+Timeline’s Track mixer. Preserve header geometry, centered icon/title, track
+header colors and Master body selection feedback.
+
+Completed checks:
+
+- Extended the mixer destination/header paint check to assert the shared neutral
+  Master header fill in both themes, Mixer and Timeline’s Track mixer, with Master
+  selected and unselected. Painting retains project data and dirty state.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. macOS packaging stopped at its existing
+requirement to commit tracked changes before packaging. The executable is rebuilt;
+the `.app` bundle is not updated. No commit was made.
+
+## Four-point strip spacing and five-point corners — 2026-11-09
+
+Return strip gaps, top/bottom margins and first/last card-to-header gaps to four
+points. Change shared strip-card corner radii to five points, including Add-card
+hover fills. Keep left headers 26 points wide in both states, right headers 24
+points wide, shell corners seven points and shell stroke allocation zero.
+
+Completed checks:
+
+- `cargo test -p daw-unit-ui -p daw-ui --offline`: passed (38 shared control
+  tests; 971 DAW UI tests passed, 3 ignored). Geometry checks assert four-point
+  gaps on all sides, five-point strip corners, 26-point left headers and zero
+  shell stroke allocation across full/compact/collapsed states and themes.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. macOS packaging stopped at its existing requirement to commit tracked
+changes before packaging. The executable is rebuilt; the `.app` bundle is not
+updated. No commit was made.
+
+## 26-point left headers and five-point strip spacing — 2026-11-09
+
+Use a separate 26-point left-header width in expanded and collapsed states. Keep
+the right modulation header 24 points wide and center the power hit area within
+the wider left header. Change shared card gaps and vertical margins to five
+points. Use 2.5-point edge padding beside the headers, retaining half-point
+precision. Keep zero shell stroke allocation, seven-point corners, lane heights,
+header colors and control layout within each strip. This supersedes the four-point spacing
+and 24-point left headers recorded below.
+
+Completed checks:
+
+- DAW UI suite passed (971 passed, 3 ignored), including literal 26-point left
+  header and five-point spacing assertions in compact/collapsed states, both
+  power states and both themes. Right modulation headers remain 24 points wide.
+- Shared unit UI suite passed (38 tests), including five-point card gaps and
+  margins across all palettes and full/compact heights.
+- Focused Drive, Drive v2, Saturator and Bitcrusher editor tests passed. Peak-reset
+  tests click the moved meter centers and retain the no-parameter-edit checks.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. macOS packaging stopped at its existing requirement to commit tracked
+changes before packaging. The executable is rebuilt; the `.app` bundle is not
+updated. No commit was made.
+
+## Exact four-point unit spacing — 2026-11-09
+
+Remove the invisible one-point shell stroke allocation. Add two-point horizontal
+content insets beside the side headers, combined with the existing two-point card
+insets, for exact four-point first/last card gaps. Top/bottom card margins and
+inter-card gaps are exactly four points. Collapsed headers are 24 points wide;
+expanded/compact shells are 218/42 points high. Center shells with 13-point lane
+margins so lane heights and vertical strip-control positions remain unchanged.
+Keep the previous neutral header fill and separator-colored content surface.
+
+The shared shell paint/geometry test checks exact four-point gaps on all four
+sides, repeated strips and Add, zero stroke width, retained lane heights, and
+24-point headers across themes, compact/collapsed states and both power states.
+The focused run passed.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (971 passed, 3 ignored).
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. `sh tools/package_macos.sh debug` stopped
+at its existing requirement to commit tracked changes before packaging. The
+executable is rebuilt; the `.app` bundle is not updated. No commit was made.
+
+## Strip card gaps and vertical margins — 2026-11-09
+
+Shared strip-card painting now insets each surface two points horizontally and
+four points vertically. Adjacent surfaces have four-point gaps. Keep control,
+strip gesture and reorder bounds, lane heights and card radii unchanged. Add-card
+hover fills use the same inset. Meter rails move below the new top margin.
+Built-in units and standalone editors share this presentation. Restore the previous
+neutral side-header fill (`palette.border`); keep the original separator color
+behind the strip cards only. This supersedes the header-fill change recorded below.
+
+Completed checks:
+
+- Shared strip tests check four-point visible gaps, four-point top/bottom margins,
+  retained slot dimensions and seven-point corners across all palettes and full/
+  compact heights.
+- Focused Add-strip hover/interaction regression passed with inset fill bounds.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled,
+  including all DAW UI and standalone editor paint parity tests.
+- `cargo test --workspace --release --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. macOS packaging stopped at its existing requirement to commit tracked
+changes before packaging. The executable is rebuilt; the `.app` bundle is not
+updated. No commit was made.
+
+## Borderless units and rounded strip cards — 2026-11-09
+
+Use the former subdued separator color for unit shells and side headers. Remove
+visible outer strokes and internal strip-divider lines. Shared strip frames keep
+the original panel fill, use seven-point corners and have no border. Source,
+effect, graph, Add and modulation strips retain their dimensions and gestures.
+Standalone effect editors use the same strip cards and canvas fill.
+
+Completed checks:
+
+- Shared strip-card paint/geometry test passed for single-width, double-width and
+  Add strips at full and compact heights in Dark, Light and Mist palettes.
+- `cargo test -p daw-ui --offline`: passed (971 passed, 3 ignored), including
+  updated shell-fill and no-divider checks; interaction and saved-state tests
+  retain their existing coverage.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed. Both workspace runs include
+  the shared body/editor paint parity checks.
+- `git diff --check`: passed.
+
+Native UI and plugin-host appearance remain unverified. `sh tools/package_macos.sh debug` stopped at its
+existing requirement to commit tracked changes before packaging. The executable
+is rebuilt; the `.app` bundle is not updated. No commit was made.
+
+## Semibold track headers — 2026-11-09
+
+Track and beat-subtrack name buttons and Master labels use the shared Outfit
+Semibold family at their existing sizes. Mixer and Timeline’s Track mixer share
+the renderer. Icon/name centering measures the same semibold font. Header colors,
+selection, truncation and inline rename behavior remain unchanged.
+
+The existing track/group/MIDI/Master geometry test now checks the font family in
+Timeline and Mixer across both themes and 1×/1.5× scaling; the focused run passed.
+Completed checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified.
+`sh tools/package_macos.sh debug` stopped at the existing requirement to commit
+tracked changes before packaging. The executable is rebuilt; the `.app` bundle
+is not updated. No commit was made.
+
+## Unit-header click toolbar opacity — 2026-11-09
+
+Extended the armed-header opacity fix to the view buttons and track Add/Duplicate
+buttons, including the shared Tracks browser Add button. These controls retain
+their input guards during a stationary press. Local toolbar scopes suppress the
+temporary disabled alpha only while an effect drag is armed and the editing
+environment remains available; active drags and unavailable environments retain
+the normal disabled style.
+
+Completed checks:
+
+- Extended the existing egui paint regression across both themes and all
+  compact/collapsed combinations. Canvas, catalog, view-label and track-button
+  paint stays unchanged on press, hold and release. Add, Duplicate and view
+  switching stay blocked while armed; project data and history stay unchanged.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `git diff --check`: passed.
+
+Native macOS click/drag verification remains unperformed. `sh tools/package_macos.sh debug` stopped at
+the existing clean-source requirement: commit tracked changes before packaging.
+The executable is rebuilt; the `.app` bundle is not updated. No commit was made.
+
+## LFO body Mode and semibold unit titles — 2026-11-09
+
+Moved LFO Restart from its obsolete absolute header position into the second row
+of the Depth strip, labeled Mode. Reuse the standard selector row and dropdown;
+keep Transport/Retrigger/Legato semantics, tooltip and saved values unchanged.
+Compact and collapsed views hide the selector. The strip/lane dimensions stay
+unchanged. Unit titles now use the existing Outfit Semibold family at weight 600,
+including compact-title fitting; selection colors, backgrounds and dots retain
+their current behavior.
+
+Completed checks:
+
+- Focused LFO restart test passed in both themes. It checks the selector bounds,
+  all three choices, unchanged other settings, and hidden compact/collapsed controls.
+- Full DAW UI suite passed (971 passed, 3 ignored), including header font-family
+  assertions across effect selection and presentation states.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native window/device and Windows/Linux checks remain unverified. The macOS app
+bundle still requires committed sources; no commit or packaging bypass was made.
+
+## Unit-header click canvas flicker — 2026-11-09
+
+The effects workspace disabled its upper canvas as soon as a unit-header press
+armed a possible drag. This changed timeline paint colors to half opacity during
+ordinary clicks. The Effects catalog also faded armed installed-unit drags. Gate
+both visual states on an active drag instead, preserving
+armed-gesture edit guards, the shared drag threshold and existing Instrument rules.
+
+The new regression reproduced the premultiplied half-opacity colors before the
+fix. It compares timeline clip/row fills and catalog label colors before press, during held armed frames,
+on release and after release in both themes and compact/collapsed presentations.
+It also checks that edit guards remain active and clip selection, project data
+and dirty state remain unchanged.
+
+Completed checks:
+
+- `cargo test -p daw-ui --lib --offline`: passed (970 passed, 3 ignored).
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native window/device behavior and Windows/Linux checks remain unverified. The
+macOS app bundle still requires committed sources; no commit or packaging bypass
+was made.
+
+## Selected unit titles and seven-point corners — 2026-11-09
+
+Selected unit titles now use shared `palette.text`, matching active strip labels.
+Unselected titles retain `palette.secondary`. Both power states retain the neutral
+header background; power and modulation dot colors remain independent of selection.
+Transient scope metadata carries selection into the common shell for effects,
+regular-layer components, Output and modulation lanes. Selection changes request
+another paint without entering project state or history. Empty idle selections
+do not cause a continuous repaint loop. All unit outside corners now use seven
+logical points in expanded and collapsed modes.
+
+The extended effect and component input checks cover selected/muted title colors,
+unchanged header surfaces, selected disabled units, multiselection, compact and
+collapsed layouts, unchanged project data, and the existing power gestures.
+
+Completed checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native window/device and Windows/Linux checks remain unverified. The macOS bundle
+still requires committed source changes; no commit or packaging bypass was made.
+
+## Multiband EQ height alignment — 2026-11-09
+
+Removed the extra eight-point space above the graph's Response footer. The normal
+item gap already supplies this spacing. The graph now retains its 172-point
+height while its padded strip matches the band and Out strips at 218 points.
+The floating shell returns to the shared 220-point height inside the unchanged
+244-point lane. Headerless standalone editors use the same corrected body.
+
+The new dark/light regression reproduced the eight-point mismatch before the fix.
+It checks matching graph/band/Out top and bottom edges and standard shell height.
+
+Completed checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test -p daw-ui -p daw-unit-ui -p daw-multiband-eq-editor --offline`:
+  passed, including graph height, gesture and shared-editor parity checks.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native window/device behavior remains unverified. The app bundle retains the
+previous committed build because macOS source packaging requires committed changes.
+
+## Floating units with side headers — 2026-11-09
+
+Replaced top headers with vertical left title/power headers and matching right
+modulation headers. Collapsed units hide the body and right header. Both power
+states use the neutral header surface; the power dot retains its state behavior.
+Entire cards use 12-point top/bottom lane margins, 16-point gaps and seven-point
+outside corner radii. Scrollable rows also reserve 16 points before the first
+unit and after the last unit, with no extra padding around inline effects. Lane
+heights and control-strip geometry remain unchanged.
+Selected units retain group actions without a selection outline. Drop previews
+retain their existing outlines and insertion markers.
+
+Completed checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test -p daw-ui --lib --offline`: passed (968 passed, 3 ignored).
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Updated egui checks cover the new header hit regions, power/collapse/modulation,
+selection without outlines, drag/copy/reorder, lane height, card margins,
+between-unit gaps, row edge spacing, neutral fills and corner radii in compact, expanded and collapsed views.
+Native window/device behavior and Windows/Linux acceptance remain unverified.
+The macOS package command stopped at its committed-source requirement; no commit
+was made and the previous application bundle was retained.
+
 ## Multiband EQ response graph — 2026-11-09
 
 Added the shared three-row graph before the band bank, exact SVF response curves,

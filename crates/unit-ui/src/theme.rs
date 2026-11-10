@@ -114,19 +114,15 @@ pub fn palette(ctx: &Context) -> Palette {
     }
 }
 
-/// Subdued unit dividers must contrast with the panel in either theme.
+/// Unit shell surface, retained from the former subdued strip separators.
 pub fn unit_separator(ctx: &Context) -> Color32 {
     let colors = palette(ctx);
     blend(colors.panel, colors.border, 50)
 }
 
-/// Unit headers share the active view fill when on and the panel border color when off.
-pub fn unit_header_fill(ctx: &Context, enabled: bool) -> Color32 {
-    if enabled {
-        toggle_colors(ctx, true).0
-    } else {
-        palette(ctx).border
-    }
+/// Unit headers retain the neutral disabled-unit surface at either power state.
+pub fn unit_header_fill(ctx: &Context, _enabled: bool) -> Color32 {
+    palette(ctx).border
 }
 
 /// Shared on/off colors for view controls and unit toggles.

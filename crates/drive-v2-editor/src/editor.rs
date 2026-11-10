@@ -171,7 +171,7 @@ impl Editor {
             egui::Sense::click(),
         );
         ui.painter()
-            .rect_filled(ui.max_rect(), 0.0, theme::palette(ui.ctx()).panel);
+            .rect_filled(ui.max_rect(), 0.0, theme::unit_separator(ui.ctx()));
         if let Some(state) = self.model.current() {
             self.state.set_presentation(state.presentation());
             // Host bypass is not an editable body control, but it must mask stale telemetry.

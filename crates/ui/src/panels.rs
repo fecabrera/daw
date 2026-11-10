@@ -2,8 +2,31 @@ use egui::{Color32, Frame, Rect, Response, Stroke, Ui, Vec2};
 
 pub(super) use daw_unit_ui::layout::UNIT_STRIP_WIDTH;
 pub(super) const HEADER_HEIGHT: f32 = crate::toolbars::CONTROL_HEIGHT + 2.0;
+pub(super) const UNIT_LEFT_HEADER_WIDTH: f32 = 26.0;
 pub(super) use daw_unit_ui::layout::HEADER_FONT_SIZE;
 pub(super) const UNIT_POWER_SIZE: f32 = 10.0;
+pub(super) const UNIT_GAP: f32 = 16.0;
+// Borderless shells retain the lane height and center their existing strip slots.
+pub(super) const UNIT_VERTICAL_MARGIN: f32 = HEADER_HEIGHT * 0.5 + 1.0;
+const UNIT_CORNER_RADIUS: u8 = 7;
+/// One scrollable unit row. Inline effects reuse their containing row's edge padding.
+pub(super) fn unit_row<R>(
+    ui: &mut Ui,
+    padded: bool,
+    content: impl FnOnce(&mut Ui) -> R,
+) -> egui::InnerResponse<R> {
+    let margin = if padded { UNIT_GAP as i8 } else { 0 };
+    Frame::new()
+        .inner_margin(egui::Margin::symmetric(margin, 0))
+        .show(ui, |ui| {
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = UNIT_GAP;
+                content(ui)
+            })
+            .inner
+        })
+}
+
 /// A neighboring panel supplies this unit's left divider.
 pub(super) const SHARED_LEFT_BORDER_TAG: &str = "shared-unit-left-border";
 /// The adjoining lane or status panel owns this unit's bottom separator.
@@ -18,7 +41,9 @@ pub(super) fn unit_height(compact: bool) -> f32 {
     if compact {
         crate::ROW_HEIGHT
     } else {
-        unit_control_height() + 2.0 * f32::from(PanelStyle::default().margin) + HEADER_HEIGHT + 2.0
+        unit_control_height()
+            + 2.0 * f32::from(PanelStyle::default().margin)
+            + 2.0 * UNIT_VERTICAL_MARGIN
     }
 }
 
@@ -38,20 +63,8 @@ pub(super) fn unit_add_strip(
     height: f32,
     name: &str,
 ) -> egui::InnerResponse<Response> {
-    let margin = f32::from(PanelStyle::default().margin);
-    ui.scope(|ui| {
-        crate::icons::circular_strip_button(
-            ui,
-            crate::icons::Lucide::Plus,
-            name,
-            Vec2::new(crate::icons::COMPACT_BUTTON_SIZE, height) + Vec2::splat(2.0 * margin),
-            crate::icons::COMPACT_BUTTON_SIZE,
-        )
-    })
+    daw_unit_ui::layout::unit_add_strip(ui, height, name)
 }
-
-/// Shared muted full-height separator for internally padded unit strips.
-pub(super) use daw_unit_ui::layout::unit_divider;
 
 /// Shared geometry and separators for track groups and beat subtrack groups.
 pub(super) struct GroupPanel;
@@ -479,10 +492,10 @@ impl PanelStyle {
         collapsed: &mut bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
-        self.unit_shell(ui, title, height, (enabled, collapsed), true, content)
+        self.unit_shell(ui, title, height, (enabled, collapsed), content)
     }
 
-    /// Units pinned above a lane separator share that separator instead of adding a bottom edge.
+    /// Lane units use the same floating shell and preserve the lane's allocated height.
     pub fn unit_in_lane<R>(
         &self,
         ui: &mut Ui,
@@ -492,7 +505,7 @@ impl PanelStyle {
         collapsed: &mut bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
-        self.unit_shell(ui, title, height, (enabled, collapsed), false, content)
+        self.unit_shell(ui, title, height, (enabled, collapsed), content)
     }
 
     fn unit_shell<R>(
@@ -501,82 +514,100 @@ impl PanelStyle {
         title: (&str, bool),
         height: f32,
         states: (&mut bool, &mut bool),
-        bottom_border: bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
-        let bottom_border = bottom_border
-            && !ui
-                .stack()
-                .iter()
-                .any(|node| node.tags().contains(SHARED_BOTTOM_BORDER_TAG));
-        let top_border = !ui
-            .stack()
-            .iter()
-            .any(|node| node.tags().contains(SHARED_TOP_BORDER_TAG));
-        let left_border = !ui
-            .stack()
-            .iter()
-            .any(|node| node.tags().contains(SHARED_LEFT_BORDER_TAG));
         let (enabled, collapsed) = states;
         let (name, compact_title) = title;
         let id = ui.id().with(("unit-header", name));
         let is_collapsed = *collapsed;
-        let mut header_rect = Rect::NOTHING;
-        let mut frame = self.frame(ui.ctx(), false).inner_margin(0);
-        let outline = frame.stroke;
-        if !bottom_border || !top_border || !left_border {
-            frame.stroke.color = Color32::TRANSPARENT;
-        }
-        let result = if is_collapsed {
-            frame.show(ui, |ui| {
-                let (strip, _) = ui.allocate_exact_size(
-                    Vec2::new(HEADER_HEIGHT, height - 2.0),
-                    egui::Sense::hover(),
-                );
-                // The full strip remains the expansion/context-menu target.
-                header_rect = strip;
-                None
-            })
-        } else {
-            frame.show(ui, |ui| {
-                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                    let spacing = ui.spacing().item_spacing.y;
+        let body_height = (height - 2.0 * UNIT_VERTICAL_MARGIN).max(0.0);
+        let frame = self
+            .frame(ui.ctx(), false)
+            .inner_margin(0)
+            .fill(daw_unit_ui::theme::unit_separator(ui.ctx()))
+            .stroke(Stroke::NONE)
+            .corner_radius(UNIT_CORNER_RADIUS);
+        // Reserve the previous lane height, with the entire unit centered in it.
+        let spacing = ui.spacing().item_spacing;
+        let result = ui
+            .scope_builder(
+                egui::UiBuilder::new().layout(egui::Layout::top_down(egui::Align::Min)),
+                |ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    let (header, _) =
-                        ui.allocate_exact_size(Vec2::new(0.0, HEADER_HEIGHT), egui::Sense::hover());
-                    let body = Frame::new().inner_margin(self.margin).show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = spacing;
-                        content(ui)
+                    ui.add_space(UNIT_VERTICAL_MARGIN);
+                    let result = frame.show(ui, |ui| {
+                        ui.horizontal_top(|ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            ui.allocate_exact_size(
+                                Vec2::new(UNIT_LEFT_HEADER_WIDTH, body_height),
+                                egui::Sense::hover(),
+                            );
+                            if is_collapsed {
+                                None
+                            } else {
+                                // Add the other half-gap outside the end strip surfaces.
+                                // Use logical-point spacing so odd gaps keep their half points.
+                                let edge = daw_unit_ui::layout::UNIT_STRIP_GAP * 0.5;
+                                ui.add_space(edge);
+                                let body = Frame::new().inner_margin(self.margin).show(ui, |ui| {
+                                    ui.spacing_mut().item_spacing = spacing;
+                                    content(ui)
+                                });
+                                ui.add_space(edge);
+                                ui.allocate_exact_size(
+                                    Vec2::new(HEADER_HEIGHT, body_height),
+                                    egui::Sense::hover(),
+                                );
+                                Some(body.inner)
+                            }
+                        })
+                        .inner
                     });
-                    header_rect = Rect::from_min_size(
-                        header.min,
-                        Vec2::new(body.response.rect.width(), HEADER_HEIGHT),
-                    );
-                    Some(body.inner)
-                })
-                .inner
-            })
-        };
-        let reserved = if is_collapsed {
-            0.0
+                    ui.add_space(UNIT_VERTICAL_MARGIN);
+                    result
+                },
+            )
+            .inner;
+        let unit_rect = result.response.rect;
+        let header_rect = if is_collapsed {
+            unit_rect
         } else {
-            f32::from(
-                ui.stack()
-                    .iter()
-                    .any(|n| n.tags().contains("unit-note-selector")),
-            ) * 90.0
-                + f32::from(
-                    ui.stack()
-                        .iter()
-                        .any(|n| n.tags().contains("unit-modulation-button")),
-                ) * 26.0
+            Rect::from_min_max(
+                unit_rect.min,
+                egui::pos2(
+                    unit_rect.left() + UNIT_LEFT_HEADER_WIDTH,
+                    unit_rect.bottom(),
+                ),
+            )
         };
-        let mut interaction_rect = header_rect;
-        interaction_rect.max.x -= reserved;
+        let modulation_header = if is_collapsed {
+            Rect::NOTHING
+        } else {
+            Rect::from_min_max(
+                egui::pos2(unit_rect.right() - HEADER_HEIGHT, unit_rect.top()),
+                unit_rect.max,
+            )
+        };
+        #[cfg(test)]
+        let frame_number = ui.ctx().cumulative_frame_nr();
+        #[cfg(test)]
+        ui.data_mut(|data| {
+            let key = egui::Id::new("unit-test-geometry");
+            let frame = frame_number;
+            let (previous, mut entries) = data
+                .get_temp::<(u64, Vec<(Rect, Rect, Rect)>)>(key)
+                .unwrap_or_default();
+            if frame != previous {
+                entries.clear();
+            }
+            entries.push((header_rect, unit_rect, modulation_header));
+            data.insert_temp(key, (frame, entries));
+        });
+        let interaction_rect = header_rect;
         let mut header = ui.interact(interaction_rect, id, egui::Sense::click_and_drag());
         header.rect = header_rect;
         let power_rect = Rect::from_min_size(
-            header_rect.min + Vec2::splat(1.0),
+            header_rect.min + Vec2::new((UNIT_LEFT_HEADER_WIDTH - HEADER_HEIGHT + 2.0) * 0.5, 1.0),
             Vec2::splat(HEADER_HEIGHT - 2.0),
         );
         let power = ui.interact(power_rect, id.with("power"), egui::Sense::click());
@@ -591,54 +622,47 @@ impl PanelStyle {
         if ui.is_enabled() && ui.input(|input| input.focused) && power.clicked() {
             *enabled = !*enabled;
         }
-        let fill = crate::theme::unit_header_fill(ui.ctx(), *enabled);
-        let cap = Rect::from_min_size(
-            header_rect.min,
-            Vec2::new(header_rect.width(), HEADER_HEIGHT),
-        );
-        let mut cap_fill = cap;
-        if !top_border {
-            // The frame still reserves its border geometry. Cover that omitted edge
-            // without shifting the header controls or changing the shared unit height.
-            cap_fill.min.y = result.response.rect.top();
-        }
-        ui.painter().rect_filled(cap_fill, 0.0, fill);
-        let header_text = if *enabled {
-            crate::theme::unit_header_text(fill)
+        let fill = crate::theme::unit_header_fill(ui.ctx(), false);
+        let left_radius = if is_collapsed {
+            egui::CornerRadius::same(UNIT_CORNER_RADIUS)
         } else {
-            crate::theme::palette(ui.ctx()).secondary
+            egui::CornerRadius {
+                nw: UNIT_CORNER_RADIUS,
+                sw: UNIT_CORNER_RADIUS,
+                ne: 0,
+                se: 0,
+            }
         };
-        if is_collapsed {
-            let body = Rect::from_min_max(
-                egui::pos2(header_rect.left(), cap.bottom()),
-                header_rect.max,
+        ui.painter().rect_filled(header_rect, left_radius, fill);
+        if !is_collapsed {
+            ui.painter().rect_filled(
+                modulation_header,
+                egui::CornerRadius {
+                    ne: UNIT_CORNER_RADIUS,
+                    se: UNIT_CORNER_RADIUS,
+                    nw: 0,
+                    sw: 0,
+                },
+                fill,
             );
-            let text = if *enabled {
-                crate::theme::palette(ui.ctx()).text
-            } else {
-                header_text
-            };
-            let strip_title = if compact_title {
-                format!("{}...", name.chars().take(3).collect::<String>())
-            } else {
-                name.to_owned()
-            };
-            paint_unit_title(ui, body, &strip_title, text, true);
-        } else {
-            let title_rect = if reserved >= 90.0 && cap.width() < 260.0 {
-                Rect::from_min_max(
-                    egui::pos2(power_rect.right() + 7.0, cap.top()),
-                    egui::pos2(cap.right() - reserved, cap.bottom()),
-                )
-            } else {
-                cap
-            };
-            paint_unit_title(ui, title_rect, name, header_text, false);
         }
+        let palette = crate::theme::palette(ui.ctx());
+        let header_text =
+            crate::theme::header_title_color(ui.ctx(), crate::unit_selection::is_selected(ui));
+        let title_rect = Rect::from_min_max(
+            header_rect.min + Vec2::new(1.0, HEADER_HEIGHT + 1.0),
+            header_rect.max - Vec2::splat(1.0),
+        );
+        let strip_title = if compact_title {
+            format!("{}...", name.chars().take(3).collect::<String>())
+        } else {
+            name.to_owned()
+        };
+        paint_unit_title(ui, title_rect, &strip_title, header_text, true);
         let color = if *enabled {
             crate::theme::accent(ui.ctx())
         } else {
-            header_text
+            palette.secondary
         };
         crate::icons::paint_dot_toggle(ui, &power, UNIT_POWER_SIZE, *enabled, color);
         let action = if is_collapsed { "Expand" } else { "Collapse" };
@@ -659,30 +683,14 @@ impl PanelStyle {
             *collapsed = !is_collapsed;
             ui.ctx().request_repaint();
         }
-        if !bottom_border || !top_border || !left_border {
-            let rect = result.response.rect.shrink(0.5);
-            if top_border {
-                ui.painter().hline(rect.x_range(), rect.top(), outline);
-            }
-            if bottom_border {
-                ui.painter().hline(rect.x_range(), rect.bottom(), outline);
-            }
-            if left_border {
-                ui.painter().vline(rect.left(), rect.y_range(), outline);
-            }
-            ui.painter().vline(rect.right(), rect.y_range(), outline);
-        }
         UnitResponse {
             inner: result.inner,
+            modulation_header,
             response: result.response,
-            header: header.on_hover_text(if bottom_border {
-                format!("Double-click to {} {name}", action.to_lowercase())
-            } else {
-                format!(
-                    "Drag to move {name}; double-click to {}",
-                    action.to_lowercase()
-                )
-            }),
+            header: header.on_hover_text(format!(
+                "Drag to move {name}; double-click to {}",
+                action.to_lowercase()
+            )),
             power: power.on_hover_text(format!(
                 "{} {name}",
                 if *enabled { "Turn off" } else { "Turn on" }
@@ -722,14 +730,21 @@ pub struct UnitResponse<R> {
     pub response: Response,
     pub header: Response,
     pub power: Response,
+    pub modulation_header: Rect,
 }
 
 fn paint_unit_title(ui: &Ui, rect: Rect, name: &str, color: Color32, vertical: bool) {
-    let galley = ui.painter().layout_no_wrap(
+    let mut galley = ui.painter().layout_no_wrap(
         name.to_owned(),
-        egui::FontId::proportional(HEADER_FONT_SIZE),
+        crate::fonts::semibold(HEADER_FONT_SIZE),
         color,
     );
+    if vertical && galley.size().x > rect.height() - 2.0 {
+        let size = HEADER_FONT_SIZE * (rect.height() - 2.0).max(1.0) / galley.size().x;
+        galley = ui
+            .painter()
+            .layout_no_wrap(name.to_owned(), crate::fonts::semibold(size), color);
+    }
     let pos = rect.center() - galley.size() * 0.5;
     let text = egui::epaint::TextShape::new(pos, galley, color).with_angle_and_anchor(
         if vertical {
@@ -825,6 +840,134 @@ mod catalog_style_tests {
                 4.0 + 2.0 * (crate::icons::TOOLBAR_ICON_SIZE + 4.0)
             );
             output.textures_delta.clear();
+        }
+    }
+}
+
+#[cfg(test)]
+mod unit_side_header_tests {
+    use super::*;
+    #[test]
+    fn side_headers_center_whole_units_keep_gaps_and_round_outside_corners() {
+        for light in [false, true] {
+            for compact in [false, true] {
+                for collapsed in [false, true] {
+                    let ctx = egui::Context::default();
+                    crate::theme::configure(&ctx);
+                    crate::fonts::configure(&ctx);
+                    if light {
+                        ctx.set_theme(egui::Theme::Light);
+                    }
+                    let mut units = Vec::new();
+                    let mut row = Rect::NOTHING;
+                    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                        row = unit_row(ui, true, |ui| {
+                            for enabled in [false, true] {
+                                let (mut on, mut closed) = (enabled, collapsed);
+                                let mut slots = Vec::new();
+                                let unit = ui
+                                    .push_id(enabled, |ui| {
+                                        PanelStyle {
+                                            margin: 0,
+                                            ..Default::default()
+                                        }
+                                        .unit(
+                                            ui,
+                                            ("Test unit", compact),
+                                            unit_height(compact),
+                                            &mut on,
+                                            &mut closed,
+                                            |ui| {
+                                                ui.horizontal_top(|ui| {
+                                                    ui.spacing_mut().item_spacing.x = 0.0;
+                                                    for _ in 0..2 {
+                                                        slots.push(
+                                                            unit_strip(
+                                                                ui,
+                                                                crate::envelope_panel::body_height(
+                                                                    compact,
+                                                                ),
+                                                                egui::UiBuilder::new(),
+                                                                |_| {},
+                                                            )
+                                                            .response
+                                                            .rect,
+                                                        );
+                                                    }
+                                                    slots.push(
+                                                        unit_add_strip(
+                                                            ui,
+                                                            crate::envelope_panel::body_height(
+                                                                compact,
+                                                            ),
+                                                            "Add test strip",
+                                                        )
+                                                        .response
+                                                        .rect,
+                                                    );
+                                                });
+                                            },
+                                        )
+                                    })
+                                    .inner;
+                                units.push((
+                                    unit.response.rect,
+                                    unit.header.rect,
+                                    unit.modulation_header,
+                                    slots,
+                                ));
+                            }
+                        })
+                        .response
+                        .rect;
+                    });
+                    output.textures_delta.clear();
+                    for (panel, left, right, slots) in &units {
+                        assert_eq!(row.height(), unit_height(compact));
+                        assert_eq!(panel.top() - row.top(), UNIT_VERTICAL_MARGIN);
+                        assert_eq!(row.bottom() - panel.bottom(), UNIT_VERTICAL_MARGIN);
+                        assert_eq!(left.left(), panel.left());
+                        assert_eq!(left.height(), panel.height());
+                        assert_eq!(left.width(), 26.0);
+                        assert_eq!(right.is_positive(), !collapsed);
+                        if !collapsed {
+                            assert_eq!(right.width(), HEADER_HEIGHT);
+                            assert_eq!(right.right(), panel.right());
+                            let cards: Vec<_> = slots
+                                .iter()
+                                .map(|slot| daw_unit_ui::layout::unit_strip_rect(*slot))
+                                .collect();
+                            assert_eq!(cards[0].left() - left.right(), 4.0);
+                            assert_eq!(right.left() - cards.last().unwrap().right(), 4.0);
+                            for (index, card) in cards.iter().enumerate() {
+                                assert_eq!(card.top() - panel.top(), 4.0);
+                                assert_eq!(panel.bottom() - card.bottom(), 4.0);
+                                if index > 0 {
+                                    assert_eq!(card.left() - cards[index - 1].right(), 4.0);
+                                }
+                                if index < 2 {
+                                    assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(r) if r.rect == *card && r.stroke.width == 0.0 && r.corner_radius == egui::CornerRadius::same(5))));
+                                } else {
+                                    assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(r) if r.rect == *card && r.fill != Color32::TRANSPARENT)));
+                                }
+                            }
+                        }
+                        assert!(output.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                            if r.rect == *panel && r.stroke.width == 0.0 && r.corner_radius == egui::CornerRadius::same(7))));
+                        assert!(
+                            output
+                                .shapes
+                                .iter()
+                                .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                            if r.rect == *left && r.fill == crate::theme::unit_header_fill(&ctx, false)))
+                        );
+                    }
+                    assert_eq!(units[0].0.left() - row.left(), UNIT_GAP);
+                    assert_eq!(row.right() - units[1].0.right(), UNIT_GAP);
+                    assert_eq!(units[1].0.left() - units[0].0.right(), UNIT_GAP);
+                    output.textures_delta.clear();
+                }
+            }
         }
     }
 }

@@ -69,53 +69,63 @@ pub fn show(
         for (column, name) in ["Drive", "Color", "Output"].into_iter().enumerate() {
             let strip = ui
                 .push_id(column, |ui| {
-                    egui::Frame::new().inner_margin(MARGIN).show(ui, |ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                            ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(MARGIN));
-                            ui.set_min_height(if compact { compact_height } else { BODY_HEIGHT });
-                            if !compact {
-                                for row in 0..3 {
-                                    let response = if column == 1 && row == 0 {
-                                        ui.add_enabled_ui(*color_enabled, |ui| {
-                                            knobs::row(
-                                                ui,
-                                                color_shape,
-                                                knobs::CHOICE_SIZE,
-                                                |ui, value| {
-                                                    let mut index = value.index() as f32;
-                                                    let response = ui.add(Knob::new(
-                                                        &mut index,
-                                                        KnobSpec::new(
-                                                            "Color shape",
-                                                            0.0..=2.0,
-                                                            0.0,
-                                                            1.0,
-                                                        )
-                                                        .stepped(1.0)
-                                                        .cyclic()
-                                                        .diagrams(diagram)
-                                                        .format(|v| {
-                                                            DriveV2ColorShape::ALL
-                                                                [v.round().clamp(0.0, 2.0) as usize]
-                                                                .name()
-                                                                .into()
-                                                        }),
-                                                    ));
-                                                    if response.changed() {
-                                                        *value =
-                                                            DriveV2ColorShape::ALL[index as usize];
-                                                    }
-                                                    response
-                                                },
-                                            )
-                                        })
-                                        .inner
-                                    } else if column == 0 && row == 0 {
-                                        rows::selector_row(ui, "Clip mode", |ui| {
-                                            let value = &mut *clip;
-                                            let before = *value;
-                                            let mut response =
-                                                crate::menus::Dropdown::from_id_salt("clip-mode")
+                    crate::layout::unit_strip_frame(ui)
+                        .inner_margin(MARGIN)
+                        .show(ui, |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(MARGIN));
+                                ui.set_min_height(if compact {
+                                    compact_height
+                                } else {
+                                    BODY_HEIGHT
+                                });
+                                if !compact {
+                                    for row in 0..3 {
+                                        let response = if column == 1 && row == 0 {
+                                            ui.add_enabled_ui(*color_enabled, |ui| {
+                                                knobs::row(
+                                                    ui,
+                                                    color_shape,
+                                                    knobs::CHOICE_SIZE,
+                                                    |ui, value| {
+                                                        let mut index = value.index() as f32;
+                                                        let response = ui.add(Knob::new(
+                                                            &mut index,
+                                                            KnobSpec::new(
+                                                                "Color shape",
+                                                                0.0..=2.0,
+                                                                0.0,
+                                                                1.0,
+                                                            )
+                                                            .stepped(1.0)
+                                                            .cyclic()
+                                                            .diagrams(diagram)
+                                                            .format(|v| {
+                                                                DriveV2ColorShape::ALL[v
+                                                                    .round()
+                                                                    .clamp(0.0, 2.0)
+                                                                    as usize]
+                                                                    .name()
+                                                                    .into()
+                                                            }),
+                                                        ));
+                                                        if response.changed() {
+                                                            *value = DriveV2ColorShape::ALL
+                                                                [index as usize];
+                                                        }
+                                                        response
+                                                    },
+                                                )
+                                            })
+                                            .inner
+                                        } else if column == 0 && row == 0 {
+                                            rows::selector_row(ui, "Clip mode", |ui| {
+                                                let value = &mut *clip;
+                                                let before = *value;
+                                                let mut response =
+                                                    crate::menus::Dropdown::from_id_salt(
+                                                        "clip-mode",
+                                                    )
                                                     .small_items()
                                                     .selected_text(
                                                         egui::RichText::new(value.name())
@@ -133,26 +143,32 @@ pub fn show(
                                                     })
                                                     .response
                                                     .on_hover_text("Clip mode");
-                                            if *value != before {
-                                                response.mark_changed();
-                                            }
-                                            response
-                                        })
-                                    } else {
-                                        let (value, i): (&mut f32, usize) = match (column, row) {
-                                            (2, 0) => (&mut *input_gain_db, 0),
-                                            (0, 1) => (&mut *gain, 1),
-                                            (0, 2) => (&mut *tone, 2),
-                                            (1, 1) => (&mut *color_strength, 3),
-                                            (1, 2) => (&mut *color_frequency_hz, 4),
-                                            (2, 1) => (&mut *level_db, 5),
-                                            (2, 2) => (&mut *dry_wet, 6),
-                                            _ => unreachable!(),
-                                        };
-                                        ui.add_enabled_ui(column != 1 || *color_enabled, |ui| {
-                                            knobs::row(ui, value, knobs::CHOICE_SIZE, |ui, v| {
-                                                let spec =
-                                                    parameter_knobs::destination(P::DRIVE_V2[i])
+                                                if *value != before {
+                                                    response.mark_changed();
+                                                }
+                                                response
+                                            })
+                                        } else {
+                                            let (value, i): (&mut f32, usize) = match (column, row)
+                                            {
+                                                (2, 0) => (&mut *input_gain_db, 0),
+                                                (0, 1) => (&mut *gain, 1),
+                                                (0, 2) => (&mut *tone, 2),
+                                                (1, 1) => (&mut *color_strength, 3),
+                                                (1, 2) => (&mut *color_frequency_hz, 4),
+                                                (2, 1) => (&mut *level_db, 5),
+                                                (2, 2) => (&mut *dry_wet, 6),
+                                                _ => unreachable!(),
+                                            };
+                                            ui.add_enabled_ui(column != 1 || *color_enabled, |ui| {
+                                                knobs::row(
+                                                    ui,
+                                                    value,
+                                                    knobs::CHOICE_SIZE,
+                                                    |ui, v| {
+                                                        let spec = parameter_knobs::destination(
+                                                            P::DRIVE_V2[i],
+                                                        )
                                                         .named(
                                                             [
                                                                 "Input gain",
@@ -164,61 +180,62 @@ pub fn show(
                                                                 "Dry/Wet",
                                                             ][i],
                                                         );
-                                                ui.add(Knob::new(v, spec).modulated(
-                                                    markers[i].as_ref(),
-                                                    modulation_open,
-                                                ))
+                                                        ui.add(Knob::new(v, spec).modulated(
+                                                            markers[i].as_ref(),
+                                                            modulation_open,
+                                                        ))
+                                                    },
+                                                )
                                             })
-                                        })
-                                        .inner
-                                    };
-                                    bounds.knobs[column][row] = response.rect;
-                                    if column == 0 && row == 0 {
-                                        bounds.clip = response.rect;
-                                    }
-                                    let slot = match (column, row) {
-                                        (0, 0) => 8,
-                                        (0, 1) => 1,
-                                        (0, 2) => 2,
-                                        (1, 0) => 3,
-                                        (1, 1) => 4,
-                                        (1, 2) => 5,
-                                        (2, 0) => 6,
-                                        (2, 1) => 0,
-                                        (2, 2) => 7,
-                                        _ => unreachable!(),
-                                    };
-                                    bounds.controls[slot] = Some(response);
-                                }
-                            }
-                            rows::centered(
-                                ui,
-                                if compact {
-                                    compact_height
-                                } else {
-                                    crate::layout::COMPACT_BUTTON_SIZE
-                                },
-                                |ui| {
-                                    if column == 1 {
-                                        let mut r = rows::power_label(
-                                            ui,
-                                            "Color",
-                                            "Toggle Color",
-                                            *color_enabled,
-                                        );
-                                        bounds.color_power = r.rect;
-                                        if r.clicked() {
-                                            *color_enabled = !*color_enabled;
-                                            r.mark_changed();
+                                            .inner
+                                        };
+                                        bounds.knobs[column][row] = response.rect;
+                                        if column == 0 && row == 0 {
+                                            bounds.clip = response.rect;
                                         }
-                                        bounds.controls[9] = Some(r);
-                                    } else {
-                                        rows::unit_label(ui, name);
+                                        let slot = match (column, row) {
+                                            (0, 0) => 8,
+                                            (0, 1) => 1,
+                                            (0, 2) => 2,
+                                            (1, 0) => 3,
+                                            (1, 1) => 4,
+                                            (1, 2) => 5,
+                                            (2, 0) => 6,
+                                            (2, 1) => 0,
+                                            (2, 2) => 7,
+                                            _ => unreachable!(),
+                                        };
+                                        bounds.controls[slot] = Some(response);
                                     }
-                                },
-                            );
-                        });
-                    })
+                                }
+                                rows::centered(
+                                    ui,
+                                    if compact {
+                                        compact_height
+                                    } else {
+                                        crate::layout::COMPACT_BUTTON_SIZE
+                                    },
+                                    |ui| {
+                                        if column == 1 {
+                                            let mut r = rows::power_label(
+                                                ui,
+                                                "Color",
+                                                "Toggle Color",
+                                                *color_enabled,
+                                            );
+                                            bounds.color_power = r.rect;
+                                            if r.clicked() {
+                                                *color_enabled = !*color_enabled;
+                                                r.mark_changed();
+                                            }
+                                            bounds.controls[9] = Some(r);
+                                        } else {
+                                            rows::unit_label(ui, name);
+                                        }
+                                    },
+                                );
+                            });
+                        })
                 })
                 .inner
                 .response
@@ -227,9 +244,6 @@ pub fn show(
             if column == 2 && !compact {
                 bounds.meter =
                     crate::meters::effect_output_level(ui, strip, MARGIN, level, enabled);
-            }
-            if column > 0 {
-                crate::drive::divider(ui, strip.left(), strip.y_range());
             }
         }
     });

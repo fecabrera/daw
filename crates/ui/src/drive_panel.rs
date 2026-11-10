@@ -74,7 +74,6 @@ fn show_inner(
                 bounds.knobs = shared.knobs;
                 bounds.labels = shared.labels;
                 if open {
-                    daw_unit_ui::drive::divider(ui, shared.rect.right(), shared.rect.y_range());
                     crate::modulation_panel::body(ui, &mut settings.modulations, sources,
                         <DriveSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS,
                         <DriveSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
@@ -86,7 +85,7 @@ fn show_inner(
     settings.collapsed = collapsed;
     crate::modulation_panel::toggle(
         ui,
-        &result.header,
+        &result,
         settings.collapsed,
         &mut settings.modulation_open,
     );

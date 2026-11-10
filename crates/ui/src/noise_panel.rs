@@ -200,16 +200,8 @@ impl DawUi {
                             layer_id,
                             InstrumentComponent::Noise,
                         );
-                        if column == 1 {
-                            panels::unit_divider(
-                                ui,
-                                strip.response.rect.left(),
-                                strip.response.rect.y_range().into(),
-                            );
-                        }
                     }
                     if open {
-                        panels::unit_divider(ui, strips[1].right(), strips[1].y_range().into());
                         modulation_panel::body(
                             ui,
                             &mut noise.modulations,
@@ -246,8 +238,7 @@ impl DawUi {
                 enabled,
             );
         }
-        let toggle =
-            modulation_panel::toggle(ui, &result.header, collapsed, &mut noise.modulation_open);
+        let toggle = modulation_panel::toggle(ui, &result, collapsed, &mut noise.modulation_open);
         self.start_installed_component_drag(
             ui,
             &result.header,

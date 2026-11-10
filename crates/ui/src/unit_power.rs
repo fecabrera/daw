@@ -9,7 +9,7 @@ use std::sync::{
 
 const TAG: &str = "unit-power-menu";
 
-/// Transient scope data lets nested component panels share the lane's group action.
+/// Transient scope data shares group power actions and the unit's UI selection.
 #[derive(Clone)]
 pub(super) struct PowerMenu {
     enable: bool,
@@ -22,10 +22,10 @@ impl PowerMenu {
             requested: Default::default(),
         }
     }
-    pub fn scope(&self, id: impl egui::AsIdSalt) -> egui::UiBuilder {
-        egui::UiBuilder::new()
-            .id_salt(id)
-            .ui_stack_info(egui::UiStackInfo::default().with_tag_value(TAG, self.clone()))
+    pub fn scope(&self, id: impl egui::AsIdSalt, selected: bool) -> egui::UiBuilder {
+        egui::UiBuilder::new().id_salt(id).ui_stack_info(
+            crate::unit_selection::scope_info(selected).with_tag_value(TAG, self.clone()),
+        )
     }
     pub fn action(&self) -> Option<bool> {
         self.requested

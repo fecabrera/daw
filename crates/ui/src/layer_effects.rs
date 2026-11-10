@@ -69,6 +69,7 @@ impl DawUi {
         }) {
             if self.instrument_ui.effects_layer != Some(owner) {
                 self.selected_effects.clear();
+                ui.ctx().request_repaint();
             }
             self.instrument_ui.effects_layer = Some(owner);
             self.effects_lane_focus.set(ui, pane, true);
@@ -172,6 +173,7 @@ impl DawUi {
         if over_component && crate::unit_selection::clicked(ui, viewport, allowed) {
             self.instrument_ui.effects_layer = None;
             self.selected_effects.clear();
+            ui.ctx().request_repaint();
         }
         let clicked = !layer.effects.is_empty()
             && !over_component
@@ -181,6 +183,7 @@ impl DawUi {
             self.instrument_ui.component_focus = Default::default();
             if self.instrument_ui.effects_layer != Some(layer.id) {
                 self.selected_effects.clear();
+                ui.ctx().request_repaint();
             }
             self.instrument_ui.effects_layer = Some(layer.id);
             self.instrument_ui.selected_layer = Some(layer.id);
@@ -199,6 +202,7 @@ impl DawUi {
                     .any(|(_, r)| ui.rect_contains_pointer(r.intersect(viewport)))
             {
                 self.selected_effects.clear();
+                ui.ctx().request_repaint();
                 keyboard.request_focus();
             }
             self.effect_selection_shortcuts(ui, layer.effects, allowed, &keyboard);

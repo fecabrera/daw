@@ -369,9 +369,7 @@ pub fn show(
             )
             .response
             .rect;
-            if strip > 0 {
-                panels::unit_divider(ui, rect.left(), rect.y_range().into());
-            }
+
             if strip == 6 && !compact {
                 meters::effect_output_level(
                     ui,

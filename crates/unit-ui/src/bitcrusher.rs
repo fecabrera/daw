@@ -39,7 +39,7 @@ pub fn show(
         for (column, name) in ["Crush", "Output"].into_iter().enumerate() {
             let strip = ui
                 .push_id(column, |ui| {
-                    egui::Frame::new()
+                    crate::layout::unit_strip_frame(ui)
                         .inner_margin(PANEL_MARGIN)
                         .show(ui, |ui| {
                             ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
@@ -130,9 +130,6 @@ pub fn show(
             if column == 1 && !compact {
                 bounds.meter =
                     meters::effect_output_level(ui, strip, PANEL_MARGIN, level, settings.enabled);
-            }
-            if column > 0 {
-                crate::drive::divider(ui, strip.left(), strip.y_range());
             }
         }
     });

@@ -583,7 +583,7 @@ fn effects_library_empty_click_respects_input_guards_and_other_catalog_controls(
             app.effects_bounds.library.bottom() - 8.0,
         );
         let point = match guard {
-            "header" => app.effects_bounds.header.center(),
+            "header" => unit_title_point(app.effects_bounds.header),
             _ => blank,
         };
         if guard == "modal" {
@@ -692,9 +692,9 @@ fn effects_lane_selection_clears_on_focus_loss_and_keeps_controls_in_the_lane() 
         "hover",
     ] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
-        let point = app.effects_bounds.units[0].header.center();
+        let point = unit_title_point(app.effects_bounds.units[0].header);
         click(&mut app, &ctx, point);
-        let point = app.effects_bounds.drive_units[0].header.center();
+        let point = unit_title_point(app.effects_bounds.drive_units[0].header);
         click_effect_with_shift(&mut app, &ctx, point, true);
         assert_eq!(app.selected_effects, HashSet::from([ids[0], ids[1]]));
         let original = serde_json::to_string(&app.session.project).unwrap();
@@ -1202,7 +1202,7 @@ fn eq_catalog_adds_on_double_click_and_controls_save_independent_states() {
             .iter()
             .all(Rect::is_positive)
     );
-    let header = app.effects_bounds.units[0].header.center();
+    let header = unit_title_point(app.effects_bounds.units[0].header);
     end_click_sequence(&mut app, &ctx);
     click(&mut app, &ctx, header);
     click(&mut app, &ctx, header);
@@ -1564,7 +1564,7 @@ fn drive_labels_and_knobs_align_with_eq_and_both_presentation_modes_persist() {
             assert!(!drive_settings(&app).enabled);
             assert!(!drive_settings(&app).collapsed);
             end_click_sequence(&mut app, &ctx);
-            let header = app.effects_bounds.drive_units[0].header.center();
+            let header = unit_title_point(app.effects_bounds.drive_units[0].header);
             click(&mut app, &ctx, header);
             click(&mut app, &ctx, header);
             assert!(drive_settings(&app).collapsed);
@@ -1643,6 +1643,143 @@ fn begin_effect_drag(app: &mut DawUi, ctx: &egui::Context, point: Pos2, end: Pos
     );
     frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
 }
+#[test]
+fn unit_header_click_keeps_timeline_colors_while_a_drag_is_only_armed() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for collapsed in [false, true] {
+                let (mut app, track, ctx, _) = chain_fixture(compact, collapsed);
+                app.effects_catalog.selection.insert(daw_core::EQ_TYPE_ID);
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                let baseline = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                let clip = app.session.project.tracks[0].clips[0].clone();
+                let block = app.clip_block(app.lane_bounds[&track], &clip, 0);
+                let fills = |shapes: &[egui::epaint::ClippedShape]| {
+                    shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(r) if block.contains(r.rect.center()) => {
+                                Some((r.rect, r.fill))
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                };
+                let expected = fills(&baseline);
+                assert!(!expected.is_empty());
+                let category_paint = |shapes: &[egui::epaint::ClippedShape]| {
+                    shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(t) if t.galley.text() == "EQ & Filters" => Some((
+                                t.fallback_color,
+                                t.override_text_color,
+                                t.opacity_factor,
+                                t.galley
+                                    .job
+                                    .sections
+                                    .iter()
+                                    .map(|section| section.format.color)
+                                    .collect::<Vec<_>>(),
+                            )),
+                            _ => None,
+                        })
+                        .unwrap()
+                };
+                let expected_category = category_paint(&baseline);
+                let toolbar_paint = |shapes: &[egui::epaint::ClippedShape]| {
+                    fn collect(shape: &egui::Shape, buttons: Rect, paints: &mut Vec<String>) {
+                        match shape {
+                            egui::Shape::Vec(shapes) => {
+                                for shape in shapes {
+                                    collect(shape, buttons, paints);
+                                }
+                            }
+                            egui::Shape::Text(t)
+                                if ViewMode::ALL
+                                    .iter()
+                                    .any(|mode| mode.label() == t.galley.text()) =>
+                            {
+                                paints.push(format!("{t:?}"))
+                            }
+                            egui::Shape::Rect(rect) if buttons.contains(rect.rect.center()) => {
+                                paints.push(format!("{rect:?}"))
+                            }
+                            egui::Shape::Mesh(mesh)
+                                if buttons.contains(mesh.calc_bounds().center()) =>
+                            {
+                                paints.push(format!("{mesh:?}"))
+                            }
+                            _ => (),
+                        }
+                    }
+                    let mut paints = Vec::new();
+                    for shape in shapes {
+                        collect(
+                            &shape.shape,
+                            Rect::from_min_max(
+                                Pos2::new(block.left() - 85.0, block.top() - 40.0),
+                                block.left_top(),
+                            ),
+                            &mut paints,
+                        );
+                    }
+                    paints
+                };
+                let expected_toolbar = toolbar_paint(&baseline);
+                assert!(expected_toolbar.len() > ViewMode::ALL.len());
+                let project = app.session.project.clone();
+                let selection = app.selected_clips.clone();
+                let catalog_selection = app.effects_catalog.selection.clone();
+                let point = unit_title_point(app.effects_bounds.units[0].header);
+                for events in [
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                    vec![],
+                    vec![],
+                ] {
+                    let shapes = frame_shapes(&mut app, &ctx, events, Vec2::new(1280.0, 800.0));
+                    assert!(app.effects_drag.as_ref().is_some_and(|drag| !drag.active));
+                    assert_eq!(
+                        category_paint(&shapes),
+                        expected_category,
+                        "catalog must not fade on an armed header press"
+                    );
+                    assert_eq!(
+                        toolbar_paint(&shapes),
+                        expected_toolbar,
+                        "toolbar must not fade on an armed header press"
+                    );
+                    assert!(!app.view_switch_enabled());
+                    assert!(!app.track_action_enabled(TrackAction::Add, &ctx));
+                    assert!(!app.track_action_enabled(TrackAction::Duplicate, &ctx));
+                    assert!(!app.editing_enabled(), "armed gestures retain edit guards");
+                    assert_eq!(
+                        fills(&shapes),
+                        expected,
+                        "theme {color_theme:?}, compact {compact}, collapsed {collapsed}"
+                    );
+                }
+                for events in [vec![button(point, false)], vec![]] {
+                    let shapes = frame_shapes(&mut app, &ctx, events, Vec2::new(1280.0, 800.0));
+                    assert_eq!(fills(&shapes), expected);
+                    assert_eq!(category_paint(&shapes), expected_category);
+                    assert_eq!(toolbar_paint(&shapes), expected_toolbar);
+                }
+                assert!(app.effects_drag.is_none());
+                assert_eq!(app.session.project, project);
+                assert_eq!(app.selected_clips, selection);
+                assert_eq!(app.effects_catalog.selection, catalog_selection);
+                assert!(!app.dirty);
+            }
+        }
+    }
+}
 fn chain_ids(app: &DawUi) -> Vec<Id> {
     app.session.project.tracks[0]
         .effects
@@ -1664,7 +1801,7 @@ fn effect_headers_preview_and_commit_order_on_release_in_all_presentation_modes(
                     app.effects_bounds.units[1].header
                 };
                 // Use the title below the cap in a collapsed strip; exclude the power control.
-                let start = header.center();
+                let start = unit_title_point(header);
                 let chain = &app.effects_bounds.chain;
                 let end = Pos2::new(
                     if source == 0 {
@@ -1723,7 +1860,7 @@ fn effect_reorder_cancels_and_same_position_drops_leave_the_project_clean() {
     ] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
         let original = app.session.project.tracks[0].effects.clone();
-        let start = app.effects_bounds.units[0].header.center();
+        let start = unit_title_point(app.effects_bounds.units[0].header);
         let end = if mode == "same" {
             start + Vec2::new(10.0, 0.0)
         } else if mode == "outside" {
@@ -1799,7 +1936,7 @@ fn effect_power_and_knob_drags_do_not_start_reordering_and_secondary_drags_do_no
         frame(&mut app, &ctx, vec![button(end, false)]);
         assert_eq!(chain_ids(&app), ids);
     }
-    let start = app.effects_bounds.units[0].header.center();
+    let start = unit_title_point(app.effects_bounds.units[0].header);
     let end = start + Vec2::new(400.0, 0.0);
     let secondary = |point, pressed| egui::Event::PointerButton {
         pos: point,
@@ -1826,7 +1963,7 @@ fn effect_header_drag_scrolls_at_lane_edges_and_reaches_offscreen_units() {
             .push(daw_core::EffectInstance::equalizer());
     }
     frame_sized(&mut app, &ctx, vec![], Vec2::new(640.0, 800.0));
-    let start = app.effects_bounds.units[0].header.center();
+    let start = unit_title_point(app.effects_bounds.units[0].header);
     let viewport = app.effects_bounds.lane_viewport;
     let end = Pos2::new(viewport.right() - 3.0, start.y);
     frame_sized(
@@ -1890,7 +2027,7 @@ fn click_effect_with_shift(app: &mut DawUi, ctx: &egui::Context, point: Pos2, sh
     );
 }
 #[test]
-fn effect_unit_click_selection_and_shift_toggle_share_the_track_outline_without_project_edits() {
+fn effect_selection_lights_titles_without_changing_background_outlines_or_project_data() {
     for compact in [false, true] {
         for collapsed in [false, true] {
             for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
@@ -1904,20 +2041,54 @@ fn effect_unit_click_selection_and_shift_toggle_share_the_track_outline_without_
                 );
                 frame(&mut app, &ctx, vec![]);
                 let before = app.session.project.clone();
-                let first = app.effects_bounds.units[0].header.center();
-                let second = app.effects_bounds.drive_units[0].header.center();
+                let first = unit_title_point(app.effects_bounds.units[0].header);
+                let second = unit_title_point(app.effects_bounds.drive_units[0].header);
                 click_effect_with_shift(&mut app, &ctx, first, false);
                 assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
                 click_effect_with_shift(&mut app, &ctx, second, true);
                 assert_eq!(app.selected_effects, HashSet::from([ids[0], ids[1]]));
                 let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                for (id, header) in [
+                    (ids[0], app.effects_bounds.units[0].header),
+                    (ids[1], app.effects_bounds.drive_units[0].header),
+                    (ids[2], app.effects_bounds.units[1].header),
+                ] {
+                    let title = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(t)
+                                if t.angle != 0.0
+                                    && header.contains(t.visual_bounding_rect().center()) =>
+                            {
+                                Some(t)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert!(
+                        title.galley.job.sections.iter().all(|section| section
+                            .format
+                            .font_id
+                            .family
+                            == crate::fonts::semibold(panels::HEADER_FONT_SIZE).family)
+                    );
+                    assert_eq!(
+                        title.fallback_color,
+                        if app.selected_effects.contains(&id) {
+                            theme::palette(&ctx).text
+                        } else {
+                            theme::palette(&ctx).secondary
+                        }
+                    );
+                    assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(r) if r.rect == header && r.fill == theme::unit_header_fill(&ctx, false))));
+                }
                 for (id, rect) in &app.effects_bounds.chain {
                     let outlined = shapes.iter().any(|s| {
                         matches!(&s.shape, egui::Shape::Rect(r)
                         if r.rect == *rect && r.stroke == theme::selection_outline(&ctx)
                             && r.corner_radius == egui::CornerRadius::same(2))
                     });
-                    assert_eq!(outlined, app.selected_effects.contains(id));
+                    assert!(!outlined, "selected unit {id} has no outline");
                 }
                 // Break the click sequence so the next Shift click does not collapse a header.
                 end_click_sequence(&mut app, &ctx);
@@ -1943,10 +2114,10 @@ fn effect_body_selection_keeps_child_controls_and_reordering_and_clears_on_view_
     let blank = Pos2::new(rect.left() + 6.0, rect.center().y);
     click(&mut app, &ctx, blank);
     assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
-    let second = app.effects_bounds.drive_units[0].header.center();
+    let second = unit_title_point(app.effects_bounds.drive_units[0].header);
     click_effect_with_shift(&mut app, &ctx, second, true);
     let selected = app.selected_effects.clone();
-    let start = app.effects_bounds.units[0].header.center();
+    let start = unit_title_point(app.effects_bounds.units[0].header);
     let end = Pos2::new(
         app.effects_bounds.chain.last().unwrap().1.right() + 10.0,
         start.y,
@@ -1979,7 +2150,7 @@ fn effect_unit_selection_clears_when_disabled_or_unfocused_without_editing_units
     for unfocused in [false, true] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
         app.selected_effects.insert(ids[0]);
-        let point = app.effects_bounds.drive_units[0].header.center();
+        let point = unit_title_point(app.effects_bounds.drive_units[0].header);
         if !unfocused {
             app.unsaved_prompt = true;
         }
@@ -2012,6 +2183,11 @@ fn dragging_selected_effects_preserves_chain_order_for_contiguous_and_separated_
             for forward in [false, true] {
                 for separated in [false, true] {
                     let (mut app, _, ctx, _) = chain_fixture(compact, collapsed);
+                    // Keep the expanded bank visible; edge scrolling has separate coverage.
+                    ctx.data_mut(|d| {
+                        d.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(2400.0, 800.0))
+                    });
+                    frame(&mut app, &ctx, vec![]);
                     app.session.project.tracks[0].effects.extend([
                         daw_core::EffectInstance::drive(),
                         daw_core::EffectInstance::equalizer(),
@@ -2030,9 +2206,9 @@ fn dragging_selected_effects_preserves_chain_order_for_contiguous_and_separated_
                     let index = if forward { 0 } else { 4 };
                     let rect = app.effects_bounds.chain[index].1;
                     let start = if forward {
-                        app.effects_bounds.units[0].header.center()
+                        unit_title_point(app.effects_bounds.units[0].header)
                     } else {
-                        Pos2::new(rect.center().x, rect.top() + 12.0)
+                        unit_slot_point(rect)
                     };
                     let end = Pos2::new(
                         if forward {
@@ -2077,7 +2253,7 @@ fn selected_effect_group_same_position_and_cancelled_moves_leave_order_and_selec
     for cancel in [false, true] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
         app.selected_effects = HashSet::from([ids[0], ids[1]]);
-        let start = app.effects_bounds.units[0].header.center();
+        let start = unit_title_point(app.effects_bounds.units[0].header);
         let end = if cancel {
             Pos2::new(
                 app.effects_bounds.chain.last().unwrap().1.right() + 10.0,
@@ -2128,7 +2304,7 @@ fn empty_effects_lane_click_clears_unit_selection_without_editing_the_project() 
 #[test]
 fn effect_header_fast_drag_can_commit_when_motion_and_release_arrive_in_one_frame() {
     let (mut app, _, ctx, ids) = chain_fixture(false, false);
-    let start = app.effects_bounds.units[0].header.center();
+    let start = unit_title_point(app.effects_bounds.units[0].header);
     let end = Pos2::new(
         app.effects_bounds.chain.last().unwrap().1.right() + 10.0,
         start.y,
@@ -2288,7 +2464,7 @@ fn auto_filter_has_three_strips_with_evenly_spaced_lfo_columns_and_a_centered_fo
             click(&mut app, &ctx, power);
             assert!(!auto_filter_settings(&app).enabled);
             end_click_sequence(&mut app, &ctx);
-            let header = app.effects_bounds.auto_filter_units[0].header.center();
+            let header = unit_title_point(app.effects_bounds.auto_filter_units[0].header);
             click(&mut app, &ctx, header);
             click(&mut app, &ctx, header);
             assert!(auto_filter_settings(&app).collapsed);
@@ -2775,7 +2951,7 @@ fn compressor_layout_compact_collapse_and_readonly_meter_follow_unit_conventions
             end_click_sequence(&mut app, &ctx);
             click(&mut app, &ctx, power);
             assert!(!compressor_settings(&app).enabled);
-            let header = app.effects_bounds.compressor_units[0].header.center();
+            let header = unit_title_point(app.effects_bounds.compressor_units[0].header);
             end_click_sequence(&mut app, &ctx);
             click(&mut app, &ctx, header);
             click(&mut app, &ctx, header);
@@ -3103,7 +3279,12 @@ fn effect_delete_removes_selected_units_and_preserves_survivors_and_clips() {
                             _ => app.effects_bounds.units[1].header,
                         };
                         end_click_sequence(&mut app, &ctx);
-                        click_effect_with_shift(&mut app, &ctx, header.center(), index > 0);
+                        click_effect_with_shift(
+                            &mut app,
+                            &ctx,
+                            unit_title_point(header),
+                            index > 0,
+                        );
                     }
                     assert_eq!(
                         app.selected_effects,
@@ -3182,7 +3363,7 @@ fn effect_shortcuts_respect_focus_modifiers_modal_and_drag_guards() {
             "text",
         ] {
             let (mut app, _, ctx, ids) = chain_fixture(false, false);
-            let point = app.effects_bounds.units[0].header.center();
+            let point = unit_title_point(app.effects_bounds.units[0].header);
             click(&mut app, &ctx, point);
             assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
             let original = app.session.project.clone();
@@ -3436,7 +3617,7 @@ fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
             app.effect_chain(app.effects_target().unwrap()).unwrap().0[1].unit,
             daw_core::EffectSettings::Drive(_)
         ));
-        let start = app.effects_bounds.drive_units[0].header.center();
+        let start = unit_title_point(app.effects_bounds.drive_units[0].header);
         let end = Pos2::new(app.effects_bounds.chain[0].1.left() + 2.0, start.y);
         begin_effect_drag(&mut app, &ctx, start, end);
         assert!(
@@ -3447,8 +3628,8 @@ fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
         frame(&mut app, &ctx, vec![button(end, false)]);
         frame(&mut app, &ctx, vec![]);
         assert_eq!(ids_of(&app), [ids[1], ids[0]]);
-        let first = app.effects_bounds.drive_units[0].header.center();
-        let second = app.effects_bounds.units[0].header.center();
+        let first = unit_title_point(app.effects_bounds.drive_units[0].header);
+        let second = unit_title_point(app.effects_bounds.units[0].header);
         end_click_sequence(&mut app, &ctx);
         click(&mut app, &ctx, first);
         click_effect_with_shift(&mut app, &ctx, second, true);
@@ -3630,7 +3811,7 @@ fn hidden_timeline_catalog_keeps_lane_actions_and_visibility_across_views() {
     ctx.memory_mut(|memory| memory.surrender_focus(focus));
     library_key(&mut app, &ctx, egui::Key::Enter, false);
     assert_eq!(app.session.project.tracks[0].effects, original);
-    let point = app.effects_bounds.units[0].header.center();
+    let point = unit_title_point(app.effects_bounds.units[0].header);
     click(&mut app, &ctx, point);
     assert_eq!(app.selected_effects.len(), 1);
     frame(
@@ -3685,7 +3866,7 @@ fn timeline_library_toggle_respects_disabled_modal_and_effect_drag_guards() {
                 app.unsaved_prompt = true;
             }
             if guard == "effect_drag" {
-                let header = app.effects_bounds.units[0].header.center();
+                let header = unit_title_point(app.effects_bounds.units[0].header);
                 begin_effect_drag(&mut app, &ctx, header, header + Vec2::new(70.0, 0.0));
             }
             app.dirty = false;
@@ -3749,7 +3930,7 @@ fn timeline_lane_toggle_reclaims_height_and_preserves_effects_across_view_change
                 let master = app.master_bounds;
                 let original = serde_json::to_string(&app.session.project).unwrap();
                 app.dirty = false;
-                let unit = app.effects_bounds.units[0].header.center();
+                let unit = unit_title_point(app.effects_bounds.units[0].header);
                 click(&mut app, &ctx, unit);
                 assert_eq!(app.selected_effects.len(), 1);
                 end_click_sequence(&mut app, &ctx);
@@ -3913,7 +4094,7 @@ fn timeline_tracks_share_one_left_divider_with_catalog_or_toolbar() {
 }
 
 #[test]
-fn first_timeline_effect_shares_the_toolbar_divider_without_changing_other_unit_borders() {
+fn timeline_effects_keep_toolbar_divider_and_borderless_unit_surfaces() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
             for collapsed in [false, true] {
@@ -3951,7 +4132,8 @@ fn first_timeline_effect_shares_the_toolbar_divider_without_changing_other_unit_
                                     stroke: painted,
                                 } if *painted == stroke
                                     && points[0].x == points[1].x
-                                    && (points[0].x - first.left()).abs() <= 1.0 =>
+                                    && (points[0].x - app.effects_bounds.toolbar.right()).abs()
+                                        <= 1.0 =>
                                 {
                                     Some(*points)
                                 }
@@ -3959,12 +4141,22 @@ fn first_timeline_effect_shares_the_toolbar_divider_without_changing_other_unit_
                             })
                             .collect();
                         assert_eq!(verticals.len(), 1);
-                        assert_eq!(first.left(), app.effects_bounds.toolbar.right());
-                        let expected_x = first.left() - 0.5;
+                        assert_eq!(
+                            first.left(),
+                            app.effects_bounds.toolbar.right() + panels::UNIT_GAP
+                        );
+                        let expected_x = app.effects_bounds.toolbar.right() - 0.5;
                         assert_eq!(verticals[0][0].x, expected_x);
-                        let second = app.effects_bounds.chain[1].1.shrink(0.5);
-                        assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { points, stroke: painted }
-                            if *painted == stroke && *points == [second.left_top(), second.left_bottom()])));
+                        let second = unit_panel(&ctx, app.effects_bounds.drive_units[0].header);
+                        assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(r)
+                            if r.rect == second && r.stroke.is_empty() && r.fill == theme::unit_separator(&ctx) && r.corner_radius == egui::CornerRadius::same(7))));
+                        assert!(
+                            (app.effects_bounds.chain[1].1.left()
+                                - first.right()
+                                - panels::UNIT_GAP)
+                                .abs()
+                                < 0.01
+                        );
                         assert_eq!(
                             serde_json::to_string(&app.session.project).unwrap(),
                             original
@@ -4312,7 +4504,7 @@ fn limiter_uses_shared_controls_and_catalog_actions_in_both_themes() {
                 .all(|rect| !rect.is_positive())
         );
         assert!(app.session.project.tracks[0].effects_compact);
-        let header = app.effects_bounds.limiter_units[0].header.center();
+        let header = unit_title_point(app.effects_bounds.limiter_units[0].header);
         click(&mut app, &ctx, header);
         library_key(&mut app, &ctx, egui::Key::Delete, false);
         assert!(app.session.project.tracks[0].effects.is_empty());
@@ -4325,6 +4517,11 @@ fn modifier_drag_copies_selected_effects_in_chain_order_with_new_ids() {
         for collapsed in [false, true] {
             for (master, ott) in [(false, false), (true, false), (false, true), (true, true)] {
                 let (mut app, _, ctx, ids) = chain_fixture(compact, collapsed);
+                // Keep the expanded bank visible; edge scrolling has separate coverage.
+                ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(2400.0, 800.0))
+                });
+                frame(&mut app, &ctx, vec![]);
                 let third = &mut app.session.project.tracks[0].effects[2];
                 third.unit = if ott {
                     daw_core::EffectSettings::Ott(daw_core::OttSettings {
@@ -4362,7 +4559,7 @@ fn modifier_drag_copies_selected_effects_in_chain_order_with_new_ids() {
                     app.master_selected = true;
                     frame(&mut app, &ctx, vec![]);
                 }
-                let start = app.effects_bounds.units[0].header.center();
+                let start = unit_title_point(app.effects_bounds.units[0].header);
                 let end = egui::pos2(
                     app.effects_bounds.chain.last().unwrap().1.right() + 12.0,
                     start.y,
@@ -4447,7 +4644,7 @@ fn effect_copy_modifier_is_dynamic_and_cancel_never_creates_copies() {
     for mode in ["escape", "outside", "release-modifier", "fast"] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
         let original = app.session.project.tracks[0].effects.clone();
-        let start = app.effects_bounds.units[0].header.center();
+        let start = unit_title_point(app.effects_bounds.units[0].header);
         let end = if mode == "outside" {
             egui::pos2(1.0, 1.0)
         } else {
@@ -4537,7 +4734,7 @@ fn effect_copies_keep_modulation_settings_but_receive_new_route_ids() {
     frame(&mut app, &ctx, vec![]);
     let original = app.session.project.tracks[0].effects[1].clone();
     let rect = app.effects_bounds.chain[1].1;
-    let start = Pos2::new(rect.center().x, rect.top() + 12.0);
+    let start = unit_slot_point(rect);
     let end = Pos2::new(
         app.effects_bounds.chain.last().unwrap().1.right() + 12.0,
         start.y,
@@ -4708,7 +4905,7 @@ fn direction_mixer_controls_and_catalog_use_shared_track_master_and_instrument_a
                     .iter()
                     .all(|r| !r.is_positive())
             );
-            let point = app.effects_bounds.direction_mixer_units[0].header.center();
+            let point = unit_title_point(app.effects_bounds.direction_mixer_units[0].header);
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Delete, false);
             assert!(app.effect_chain(owner).unwrap().0.is_empty());
@@ -4817,7 +5014,7 @@ fn stereo_spread_shared_controls_add_edit_reset_and_remove_on_every_target() {
                     .iter()
                     .all(|r| !r.is_positive())
             );
-            let point = app.effects_bounds.stereo_spread_units[0].header.center();
+            let point = unit_title_point(app.effects_bounds.stereo_spread_units[0].header);
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Delete, false);
             assert!(app.effect_chain(owner).unwrap().0.is_empty());
@@ -4913,7 +5110,7 @@ fn bitcrusher_shared_controls_add_edit_reset_and_remove_on_every_target() {
                     .iter()
                     .all(|r| !r.is_positive())
             );
-            let point = app.effects_bounds.bitcrusher_units[0].header.center();
+            let point = unit_title_point(app.effects_bounds.bitcrusher_units[0].header);
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Delete, false);
             assert!(app.effect_chain(owner).unwrap().0.is_empty());
@@ -4945,7 +5142,7 @@ fn effect_select_all_uses_only_the_focused_chain_including_scrolled_units_withou
                     app.session.project.tracks[0].effects_compact = collapsed;
                 }
                 frame(&mut app, &ctx, vec![]);
-                let point = app.effects_bounds.units[0].header.center();
+                let point = unit_title_point(app.effects_bounds.units[0].header);
                 click(&mut app, &ctx, point);
                 let original = serde_json::to_value(&app.session.project).unwrap();
                 let tracks = app.selected_tracks.clone();
@@ -5045,7 +5242,11 @@ fn layer_effects_share_the_component_lane_and_existing_effect_controls_and_drag_
         let row = app.midi_editor.layer_bounds[&layer].row;
         assert_eq!(rect.top(), row.top());
         assert_eq!(rect.height(), row.height());
-        assert!((rect.left() - app.midi_editor.layer_bounds[&layer].label.right()).abs() <= 1.0);
+        assert!(
+            (rect.left() - app.midi_editor.layer_bounds[&layer].label.right() - panels::UNIT_GAP)
+                .abs()
+                < 0.01
+        );
         let power = if saturator {
             app.effects_bounds.saturator_units[0].power.center()
         } else {
@@ -5067,9 +5268,9 @@ fn layer_effects_share_the_component_lane_and_existing_effect_controls_and_drag_
         assert!(!enabled);
         end_click_sequence(&mut app, &ctx);
         let start = if saturator {
-            app.effects_bounds.saturator_units[0].header.center()
+            unit_title_point(app.effects_bounds.saturator_units[0].header)
         } else {
-            app.effects_bounds.drive_units[0].header.center()
+            unit_title_point(app.effects_bounds.drive_units[0].header)
         };
         let end = Pos2::new(rect.right() + 20.0, start.y);
         let modifiers = egui::Modifiers {
@@ -5104,9 +5305,9 @@ fn layer_effects_share_the_component_lane_and_existing_effect_controls_and_drag_
         );
         end_click_sequence(&mut app, &ctx);
         let selected = if saturator {
-            app.effects_bounds.saturator_units[0].header.center()
+            unit_title_point(app.effects_bounds.saturator_units[0].header)
         } else {
-            app.effects_bounds.drive_units[0].header.center()
+            unit_title_point(app.effects_bounds.drive_units[0].header)
         };
         click(&mut app, &ctx, selected);
         library_key(&mut app, &ctx, egui::Key::Delete, false);
@@ -5200,7 +5401,11 @@ fn layer_effect_library_drag_targets_empty_layers_without_the_bottom_lane() {
         .find(|(owner, _, _)| *owner == id)
         .unwrap();
     assert!(
-        (effect.left() - app.midi_editor.layer_bounds[&id].oscillator_panel.right()).abs() <= 1.0
+        (effect.left()
+            - app.midi_editor.layer_bounds[&id].oscillator_panel.right()
+            - panels::UNIT_GAP)
+            .abs()
+            < 0.01
     );
 }
 
@@ -5255,23 +5460,13 @@ fn selected_effect_groups_move_and_duplicate_across_layer_lanes() {
                     .filter(|(owner, _, _)| *owner == src)
                     .map(|(_, id, r)| (*id, *r))
                     .collect();
-                click_effect_with_shift(
-                    &mut app,
-                    &ctx,
-                    slots[0].1.center_top() + Vec2::new(0.0, 12.0),
-                    false,
-                );
+                click_effect_with_shift(&mut app, &ctx, unit_slot_point(slots[0].1), false);
                 assert_eq!(
                     app.selected_effects,
                     HashSet::from([ids[0]]),
                     "first selection, source {src}, slots {slots:?}"
                 );
-                click_effect_with_shift(
-                    &mut app,
-                    &ctx,
-                    slots[1].1.center_top() + Vec2::new(0.0, 12.0),
-                    true,
-                );
+                click_effect_with_shift(&mut app, &ctx, unit_slot_point(slots[1].1), true);
                 assert_eq!(
                     app.selected_effects,
                     ids.iter().copied().collect(),
@@ -5279,7 +5474,7 @@ fn selected_effect_groups_move_and_duplicate_across_layer_lanes() {
                     app.instrument_ui.effects_layer
                 );
                 end_click_sequence(&mut app, &ctx);
-                let start = slots[0].1.center_top() + Vec2::new(0.0, 12.0);
+                let start = unit_slot_point(slots[0].1);
                 let label = if main && destination == 1 {
                     app.instrument_ui.main_bounds.label
                 } else {
@@ -5439,14 +5634,9 @@ fn effects_move_and_copy_between_track_lane_regular_layers_and_main() {
                         .map(|(_, id, r)| (*id, *r))
                         .collect()
                 };
-                let start = slots[0].1.center_top() + Vec2::new(0.0, 12.0);
+                let start = unit_slot_point(slots[0].1);
                 click_effect_with_shift(&mut app, &ctx, start, false);
-                click_effect_with_shift(
-                    &mut app,
-                    &ctx,
-                    slots[1].1.center_top() + Vec2::new(0.0, 12.0),
-                    true,
-                );
+                click_effect_with_shift(&mut app, &ctx, unit_slot_point(slots[1].1), true);
                 assert_eq!(app.selected_effects, ids.iter().copied().collect());
                 end_click_sequence(&mut app, &ctx);
                 let destination_rect = if from_track {
@@ -5577,7 +5767,7 @@ fn inline_effects_keep_the_component_boundary_on_regular_layers_and_main() {
                         .filter(|(o, _, _)| *o == owner)
                         .map(|(_, _, r)| *r)
                     {
-                        assert!((previous.right() - effect.left() - 1.0).abs() < 0.01);
+                        assert!((effect.left() - previous.right() - panels::UNIT_GAP).abs() < 0.01);
                         let boundary = previous.right() - 0.5;
                         let stroke = Stroke::new(1.0, theme::unit_separator(&ctx));
                         let lines = shapes.iter().filter(|shape| {
@@ -5587,7 +5777,7 @@ fn inline_effects_keep_the_component_boundary_on_regular_layers_and_main() {
                                 && points[0].y <= previous.top() && points[1].y >= effect.bottom())
                         }).count();
                         assert_eq!(
-                            lines, 1,
+                            lines, 0,
                             "Main {main}, compact {compact}, collapsed {collapsed}"
                         );
                         previous = effect;
@@ -5652,11 +5842,7 @@ fn saturator_reuses_catalog_selectors_knobs_modulation_and_unit_actions() {
             assert_eq!(s.clip_mode, daw_core::SaturatorClipMode::TubeClip);
             assert!(s.drive_db > 0.0);
             let header = app.effects_bounds.saturator_units[0].header;
-            click(
-                &mut app,
-                &ctx,
-                Pos2::new(header.right() - 13.0, header.center().y),
-            );
+            click(&mut app, &ctx, unit_modulation_point(&ctx, header));
             let daw_core::EffectSettings::Saturator(s) =
                 &app.effect_chain(owner).unwrap().0[0].unit
             else {
@@ -5664,7 +5850,7 @@ fn saturator_reuses_catalog_selectors_knobs_modulation_and_unit_actions() {
             };
             assert!(s.modulation_open);
             end_click_sequence(&mut app, &ctx);
-            let point = app.effects_bounds.saturator_units[0].header.center();
+            let point = unit_title_point(app.effects_bounds.saturator_units[0].header);
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Delete, false);
             assert!(app.effect_chain(owner).unwrap().0.is_empty());
@@ -5740,7 +5926,7 @@ fn timeline_effect_drops_append_selected_groups_to_audio_midi_and_group_tracks()
                     app.history = None;
                     app.ensure_history();
                     app.selected_effects = HashSet::from([ids[2], ids[0]]);
-                    let start = app.effects_bounds.units[0].header.center();
+                    let start = unit_title_point(app.effects_bounds.units[0].header);
                     let lane = app.lane_bounds[&destination];
                     let end = Pos2::new(
                         if header {
@@ -5865,7 +6051,7 @@ fn timeline_effect_drops_reject_foreign_modulation_without_an_error_dialog() {
         frame(&mut app, &ctx, vec![]);
         app.dirty = false;
         let before = serde_json::to_value(&app.session.project).unwrap();
-        let start = app.effects_bounds.auto_filter_units[0].header.center();
+        let start = unit_title_point(app.effects_bounds.auto_filter_units[0].header);
         let end = if master {
             app.master_bounds.center()
         } else {
@@ -5911,7 +6097,7 @@ fn timeline_effect_drops_move_and_copy_groups_onto_master() {
                     app.ensure_history();
                     let original = app.session.project.clone();
                     app.selected_effects = HashSet::from([ids[2], ids[0]]);
-                    let start = app.effects_bounds.units[0].header.center();
+                    let start = unit_title_point(app.effects_bounds.units[0].header);
                     let end = app.master_bounds.center();
                     begin_effect_drag(&mut app, &ctx, start, end);
                     assert_eq!(app.selected_track, Some(source));
@@ -5993,7 +6179,7 @@ fn timeline_master_effect_drops_keep_fast_release_noop_and_cancel_behavior() {
         } else {
             HashSet::from([ids[0]])
         };
-        let start = app.effects_bounds.units[0].header.center();
+        let start = unit_title_point(app.effects_bounds.units[0].header);
         let end = app.master_bounds.center();
         let before = serde_json::to_value(&app.session.project).unwrap();
         frame(
@@ -6077,7 +6263,7 @@ fn timeline_effect_drops_handle_master_fast_release_and_same_track_noops() {
             HashSet::from([ids[0]])
         };
         let before = serde_json::to_value(&app.session.project).unwrap();
-        let start = app.effects_bounds.units[0].header.center();
+        let start = unit_title_point(app.effects_bounds.units[0].header);
         let end = app.lane_bounds[&track].center();
         frame(
             &mut app,
@@ -6123,7 +6309,7 @@ fn timeline_effect_drops_cancel_without_changing_either_chain() {
         let (mut app, _, ctx, _) = chain_fixture(false, false);
         let destination = app.session.project.add_track().unwrap();
         frame(&mut app, &ctx, vec![]);
-        let start = app.effects_bounds.units[0].header.center();
+        let start = unit_title_point(app.effects_bounds.units[0].header);
         let end = app.lane_bounds[&destination].center();
         begin_effect_drag(&mut app, &ctx, start, end);
         assert!(app.effects_drag.as_ref().is_some_and(|d| d.active));
@@ -6197,7 +6383,7 @@ fn timeline_effect_drops_resolve_child_rows_and_scroll_to_visible_tracks() {
         }
         frame(&mut app, &ctx, vec![]);
         let initial_top = app.lane_bounds[&child].top();
-        let start = app.effects_bounds.units[0].header.center();
+        let start = unit_title_point(app.effects_bounds.units[0].header);
         let mut end = if scroll {
             Pos2::new(
                 app.timeline_bounds.left() + 50.0,
@@ -6376,7 +6562,7 @@ fn inline_effects_move_before_macro_and_components_move_across_effects() {
                 .find(|(o, e, _)| *o == owner && *e == id)
                 .unwrap()
                 .2;
-            let start = Pos2::new(rect.center().x, rect.top() + 8.0);
+            let start = unit_slot_point(rect);
             let end = Pos2::new(macro_rect.left() + 2.0, start.y);
             end_click_sequence(&mut app, &ctx);
             frame(
@@ -6439,7 +6625,10 @@ fn inline_effects_move_before_macro_and_components_move_across_effects() {
                 .find(|(o, e, _)| *o == owner && *e == id)
                 .unwrap()
                 .2;
-            let start = Pos2::new(macro_rect.center().x, macro_rect.top() + 8.0);
+            let start = unit_title_point(Rect::from_min_size(
+                macro_rect.min,
+                Vec2::new(panels::HEADER_HEIGHT, macro_rect.height()),
+            ));
             let end = Pos2::new(rect.left() + 2.0, start.y);
             end_click_sequence(&mut app, &ctx);
             frame(
@@ -6496,7 +6685,7 @@ fn mixed_inline_effect_drops_cancel_on_escape_and_outside_release() {
             .find(|(o, u, _)| *o == owner && *u == daw_core::InstrumentComponent::Macros)
             .unwrap()
             .2;
-        let start = rect.center_top() + Vec2::new(0.0, 8.0);
+        let start = unit_slot_point(rect);
         let end = macro_rect.left_top() + Vec2::new(2.0, 8.0);
         end_click_sequence(&mut app, &ctx);
         begin_effect_drag(&mut app, &ctx, start, end);
@@ -6545,7 +6734,7 @@ fn mixed_inline_same_position_drop_keeps_the_revision_and_project_clean() {
         .find(|(o, _, _)| *o == owner)
         .unwrap()
         .2;
-    let start = rect.center_top() + Vec2::new(0.0, 8.0);
+    let start = unit_slot_point(rect);
     let end = rect.right_top() + Vec2::new(-4.0, 8.0);
     end_click_sequence(&mut app, &ctx);
     begin_effect_drag(&mut app, &ctx, start, end);
@@ -6996,7 +7185,7 @@ fn editor_effect_delete_preserves_selected_midi_notes_and_clip_data() {
     let note_point = app.midi_editor.track_note_bounds[&(clip, note.id)][0].center();
     click(&mut app, &ctx, note_point);
     assert!(app.midi_editor.selected_notes().contains(&(clip, note.id)));
-    let point = app.effects_bounds.units[0].header.center();
+    let point = unit_title_point(app.effects_bounds.units[0].header);
     click(&mut app, &ctx, point);
     assert_eq!(app.selected_effects.len(), 1);
     assert!(app.midi_editor.selected_notes().contains(&(clip, note.id)));

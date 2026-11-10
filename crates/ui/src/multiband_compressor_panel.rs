@@ -126,7 +126,6 @@ pub(super) fn show<'a>(
                     })
                     .inner;
                 if settings.modulation_open {
-                    panels::unit_divider(ui, body.output.right(), body.output.y_range().into());
                     let mut targets: Vec<_> = settings
                         .bands
                         .iter()
@@ -215,7 +214,7 @@ pub(super) fn show<'a>(
     }
     settings.enabled = enabled;
     settings.collapsed = collapsed;
-    crate::modulation_panel::toggle(ui, &result.header, collapsed, &mut settings.modulation_open);
+    crate::modulation_panel::toggle(ui, &result, collapsed, &mut settings.modulation_open);
     (
         Bounds {
             #[cfg(test)]

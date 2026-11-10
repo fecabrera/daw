@@ -142,13 +142,12 @@ pub(super) fn unit(
             &mut enabled, &mut collapsed, |ui| {
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                let body_top = ui.cursor().top();
                 for (index, control) in module.controls.iter_mut().enumerate().filter(|(_, c)| c.present) {
                     let routes: Vec<_> = module.modulations.iter().filter(|r| r.target == Some(control.id)).copied().collect();
                     let live = controls.live.iter().find(|(id, _)| *id == control.id).map(|(_, v)| *v);
                     let marker = modulation_panel::marker(&routes, controls.sources, ModulationParameter::MacroValue,
                         control.settings.value, is_enabled && control.enabled, None, [live, None]);
-                    let strip = ui.scope_builder(egui::UiBuilder::new().id_salt(control.id).sense(egui::Sense::click_and_drag()), |ui| egui::Frame::new().inner_margin(10).show(ui, |ui| {
+                    let strip = ui.scope_builder(egui::UiBuilder::new().id_salt(control.id).sense(egui::Sense::click_and_drag()), |ui| daw_unit_ui::layout::unit_strip_frame(ui).inner_margin(10).show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                             ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
                             ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
@@ -187,13 +186,12 @@ pub(super) fn unit(
                             if ui.add_enabled(response.enabled(), egui::Button::new("Remove macro")).clicked() { remove = Some(index); ui.close(); }
                         });
                     }
-                    panels::unit_divider(ui, strip.response.rect.right(), strip.response.rect.y_range().into());
+
                 }
-                add = icons::circular_strip_button(ui, icons::Lucide::Plus, "Add macro",
-                    Vec2::new(add_width, envelope_panel::body_height(compact) + 20.0),
-                    icons::COMPACT_BUTTON_SIZE).clicked();
+                add = daw_unit_ui::layout::unit_add_button(ui, "Add macro",
+                    Vec2::new(add_width, envelope_panel::body_height(compact) + 20.0)).clicked();
                 if open {
-                    panels::unit_divider(ui, ui.cursor().left(), body_top..=(body_top + envelope_panel::body_height(compact) + 20.0));
+
                     let targets: Vec<_> = module.controls.iter().enumerate().filter(|(_, c)| c.present).map(|(index, c)|
                         modulation_panel::Target { parameter: ModulationParameter::MacroValue, id: Some(c.id), label: format!("{} · Value", c.display_name(index)) }).collect();
                     modulation_panel::targeted_body_with_sources(ui, &mut module.modulations, &targets,
@@ -229,12 +227,7 @@ pub(super) fn unit(
     }
     module.enabled = enabled;
     module.collapsed = collapsed;
-    modulation_panel::toggle(
-        ui,
-        &result.header,
-        module.collapsed,
-        &mut module.modulation_open,
-    );
+    modulation_panel::toggle(ui, &result, module.collapsed, &mut module.modulation_open);
     let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
     crate::menus::ContextMenu::new(&result.header).show(|ui| {
         if let Some(menu) = &power_menu {

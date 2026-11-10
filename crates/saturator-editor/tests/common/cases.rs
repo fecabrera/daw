@@ -35,7 +35,7 @@ fn focus_loss_close_and_queue_pressure_preserve_gesture_end() {
 fn output_peak_reset_sends_no_parameter_edits() {
  use daw_unit_core::MeterStorage;
  let (ctx,model,mut editor)=setup();model.output_meter.store([1.5,0.0,0.0]);model.output_meter.initialize([0.25,0.0,0.0]);let state=model.current();frame(&ctx,&mut editor,vec![],true);
- let pos=Pos2::new(135.0,4.0);for pressed in [true,false]{frame(&ctx,&mut editor,vec![Event::PointerMoved(pos),pointer(pos,pressed)],true);}
+ let pos=Pos2::new(135.0,daw_unit_ui::layout::UNIT_STRIP_VERTICAL_MARGIN+2.0);for pressed in [true,false]{frame(&ctx,&mut editor,vec![Event::PointerMoved(pos),pointer(pos,pressed)],true);}
  assert_eq!(model.output_meter.boost_peaks()[0].peak(),0.0);assert_eq!(model.output_meter.readings()[0],0.25);assert!(events(&model).is_empty());assert_eq!(model.current(),state);assert_eq!(state,Some(PluginState::default()));
 }
 

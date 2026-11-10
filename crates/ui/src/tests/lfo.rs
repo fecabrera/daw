@@ -51,7 +51,7 @@ fn lfo_catalog_adds_independent_saved_sources_without_adding_routes_in_both_them
     }
 }
 #[test]
-fn lfo_panel_uses_shared_height_power_and_seven_editable_controls_in_both_themes() {
+fn lfo_panel_uses_shared_height_power_and_body_controls_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let ctx = context();
         let mut app = DawUi::default();
@@ -86,7 +86,10 @@ fn lfo_panel_uses_shared_height_power_and_seven_editable_controls_in_both_themes
             bounds.take().unwrap()
         };
         let unit = draw(&mut lfo, false, vec![]);
-        assert_eq!(unit.response.rect.height(), panels::unit_height(false));
+        assert_eq!(
+            unit.response.rect.height(),
+            panels::unit_height(false) - 2.0 * panels::UNIT_VERTICAL_MARGIN
+        );
         let knobs = unit.inner.unwrap();
         assert!(knobs.iter().flatten().all(|r| r.is_positive()));
         assert_eq!(knobs[0][0].center().y, knobs[1][0].center().y);
@@ -118,7 +121,10 @@ fn lfo_panel_uses_shared_height_power_and_seven_editable_controls_in_both_themes
         draw(&mut lfo, false, vec![button(power, false)]);
         assert!(!lfo.enabled);
         let compact = draw(&mut lfo, true, vec![]);
-        assert_eq!(compact.response.rect.height(), panels::unit_height(true));
+        assert_eq!(
+            compact.response.rect.height(),
+            panels::unit_height(true) - 2.0 * panels::UNIT_VERTICAL_MARGIN
+        );
         assert!(
             compact
                 .inner
@@ -130,9 +136,134 @@ fn lfo_panel_uses_shared_height_power_and_seven_editable_controls_in_both_themes
         lfo.collapsed = true;
         let collapsed = draw(&mut lfo, false, vec![]);
         assert!(collapsed.inner.is_none());
-        assert_eq!(collapsed.response.rect.height(), panels::unit_height(false));
+        assert_eq!(
+            collapsed.response.rect.height(),
+            panels::unit_height(false) - 2.0 * panels::UNIT_VERTICAL_MARGIN
+        );
         lfo.settings.polarity = LfoPolarity::Bipolar;
         assert!(lfo.settings.valid());
+    }
+}
+#[test]
+fn lfo_restart_mode_lives_in_depth_strip_and_preserves_the_other_settings() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let ctx = context();
+        let mut app = DawUi::default();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme,
+                ..Default::default()
+            },
+        );
+        let draw = |lfo: &mut LfoInstance, compact, events| {
+            let mut unit = None;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.horizontal_top(|ui| {
+                        ui.add_space(180.0);
+                        unit = crate::lfo_panel::unit(
+                            ui,
+                            lfo,
+                            1,
+                            panels::unit_height(compact),
+                            compact,
+                            Default::default(),
+                        );
+                    });
+                },
+            );
+            output.textures_delta.clear();
+            (unit.unwrap(), output.shapes)
+        };
+        let mut lfo = LfoInstance::default();
+        let before = lfo.settings;
+        let (unit, shapes) = draw(&mut lfo, false, vec![]);
+        let controls = unit.inner.unwrap();
+        let mode = controls[2][1];
+        assert!(unit.response.rect.contains_rect(mode));
+        assert!((mode.center().x - controls[2][0].center().x).abs() < 0.5);
+        assert!(mode.top() > controls[2][0].bottom());
+        assert!(mode.bottom() < controls[2][2].top());
+        assert!(mode.width() <= panels::UNIT_STRIP_WIDTH - 20.0);
+        let readout = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(t) if t.galley.text() == "Transport" => {
+                    Some(t.visual_bounding_rect())
+                }
+                _ => None,
+            })
+            .expect("restart readout in the body");
+        assert!(mode.contains_rect(readout));
+        for choice in [
+            daw_unit_core::LfoRestart::Retrigger,
+            daw_unit_core::LfoRestart::Legato,
+            daw_unit_core::LfoRestart::Transport,
+        ] {
+            draw(
+                &mut lfo,
+                false,
+                vec![
+                    egui::Event::PointerMoved(mode.center()),
+                    button(mode.center(), true),
+                ],
+            );
+            draw(&mut lfo, false, vec![button(mode.center(), false)]);
+            let (_, shapes) = draw(&mut lfo, false, vec![]);
+            let item = shapes
+                .iter()
+                .rev()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(t) if t.galley.text() == choice.label() => {
+                        Some(t.pos + t.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing restart option {}: {:?}",
+                        choice.label(),
+                        shapes
+                            .iter()
+                            .filter_map(|s| match &s.shape {
+                                egui::Shape::Text(t) => Some(t.galley.text()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                    )
+                });
+            draw(
+                &mut lfo,
+                false,
+                vec![egui::Event::PointerMoved(item), button(item, true)],
+            );
+            draw(&mut lfo, false, vec![button(item, false)]);
+            let mut expected = before;
+            expected.restart = choice;
+            assert_eq!(lfo.settings, expected);
+            draw(&mut lfo, false, vec![]);
+        }
+        let (compact, shapes) = draw(&mut lfo, true, vec![]);
+        assert!(compact.inner.unwrap()[2][1] == Rect::NOTHING);
+        assert!(
+            !shapes.iter().any(
+                |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Transport")
+            )
+        );
+        lfo.collapsed = true;
+        let (collapsed, shapes) = draw(&mut lfo, false, vec![]);
+        assert!(collapsed.inner.is_none());
+        assert!(
+            !shapes.iter().any(
+                |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Transport")
+            )
+        );
     }
 }
 #[test]
@@ -264,10 +395,7 @@ fn lfo_modulation_expands_without_hiding_controls_and_markers_use_shared_interac
         };
         let closed = draw(&mut lfo, vec![]);
         let regular = closed.inner.unwrap();
-        let toggle = Pos2::new(
-            closed.header.rect.right() - 13.5,
-            closed.header.rect.center().y,
-        );
+        let toggle = unit_modulation_point(&ctx, closed.header.rect);
         draw(
             &mut lfo,
             vec![egui::Event::PointerMoved(toggle), button(toggle, true)],
@@ -310,7 +438,7 @@ fn lfo_modulation_expands_without_hiding_controls_and_markers_use_shared_interac
         }
         let expanded = draw(&mut lfo, vec![]);
         let add = Pos2::new(
-            expanded.response.rect.right() - 20.0,
+            expanded.modulation_header.left() - 2.0 - (icons::COMPACT_BUTTON_SIZE + 20.0) * 0.5,
             expanded.response.rect.center().y,
         );
         draw(

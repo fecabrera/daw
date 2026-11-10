@@ -52,7 +52,7 @@ fn regular_save_keeps_workspace_paint_and_effect_selection_stable() {
             frame(&mut app, &ctx, vec![]);
             frame(&mut app, &ctx, vec![]);
             if matches!(view, ViewMode::Timeline | ViewMode::Instrument) {
-                let point = app.effects_bounds.units[0].header.center();
+                let point = unit_title_point(app.effects_bounds.units[0].header);
                 frame(
                     &mut app,
                     &ctx,

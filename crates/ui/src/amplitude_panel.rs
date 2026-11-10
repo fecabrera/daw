@@ -43,7 +43,7 @@ pub(super) fn unit(
                     |ui| {
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
-                            let regular = egui::Frame::new().inner_margin(10).show(ui, |ui| {
+                            daw_unit_ui::layout::unit_strip_frame(ui).inner_margin(10).show(ui, |ui| {
                                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                                     ui.spacing_mut().item_spacing.y =
                                         f32::from(crate::theme::TOOLBAR_PADDING);
@@ -78,11 +78,7 @@ pub(super) fn unit(
                                 });
                             });
                             if open {
-                                panels::unit_divider(
-                                    ui,
-                                    regular.response.rect.right(),
-                                    regular.response.rect.y_range().into(),
-                                );
+
                                 modulation_panel::body(
                                     ui,
                                     &mut settings.modulations,
@@ -98,7 +94,7 @@ pub(super) fn unit(
                 settings.collapsed = collapsed;
                 modulation_panel::toggle(
                     ui,
-                    &result.header,
+                    &result,
                     settings.collapsed,
                     &mut settings.modulation_open,
                 );

@@ -87,7 +87,6 @@ pub(super) fn show<'a>(
                     },
                 );
                 if s.modulation_open {
-                    panels::unit_divider(ui, b.sections[8].right(), b.sections[8].y_range().into());
                     let mut targets: Vec<_> = s
                         .bands
                         .iter()
@@ -127,7 +126,7 @@ pub(super) fn show<'a>(
     );
     s.enabled = enabled;
     s.collapsed = collapsed;
-    modulation_panel::toggle(ui, &result.header, collapsed, &mut s.modulation_open);
+    modulation_panel::toggle(ui, &result, collapsed, &mut s.modulation_open);
     b.header = result.header.rect;
     b.power = result.power.rect;
     (b, result.header)

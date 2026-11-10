@@ -3,6 +3,23 @@
 For operation, see [Mixer](../../docs/views/mixer.md). Timeline’s Track mixer uses
 the same strip renderer; see [View panels](view-menu.md#timeline-track-mixer).
 
+## Header text
+
+Track, group, Return and Master names use the shared Outfit Semibold font
+(weight 600), in Mixer and Timeline’s Track mixer. Measure the same font when
+centering each icon/name pair. Preserve header sizes, background colors and truncation.
+Timeline track and beat-subtrack name headers use the same font at their existing
+size. Inline rename fields keep their existing editing style.
+
+Master strip headers use the shared neutral `unit_header_fill` color in Mixer and
+Timeline’s Track mixer, at either selection state. Track/group/Return header
+background colors retain their existing behavior. All mixer strip bodies use
+`palette.panel` at both selection states. Header titles and icons share unit
+header selection colors through `ui::theme::header_title_color`: secondary text
+when unselected, normal `palette.text` when selected. Apply this to tracks,
+groups, Returns and Master in both Mixer and Timeline’s Track mixer. Selection
+remains UI state and retains its existing gestures and effect targeting.
+
 ## Accepted behavior
 
 Every non-Master strip shows a read-only output-destination row directly below

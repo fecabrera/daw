@@ -1,7 +1,6 @@
 use crate::{
     icons,
     knobs::{self, Knob, KnobSpec},
-    layout as panels,
     layout::UNIT_STRIP_WIDTH,
     parameter_knobs, rows, theme,
 };
@@ -34,7 +33,7 @@ pub fn show(
         for (column, name) in ["Lower", "Upper", "Spread"].into_iter().enumerate() {
             let rect = ui
                 .push_id(column, |ui| {
-                    egui::Frame::new()
+                    crate::layout::unit_strip_frame(ui)
                         .inner_margin(PANEL_MARGIN)
                         .show(ui, |ui| {
                             ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
@@ -121,9 +120,6 @@ pub fn show(
                 .response
                 .rect;
             bounds.sections[column] = rect;
-            if column > 0 {
-                panels::unit_divider(ui, rect.left(), rect.y_range().into());
-            }
         }
     });
     bounds

@@ -17,7 +17,7 @@ pub(super) fn name_button(
     let text_id = ui.make_persistent_id(id);
     let mut atoms = egui::Atoms::new(
         egui::RichText::new(name)
-            .font(egui::FontId::proportional(font_size))
+            .font(crate::fonts::semibold(font_size))
             .color(colors.map_or(crate::theme::palette(ui.ctx()).text, |colors| colors.text))
             .atom_id(text_id),
     );

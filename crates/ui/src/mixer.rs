@@ -211,6 +211,7 @@ impl DawUi {
     pub(super) fn view_controls(&mut self, ui: &mut egui::Ui) {
         let enabled = self.view_switch_enabled();
         ui.scope(|ui| {
+            self.unit_header_press_style(ui);
             // Menu bars change padding; use the same control style in every titlebar layout.
             let style = ui.ctx().global_style();
             ui.spacing_mut().button_padding = style.spacing.button_padding;
@@ -525,7 +526,7 @@ impl DawUi {
     pub(super) fn center_mixer_header(&self, ui: &mut egui::Ui, name: &str) {
         let leading_width = icons::TOOLBAR_ICON_SIZE + ui.spacing().item_spacing.x;
         let text = egui::WidgetText::from(
-            egui::RichText::new(name).font(egui::FontId::proportional(panels::HEADER_FONT_SIZE)),
+            egui::RichText::new(name).font(crate::fonts::semibold(panels::HEADER_FONT_SIZE)),
         )
         .into_galley(
             ui,
@@ -602,24 +603,16 @@ impl DawUi {
     ) -> Option<Rect> {
         let mut rack_bounds = None;
         let palette = theme::palette(ui.ctx());
-        let selected = track.map_or(self.master_selected, |track| self.track_selected(track.id));
-        ui.painter().rect_filled(
-            rect,
-            0.0,
-            if selected {
-                theme::selected_track_header_background(ui.ctx())
-            } else {
-                palette.panel
-            },
+        ui.painter().rect_filled(rect, 0.0, palette.panel);
+        let header_fill = track.map_or_else(
+            || theme::unit_header_fill(ui.ctx(), false),
+            |track| theme::clip_colors(track.color, None).header,
         );
-        if let Some(track) = track {
-            let colors = theme::clip_colors(track.color, None);
-            ui.painter().rect_filled(
-                Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEADER_HEIGHT)),
-                0.0,
-                colors.header,
-            );
-        }
+        ui.painter().rect_filled(
+            Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEADER_HEIGHT)),
+            0.0,
+            header_fill,
+        );
         let border = Stroke::new(STRIP_BORDER, palette.border);
         // The toolbar or open catalog owns the workspace's left separator.
         if left_divider {

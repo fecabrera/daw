@@ -37,7 +37,7 @@ pub fn show(
     let result=ui.horizontal_top(|ui| {
  ui.spacing_mut().item_spacing=Vec2::new(0.0,f32::from(theme::TOOLBAR_PADDING));
  for (column,name) in ["Saturation","Out"].into_iter().enumerate() {
-  let strip=ui.push_id(column,|ui| egui::Frame::new().inner_margin(PANEL_MARGIN).show(ui,|ui| {
+  let strip=ui.push_id(column,|ui| crate::layout::unit_strip_frame(ui).inner_margin(PANEL_MARGIN).show(ui,|ui| {
     ui.with_layout(egui::Layout::top_down(egui::Align::Min),|ui| {
      ui.set_width(UNIT_STRIP_WIDTH-2.0*f32::from(PANEL_MARGIN));
      ui.set_min_height(if compact {compact_height} else {crate::layout::unit_control_height()});
@@ -70,7 +70,7 @@ pub fn show(
   })).inner.response.rect;
   bounds.sections[column]=strip;
   if column==1 && !compact {bounds.meter=meters::effect_output_level(ui,strip,PANEL_MARGIN,level,settings.enabled);}
-  if column>0 {crate::drive::divider(ui,strip.left(),strip.y_range());}
+
  }
  });
     bounds.rect = result.response.rect;

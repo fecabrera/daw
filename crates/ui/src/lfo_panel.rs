@@ -62,7 +62,7 @@ pub(super) fn unit(
         .scope_builder(
             egui::UiBuilder::new()
                 .id_salt(lfo.id)
-                .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-note-selector").with_tag("unit-modulation-button")),
+                .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
             |ui| {
                 panels::PanelStyle {
                     margin: 0,
@@ -77,10 +77,9 @@ pub(super) fn unit(
                     |ui| {
                         let mut bounds = [[Rect::NOTHING; 3]; 3];
                         ui.horizontal_top(|ui| {
-                            let body_top = ui.cursor().top();
                             ui.spacing_mut().item_spacing.x = 0.0;
                             for (strip, label) in ["Wave", "Rate", "Depth"].into_iter().enumerate() {
-                                let frame = egui::Frame::new().inner_margin(10).show(ui, |ui| {
+                                daw_unit_ui::layout::unit_strip_frame(ui).inner_margin(10).show(ui, |ui| {
                                     ui.with_layout(
                                         egui::Layout::top_down(egui::Align::Min),
                                         |ui| {
@@ -94,6 +93,10 @@ pub(super) fn unit(
                                                 for (row, bounds) in
                                                     bounds[strip].iter_mut().enumerate()
                                                 {
+                                                    if strip == 2 && row == 1 {
+                                                        *bounds = modulation_panel::selector_row(ui, "Mode", |ui| restart_mode(ui, &mut lfo.settings.restart)).rect;
+                                                        continue;
+                                                    }
                                                     *bounds = knobs::row(
                                                         ui,
                                                         lfo,
@@ -185,16 +188,10 @@ pub(super) fn unit(
                                         },
                                     );
                                 });
-                                if strip < 2 {
-                                    panels::unit_divider(
-                                        ui,
-                                        frame.response.rect.right(),
-                                        frame.response.rect.y_range().into(),
-                                    );
-                                }
+
                             }
                             if open {
-                                panels::unit_divider(ui, ui.cursor().left(), body_top..=(body_top + envelope_panel::body_height(compact) + 20.0));
+
                                 modulation_panel::body(ui, &mut lfo.modulations, controls.sources,
                                     <LfoInstance as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS,
                                     <LfoInstance as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
@@ -208,7 +205,7 @@ pub(super) fn unit(
         .inner;
     lfo.enabled = enabled;
     lfo.collapsed = collapsed;
-    modulation_panel::toggle(ui, &result.header, lfo.collapsed, &mut lfo.modulation_open);
+    modulation_panel::toggle(ui, &result, lfo.collapsed, &mut lfo.modulation_open);
     let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
     crate::menus::ContextMenu::new(&result.header).show(|ui| {
         if let Some(menu) = &power_menu {
@@ -225,33 +222,20 @@ pub(super) fn unit(
     {
         crate::unit_power::schedule_focus(ui, &result.header);
     }
-    if !lfo.collapsed {
-        let rect = Rect::from_min_max(
-            egui::pos2(
-                result.header.rect.right() - 114.0,
-                result.header.rect.top() + 2.0,
-            ),
-            egui::pos2(
-                result.header.rect.right() - 28.0,
-                result.header.rect.top() + panels::HEADER_HEIGHT - 1.0,
-            ),
-        );
-        let mut child = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(rect)
-                .id_salt((lfo.id, "restart")),
-        );
-        crate::menus::Dropdown::from_id_salt("mode").small_items()
-            .selected_text(egui::RichText::new(lfo.settings.restart.label()).size(panels::HEADER_FONT_SIZE))
-            .width(80.0)
-            .truncate()
-            .show_ui(&mut child, |ui| {
-                for mode in LfoRestart::ALL {
-                    ui.selectable_value(&mut lfo.settings.restart, mode, mode.label());
-                }
-            })
-            .response
-            .on_hover_text("Transport follows project time. Retrigger restarts on every note. Legato restarts on the first note of a phrase. All modes provide a shared signal.");
-    }
     Some(result)
+}
+
+fn restart_mode(ui: &mut Ui, restart: &mut LfoRestart) -> egui::Response {
+    crate::menus::Dropdown::from_id_salt("lfo-restart")
+        .small_items()
+        .selected_text(egui::RichText::new(restart.label()).size(panels::HEADER_FONT_SIZE))
+        .width(ui.available_width())
+        .truncate()
+        .show_ui(ui, |ui| {
+            for mode in LfoRestart::ALL {
+                ui.selectable_value(restart, mode, mode.label());
+            }
+        })
+        .response
+        .on_hover_text("Transport follows project time. Retrigger restarts on every note. Legato restarts on the first note of a phrase. All modes provide a shared signal.")
 }

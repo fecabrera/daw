@@ -186,13 +186,6 @@ pub fn show(
                 })
                 .response
                 .rect;
-            if column > 0 {
-                panels::unit_divider(
-                    ui,
-                    b.sections[column].left(),
-                    b.sections[column].y_range().into(),
-                );
-            }
         }
         if !compact {
             b.output_meter = meters::effect_output_level(
@@ -205,7 +198,7 @@ pub fn show(
             // Reduction rail occupies the same top rail as other dynamics units.
             let rect = b.sections[7];
             let rail = Rect::from_min_size(
-                rect.min + Vec2::new(10.0, 2.0),
+                rect.min + Vec2::new(10.0, panels::UNIT_STRIP_VERTICAL_MARGIN),
                 Vec2::new(rect.width() - 20.0, 4.0),
             );
             b.reduction =

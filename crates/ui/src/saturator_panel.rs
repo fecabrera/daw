@@ -67,8 +67,7 @@ fn show_inner(
                 bounds.controls = body.knobs;
                 #[cfg(test)] { bounds.meter = body.meter; }
                 if open {
-                    let last = bounds.sections[1];
-                    panels::unit_divider(ui, last.right(), last.y_range().into());
+
                     crate::modulation_panel::body(ui, &mut settings.modulations, sources, &Parameter::SATURATOR,
                         <SaturatorSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
                 }
@@ -76,7 +75,7 @@ fn show_inner(
         });
     settings.enabled = enabled;
     settings.collapsed = collapsed;
-    crate::modulation_panel::toggle(ui, &result.header, collapsed, &mut settings.modulation_open);
+    crate::modulation_panel::toggle(ui, &result, collapsed, &mut settings.modulation_open);
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
     (bounds, result.header)

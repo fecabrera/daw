@@ -380,7 +380,10 @@ impl DawUi {
                 })
                 .or(Some(parent))
         });
-        let header = panel.header(ui, "Tracks", |ui| self.browser_add(ui));
+        let header = panel.header(ui, "Tracks", |ui| {
+            self.unit_header_press_style(ui);
+            self.browser_add(ui)
+        });
         panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
         let own_gesture = self
             .track_browser

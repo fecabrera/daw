@@ -686,3 +686,47 @@ portable fixed-state stereo generation; the host shares note scheduling,
 Amplitude, effects, source-output monitoring, history and memory accounting.
 Noise has standard Noise/Out strips and an approximate spectral preview. Its
 Color, Width and Level use the shared per-note modulation contract.
+
+## Vertical unit headers — 2026-11-09
+
+All built-in source, effect and modulator shells use a 26-point-wide vertical left title header in expanded and collapsed modes. Titles use the shared Outfit Semibold font (weight 600), retaining the standard size and existing compact-title fitting. Remove the separate horizontal cap from collapsed headers. Use the disabled-unit neutral header background at both power states, with secondary text for unselected titles; only the existing power dot changes with power. Preserve its click-on-release behavior, accessibility, context menus and header drag/double-click gestures.
+
+Expanded shells reserve a 24-point right header for the modulation dot; collapsed shells hide it. The right control is independent of left-header selection, dragging and collapse. Retain shared modulation state, connection strips and toggle behavior. Headerless standalone editor bodies retain their existing controls and dimensions.
+
+Center the borderless shell within the existing lane height using 13-point empty margins above and below the entire shell, including both side headers. These margins absorb the removed one-point top/bottom shell allocation without moving strip controls. Preserve existing expanded and compact lane heights and control-strip geometry. Place adjacent units 16 logical points apart, including collapsed units, across effects, regular instrument layers, Output and modulation lanes. Keep 16-point space before the first unit and after the last unit inside each horizontally scrollable row. Inline effects use their containing component row’s edge spacing; do not add padding around each inline effect. Do not join neighboring unit borders or draw a shared divider through the gap. Keep the shell's outside corners at a seven-point radius. Shells use `Stroke::NONE`, with no invisible stroke allocation. Expanded and compact shells are 218 and 42 points high; collapsed title headers are exactly 26 points wide. Retain lane heights and vertical strip-control positions. Fill the unit content background with the former subdued strip-separator color (`unit_separator`). Both side headers retain the previous neutral `palette.border` fill, independent of power and selection.
+
+Every control strip, including double-width, graph, sample-preview, Out and modulation-connection strips, is a borderless five-point rounded card filled with the original panel color. Preserve existing strip slots, control positions, footer baselines and lane heights. Inset each visible card two points horizontally and four points vertically inside its slot, producing four-point gaps between cards and four-point top/bottom card margins. Add two points of content padding beside each side header so the first/last card is exactly four points from its header. Retain half-point layout precision rather than rounding the edge padding to an integer. Hover fills use the same inset. Keep meter rails inside the cards. Remove all former vertical strip-divider lines; the shell surface shows around card corners. Reuse the shared strip frame in built-in units and standalone effect bodies. Standalone editor canvases use the same shell surface. This supersedes earlier outer-border and internal-divider paint requirements; control borders, meter rails, response grids, drop-target outlines and insertion previews retain their existing behavior.
+
+Selected unit titles use the shared `palette.text` color, matching strip labels, while unselected titles use `palette.secondary`. Selection leaves header surfaces and power/modulation dots unchanged, including disabled units. Selected units keep their selection state, keyboard handling and group-edit gestures without a selected-unit outline. This supersedes earlier selected-unit border and adjoining-unit divider requirements. Drop-target outlines and insertion previews retain their existing behavior.
+
+
+## Transparent unit Add controls — 2026-11-09
+
+Unit Add strips retain their full layout space and click-on-release interaction,
+but paint no card or circle fill in any state. Reuse `unit-ui::layout::unit_add_button`
+for oscillator, Macro, modulation and variable-band effect Add controls, including
+standalone effect bodies. Keep the centered 18-point circle and Plus geometry.
+Use `palette.secondary` for the idle foreground; enabled hover, pressed and keyboard
+focus states use `palette.text`, matching active strip labels. Disabled controls
+remain muted and do not activate. Preserve tooltips and accessibility names.
+This supersedes earlier Add-card background and hover-fill requirements. Control
+strip backgrounds, spacing, header colors and other circular buttons retain their
+existing presentation.
+
+
+## Modulation boundary separator — 2026-11-09
+
+When a unit's modulation area is open, the shared DAW modulation body paints one
+two-point-wide separator at its left boundary. Fill it with the shared neutral `unit_header_fill` color. Leave four points of
+clear space on each side, measured from the neighboring card backgrounds. The
+combined boundary gap is ten points: four points, a two-point separator, then
+four points. Reserve six extra layout points beyond the ordinary four-point
+strip gap; preserve strip sizes and their existing interactions. The separator
+itself is decorative and owns no input response. Use square ends
+and span the complete strip-slot/unit-body height, including card top/bottom
+margins, in expanded and compact layouts. Show it for empty and populated route
+lists. Closed or horizontally collapsed units have no separator. Keep ordinary
+control strips and modulation connection strips free of internal divider lines.
+This is the only exception to the borderless strip presentation above. Painting
+must not edit routes, parameters or project history. Standalone effect bodies
+have no DAW modulation area and retain their shared headerless presentation.

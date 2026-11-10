@@ -51,8 +51,7 @@ fn show_inner(
  ui.spacing_mut().item_spacing = egui::Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
  b = daw_unit_ui::ambient_reverb::show(ui, s, compact, crate::envelope_panel::body_height(compact), &markers, level);
 if open {
- let last = b.sections[daw_unit_ui::ambient_reverb::STRIP_COUNT - 1];
-                    panels::unit_divider(ui, last.right(), last.y_range().into());
+
                     crate::modulation_panel::body(ui, &mut s.modulations, sources, &P::AMBIENT_REVERB, <AmbientReverbSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
                 }
 })
@@ -60,7 +59,7 @@ if open {
     );
     s.enabled = enabled;
     s.collapsed = collapsed;
-    crate::modulation_panel::toggle(ui, &result.header, collapsed, &mut s.modulation_open);
+    crate::modulation_panel::toggle(ui, &result, collapsed, &mut s.modulation_open);
     b.power = result.power.rect;
     (b, result.header)
 }

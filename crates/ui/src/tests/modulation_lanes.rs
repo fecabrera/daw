@@ -171,7 +171,7 @@ fn lane_unit_selection_delete_undo_and_invalid_cross_lane_drop_reuse_shared_gest
     assert_eq!(crate::modulation_panel::sources(Some(i))[0].id, source);
     let before = app.session.project.clone();
     let header = app.instrument_ui.modulation_lane_bounds[&owners[0]].lfos[0];
-    let start = header.min + Vec2::new(35.0, 10.0);
+    let start = unit_title_point(header);
     let end = app.instrument_ui.modulation_lane_bounds[&owners[1]]
         .label
         .center();
@@ -230,8 +230,11 @@ fn lfo_lane_header_reordering_commits_on_release_and_undo_restores_order() {
     let i = before.tracks[0].instrument.as_ref().unwrap();
     let (a, b) = (i.lfo_lane.lfos[0].id, i.lfo_lane.lfos[1].id);
     let bounds = &app.instrument_ui.modulation_lane_bounds[&owners[0]];
-    let start = bounds.lfos[0].min + Vec2::new(35.0, 10.0);
-    let end = Pos2::new(bounds.lfos[1].right() - 3.0, bounds.lfos[1].center().y);
+    let start = unit_title_point(bounds.lfos[0]);
+    let end = Pos2::new(
+        unit_panel(&ctx, bounds.lfos[1]).right() - 3.0,
+        bounds.lfos[1].center().y,
+    );
     frame(
         &mut app,
         &ctx,

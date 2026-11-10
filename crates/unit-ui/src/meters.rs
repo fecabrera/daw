@@ -11,7 +11,7 @@ pub fn unit_reading<T: Default>(enabled: bool, reading: T) -> T {
 /// Fit a four-point monitor above standard knob rows without changing unit height.
 pub fn unit_monitor_rail(strip: Rect, margin: i8) -> Rect {
     Rect::from_min_size(
-        strip.min + Vec2::new(f32::from(margin), 2.0),
+        strip.min + Vec2::new(f32::from(margin), crate::layout::UNIT_STRIP_VERTICAL_MARGIN),
         Vec2::new(strip.width() - 2.0 * f32::from(margin), 4.0),
     )
 }
@@ -310,7 +310,7 @@ mod tests {
                 }
             }
             let shapes = frame(&ctx, &meter, 2.0, true, vec![]);
-            let rail = Rect::from_min_size(egui::pos2(10.0, 2.0), Vec2::new(70.0, 4.0));
+            let rail = Rect::from_min_size(egui::pos2(10.0, 4.0), Vec2::new(70.0, 4.0));
             assert!(shapes.iter().any(
                 |s| matches!(&s.shape,egui::Shape::Rect(r) if r.rect==rail && r.fill==palette.error)
             ));
@@ -344,7 +344,7 @@ mod tests {
                     (0.5, false),
                     (1.01, false),
                 ] {
-                    let rail = Rect::from_min_size(egui::pos2(10.0, 2.0), Vec2::new(70.0, 4.0));
+                    let rail = Rect::from_min_size(egui::pos2(10.0, 4.0), Vec2::new(70.0, 4.0));
                     let mut output = ctx.run_ui(Default::default(), |ui| {
                         band_level_rail(ui, rail, "Band", peak, enabled)
                     });
@@ -652,7 +652,7 @@ mod band_output_tests {
         meter.store([0.8, 6.0, 0.0]);
         meter.initialize([0.1, 3.0, 0.0]);
         let requests = std::sync::atomic::AtomicU64::new(0);
-        let rail = Rect::from_min_size(egui::pos2(8.0, 2.0), egui::vec2(145.0, 4.0));
+        let rail = Rect::from_min_size(egui::pos2(8.0, 4.0), egui::vec2(145.0, 4.0));
         for phase in 0..3 {
             let events = if phase == 0 {
                 vec![]

@@ -18,7 +18,7 @@ pub(super) fn controls(
     ];
     let mut window = settings.granulizer.unwrap().window;
     for (label, rows) in columns {
-        let strip = egui::Frame::new()
+        daw_unit_ui::layout::unit_strip_frame(ui)
             .inner_margin(panels::PanelStyle::default().margin)
             .show(ui, |ui| {
                 ui.vertical(|ui| {
@@ -101,11 +101,6 @@ pub(super) fn controls(
                     );
                 });
             });
-        panels::unit_divider(
-            ui,
-            strip.response.rect.right(),
-            strip.response.rect.y_range().into(),
-        );
     }
     let g = settings.granulizer.as_mut().unwrap();
     [

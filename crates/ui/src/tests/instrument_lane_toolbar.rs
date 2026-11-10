@@ -219,15 +219,12 @@ fn selected_effect_outlines_stop_at_their_lane_toolbar() {
             })
             .copied()
             .expect("partly visible effect at the toolbar edge");
-        let point = Pos2::new(
-            (rect.left() + 24.0 + viewport.right()) * 0.5,
-            rect.top() + 12.0,
-        );
+        let point = unit_slot_point(rect);
         super::instrument_catalog::click(&mut app, &ctx, point, false);
         assert!(app.selected_effects.contains(&effect));
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let outlines: Vec<_> = shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))).collect();
-        assert!(!outlines.is_empty());
+        assert!(outlines.is_empty());
         assert!(
             outlines
                 .iter()

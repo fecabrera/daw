@@ -301,7 +301,7 @@
         model.output_meter.store([1.5, 0.0, 0.0]);
         model.output_meter.initialize([0.25, 0.0, 0.0]);
         frame(&ctx, &mut editor, vec![], true);
-        let pos = Pos2::new(225.0, 4.0);
+        let pos = Pos2::new(225.0, daw_unit_ui::layout::UNIT_STRIP_VERTICAL_MARGIN + 2.0);
         for pressed in [true, false] {
             frame(
                 &ctx,

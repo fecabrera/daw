@@ -142,6 +142,7 @@ impl DawUi {
                     self.instrument_ui.selected_components.clear();
                     keyboard.request_focus();
                 }
+                ui.ctx().request_repaint();
                 focused_owner = Some(*owner);
                 self.instrument_ui.component_focus.set(ui, *viewport, true);
                 crate::unit_selection::retain_focus(
@@ -158,6 +159,9 @@ impl DawUi {
                 .component_focus
                 .lost(ui.ctx(), available, dragging)
         {
+            if !self.instrument_ui.selected_components.is_empty() {
+                ui.ctx().request_repaint();
+            }
             self.instrument_ui.selected_components.clear();
             self.instrument_ui.component_focus = Default::default();
         }
@@ -218,22 +222,6 @@ impl DawUi {
                     keyboard.request_focus();
                 }
                 ui.ctx().request_repaint();
-            }
-        }
-        // Paint every selected unit after row fills and dividers, with its lane's scroll clip.
-        for (owner, viewport) in &self.instrument_ui.component_viewports {
-            let mut clipped = ui.new_child(egui::UiBuilder::new().max_rect(*viewport));
-            clipped.set_clip_rect(*viewport);
-            for (id, unit, rect) in &self.instrument_ui.component_slots {
-                if id == owner {
-                    crate::unit_selection::paint(
-                        &clipped,
-                        *rect,
-                        self.instrument_ui
-                            .selected_components
-                            .contains(&(*id, *unit)),
-                    );
-                }
             }
         }
     }

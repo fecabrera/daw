@@ -365,6 +365,13 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                                     && text.pos.y >= top
                                     && text.pos.y < bottom =>
                             {
+                                assert!(
+                                    text.galley.job.sections.iter().all(|section| {
+                                        section.format.font_id.family
+                                            == crate::fonts::semibold(12.0).family
+                                    }),
+                                    "track header {name_text} must use the shared semibold font"
+                                );
                                 Some(text.galley.rect.translate(text.pos.to_vec2()))
                             }
                             _ => None,
@@ -376,10 +383,12 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                         assert!((name.left() - left - inset - 34.0).abs() < 1.0);
                     }
                     let color = if mode == ViewMode::Mixer {
-                        id.and_then(|id| app.session.project.tracks.iter().find(|t| t.id == id))
-                            .map_or(theme::palette(&ctx).text, |track| {
-                                theme::clip_colors(track.color, None).text
-                            })
+                        let selected = id.map_or(app.master_selected, |id| app.track_selected(id));
+                        if selected {
+                            theme::palette(&ctx).text
+                        } else {
+                            theme::palette(&ctx).secondary
+                        }
                     } else {
                         theme::palette(&ctx).secondary
                     };

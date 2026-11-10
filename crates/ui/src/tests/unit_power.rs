@@ -101,7 +101,7 @@ fn component_power_menu_changes_selected_group_and_undoes_together() {
                 .unwrap()
                 .2;
             let pos = if main {
-                rect.center()
+                unit_title_point(rect)
             } else {
                 app.midi_editor.layer_bounds[&owner]
                     .oscillator_header
@@ -189,7 +189,7 @@ fn effect_power_menu_changes_group_or_unselected_target() {
             } else {
                 app.effects_bounds.chain[0].1
             };
-            let pos = Pos2::new(rect.left() + 55.0, rect.top() + 12.0);
+            let pos = unit_slot_point(rect);
             click_at(&mut app, &ctx, pos);
             app.selected_effects = if selected {
                 ids.iter().copied().collect()
@@ -308,7 +308,7 @@ fn every_component_menu_toggles_in_expanded_and_collapsed_rows() {
                     .unwrap()
                     .2;
                 let before = app.session.project.clone();
-                let item = open_menu(&mut app, &ctx, header.center(), label);
+                let item = open_menu(&mut app, &ctx, unit_title_point(header), label);
                 assert_eq!(app.session.project, before, "opening {kind} menu");
                 frame(
                     &mut app,

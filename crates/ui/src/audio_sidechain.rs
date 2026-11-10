@@ -1,7 +1,7 @@
 //! Conditional audio-to-control settings in the existing destination-owned connection.
 use crate::{
     knobs::{self, Knob, KnobSpec},
-    panels, rows, theme,
+    rows, theme,
 };
 use daw_core::{Id, Project, TrackKind};
 use daw_unit_core::*;
@@ -233,127 +233,124 @@ pub(super) fn body(ui: &mut Ui, route: Id, s: &mut AudioSidechain, compact: bool
     let height = crate::envelope_panel::body_height(compact);
     let live = context(ui.ctx()).readings.get(&route).copied();
     for section in 0..3 {
-        let result = ui
-            .push_id((route, "audio-mapping", section), |ui| {
-                daw_unit_ui::layout::unit_strip_with_width(
-                    ui,
-                    height,
-                    daw_unit_ui::layout::unit_columns_width(2),
-                    egui::UiBuilder::new(),
-                    |ui| {
-                        let top = ui.cursor().top();
-                        ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
-                        if !compact {
-                            daw_unit_ui::layout::unit_columns(ui, 2, |ui, column| {
-                                for row in 0..if section == 2 { 1 } else { 3 } {
-                                    ui.push_id(row, |ui| match (section, column, row) {
-                                        (0, 0, 0) => select(
-                                            ui,
-                                            "Tap",
-                                            &mut s.tap,
-                                            &[
-                                                (SidechainTap::PreFader, "Pre-fader"),
-                                                (SidechainTap::PostFader, "Post-fader"),
-                                            ],
-                                        ),
-                                        (0, 1, 0) => select(
-                                            ui,
-                                            "Channel",
-                                            &mut s.channel,
-                                            &[
-                                                (SidechainChannel::Stereo, "Stereo"),
-                                                (SidechainChannel::Left, "Left"),
-                                                (SidechainChannel::Right, "Right"),
-                                                (SidechainChannel::Mid, "Mid"),
-                                                (SidechainChannel::Side, "Side"),
-                                            ],
-                                        ),
-                                        (0, 0, 1) => select(
-                                            ui,
-                                            "Detector",
-                                            &mut s.detector,
-                                            &[
-                                                (SidechainDetector::Peak, "Peak"),
-                                                (SidechainDetector::Rms, "RMS"),
-                                            ],
-                                        ),
-                                        (0, 1, 1) => toggle(ui, &mut s.filter, "Filter"),
-                                        (0, 0, 2) => {
-                                            let maximum = (s.low_pass_hz - 0.1).max(s.high_pass_hz);
-                                            ui.add_enabled_ui(s.filter, |ui| {
-                                                number(
-                                                    ui,
-                                                    &mut s.high_pass_hz,
-                                                    "High-pass",
-                                                    20.0..=maximum,
-                                                    30.0,
-                                                    "Hz",
-                                                )
-                                            });
-                                        }
-                                        (0, 1, 2) => {
-                                            let minimum = (s.high_pass_hz + 0.1).min(s.low_pass_hz);
-                                            ui.add_enabled_ui(s.filter, |ui| {
-                                                number(
-                                                    ui,
-                                                    &mut s.low_pass_hz,
-                                                    "Low-pass",
-                                                    minimum..=20_000.0,
-                                                    20_000.0,
-                                                    "Hz",
-                                                )
-                                            });
-                                        }
-                                        (1, 0, 0) => {
-                                            let maximum = (s.upper_db - 0.1).max(s.lower_db);
+        ui.push_id((route, "audio-mapping", section), |ui| {
+            daw_unit_ui::layout::unit_strip_with_width(
+                ui,
+                height,
+                daw_unit_ui::layout::unit_columns_width(2),
+                egui::UiBuilder::new(),
+                |ui| {
+                    let top = ui.cursor().top();
+                    ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
+                    if !compact {
+                        daw_unit_ui::layout::unit_columns(ui, 2, |ui, column| {
+                            for row in 0..if section == 2 { 1 } else { 3 } {
+                                ui.push_id(row, |ui| match (section, column, row) {
+                                    (0, 0, 0) => select(
+                                        ui,
+                                        "Tap",
+                                        &mut s.tap,
+                                        &[
+                                            (SidechainTap::PreFader, "Pre-fader"),
+                                            (SidechainTap::PostFader, "Post-fader"),
+                                        ],
+                                    ),
+                                    (0, 1, 0) => select(
+                                        ui,
+                                        "Channel",
+                                        &mut s.channel,
+                                        &[
+                                            (SidechainChannel::Stereo, "Stereo"),
+                                            (SidechainChannel::Left, "Left"),
+                                            (SidechainChannel::Right, "Right"),
+                                            (SidechainChannel::Mid, "Mid"),
+                                            (SidechainChannel::Side, "Side"),
+                                        ],
+                                    ),
+                                    (0, 0, 1) => select(
+                                        ui,
+                                        "Detector",
+                                        &mut s.detector,
+                                        &[
+                                            (SidechainDetector::Peak, "Peak"),
+                                            (SidechainDetector::Rms, "RMS"),
+                                        ],
+                                    ),
+                                    (0, 1, 1) => toggle(ui, &mut s.filter, "Filter"),
+                                    (0, 0, 2) => {
+                                        let maximum = (s.low_pass_hz - 0.1).max(s.high_pass_hz);
+                                        ui.add_enabled_ui(s.filter, |ui| {
                                             number(
                                                 ui,
-                                                &mut s.lower_db,
-                                                "Lower input",
-                                                -120.0..=maximum,
-                                                -36.0,
-                                                "dB",
-                                            );
-                                        }
-                                        (1, 1, 0) => {
-                                            let minimum = (s.lower_db + 0.1).min(s.upper_db);
+                                                &mut s.high_pass_hz,
+                                                "High-pass",
+                                                20.0..=maximum,
+                                                30.0,
+                                                "Hz",
+                                            )
+                                        });
+                                    }
+                                    (0, 1, 2) => {
+                                        let minimum = (s.high_pass_hz + 0.1).min(s.low_pass_hz);
+                                        ui.add_enabled_ui(s.filter, |ui| {
                                             number(
                                                 ui,
-                                                &mut s.upper_db,
-                                                "Upper input",
-                                                minimum..=24.0,
-                                                -6.0,
-                                                "dB",
-                                            );
-                                        }
-                                        (1, 0, 1) => select(
+                                                &mut s.low_pass_hz,
+                                                "Low-pass",
+                                                minimum..=20_000.0,
+                                                20_000.0,
+                                                "Hz",
+                                            )
+                                        });
+                                    }
+                                    (1, 0, 0) => {
+                                        let maximum = (s.upper_db - 0.1).max(s.lower_db);
+                                        number(
                                             ui,
-                                            "Curve",
-                                            &mut s.curve,
-                                            &[
-                                                (SidechainCurve::Decibels, "dB"),
-                                                (SidechainCurve::Amplitude, "Amplitude"),
-                                            ],
-                                        ),
-                                        (1, 1, 1) => toggle(ui, &mut s.invert, "Invert"),
-                                        (1, column, 2) => {
-                                            rows::centered(ui, knobs::CHOICE_SIZE, |ui| {
-                                                ui.vertical_centered(|ui| {
-                                                    ui.label(
-                                                        egui::RichText::new(if column == 0 {
-                                                            "Input"
-                                                        } else {
-                                                            "Value"
-                                                        })
-                                                        .small()
-                                                        .color(theme::palette(ui.ctx()).secondary),
-                                                    );
-                                                    ui.add(
-                                                        egui::Label::new(
-                                                            egui::RichText::new(
-                                                                live.filter(|v| {
-                                                                    v[column].is_finite()
-                                                                })
+                                            &mut s.lower_db,
+                                            "Lower input",
+                                            -120.0..=maximum,
+                                            -36.0,
+                                            "dB",
+                                        );
+                                    }
+                                    (1, 1, 0) => {
+                                        let minimum = (s.lower_db + 0.1).min(s.upper_db);
+                                        number(
+                                            ui,
+                                            &mut s.upper_db,
+                                            "Upper input",
+                                            minimum..=24.0,
+                                            -6.0,
+                                            "dB",
+                                        );
+                                    }
+                                    (1, 0, 1) => select(
+                                        ui,
+                                        "Curve",
+                                        &mut s.curve,
+                                        &[
+                                            (SidechainCurve::Decibels, "dB"),
+                                            (SidechainCurve::Amplitude, "Amplitude"),
+                                        ],
+                                    ),
+                                    (1, 1, 1) => toggle(ui, &mut s.invert, "Invert"),
+                                    (1, column, 2) => {
+                                        rows::centered(ui, knobs::CHOICE_SIZE, |ui| {
+                                            ui.vertical_centered(|ui| {
+                                                ui.label(
+                                                    egui::RichText::new(if column == 0 {
+                                                        "Input"
+                                                    } else {
+                                                        "Value"
+                                                    })
+                                                    .small()
+                                                    .color(theme::palette(ui.ctx()).secondary),
+                                                );
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        egui::RichText::new(
+                                                            live.filter(|v| v[column].is_finite())
                                                                 .map_or("—".into(), |v| {
                                                                     if column == 0 {
                                                                         format!("{:.1} dBFS", v[0])
@@ -361,63 +358,59 @@ pub(super) fn body(ui: &mut Ui, route: Id, s: &mut AudioSidechain, compact: bool
                                                                         format!("{:.3}", v[1])
                                                                     }
                                                                 }),
-                                                            )
-                                                            .font(crate::fonts::numeric(9.0)),
                                                         )
-                                                        .wrap_mode(egui::TextWrapMode::Extend),
-                                                    );
-                                                });
+                                                        .font(crate::fonts::numeric(9.0)),
+                                                    )
+                                                    .wrap_mode(egui::TextWrapMode::Extend),
+                                                );
                                             });
-                                        }
-                                        (2, 0, 0) => number(
-                                            ui,
-                                            &mut s.attack_ms,
-                                            "Attack",
-                                            0.0..=10_000.0,
-                                            5.0,
-                                            "ms",
-                                        ),
-                                        (2, 1, 0) => number(
-                                            ui,
-                                            &mut s.release_ms,
-                                            "Release",
-                                            0.0..=10_000.0,
-                                            120.0,
-                                            "ms",
-                                        ),
-                                        _ => {
-                                            ui.allocate_exact_size(
-                                                egui::Vec2::splat(knobs::CHOICE_SIZE),
-                                                egui::Sense::hover(),
-                                            );
-                                        }
-                                    });
-                                }
-                            });
-                            if section == 2 {
-                                transfer_preview(ui, s, live);
+                                        });
+                                    }
+                                    (2, 0, 0) => number(
+                                        ui,
+                                        &mut s.attack_ms,
+                                        "Attack",
+                                        0.0..=10_000.0,
+                                        5.0,
+                                        "ms",
+                                    ),
+                                    (2, 1, 0) => number(
+                                        ui,
+                                        &mut s.release_ms,
+                                        "Release",
+                                        0.0..=10_000.0,
+                                        120.0,
+                                        "ms",
+                                    ),
+                                    _ => {
+                                        ui.allocate_exact_size(
+                                            egui::Vec2::splat(knobs::CHOICE_SIZE),
+                                            egui::Sense::hover(),
+                                        );
+                                    }
+                                });
                             }
-                            // Readout text can use less height than a knob row.
-                            // Keep every footer at the shared strip baseline.
-                            let footer_top = top + height - crate::icons::COMPACT_BUTTON_SIZE;
-                            ui.add_space((footer_top - ui.cursor().top()).max(0.0));
+                        });
+                        if section == 2 {
+                            transfer_preview(ui, s, live);
                         }
-                        rows::centered(
-                            ui,
-                            if compact {
-                                height
-                            } else {
-                                crate::icons::COMPACT_BUTTON_SIZE
-                            },
-                            |ui| rows::unit_label(ui, ["Detector", "Mapping", "Response"][section]),
-                        );
-                    },
-                )
-            })
-            .inner
-            .response
-            .rect;
-        panels::unit_divider(ui, result.left(), result.y_range().into());
+                        // Readout text can use less height than a knob row.
+                        // Keep every footer at the shared strip baseline.
+                        let footer_top = top + height - crate::icons::COMPACT_BUTTON_SIZE;
+                        ui.add_space((footer_top - ui.cursor().top()).max(0.0));
+                    }
+                    rows::centered(
+                        ui,
+                        if compact {
+                            height
+                        } else {
+                            crate::icons::COMPACT_BUTTON_SIZE
+                        },
+                        |ui| rows::unit_label(ui, ["Detector", "Mapping", "Response"][section]),
+                    );
+                },
+            )
+        });
     }
 }
 

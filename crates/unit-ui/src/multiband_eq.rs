@@ -341,9 +341,7 @@ pub fn show(
             if b.remove {
                 bounds.remove = Some(i);
             }
-            if i > 0 || !dimensions.0 {
-                panels::unit_divider(ui, b.section.left(), b.section.y_range().into());
-            }
+
             bounds.sections.push(b.section);
             bounds.bands.push(b.section);
             bounds.band_responses.push(b.response);
@@ -359,13 +357,7 @@ pub fn show(
                 panels::unit_add_strip(ui, dimensions.1, "Add EQ band")
             })
             .inner;
-        if !settings.bands.is_empty() || !dimensions.0 {
-            panels::unit_divider(
-                ui,
-                add.response.rect.left(),
-                add.response.rect.y_range().into(),
-            );
-        }
+
         bounds.sections.push(add.response.rect);
         bounds.add = Some(add.inner);
         let out = output(
@@ -377,7 +369,7 @@ pub fn show(
             controls.output_level,
             settings.enabled,
         );
-        panels::unit_divider(ui, out.section.left(), out.section.y_range().into());
+
         bounds.sections.push(out.section);
         bounds.output = out.section;
         bounds.output_control = out.control;

@@ -123,7 +123,7 @@ impl DawUi {
         };
         child.add_enabled_ui(enabled, |ui| {
             ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing.x = -1.0;
+                ui.spacing_mut().item_spacing.x = 0.0;
                 let toolbar = lane_toolbar::bounds(rect);
                 let collapse = lane_toolbar::show(
                     ui, toolbar, &mut bus.collapsed,
@@ -195,9 +195,7 @@ impl DawUi {
                     .id_salt("main-units")
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
-                        ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = -1.0;
-                            let mut previous: Option<Rect> = None;
+                        panels::unit_row(ui, true, |ui| {
                             if self.component_drag.as_ref().is_some_and(|d| d.active) {
                                 drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range()));
                             }
@@ -214,7 +212,7 @@ impl DawUi {
                                 let menu = crate::unit_power::PowerMenu::new(
                                     targets.iter().filter_map(|c| crate::unit_power::bus_enabled(bus, *c).copied()),
                                 );
-                                let rect = ui.scope_builder(menu.scope(component), |ui| match component {
+                                let rect = ui.scope_builder(menu.scope(component, selected.contains(&component)), |ui| match component {
                                     daw_core::InstrumentComponent::Effect(id) => {
                                         let effect=bus.effects.iter_mut().find(|e|e.id==id).unwrap();
                                         Some(self.inline_layer_effect(ui,track,bus.id,effect,(height,compact),sources))
@@ -260,11 +258,10 @@ impl DawUi {
                                         if let Some(state) = crate::unit_power::bus_enabled(bus, target) { *state = enable; }
                                     }
                                 }
-                                if let Some(rect) = rect {
-                                    if !matches!(component,daw_core::InstrumentComponent::Effect(_)) {self.instrument_ui.component_slots.push((bus.id, component, rect));}
-                                    if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }
-                                    previous = Some(rect);
-                                }
+                                if let Some(rect) = rect
+ && !matches!(component, daw_core::InstrumentComponent::Effect(_)) {
+ self.instrument_ui.component_slots.push((bus.id, component, rect));
+ }
                             }
                             if output && self.effects_drag.is_some() {ui.allocate_exact_size(Vec2::new(crate::midi_editor::UNIT_STRIP_WIDTH,height),Sense::hover());}
 

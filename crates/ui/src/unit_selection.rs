@@ -1,6 +1,19 @@
-//! Selection, keyboard and outline rules shared by installed effect and instrument units.
-use crate::{panels, selection_focus::SelectionFocus};
+//! Selection and keyboard rules shared by installed effect and instrument units.
+use crate::selection_focus::SelectionFocus;
 use egui::{Rect, Response, Ui};
+
+const SELECTED_TAG: &str = "selected-unit";
+
+pub(super) fn scope_info(selected: bool) -> egui::UiStackInfo {
+    egui::UiStackInfo::default().with_tag_value(SELECTED_TAG, selected)
+}
+
+pub(super) fn is_selected(ui: &Ui) -> bool {
+    ui.stack()
+        .iter()
+        .find_map(|node| node.tags().get_downcast::<bool>(SELECTED_TAG).copied())
+        .unwrap_or(false)
+}
 
 pub(super) fn clicked(ui: &Ui, rect: Rect, allowed: bool) -> bool {
     allowed
@@ -19,12 +32,6 @@ pub(super) fn keyboard_focus(ui: &mut Ui, bounds: Rect, id: egui::Id) -> Respons
 pub(super) fn retain_focus(ui: &Ui, response: &Response, pane: &SelectionFocus) {
     if !pane.owns(ui.ctx()) {
         response.request_focus();
-    }
-}
-
-pub(super) fn paint(ui: &Ui, rect: Rect, selected: bool) {
-    if selected {
-        panels::selection_border(ui, rect);
     }
 }
 

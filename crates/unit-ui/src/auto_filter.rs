@@ -154,7 +154,7 @@ pub fn show(
     ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
             for section in (0..3).filter(|section| internal_lfo || *section != 1) {
-                let rect = ui.push_id(section, |ui| egui::Frame::new().inner_margin(PANEL_MARGIN).show(ui, |ui| {
+                let rect = ui.push_id(section, |ui| crate::layout::unit_strip_frame(ui).inner_margin(PANEL_MARGIN).show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         let section_width = panels::unit_columns_width(if section == 1 { 2 } else { 1 });
                         let width = section_width - 2.0 * f32::from(PANEL_MARGIN);
@@ -182,7 +182,7 @@ pub fn show(
                      {bounds.meter=rail;}
                      let _=rail;
                 }
-                if section > 0 { panels::unit_divider(ui, rect.left(), rect.y_range().into()); }
+
             }
 
         });

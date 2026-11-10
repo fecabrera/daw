@@ -3,6 +3,16 @@ use egui::{Color32, Context};
 mod material;
 pub(super) use material::GREY_200;
 
+/// Unit and mixer titles share foreground-only selection feedback.
+pub(super) fn header_title_color(ctx: &Context, selected: bool) -> Color32 {
+    let colors = palette(ctx);
+    if selected {
+        colors.text
+    } else {
+        colors.secondary
+    }
+}
+
 /// Selected lanes share the supplied dark shade and subtle neutral/cool
 /// equivalents in light palettes.
 pub(super) fn selected_track_background(ctx: &Context) -> Color32 {
@@ -111,12 +121,6 @@ fn clip_palette(body: Color32) -> ClipColors {
         waveform: blend(body, contrast_color(body), 75),
         text: blend(header, contrast_color(header), 90),
     }
-}
-
-/// Match colored strip text with contrast against the unit header surface.
-pub(crate) fn unit_header_text(background: Color32) -> Color32 {
-    let header = blend(background, Color32::BLACK, 20);
-    blend(header, contrast_color(header), 90)
 }
 
 const fn display_color(color: daw_core::RgbColor) -> Color32 {
