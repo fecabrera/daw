@@ -26,7 +26,7 @@ Output controls have equal visible vertical gaps and outer padding. They stay al
 
 Use numeric fields for precise values. Press Enter or leave the field to apply a valid value; Escape cancels the draft. Gain accepts a finite dB value or `−∞` for exact silence. Track and group numeric gain can exceed the fader's travel range; Master input clamps to silence through +12 dB. Very low finite values keep a numeric readout. Pan accepts −1 (left) through +1 (right), with 0 at center.
 
-Mute and Solo use one joined **M / S** button group. Each button toggles independently.
+Mute and Solo use one joined, borderless **M / S** button group with rounded outer corners, semibold labels and a thin separator. The buttons share this style with track and layer headers. Each button toggles independently and retains its active color when enabled.
 
 Mute silences a track’s direct output; its sends remain active. Solo plays the selected soloed tracks and excludes the others. Solo takes priority over mute: a track with both enabled plays. Select several tracks to apply Mute or Solo together from the Track menu or with M and S.
 
@@ -34,7 +34,7 @@ Press Escape to deselect tracks, groups and Master. Active edits and drags cance
 
 Track shortcuts work from other Mixer panes and non-text controls: Mute (M), Solo (S), Rename (Command/Ctrl+R), Group (Command/Ctrl+G), and Ungroup (Command/Ctrl+Shift+G). Text entry, active gestures, dialogs and blocking jobs retain their guards. Selection requirements still apply.
 
-Meters show current output. Each L/R bar has a held-peak marker that stays at its highest level until reset. The peak readout shows the higher of the two held levels. Click either bar, the gap between L and R, or the peak readout to reset both held peaks and the clipping warning. Reduce gain if the project output clips.
+Meters show current output. Each L/R bar has a held-peak marker that stays at its highest level until reset. The peak readout shows the higher of the two held levels. Its read-only field uses the same rounded surface as the gain field. Click either bar, the gap between L and R, or the peak readout to reset both held peaks and the clipping warning. Reduce gain if the project output clips.
 
 ## Track groups
 

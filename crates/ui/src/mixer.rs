@@ -251,7 +251,7 @@ impl DawUi {
                         .frame(true)
                         .fill(egui::Color32::TRANSPARENT)
                         .stroke(Stroke::NONE)
-                        .corner_radius(style.visuals.widgets.inactive.corner_radius)
+                        .corner_radius(2)
                         .min_size(Vec2::new(0.0, toolbars::CONTROL_HEIGHT)),
                     )
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -265,7 +265,7 @@ impl DawUi {
                 {
                     self.sampler_drag_navigation(ui.ctx());
                 }
-                let radius = style.visuals.widgets.inactive.corner_radius;
+                let radius = egui::CornerRadius::same(2);
                 ui.painter().set(
                     background,
                     egui::Shape::rect_filled(

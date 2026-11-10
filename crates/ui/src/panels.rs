@@ -358,7 +358,7 @@ impl ControlPanel {
         if selected {
             ui.painter().rect_filled(
                 rect,
-                ui.visuals().widgets.inactive.corner_radius,
+                egui::CornerRadius::same(2),
                 crate::theme::toggle_colors(ui.ctx(), true).0,
             );
         }

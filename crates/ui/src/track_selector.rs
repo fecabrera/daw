@@ -100,7 +100,18 @@ impl DawUi {
                 if let Some(width) = width {
                     combo = combo.width(width).truncate();
                 }
+                let instrument = self.view_mode == ViewMode::Instrument;
+                let popup_visuals = ui.visuals().clone();
+                if instrument {
+                    rows::panel_button_style(ui);
+                }
                 let response = combo.show_ui(ui, |ui| {
+                    if instrument {
+                        // Only the collapsed selector uses the panel surface.
+                        // Retain the canonical popup's original menu visuals.
+                        *ui.visuals_mut() = popup_visuals;
+                        menus::popup_style(ui.style_mut());
+                    }
                     for (id, name) in &tracks {
                         ui.selectable_value(&mut selected, Some(*id), name);
                     }

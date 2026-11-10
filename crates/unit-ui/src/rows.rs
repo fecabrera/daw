@@ -51,7 +51,7 @@ pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Resp
         && ui.is_enabled()
         && (response.hovered() || response.has_focus() || response.is_pointer_button_down_on())
     {
-        fill = ui.visuals().widgets.hovered.weak_bg_fill;
+        fill = crate::theme::borderless_control_fill(ui.ctx());
     }
     let stroke_color = if on && ui.is_enabled() {
         crate::theme::accent(ui.ctx())

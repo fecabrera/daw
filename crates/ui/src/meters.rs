@@ -860,6 +860,15 @@ mod tests {
                 assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
                     egui::Shape::Text(text) if text.galley.text() == expected
                 )));
+                assert!(
+                    output.shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Rect(surface) if surface.rect == rect
+                            && surface.stroke.is_empty()
+                            && surface.corner_radius == egui::CornerRadius::same(5)
+                        && surface.fill == theme::palette(&ctx).input
+                    )),
+                    "read-only peak input keeps the rounded, outline-free surface"
+                );
                 assert!(!ctx.egui_wants_keyboard_input());
                 assert_eq!(meter.is_clipped(), phase < 2 && peak > 1.0);
                 assert_eq!(meter.held_peak(), if phase < 2 { peak } else { 0.0 });

@@ -162,6 +162,37 @@ pub fn button(ui: &mut Ui, icon: Lucide, name: &str, enabled: bool, color: Color
     draw_button(ui, icon, name, enabled, color, None, TOOLBAR_ICON_SIZE)
 }
 
+/// Panel action with the shared M/S surface, retaining standard icon-button sizing.
+pub(super) fn panel_button(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    enabled: bool,
+    color: Color32,
+) -> Response {
+    ui.scope(|ui| {
+        crate::rows::panel_button_style(ui);
+        let image = icon
+            .size(TOOLBAR_ICON_SIZE)
+            .stroke_width(2.0)
+            .color(color)
+            .image()
+            .alt_text(name);
+        let response = ui.add_enabled(
+            enabled,
+            egui::Button::image(image)
+                .min_size(Vec2::new(28.0, crate::toolbars::CONTROL_HEIGHT))
+                .stroke(egui::Stroke::NONE)
+                .corner_radius(5),
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled() && enabled, name)
+        });
+        response.on_hover_text(name)
+    })
+    .inner
+}
+
 /// User-supplied fit-width geometry. A white SVG mask takes the same theme tint
 /// as the Lucide controls while keeping one embedded image for both themes.
 pub(super) fn fit_clip_button(ui: &mut Ui) -> Response {
@@ -351,7 +382,7 @@ fn draw_circular_button(
         && ui.is_enabled()
         && (response.hovered() || response.is_pointer_button_down_on() || response.has_focus())
     {
-        fill = ui.style().visuals.widgets.hovered.weak_bg_fill;
+        fill = crate::theme::borderless_control_fill(ui.ctx());
     }
     let color = if ui.is_enabled() && selected == Some(true) {
         crate::theme::accent(ui.ctx())

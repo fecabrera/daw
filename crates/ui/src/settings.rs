@@ -1020,10 +1020,8 @@ mod tests {
             visuals.widgets.active.fg_stroke.color,
             AccentColor::Teal.color()
         );
-        assert_eq!(
-            visuals.widgets.open.bg_stroke.color,
-            AccentColor::Teal.color()
-        );
+        assert!(visuals.widgets.open.bg_stroke.is_empty());
+        assert!(visuals.widgets.active.bg_stroke.is_empty());
         assert_eq!(
             crate::theme::selection_outline(&a).color,
             AccentColor::Teal.color()

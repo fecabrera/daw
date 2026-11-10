@@ -23,6 +23,7 @@ pub(super) fn unison(
     let before = (settings.unison, settings.detune_cents);
     let input = daw_unit_ui::rows::selector_row(ui, "Unison", |ui| {
         let group = rows::input_group(ui, |ui| {
+            rows::input_group_edge(ui, false);
             // The joined fields share their outer frame; keep space at the divider.
             ui.spacing_mut().button_padding.x = 2.0;
             ui.spacing_mut().interact_size.x = 30.0;
@@ -32,7 +33,7 @@ pub(super) fn unison(
                 mode => mode.voices().to_string(),
             };
             let mode = menus::Dropdown::from_id_salt("unison")
-                .width(38.0)
+                .width(40.0)
                 .truncate()
                 .small_items()
                 .selected_text(
@@ -45,6 +46,7 @@ pub(super) fn unison(
                 })
                 .response
                 .on_hover_text("Unison voices: Off, 2, 4 or 8");
+            rows::input_group_edge(ui, true);
             let detune = ui
                 .add_enabled_ui(settings.unison != daw_core::OscillatorUnison::Off, |ui| {
                     let font = fonts::numeric(egui::TextStyle::Small.resolve(ui.style()).size);
@@ -78,12 +80,7 @@ pub(super) fn unison(
             });
             (mode, detune)
         });
-        rows::input_group_outline(
-            ui,
-            group.response.rect,
-            group.inner.1.rect.left(),
-            &[&group.inner.0, &group.inner.1],
-        );
+        rows::input_group_separator(ui, group.response.rect, group.inner.1.rect.left());
         group.response | group.inner.0 | group.inner.1
     });
     let mut response = row_response | input;

@@ -217,7 +217,7 @@ impl DawUi {
         enabled: bool,
     ) -> egui::InnerResponse<egui::Response> {
         let header = panel.header(ui, title, |ui| {
-            icons::button(
+            icons::panel_button(
                 ui,
                 icons::Lucide::Plus,
                 tooltip,

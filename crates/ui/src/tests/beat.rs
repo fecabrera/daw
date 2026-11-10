@@ -854,8 +854,7 @@ fn compact_beat_controls_follow_track_spacing_and_requested_order() {
         );
     }
     assert!((gain.center().x - pan.center().x - knobs::SIZE - mix_controls::KNOB_GAP).abs() < 0.1);
-    let border = ctx.global_style().visuals.widgets.inactive.bg_stroke.width;
-    assert!((mute.width() - (toolbars::CONTROL_HEIGHT - border)).abs() < 0.1);
+    assert!((mute.width() - toolbars::CONTROL_HEIGHT).abs() < 0.1);
     assert!((pan.center().y - mute.center().y).abs() < 0.1);
     click(&mut app, &ctx, mute.center());
     assert!(app.session.project.beat(track).unwrap().subtracks[0].muted);

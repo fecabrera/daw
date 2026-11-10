@@ -584,6 +584,7 @@ fn small_input_text(ui: &mut egui::Ui) {
 }
 fn root_note(ui: &mut egui::Ui, note: &mut u8) -> (Rect, Rect, Rect) {
     let group = rows::input_group(ui, |ui| {
+        rows::input_group_edge(ui, false);
         small_input_text(ui);
         let sharp = matches!(*note % 12, 1 | 3 | 6 | 8 | 10);
         let (response, preview) = staged_input(ui, "root-note-draft", note, |ui, value| {
@@ -599,6 +600,7 @@ fn root_note(ui: &mut egui::Ui, note: &mut u8) -> (Rect, Rect, Rect) {
         // The toggle follows the preview during a drag, including accidental crossings.
         let sharp = matches!(preview % 12, 1 | 3 | 6 | 8 | 10);
         let natural = daw_unit_core::note_name(preview).replace('#', "");
+        rows::input_group_edge(ui, true);
         let toggle = ui
             .add_enabled(
                 daw_unit_core::natural_note(&natural, true).is_some() && ui.input(|i| i.focused),
@@ -616,12 +618,7 @@ fn root_note(ui: &mut egui::Ui, note: &mut u8) -> (Rect, Rect, Rect) {
         (response, toggle)
     });
     let (response, toggle) = group.inner;
-    rows::input_group_outline(
-        ui,
-        group.response.rect,
-        toggle.rect.left(),
-        &[&response, &toggle],
-    );
+    rows::input_group_separator(ui, group.response.rect, toggle.rect.left());
     (response.rect, toggle.rect, group.response.rect)
 }
 /// Keep the compact numeric segment fixed even for unusually long saved values.
@@ -712,6 +709,7 @@ fn duration(
     let previous_frames = s.output_frames(rate, tempo);
     let group =
         rows::input_group(ui, |ui| {
+            rows::input_group_edge(ui, false);
             small_input_text(ui);
             ui.spacing_mut().button_padding.x = 6.0;
             let height = ui.spacing().interact_size.y;
@@ -758,6 +756,7 @@ fn duration(
                     })
                     .0
                 };
+            rows::input_group_edge(ui, true);
             let label = choice_dropdown(
                 ui,
                 "stretch-mode",
@@ -792,12 +791,7 @@ fn duration(
             (response, label)
         });
     let (response, label) = group.inner;
-    rows::input_group_outline(
-        ui,
-        group.response.rect,
-        label.rect.left(),
-        &[&response, &label],
-    );
+    rows::input_group_separator(ui, group.response.rect, label.rect.left());
     (group.response.rect, response.rect, label.rect)
 }
 /// The waveform stays in input frames; the ruler and snapping share the output clock.

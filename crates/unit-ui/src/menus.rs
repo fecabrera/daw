@@ -58,7 +58,8 @@ pub fn popup_style(style: &mut Style) {
     let text = style.visuals.widgets.noninteractive.fg_stroke.color;
     let secondary = style.visuals.weak_text_color();
     let fill = crate::theme::TOOLBAR_HOVER_FILL;
-    let radius = style.visuals.widgets.inactive.corner_radius;
+    let radius = egui::CornerRadius::same(2);
+    style.visuals.widgets.inactive.corner_radius = radius;
     style.visuals.selection.stroke = egui::Stroke::new(0.0, text);
     style.visuals.widgets.inactive.fg_stroke.color = secondary;
     for visuals in [

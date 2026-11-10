@@ -49,7 +49,16 @@ impl DawUi {
         if !source.sends.is_empty() {
             ui.add_space((mixer::OUT_CONTROL_SPACING - ui.spacing().item_spacing.y).max(0.0));
         }
-        let button = ui.button("+ Send");
+        let button = ui
+            .scope(|ui| {
+                rows::panel_button_style(ui);
+                ui.add(
+                    egui::Button::new("+ Send")
+                        .stroke(egui::Stroke::NONE)
+                        .corner_radius(5),
+                )
+            })
+            .inner;
         let mut new_return = false;
         menus::Dropdown::show_from_button(&button, |ui| {
             menus::small_popup_style(ui.style_mut());
@@ -329,6 +338,7 @@ fn send_row(
                         ui.set_width(left_width);
                         let border = ui.visuals().widgets.inactive.bg_stroke.width;
                         let group = rows::input_group(ui, |ui| {
+                            rows::input_group_edge(ui, false);
                             let height = ui.spacing().interact_size.y;
                             ui.spacing_mut().button_padding.x = 0.0;
                             let color = if send.enabled {
@@ -360,6 +370,7 @@ fn send_row(
                             ui.spacing_mut().icon_width = 10.0;
                             ui.spacing_mut().icon_spacing = 2.0;
                             let width = (left_width - 2.0 * border - height).max(0.0);
+                            rows::input_group_edge(ui, true);
                             let destination = menus::Dropdown::from_id_salt("send_return")
                                 .small_items()
                                 .selected_text(egui::RichText::new(name).small())
@@ -384,12 +395,11 @@ fn send_row(
                                 .on_hover_text(name);
                             (power, destination)
                         });
-                        let (power, destination) = group.inner;
-                        rows::input_group_outline(
+                        let (_, destination) = group.inner;
+                        rows::input_group_separator(
                             ui,
                             group.response.rect,
                             destination.rect.left(),
-                            &[&power, &destination],
                         );
                     },
                 );

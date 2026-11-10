@@ -25,47 +25,74 @@ fn mute_solo_with_size(
         egui::Vec2::new(2.0 * size, size),
         egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
-            let border = ui.visuals().widgets.inactive.bg_stroke.width;
-            let group = rows::input_group_with_height(ui, size, |ui| {
-                ui.spacing_mut().button_padding = egui::Vec2::new(2.0, 0.0);
-                ui.spacing_mut().interact_size = egui::Vec2::splat(size - 2.0 * border);
-                std::array::from_fn(|index| {
-                    let (label, name, selected) = if index == 0 {
-                        ("M", "Mute", &mut *muted)
-                    } else {
-                        ("S", "Solo", &mut *soloed)
-                    };
-                    let text = if size == toolbars::CONTROL_HEIGHT {
-                        egui::RichText::new(label).small()
-                    } else {
-                        egui::RichText::new(label).size(9.0)
-                    };
-                    let response = ui
-                        .add_sized(
-                            egui::Vec2::new(size - border, size - 2.0 * border),
-                            egui::Button::new(text).selected(*selected),
-                        )
-                        .on_hover_text(tooltips[index]);
-                    response.widget_info(|| {
-                        egui::WidgetInfo::selected(
-                            egui::WidgetType::Button,
-                            ui.is_enabled(),
-                            *selected,
-                            name,
-                        )
-                    });
-                    if response.clicked() {
-                        *selected = !*selected;
-                    }
-                    response
-                })
-            });
+            let background = crate::theme::unit_separator(ui.ctx());
+            let header = crate::theme::unit_header_fill(ui.ctx(), false);
+            let group = egui::Frame::new()
+                .fill(background)
+                .corner_radius(5)
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.spacing_mut().button_padding = egui::Vec2::new(2.0, 0.0);
+                    ui.spacing_mut().interact_size = egui::Vec2::splat(size);
+                    rows::panel_button_style(ui);
+                    ui.horizontal(|ui| {
+                        std::array::from_fn(|index| {
+                            let (label, name, selected) = if index == 0 {
+                                ("M", "Mute", &mut *muted)
+                            } else {
+                                ("S", "Solo", &mut *soloed)
+                            };
+                            let font_size = if size == toolbars::CONTROL_HEIGHT {
+                                egui::TextStyle::Small.resolve(ui.style()).size
+                            } else {
+                                9.0
+                            };
+                            let text =
+                                egui::RichText::new(label).font(crate::fonts::semibold(font_size));
+                            let response = ui
+                                .add_sized(
+                                    egui::Vec2::splat(size),
+                                    egui::Button::new(text)
+                                        .selected(*selected)
+                                        .stroke(egui::Stroke::NONE)
+                                        .corner_radius(if index == 0 {
+                                            egui::CornerRadius {
+                                                nw: 5,
+                                                sw: 5,
+                                                ne: 0,
+                                                se: 0,
+                                            }
+                                        } else {
+                                            egui::CornerRadius {
+                                                nw: 0,
+                                                sw: 0,
+                                                ne: 5,
+                                                se: 5,
+                                            }
+                                        }),
+                                )
+                                .on_hover_text(tooltips[index]);
+                            response.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::Button,
+                                    ui.is_enabled(),
+                                    *selected,
+                                    name,
+                                )
+                            });
+                            if response.clicked() {
+                                *selected = !*selected;
+                            }
+                            response
+                        })
+                    })
+                    .inner
+                });
             let buttons: [Response; 2] = group.inner;
-            rows::input_group_outline(
-                ui,
-                group.response.rect,
+            ui.painter().vline(
                 buttons[0].rect.right(),
-                &[&buttons[0], &buttons[1]],
+                group.response.rect.y_range(),
+                egui::Stroke::new(1.0, header),
             );
             buttons
         },
@@ -183,6 +210,7 @@ mod tests {
                 crate::settings::ColorTheme::Mist,
             ] {
                 let ctx = egui::Context::default();
+                crate::fonts::configure(&ctx);
                 crate::theme::configure(&ctx);
                 crate::theme::apply(
                     &ctx,
@@ -216,6 +244,46 @@ mod tests {
                             bounds = group.inner.map(|r| r.rect);
                         },
                     );
+                    let pair = bounds[0].union(bounds[1]);
+                    assert!(
+                        output.shapes.iter().all(|shape| match &shape.shape {
+                            egui::Shape::Text(text) if ["M", "S"].contains(&text.galley.text()) =>
+                                text.galley.job.sections.iter().all(|section| section
+                                    .format
+                                    .font_id
+                                    .family
+                                    == crate::fonts::semibold(11.0).family),
+                            _ => true,
+                        }),
+                        "M/S labels use the shared semibold font"
+                    );
+                    assert!(
+                        output.shapes.iter().all(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect) if rect.rect.intersects(pair) =>
+                                rect.stroke.is_empty(),
+                            _ => true,
+                        }),
+                        "M/S controls have no outer, hover or active outline"
+                    );
+                    if enabled {
+                        assert!(
+                            output.shapes.iter().any(|shape| matches!(&shape.shape,
+                                egui::Shape::Rect(rect) if rect.rect.contains_rect(pair)
+                                    && rect.fill == crate::theme::unit_separator(&ctx)
+                                    && rect.stroke.is_empty()
+                                && rect.corner_radius == egui::CornerRadius::same(5)
+                            )),
+                            "the pair uses the unit content background, not the strip card"
+                        );
+                        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::LineSegment { points, stroke }
+                                if points[0].x == bounds[0].right()
+                                    && points[1].x == bounds[0].right()
+                                    && points[0].y <= pair.top()
+                                    && points[1].y >= pair.bottom()
+                                    && *stroke == egui::Stroke::new(1.0, crate::theme::unit_header_fill(&ctx, false))
+                        )), "the separator spans the pair in the unit-header color");
+                    }
                     output.textures_delta.clear();
                     (bounds, muted, soloed)
                 };
@@ -224,7 +292,7 @@ mod tests {
                     (bounds[0].right() - bounds[1].left()).abs() < 0.01,
                     "joined controls touch at their divider"
                 );
-                assert!((bounds[0].height() + 2.0 - size).abs() < 0.01);
+                assert!((bounds[0].height() - size).abs() < 0.01);
                 for (index, enabled, expected) in [
                     (0, true, (true, false)),
                     (1, true, (true, true)),
@@ -238,9 +306,13 @@ mod tests {
                         pressed,
                         modifiers: Default::default(),
                     };
+                    run(vec![egui::Event::PointerMoved(point)], enabled);
+                    run(vec![], enabled);
                     run(vec![egui::Event::PointerMoved(point), event(true)], enabled);
+                    run(vec![], enabled);
                     let (_, mute, solo) = run(vec![event(false)], enabled);
                     assert_eq!((mute, solo), expected);
+                    run(vec![], enabled);
                 }
             }
         }

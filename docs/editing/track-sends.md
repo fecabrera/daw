@@ -15,7 +15,7 @@ Audio, MIDI, beat parent tracks and groups can send. Each source can have one se
 
 ## Send controls
 
-Each send is a row with a power button and Return dropdown joined in one input group on the left, and a small level knob on the right. Use the dropdown to change its destination; Returns already used by another send on the same source are unavailable. Hover the knob to read its level. A divider separates the send rack from Pan and the output controls. Send stacks align at the bottom, with **+ Send** at the same height across source tracks. All send rows stay in the stack; scroll Mixer vertically if the complete controls do not fit the window.
+Each send is a row with a power button and Return dropdown joined in one input group on the left, and a small level knob on the right. Use the dropdown to change its destination; Returns already used by another send on the same source are unavailable. Hover the knob to read its level. A divider separates the send rack from Pan and the output controls. Send stacks align at the bottom, with **+ Send** at the same height across source tracks. The **+ Send** button uses the shared rounded, borderless panel style. All send rows stay in the stack; scroll Mixer vertically if the complete controls do not fit the window.
 
 | Control | Behavior |
 | --- | --- |

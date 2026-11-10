@@ -510,7 +510,7 @@ impl DawUi {
     }
 
     pub(super) fn add_track_dropdown(&mut self, ui: &mut egui::Ui) {
-        let response = icons::button(
+        let response = icons::panel_button(
             ui,
             icons::Lucide::Plus,
             "Add track",

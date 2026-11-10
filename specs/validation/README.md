@@ -4,6 +4,144 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Default framed controls and text inputs — 2026-11-10
+
+The portable `unit-ui` theme now supplies the standard idle unit-content fill,
+unit-header hover fill, 5-point corners and empty control strokes for buttons,
+dropdowns and their joined groups. Text inputs keep their input fill, caret and
+selection highlight with 5-point corners and no focus outline. Groups round only
+their outside corners and use a full-height 1-point header-color divider.
+Explicitly borderless toolbar/view/catalog controls, knob/power surfaces, popup
+rows and workspace separator geometry retain their prior presentation. Built-in
+and standalone effect editors share the default through `unit-ui`.
+Gain and held-peak readouts share an explicit input-colored frame, with the
+same 5-point corners, empty stroke and text margins. Held peaks retain reset
+clicks and reject text input.
+
+Completed checks:
+
+- `cargo test --workspace --offline`: passed. Includes 977 passed UI tests
+  (3 ignored), 43 passed shared UI tests, standalone editor/parity checks,
+  read-only peak reset/input styling and accent changes without control outlines.
+  The shared theme regression covers Dark/Light/Mist, hover/held press/release,
+  focused/disabled states, constant geometry, transparent borderless buttons,
+  retained caret and workspace borders.
+- `cargo test --workspace --release --offline`: passed.
+- Final `cargo test -p daw-ui --offline` and
+  `cargo test -p daw-ui --release --offline`: passed (977 passed, 3 ignored
+  each), after making editable gain and read-only held-peak frames explicit.
+  The held-peak check verifies input fill, 5-point corners, no stroke, reset on
+  release and rejected text input.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native application and plugin-host appearance remain unverified. The macOS
+packaging attempt stopped at the source-revision gate because tracked changes
+are uncommitted. The executable was rebuilt; the app bundle was not updated.
+
+## Send and Instrument selector surfaces — 2026-11-10
+
+Mixer + Send and the Instrument view's top track dropdown use the shared panel
+idle/hover fills, borderless states and 5-point corners. Both keep their original
+padding and dimensions. The dropdown remains canonical and its popup restores
+the original menu visuals. Other dropdowns and send destination groups retain
+their presentation.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (977 passed, 3 ignored), including
+  send-stack spacing, send menus and guards, Instrument track selection,
+  popup behavior and shared panel/M/S presentation coverage.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
+## Shared panel action button surfaces — 2026-11-10
+
+Tracks-browser Add, Layers Add, Editor Beat-subtracks Add and Timeline Tracks
+Add/Duplicate share the borderless M/S surface colors and 5-point corners,
+without a divider. Existing icon artwork, button sizing, spacing, tooltips,
+popup handling and guards remain. The shared style helper retains M/S paired
+corners, separator and behavior; other icon buttons keep their existing style.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (977 passed, 3 ignored), including
+  creation menus, popup dismissal/guards, layer and beat-subtrack additions,
+  track duplication, panel geometry and M/S presentation/interaction coverage.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
+## Semibold Mute/Solo labels — 2026-11-10
+
+Shared M/S labels use the configured semibold font at their existing text sizes:
+Small for standard buttons and 9 points for browser buttons. Standard buttons
+remain 22 by 22 points; browser buttons remain 16 by 16 points. The 1-point
+separator overlays their shared edge without adding width. Existing colors,
+corner radii, selection and toggle behavior remain.
+
+Completed checks:
+
+- `cargo test --workspace --offline`: passed. UI coverage includes 977 passed,
+  3 ignored, with shared semibold labels at both button sizes and unchanged
+  toggle, layout and color checks.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
+## Borderless shared Mute/Solo buttons — 2026-11-10
+
+Track, layer, beat-subtrack, browser and mixer M/S pairs use the unit content
+background for their idle fills without outer or button outlines.
+The full-height 1-point separator and hover background use the neutral unit-header
+fill. Selected and pressed fills, foreground feedback, group size and toggle
+behavior remain. The group has 5-point outer corners, square inner button
+edges and no inset frame; explicit button strokes stay empty across hover,
+focus, pressed and selected states.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (977 passed, 3 ignored). The shared
+  M/S check covers standard/browser sizes, Dark/Light/Mist, independent toggles,
+  disabled guards, borderless idle/hover/pressed/selected painting and separator
+  width, extent and color. It also checks the unit content background fill.
+  The 5-point group radius and sustained hover/pressed/selected frames are
+  covered. View tests retain track/layer/mixer input coverage with full-height
+  borderless buttons and unchanged outer group dimensions.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The executable was rebuilt. The macOS
+packaging attempt stopped at the source-revision gate because tracked changes
+are uncommitted; the app bundle was not updated.
+
 ## Mixer hierarchy gutters and header text — 2026-11-10
 
 Mixer headers remain 24 points tall. Nested strips add connected 12-point bands

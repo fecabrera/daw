@@ -834,7 +834,7 @@ fn base_knob(
             painter.circle(
                 center,
                 radius - 3.0,
-                ui.visuals().widgets.inactive.bg_fill,
+                crate::theme::borderless_control_fill(ui.ctx()),
                 Stroke::new(
                     1.0,
                     if response.hovered() || response.has_focus() {

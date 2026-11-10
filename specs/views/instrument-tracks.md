@@ -44,3 +44,24 @@ guard and clears beat reorder state when a view change is accepted.
 ## Acceptance
 
 [`track_browser/tests.rs`](../../crates/ui/src/track_browser/tests.rs) covers saved order, all track kinds, nested groups, independent saved collapse state, toolbar/panel switching, same-frame MIDI/audio effects targets, unchanged project/clip state, bounded keyboard navigation, rename/removal, disabled input and shared row geometry in Dark/Light/Mist at 1×/1.5× scale. Editor cases cover first-clip selection, empty audio tracks, keyboard switching, catalog exclusivity and per-view visibility. Additional cases cover canonical output controls, fixed row size/right alignment and unclipped knob paint in every theme at 1×/1.5×/2×, selected-subtrack Layers parity, parent-only Output, release-only project/group moves and subtrack reorder, rejected cross-beat drops, and cancellation. Existing catalog paint/focus and workspace suites remain required. Native app/device and Windows/Linux checks are separate from automated egui tests; executed results belong in [validation history](../validation/README.md).
+
+## Panel action button presentation
+
+Tracks-browser Add, Layers Add, Editor Beat-subtracks Add, and Timeline Tracks
+Add/Duplicate use `icons::panel_button` and the shared `rows::panel_button_style`.
+Reuse the M/S idle unit-content fill, unit-header hover fill and existing active
+colors. Use 5-point corners and explicit empty strokes in every interaction state,
+without an internal divider. Preserve existing button minimum size (28 by 22
+points), icon artwork/size, padding, panel geometry, tooltips, enabled guards,
+popup anchoring and release-only actions. Explicitly borderless icon buttons keep their existing
+styles; framed buttons follow the shared theme. M/S also uses this shared surface style while retaining its paired outer
+corners, separator, text and dimensions.
+
+Mixer + Send buttons and the Instrument view's top track selector reuse the same
+panel surface style, with no divider. Preserve their previous sizes and spacing.
+For + Send, retain its existing button padding while drawing an empty stroke
+and 5-point corners. Keep its action popup outside the styled
+button scope. The Instrument selector retains canonical `menus::Dropdown`, its
+arrow, width, text and guards; restore the original visuals and canonical popup
+style inside the menu so only its collapsed surface changes. All framed dropdowns and send-row destination groups now follow the shared
+[default control surface](dropdowns.md#default-framed-control-surfaces).

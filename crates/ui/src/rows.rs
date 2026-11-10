@@ -1,5 +1,7 @@
 use egui::{Align, InnerResponse, Layout, Ui, Vec2};
 
+pub(super) use daw_unit_ui::theme::panel_button_style;
+
 pub const NAME_FONT_SIZE: f32 = 13.0;
 
 /// Shared full-width track/subtrack name button with text anchored to the row inset.
@@ -270,19 +272,13 @@ pub fn input_group_with_height<R>(
     height: f32,
     content: impl FnOnce(&mut Ui) -> R,
 ) -> InnerResponse<R> {
-    let palette = crate::theme::palette(ui.ctx());
-    let border = ui.visuals().widgets.inactive.bg_stroke.width;
     let frame = egui::Frame::new()
-        .fill(palette.input)
-        .stroke(ui.visuals().widgets.inactive.bg_stroke)
-        .corner_radius(ui.visuals().widgets.inactive.corner_radius);
+        .fill(crate::theme::unit_separator(ui.ctx()))
+        .corner_radius(5);
     frame.show(ui, |ui| {
-        // Include the outer border in the standard input height.
-        ui.spacing_mut().interact_size.y = (height - 2.0 * border).max(0.0);
-        ui.spacing_mut().button_padding.y = (ui.spacing().button_padding.y - 2.0 * border).max(0.0);
+        ui.spacing_mut().interact_size.y = height;
         ui.spacing_mut().item_spacing.x = 0.0;
-        // TextEdit otherwise adds its focused stroke outside the inner control.
-        // Keep the selection text color; the group owns the input outline.
+        // A typed segment keeps selection text feedback without a focus outline.
         ui.visuals_mut().selection.stroke.width = 0.0;
         let widgets = &mut ui.visuals_mut().widgets;
         for widget in [
@@ -299,25 +295,41 @@ pub fn input_group_with_height<R>(
     })
 }
 
-/// Paint one input-group outline and divider with the standard focus/hover colors.
-pub fn input_group_outline(ui: &Ui, rect: egui::Rect, divider: f32, controls: &[&egui::Response]) {
-    let visuals = if controls.iter().any(|r| r.has_focus() || r.dragged()) {
-        &ui.visuals().widgets.active
-    } else if controls.iter().any(|r| r.hovered()) {
-        &ui.visuals().widgets.hovered
+/// Give the first/last joined control only the group's outside corners.
+pub(super) fn input_group_edge(ui: &mut Ui, last: bool) {
+    let radius = if last {
+        egui::CornerRadius {
+            nw: 0,
+            sw: 0,
+            ne: 5,
+            se: 5,
+        }
     } else {
-        &ui.visuals().widgets.inactive
+        egui::CornerRadius {
+            nw: 5,
+            sw: 5,
+            ne: 0,
+            se: 0,
+        }
     };
-    ui.painter().rect_stroke(
-        rect,
-        visuals.corner_radius,
-        visuals.bg_stroke,
-        egui::StrokeKind::Inside,
-    );
+    let widgets = &mut ui.visuals_mut().widgets;
+    for widget in [
+        &mut widgets.noninteractive,
+        &mut widgets.inactive,
+        &mut widgets.hovered,
+        &mut widgets.active,
+        &mut widgets.open,
+    ] {
+        widget.corner_radius = radius;
+    }
+}
+
+/// Paint only the shared separator; joined controls have no outer outline.
+pub fn input_group_separator(ui: &Ui, rect: egui::Rect, divider: f32) {
     ui.painter().vline(
         divider,
-        rect.top() + 1.0..=rect.bottom() - 1.0,
-        egui::Stroke::new(1.0, crate::theme::palette(ui.ctx()).border),
+        rect.y_range(),
+        egui::Stroke::new(1.0, crate::theme::unit_header_fill(ui.ctx(), false)),
     );
 }
 

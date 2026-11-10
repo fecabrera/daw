@@ -125,6 +125,42 @@ pub fn unit_header_fill(ctx: &Context, _enabled: bool) -> Color32 {
     palette(ctx).border
 }
 
+/// Legacy knob/power hover surface, independent of framed control styling.
+pub fn borderless_control_fill(ctx: &Context) -> Color32 {
+    let colors = palette(ctx);
+    if ctx.global_style().visuals.dark_mode {
+        Color32::from_rgb(42, 42, 42)
+    } else if colors == MIST {
+        colors.input
+    } else {
+        Color32::from_rgb(238, 239, 240)
+    }
+}
+
+fn framed_controls(visuals: &mut Visuals, colors: Palette) {
+    let idle = blend(colors.panel, colors.border, 50);
+    visuals.widgets.inactive.bg_fill = idle;
+    visuals.widgets.inactive.weak_bg_fill = idle;
+    visuals.widgets.hovered.bg_fill = colors.border;
+    visuals.widgets.hovered.weak_bg_fill = colors.border;
+    for widget in [
+        &mut visuals.widgets.inactive,
+        &mut visuals.widgets.hovered,
+        &mut visuals.widgets.active,
+        &mut visuals.widgets.open,
+    ] {
+        widget.bg_stroke = Stroke::NONE;
+        widget.corner_radius = CornerRadius::same(5);
+        widget.expansion = 0.0;
+    }
+}
+
+/// Reapply the default framed surface inside a locally overridden UI.
+pub fn panel_button_style(ui: &mut egui::Ui) {
+    let colors = palette(ui.ctx());
+    framed_controls(ui.visuals_mut(), colors);
+}
+
 /// Shared on/off colors for view controls and unit toggles.
 pub fn toggle_colors(ctx: &Context, selected: bool) -> (Color32, Color32) {
     if selected {
@@ -174,11 +210,9 @@ pub fn set_accent(ctx: &Context, color: Color32) {
         visuals.text_cursor.stroke.color = color;
         visuals.widgets.active.bg_fill = selected;
         visuals.widgets.active.weak_bg_fill = selected;
-        visuals.widgets.active.bg_stroke.color = color;
         visuals.widgets.active.fg_stroke.color = color;
         visuals.widgets.open.bg_fill = selected;
         visuals.widgets.open.weak_bg_fill = selected;
-        visuals.widgets.open.bg_stroke.color = color;
         visuals.widgets.open.fg_stroke.color = color;
     });
     ctx.request_repaint();
@@ -219,27 +253,13 @@ fn configure_style(ctx: &Context, theme: egui::Theme, colors: Palette) {
     visuals.menu_corner_radius = CornerRadius::same(2);
     let selected = toggle_fill(colors.panel, ACCENT);
     visuals.selection.bg_fill = selected;
-    visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
+    visuals.selection.stroke = Stroke::new(0.0_f32, ACCENT);
     visuals.text_cursor.stroke = Stroke::new(1.0_f32, ACCENT);
     visuals.widgets.noninteractive.bg_fill = colors.panel;
     visuals.widgets.noninteractive.weak_bg_fill = colors.panel;
     visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, colors.border);
     visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, colors.text);
-    visuals.widgets.inactive.bg_fill = match theme {
-        egui::Theme::Dark => Color32::from_rgb(42, 42, 42),
-        egui::Theme::Light if colors == MIST => colors.input,
-        egui::Theme::Light => Color32::from_rgb(238, 239, 240),
-    };
-    visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, colors.border);
     visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, colors.text);
-    visuals.widgets.hovered.bg_fill = match theme {
-        egui::Theme::Dark => Color32::from_rgb(49, 49, 49),
-        egui::Theme::Light if colors == MIST => blend(colors.input, colors.text, 4),
-        egui::Theme::Light => Color32::from_rgb(225, 227, 230),
-    };
-    visuals.widgets.hovered.weak_bg_fill = visuals.widgets.inactive.bg_fill;
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, colors.secondary);
     visuals.widgets.hovered.fg_stroke = Stroke::new(
         1.0_f32,
         match theme {
@@ -249,19 +269,11 @@ fn configure_style(ctx: &Context, theme: egui::Theme, colors: Palette) {
     );
     visuals.widgets.active.bg_fill = selected;
     visuals.widgets.active.weak_bg_fill = selected;
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT);
     visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, ACCENT);
     visuals.widgets.open = visuals.widgets.active;
-    for widget in [
-        &mut visuals.widgets.noninteractive,
-        &mut visuals.widgets.inactive,
-        &mut visuals.widgets.hovered,
-        &mut visuals.widgets.active,
-        &mut visuals.widgets.open,
-    ] {
-        widget.corner_radius = CornerRadius::same(2);
-        widget.expansion = 0.0;
-    }
+    visuals.widgets.noninteractive.corner_radius = CornerRadius::same(2);
+    visuals.widgets.noninteractive.expansion = 0.0;
+    framed_controls(&mut visuals, colors);
     ctx.style_mut_of(theme, |style| {
         style.visuals = visuals;
         style.spacing.item_spacing = Vec2::new(8.0, 5.0);
@@ -307,3 +319,7 @@ pub fn contrast_color(color: Color32) -> Color32 {
         Color32::WHITE
     }
 }
+
+#[cfg(test)]
+#[path = "theme_tests.rs"]
+mod tests;

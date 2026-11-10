@@ -10,9 +10,11 @@ Use **Tracks** in the left toolbar to open the project track list. [Editor](edit
 
 Click a group chevron to expand or collapse it; click its name to select the group. Groups start collapsed and retain their browser choices while the project is open. These choices do not change group collapse state in Timeline or Mixer. Nested groups are supported.
 
-Click an audio, MIDI or beat track to select it without leaving Instrument. MIDI tracks show their instrument layers; audio tracks have no MIDI instrument, but their track effects remain available in the bottom lane. Existing clip selection stays unchanged. The top track dropdown supports MIDI and beat tracks. Beat parents show only their final Output. Expand a beat parent in Tracks and select a subtrack to open its [Layers page](beat-editor.md#instrument-layers-and-output), with its own source layers, LFO, Envelope and Output. Beat parents start expanded.
+Click an audio, MIDI or beat track to select it without leaving Instrument. MIDI tracks show their instrument layers; audio tracks have no MIDI instrument, but their track effects remain available in the bottom lane. Existing clip selection stays unchanged. The top track dropdown supports MIDI and beat tracks and uses the shared rounded, borderless panel style. Beat parents show only their final Output. Expand a beat parent in Tracks and select a subtrack to open its [Layers page](beat-editor.md#instrument-layers-and-output), with its own source layers, LFO, Envelope and Output. Beat parents start expanded.
 
 Each row has compact **M**, **S**, **Pan** and **Gain** controls at the right. They edit that row's output without changing selection. Hover or drag a knob to read its value. Use the header Plus menu, or right-click blank space in Tracks, to add audio, MIDI or beat tracks or an empty group without changing view. With a beat selected, the Plus menu also offers **Add subtrack**. Right-click a beat parent and choose **Add subtrack** to add directly to that beat. The Track menubar also includes **Add group** and **Add subtrack**; Add subtrack requires a selected beat.
+
+The Add buttons in Tracks, Layers and Beat subtracks share the rounded, borderless style of M/S buttons.
 
 Right-click a group to add an audio, MIDI or beat track or a nested empty group inside it.
 

@@ -628,19 +628,20 @@ fn mixer_faders_and_buttons_change_shared_values_and_preserve_group_selection() 
     let first_rect = app.mixer_bounds[&track];
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     for label in ["M", "S"] {
-        let center = shapes
-            .iter()
-            .find_map(|shape| match &shape.shape {
-                egui::Shape::Text(text) if text.galley.text() == label => {
-                    assert!(text.galley.job.sections.iter().all(|section| {
-                        section.format.font_id == egui::FontId::proportional(11.0)
-                    }));
-                    let center = text.pos + text.galley.size() * 0.5;
-                    first_rect.contains(center).then_some(center)
-                }
-                _ => None,
-            })
-            .unwrap();
+        let center =
+            shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        assert!(text.galley.job.sections.iter().all(|section| {
+                            section.format.font_id == crate::fonts::semibold(11.0)
+                        }));
+                        let center = text.pos + text.galley.size() * 0.5;
+                        first_rect.contains(center).then_some(center)
+                    }
+                    _ => None,
+                })
+                .unwrap();
         let rect = shapes
             .iter()
             .find_map(|shape| match &shape.shape {
@@ -652,14 +653,7 @@ fn mixer_faders_and_buttons_change_shared_values_and_preserve_group_selection() 
                 _ => None,
             })
             .unwrap();
-        let border = ctx.global_style().visuals.widgets.inactive.bg_stroke.width;
-        assert_eq!(
-            rect.size(),
-            Vec2::new(
-                toolbars::CONTROL_HEIGHT - border,
-                toolbars::CONTROL_HEIGHT - 2.0 * border
-            )
-        );
+        assert_eq!(rect.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
         assert!(first_rect.contains_rect(rect));
     }
     click(&mut app, &ctx, first_rect.center());
@@ -838,10 +832,7 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                                     unreachable!()
                                 };
                                 assert_eq!(rect.stroke, egui::Stroke::NONE);
-                                assert_eq!(
-                                    rect.corner_radius,
-                                    ctx.global_style().visuals.widgets.inactive.corner_radius
-                                );
+                                assert_eq!(rect.corner_radius, egui::CornerRadius::same(2));
                                 let text_index = shapes
                                     .iter()
                                     .position(|shape| {
@@ -869,10 +860,7 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                                     })
                                     .expect("Selected view background");
                                 assert_eq!(background.stroke, egui::Stroke::NONE);
-                                assert_eq!(
-                                    background.corner_radius,
-                                    ctx.global_style().visuals.widgets.inactive.corner_radius
-                                );
+                                assert_eq!(background.corner_radius, egui::CornerRadius::same(2));
                                 if let Some(size) = reference_size {
                                     assert_eq!(background.rect.size(), size);
                                 } else {
@@ -2119,7 +2107,8 @@ fn assert_destination_row(
             .iter()
             .find_map(|shape| match &shape.shape {
                 egui::Shape::Rect(r)
-                    if r.stroke.width > 0.0
+                    if r.stroke.is_empty()
+                        && r.fill == theme::unit_separator(ctx)
                         && r.rect.height() < 30.0
                         && r.rect.contains_rect(send) =>
                 {
@@ -2127,7 +2116,7 @@ fn assert_destination_row(
                 }
                 _ => None,
             })
-            .expect("send input border");
+            .expect("send input group surface");
         assert!(
             (row.left() - send_border.left()).abs() < 0.1,
             "destination {row:?}, send {send_border:?}"

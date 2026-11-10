@@ -159,3 +159,23 @@ maximum displayed gutter height in the minimum scrollable content height so
 nested headers and destinations cannot overlap the lower controls. Apply the
 shared strip presentation to Mixer and Timeline's Track mixer. No project,
 selection, routing or saved mix values change during painting.
+
+## Shared Mute/Solo presentation
+
+Track, layer, beat-subtrack, Tracks-browser and mixer M/S buttons use the shared
+`mix_controls::mute_solo_with_size` implementation. Keep their existing group size,
+independent toggles, accessibility labels, tooltips and disabled guards. Draw no
+outer or per-button strokes in idle, hover, pressed or selected states. Use the
+unit content background (`unit_separator`, not the strip-card surface) as the
+group and idle-button background; use the neutral unit-header fill for hovered
+buttons. Draw a full-height 1-point separator between M and S in that unit-header
+color. Preserve existing selected/pressed background and foreground colors,
+and hover foreground feedback. All other framed controls follow the shared
+[default control surface](../views/dropdowns.md#default-framed-control-surfaces).
+
+Use a 5-point outer group radius. Buttons fill the group height and half its width
+without an inset frame. Round only their outer corners to 5 points; keep their
+shared inner edge square. M/S labels use the shared semibold font at the existing
+Small text size for standard buttons and 9 points for browser buttons. Explicitly clear each button stroke so hover, focus and
+selected style rules cannot restore an outline. Preserve the existing total
+standard/browser group dimensions; the clickable buttons occupy the full group.

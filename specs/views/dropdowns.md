@@ -2,6 +2,34 @@
 
 This is the canonical dropdown presentation for the DAW and independent plugin editors. It supersedes selector-specific popup styling. Collapsed selectors retain their existing size, captions, tooltips and enabled behavior.
 
+## Default framed control surfaces
+
+The shared `unit-ui` theme is the default for all framed buttons, joined control
+groups and collapsed dropdowns in the DAW and independent plugin editors. Use
+the unit content background (`unit_separator`) for idle fill, the neutral unit
+header background for hover fill, and 5-point corners. Draw no control stroke
+in idle, hover, pressed, selected, open or disabled states. Retain existing
+active/selected fills, foreground colors, dimensions, padding and interaction.
+Text inputs retain their input fill, text, caret and selection feedback, with
+5-point corners and no idle, hover or focused border/outline. The caret remains
+1 point; the selection stroke has zero width without changing its color.
+DAW numeric gain and held-peak fields share an explicit input-colored frame
+with 5-point corners, empty stroke and the existing 4-by-2-point text margins.
+The held-peak field remains read-only and retains click-to-reset monitoring.
+
+Joined groups have no inset frame. Round only the outside corners of the first
+and last segments, keep the shared inner edge square, and draw a full-height
+1-point separator in the unit-header background color. Keep group heights and
+reserved footprints; existing controls can use space reclaimed from their former
+border. Source-specific controls remain owned by the DAW, while the default
+surface styling lives in the shared theme.
+
+Existing explicitly borderless toolbar, view and catalog controls retain their
+transparent/semantic fills and 2-point row rounding. Circular power buttons and
+knob faces retain their prior surfaces. Popup rows retain the canonical style
+below, including 2-point corners. Workspace/panel separator geometry is separate
+from control strokes and retains its existing borders.
+
 ## Shared dropdowns
 
 Use `unit-ui::menus::Dropdown` for all selectors. It wraps egui's ComboBox, retaining its interaction, popup scrolling, dismissal and accessibility. The DAW imports the module as `menus`; portable unit panels use it directly. Keep concrete choices and edits in their existing owners.

@@ -201,6 +201,14 @@ fn numeric_field(
 ) -> egui::Response {
     ui.add(
         egui::TextEdit::singleline(text)
+            // Editable values and click-only held peaks use the same frame,
+            // independent of the TextEdit interaction state.
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::palette(ui.ctx()).input)
+                    .corner_radius(5)
+                    .inner_margin(egui::Margin::symmetric(4, 2)),
+            )
             .text_color(theme::palette(ui.ctx()).text)
             .font(fonts::numeric(
                 egui::TextStyle::Small.resolve(ui.style()).size,
@@ -4050,7 +4058,7 @@ impl DawUi {
         rows::centered(ui, RULER_HEIGHT, |ui| {
             control_panel.header(ui, "Tracks", |ui| {
                 self.unit_header_press_style(ui);
-                if icons::button(
+                if icons::panel_button(
                     ui,
                     icons::Lucide::CopyPlus,
                     self.track_action_label(TrackAction::Duplicate),
@@ -8607,7 +8615,7 @@ mod tests {
                     .find_map(|shape| match &shape.shape {
                         egui::Shape::Text(text) if text.galley.text() == label => {
                             assert!(text.galley.job.sections.iter().all(|section| {
-                                section.format.font_id == egui::FontId::proportional(11.0)
+                                section.format.font_id == crate::fonts::semibold(11.0)
                             }));
                             Some(text.pos + text.galley.size() * 0.5)
                         }
@@ -8629,14 +8637,7 @@ mod tests {
                         _ => None,
                     })
                     .unwrap();
-                let border = ctx.global_style().visuals.widgets.inactive.bg_stroke.width;
-                assert_eq!(
-                    rect.size(),
-                    Vec2::new(
-                        toolbars::CONTROL_HEIGHT - border,
-                        toolbars::CONTROL_HEIGHT - 2.0 * border
-                    )
-                );
+                assert_eq!(rect.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
             }
             assert!((mute.y - (lane.top() + 47.0)).abs() < 1.0);
             assert!((solo.y - mute.y).abs() < 1.0);

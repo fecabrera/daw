@@ -976,14 +976,7 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         );
         let bounds = &app.midi_editor.layer_bounds[&first];
         let [mute, solo, gain, pan] = bounds.mix_controls;
-        let border = ctx.global_style().visuals.widgets.inactive.bg_stroke.width;
-        assert_eq!(
-            mute.size(),
-            Vec2::new(
-                toolbars::CONTROL_HEIGHT - border,
-                toolbars::CONTROL_HEIGHT - 2.0 * border
-            )
-        );
+        assert_eq!(mute.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
         assert_eq!(solo.size(), mute.size());
         assert_eq!(mute.center().y, gain.center().y);
         assert_eq!(solo.center().y, pan.center().y);

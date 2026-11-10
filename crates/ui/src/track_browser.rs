@@ -287,7 +287,7 @@ impl DawUi {
         }
     }
     fn browser_add(&mut self, ui: &mut egui::Ui) -> Rect {
-        let response = icons::button(
+        let response = icons::panel_button(
             ui,
             icons::Lucide::Plus,
             "Add track or beat subtrack",
