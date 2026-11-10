@@ -1644,6 +1644,99 @@ fn begin_effect_drag(app: &mut DawUi, ctx: &egui::Context, point: Pos2, end: Pos
     frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
 }
 #[test]
+fn instrument_gap_meters_cover_sources_and_amplitude_but_exclude_modulators() {
+    for source in ["oscillator", "sampler", "noise"] {
+        let (mut app, ctx) = categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");
+        app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .main
+            .macro_module
+            .add();
+        let layer = &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        layer.amplitude.present = true;
+        if source != "oscillator" {
+            layer.oscillators.clear();
+        } else if layer.oscillators.is_empty() {
+            layer.oscillators.push(Default::default());
+        }
+        if source == "sampler" {
+            layer.sampler = Some(Default::default());
+        }
+        if source == "noise" {
+            layer.noise = Some(Default::default());
+        }
+        let owner = layer.id;
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let mut audio = 0;
+        for (id, component, unit) in &app.instrument_ui.component_slots {
+            let rail = daw_unit_ui::meters::unit_gap_rect(*unit);
+            let painted = shapes.iter().any(|s| {
+                matches!(&s.shape, egui::Shape::Rect(r)
+                if rail.contains_rect(r.rect) && r.rect.size() == Vec2::new(3.0, 64.0) && r.fill == theme::palette(&ctx).input)
+            });
+            let expected = component.is_source()
+                || matches!(component, daw_core::InstrumentComponent::Amplitude);
+            assert_eq!(painted, expected, "{source}: {component:?}");
+            if *id == owner && expected {
+                audio += 1;
+            }
+        }
+        assert_eq!(audio, 2);
+    }
+}
+
+#[test]
+fn audio_unit_gap_meters_remain_visible_when_collapsed_and_preserve_selection() {
+    for compact in [false, true] {
+        for collapsed in [false, true] {
+            let (mut app, _, ctx, ids) = chain_fixture(compact, collapsed);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let slots = app.effects_bounds.chain.clone();
+            for pair in slots.windows(2) {
+                assert_eq!(pair[1].1.left() - pair[0].1.right(), panels::UNIT_GAP);
+            }
+            for (_, unit) in &slots {
+                let rail = daw_unit_ui::meters::unit_gap_rect(*unit);
+                assert_eq!(rail.height(), 64.0);
+                assert_eq!(rail.center().y, unit.center().y);
+                assert!(
+                    shapes
+                        .iter()
+                        .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                    if rail.contains_rect(r.rect) && r.rect.size() == Vec2::new(3.0, 64.0) && r.fill == theme::palette(&ctx).input))
+                );
+            }
+            let header = Pos2::new(slots[0].1.left() + 13.0, slots[0].1.center().y);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(header), button(header, true)],
+            );
+            frame(&mut app, &ctx, vec![button(header, false)]);
+            app.selected_effects.extend(ids.iter().copied());
+            app.dirty = false;
+            let point = daw_unit_ui::meters::unit_gap_rect(slots[0].1).center();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point), button(point, true)],
+            );
+            frame(&mut app, &ctx, vec![button(point, false)]);
+            assert_eq!(app.effects_bounds.chain, slots);
+            assert_eq!(app.selected_effects.len(), ids.len());
+            assert!(!app.dirty);
+            assert!(app.effects_drag.is_none());
+        }
+    }
+}
+#[test]
 fn unit_header_click_keeps_timeline_colors_while_a_drag_is_only_armed() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
@@ -5165,9 +5258,9 @@ fn effect_select_all_uses_only_the_focused_chain_including_scrolled_units_withou
                     original
                 );
                 assert!(!app.dirty);
-                // Empty lane space retains focus for Select All without a prior selection.
+                // Empty lane space outside the new meter retains focus for Select All.
                 let blank = app.effects_bounds.chain.last().unwrap().1.right_center()
-                    + Vec2::new(10.0, 0.0);
+                    + Vec2::new(13.0, 0.0);
                 if app.effects_bounds.lane_viewport.contains(blank) {
                     click(&mut app, &ctx, blank);
                     assert!(app.selected_effects.is_empty());
@@ -6772,7 +6865,7 @@ fn chorus_reuses_three_strips_catalog_modulation_and_power_in_all_themes() {
         for row in 0..3 {
             assert!((b.controls[0][row].top() - b.controls[2][row].top()).abs() < 0.1);
         }
-        assert!(b.sections[2].contains_rect(b.meter));
+        assert_eq!(b.meter, Rect::NOTHING);
         assert!((b.rate_mode.center().x - b.controls[1][0].center().x).abs() < 0.1);
         assert!((b.controls[1][1].center().x - b.controls[1][2].center().x).abs() < 0.1);
         assert!(
@@ -6872,7 +6965,7 @@ fn chorus_reuses_three_strips_catalog_modulation_and_power_in_all_themes() {
 }
 
 #[test]
-fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_settings() {
+fn effect_out_strips_hide_output_rails_and_preserve_gap_and_reduction_meters() {
     for color_theme in settings::ColorTheme::ALL {
         for (compact, collapsed) in [(false, false), (true, false), (false, true)] {
             for make in [
@@ -6941,40 +7034,32 @@ fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_se
                         let b = &app.effects_bounds.limiter_units[0];
                         if !compact && !collapsed {
                             assert!(b.sections[0].contains_rect(b.meter));
-                            assert!(b.sections[1].contains_rect(b.output_meter));
-                            assert!(!b.meter.intersects(b.output_meter));
+                            assert_eq!(b.output_meter, Rect::NOTHING);
                         }
                         b.output_meter
                     }
                     daw_core::EffectSettings::Compressor(_) => {
                         let b = &app.effects_bounds.compressor_units[0];
                         if !compact && !collapsed {
-                            assert!(b.sections[2].contains_rect(b.output_meter));
+                            assert_eq!(b.output_meter, Rect::NOTHING);
                         }
                         b.output_meter
                     }
                     daw_core::EffectSettings::Ott(_) => {
                         let b = &app.effects_bounds.ott_units[0];
                         if !compact && !collapsed {
-                            assert!(b.sections[3].contains_rect(b.output_meter));
+                            assert_eq!(b.output_meter, Rect::NOTHING);
                         }
                         b.output_meter
                     }
                     _ => unreachable!(),
                 };
-                if compact || collapsed {
-                    assert!(!rail.is_positive());
-                    continue;
-                }
-                assert_eq!(rail.height(), 4.0);
-                assert_eq!(
-                    rail.width(),
-                    panels::UNIT_STRIP_WIDTH
-                        - 2.0 * f32::from(panels::PanelStyle::default().margin)
-                );
+                assert_eq!(rail, Rect::NOTHING);
+                let unit = app.effects_bounds.chain[0].1;
+                let gap = daw_unit_ui::meters::unit_gap_rect(unit);
                 let before = app.session.project.clone();
                 app.dirty = false;
-                click(&mut app, &ctx, rail.center());
+                click(&mut app, &ctx, gap.center());
                 assert_eq!(app.session.project, before);
                 assert!(
                     !app.dirty,

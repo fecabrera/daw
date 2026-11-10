@@ -7,6 +7,7 @@ pub(super) struct LayerEffects {
     pub peak: [f32; 2],
     pub meter_sample: [f32; 2],
     pub source_output: Option<super::source_meters::SourceOutput>,
+    pub amplitude_output: Option<super::source_meters::SourceOutput>,
     pub chain: super::effects::EffectChain,
     pub settings: Vec<EffectInstance>,
     pub delay: super::latency::Delay,
@@ -34,6 +35,7 @@ impl LayerEffects {
             peak: [0.0; 2],
             meter_sample: [0.0; 2],
             source_output: None,
+            amplitude_output: None,
             chain: super::effects::EffectChain::chain(Some(id), effects, rate, block),
             settings: effects.to_vec(),
             delay: super::latency::Delay::new(
@@ -46,10 +48,16 @@ impl LayerEffects {
         }
     }
     pub fn retarget(&mut self, prepared: &mut Self, fade: u32, idle: bool) {
-        if let (Some(old), Some(next)) = (&mut self.source_output, &mut prepared.source_output)
-            && old.unit == next.unit
-        {
-            old.level.retarget(&mut next.level);
+        for (old, next) in [
+            (&mut self.source_output, &mut prepared.source_output),
+            (&mut self.amplitude_output, &mut prepared.amplitude_output),
+        ] {
+            match (old.as_mut(), next.as_mut()) {
+                (Some(old), Some(next)) if old.unit == next.unit => {
+                    old.level.retarget(&mut next.level);
+                }
+                _ => std::mem::swap(old, next),
+            }
         }
         if self.target != prepared.target {
             self.target = prepared.target;
@@ -75,7 +83,11 @@ impl LayerEffects {
     pub fn reset(&mut self) {
         self.peak = [0.0; 2];
         self.meter_sample = [0.0; 2];
-        if let Some(source) = &mut self.source_output {
+        for source in self
+            .source_output
+            .iter_mut()
+            .chain(&mut self.amplitude_output)
+        {
             source.sample = [0.0; 2];
             source.level.reset();
         }

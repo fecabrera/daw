@@ -33,4 +33,4 @@ Controls, power, and Clip changes ramp smoothly. Connections, settings, and pane
 
 Separate CLAP/VST3 development builds use these same controls and DSP. See [Drive v2 plugins](drive-v2-plugin.md) for building, installation, and verification limits.
 
-The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.
+The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.

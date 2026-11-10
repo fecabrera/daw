@@ -790,9 +790,10 @@ impl DawUi {
             && lane.input(|input| {
                 input.focused && input.pointer.button_clicked(egui::PointerButton::Primary)
             })
-            && !slots
-                .iter()
-                .any(|(_, rect)| lane.rect_contains_pointer(*rect))
+            && !slots.iter().any(|(_, rect)| {
+                lane.rect_contains_pointer(*rect)
+                    || lane.rect_contains_pointer(daw_unit_ui::meters::unit_gap_rect(*rect))
+            })
         {
             self.selected_effects.clear();
             keyboard_focus.request_focus();
@@ -909,13 +910,13 @@ impl DawUi {
                             self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
                         let (header, power) = ui
                             .add_enabled_ui(interactive, |ui| {
-                                let output_level = meters::OutputLevel::new(
+                                let output_level = meters::OutputLevel::linked(
                                     self.output
                                         .as_ref()
                                         .map_or(0.0, |o| o.effect_output_level(effect.id)),
                                     self.output
                                         .as_ref()
-                                        .and_then(|o| o.effect_output_peak(effect.id)),
+                                        .and_then(|o| o.effect_output_meter(effect.id)),
                                 );
                                 match &mut effect.unit {
                                     daw_core::EffectSettings::MultibandCompressor(settings) => {
@@ -1504,6 +1505,22 @@ impl DawUi {
                         }
                     });
                     let rect = unit.response.rect;
+                    meters::unit_gap_level(
+                        ui,
+                        rect,
+                        ui.id().with((effect.id, "gap-output")),
+                        meters::StereoOutputLevel::new(
+                            self.output
+                                .as_ref()
+                                .map_or([0.0; 2], |o| o.effect_output_levels(effect.id)),
+                            self.output
+                                .as_ref()
+                                .and_then(|o| o.effect_output_meter(effect.id)),
+                        ),
+                        crate::unit_power::effect_enabled(&mut effect.unit)
+                            .copied()
+                            .unwrap_or(false),
+                    );
                     if crate::unit_selection::clicked(
                         ui,
                         rect,

@@ -873,6 +873,13 @@ impl MidiTrackRuntime {
                             )
                         },
                     );
+                    if l.amplitude.present {
+                        bus.amplitude_output = Some(super::source_meters::SourceOutput::new(
+                            l.id,
+                            l.amplitude.enabled,
+                            project.sample_rate_hz,
+                        ));
+                    }
                     bus
                 })
                 .chain(std::iter::once(super::layer_effects::LayerEffects::new(
@@ -1336,7 +1343,11 @@ impl MidiTrackRuntime {
         self.layer_samples.fill([0.0; 2]);
         for bus in &mut self.layer_effects {
             bus.meter_sample = [0.0; 2];
-            if let Some(source) = &mut bus.source_output {
+            for source in bus
+                .source_output
+                .iter_mut()
+                .chain(&mut bus.amplitude_output)
+            {
                 source.sample = [0.0; 2];
             }
         }
@@ -1362,6 +1373,9 @@ impl MidiTrackRuntime {
                     if let Some(source) = &mut bus.source_output {
                         source.sample[ch] += layer.source_output[ch];
                     }
+                    if let Some(amplitude) = &mut bus.amplitude_output {
+                        amplitude.sample[ch] += layer.output[ch];
+                    }
                 }
             }
             for ch in 0..2 {
@@ -1369,8 +1383,14 @@ impl MidiTrackRuntime {
             }
         }
         for bus in &mut self.layer_effects {
-            if let Some(source) = &mut bus.source_output {
-                source.level.sample_output(source.sample);
+            for source in bus
+                .source_output
+                .iter_mut()
+                .chain(&mut bus.amplitude_output)
+            {
+                if source.level.is_enabled() {
+                    source.level.sample_output(source.sample);
+                }
             }
         }
         if self.has_bus_effects {
@@ -1490,10 +1510,17 @@ impl MidiTrackRuntime {
         target: super::SourceOutputTarget,
         meter: std::sync::Arc<daw_unit_core::BandMeter<3>>,
     ) {
-        if let Some(source) = self
-            .layer_index
-            .get(&target.layer)
-            .and_then(|&i| self.layer_effects[i].source_output.as_mut())
+        if let Some(source) =
+            self.layer_index
+                .get(&target.layer)
+                .and_then(|&i| match target.stage {
+                    super::SourceOutputStage::Source => {
+                        self.layer_effects[i].source_output.as_mut()
+                    }
+                    super::SourceOutputStage::Amplitude => {
+                        self.layer_effects[i].amplitude_output.as_mut()
+                    }
+                })
             && source.unit == target.unit
         {
             source.level.attach_peak(meter);

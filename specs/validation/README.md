@@ -4,6 +4,104 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Remove DAW strip output rails — 2026-11-10
+
+DAW shells suppress only horizontal output-level rails through the shared body
+presentation policy. Source painters and their obsolete drag-exclusion regions
+are removed. Stereo gap meters, per-band level meters, gain-reduction and signed
+gain-change meters remain. Standalone editors retain horizontal output rails.
+Strip widths, controls and meter telemetry do not change.
+
+Completed checks:
+
+- `cargo test -p daw-unit-ui --offline`: passed (42 tests), including DAW versus
+  standalone output-rail policy and retained band/reduction rendering.
+- `cargo test -p daw-ui --offline`: passed (974 passed, 3 ignored), including
+  source/effect rail removal, stable controls, meter interactions and reductions.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- Relative Markdown link targets: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt
+(`sh tools/package_macos.sh debug`) stopped at the source-revision gate because
+tracked changes are uncommitted.
+The desktop executable was rebuilt; the app bundle was not updated.
+
+## Stereo audio-unit gap meters — 2026-11-10
+
+Gap meters now use independent Left and Right readings, overload colors and held
+peaks. Each rail is 3×64 points with a 2-point inner gap, centered in the existing
+16-point unit spacing. This supersedes the linked 4×48-point presentation below.
+Clicking either rail, the inner gap or the linked Out-strip meter resets all
+associated holds. Expanded, compact and collapsed units retain their geometry.
+
+Shared output-monitor storage now publishes linked/Left/Right in slots 0/1/2;
+signed gain-change and EQ band-analysis storage retain their existing meanings.
+Linked plugin telemetry and saved state layouts stay unchanged. Asymmetric
+signals exercise independent release, holds and clipping colors. Stereo source
+and effect taps remain passive and allocation-free at all six project rates.
+
+Completed checks:
+
+- `cargo test -p daw-unit-ui -p daw-unit-core --offline`: passed (41 UI and
+  78 core tests), including reset from either channel, the inner gap and the
+  linked Out strip.
+- `cargo test -p daw-ui --offline`: passed (974 passed, 3 ignored).
+- `cargo test -p daw-engine --offline --test effect_output_meters`: passed.
+- `cargo test -p daw-engine --offline sampler_and_amplitude_taps`: passed.
+- `cargo test -p daw-engine --offline gap_meter`: passed.
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop -p daw-cli --offline`: passed.
+- `python3 tools/check_cli.py`: passed.
+- `git diff --check`: passed.
+
+Native visual/device checks remain unverified. The macOS packaging attempt
+(`sh tools/package_macos.sh debug`) stopped at the source-revision gate because
+tracked changes are uncommitted.
+The desktop executable was rebuilt; the app bundle was not updated.
+
+## Audio-unit gap meters — 2026-11-10
+
+DAW audio units show a 4×48-point vertical linked-stereo meter centered in the
+existing 16-point gap after each unit, including the last. Compact/collapsed
+units retain it; modulation units do not. Reuse shared output handles, scale,
+colors, held-peak markers and release-click reset. Meter interactions retain
+selection and never create project edits. Existing Out-strip meters remain.
+
+Regular Sampler and Amplitude now publish scoped output readings. The 3-band EQ,
+Direction Mixer and Stereo Spread have independent complete-output taps.
+Logical and compiled beat plans share source/Amplitude handles by subtrack scope.
+Tests cover layout preservation, shared reset and bypass behavior, unchanged PCM,
+voice aggregation, downstream gain isolation, snapshot isolation, handle
+retargeting/retirement, and callback allocations at all six project rates.
+
+Completed checks:
+
+- `cargo test -p daw-unit-ui --offline`: passed (40 tests).
+- `cargo test -p daw-engine --offline sampler_and_amplitude_taps`: passed.
+- `cargo test -p daw-engine --offline gap_meter`: passed.
+- `cargo test -p daw-output --offline source_meters`: passed (3 tests).
+- `cargo test -p daw-ui --offline`: passed (974 passed, 3 ignored).
+- `cargo test --workspace --offline`: passed with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop -p daw-cli --offline`: passed.
+- `python3 tools/check_cli.py`: passed.
+- `git diff --check`: passed.
+
+Native visual/device checks remain unverified. The macOS packaging attempt
+(`sh tools/package_macos.sh debug`) stopped at the source-revision gate because
+tracked changes are uncommitted.
+The desktop executable was rebuilt; the app bundle was not updated.
+
 ## Multiband EQ muted response colors — 2026-11-10
 
 The shared graph now uses `palette.secondary` for the combined response curve

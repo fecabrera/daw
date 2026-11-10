@@ -181,10 +181,6 @@ impl DawUi {
                             },
                         );
                         *strip_rect = strip.response.rect;
-                        let meter = meters::unit_monitor_rail(
-                            strip.response.rect,
-                            panels::PanelStyle::default().margin,
-                        );
                         self.start_installed_component_drag(
                             ui,
                             &strip.inner.response,
@@ -194,7 +190,6 @@ impl DawUi {
                                 controls[2],
                                 controls[3],
                                 spectrum_rect,
-                                meter,
                             ],
                             track,
                             layer_id,
@@ -216,28 +211,6 @@ impl DawUi {
         );
         noise.enabled = enabled;
         noise.collapsed = collapsed;
-        if !compact && strips[1].is_positive() {
-            let target = daw_engine::SourceOutputTarget {
-                track,
-                layer: layer_id,
-                unit: noise.id,
-            };
-            let reading = meters::OutputLevel::new(
-                self.output
-                    .as_ref()
-                    .map_or(0.0, |o| o.source_output_level(target)),
-                self.output
-                    .as_ref()
-                    .and_then(|o| o.source_output_peak(target)),
-            );
-            meters::effect_output_level(
-                ui,
-                strips[1],
-                panels::PanelStyle::default().margin,
-                reading,
-                enabled,
-            );
-        }
         let toggle = modulation_panel::toggle(ui, &result, collapsed, &mut noise.modulation_open);
         self.start_installed_component_drag(
             ui,

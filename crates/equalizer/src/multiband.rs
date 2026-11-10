@@ -335,8 +335,7 @@ impl ModulationDestination for Band {
                 output[ch] += (wet - input[ch]) * weight;
             }
         }
-        self.monitor
-            .sample([output[0].abs().max(output[1].abs()), 0.0, 0.0]);
+        self.monitor.sample_output(output);
         output
     }
 }

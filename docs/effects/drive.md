@@ -27,4 +27,4 @@ Volume, Gain, Tone, Color strength, and Color frequency accept shared Envelope, 
 
 Strong drive on high-frequency material can produce aliasing, heard as additional tones. Higher project processing rates reduce this limitation. Drive is not an exact model of a particular pedal. Export ends at the arranged duration.
 
-The Drive strip shows the [standard output meter and held-peak indicator](output-meter.md) above Volume. Click its rail to reset only the held peak.
+The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.

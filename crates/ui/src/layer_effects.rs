@@ -177,6 +177,18 @@ impl DawUi {
         }
         let clicked = !layer.effects.is_empty()
             && !over_component
+            && !self
+                .instrument_ui
+                .component_slots
+                .iter()
+                .any(|(id, unit, rect)| {
+                    *id == layer.id
+                        && (unit.is_source()
+                            || matches!(unit, daw_core::InstrumentComponent::Amplitude))
+                        && ui.rect_contains_pointer(
+                            daw_unit_ui::meters::unit_gap_rect(*rect).intersect(viewport),
+                        )
+                })
             && crate::unit_selection::clicked(ui, effects_bounds, allowed);
         if clicked {
             self.instrument_ui.selected_components.clear();
@@ -197,9 +209,12 @@ impl DawUi {
                 ui.id().with((layer.id, "inline-effect-focus")),
             );
             if clicked
-                && !slots
-                    .iter()
-                    .any(|(_, r)| ui.rect_contains_pointer(r.intersect(viewport)))
+                && !slots.iter().any(|(_, r)| {
+                    ui.rect_contains_pointer(r.intersect(viewport))
+                        || ui.rect_contains_pointer(
+                            daw_unit_ui::meters::unit_gap_rect(*r).intersect(viewport),
+                        )
+                })
             {
                 self.selected_effects.clear();
                 ui.ctx().request_repaint();

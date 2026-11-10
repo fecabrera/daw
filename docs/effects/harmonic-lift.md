@@ -31,7 +31,7 @@ The first five branches emphasize a frequency region. High adds shaped high-pass
 - **Level** adjusts the final mixed output, from silence to +12 dB.
 - **Dry/Wet** blends the original and processed signals.
 
-The Maximizer rail shows gain reduction. Out shows the standard [level meter and held sample peak](output-meter.md). Click a held reading to reset it. Final Level, dry mixing and HQ filtering can produce peaks above Limit Level. Use a final Limiter when you need a controlled output ceiling.
+The Maximizer rail shows gain reduction. The [output meter](output-meter.md) sits in the gap after the DAW unit. Standalone editors retain the horizontal Out rail. Click a held reading to reset it. Final Level, dry mixing and HQ filtering can produce peaks above Limit Level. Use a final Limiter when you need a controlled output ceiling.
 
 With all branches off, Normal quality, and the remaining controls at their defaults, the signal is unchanged apart from processing delay. Power, parameter and quality edits use short transitions. Bypass keeps delay compensation active and clears the meters.
 

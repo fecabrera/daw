@@ -15,7 +15,7 @@ mod layer_effects;
 mod lfo;
 mod midi;
 mod source_meters;
-pub use source_meters::SourceOutputTarget;
+pub use source_meters::{SourceOutputStage, SourceOutputTarget};
 mod modulation;
 mod parallel_tracks;
 mod schedule;

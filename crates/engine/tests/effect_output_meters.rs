@@ -21,6 +21,7 @@ fn verify<T: EffectUnit + Clone>(
     attach(&mut unit, meter.clone());
     let release = (-1.0 / (0.3 * rate as f32)).exp();
     let mut peak = 0.0_f32;
+    let mut stereo = [0.0_f32; 2];
     for frame in 0..8192 {
         let sample = if frame < 4096 { [0.05, -0.4] } else { [0.0; 2] };
         let expected = reference.process_sample(sample);
@@ -35,7 +36,13 @@ fn verify<T: EffectUnit + Clone>(
             (values[0] - peak).abs() < 1e-6,
             "meter must follow final stereo output with the shared release"
         );
-        assert_eq!(&values[1..], &[0.0; 2]);
+        for channel in 0..2 {
+            stereo[channel] = expected[channel].abs().max(stereo[channel] * release);
+            assert!(
+                (values[channel + 1] - stereo[channel]).abs() < 1e-6,
+                "each channel must follow its own output and release"
+            );
+        }
     }
     assert!(readings(&meter)[0] > 0.0);
     assert_eq!(Arc::strong_count(&meter), 2);

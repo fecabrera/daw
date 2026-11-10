@@ -531,7 +531,12 @@ impl PanelStyle {
         let spacing = ui.spacing().item_spacing;
         let result = ui
             .scope_builder(
-                egui::UiBuilder::new().layout(egui::Layout::top_down(egui::Align::Min)),
+                egui::UiBuilder::new()
+                    .layout(egui::Layout::top_down(egui::Align::Min))
+                    .ui_stack_info(
+                        egui::UiStackInfo::default()
+                            .with_tag(daw_unit_ui::meters::HIDE_OUTPUT_LEVELS_TAG),
+                    ),
                 |ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
                     ui.add_space(UNIT_VERTICAL_MARGIN);

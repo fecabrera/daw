@@ -347,11 +347,11 @@ impl<const N: usize> LevelMonitor<N> {
 }
 
 impl LevelMonitor<3> {
-    /// Standard effect-output reading: linked stereo absolute peak in slot zero.
-    /// Remaining slots stay zero for the existing prepared band-meter transport.
+    /// Output readings: linked absolute peak, left absolute peak, right absolute peak.
     #[inline]
     pub fn sample_output(&mut self, output: [f32; 2]) {
-        self.sample([output[0].abs().max(output[1].abs()), 0.0, 0.0]);
+        let [left, right] = output.map(f32::abs);
+        self.sample([left.max(right), left, right]);
     }
 }
 
@@ -531,6 +531,36 @@ mod level_monitor_tests {
 #[cfg(test)]
 mod output_peak_tests {
     use super::*;
+    #[test]
+    fn stereo_output_keeps_channels_and_holds_independent_at_every_rate() {
+        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+            let handle = Arc::new(BandMeter::<3>::default());
+            let mut monitor = LevelMonitor::new(rate, true);
+            monitor.attach_peak(handle.clone());
+            monitor.sample_output([1.5, -0.25]);
+            assert_eq!(handle.readings(), [1.5, 1.5, 0.25]);
+            assert_eq!(
+                handle.boost_peaks().each_ref().map(|p| p.peak()),
+                [1.5, 1.5, 0.25]
+            );
+            for peak in handle.boost_peaks() {
+                peak.reset_peak();
+            }
+            monitor.sample_output([0.0, -0.5]);
+            assert_eq!(
+                handle.boost_peaks().each_ref().map(|p| p.peak()),
+                [0.5, 0.0, 0.5]
+            );
+            assert!(
+                handle.readings()[1] > 1.49,
+                "current display releases independently of its reset peak"
+            );
+            assert_eq!(handle.readings()[2], 0.5);
+            monitor.set_enabled(false);
+            assert_eq!(handle.readings(), [0.0; 3]);
+            assert_eq!(handle.boost_peaks().each_ref().map(|p| p.peak()), [0.0; 3]);
+        }
+    }
     #[test]
     fn output_peaks_capture_samples_without_reholding_decaying_values_after_reset() {
         let meter = Arc::new(BandMeter::<3>::default());

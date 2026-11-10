@@ -38,6 +38,6 @@ Contributions add to the base settings and stay within their bounds. Modulated R
 
 Base pointers and readouts retain the saved values. Range arcs and moving dots show modulation; the processed Resolution and Downsampling readings remain whole numbers.
 
-The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.
+The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.
 
 Separate [CLAP and VST3 plugin previews](distortion-plugins.md) provide these controls in an external host.

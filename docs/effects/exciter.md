@@ -33,7 +33,7 @@ A band's range selects the audio feeding its saturation. New harmonics can exten
 
 ## Output and use
 
-The **Out** strip has **Level** and **Dry/Wet** knobs, plus the [standard level meter and held-peak indicator](output-meter.md). Level adjusts the complete output, including at 0% Dry/Wet. Click the meter rail to reset its held peak.
+The **Out** strip has **Level** and **Dry/Wet** knobs. The [output meter](output-meter.md) sits in the gap after the DAW unit; standalone editors retain their horizontal Out rail. Level adjusts the complete output, including at 0% Dry/Wet. Click the meter rail to reset its held peak.
 
 1. Solo a band and adjust its range.
 2. Choose Mode and raise Drive.

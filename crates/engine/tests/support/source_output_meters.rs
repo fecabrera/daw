@@ -62,6 +62,85 @@ fn set_power(p: &mut RenderPlan, enabled: bool) {
     }
 }
 #[test]
+fn sampler_and_amplitude_taps_are_passive_separate_and_before_layer_gain() {
+    for rate in SAMPLE_RATES {
+        let mut p = sampler_plan(rate, SamplerTrigger::OneShot);
+        let track = p.project.tracks[0].id;
+        let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+        layer.amplitude.present = true;
+        layer.amplitude.level_db = -6.0;
+        layer.gain_db = -24.0;
+        let source_key = SourceOutputTarget::for_layer(track, layer).unwrap().0;
+        let amplitude_key = SourceOutputTarget::amplitude(track, layer.id);
+        assert_ne!(source_key, amplitude_key);
+        let source = Arc::new(BandMeter::<3>::default());
+        let amplitude = Arc::new(BandMeter::<3>::default());
+        let mut live = Renderer::new(p.clone());
+        let mut reference = Renderer::new(p.clone());
+        live.set_source_output_peak_meter(source_key, source.clone());
+        live.set_source_output_peak_meter(amplitude_key, amplitude.clone());
+        live.play();
+        reference.play();
+        ALLOCATIONS.with(|n| n.set(0));
+        TRACK_ALLOCATIONS.with(|a| a.set(true));
+        for _ in 0..4096 {
+            assert_eq!(live.next_sample(), reference.next_sample());
+        }
+        TRACK_ALLOCATIONS.with(|a| a.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert!(source.boost_peaks()[0].peak() > 0.01);
+        for meter in [&source, &amplitude] {
+            assert!(meter.boost_peaks()[1].peak() > 0.0);
+            assert!(meter.boost_peaks()[2].peak() > 0.0);
+            assert_eq!(
+                meter.boost_peaks()[0].peak(),
+                meter.boost_peaks()[1]
+                    .peak()
+                    .max(meter.boost_peaks()[2].peak())
+            );
+        }
+        assert!(
+            (amplitude.boost_peaks()[0].peak() / source.boost_peaks()[0].peak()
+                - linear_gain(-6.0))
+            .abs()
+                < 0.001
+        );
+        let held = amplitude.boost_peaks()[0].peak();
+        let mut snapshot = live.clone();
+        for _ in 0..512 {
+            snapshot.next_sample();
+        }
+        assert_eq!(amplitude.boost_peaks()[0].peak(), held);
+        p.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+            .amplitude
+            .enabled = false;
+        let mut off = Renderer::new(p.clone());
+        off.set_source_output_peak_meter(source_key, source.clone());
+        off.set_source_output_peak_meter(amplitude_key, amplitude.clone());
+        ALLOCATIONS.with(|n| n.set(0));
+        TRACK_ALLOCATIONS.with(|a| a.set(true));
+        off.inherit(&mut live);
+        for _ in 0..512 {
+            off.next_sample();
+        }
+        TRACK_ALLOCATIONS.with(|a| a.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert_eq!(amplitude.readings(), [0.0; 3]);
+        assert_eq!(amplitude.boost_peaks()[0].peak(), 0.0);
+        assert!(source.boost_peaks()[0].peak() > 0.01);
+        p.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+            .amplitude
+            .enabled = true;
+        let mut on = Renderer::new(p);
+        on.set_source_output_peak_meter(amplitude_key, amplitude.clone());
+        on.inherit(&mut off);
+        for _ in 0..512 {
+            on.next_sample();
+        }
+        assert!(amplitude.boost_peaks()[0].peak() > 0.0);
+    }
+}
+#[test]
 fn source_out_meters_are_passive_polyphonic_and_before_layer_controls_at_every_rate() {
     for rate in SAMPLE_RATES {
         for granular in [false, true] {

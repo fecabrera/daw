@@ -2,8 +2,9 @@ use crate::theme;
 use egui::{Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 
 pub use daw_unit_ui::meters::{
-    BandGainChange, GainReduction, OutputLevel, band_color, band_level_rail, effect_output_level,
-    gain_change, gain_reduction, gain_reduction_rail, unit_monitor_rail, unit_reading,
+    BandGainChange, GainReduction, OutputLevel, StereoOutputLevel, band_color, band_level_rail,
+    effect_output_level, gain_change, gain_reduction, gain_reduction_rail, unit_gap_level,
+    unit_monitor_rail, unit_reading,
 };
 use daw_unit_ui::meters::{peak_text, position_for_dbfs, position_for_peak};
 

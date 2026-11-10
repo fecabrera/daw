@@ -16,6 +16,13 @@ DSP preparation allocates delay storage, settings, meters, and fixed queues befo
 
 `unit-ui` owns effect control order, knob specifications, value labels, choice diagrams, strip geometry, footers and meter placement. Both hosts call these renderers. Do not copy a built-in body into a plugin adapter or add plugin-only controls or meters. The DAW adds its unit header and modulation connections outside the portable body.
 
+The accepted output-meter exception uses the shared `HIDE_OUTPUT_LEVELS_TAG`
+presentation policy: DAW shells suppress horizontal output rails and provide
+stereo gap meters; standalone editors retain their existing output rails.
+Per-band level, gain-reduction and signed gain-change meters remain shared.
+Paired body comparisons use the default portable presentation; separate DAW
+tests cover this host policy without changing strip or control geometry.
+
 The shared layout uses 90-point single strips and 161-point two-column strips, with the same equal column gaps, panel margin and control height in both hosts. Fixed editor bounds contain every strip and response. Multiband EQ includes the shared three-row Response graph before its band strips. Its default viewport is 488×218 and scrolls horizontally when the visible bank exceeds the viewport.
 
 Plugin adapters use `control_capture::scope` to collect actual widget responses and map their rectangles to frozen parameter IDs. The collection is scoped to UI painting and releases response ownership on return or unwinding. It is never accessed by the audio callback. Captured meter clicks send reset requests, not parameter edits.

@@ -549,13 +549,13 @@ Group effects under EQ & Filters (3-band EQ, Filter, Auto-filter), Dynamics (Com
 
 ## Standard effect Out-strip meter
 
-Every audio unit with an Out/Output strip must include the shared level rail and held-peak indicator. Source units follow the [source output contract](#source-unit-out-strip-meters). Do not add an Out strip to a unit that has none.
+Standalone effect editors with an Out/Output strip retain the shared horizontal level rail and held-peak indicator. DAW unit shells suppress this rail and use the stereo gap meters below. Source units follow the [source output contract](#source-unit-out-strip-meters). Do not add an Out strip to a unit that has none.
 
 Effect Out strips use one shared current-output rail and held sample-peak indicator. The current implementations are Bitcrusher, Drive, Drive v2, Saturator, Chorus, Filter, Auto-filter, Multiband EQ, Multiband Exciter, Compressor, OTT, and Limiter. Original Drive places this monitor above Volume in its existing Drive strip; do not add a third strip. Multiband EQ measures final unit output separately from its independent band-analysis meters. Limiter keeps its reduction rail within the left Limit strip and uses the shared level rail only on the right Out strip. Compressor and OTT add the shared level rail only to Out; their existing reduction/band monitors retain their positions. Dynamics bind a separate output-handle map so OTT signed band gain cannot be mistaken for an output level.
 
 `unit-ui::meters::effect_output_level` owns the painter, hit region, tooltip, accessibility, power masking, and click reset. `ui::meters` reexports it and `unit_reading`. Reuse `unit_monitor_rail`: four logical points high, two points below the strip top, inset by the standard strip margin. Paint in the existing top margin; do not move controls, change row spacing, widen strips, or increase editor height. Omit the rail in compact/collapsed mode while continuing sample-peak capture.
 
-Read the larger absolute final L/R sample after level, Dry/Wet, and the existing bypass blend. Use `unit-core::LevelMonitor<3>::sample_output`, with current level in slot zero and the other two slots zero for the existing band-meter transport. Current level uses instant attack and the shared 300 ms exponential release at every processing rate. Map the rail from −60 to 0 dBFS. All unit level meters, including output and individual-band rails in built-in and standalone editors, use the track level palette: `palette.meter` green at or below unity (0 dBFS), and `palette.error` red above unity. Level fills must not use the user-selected accent. Disabled bands retain the secondary-grey fill through `band_color`; whole-unit bypass still empties the rails. Keep the held-peak marker secondary grey. Gain-reduction and signed gain-change rails retain their separate meanings and colors. Retain uncapped dBFS values in tooltips/accessibility. This is a sample-peak monitor, not RMS, loudness, or True Peak.
+Read the larger absolute final L/R sample after level, Dry/Wet, and the existing bypass blend. Use `unit-core::LevelMonitor<3>::sample_output`, with linked current level in slot zero and Left/Right levels in slots one/two. Current level uses instant attack and the shared 300 ms exponential release at every processing rate. Map the rail from −60 to 0 dBFS. All unit level meters, including output and individual-band rails in built-in and standalone editors, use the track level palette: `palette.meter` green at or below unity (0 dBFS), and `palette.error` red above unity. Level fills must not use the user-selected accent. Disabled bands retain the secondary-grey fill through `band_color`; whole-unit bypass still empties the rails. Keep the held-peak marker secondary grey. Gain-reduction and signed gain-change rails retain their separate meanings and colors. Retain uncapped dBFS values in tooltips/accessibility. This is a sample-peak monitor, not RMS, loudness, or True Peak.
 
 Use `UnitMeter`, `BandMeter`, and `PeakHold` for the lifecycle and held maximum. Prepare and bind `set_output_peak_meter` handles on the control/worker thread. Capture actual sample peaks separately from the decaying current display so resetting the hold cannot restore an old peak from display release. Avoid redundant atomic read-modify-write operations for samples below the held maximum, and skip unchanged monitor enable updates. Binding/seek preparation initializes current cells without raising the hold. Resetting DSP history clears the current display but retains the hold; unit bypass clears both immediately and stops publication. DSP clones detach handles. Keep handles until retirement and retain compatible monitor history through renderer updates. Use the existing stable-effect-ID discovery, binding, layer/track/Master traversal, and retirement paths; do not add per-effect UI signal analysis.
 
@@ -569,17 +569,57 @@ Drive, Drive v2, Saturator, and Bitcrusher plugin editors embed their shared bod
 
 ## Source unit Out-strip meters
 
+DAW source units now use only the stereo gap meters below. The former Out-strip
+placement is superseded; source tap locations and meter lifecycle remain.
+
 The Out-strip audit finds all effect Out/Output strips already covered. Oscillator and Granulizer now use the same painter and peak indicator. Original Drive retains its existing Volume placement. The Instrument Output layer already has a track-style stereo meter. Regular Sampler's Sample strip and units without an Out strip are outside this placement rule. See the [coverage table](../../docs/effects/output-meter.md#out-strip-coverage).
 
 Tap Oscillator after its source sum and modulated unit Level; tap Granulizer after its modulated Gain/power stage; tap Noise after its modulated Color/Width/Level and power stage. Include note velocity and sum stereo samples across prepared voices before taking the linked peak. Measure before Amplitude, clip gain/fades, layer effects/mixing, Output and track/Master processing. Downstream mute, level and effect changes must not enter this reading. Monitoring never changes the audio sum or scheduling.
 
-`engine::SourceOutputTarget` scopes handles by track, layer and source identity. Oscillator's container uses its layer UUID; Granulizer uses its source UUID. `source_meters` prepares and binds shared `LevelMonitor<3>`/`UnitMeter` handles outside the callback. MIDI layer buses aggregate the per-voice tap and publish through the standard monitor. Keep slot zero for linked level and its boost hold; reserve the other cells. Regular Sampler has no Out strip and receives no Out-strip publication handle.
+`engine::SourceOutputTarget` scopes handles by track, layer, stage and source identity. Oscillator's container uses its layer UUID; Sampler, Granulizer and Noise use their source UUID. The Amplitude stage uses its layer UUID and a separate stage discriminant. `source_meters` prepares and binds shared `LevelMonitor<3>`/`UnitMeter` handles outside the callback. MIDI layer buses aggregate the per-voice tap and publish through the standard monitor. Keep slot zero for linked level and its boost hold; slots one and two carry Left and Right levels with independent boost holds. Regular Sampler receives the same source-output publication as Granulizer for its gap meter.
 
 Retain matching handles through worker preparation and compatible renderer activation; prune removed or replaced identities. Compatible controls use `LevelMonitor::retarget` to preserve release history while taking prepared handles and the new power state. Swap old handles into the retired graph; initialize current readings without raising held peaks. This also covers a fresh handle after snapshot preparation or an identity's removal/restoration. Snapshots detach publication through the shared meter clone rule. Reset clears current release history without restoring a held peak; unit power-off clears current/hold and stops publication. The output adapter hides current readings while stopped/paused and retains access to held peaks. Keep publication and inheritance allocation-free; final meter ownership follows renderer retirement.
 
 Reuse `meters::effect_output_level` and `OutputLevel` in the existing top margin, including shared colors, scale, tooltips, accessibility and click reset. Mask the current unit power state immediately, including while a worker update is pending. Hide the rail in compact/collapsed presentations without clearing an enabled unit's hold. Meter presses must not arm source/component drags, change parameters, dirty the project or enter history. Retain existing strip width, knob positions and footers.
 
 Cover both sources at all six processing rates, polyphony, passive audio equality, source gain and downstream isolation, scoped identities, power/reset/clone/retarget lifecycle and callback allocation. Check source rails and effect coverage across themes, scales and compact/collapsed states. Retain memory-admission, live/export, seek and prepared-cache checks.
+
+## Audio-unit gap meters
+
+In DAW unit lanes, paint two 3×64-point level rails with a 2-point channel gap
+in the existing 16-point space after every audio unit, including the last. The
+stereo meter is 8 points wide. Center it horizontally in the gap and vertically
+on the complete unit rectangle. Retain unit widths, 16-point gaps and row-edge padding; painting/interactions allocate no layout
+space. Keep it visible in expanded, compact and collapsed units. Exclude
+Envelope, LFO and Macro. Standalone editors retain their existing body geometry.
+
+`unit-ui::meters::unit_gap_level` uses `StereoOutputLevel` and shares
+`OutputLevel` channel rendering, level colors, −60…0 dBFS mapping, one-point secondary-color peak markers, tooltips, accessibility, and
+guarded release-click reset with Out-strip rails. The marker runs horizontally
+across the vertical rail. Left and Right retain independent levels, overload
+colors and held peaks.
+Clicking either channel or their inner gap resets all
+three shared holds. Reset must preserve unit/track/clip selection, not arm drags, and create no edit or Undo entry.
+
+Reuse existing effect and source output handles. The 3-band EQ, Direction Mixer
+and Stereo Spread add post-processor `LevelMonitor<3>` taps in the shared engine
+chain, separate from EQ band analysis. Amplitude sums post-amplitude voice output
+before clip fades, layer effects and layer mixing. Source and Amplitude handles
+remain distinct, retain compatible release history, detach in renderer clones,
+and retire outside the callback. Discover beat source/Amplitude handles under
+subtrack IDs in both logical and compiled plans, so initial playback uses the
+same scope as later prepared updates. Power-off clears/masks current and held values
+immediately and stops publication. Prepared attachment must not raise peaks;
+stopped/paused output hides current values and retains held peaks. No new project
+or plugin state is saved.
+
+DAW `PanelStyle::unit_shell` tags its existing scope with
+`unit-ui::meters::HIDE_OUTPUT_LEVELS_TAG`. The shared `effect_output_level`
+returns `Rect::NOTHING` without painting or registering a hit target under this
+tag. Untagged standalone bodies retain their horizontal output rails. Direct
+DAW source painters and their old meter drag exclusions are removed. This
+host-specific presentation choice preserves shared body/control geometry,
+per-band `band_output_level`, gain-reduction and signed gain-change meters.
 
 ## Effect meter lifecycle
 

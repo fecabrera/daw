@@ -99,6 +99,10 @@ Effects run in their left-to-right order. Moving a control component across an e
 
 The header power control turns a unit on or off. Right-click a header for **Enable** or **Disable** as the first menu item. On a selected unit, this action applies to all selected units in its lane. Double-click its header to collapse or expand it. Off units keep their settings and remain editable. See [moving and copying units](../editing/units.md) and [modulation](../modulation/README.md).
 
+Audio units have a vertical [output meter](../effects/output-meter.md) in the gap
+after each unit, including when collapsed. Click a meter to reset its held peak.
+Modulation units do not show audio meters.
+
 Adding a source from the component catalog replaces the selected layer's source.
 Adding Oscillator to an existing Oscillator appends a strip. Other layer settings,
 effects and modulators remain. Drop an audio file on a regular layer to install

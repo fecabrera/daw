@@ -26,7 +26,7 @@ relative balance from 20 Hz to 20 kHz. It responds to Type and base Color, remai
 visible while stopped, and excludes Level, modulation and downstream processing.
 It is not a live spectrum analyzer.
 
-The **Out** strip contains Level, Width and the [standard output meter](../effects/output-meter.md).
+The **Out** strip contains Level and Width. The [stereo output meter](../effects/output-meter.md) sits in the gap after the unit.
 Width starts with the same signal in both channels and introduces an independent
 right-channel stream as it increases. MIDI pitch does not tune the noise. Note
 velocity affects its volume.

@@ -244,6 +244,9 @@ fn output_meters(
                     | daw_core::EffectSettings::Limiter(_)
                     | daw_core::EffectSettings::Ott(_)
                     | daw_core::EffectSettings::Loudness(_)
+                    | daw_core::EffectSettings::Eq3(_)
+                    | daw_core::EffectSettings::DirectionMixer(_)
+                    | daw_core::EffectSettings::StereoSpread(_)
             )
         })
         .map(|e| (e.id, previous.get(&e.id).cloned().unwrap_or_default()))
@@ -913,6 +916,36 @@ impl AudioOutput {
         target: daw_engine::SourceOutputTarget,
     ) -> Option<&daw_unit_core::PeakHold> {
         self.source_meters.get(&target).map(|m| &m.boost_peaks()[0])
+    }
+    pub fn source_output_meter(
+        &self,
+        target: daw_engine::SourceOutputTarget,
+    ) -> Option<&daw_unit_core::BandMeter<3>> {
+        self.source_meters.get(&target).map(AsRef::as_ref)
+    }
+    pub fn source_output_levels(&self, target: daw_engine::SourceOutputTarget) -> [f32; 2] {
+        if !self.status.playing.load(Ordering::Relaxed) {
+            return [0.0; 2];
+        }
+        self.source_output_meter(target).map_or([0.0; 2], |m| {
+            let [_, left, right] = m.readings();
+            [left, right]
+        })
+    }
+    pub fn effect_output_meter(&self, id: Id) -> Option<&daw_unit_core::BandMeter<3>> {
+        self.output_meters
+            .get(&id)
+            .or_else(|| self.band_meters.get(&ModulationTarget::Effect(id)))
+            .map(AsRef::as_ref)
+    }
+    pub fn effect_output_levels(&self, id: Id) -> [f32; 2] {
+        if !self.status.playing.load(Ordering::Relaxed) {
+            return [0.0; 2];
+        }
+        self.effect_output_meter(id).map_or([0.0; 2], |m| {
+            let [_, left, right] = m.readings();
+            [left, right]
+        })
     }
     /// Held effect output peak, retained while paused/stopped and resettable by the UI.
     pub fn loudness_meter(&self, id: Id) -> Option<&daw_unit_core::LoudnessMeter> {

@@ -2,6 +2,8 @@
 use crate::theme;
 use egui::{Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 pub const MIN_DBFS: f32 = -60.0;
+/// DAW shells use separate stereo gap meters; standalone bodies retain output rails.
+pub const HIDE_OUTPUT_LEVELS_TAG: &str = "hide-unit-output-levels";
 
 /// Hide queued or stale readings as soon as the unit's saved power state is off.
 pub fn unit_reading<T: Default>(enabled: bool, reading: T) -> T {
@@ -108,6 +110,7 @@ pub struct OutputLevel<'a> {
     peak: Option<&'a daw_unit_core::PeakHold>,
     reset_request: Option<&'a std::sync::atomic::AtomicBool>,
     reset_mask: Option<(&'a std::sync::atomic::AtomicU64, u64)>,
+    stereo: Option<&'a daw_unit_core::BandMeter<3>>,
 }
 impl<'a> OutputLevel<'a> {
     pub fn with_reset_request(mut self, request: &'a std::sync::atomic::AtomicBool) -> Self {
@@ -124,6 +127,23 @@ impl<'a> OutputLevel<'a> {
             peak,
             reset_request: None,
             reset_mask: None,
+            stereo: None,
+        }
+    }
+    /// Linked Out-strip display shares reset with the separate channel indicators.
+    pub fn linked(current: f32, meter: Option<&'a daw_unit_core::BandMeter<3>>) -> Self {
+        let mut reading = Self::new(current, meter.map(|m| &m.boost_peaks()[0]));
+        reading.stereo = meter;
+        reading
+    }
+    fn reset(&self) {
+        if let Some(peak) = self.peak {
+            peak.reset_peak();
+        }
+        if let Some(meter) = self.stereo {
+            for peak in &meter.boost_peaks()[1..] {
+                peak.reset_peak();
+            }
         }
     }
 }
@@ -160,6 +180,13 @@ pub fn effect_output_level<'a>(
     reading: impl Into<OutputLevel<'a>>,
     enabled: bool,
 ) -> Rect {
+    if ui
+        .stack()
+        .iter()
+        .any(|node| node.tags().contains(HIDE_OUTPUT_LEVELS_TAG))
+    {
+        return Rect::NOTHING;
+    }
     let rail = unit_monitor_rail(strip, margin);
     band_output_level(ui, rail, reading.into(), enabled, true, "Output");
     rail
@@ -173,8 +200,108 @@ pub fn band_output_level(
     band_enabled: bool,
     name: &str,
 ) -> Response {
-    if !enabled && let Some(peak) = reading.peak {
-        peak.reset_peak();
+    output_level(ui, rail, reading, enabled, band_enabled, name, None)
+}
+
+/// Independent channels plus their shared linked peak for the existing Out strip.
+#[derive(Clone, Copy)]
+pub struct StereoOutputLevel<'a> {
+    current: [f32; 2],
+    meter: Option<&'a daw_unit_core::BandMeter<3>>,
+}
+impl<'a> StereoOutputLevel<'a> {
+    pub fn new(current: [f32; 2], meter: Option<&'a daw_unit_core::BandMeter<3>>) -> Self {
+        Self { current, meter }
+    }
+    fn reset(&self) {
+        if let Some(meter) = self.meter {
+            for peak in meter.boost_peaks() {
+                peak.reset_peak();
+            }
+        }
+    }
+}
+
+/// Stereo output rails centered in the existing sixteen-point unit gap.
+pub fn unit_gap_rect(unit: Rect) -> Rect {
+    Rect::from_center_size(
+        egui::pos2(unit.right() + 8.0, unit.center().y),
+        Vec2::new(8.0, 64.0),
+    )
+}
+
+/// Paint without allocating space, retaining unit geometry and lane padding.
+pub fn unit_gap_level(
+    ui: &mut Ui,
+    unit: Rect,
+    id: egui::Id,
+    reading: StereoOutputLevel<'_>,
+    enabled: bool,
+) -> Response {
+    let bounds = unit_gap_rect(unit);
+    if !enabled {
+        reading.reset();
+    }
+    let channels: [Response; 2] = std::array::from_fn(|channel| {
+        let rail = Rect::from_min_size(
+            bounds.min + Vec2::new(channel as f32 * 5.0, 0.0),
+            Vec2::new(3.0, 64.0),
+        );
+        output_level(
+            ui,
+            rail,
+            OutputLevel::new(
+                reading.current[channel],
+                reading.meter.map(|m| &m.boost_peaks()[channel + 1]),
+            ),
+            enabled,
+            true,
+            if channel == 0 {
+                "Left output"
+            } else {
+                "Right output"
+            },
+            Some(id.with(channel)),
+        )
+    });
+    let response = ui.interact(bounds, id, Sense::click());
+    if ui.is_enabled() && ui.input(|i| i.focused) {
+        if response.is_pointer_button_down_on() || response.clicked() {
+            response.request_focus();
+        }
+        if enabled && (response.clicked() || channels.iter().any(Response::clicked)) {
+            reading.reset();
+            ui.ctx().request_repaint();
+        }
+    }
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::Button,
+            ui.is_enabled(),
+            "Stereo output. Click to reset both channel peaks",
+        )
+    });
+    let values = unit_reading(enabled, reading.current);
+    let held = unit_reading(
+        enabled,
+        reading.meter.map_or([0.0; 2], |m| {
+            [m.boost_peaks()[1].peak(), m.boost_peaks()[2].peak()]
+        }),
+    );
+    response.on_hover_text(format!("Stereo output (dBFS). Left: {}, peak {}. Right: {}, peak {}. Click to reset both peaks. Display range −60 to 0 dBFS.", peak_text(values[0]), peak_text(held[0]), peak_text(values[1]), peak_text(held[1])))
+}
+
+fn output_level(
+    ui: &mut Ui,
+    rail: Rect,
+    reading: OutputLevel<'_>,
+    enabled: bool,
+    band_enabled: bool,
+    name: &str,
+    vertical: Option<egui::Id>,
+) -> Response {
+    if !enabled {
+        reading.reset();
     }
     let current = unit_reading(enabled, reading.current);
     let current = if current.is_finite() {
@@ -184,40 +311,64 @@ pub fn band_output_level(
     };
     let held = unit_reading(enabled, reading.peak.map_or(0.0, |p| p.peak()));
     let palette = theme::palette(ui.ctx());
-    horizontal_rail(
+    let color = band_color(
         ui,
-        rail,
-        position_for_peak(current),
-        band_color(
-            ui,
-            band_enabled,
-            if current > 1.0 {
-                palette.error
-            } else {
-                palette.meter
-            },
-        ),
+        band_enabled,
+        if current > 1.0 {
+            palette.error
+        } else {
+            palette.meter
+        },
     );
+    let progress = position_for_peak(current);
+    if vertical.is_some() {
+        ui.painter().rect_filled(rail, 1.0, palette.input);
+        if progress > 0.0 {
+            ui.painter().rect_filled(
+                Rect::from_min_max(
+                    egui::pos2(rail.left(), rail.bottom() - rail.height() * progress),
+                    rail.right_bottom(),
+                ),
+                1.0,
+                color,
+            );
+        }
+    } else {
+        horizontal_rail(ui, rail, progress, color);
+    }
     if held > 0.0 {
-        peak_marker(
-            ui,
-            rail,
-            rail.left() + rail.width() * position_for_peak(held),
-        );
+        if vertical.is_some() {
+            vertical_peak_marker(
+                ui,
+                rail,
+                rail.bottom() - rail.height() * position_for_peak(held),
+            );
+        } else {
+            peak_marker(
+                ui,
+                rail,
+                rail.left() + rail.width() * position_for_peak(held),
+            );
+        }
     }
     let response = ui.interact(
         rail,
-        ui.id().with(("effect-output-level", name)),
+        vertical.unwrap_or_else(|| ui.id().with(("effect-output-level", name))),
         Sense::click(),
     );
+    if vertical.is_some()
+        && ui.is_enabled()
+        && ui.input(|i| i.focused)
+        && (response.is_pointer_button_down_on() || response.clicked())
+    {
+        response.request_focus();
+    }
     if enabled
         && response.clicked_by(egui::PointerButton::Primary)
         && ui.is_enabled()
         && ui.input(|i| i.focused)
     {
-        if let Some(peak) = reading.peak {
-            peak.reset_peak();
-        }
+        reading.reset();
         if let Some(request) = reading.reset_request {
             request.store(true, std::sync::atomic::Ordering::Release);
         }
@@ -246,6 +397,207 @@ pub fn band_output_level(
 mod tests {
     use super::*;
     use daw_unit_core::{MeterStorage, PeakMeter};
+    #[test]
+    fn daw_policy_hides_output_only_and_standalone_keeps_it() {
+        for hidden in [false, true] {
+            let ctx = egui::Context::default();
+            theme::configure(&ctx);
+            crate::fonts::configure(&ctx);
+            let strip = Rect::from_min_size(Pos2::ZERO, Vec2::new(90.0, 218.0));
+            let band = unit_monitor_rail(strip.translate(Vec2::new(90.0, 0.0)), 10);
+            let reduction = band.translate(Vec2::new(90.0, 0.0));
+            let mut bounds = None;
+            let mut out = ctx.run_ui(Default::default(), |ui| {
+                let info = if hidden {
+                    egui::UiStackInfo::default().with_tag(HIDE_OUTPUT_LEVELS_TAG)
+                } else {
+                    Default::default()
+                };
+                ui.scope_builder(egui::UiBuilder::new().ui_stack_info(info), |ui| {
+                    let output = effect_output_level(ui, strip, 10, 0.5, true);
+                    let band = band_output_level(ui, band, 0.5.into(), true, true, "Band");
+                    let reduction = gain_reduction_rail(ui, reduction, 12.0.into());
+                    bounds = Some((output, band.rect, reduction.rect));
+                });
+            });
+            out.textures_delta.clear();
+            let (output, band_bounds, reduction_bounds) = bounds.unwrap();
+            assert_eq!(output.is_positive(), !hidden);
+            assert_eq!(band_bounds, band);
+            assert_eq!(reduction_bounds, reduction);
+            for rail in [unit_monitor_rail(strip, 10), band, reduction] {
+                let painted = out.shapes.iter().any(|s| {
+                    matches!(&s.shape, egui::Shape::Rect(r)
+                    if r.rect == rail && r.fill == theme::palette(&ctx).input)
+                });
+                assert_eq!(painted, !hidden || rail != unit_monitor_rail(strip, 10));
+            }
+        }
+    }
+    #[test]
+    fn linked_output_rail_resets_both_stereo_channel_holds() {
+        let ctx = egui::Context::default();
+        theme::configure(&ctx);
+        crate::fonts::configure(&ctx);
+        let meter = daw_unit_core::BandMeter::<3>::default();
+        meter.store([1.5, 1.5, 0.5]);
+        let strip = Rect::from_min_size(Pos2::ZERO, Vec2::new(90.0, 218.0));
+        let point = unit_monitor_rail(strip, 10).center();
+        for phase in 0..3 {
+            let events = if phase == 0 {
+                vec![]
+            } else {
+                vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed: phase == 1,
+                        modifiers: Default::default(),
+                    },
+                ]
+            };
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    effect_output_level(
+                        ui,
+                        strip,
+                        10,
+                        OutputLevel::linked(0.25, Some(&meter)),
+                        true,
+                    );
+                },
+            );
+            out.textures_delta.clear();
+            assert_eq!(
+                meter.boost_peaks().each_ref().map(|p| p.peak()),
+                if phase < 2 { [1.5, 1.5, 0.5] } else { [0.0; 3] }
+            );
+        }
+    }
+    #[test]
+    fn gap_meter_keeps_layout_and_shared_peak_reset_for_all_unit_sizes() {
+        for (width, height) in [(300.0, 218.0), (26.0, 218.0), (300.0, 42.0), (26.0, 42.0)] {
+            for click_x in [1.5, 4.0, 6.5] {
+                let ctx = egui::Context::default();
+                theme::configure(&ctx);
+                crate::fonts::configure(&ctx);
+                let meter = daw_unit_core::BandMeter::<3>::default();
+                meter.store([1.5, 1.5, 0.5]);
+                let unit = Rect::from_min_size(egui::pos2(20.0, 13.0), Vec2::new(width, height));
+                let expected = unit_gap_rect(unit);
+                assert_eq!(expected.size(), Vec2::new(8.0, 64.0));
+                assert_eq!(expected.center().y, unit.center().y);
+                assert_eq!(expected.left() - unit.right(), 4.0);
+                for phase in 0..4 {
+                    let center = Pos2::new(expected.left() + click_x, expected.center().y);
+                    let events = match phase {
+                        1 | 2 => vec![
+                            egui::Event::PointerMoved(center),
+                            egui::Event::PointerButton {
+                                pos: center,
+                                button: egui::PointerButton::Primary,
+                                pressed: phase == 1,
+                                modifiers: Default::default(),
+                            },
+                        ],
+                        _ => vec![],
+                    };
+                    if phase == 3 {
+                        meter.store([2.0, 2.0, 0.5]);
+                    }
+                    let mut geometry = None;
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(800.0, 400.0),
+                            )),
+                            focused: true,
+                            events,
+                            ..Default::default()
+                        },
+                        |ui| {
+                            let before = ui.min_rect();
+                            let response = unit_gap_level(
+                                ui,
+                                unit,
+                                egui::Id::new("gap"),
+                                StereoOutputLevel::new([1.25, 0.125], Some(&meter)),
+                                phase != 3,
+                            );
+                            geometry = Some((response.rect, before, ui.min_rect()));
+                        },
+                    );
+                    output.textures_delta.clear();
+                    let (rect, before, after) = geometry.unwrap();
+                    assert_eq!(rect, expected);
+                    assert_eq!(after, before, "meter must not expand the sixteen-point gap");
+                    let rails: Vec<_> = output
+                        .shapes
+                        .iter()
+                        .filter_map(|s| {
+                            if let egui::Shape::Rect(r) = &s.shape
+                                && r.fill == theme::palette(&ctx).input
+                                && expected.contains_rect(r.rect)
+                            {
+                                Some(r.rect)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    assert_eq!(rails.len(), 2);
+                    assert_eq!(rails[0].size(), Vec2::new(3.0, 64.0));
+                    assert_eq!(rails[1].left() - rails[0].right(), 2.0);
+                    if phase < 3 {
+                        assert!(
+                            output
+                                .shapes
+                                .iter()
+                                .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                        if r.rect == rails[0] && r.fill == theme::palette(&ctx).error))
+                        );
+                        assert!(
+                            output
+                                .shapes
+                                .iter()
+                                .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                        if rails[1].contains_rect(r.rect) && r.fill == theme::palette(&ctx).meter))
+                        );
+                    }
+                    assert_eq!(
+                        meter.boost_peaks().each_ref().map(|p| p.peak()),
+                        if phase < 2 { [1.5, 1.5, 0.5] } else { [0.0; 3] }
+                    );
+                    let markers: Vec<_> = output
+                        .shapes
+                        .iter()
+                        .filter_map(|s| {
+                            if let egui::Shape::LineSegment { points, stroke } = &s.shape {
+                                Some((*points, *stroke))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    assert_eq!(markers.len(), 2 * usize::from(phase < 3));
+                    if phase < 3 {
+                        assert_ne!(markers[0].0[0].y, markers[1].0[0].y);
+                    }
+                    if let Some((points, stroke)) = markers.first() {
+                        assert_eq!(points[0].y, points[1].y);
+                        assert_eq!(stroke.color, theme::palette(&ctx).secondary);
+                    }
+                }
+            }
+        }
+    }
     fn frame(
         ctx: &egui::Context,
         meter: &PeakMeter,

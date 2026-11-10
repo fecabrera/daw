@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn source_out_strips_use_shared_rails_without_moving_controls_or_starting_drags() {
+fn sources_keep_gap_meters_without_horizontal_output_rails_or_meter_drags() {
     for color in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -65,19 +65,25 @@ fn source_out_strips_use_shared_rails_without_moving_controls_or_starting_drags(
                         let rail =
                             meters::unit_monitor_rail(strip, panels::PanelStyle::default().margin);
                         let present = shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rail && r.fill == theme::palette(&ctx).input));
-                        assert_eq!(
-                            present,
-                            !compact && kind != 2,
+                        assert!(
+                            !present,
                             "kind={kind}, compact={compact}, enabled={enabled}"
                         );
-                        if !compact && kind != 2 {
+                        if !compact {
                             let knob = if kind == 0 {
                                 app.midi_editor.oscillator_level_bounds
                             } else {
                                 app.instrument_ui.samplers[0].gain
                             };
                             assert!(rail.bottom() < knob.top());
-                            let point = rail.center();
+                            let unit = app
+                                .instrument_ui
+                                .component_slots
+                                .iter()
+                                .find(|(_, component, _)| component.is_source())
+                                .unwrap()
+                                .2;
+                            let point = daw_unit_ui::meters::unit_gap_rect(unit).center();
                             frame_shapes(
                                 &mut app,
                                 &ctx,

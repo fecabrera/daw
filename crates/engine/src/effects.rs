@@ -596,11 +596,14 @@ pub(super) struct EffectChain {
     index: std::collections::HashMap<Id, usize>,
     mono: bool,
     units: Vec<(Id, Option<RuntimeEffect>)>,
+    // Units without a portable output monitor use the same shared lifecycle here.
+    output_taps: Vec<Option<daw_unit_core::LevelMonitor<3>>>,
 }
 impl EffectChain {
     pub fn heap_bytes(&self) -> u64 {
         daw_unit_core::memory::map_bytes(&self.index)
             + daw_unit_core::memory::vec_bytes(&self.units)
+            + daw_unit_core::memory::vec_bytes(&self.output_taps)
             + self
                 .units
                 .iter()
@@ -631,6 +634,18 @@ impl EffectChain {
         Self {
             index: effects.iter().enumerate().map(|(i, e)| (e.id, i)).collect(),
             mono: false,
+            output_taps: effects
+                .iter()
+                .map(|e| {
+                    let enabled = match &e.unit {
+                        EffectSettings::Eq3(s) => s.enabled,
+                        EffectSettings::DirectionMixer(s) => s.enabled,
+                        EffectSettings::StereoSpread(s) => s.enabled,
+                        _ => return None,
+                    };
+                    Some(daw_unit_core::LevelMonitor::new(sample_rate_hz, enabled))
+                })
+                .collect(),
             units: effects
                 .iter()
                 .map(|effect| {
@@ -818,6 +833,17 @@ impl EffectChain {
     }
     pub fn inherit_chain(&mut self, previous: &mut Self, settings: &[EffectInstance]) {
         self.mono = previous.mono;
+        for (i, (id, _)) in self.units.iter().enumerate() {
+            if let Some(old) = previous
+                .index
+                .get(id)
+                .and_then(|&i| previous.output_taps[i].as_mut())
+                && let Some(next) = &mut self.output_taps[i]
+            {
+                old.retarget(next);
+                std::mem::swap(next, old);
+            }
+        }
         for ((id, next), settings) in self.units.iter_mut().zip(settings) {
             if let Some((_, Some(previous))) = previous
                 .index
@@ -1072,6 +1098,14 @@ impl EffectChain {
         }
     }
     pub fn set_output_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::BandMeter<3>>) {
+        if let Some(tap) = self
+            .index
+            .get(&id)
+            .and_then(|&i| self.output_taps[i].as_mut())
+        {
+            tap.attach_peak(meter.clone());
+            return;
+        }
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
             Some((_, Some(RuntimeEffect::Loudness(unit)))) => {
                 unit.set_output_peak_meter(meter.clone())
@@ -1163,9 +1197,14 @@ impl EffectChain {
         if let Some(mono) = mono {
             self.mono = mono;
         }
-        for (_, unit) in &mut self.units {
+        for ((_, unit), tap) in self.units.iter_mut().zip(&mut self.output_taps) {
             if let Some(unit) = unit {
                 input = unit.sample(input, frame, tempo, values);
+                if let Some(tap) = tap
+                    && tap.is_enabled()
+                {
+                    tap.sample_output(input);
+                }
                 let delay = unit.latency_frames();
                 if delay != 0 {
                     frame = super::latency::delayed_frame(frame, u64::from(delay), loop_region);
@@ -1175,9 +1214,80 @@ impl EffectChain {
         (input, self.mono)
     }
     pub fn reset(&mut self) {
+        for tap in self.output_taps.iter_mut().flatten() {
+            tap.reset();
+        }
         for (_, unit) in &mut self.units {
             if let Some(unit) = unit {
                 unit.reset();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod gap_meter_tests {
+    use super::*;
+
+    #[test]
+    fn units_without_out_strips_measure_complete_output_and_retarget_peak_handles() {
+        for rate in daw_core::SAMPLE_RATES {
+            for make in [
+                EffectInstance::equalizer,
+                EffectInstance::direction_mixer,
+                EffectInstance::stereo_spread,
+            ] {
+                let mut effects = vec![make()];
+                let id = effects[0].id;
+                let meter = Arc::new(daw_unit_core::BandMeter::<3>::default());
+                let mut live = EffectChain::chain(None, &effects, rate, 512);
+                let mut reference = live.clone();
+                live.set_output_meter(id, &meter);
+                let mut actual_peak = 0.0_f32;
+                let mut channel_peaks = [0.0_f32; 2];
+                for frame in 0..4096 {
+                    let input = [1.25 * (frame as f32 * 0.071).sin(), -0.75];
+                    let output = live.sample(input, Some(false), frame, 120.0, None, (&[], None));
+                    assert_eq!(
+                        output,
+                        reference.sample(input, Some(false), frame, 120.0, None, (&[], None))
+                    );
+                    actual_peak = actual_peak.max(output.0[0].abs()).max(output.0[1].abs());
+                    for (held, sample) in channel_peaks.iter_mut().zip(output.0) {
+                        *held = held.max(sample.abs());
+                    }
+                }
+                assert!(actual_peak > 0.01);
+                assert_eq!(meter.boost_peaks()[0].peak(), actual_peak);
+                assert_eq!(
+                    [meter.boost_peaks()[1].peak(), meter.boost_peaks()[2].peak()],
+                    channel_peaks
+                );
+                let mut snapshot = live.clone();
+                let readings = meter.readings();
+                snapshot.sample([8.0; 2], Some(false), 4096, 120.0, None, (&[], None));
+                assert_eq!(meter.readings(), readings);
+                assert_eq!(meter.boost_peaks()[0].peak(), actual_peak);
+                match &mut effects[0].unit {
+                    EffectSettings::Eq3(s) => s.enabled = false,
+                    EffectSettings::DirectionMixer(s) => s.enabled = false,
+                    EffectSettings::StereoSpread(s) => s.enabled = false,
+                    _ => unreachable!(),
+                }
+                let off_meter = Arc::new(daw_unit_core::BandMeter::<3>::default());
+                let mut off = EffectChain::chain(None, &effects, rate, 512);
+                off.set_output_meter(id, &off_meter);
+                off.inherit_chain(&mut live, &effects);
+                for frame in 4096..4608 {
+                    off.sample([2.0; 2], Some(false), frame, 120.0, None, (&[], None));
+                }
+                assert_eq!(off_meter.readings(), [0.0; 3]);
+                assert_eq!(off_meter.boost_peaks()[0].peak(), 0.0);
+                assert_eq!(
+                    meter.boost_peaks()[0].peak(),
+                    actual_peak,
+                    "retired handles stop publishing"
+                );
             }
         }
     }

@@ -18,7 +18,7 @@ Oscillator generates tones for MIDI notes. Add it from Sources in the Instrument
 
 The last column, **Out**, contains Level, Pitch, and Cents. Level controls the combined output of all oscillator sources before Amplitude and layer effects. Sources still sum independently without automatic normalization; adjust Level to balance their combined volume. Each layer saves its own Level.
 
-The Out strip uses the [standard unit level meter and held-peak indicator](../effects/output-meter.md). It measures the sum across notes after source gains, unit Level and note velocity, before Amplitude and layer processing. Click the rail to reset only the held peak. The rail is hidden in compact/collapsed views; unit power-off clears it.
+The gap after the unit holds its [stereo output meter and held-peak indicators](../effects/output-meter.md). It measures the sum across notes after source gains, unit Level and note velocity, before Amplitude and layer processing. Click the rail to reset only the held peak. The meter stays visible in compact/collapsed views; unit power-off clears it.
 
 Use Plus inside the unit, before Out, to add another oscillator. Each source has independent controls and power. Drag unused strip space to reorder sources. Right-click a source or its knob to remove it. Removing the last source leaves the layer silent.
 

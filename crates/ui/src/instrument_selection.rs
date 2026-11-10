@@ -119,7 +119,19 @@ impl DawUi {
                     self.instrument_ui.component_refocus = false;
                 }
             }
-            if crate::unit_selection::clicked(ui, *viewport, allowed) {
+            let meter_clicked =
+                self.instrument_ui
+                    .component_slots
+                    .iter()
+                    .any(|(id, unit, rect)| {
+                        id == owner
+                            && (unit.is_source()
+                                || matches!(unit, daw_core::InstrumentComponent::Amplitude))
+                            && ui.rect_contains_pointer(
+                                daw_unit_ui::meters::unit_gap_rect(*rect).intersect(*viewport),
+                            )
+                    });
+            if crate::unit_selection::clicked(ui, *viewport, allowed) && !meter_clicked {
                 let clicked = self
                     .instrument_ui
                     .component_slots

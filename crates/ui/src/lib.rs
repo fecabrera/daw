@@ -17,6 +17,7 @@ mod clip_lane;
 mod clip_marquee;
 mod clip_menu;
 mod normalize;
+mod unit_output_meter;
 mod unit_power;
 pub use clip_menu::ClipMenuAction;
 mod audio_editor;

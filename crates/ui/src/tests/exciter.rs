@@ -95,13 +95,7 @@ fn exciter_uses_dropdowns_knobs_shared_footers_and_output_meter_in_all_themes_an
                 }
                 if !compact {
                     assert_eq!(b.body.crossovers.len(), 3);
-                    assert_eq!(
-                        b.body.meter,
-                        meters::unit_monitor_rail(
-                            b.body.output,
-                            panels::PanelStyle::default().margin
-                        )
-                    );
+                    assert_eq!(b.body.meter, Rect::NOTHING);
                 }
                 assert!(!app.dirty);
             }

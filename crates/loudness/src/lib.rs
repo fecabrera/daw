@@ -273,8 +273,7 @@ impl Loudness {
         self.sum_s += power;
         self.count += 1;
         self.peak = self.peak.max(self.tp.tick(x, self.settings.hq));
-        self.output
-            .sample([x[0].abs().max(x[1].abs()) as f32, 0.0, 0.0]);
+        self.output.sample_output(x.map(|v| v as f32));
         if self.count.is_multiple_of((rate / 100) as u64) {
             self.max_m = self.max_m.max(self.sum_m.max(0.0) / m as f64);
             self.max_s = self.max_s.max(self.sum_s.max(0.0) / n as f64);

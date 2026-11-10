@@ -107,8 +107,7 @@ impl Processor {
     pub fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
         let output = self.drive.process_sample(input);
         self.frame = self.frame.saturating_add(1);
-        self.monitor
-            .sample([output[0].abs().max(output[1].abs()), 0.0, 0.0]);
+        self.monitor.sample_output(output);
         output
     }
 }

@@ -31,6 +31,6 @@ All controls except Rate mode and Voices accept shared Envelope, LFO and Macro m
 
 Chorus continues processing through timeline gaps. Export ends at the arranged duration and does not append its delay tail. Seeking reconstructs history on a worker; long arrangements can need preparation time. The dry signal has no added delay; the wet delays are part of the effect's sound.
 
-The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.
+The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.
 
 This effect also has a [standalone CLAP/VST3 plugin](plugins.md).

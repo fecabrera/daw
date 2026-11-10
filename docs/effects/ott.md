@@ -59,6 +59,6 @@ Compression thresholds, ratios, and knees are fixed. Independent upward/downward
 
 ## Output level meter
 
-The **Out** strip has the [shared output level meter](output-meter.md), with a current level rail and click-resettable held sample peak. It measures the final stereo output. Its peak reset is independent of the band meters.
+The DAW shows the [stereo output meter](output-meter.md) in the gap after the unit. Standalone editors keep the horizontal meter in **Out**. Click a meter to reset its held peaks. It measures the final stereo output. Its peak reset is independent of the band meters.
 
 This effect also has a [standalone CLAP/VST3 plugin](plugins.md).

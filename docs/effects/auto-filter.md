@@ -40,6 +40,6 @@ External Frequency modulation combines with the internal sweep. The range arc sh
 
 Filter ringing is included within the arranged export range; export does not append an extra tail.
 
-The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.
+The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.
 
 This effect also has a [standalone CLAP/VST3 plugin](plugins.md).
