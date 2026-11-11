@@ -4,6 +4,34 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Independent implementation explorer skill — 2026-11-11
+
+Added `.agents/skills/daw-explorer` for feature, bugfix and improvement planning
+of any size. The caller selects the explorer count and optional models/focus.
+Each fresh-context explorer supplies a complete plan. A separate fresh-context
+evaluator checks requirements, records every proposal's disposition, ranks
+accepted approaches separately by size and scope, and recommends one integral
+plan in Markdown. The skill includes an agent protocol and report template.
+`AGENTS.md` links to the workflow. Planning does not authorize implementation.
+
+Completed checks:
+
+- Skill-creator `quick_validate.py` passed for the new skill.
+- Local Markdown links in the skill and `AGENTS.md` resolve.
+- A disposable Python CLI fixture exercised two independent explorers followed
+  by a separate evaluator. Both proposals covered all five requirements. The
+  evaluator independently checked the source and baseline CLI behavior, accepted
+  both proposals, assigned tied size and scope ranks, and selected one complete
+  plan with a recorded reason. It produced `evaluation.md` and `report.md`.
+- Source hashes matched before and after the forward test. No fixture
+  implementation changed. No concrete skill/template defect was observed.
+
+The forward test covers equivalent accepted plans. Rejection, unresolved or
+missing proposals, source drift, synthesis, model overrides and agent waves
+remain untested. The fixture is not an exploration of a production DAW request.
+No Rust, desktop, native UI, device or cross-platform checks were needed or run
+for this skill-only change.
+
 ## Standalone review remediation, third pass — 2026-11-11
 
 Resolved all ten non-ONNX findings from the standalone review of `2618a17`:

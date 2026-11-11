@@ -14,6 +14,14 @@ These instructions apply to the whole repository. Read any additional `AGENTS.md
 
 ## Project context and reference documents
 
+For independent implementation planning of a feature, bugfix, or improvement,
+use the [DAW explorer skill](.agents/skills/daw-explorer/SKILL.md). Use the caller's
+explorer count and optional per-agent models/focus; ask for the count if absent.
+Each explorer produces a complete plan independently. A separate evaluator
+checks requirements, records rejected or unresolved proposals, ranks viable
+alternatives by size and scope, and recommends one integral plan in Markdown.
+Exploration does not authorize implementation or changes to accepted requirements.
+
 For a requested independent multi-agent branch or PR review, use the repository's [DAW review skill](.agents/skills/daw-review/SKILL.md). Confirm the target, review mode and reviewer count; comparison mode also needs a base. Users can set each reviewer's model and focus. Standalone mode reviews the full committed branch snapshot without a base or diff, including existing defects and dependencies. Keep reviewers independent, then use a separate findings validator. Use Documentation, Code Quality, Dependencies and Total as report labels. In comparison mode, skip Code Quality when no code inputs change and Dependencies when no dependencies are changed or affected. In standalone mode, skip a category only when its inputs are absent. SKIPPED affects neither PASS nor FAIL. Incomplete required coverage produces INCOMPLETE, neither PASS nor FAIL, even when blocking findings are present; keep those findings visible. With complete coverage, critical/major findings cause FAIL by default; otherwise PASS. Plan coverage before launching reviewers and close feasible gaps before reporting. A review does not authorize implementation changes or publishing comments.
 
 This is a Rust desktop digital audio workstation (DAW) for macOS, Windows, and Linux, with a headless command-line interface (CLI). Both applications use the same project model and rendering logic. The project format is experimental. There is no fixed track-count limit. Undo/redo follows [session history](specs/editing/undo-redo.md). Mobile delivery is outside the current MVP.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "DAW Explorer"
+  short_description: "Independent implementation plans with ranked options"
+  default_prompt: "Use $daw-explorer with 3 independent explorers and a separate evaluator to plan this feature, bugfix, or improvement without implementing it."
