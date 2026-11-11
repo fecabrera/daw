@@ -4,6 +4,61 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Native custom-titlebar drag gate and semibold panel titles — 2026-11-10
+
+The previous egui-only view-button drag fix did not prevent AppKit titlebar
+movement. Custom macOS windows now disable implicit native movement. Only an
+explicit UI drag request from the title or unused header enables movement for
+the queued `StartDrag` command. Reset the native gate before input processing
+and after frames without a request; restore original movability in Native mode.
+Panel titles now use the shared semibold font at their existing Body text size,
+including Tracks, Layers, Beat subtracks and catalog headers.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (978 passed, 3 ignored).
+- `cargo test --workspace --offline`: passed, including the view-button test
+  that rejects both native requests and viewport drag commands.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native pointer verification was attempted, but the computer-use tool could not
+launch the debug executable. No native gesture result is claimed. The macOS
+packaging script stopped at its committed-source gate. The executable was
+rebuilt; the app bundle was not updated.
+
+## Header typography and view-button drag ownership — 2026-11-10
+
+Regular layer names and the LFO, Envelope and Output headers now use the same
+13-point semibold font as track headers. View buttons use semibold at their
+existing text size. Custom-titlebar width measurement uses that font so long
+project titles still leave room for views and native caption controls.
+
+View buttons now own click-and-drag gestures. Dragging from a button cannot
+pass ownership to a draggable header or activate a different view. Standard
+click navigation, colors, hover feedback and disabled guards remain.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (978 passed, 3 ignored). The new
+  regression case drags each view button into unused header space and verifies
+  button ownership, no window-drag command, unchanged view and clean project.
+  Existing long-title, navigation, layer rename/reorder and selection tests pass.
+- `git diff --check`: passed.
+
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+
+Native appearance and window behavior remain unverified. The macOS packaging
+attempt stopped at the source-revision gate because tracked changes are
+uncommitted. The executable was rebuilt; the app bundle was not updated.
+
 ## Mixer output destination radius — 2026-11-10
 
 The read-only output destination label now uses 5-point corners in Mixer and

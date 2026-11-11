@@ -243,10 +243,10 @@ impl DawUi {
                 let response = ui
                     .add_enabled(
                         enabled,
-                        egui::Button::new(
-                            egui::RichText::new(label)
-                                .font(egui::TextStyle::Button.resolve(&style)),
-                        )
+                        egui::Button::new(egui::RichText::new(label).font(crate::fonts::semibold(
+                            egui::TextStyle::Button.resolve(&style).size,
+                        )))
+                        .sense(egui::Sense::click_and_drag())
                         .selected(selected)
                         .frame(true)
                         .fill(egui::Color32::TRANSPARENT)

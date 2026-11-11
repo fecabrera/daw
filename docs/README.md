@@ -14,6 +14,9 @@ Knob tooltips show only the parameter name on the left and the current value on 
 
 ## Views
 
+Panel titles, including Tracks, Layers and Beat subtracks, use semibold text.
+The Timeline, Instrument, Editor and Mixer view buttons use semibold labels. Dragging a view button does not move the window.
+
 - [Timeline](views/timeline.md): browse chords, import, arrange, select, trim, loop, split, and copy clips or a time range, and edit clip settings.
 - [Instrument](views/instrument.md): build layered sounds and add effects.
 - [Editor](views/editor.md): create MIDI patterns, edit notes, and inspect audio clip waveforms.

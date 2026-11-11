@@ -150,7 +150,7 @@ impl DawUi {
                 rows::centered(header, toolbars::CONTROL_HEIGHT, |ui| {
                     let icon = icons::header_icon_with_rotation(ui, icons::Lucide::Merge, Sense::hover(), std::f32::consts::FRAC_PI_2).on_hover_text("Instrument output");
                     icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));
-                    let name = ui.label(egui::RichText::new(InstrumentBusSettings::DISPLAY_NAME).size(rows::NAME_FONT_SIZE));
+                    let name = ui.label(egui::RichText::new(InstrumentBusSettings::DISPLAY_NAME).font(crate::fonts::semibold(rows::NAME_FONT_SIZE)));
                     #[cfg(test)] { bounds.icon = icon.rect; bounds.name = name.rect; }
                     #[cfg(not(test))] let _ = (icon, name);
                 });
@@ -170,7 +170,7 @@ impl DawUi {
                 } else {
                     rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
                         let icon=icons::header_icon(ui, icons::Lucide::Activity, Sense::hover());
-                        let name=ui.label(egui::RichText::new(title).size(rows::NAME_FONT_SIZE));
+                        let name=ui.label(egui::RichText::new(title).font(crate::fonts::semibold(rows::NAME_FONT_SIZE)));
                         #[cfg(test)] { bounds.icon=icon.rect; bounds.name=name.rect; }
                         #[cfg(not(test))] let _=(icon,name);
                     });

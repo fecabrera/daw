@@ -141,6 +141,8 @@ pub mod titlebar;
 pub mod toolbars;
 mod unit_selection;
 mod waveforms;
+#[cfg(target_os = "macos")]
+pub mod window_drag;
 
 const TRACK_WIDTH: f32 = panels::ControlPanel::WIDTH;
 const ROW_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE + 14.0;
@@ -3325,9 +3327,7 @@ impl DawUi {
     #[cfg(target_os = "macos")]
     fn drag_window(response: egui::Response) {
         if response.drag_started_by(egui::PointerButton::Primary) {
-            response
-                .ctx
-                .send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            window_drag::request_window_drag(&response.ctx);
         }
     }
     fn workspace(&mut self, ui: &mut egui::Ui) {

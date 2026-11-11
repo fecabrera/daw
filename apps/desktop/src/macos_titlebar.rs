@@ -7,6 +7,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 pub struct Titlebar {
     window: Retained<NSWindow>,
     applied: Option<TitlebarStyle>,
+    native_movable: bool,
 }
 
 impl Titlebar {
@@ -18,8 +19,10 @@ impl Titlebar {
         // the view while obtaining its window; retain the window for this adapter.
         // Creation and update both run on the main thread, while eframe is alive.
         let view = unsafe { Retained::retain(handle.ns_view.as_ptr().cast::<NSView>()) }?;
+        let window = view.window()?;
         let mut titlebar = Self {
-            window: view.window()?,
+            native_movable: window.isMovable(),
+            window,
             applied: None,
         };
         titlebar.update(style);
@@ -39,7 +42,24 @@ impl Titlebar {
         } else {
             NSWindowTitleVisibility::Visible
         });
+        self.window.setMovable(!custom && self.native_movable);
         self.applied = Some(style);
+    }
+
+    pub fn prepare_input(&self) {
+        if self.applied == Some(TitlebarStyle::Custom) {
+            // AppKit can start titlebar drags before egui sees the pointer press.
+            self.window.setMovable(false);
+        }
+    }
+
+    pub fn finish(&self, ctx: &egui::Context) {
+        let requested = daw_ui::window_drag::take_window_drag_request(ctx);
+        if self.applied == Some(TitlebarStyle::Custom) {
+            // eframe processes StartDrag after this callback. Enable AppKit movement
+            // only for an explicit gesture from the title or unused header space.
+            self.window.setMovable(requested);
+        }
     }
 }
 

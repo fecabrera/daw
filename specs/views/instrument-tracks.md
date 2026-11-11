@@ -65,3 +65,10 @@ button scope. The Instrument selector retains canonical `menus::Dropdown`, its
 arrow, width, text and guards; restore the original visuals and canonical popup
 style inside the menu so only its collapsed surface changes. All framed dropdowns and send-row destination groups now follow the shared
 [default control surface](dropdowns.md#default-framed-control-surfaces).
+
+## Layer header typography
+
+Regular layer names and the instrument-wide LFO, Envelope and Output header
+labels use `fonts::semibold(rows::NAME_FONT_SIZE)`, matching track-header
+names at 13 points. Preserve existing text colors, truncation, header placement,
+rename interactions, selection and drag behavior.

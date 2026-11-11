@@ -50,6 +50,10 @@ impl eframe::App for App {
         if let Some(titlebar) = &self.titlebar {
             titlebar.pointer_input(input);
         }
+        #[cfg(target_os = "macos")]
+        if let Some(titlebar) = &self.titlebar {
+            titlebar.prepare_input();
+        }
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         #[cfg(target_os = "windows")]
@@ -63,6 +67,10 @@ impl eframe::App for App {
             titlebar.update(self.ui.settings().titlebar);
         }
         self.ui.show(ui);
+        #[cfg(target_os = "macos")]
+        if let Some(titlebar) = &self.titlebar {
+            titlebar.finish(ui.ctx());
+        }
         #[cfg(target_os = "windows")]
         if let Some(titlebar) = &mut self.titlebar {
             titlebar.finish(&self.ui, ui.ctx());

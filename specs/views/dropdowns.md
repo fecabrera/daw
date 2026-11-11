@@ -27,6 +27,19 @@ including root/sharp, duration/mode, Unison/Detune and send destinations.
 Source-specific controls remain owned by the DAW, while the default
 surface styling lives in the shared theme.
 
+Control-panel header titles, including Tracks, Layers, Beat subtracks and
+catalog headers, use the shared semibold font at their existing Body text size.
+
+Timeline, Instrument, Editor and Mixer view buttons use the shared semibold
+font at their existing Button text size. Preserve their padding, colors,
+selection and navigation behavior. View buttons own click-and-drag gestures;
+a drag that starts on one must not move the native window or activate a view.
+In macOS custom-titlebar mode, disable AppKit's implicit window movement. The
+desktop adapter enables movement only for an explicit UI title/empty-header
+drag request, immediately before eframe handles `StartDrag`. Reset this native
+gate before input processing and after frames without a request. Restore the
+original movability when returning to the native titlebar.
+
 Other frameless toolbar and view toggles retain their transparent idle
 surfaces and existing hover/semantic active colors. Hover, pressed and active
 backgrounds use 5-point corners through the shared DAW toggle radius. Catalog

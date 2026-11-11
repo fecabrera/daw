@@ -145,7 +145,9 @@ impl ControlPanel {
             |ui| {
                 ui.set_min_width(self.rect.width());
                 crate::toolbars::Toolbar::row(ui, |ui| {
-                    ui.label(title);
+                    ui.label(egui::RichText::new(title).font(crate::fonts::semibold(
+                        egui::TextStyle::Body.resolve(ui.style()).size,
+                    )));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), actions)
                         .inner
                 })

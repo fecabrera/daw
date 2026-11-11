@@ -117,7 +117,9 @@ impl DawUi {
                             ui.painter()
                                 .layout_no_wrap(
                                     mode.label().into(),
-                                    egui::TextStyle::Button.resolve(&style),
+                                    crate::fonts::semibold(
+                                        egui::TextStyle::Button.resolve(&style).size,
+                                    ),
                                     theme::palette(ui.ctx()).text,
                                 )
                                 .size()
@@ -251,6 +253,7 @@ mod tests {
         ] {
             for width in [900.0, 1280.0] {
                 let ctx = egui::Context::default();
+                crate::fonts::configure(&ctx);
                 let mut app = DawUi::default();
                 app.set_settings(
                     &ctx,
@@ -286,6 +289,67 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn view_buttons_own_drags_instead_of_the_header() {
+        let ctx = egui::Context::default();
+        crate::theme::configure(&ctx);
+        crate::fonts::configure(&ctx);
+        let mut app = DawUi::default();
+        let header_id = egui::Id::new("draggable-header");
+        let mut run = |events: Vec<egui::Event>| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 800.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    let header =
+                        Rect::from_min_size(ui.next_widget_position(), Vec2::new(1000.0, 38.0));
+                    ui.interact(header, header_id, egui::Sense::drag());
+                    app.view_controls(ui);
+                },
+            );
+            assert!(!output.viewport_output.values().any(|viewport| {
+                viewport
+                    .commands
+                    .contains(&egui::ViewportCommand::StartDrag)
+            }));
+            #[cfg(target_os = "macos")]
+            assert!(!crate::window_drag::take_window_drag_request(&ctx));
+            output.textures_delta.clear();
+            output.shapes
+        };
+        run(vec![]);
+        let shapes = run(vec![]);
+        for mode in crate::ViewMode::ALL {
+            let start = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == mode.label() => {
+                        Some(text.pos + text.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let button = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            run(vec![egui::Event::PointerMoved(start)]);
+            run(vec![button(start, true)]);
+            let end = Pos2::new(900.0, start.y);
+            run(vec![egui::Event::PointerMoved(end)]);
+            let owner = ctx.dragged_id().expect("view button captures the drag");
+            assert_ne!(owner, header_id);
+            run(vec![button(end, false)]);
+        }
+        assert_eq!(app.view_mode, crate::ViewMode::default());
+        assert!(!app.dirty);
     }
 
     #[test]

@@ -1045,7 +1045,7 @@ impl DawUi {
             let response = ui.add(
                 egui::Label::new(
                     egui::RichText::new(&layer.name)
-                        .font(egui::FontId::proportional(rows::NAME_FONT_SIZE))
+                        .font(crate::fonts::semibold(rows::NAME_FONT_SIZE))
                         .color(theme::palette(ui.ctx()).text),
                 )
                 .truncate()
