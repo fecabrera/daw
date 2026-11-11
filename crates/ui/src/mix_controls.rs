@@ -171,26 +171,11 @@ pub(super) fn named_row<R>(
     (name, knobs, toggles)
 }
 
-/// Fixed-width controls for the catalog-height Tracks row. No extra knob slots.
+/// Fixed-width M/S controls for the catalog-height Tracks row.
 pub(super) const BROWSER_BUTTON_SIZE: f32 = 16.0;
-pub(super) const BROWSER_KNOB_SIZE: f32 = 16.0;
-pub(super) const BROWSER_WIDTH: f32 = 2.0 * BROWSER_BUTTON_SIZE
-    + rows::GROUP_DIVIDER_WIDTH
-    + 2.0 * BROWSER_KNOB_SIZE
-    + 2.0 * KNOB_GAP;
-pub(super) fn browser_row(
-    ui: &mut Ui,
-    gain: &mut f32,
-    pan: &mut f32,
-    muted: &mut bool,
-    soloed: &mut bool,
-) -> [Response; 4] {
-    ui.spacing_mut().item_spacing.x = KNOB_GAP;
-    let [mute, solo] =
-        mute_solo_with_size(ui, muted, soloed, ["Mute", "Solo"], BROWSER_BUTTON_SIZE);
-    let pan = knobs::pan_scaled(ui, pan, BROWSER_KNOB_SIZE / knobs::SIZE);
-    let gain = knobs::gain_scaled(ui, gain, BROWSER_KNOB_SIZE / knobs::SIZE);
-    [mute, solo, pan, gain]
+pub(super) const BROWSER_WIDTH: f32 = 2.0 * BROWSER_BUTTON_SIZE + rows::GROUP_DIVIDER_WIDTH;
+pub(super) fn browser_row(ui: &mut Ui, muted: &mut bool, soloed: &mut bool) -> [Response; 2] {
+    mute_solo_with_size(ui, muted, soloed, ["Mute", "Solo"], BROWSER_BUTTON_SIZE)
 }
 
 #[cfg(test)]

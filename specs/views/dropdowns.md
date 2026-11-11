@@ -43,9 +43,9 @@ original movability when returning to the native titlebar.
 Other frameless toolbar and view toggles retain their transparent idle
 surfaces and existing hover/semantic active colors. Hover, pressed and active
 backgrounds use 5-point corners through the shared DAW toggle radius. Catalog
-rows retain 2-point rounding. Circular power buttons and knob faces retain their
-prior surfaces. Popup rows retain the canonical style below, including 2-point
-corners. Workspace/panel separator geometry is separate
+rows use the shared 5-point item radius. Circular power buttons and knob faces retain their
+prior surfaces. Popup rows retain the canonical style below, including 5-point
+item corners. Workspace/panel separator geometry is separate
 from control strokes and retains its existing borders.
 
 ### Transport buttons
@@ -68,7 +68,7 @@ Custom icon-button action dropdowns use `Dropdown::show_from_button`. Retain the
 - Unit selectors use `Dropdown::small_items()` for Small popup text (11 points), including modulation source/destination menus and their layer submenus. Nested unit menus use `menus::small_popup_style`; measure their labels with Small text. Other selectors and application/context menus retain regular Button text (13 points). Selected captions retain their existing size.
 - Apply 4-point inner padding around labels and submenu arrows, 4-point outer popup margins, and 4-point vertical gaps between items.
 - Give root and child popup contents a minimum width of 140 points. Longer labels expand the popup; keep labels on one line and each row's hit area and highlight at full content width. Hover must not wrap labels or resize rows.
-- Use rounded, borderless row highlights and theme secondary text for inactive rows. Hover, press and open submenus use `theme::TOOLBAR_HOVER_FILL`, the same translucent grey as the view buttons. Selected choices retain their accent-tinted fill. Use normal text color over the whole highlighted row, including text, padding and arrow. Disabled choices retain egui's disabled behavior.
+- Use 5-point rounded, borderless row highlights and theme secondary text for inactive rows. Hover, press and open submenus use `theme::TOOLBAR_HOVER_FILL`, the same translucent grey as the view buttons. Selected choices retain their accent-tinted fill. Use normal text color over the whole highlighted row, including text, padding and arrow. Disabled choices retain egui's disabled behavior.
 - Use the shared 16-point Lucide ChevronRight for submenu arrows, tinted with the row text color. Retain egui's submenu hover, focus and dismissal behavior.
 - Use `menus::separator`: the divider occupies only its 1-point line height. The shared 4-point item gap supplies the space above and below it; add no divider padding.
 
@@ -90,7 +90,7 @@ Effects, Components and Chords share `Catalog` and `ControlPanel::catalog_body` 
 
 - Reuse `menus::ITEM_PADDING`, `OUTER_MARGIN` and `ITEM_SPACING`: 4-point row padding, outer list margins and gaps between visible rows.
 - Apply outer margins once around the scrollable list. Selected row highlights fit inside these margins; keep the fixed header and panel border unchanged.
-- Keep the existing Small text, category indentation, disclosure/folder icons, selected fill, hover text colors and rounded highlights. Center labels and icons vertically; reserve the icon height plus inner padding for every row.
+- Keep the existing Small text, category indentation, disclosure/folder icons, selected fill, hover text colors and 5-point rounded highlights. Center labels and icons vertically; reserve the icon height plus inner padding for every row.
 - Keep form fields outside the catalog helper. Their existing row height and baseline rules remain independent.
 
 Stable row IDs, selection, keyboard navigation, visible folder order, scrolling, drag previews and release-only edits retain the [catalog contract](../editing/components.md#instrument-catalog-folders). Spacing changes must not create units or project edits.

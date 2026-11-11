@@ -493,7 +493,7 @@ fn compact_controls_keep_catalog_row_sizes_and_right_alignment_for_every_owner()
                 })
                 .max(icons::TOOLBAR_ICON_SIZE)
                 + 2.0 * f32::from(menus::ITEM_PADDING);
-            let right = app.track_browser.bounds.mix[&parent][3].right();
+            let right = app.track_browser.bounds.mix[&parent][1].right();
             for id in std::iter::once(parent).chain(ids) {
                 let row = rect(&app, id);
                 assert!((row.height() - expected).abs() < 0.01);
@@ -504,32 +504,9 @@ fn compact_controls_keep_catalog_row_sizes_and_right_alignment_for_every_owner()
                 let inner = Vec2::splat(mix_controls::BROWSER_BUTTON_SIZE);
                 assert_eq!(controls[0].size(), inner);
                 assert_eq!(controls[1].size(), inner);
-                assert_eq!(controls[2].size(), Vec2::splat(16.0));
-                assert_eq!(controls[3].size(), Vec2::splat(16.0));
-                for control in &controls[2..] {
-                    // Scroll clipping intentionally hides controls beyond the viewport.
-                    if !app.track_browser.bounds.panel.contains_rect(*control) {
-                        continue;
-                    }
-                    let mut painted = false;
-                    for shape in &shapes {
-                        let bounds = shape.shape.visual_bounding_rect();
-                        if matches!(shape.shape, egui::Shape::Path(_) | egui::Shape::Circle(_))
-                            && bounds.width() > 8.0
-                            && bounds.height() > 8.0
-                            && control.contains(bounds.center())
-                        {
-                            assert!(
-                                shape.clip_rect.contains_rect(bounds),
-                                "{bounds:?} clipped by {:?}",
-                                shape.clip_rect
-                            );
-                            painted = true;
-                        }
-                    }
-                    assert!(painted, "knob must be visible");
-                }
-                assert!((controls[3].right() - right).abs() < 0.01);
+                assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Circle(circle) if row.contains(circle.center))));
+                assert!((controls[1].right() - right).abs() < 0.01);
                 assert!(
                     controls
                         .windows(2)
@@ -563,28 +540,24 @@ fn row_controls_edit_the_canonical_bus_without_changing_navigation_or_starting_d
         assert_eq!(app.selected_track, Some(parent));
         assert_eq!(app.selected_instrument_owner(), Some(output));
         assert!(app.track_drag.is_none() && !app.beat_dragging());
-        let gain = app.track_browser.bounds.mix[&id][3].center();
-        pointer(&mut app, &ctx, gain, true);
-        let moved = gain - Vec2::new(0.0, 24.0);
-        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(moved)]);
-        pointer(&mut app, &ctx, moved, false);
-        let gain = if id == parent {
-            app.session
+        let solo = app.track_browser.bounds.mix[&id][1].center();
+        click(&mut app, &ctx, solo);
+        let (gain, pan, soloed) = if id == parent {
+            let track = app
+                .session
                 .project
                 .tracks
                 .iter()
                 .find(|track| track.id == id)
-                .unwrap()
-                .gain_db
+                .unwrap();
+            (track.gain_db, track.pan, track.soloed)
         } else {
-            app.session
-                .project
-                .instrument_settings(id)
-                .unwrap()
-                .main
-                .gain_db
+            let (_, subtrack) = app.session.project.beat_subtrack(id).unwrap();
+            let main = &app.session.project.instrument_settings(id).unwrap().main;
+            (main.gain_db, main.pan, subtrack.soloed)
         };
-        assert!(gain > 0.0);
+        assert!(soloed);
+        assert_eq!((gain, pan), (0.0, 0.0));
         assert!(app.track_drag.is_none() && !app.beat_dragging());
     }
     assert!(app.dirty);

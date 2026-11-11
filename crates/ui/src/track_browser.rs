@@ -24,7 +24,7 @@ pub(super) struct Bounds {
     add: Rect,
     panel: Rect,
     rows: Vec<(Id, Rect)>,
-    pub mix: HashMap<Id, [Rect; 4]>,
+    pub mix: HashMap<Id, [Rect; 2]>,
     pub disclosure: HashMap<Id, Rect>,
 }
 #[cfg(test)]
@@ -232,7 +232,10 @@ impl DawUi {
                 rect.right() - f32::from(menus::ITEM_PADDING) - mix_controls::BROWSER_WIDTH * 0.5,
                 rect.center().y,
             ),
-            Vec2::new(mix_controls::BROWSER_WIDTH, mix_controls::BROWSER_KNOB_SIZE),
+            Vec2::new(
+                mix_controls::BROWSER_WIDTH,
+                mix_controls::BROWSER_BUTTON_SIZE,
+            ),
         );
         let mut child = ui.new_child(
             egui::UiBuilder::new()
@@ -243,13 +246,7 @@ impl DawUi {
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         let responses = child
             .add_enabled_ui(enabled, |ui| {
-                mix_controls::browser_row(
-                    ui,
-                    &mut value.gain,
-                    &mut value.pan,
-                    &mut value.muted,
-                    &mut value.soloed,
-                )
+                mix_controls::browser_row(ui, &mut value.muted, &mut value.soloed)
             })
             .inner;
         #[cfg(test)]

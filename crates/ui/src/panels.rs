@@ -360,7 +360,7 @@ impl ControlPanel {
         if selected {
             ui.painter().rect_filled(
                 rect,
-                egui::CornerRadius::same(2),
+                crate::menus::ITEM_CORNER_RADIUS,
                 crate::theme::toggle_colors(ui.ctx(), true).0,
             );
         }
@@ -844,7 +844,7 @@ mod catalog_style_tests {
                 assert_eq!(pair[1].top() - pair[0].bottom(), 4.0);
                 assert_eq!(pair[0].width(), pair[1].width());
             }
-            assert!(output.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rows[1] && r.fill == crate::theme::toggle_colors(&ctx, true).0 && r.corner_radius.nw > 0)));
+            assert!(output.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rows[1] && r.fill == crate::theme::toggle_colors(&ctx, true).0 && r.corner_radius == egui::CornerRadius::same(5))));
             let label = output
                 .shapes
                 .iter()

@@ -2,6 +2,7 @@
 use egui::{ComboBox, InnerResponse, Style, TextStyle, Ui, Vec2, WidgetText};
 
 pub const ITEM_PADDING: i8 = 4;
+pub const ITEM_CORNER_RADIUS: egui::CornerRadius = egui::CornerRadius::same(5);
 pub const OUTER_MARGIN: i8 = 4;
 pub const ITEM_SPACING: f32 = 4.0;
 pub const MIN_WIDTH: f32 = 140.0;
@@ -58,7 +59,7 @@ pub fn popup_style(style: &mut Style) {
     let text = style.visuals.widgets.noninteractive.fg_stroke.color;
     let secondary = style.visuals.weak_text_color();
     let fill = crate::theme::TOOLBAR_HOVER_FILL;
-    let radius = egui::CornerRadius::same(2);
+    let radius = ITEM_CORNER_RADIUS;
     style.visuals.widgets.inactive.corner_radius = radius;
     style.visuals.selection.stroke = egui::Stroke::new(0.0, text);
     style.visuals.widgets.inactive.fg_stroke.color = secondary;
@@ -441,7 +442,7 @@ mod tests {
                     })
                     .expect("full-width selected row");
                 assert!(row.rect.width() > MIN_WIDTH, "long labels expand the popup");
-                assert!(row.corner_radius.nw > 0);
+                assert_eq!(row.corner_radius, egui::CornerRadius::same(5));
                 let label = opened
                     .shapes
                     .iter()
@@ -465,7 +466,7 @@ mod tests {
                             &shape.shape, egui::Shape::Rect(rect)
                                 if rect.rect.contains(point) && rect.rect.width() >= MIN_WIDTH
                                     && rect.fill == crate::theme::TOOLBAR_HOVER_FILL
-                                    && rect.stroke.width == 0.0 && rect.corner_radius.nw > 0
+                                    && rect.stroke.width == 0.0 && rect.corner_radius == egui::CornerRadius::same(5)
                         )),
                         "Dropdown labels and padding must use the view-button hover color"
                     );

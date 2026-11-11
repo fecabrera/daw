@@ -4,6 +4,55 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## M/S-only Tracks browser rows — 2026-11-10
+
+Remove Pan and Gain knobs from the shared Tracks browser in Instrument and
+Editor, including project tracks, groups, beat parents and beat subtracks.
+Reserve only the 33-point M/S group at the right, retaining its button size and
+row height. Names gain the freed width. Saved gain/pan, selection, disclosure,
+rename and reorder behavior remain; M/S edits retain the existing mix stage.
+This supersedes the browser-knob presentation recorded below.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (978 passed, 3 ignored). Updated
+  browser tests cover right alignment, row size and absent knobs in all themes
+  at 1×/1.5×/2× scale, plus M/S edits without gain/pan or navigation changes.
+- `git diff --check`: passed.
+
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+
+Native appearance remains unverified. App packaging stopped at the committed-
+source gate. The executable was rebuilt; the app bundle was not updated.
+
+## Shared menu and list-row corner radius — 2026-11-10
+
+Dropdown, context-menu, application-menu and nested-menu row highlights now use
+5-point corners. The Tracks browser in Instrument/Editor and the Effects,
+Components and Chords catalogs use the same shared item-radius constant. This
+supersedes their earlier 2-point row radius. Keep existing row size, margins,
+spacing, colors and actions. Independent plugin menus inherit the shared style.
+
+Completed checks:
+
+- `cargo test -p daw-unit-ui -p daw-ui --offline`: passed (43 shared-control
+  tests; 978 DAW UI tests passed, 3 ignored). Existing popup and catalog paint
+  checks now verify the 5-point radius; navigation and interaction suites pass.
+- `git diff --check`: passed.
+
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+
+Native appearance remains unverified. App packaging stopped at the committed-
+source gate. The executable was rebuilt; the app bundle was not updated.
+
 ## Native custom-titlebar drag gate and semibold panel titles — 2026-11-10
 
 The previous egui-only view-button drag fix did not prevent AppKit titlebar
