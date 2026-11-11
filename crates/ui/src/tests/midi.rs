@@ -3616,6 +3616,7 @@ fn new_destination_tracks_use_fresh_instruments_for_copies_and_preserve_move_sou
                 mode: ClipDragMode::Move,
                 origin: Pos2::ZERO,
                 duplicate,
+                edge_mode: None,
                 linked_boundary: false,
                 clips: Vec::new(),
             },

@@ -194,6 +194,7 @@ fn group_stretch_clamps_shared_ratio_at_each_members_limits() {
         mode: ClipDragMode::StretchRight,
         origin: Pos2::ZERO,
         duplicate: false,
+        edge_mode: None,
         linked_boundary: false,
         clips: entries.clone(),
     };
@@ -405,6 +406,7 @@ fn group_stretch_rounds_unequal_lengths_without_timeline_overflow() {
         mode: ClipDragMode::StretchRight,
         origin: Pos2::ZERO,
         duplicate: false,
+        edge_mode: None,
         linked_boundary: false,
         clips: entries,
     };
@@ -647,4 +649,196 @@ fn group_stretch_removes_fully_covered_selected_clips_and_prunes_selection() {
             .any(|clip| clip.id == ids[1])
     );
     app.session.project.validate().unwrap();
+}
+
+#[test]
+fn live_edge_modifier_repaints_group_and_release_uses_current_mode() {
+    for left in [false, true] {
+        for header in [false, true] {
+            for release_stretch in [false, true] {
+                let (mut app, _, ids) = fixture_with_audio();
+                // Give left trims source room; both modes must produce valid previews.
+                app.session.project.tracks[0].clips[0].source_offset_frame = frames(0.25);
+                let ctx = context();
+                select_group(&mut app, &ctx, ids);
+                let before = format!("{:?}", app.session.project);
+                let (end, _) = begin(
+                    &mut app,
+                    &ctx,
+                    left,
+                    header,
+                    true,
+                    if left { -0.125 } else { 0.125 },
+                );
+                let origin = app.drag.as_ref().unwrap().origin;
+                let base = match (left, header) {
+                    (true, false) => ClipDragMode::TrimLeft,
+                    (false, false) => ClipDragMode::TrimRight,
+                    (true, true) => ClipDragMode::LoopLeft,
+                    (false, true) => ClipDragMode::LoopRight,
+                };
+                // Only the modifier changes. No pointer event is needed to repaint.
+                for stretch in [false, true, false] {
+                    let mods = if stretch {
+                        modifiers(true)
+                    } else {
+                        egui::Modifiers {
+                            shift: true,
+                            ..Default::default()
+                        }
+                    };
+                    let shapes = frame_shapes(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::ModifiersChanged(mods)],
+                        Vec2::new(1280.0, 800.0),
+                    );
+                    let drag = app.drag.as_ref().unwrap();
+                    assert_eq!(drag.mode, base.with_stretch_modifier(stretch));
+                    assert_eq!(drag.origin, origin);
+                    assert_eq!(drag.clips.len(), 3);
+                    let previews = app.clip_drag_previews(drag, end, true);
+                    assert_eq!(previews.len(), 3);
+                    for preview in &previews {
+                        assert!(preview.valid);
+                        assert!(has_preview_outline(
+                            &shapes,
+                            app.clip_block(
+                                app.lane_bounds[&preview.track],
+                                &preview.clip,
+                                preview.clip.start_frame
+                            ),
+                            theme::ACCENT,
+                        ));
+                    }
+                    assert_eq!(format!("{:?}", app.session.project), before);
+                    assert!(!app.dirty);
+                    assert!(app.job.is_none());
+                }
+                // A modifier change in the release frame also selects the commit path.
+                let release_mods = if release_stretch {
+                    modifiers(true)
+                } else {
+                    egui::Modifiers {
+                        shift: true,
+                        ..Default::default()
+                    }
+                };
+                let expected = {
+                    let drag = app.drag.as_mut().unwrap();
+                    drag.mode = base.with_stretch_modifier(release_stretch);
+                    let previews = app.clip_drag_previews(app.drag.as_ref().unwrap(), end, true);
+                    app.drag.as_mut().unwrap().mode = base;
+                    previews
+                };
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::ModifiersChanged(release_mods),
+                        egui::Event::PointerButton {
+                            pos: end,
+                            pressed: false,
+                            button: egui::PointerButton::Primary,
+                            modifiers: release_mods,
+                        },
+                    ],
+                );
+                assert!(app.drag.is_none());
+                if release_stretch {
+                    assert!(app.job.is_some());
+                    assert_eq!(format!("{:?}", app.session.project), before);
+                    wait_for_save(&mut app);
+                }
+                assert!(app.error.is_none(), "{:?}", app.error);
+                for preview in expected {
+                    let placed = app
+                        .session
+                        .project
+                        .tracks
+                        .iter()
+                        .flat_map(|t| &t.clips)
+                        .find(|clip| clip.id == preview.clip.id)
+                        .unwrap();
+                    assert_eq!(format!("{placed:?}"), format!("{:?}", preview.clip));
+                }
+                assert!(app.dirty);
+            }
+        }
+    }
+}
+
+#[test]
+fn ordinary_editor_edge_switches_to_stretch_and_back_before_cancellation() {
+    for left in [false, true] {
+        let (mut app, tracks, ids) = fixture_with_audio();
+        app.session.project.tracks[0].clips[0].source_offset_frame = frames(0.25);
+        let ctx = context();
+        app.open_clip_editor(ids[0], tracks[0], &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let original = app.session.project.tracks[0].clips[0].clone();
+        let before = format!("{:?}", app.session.project);
+        let lane = app.midi_editor.content.bounds;
+        app.midi_editor.content_active = true;
+        let block = app.clip_block(lane, &original, original.start_frame);
+        app.midi_editor.content_active = false;
+        let origin = Pos2::new(
+            if left {
+                block.left() + 1.0
+            } else {
+                block.right() - 1.0
+            },
+            block.top() + 40.0,
+        );
+        let end = origin + Vec2::new(if left { -12.0 } else { 12.0 }, 0.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(origin), button(origin, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert!(app.content_clip_drag);
+        let base = if left {
+            ClipDragMode::TrimLeft
+        } else {
+            ClipDragMode::TrimRight
+        };
+        for stretch in [true, false, true] {
+            let mods = if stretch {
+                modifiers(true)
+            } else {
+                egui::Modifiers {
+                    shift: true,
+                    ..Default::default()
+                }
+            };
+            frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::ModifiersChanged(mods)],
+                Vec2::new(1280.0, 800.0),
+            );
+            let drag = app.drag.as_ref().unwrap();
+            assert_eq!(drag.mode, base.with_stretch_modifier(stretch));
+            let preview = app.clip_drag_preview(drag, end, true).unwrap();
+            assert!(preview.valid);
+            assert_eq!(preview.clip.stretch.is_some(), stretch);
+            assert_eq!(format!("{:?}", app.session.project), before);
+            assert!(app.job.is_none());
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: modifiers(true),
+            }],
+        );
+        assert!(app.drag.is_none());
+        assert_eq!(format!("{:?}", app.session.project), before);
+        assert!(!app.dirty);
+    }
 }

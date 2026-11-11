@@ -331,6 +331,7 @@ impl DawUi {
                     mode: ClipDragMode::Move,
                     origin: drag.origin,
                     duplicate,
+                    edge_mode: None,
                     linked_boundary: false,
                     clips: Vec::new(),
                 },
@@ -584,6 +585,7 @@ impl PortionDrag {
             mode: ClipDragMode::Move,
             origin: self.origin,
             duplicate,
+            edge_mode: None,
             linked_boundary: false,
             clips: self.slices.clone(),
         }

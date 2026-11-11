@@ -22,6 +22,7 @@ struct Drag {
     enabled: bool,
     id: daw_unit_core::ModulationTargetId,
     preview: MultibandEqBand,
+    anchor: MultibandEqBand,
     last: Pos2,
     offset: [f64; 2],
     q: bool,
@@ -208,7 +209,7 @@ pub fn show(
             let rect = Rect::from_center_size(node, Vec2::splat((node_radius(i) + 3.0) * 2.0));
             bounds.nodes.push(rect);
             let response=ui.interact(rect,ui.id().with(("eq-point",b.id)),Sense::click_and_drag()).on_hover_cursor(egui::CursorIcon::Grab)
-                .on_hover_text(format!("Band {} · {}\nDrag: Frequency{}. {}-drag: Q only (up/right increases; down/left decreases). Shift: fine. Live audio preview; release commits; Escape cancels.",i+1,b.mode.label(),if b.mode.uses_gain(){" / Gain"}else{""},if cfg!(target_os="macos"){"Command"}else{"Ctrl"}));
+                .on_hover_text(format!("Band {} · {}\nDrag: Frequency{}. {}-drag: Q only (up/right increases; down/left decreases). Change the modifier during the drag to switch modes. Shift: fine. Live audio preview; release commits; Escape cancels.",i+1,b.mode.label(),if b.mode.uses_gain(){" / Gain"}else{""},if cfg!(target_os="macos"){"Command"}else{"Ctrl"}));
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(
                     egui::WidgetType::DragValue,
@@ -236,6 +237,7 @@ pub fn show(
                     enabled: s.enabled,
                     id: b.id,
                     preview: b.clone(),
+                    anchor: b.clone(),
                     last,
                     offset: [0.0; 2],
                     q: ui.input(|i| i.modifiers.command),
@@ -245,6 +247,14 @@ pub fn show(
             if let Some(d) = &mut drag
                 && d.id == b.id
             {
+                let q = ui.input(|i| i.modifiers.command);
+                if q != d.q {
+                    // Start the new mode at the current draft, without applying
+                    // the previous mode's displacement to another parameter.
+                    d.anchor = d.preview.clone();
+                    d.offset = [0.0; 2];
+                    d.q = q;
+                }
                 if let Some(pointer) = ui.input(|i| i.pointer.interact_pos()) {
                     let delta = (pointer - d.last)
                         * ui.input(|i| if i.modifiers.shift { 0.1 } else { 1.0 });
@@ -256,11 +266,7 @@ pub fn show(
                             *value = 0.0;
                         }
                     }
-                    let original = d
-                        .bands
-                        .iter()
-                        .find(|b| b.id == d.id)
-                        .expect("validated band identity");
+                    let original = &d.anchor;
                     if d.q {
                         d.preview.q = (f64::from(original.q)
                             * 100_f64.powf(
@@ -288,14 +294,10 @@ pub fn show(
                         (0, b.gain_db, d.preview.gain_db),
                         (2, b.q, d.preview.q),
                     ] {
-                        if before != after
-                            || (input.live_edits
-                                && (if d.q {
-                                    parameter == 2
-                                } else {
-                                    parameter == 1 || (parameter == 0 && b.mode.uses_gain())
-                                }))
-                        {
+                        // Keep any opened host gestures active across mode
+                        // switches. Otherwise a delayed host snapshot can replace
+                        // the previous mode's values and cancel this drag.
+                        if before != after || input.live_edits {
                             let mut r = response.clone();
                             if before != after {
                                 r.mark_changed();
@@ -583,6 +585,113 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn eq_graph_switches_frequency_and_q_without_jumps_and_commits_or_cancels_together() {
+        for cancel in [false, true] {
+            for mode in [
+                daw_unit_core::EqBandMode::Bell,
+                daw_unit_core::EqBandMode::HighPass,
+            ] {
+                let ctx = egui::Context::default();
+                theme::configure(&ctx);
+                crate::fonts::configure(&ctx);
+                let mut s = MultibandEqSettings::default();
+                s.bands[0].mode = mode;
+                let original = s.clone();
+                let start = frame(&ctx, &mut s, vec![], true, true, false).nodes[0].center();
+                frame(
+                    &ctx,
+                    &mut s,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                    true,
+                    true,
+                    false,
+                );
+                let first = start + Vec2::new(20.0, -10.0);
+                let draft = frame(
+                    &ctx,
+                    &mut s,
+                    vec![egui::Event::PointerMoved(first)],
+                    true,
+                    true,
+                    false,
+                )
+                .preview
+                .unwrap();
+                assert!(draft.frequency_hz > original.bands[0].frequency_hz);
+                assert_eq!(draft.q, original.bands[0].q);
+                assert_eq!(
+                    frame(&ctx, &mut s, vec![], true, true, true)
+                        .preview
+                        .unwrap(),
+                    draft
+                );
+                let second = first + Vec2::new(10.0, -5.0);
+                let q = frame(
+                    &ctx,
+                    &mut s,
+                    vec![egui::Event::PointerMoved(second)],
+                    true,
+                    true,
+                    true,
+                )
+                .preview
+                .unwrap();
+                assert!(q.q > draft.q);
+                assert_eq!(q.frequency_hz, draft.frequency_hz);
+                assert_eq!(q.gain_db, draft.gain_db);
+                assert_eq!(
+                    frame(&ctx, &mut s, vec![], true, true, false)
+                        .preview
+                        .unwrap(),
+                    q
+                );
+                let end = second + Vec2::new(-8.0, 4.0);
+                let final_draft = frame(
+                    &ctx,
+                    &mut s,
+                    vec![egui::Event::PointerMoved(end)],
+                    true,
+                    true,
+                    false,
+                )
+                .preview
+                .unwrap();
+                assert!(final_draft.frequency_hz < q.frequency_hz);
+                assert_eq!(final_draft.q, q.q);
+                if !mode.uses_gain() {
+                    assert_eq!(final_draft.gain_db, original.bands[0].gain_db);
+                }
+                assert_eq!(s, original);
+                if cancel {
+                    frame(
+                        &ctx,
+                        &mut s,
+                        vec![egui::Event::Key {
+                            key: egui::Key::Escape,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: Default::default(),
+                        }],
+                        true,
+                        true,
+                        false,
+                    );
+                }
+                let result = frame(&ctx, &mut s, vec![button(end, false)], true, true, true);
+                if cancel {
+                    assert_eq!(s, original);
+                    assert!(result.edits.is_empty());
+                } else {
+                    assert_eq!(s.bands[0], final_draft);
+                    assert!(result.edits.iter().any(|(_, p, _)| *p == 1));
+                    assert!(result.edits.iter().any(|(_, p, _)| *p == 2));
+                }
+            }
+        }
+    }
+
     #[test]
     fn eq_graph_command_drag_changes_q_in_all_four_directions_without_frequency_or_gain() {
         for delta in [

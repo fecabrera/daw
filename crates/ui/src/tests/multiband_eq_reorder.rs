@@ -337,12 +337,28 @@ fn multiband_eq_graph_preview_is_atomic_cancellable_and_one_undo_step() {
             let (mut app, ctx) = fixture(false, master);
             let original = settings(&app).clone();
             let start = app.effects_bounds.multiband_eq_units[0].graph.nodes[0].center();
-            let end = start + Vec2::new(20.0, -15.0);
+            let mut end = start + Vec2::new(20.0, -15.0);
             frame(
                 &mut app,
                 &ctx,
                 vec![egui::Event::PointerMoved(start), button(start, true)],
             );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            let command = egui::Modifiers {
+                command: true,
+                mac_cmd: cfg!(target_os = "macos"),
+                ctrl: !cfg!(target_os = "macos"),
+                ..Default::default()
+            };
+            frame(&mut app, &ctx, vec![egui::Event::ModifiersChanged(command)]);
+            end += Vec2::new(10.0, -5.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::ModifiersChanged(Default::default())],
+            );
+            end += Vec2::new(5.0, -3.0);
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
             assert_eq!(settings(&app), &original);
             assert!(!app.dirty);
@@ -358,6 +374,7 @@ fn multiband_eq_graph_preview_is_atomic_cancellable_and_one_undo_step() {
             };
             assert!(preview.bands[0].frequency_hz > original.bands[0].frequency_hz);
             assert!(preview.bands[0].gain_db > original.bands[0].gain_db);
+            assert!(preview.bands[0].q > original.bands[0].q);
             let renderer = daw_engine::Renderer::new(preview_plan.clone());
             let actual = renderer
                 .modulation_snapshot(daw_engine::ModulationTarget::EffectBand {
@@ -367,6 +384,7 @@ fn multiband_eq_graph_preview_is_atomic_cancellable_and_one_undo_step() {
                 .unwrap();
             assert_eq!(actual[0], preview.bands[0].gain_db);
             assert_eq!(actual[1], preview.bands[0].frequency_hz);
+            assert_eq!(actual[2], preview.bands[0].q);
 
             if cancel {
                 frame(
@@ -395,6 +413,7 @@ fn multiband_eq_graph_preview_is_atomic_cancellable_and_one_undo_step() {
                 let changed = settings(&app).clone();
                 assert!(changed.bands[0].frequency_hz > original.bands[0].frequency_hz);
                 assert!(changed.bands[0].gain_db > original.bands[0].gain_db);
+                assert!(changed.bands[0].q > original.bands[0].q);
                 assert_eq!(changed.modulations, original.modulations);
                 app.perform_history_action(HistoryAction::Undo, &ctx);
                 assert_eq!(settings(&app), &original);

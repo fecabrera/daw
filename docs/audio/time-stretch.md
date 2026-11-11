@@ -15,6 +15,12 @@ Wait for project audio to finish before stretching audio clips or a selection co
 
 Ordinary waveform-edge dragging trims content. Ordinary header-edge dragging repeats it. Use the modifier when the intended result is a change of duration rather than a trim or repeat.
 
+Press or release the modifier during an edge drag to switch modes immediately.
+The preview updates at the current pointer position, even without further pointer
+movement. Releasing the modifier restores trim for a waveform edge or loop for a
+header edge. The modifier state at mouse release selects the action. A drag that
+starts as a shared-boundary trim keeps that paired trim gesture.
+
 ## Transpose an audio clip
 
 Select the clip in Timeline and open **Clip settings**. Drag **Transpose** vertically, or double-click its value and enter a whole number from −48 to +48 semitones. Positive values raise pitch; negative values lower it. Release the drag or press Enter to prepare the change. Escape cancels an active drag or text edit.

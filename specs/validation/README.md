@@ -4,6 +4,47 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Live drag modifiers — 2026-11-11
+
+Clip-edge drags read Option on macOS or Ctrl on Windows/Linux on each frame.
+Modifier changes immediately recompute the selected-group preview from the press
+snapshots, including frames without pointer movement. Releasing the modifier
+restores waveform trimming or header looping. The modifier at mouse release
+selects the commit path. Shared-boundary trims retain their paired gesture.
+
+Multiband EQ graph drags switch between Frequency/Gain and Q without releasing
+the pointer. Each switch retains the current values and resets the displacement
+anchor. The shared body serves the DAW and standalone editors. Open host
+parameter gestures stay active across switches, then end on release or
+cancellation. Cancellation restores the full gesture's original values.
+
+Automated egui checks cover both clip edges, header and waveform modes, selected
+groups, modifier-only preview painting, release-time mode changes, asynchronous
+stretch publication and lower Editor cancellation. Shared EQ checks cover Bell
+and High pass modes, modifier-only frames without value jumps, repeated switches,
+combined commit/cancellation and balanced standalone Begin/Value/End events.
+The DAW graph regression switches modes in one held drag on track and Master
+effects. Saved settings remain unchanged during preview; one Undo restores all
+Frequency/Gain/Q values and one Redo reapplies them together.
+
+Completed checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+  The added DAW Undo/Redo assertions also pass
+  `cargo clippy -p daw-ui --all-targets --offline -- -D warnings`.
+- `cargo test -p daw-unit-ui -p daw-multiband-eq-editor --offline`: passed.
+- Targeted DAW lower-Editor and atomic EQ Undo/Redo tests: passed.
+- `cargo test --workspace --offline`: passed, including doctests.
+- `cargo test --workspace --release --offline`: passed, including doctests.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check` and all 206 local file targets in changed Markdown
+  documents: passed.
+
+Native mouse/keyboard checks, device playback and Windows/Linux execution remain
+open. The macOS packaging command stopped at its clean committed-source guard;
+the app bundle was not refreshed and no changes were committed for packaging.
+
 ## Targeted effect updates — 2026-11-11
 
 Implemented [targeted effect updates](../architecture/effect-updates.md).

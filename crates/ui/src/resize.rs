@@ -29,6 +29,17 @@ fn range(clip: &Clip) -> (u64, u64, u64, Option<daw_core::ClipLoop>) {
 }
 
 impl DawUi {
+    pub(super) fn update_clip_edge_mode(&mut self, ui: &egui::Ui) {
+        if let Some(drag) = &mut self.drag
+            && !drag.linked_boundary
+            && let Some(mode) = drag.edge_mode
+        {
+            // Keep the press snapshot and pointer origin. Recompute each preview
+            // from them, including modifier-only frames and the release frame.
+            drag.mode = mode.with_stretch_modifier(ui.input(|i| clip_copy_modifier(i.modifiers)));
+        }
+    }
+
     pub(super) fn clip_trim_preview_project(&self, ui: &egui::Ui) -> Option<daw_core::Project> {
         let drag = self.drag.as_ref()?;
         if drag.linked_boundary

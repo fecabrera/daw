@@ -980,6 +980,7 @@ impl DawUi {
                         },
                         origin,
                         duplicate: false,
+                        edge_mode: None,
                         linked_boundary: false,
                         clips,
                     });

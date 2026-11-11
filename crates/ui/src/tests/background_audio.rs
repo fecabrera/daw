@@ -553,6 +553,7 @@ fn midi_only_modifier_stretch_retains_its_pending_edit_and_prepares_normally() {
         mode: ClipDragMode::StretchRight,
         origin: Pos2::ZERO,
         duplicate: false,
+        edge_mode: None,
         linked_boundary: false,
         clips: app.selected_clip_snapshots(),
     };

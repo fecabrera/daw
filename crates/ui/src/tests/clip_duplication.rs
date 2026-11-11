@@ -184,6 +184,7 @@ fn duplicate_previews_and_release_trim_split_or_remove_neighbors() {
             mode: ClipDragMode::Move,
             origin: Pos2::ZERO,
             duplicate: true,
+            edge_mode: None,
             linked_boundary: false,
             clips: Vec::new(),
         };

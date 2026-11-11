@@ -258,6 +258,7 @@ fn header_looping_and_modifier_stretching_do_not_move_the_neighbor_on_shortening
             mode,
             origin: Pos2::ZERO,
             duplicate: false,
+            edge_mode: None,
             linked_boundary: false,
             clips: vec![SelectedClip {
                 clip,

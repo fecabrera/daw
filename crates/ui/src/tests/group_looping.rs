@@ -234,6 +234,7 @@ fn group_loop_bounds_no_ops_and_cancellation_preserve_selection() {
             },
             origin: Pos2::new(500.0, 100.0),
             duplicate: false,
+            edge_mode: None,
             linked_boundary: false,
             clips: clips.clone(),
         };

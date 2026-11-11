@@ -734,6 +734,8 @@ struct Drag {
     mode: ClipDragMode,
     origin: Pos2,
     duplicate: bool,
+    // Original edge hit, retained while the live modifier selects stretch.
+    edge_mode: Option<ClipDragMode>,
     linked_boundary: bool,
     clips: Vec<SelectedClip>,
 }
@@ -2304,6 +2306,7 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.update_clip_edge_mode(ui);
         self.editor_transients
             .poll(self.session.project.project_id, ui.ctx());
         if self.view_mode != mixer::ViewMode::Edit
@@ -6510,6 +6513,7 @@ mod tests {
                     origin: end,
                     track,
                     duplicate: false,
+                    edge_mode: None,
                     linked_boundary: false,
                     clips: vec![],
                 };
@@ -6538,6 +6542,7 @@ mod tests {
             origin: Pos2::ZERO,
             track,
             duplicate: false,
+            edge_mode: None,
             linked_boundary: false,
             clips: vec![],
         };
@@ -7453,6 +7458,7 @@ mod tests {
                 },
                 origin: Pos2::new(500.0, 100.0),
                 duplicate: false,
+                edge_mode: None,
                 linked_boundary: false,
                 clips,
             };
@@ -9574,6 +9580,7 @@ mod tests {
             mode: ClipDragMode::LoopRight,
             origin: Pos2::ZERO,
             duplicate: false,
+            edge_mode: None,
             linked_boundary: false,
             clips: Vec::new(),
         };
@@ -10782,6 +10789,7 @@ mod tests {
                         mode: ClipDragMode::Move,
                         origin: pointer,
                         duplicate: false,
+                        edge_mode: None,
                         linked_boundary: false,
                         clips: Vec::new(),
                     })
@@ -12092,6 +12100,7 @@ mod tests {
             mode: ClipDragMode::Move,
             origin,
             duplicate: true,
+            edge_mode: None,
             linked_boundary: false,
             clips: Vec::new(),
         };
@@ -12962,6 +12971,7 @@ mod tests {
                     mode: ClipDragMode::LoopRight,
                     origin: end,
                     duplicate: false,
+                    edge_mode: None,
                     linked_boundary: false,
                     clips: Vec::new(),
                 };
@@ -13096,6 +13106,7 @@ mod tests {
                 mode,
                 origin,
                 duplicate: false,
+                edge_mode: None,
                 linked_boundary: false,
                 clips: Vec::new(),
             });

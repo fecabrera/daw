@@ -904,6 +904,7 @@ fn group_midpoint_changes_keep_relative_shape_and_cancel_without_edits() {
         },
         origin: Pos2::new(100.0, 100.0),
         duplicate: false,
+        edge_mode: None,
         linked_boundary: false,
         clips: app.selected_clip_snapshots(),
     };
@@ -977,6 +978,7 @@ fn grouped_crossfades_match_preview_and_clear_neighbor_envelopes() {
             },
             origin: Pos2::new(100.0, 100.0),
             duplicate: false,
+            edge_mode: None,
             linked_boundary: false,
             clips: app.selected_clip_snapshots(),
         });

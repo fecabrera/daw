@@ -191,7 +191,8 @@ impl DawUi {
             if self.portion_drag.is_some() {
                 return;
             }
-            let mode = ClipDragMode::at(block, origin)
+            let edge_mode = ClipDragMode::at(block, origin);
+            let mode = edge_mode
                 .with_stretch_modifier(ui.input(|input| clip_copy_modifier(input.modifiers)));
             // Lower audio waveform bodies retain click selection. Only their
             // headers and edges start clip gestures; note bodies have their own handlers.
@@ -230,6 +231,7 @@ impl DawUi {
                 track: track_id,
                 mode,
                 origin,
+                edge_mode: edge_mode.resize_edge().map(|_| edge_mode),
                 linked_boundary: self.at_trim_boundary(clip, mode, block, origin),
                 duplicate: mode == ClipDragMode::Move
                     && ui.input(|input| clip_copy_modifier(input.modifiers)),

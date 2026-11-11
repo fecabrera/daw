@@ -725,6 +725,104 @@ mod graph_binding_tests {
         )
     }
     #[test]
+    fn switching_graph_modes_keeps_host_gestures_balanced_and_cancellation_restores_all_values() {
+        for cancel in [false, true] {
+            let ctx = egui::Context::default();
+            daw_unit_ui::theme::configure(&ctx);
+            daw_unit_ui::fonts::configure(&ctx);
+            let model = std::sync::Arc::new(Model::default());
+            let mut editor = Editor::new(model.clone(), || {});
+            let mut out = frame(&ctx, &mut editor, vec![]);
+            let start = out
+                .shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "1" => {
+                        Some(t.pos + t.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            out.textures_delta.clear();
+            let pointer = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                pressed,
+                button: egui::PointerButton::Primary,
+                modifiers: Default::default(),
+            };
+            let command = |enabled| {
+                egui::Event::ModifiersChanged(egui::Modifiers {
+                    command: enabled,
+                    mac_cmd: enabled,
+                    ..Default::default()
+                })
+            };
+            let first = start + egui::vec2(14.0, -8.0);
+            let second = first + egui::vec2(10.0, -5.0);
+            let end = second + egui::vec2(6.0, -4.0);
+            for events in [
+                vec![egui::Event::PointerMoved(start), pointer(start, true)],
+                vec![egui::Event::PointerMoved(first)],
+                vec![command(true)],
+                vec![egui::Event::PointerMoved(second)],
+                vec![command(false)],
+                vec![egui::Event::PointerMoved(end)],
+            ] {
+                frame(&ctx, &mut editor, events).textures_delta.clear();
+            }
+            if cancel {
+                frame(
+                    &ctx,
+                    &mut editor,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                )
+                .textures_delta
+                .clear();
+            }
+            frame(&ctx, &mut editor, vec![pointer(end, false)])
+                .textures_delta
+                .clear();
+            let mut events = Vec::new();
+            while let Some(event) = model.pop() {
+                events.push(event);
+            }
+            for parameter in [P::ALL[3], P::ALL[4], P::ALL[5]] {
+                let mut active = false;
+                let mut values = Vec::new();
+                for event in &events {
+                    match event {
+                        Edit::Begin(p) if *p == parameter => {
+                            assert!(!active);
+                            active = true;
+                        }
+                        Edit::Value(p, value) if *p == parameter => {
+                            assert!(active);
+                            values.push(*value);
+                        }
+                        Edit::End(p) if *p == parameter => {
+                            assert!(active);
+                            active = false;
+                        }
+                        _ => {}
+                    }
+                }
+                assert!(!active);
+                assert!(!values.is_empty(), "{parameter:?}: {events:?}");
+                assert!(values.iter().any(|value| *value > parameter.info().default));
+                if cancel {
+                    assert_eq!(values.last(), Some(&parameter.info().default));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn graph_drag_previews_live_with_balanced_host_gestures_and_escape_restores_values() {
         for cancel in [false, true] {
             let ctx = egui::Context::default();
