@@ -4,6 +4,53 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Targeted effect updates — 2026-11-11
+
+Implemented [targeted effect updates](../architecture/effect-updates.md).
+Ordinary controls retarget existing processors. Compatible structural edits move
+surviving processors by stable ID and prepare only new or incompatible units.
+Separate background workers prepare controls and topology. Full asynchronous
+renderer preparation remains the fallback for incompatible content, latency,
+sidechain stages or publication admission.
+
+Fifteen effect-update tests cover all 21 effect types, state inheritance, route
+ramps, internal band changes, regular and beat layers, groups, Returns, sidechains,
+rapid edits, controls during pending seek/topology work, stale publications and
+retirement backpressure. A concurrent callback/control-thread stress test checks
+final settings and acknowledged metadata. Callback heap guards cover publication
+and rejection paths. A separate memory-lease test checks allocation-free transfer
+without counting unchanged active DSP twice. The output suite passes all 86 tests
+in debug and release.
+
+Completed checks:
+
+- `cargo fmt --all --check`: passed.
+- `git diff HEAD --check` and all 244 local file targets in changed Markdown
+  documents: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed, including doctests.
+- `cargo test --workspace --release --offline`: passed, including doctests.
+- `cargo build -p daw-desktop -p daw-cli --offline`: passed.
+- `python3 tools/check_cli.py` with an isolated audio cache: passed.
+- Release `daw-engine` example `effect_updates`: passed. All 14 control/reorder
+  cases at 1, 8, 32 and 128 units prepared zero new processors. Logs and CSV are
+  local scratch artifacts under `work/effect-updates-*`.
+
+The synthetic 128-unit mixed-reverb case produced these medians over 16 runs.
+All times are microseconds:
+
+| Edit | Full preparation | Patch preparation | Full handoff | Patch handoff |
+| --- | ---: | ---: | ---: | ---: |
+| Control | 18,075.08 | 37.04 | 10.13 | 0.33 |
+| Reorder | 17,998.79 | 34.21 | 8.42 | 0.83 |
+
+These measurements exclude UI input, worker queueing, active voices and audio
+devices. They do not establish audible response time or callback deadlines.
+Native GUI, device playback, listening/loopback and Windows/Linux checks remain
+open. The structural publication bound still needs native deadline calibration.
+`sh tools/package_macos.sh debug` stopped at its clean committed-source guard;
+the app bundle was not refreshed, and no changes were committed for packaging.
+
 ## Standalone review remediation, fifth pass — 2026-11-11
 
 Addressed the five non-ONNX findings validated against standalone snapshot

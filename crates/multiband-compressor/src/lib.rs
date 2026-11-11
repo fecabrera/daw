@@ -373,6 +373,10 @@ impl MultibandCompressor {
             return false;
         }
         self.monitor.set_enabled(s.enabled);
+        for band in &mut self.bands {
+            band.retarget_controls(&s.modulations);
+        }
+        self.output.retarget_controls(&s.modulations);
         for (b, s) in self.bands.iter_mut().zip(&s.bands) {
             b.destination.settings = s.clone();
             b.destination.compressor.retarget(&s.compressor_settings());

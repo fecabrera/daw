@@ -979,7 +979,7 @@ fn prepared_audio_clip_transpose_activates_and_runs_without_callback_heap_work()
     }
 }
 
-fn controlled_output(rate: u32) -> (AudioOutput, Callback) {
+pub(super) fn controlled_output(rate: u32) -> (AudioOutput, Callback) {
     let plan = tests::transport_plan();
     let bindings = preparation::Bindings::prepare(&plan, &Default::default());
     let (commands, consumer) = RingBuffer::new(4);
@@ -1007,6 +1007,17 @@ fn controlled_output(rate: u32) -> (AudioOutput, Callback) {
         prepared: None,
         commands,
         retired,
+        effects: effect_updates::Worker::new().unwrap(),
+        controls: effect_updates::Worker::controls().unwrap(),
+        retired_effects: callback.effect_receiver.take().unwrap(),
+        pending_effects: None,
+        pending_controls: None,
+        effect_error: None,
+        active_plan: None,
+        active_revision: 0,
+        active_publication: 0,
+        next_publication: 0,
+        published_plans: Default::default(),
         status,
         description: String::new(),
         track_meters: bindings.tracks,

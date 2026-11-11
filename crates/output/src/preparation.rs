@@ -444,6 +444,11 @@ impl Worker {
         self.0.1.notify_one();
         drop(previous);
     }
+    /// Invalidate exact-history coverage and cancel stale reconstruction after a live edit.
+    pub fn update_effect_cache(&self, plan: Arc<RenderPlan>) -> u64 {
+        self.prewarm(plan);
+        self.0.0.lock().unwrap().revision
+    }
     pub fn set_waker(&self, wake: impl Fn() + Send + Sync + 'static) {
         let mut state = self.0.0.lock().unwrap();
         if state.wake_ui.is_none() {

@@ -4,6 +4,10 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 #[derive(Default)]
 pub struct Performance {
     callbacks: AtomicU64,
+    effect_updates: AtomicU64,
+    effect_processors_prepared: AtomicU64,
+    effect_rebases: AtomicU64,
+    effect_fallbacks: [AtomicU64; 4],
     over_budget: AtomicU64,
     max_callback_ns: AtomicU64,
     max_commands_ns: AtomicU64,
@@ -17,6 +21,11 @@ pub struct Performance {
 #[derive(Clone, Debug)]
 pub struct PerformanceSnapshot {
     pub callbacks: u64,
+    pub effect_updates: u64,
+    pub effect_processors_prepared: u64,
+    pub effect_rebases: u64,
+    /// Arrangement, latency, sidechain, and publication-budget fallbacks, in that order.
+    pub effect_fallbacks: [u64; 4],
     pub max_request_to_activation_ns: u64,
     /// Log2 microsecond buckets for completed requests, including worker and delivery time.
     pub activation_duration_buckets: [u64; 32],
@@ -35,6 +44,17 @@ pub struct PerformanceSnapshot {
 static OUTPUT_RENDERER_BYTES: AtomicU64 = AtomicU64::new(0);
 pub(super) struct RendererMemoryLease(u64);
 impl RendererMemoryLease {
+    /// Divide already-admitted storage between the active and retirement owners.
+    /// Publication only transfers allocations; it must not reserve the active DSP twice.
+    pub fn redistribute(&mut self, retired: &mut Self, active_bytes: u64) {
+        let total = self.0 + retired.0;
+        assert!(
+            active_bytes <= total,
+            "effect transaction exceeded admitted storage"
+        );
+        self.0 = active_bytes;
+        retired.0 = total - active_bytes;
+    }
     pub fn try_new(bytes: u64) -> Result<Self, String> {
         const LIMIT: u64 = 512 * 1024 * 1024;
         OUTPUT_RENDERER_BYTES.fetch_update(Relaxed, Relaxed, |used| {
@@ -49,6 +69,17 @@ impl Drop for RendererMemoryLease {
     }
 }
 impl Performance {
+    pub(super) fn effect_applied(&self, processors: usize) {
+        self.effect_updates.fetch_add(1, Relaxed);
+        self.effect_processors_prepared
+            .fetch_add(processors as u64, Relaxed);
+    }
+    pub(super) fn effect_rebase(&self) {
+        self.effect_rebases.fetch_add(1, Relaxed);
+    }
+    pub(super) fn effect_fallback(&self, reason: daw_engine::EffectUpdateFallback) {
+        self.effect_fallbacks[reason as usize].fetch_add(1, Relaxed);
+    }
     pub(super) fn overruns(&self) -> u64 {
         self.over_budget.load(Relaxed)
     }
@@ -78,6 +109,10 @@ impl Performance {
     pub fn snapshot(&self) -> PerformanceSnapshot {
         PerformanceSnapshot {
             callbacks: self.callbacks.load(Relaxed),
+            effect_updates: self.effect_updates.load(Relaxed),
+            effect_processors_prepared: self.effect_processors_prepared.load(Relaxed),
+            effect_rebases: self.effect_rebases.load(Relaxed),
+            effect_fallbacks: std::array::from_fn(|i| self.effect_fallbacks[i].load(Relaxed)),
             max_request_to_activation_ns: self.max_activation_ns.load(Relaxed),
             activation_duration_buckets: std::array::from_fn(|i| {
                 self.activation_buckets[i].load(Relaxed)
@@ -116,6 +151,18 @@ impl Performance {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn publication_transfers_existing_admission_without_reserving_active_dsp_twice() {
+        let mut active = RendererMemoryLease::try_new(1024).unwrap();
+        let mut candidate = RendererMemoryLease::try_new(512).unwrap();
+        crate::preparation_tests::realtime(|| active.redistribute(&mut candidate, 1280));
+        assert_eq!(active.0, 1280);
+        assert_eq!(candidate.0, 256);
+        crate::preparation_tests::realtime(|| active.redistribute(&mut candidate, 768));
+        assert_eq!(active.0, 768);
+        assert_eq!(candidate.0, 768);
+    }
     #[test]
     fn budgets_use_actual_device_frames_and_rate() {
         let stats = Performance::default();

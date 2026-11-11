@@ -498,7 +498,7 @@ pub(crate) struct MidiTrackRuntime {
     carried_stop_gain: Option<f32>,
     previous_stop_gain: f32,
     // Regular buses follow canonical layer order; Main is always the final bus.
-    layer_effects: Vec<super::layer_effects::LayerEffects>,
+    pub(super) layer_effects: Vec<super::layer_effects::LayerEffects>,
     layer_samples: Vec<[f32; 2]>,
     effect_latency: u64,
     envelope_history: bool,
@@ -1155,6 +1155,15 @@ impl MidiTrackRuntime {
                     .collect(),
             ),
         })
+    }
+    pub(super) fn refresh_effect_metadata(&mut self, track: &daw_core::Track) {
+        if let Some(instrument) = &track.instrument {
+            self.mono = super::track_processing::instrument_is_mono(instrument, &track.effects);
+            self.has_bus_effects = self
+                .layer_effects
+                .iter()
+                .any(|bus| !bus.settings.is_empty());
+        }
     }
     pub fn bind_live_pitches(&mut self, track: Id, inputs: &super::LiveMidiPitches) {
         for clip in &mut self.clips {

@@ -561,7 +561,6 @@ impl MultibandEq {
     /// Retarget a prepared topology without allocation. IDs and order must match.
     /// Route/topology changes still use a worker-prepared processor and `inherit`.
     pub fn retarget(&mut self, s: &MultibandEqSettings) {
-        self.spectrum.set_enabled(s.enabled);
         if s.bands.len() != self.bands.len()
             || !self
                 .bands
@@ -571,6 +570,11 @@ impl MultibandEq {
         {
             return;
         }
+        self.spectrum.set_enabled(s.enabled);
+        for band in &mut self.bands {
+            band.retarget_controls(&s.modulations);
+        }
+        self.output.retarget_controls(&s.modulations);
         for (band, settings) in self.bands.iter_mut().zip(&s.bands) {
             band.destination.retarget(settings, self.fade_frames);
         }

@@ -94,6 +94,15 @@ impl Renderer {
     pub fn memory_usage(&self) -> RendererMemory {
         let mut shared = daw_media::AudioMemoryUsage::default();
         self.plan.visit_audio_memory(&mut shared);
+        let mut usage = self.owned_memory();
+        usage.shared_audio_bytes = shared.bytes;
+        usage
+    }
+    /// Capacity accounting without a shared-media owner registry or allocation.
+    pub fn owned_memory_bytes(&self) -> u64 {
+        self.owned_memory().owned_bytes()
+    }
+    fn owned_memory(&self) -> RendererMemory {
         let mut usage = RendererMemory {
             model_bytes: self.plan.model_bytes(),
             schedule_bytes: vec_bytes(&self.audio_tracks)
@@ -114,7 +123,7 @@ impl Renderer {
                 + self.sidechains.heap_bytes()
                 + vec_bytes(&self.sidechain_post)
                 + vec_bytes(&self.midi),
-            shared_audio_bytes: shared.bytes,
+            shared_audio_bytes: 0,
         };
         for m in self.midi.iter().flatten() {
             let (schedules, processors) = m.memory_bytes();

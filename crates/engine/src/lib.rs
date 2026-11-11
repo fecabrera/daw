@@ -1,3 +1,5 @@
+mod effect_updates;
+pub use effect_updates::{EffectUpdate, EffectUpdateFallback};
 mod beat;
 mod beat_gain;
 mod buses;
@@ -217,7 +219,7 @@ pub enum ModulationTarget {
 /// Immutable decoded/prepared audio remains shared.
 #[derive(Clone)]
 pub struct Renderer {
-    /// Immutable prepared model. Replace it through a new renderer and `inherit`.
+    /// Prepared model. Update only through an effect transaction or renderer inheritance.
     pub plan: RenderPlan,
     end_frame: u64,
     audio_tracks: Vec<schedule::AudioTrack>,
@@ -244,6 +246,7 @@ pub struct Renderer {
     previous: [f32; 2],
     latent_held_mix: [f32; 2],
     source_fingerprint: u64,
+    effect_fingerprint: u64,
     prime_offset: u64,
     prime_pending: bool,
     buffering: bool,
@@ -379,7 +382,6 @@ impl Renderer {
                 send.id.hash(&mut hash);
                 send.return_id.hash(&mut hash);
             }
-            track.effects.len().hash(&mut hash);
             if let Some(runtime) = runtime {
                 Some(runtime.fingerprint()).hash(&mut hash);
             } else {
@@ -395,95 +397,8 @@ impl Renderer {
                 }
             }
         }
-        plan.project.master.effects.len().hash(&mut hash);
-        // Layer row order is presentation only; hash each chain under its stable owner.
-        let mut effect_groups = Vec::new();
-        for track in &plan.project.tracks {
-            effect_groups.push(((Some(track.id), None), track.effects.as_slice()));
-            if let Some(instrument) = &track.instrument {
-                effect_groups.push((
-                    (Some(track.id), Some(instrument.main.id)),
-                    instrument.main.effects.as_slice(),
-                ));
-                let mut layers: Vec<_> = instrument.layers.iter().collect();
-                layers.sort_by_key(|l| l.id);
-                for layer in layers {
-                    effect_groups
-                        .push(((Some(track.id), Some(layer.id)), layer.effects.as_slice()));
-                }
-            }
-        }
-        effect_groups.push(((None, None), plan.project.master.effects.as_slice()));
-        for (owner, effects) in effect_groups {
-            owner.hash(&mut hash);
-            effects.len().hash(&mut hash);
-            for effect in effects {
-                effect.id.hash(&mut hash);
-                match &effect.unit {
-                    daw_core::EffectSettings::HarmonicLift(_) => {
-                        daw_unit_core::HARMONIC_LIFT_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::MultibandCompressor(_) => {
-                        daw_unit_core::MULTIBAND_COMPRESSOR_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Exciter(_) => {
-                        daw_unit_core::EXCITER_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::MultibandEq(_) => {
-                        daw_unit_core::MULTIBAND_EQ_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Loudness(_) => {
-                        daw_unit_core::LOUDNESS_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Eq3(_) => daw_unit_core::EQ_TYPE_ID.hash(&mut hash),
-                    daw_core::EffectSettings::DriveV2(_) => {
-                        daw_unit_core::DRIVE_V2_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Drive(_) => {
-                        daw_unit_core::DRIVE_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::AutoFilter(_) => {
-                        daw_unit_core::AUTO_FILTER_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Filter(_) => {
-                        daw_unit_core::FILTER_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Compressor(_) => {
-                        daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Ott(_) => daw_unit_core::OTT_TYPE_ID.hash(&mut hash),
-                    daw_core::EffectSettings::Limiter(_) => {
-                        daw_unit_core::LIMITER_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::StereoSpread(_) => {
-                        daw_unit_core::STEREO_SPREAD_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Saturator(_) => {
-                        daw_unit_core::SATURATOR_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Bitcrusher(_) => {
-                        daw_unit_core::BITCRUSHER_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Chorus(_) => {
-                        daw_unit_core::CHORUS_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::AmbientReverb(_) => {
-                        daw_unit_core::AMBIENT_REVERB_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::ShimmerReverb(_) => {
-                        daw_unit_core::SHIMMER_REVERB_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::PlateReverb(_) => {
-                        daw_unit_core::PLATE_REVERB_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::DirectionMixer(_) => {
-                        daw_unit_core::DIRECTION_MIXER_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
-                }
-            }
-        }
         let source_fingerprint = hash.finish();
+        let effect_fingerprint = effect_updates::fingerprint(&plan);
         let alignment = latency::Alignment::new(&plan.project);
         let buses = buses::Buses::new(&plan, &alignment);
         let sidechains = audio_sidechain::Sidechains::new(&plan, &alignment);
@@ -520,6 +435,7 @@ impl Renderer {
             previous: [0.0; 2],
             latent_held_mix: [0.0; 2],
             source_fingerprint,
+            effect_fingerprint,
             prime_offset: 0,
             prime_pending: false,
             buffering: false,
@@ -960,7 +876,9 @@ impl Renderer {
         self.master_remaining = fade_frames;
         self.previous = old.previous;
         self.latent_held_mix = old.latent_held_mix;
-        if self.source_fingerprint == old.source_fingerprint {
+        if self.source_fingerprint == old.source_fingerprint
+            && self.effect_fingerprint == old.effect_fingerprint
+        {
             self.transition_from = old.transition_from;
             self.transition = old.transition;
         } else {

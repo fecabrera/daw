@@ -333,6 +333,10 @@ impl Exciter {
         {
             return false;
         }
+        for band in &mut self.bands {
+            band.retarget_controls(&s.modulations);
+        }
+        self.output.retarget_controls(&s.modulations);
         for (b, s) in self.bands.iter_mut().zip(&s.bands) {
             b.destination.retarget(s, self.fade_frames);
         }

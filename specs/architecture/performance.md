@@ -6,7 +6,7 @@ Implemented after the [2026-10-18 audit](../validation/performance-audit-2026-10
 
 ## Prepared state
 
-`engine::Renderer` prepares the arrangement end, sorted clip ranges, source-buffer bindings, track/effect identity tables, alignment identity tables, and gain/pan/audibility coefficients. Treat its project content as immutable. Publish a new renderer after an arrangement or processing edit; changing its public project fields in place does not rebuild these caches.
+`engine::Renderer` prepares the arrangement end, sorted clip ranges, source-buffer bindings, track/effect identity tables, alignment identity tables, and gain/pan/audibility coefficients. Treat its project content as immutable except through the checked [effect transaction](effect-updates.md) path. Compatible effect-only edits prepare and publish targeted controls or chain storage while preserving the renderer. Arrangement and incompatible processing edits publish a new renderer. Changing public project fields directly does not update these caches.
 
 A track range cursor retains both active clips and empty gaps. A discontinuity or range boundary uses binary search. Saved clip order does not determine playback order. Ends remain exclusive. Audio and MIDI use the same range scheduler. Bound audio uses the existing prepared-stretch identity checks, source mapping, repeats, fades, and missing-source silence. Muted sources and effects continue processing when their histories require it.
 
@@ -29,6 +29,16 @@ Limiter caches attack/release coefficients until the effective lookahead or rele
 ## Output preparation and activation
 
 `output::preparation` has one worker, one latest pending request, and one ready result. Immutable plans use `Arc`; renderer construction and its deep plan copy run on the worker. Superseded work is discarded by generation. A full audio command queue retains the ready renderer for retry. The callback retires old storage through the existing bounded queue; a full retirement queue retains the pending replacement.
+
+Effect controls and compatible chain changes use independent latest-request workers
+and a checked transaction against the acknowledged active plan. This allows live
+controls on surviving units while structural preparation is pending. New units
+and destination storage are prepared off audio; surviving units retain DSP state.
+Effect transactions have their own bounded retirement queue, and all old owners
+remain in the consumed envelope until control-thread disposal. Timing, graph or
+publication-budget incompatibility retains the full preparation path below.
+See [targeted effect updates](effect-updates.md) for classification, metadata,
+revision, memory, cache and acceptance requirements.
 
 Initial Play, Seek, and Stop prepare transport and latency pre-roll on the worker. Existing playback continues until a current request is ready. Pause and ordinary resume retain the active pipeline and histories. If preparation is pending, Pause also queues a revision-checked command to stop the current audio on the next callback, without marking the pending plan as applied. The worker still prepares the requested paused position. Stale pause commands cannot stop a later resumed transport. The latest pending transport intent survives a superseding plan or transport request. Activation preserves the 5 ms output transition and original playback-start return position.
 

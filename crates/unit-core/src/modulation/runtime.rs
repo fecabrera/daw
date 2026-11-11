@@ -90,6 +90,19 @@ impl ModulationRoute {
     pub fn reset(&mut self) {
         self.amount.reset();
     }
+    /// Update a validated route's controls while retaining cached source bindings.
+    /// Membership, source and destination must be unchanged by the host's preflight.
+    pub fn retarget_controls(&mut self, settings: Modulation) {
+        self.settings = settings;
+        self.amount.set(
+            if settings.enabled && settings.valid() {
+                settings.amount
+            } else {
+                0.0
+            },
+            self.frames,
+        );
+    }
     pub fn retarget(&mut self, next: &Self) {
         self.settings = next.settings;
         self.amount.set(next.amount.target, self.frames);
@@ -633,6 +646,17 @@ impl<D: ModulationDestination> RoutedDestination<D> {
             shared,
             context,
         )
+    }
+    /// Retarget controls for unchanged route membership; does not create route storage.
+    pub fn retarget_controls(&mut self, settings: &[Modulation]) {
+        let target = self.destination.modulation_target();
+        for (route, settings) in self.routes.iter_mut().zip(
+            settings
+                .iter()
+                .filter(|r| r.target == target && D::MODULATION_PARAMETERS.contains(&r.parameter)),
+        ) {
+            route.retarget_controls(*settings);
+        }
     }
     pub fn reset_routes(&mut self) {
         for route in &mut self.routes {

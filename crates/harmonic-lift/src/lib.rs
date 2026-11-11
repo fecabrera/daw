@@ -290,6 +290,10 @@ impl HarmonicLift {
         self.quality = s.quality;
         self.quality_blend
             .set(f32::from(s.quality == HarmonicQuality::Hq), self.fade);
+        for band in &mut self.bands {
+            band.retarget_controls(&s.modulations);
+        }
+        self.controls.retarget_controls(&s.modulations);
         for (b, s) in self.bands.iter_mut().zip(&s.bands) {
             b.destination.retarget(s, self.fade);
         }
@@ -303,6 +307,26 @@ impl HarmonicLift {
         true
     }
     pub fn inherit(&mut self, old: &mut Self) {
+        // Match branch ownership before positional processing. All buffers are prepared;
+        // moving a strip must retain its route, filter and output-monitor history.
+        for i in 0..6 {
+            if let Some(j) = old
+                .bands
+                .iter()
+                .position(|b| b.destination.id == self.bands[i].destination.id)
+            {
+                old.bands.swap(i, j);
+                old.branch_levels.swap(i, j);
+                old.core.pre.swap(i, j);
+                old.core.post.swap(i, j);
+                old.core.branch_peaks.swap(i, j);
+                old.hq_core.pre.swap(i, j);
+                old.hq_core.post.swap(i, j);
+                old.hq_core.branch_peaks.swap(i, j);
+                old.bands[i].destination.index = i;
+                old.bands[j].destination.index = j;
+            }
+        }
         for i in 0..6 {
             if self.bands[i].destination.id == old.bands[i].destination.id {
                 old.branch_levels[i].retarget(&mut self.branch_levels[i]);

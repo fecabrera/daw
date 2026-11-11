@@ -2,6 +2,22 @@
 
 Use header dragging to arrange installed instrument components and effects. Use Option on macOS or Ctrl on Windows/Linux during a drag to copy instead of move. The modifier held at release determines the action.
 
+## Effect changes during playback
+
+Ordinary effect controls retain the current filter, delay and modulation history.
+Moving compatible effects also retains their state. For example, a reverb can
+keep its existing tail after a move while it starts receiving different input.
+Downstream effects continue processing the changed sound.
+
+Changes that require preparation run in the background. Playback continues with
+the previous arrangement until the change is ready. Controls on compatible units
+that remain installed can still update during preparation. Timing or routing
+changes can take longer. A preparation failure keeps the previous playback and
+shows an error; the edited settings remain available for correction or Undo.
+
+Seeking or restarting reconstructs sound from the current settings. Its result
+can differ from a tail accumulated while you changed controls during playback.
+
 ## Unit layout
 
 Units have a vertical title header on the left. Double-click it to collapse or expand the unit. The power dot stays at the top of the header and shows the on/off state.

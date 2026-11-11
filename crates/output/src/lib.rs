@@ -23,6 +23,9 @@ use std::sync::{
 type ModulationMeter = Arc<[AtomicU32; daw_engine::MODULATION_SNAPSHOT_SIZE]>;
 
 mod effect_audition;
+#[cfg(test)]
+mod effect_update_tests;
+mod effect_updates;
 mod layer_meters;
 mod meters;
 mod metronome;
@@ -45,6 +48,9 @@ pub struct Status {
     playback_start: AtomicU64,
     requested_revision: AtomicU64,
     applied_revision: AtomicU64,
+    processing_revision: AtomicU64,
+    processing_publication: AtomicU64,
+    processing_bytes: AtomicU64,
     pub playhead: AtomicU64,
     pub playing: AtomicBool,
     pub can_return_to_playback_start: AtomicBool,
@@ -94,6 +100,7 @@ struct PreparedRenderer {
     _memory: performance::RendererMemoryLease,
     renderer: Renderer,
     revision: u64,
+    publication: u64,
     prepared_transport: bool,
     reprepare: Option<preparation::Anchor>,
     activate_at: Option<u64>,
@@ -124,6 +131,7 @@ impl PreparedRenderer {
             _memory: memory,
             renderer,
             revision: 0,
+            publication: 0,
             prepared_transport: false,
             reprepare: None,
             activate_at: None,
@@ -475,6 +483,7 @@ fn modulation_meters(
         .collect()
 }
 enum Command {
+    Effects(Box<effect_updates::Prepared>),
     Plan(Box<PreparedRenderer>),
     PauseAt(u64),
     // Stop the active audio now without marking the pending prepared plan as applied.
@@ -494,7 +503,14 @@ type BuiltStream = (
     Producer<Command>,
     Consumer<Box<PreparedRenderer>>,
     audition::Sender,
+    Consumer<Box<effect_updates::Prepared>>,
 );
+struct PublishedPlan {
+    revision: u64,
+    publication: u64,
+    plan: Arc<RenderPlan>,
+    bindings: preparation::Bindings,
+}
 pub struct AudioOutput {
     audition: audition::Sender,
     plan: Arc<RenderPlan>,
@@ -509,6 +525,17 @@ pub struct AudioOutput {
     prepared: Option<preparation::Ready>,
     commands: Producer<Command>,
     retired: Consumer<Box<PreparedRenderer>>,
+    effects: effect_updates::Worker,
+    controls: effect_updates::Worker,
+    retired_effects: Consumer<Box<effect_updates::Prepared>>,
+    pending_effects: Option<effect_updates::Ready>,
+    pending_controls: Option<effect_updates::Ready>,
+    effect_error: Option<String>,
+    active_plan: Option<Arc<RenderPlan>>,
+    active_revision: u64,
+    active_publication: u64,
+    next_publication: u64,
+    published_plans: std::collections::VecDeque<PublishedPlan>,
     pub status: Arc<Status>,
     pub description: String,
     track_meters: HashMap<Id, Arc<StereoMeter>>,
@@ -630,6 +657,7 @@ impl AudioOutput {
             let (retire, retired) = RingBuffer::new(64);
             let mut state = Callback::initial(&plan, consumer, retire, status.clone(), rate)?;
             let audition = state.audition_sender.take().unwrap();
+            let effect_retired = state.effect_receiver.take().unwrap();
             effect_audition::bind(&mut state.renderer, &exciter_solos);
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_band_meters(&mut state.renderer, &changes);
@@ -659,9 +687,9 @@ impl AudioOutput {
                 cpal::SampleFormat::U64 => stream!(u64),
                 _ => return Err("Unsupported output device sample format".into()),
             }?;
-            Ok((stream, commands, retired, audition))
+            Ok((stream, commands, retired, audition, effect_retired))
         };
-        let (stream, commands, retired, audition) = match build(&stream_config) {
+        let (stream, commands, retired, audition, retired_effects) = match build(&stream_config) {
             Ok(s) => s,
             Err(first) => {
                 if stream_config.buffer_size == cpal::BufferSize::Default {
@@ -702,6 +730,17 @@ impl AudioOutput {
             prepared: None,
             commands,
             retired,
+            effects: effect_updates::Worker::new()?,
+            controls: effect_updates::Worker::controls()?,
+            retired_effects,
+            pending_effects: None,
+            pending_controls: None,
+            effect_error: None,
+            active_plan: None,
+            active_revision: 0,
+            active_publication: 0,
+            next_publication: status.processing_publication.load(Ordering::Acquire),
+            published_plans: Default::default(),
             status,
             description,
             track_meters: meters,
@@ -787,7 +826,10 @@ impl AudioOutput {
             .find_map(|disk| disk.error())
     }
     pub fn take_preparation_error(&mut self) -> Option<String> {
-        let error = self.preparation.take_error()?;
+        let error = self
+            .effect_error
+            .take()
+            .or_else(|| self.preparation.take_error())?;
         if self
             .desired_transport
             .is_some_and(|(_, state)| !state.playing)
@@ -831,6 +873,12 @@ impl AudioOutput {
             .store(self.prepare_revision, Ordering::Release);
         self.desired_transport = state.map(|state| (self.prepare_revision, state));
         self.prepared = None;
+        self.effects.cancel(self.prepare_revision);
+        self.controls.cancel(self.prepare_revision);
+        self.pending_controls = None;
+        self.pending_effects = None;
+        self.effect_error = None;
+        self.submit_control_update(true);
     }
     pub fn sync(&mut self, plan: RenderPlan) -> Result<(), String> {
         if plan.project.sample_rate_hz != self.project_rate_hz
@@ -845,12 +893,60 @@ impl AudioOutput {
             .filter(|(r, _)| *r > self.status.applied_revision.load(Ordering::Acquire))
             .map(|(_, s)| s);
         self.plan = Arc::new(plan);
-        self.prepare(transport);
+        if transport.is_some() || self.active_plan.is_none() {
+            self.prepare(transport);
+        } else {
+            self.prepare_effects();
+        }
         Ok(())
+    }
+    fn prepare_effects(&mut self) {
+        let Some(previous) = self.active_plan.clone() else {
+            self.prepare(None);
+            return;
+        };
+        self.prepare_revision = self.preparation.update_effect_cache(self.plan.clone());
+        self.status
+            .requested_revision
+            .store(self.prepare_revision, Ordering::Release);
+        self.preparation_failed = false;
+        self.effect_error = None;
+        self.prepared = None;
+        self.pending_effects = None;
+        self.pending_controls = None;
+        self.submit_control_update(false);
+        self.effects.submit(effect_updates::Request {
+            revision: self.prepare_revision,
+            base_revision: self.active_revision,
+            base_publication: self.active_publication,
+            previous,
+            desired: self.plan.clone(),
+            bindings: self.bindings(),
+            partial_only: false,
+        });
+    }
+    fn submit_control_update(&mut self, partial_only: bool) {
+        self.pending_controls = None;
+        if let Some(previous) = self.active_plan.clone() {
+            self.controls.submit(effect_updates::Request {
+                revision: self.prepare_revision,
+                base_revision: self.active_revision,
+                base_publication: self.active_publication,
+                previous,
+                desired: self.plan.clone(),
+                bindings: self.bindings(),
+                partial_only,
+            });
+        }
     }
     /// Register once after the UI creates output; worker completion wakes idle painting.
     pub fn set_waker(&self, wake: impl Fn() + Send + Sync + 'static) {
-        self.preparation.set_waker(wake);
+        let wake = Arc::new(wake);
+        let effects_wake = wake.clone();
+        self.preparation.set_waker(move || wake());
+        let controls_wake = effects_wake.clone();
+        self.effects.set_waker(move || effects_wake());
+        self.controls.set_waker(move || controls_wake());
     }
     pub fn track_meter(&self, id: Id) -> Option<&StereoMeter> {
         self.track_meters.get(&id).map(AsRef::as_ref)
@@ -1088,9 +1184,142 @@ impl AudioOutput {
         !self.preparation_failed
             && self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire)
     }
+    fn publish_bindings(&mut self, ready: preparation::Bindings) {
+        self.track_meters = ready.tracks;
+        self.layer_meters = ready.layers;
+        self.effect_meters = ready.effects;
+        self.exciter_solos = ready.exciter_solos;
+        self.band_meters = ready.bands;
+        self.spectra = ready.spectra;
+        self.output_meters = ready.outputs;
+        self.loudness_meters = ready.loudness;
+        self.source_meters = ready.sources;
+        self.modulation_meters = ready.modulation;
+        self.live_pitches = ready.live_pitches;
+    }
+    fn acknowledge_processing(&mut self) {
+        let publication = self.status.processing_publication.load(Ordering::Acquire);
+        if publication != self.active_publication
+            && let Some(i) = self
+                .published_plans
+                .iter()
+                .position(|p| p.publication == publication)
+        {
+            let record = self.published_plans.remove(i).unwrap();
+            self.active_revision = record.revision;
+            self.active_publication = publication;
+            self.active_plan = Some(record.plan);
+            self.publish_bindings(record.bindings);
+        }
+    }
+    fn forget_publication(&mut self, publication: u64) {
+        self.published_plans
+            .retain(|p| p.publication != publication);
+    }
+    fn publication_id(&mut self) -> u64 {
+        self.next_publication += 1;
+        self.next_publication
+    }
     pub fn drain(&mut self) {
         self.audition.drain();
+        self.acknowledge_processing();
+        let mut retry = false;
+        let mut retry_controls = false;
+        while let Ok(old) = self.retired_effects.pop() {
+            // A callback may have applied a candidate after the first status read.
+            // Unique publication IDs keep a rejected sibling from erasing its ACK record.
+            self.acknowledge_processing();
+            if !old.applied {
+                self.forget_publication(old.publication);
+                retry |= old.complete && old.revision == self.prepare_revision;
+                retry_controls |= !old.complete && old.revision == self.prepare_revision;
+            } else if old.publication != self.active_publication {
+                self.forget_publication(old.publication);
+            }
+        }
+        if retry && self.status.applied_revision.load(Ordering::Acquire) != self.prepare_revision {
+            self.status.performance.effect_rebase();
+            self.prepare_effects();
+        } else if retry_controls
+            && self.status.applied_revision.load(Ordering::Acquire) != self.prepare_revision
+        {
+            self.submit_control_update(true);
+        }
+        if let Some(ready) = self.controls.take()
+            && ready.revision == self.prepare_revision
+        {
+            self.pending_controls = Some(ready);
+        }
+        if let Some(mut ready) = self.pending_controls.take()
+            && let Ok(Some(mut prepared)) = ready.prepared
+        {
+            let publication = self.publication_id();
+            prepared.publication = publication;
+            let effective = if prepared.complete {
+                ready.revision
+            } else {
+                u64::MAX - ready.revision
+            };
+            match self.commands.push(Command::Effects(prepared)) {
+                Ok(()) => {
+                    self.published_plans.push_back(PublishedPlan {
+                        revision: effective,
+                        publication,
+                        plan: ready.desired,
+                        bindings: ready.bindings,
+                    });
+                }
+                Err(rtrb::PushError::Full(Command::Effects(prepared))) => {
+                    ready.prepared = Ok(Some(prepared));
+                    self.pending_controls = Some(ready);
+                }
+                Err(_) => unreachable!("only controls are submitted here"),
+            }
+        }
+        if let Some(ready) = self.effects.take()
+            && ready.revision == self.prepare_revision
+            && self.status.applied_revision.load(Ordering::Acquire) != ready.revision
+        {
+            self.pending_effects = Some(ready);
+        }
+        if let Some(mut ready) = self.pending_effects.take() {
+            match ready.prepared {
+                Ok(Some(mut prepared)) => {
+                    let publication = self.publication_id();
+                    prepared.publication = publication;
+                    match self.commands.push(Command::Effects(prepared)) {
+                        Ok(()) => self.published_plans.push_back(PublishedPlan {
+                            revision: ready.revision,
+                            publication,
+                            plan: ready.desired,
+                            bindings: ready.bindings,
+                        }),
+                        Err(rtrb::PushError::Full(Command::Effects(prepared))) => {
+                            ready.prepared = Ok(Some(prepared));
+                            self.pending_effects = Some(ready);
+                        }
+                        Err(_) => unreachable!("only effect updates are submitted here"),
+                    }
+                }
+                Ok(None) => {
+                    if let Some(reason) = ready.fallback {
+                        self.status.performance.effect_fallback(reason);
+                    }
+                    let transport = self
+                        .desired_transport
+                        .filter(|(r, _)| *r > self.status.applied_revision.load(Ordering::Acquire))
+                        .map(|(_, s)| s);
+                    self.prepare(transport);
+                }
+                Err(error) => {
+                    self.effect_error = Some(error);
+                    self.preparation_failed = true;
+                }
+            }
+        }
         while let Ok(mut old) = self.retired.pop() {
+            self.acknowledge_processing();
+            self.forget_publication(old.publication);
             if old.revision == self.prepare_revision
                 && let Some(transport) = old.reprepare.take()
             {
@@ -1112,19 +1341,16 @@ impl AudioOutput {
             self.prepared = Some(ready);
         }
         if let Some(mut ready) = self.prepared.take() {
+            let publication = self.publication_id();
+            ready.renderer.publication = publication;
             match self.commands.push(Command::Plan(ready.renderer)) {
                 Ok(()) => {
-                    self.track_meters = ready.bindings.tracks;
-                    self.layer_meters = ready.bindings.layers;
-                    self.effect_meters = ready.bindings.effects;
-                    self.exciter_solos = ready.bindings.exciter_solos;
-                    self.band_meters = ready.bindings.bands;
-                    self.spectra = ready.bindings.spectra;
-                    self.output_meters = ready.bindings.outputs;
-                    self.loudness_meters = ready.bindings.loudness;
-                    self.source_meters = ready.bindings.sources;
-                    self.modulation_meters = ready.bindings.modulation;
-                    self.live_pitches = ready.bindings.live_pitches;
+                    self.published_plans.push_back(PublishedPlan {
+                        revision: ready.revision,
+                        publication,
+                        plan: self.plan.clone(),
+                        bindings: ready.bindings,
+                    });
                 }
                 Err(rtrb::PushError::Full(Command::Plan(renderer))) => {
                     ready.renderer = renderer;
@@ -1145,6 +1371,9 @@ struct Callback {
     commands: Consumer<Command>,
     retired: Producer<Box<PreparedRenderer>>,
     pending: Option<Box<PreparedRenderer>>,
+    pending_effect: Option<Box<effect_updates::Prepared>>,
+    effect_retired: Producer<Box<effect_updates::Prepared>>,
+    effect_receiver: Option<Consumer<Box<effect_updates::Prepared>>>,
     scheduled: Option<Box<PreparedRenderer>>,
     rendered_frames: u64,
     status: Arc<Status>,
@@ -1215,6 +1444,7 @@ impl Callback {
             .map(|c| c.output_buffer_allocate(true))
             .unwrap_or_default();
         let (sender, audition) = audition::channel(project_rate_hz);
+        let (effect_retired, effect_receiver) = RingBuffer::new(64);
         Ok(Self {
             project_rate_hz,
             metronome: metronome::Metronome::new(project_rate_hz),
@@ -1225,6 +1455,9 @@ impl Callback {
             commands,
             retired,
             pending: None,
+            pending_effect: None,
+            effect_retired,
+            effect_receiver: Some(effect_receiver),
             scheduled: None,
             rendered_frames: 0,
             status,
@@ -1243,7 +1476,9 @@ impl Callback {
         let started = std::time::Instant::now();
         self.activate_scheduled();
         for _ in 0..8 {
-            let command = if let Some(pending) = self.pending.take() {
+            let command = if let Some(pending) = self.pending_effect.take() {
+                Command::Effects(pending)
+            } else if let Some(pending) = self.pending.take() {
                 Command::Plan(pending)
             } else {
                 match self.commands.pop() {
@@ -1252,6 +1487,51 @@ impl Callback {
                 }
             };
             match command {
+                Command::Effects(mut next) => {
+                    if self.effect_retired.is_full() {
+                        self.pending_effect = Some(next);
+                        break;
+                    }
+                    if next.revision == self.status.requested_revision.load(Ordering::Acquire)
+                        && next.base_revision == self.renderer.revision
+                        && next.base_publication == self.renderer.publication
+                    {
+                        self.renderer.apply_effect_update(&mut next.update);
+                        std::mem::swap(&mut self.renderer.modulation, &mut next.modulation);
+                        let bytes = self.renderer.owned_memory_bytes();
+                        self.renderer._memory.redistribute(&mut next.memory, bytes);
+                        let effective = if next.complete {
+                            next.revision
+                        } else {
+                            u64::MAX - next.revision
+                        };
+                        self.renderer.revision = effective;
+                        self.renderer.publication = next.publication;
+                        self.status.processing_bytes.store(bytes, Ordering::Release);
+                        self.status
+                            .processing_revision
+                            .store(effective, Ordering::Release);
+                        self.status
+                            .processing_publication
+                            .store(next.publication, Ordering::Release);
+                        if next.complete {
+                            self.status
+                                .applied_revision
+                                .store(next.revision, Ordering::Release);
+                        }
+                        self.status.performance.activation(
+                            next.requested_at
+                                .elapsed()
+                                .as_nanos()
+                                .min(u128::from(u64::MAX)) as u64,
+                        );
+                        self.status
+                            .performance
+                            .effect_applied(next.update.prepared_processors());
+                        next.applied = true;
+                    }
+                    let _ = self.effect_retired.push(next);
+                }
                 Command::Plan(mut next) => {
                     if self.retired.is_full() {
                         self.pending = Some(next);
@@ -1360,6 +1640,15 @@ impl Callback {
         let revision = next.revision;
         let old = std::mem::replace(&mut self.renderer, next);
         self.initial_renderer = false;
+        self.status
+            .processing_bytes
+            .store(self.renderer.owned_memory_bytes(), Ordering::Release);
+        self.status
+            .processing_revision
+            .store(revision, Ordering::Release);
+        self.status
+            .processing_publication
+            .store(self.renderer.publication, Ordering::Release);
         self.status.publish_transport(&self.renderer);
         self.status
             .applied_revision

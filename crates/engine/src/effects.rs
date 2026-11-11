@@ -22,7 +22,7 @@ use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_mo
 use std::sync::Arc;
 
 #[derive(Clone)]
-enum RuntimeEffect {
+pub(super) enum RuntimeEffect {
     Loudness(Box<Loudness>),
     MultibandEq(Box<MultibandEq>),
     Exciter(Box<Exciter>),
@@ -539,7 +539,31 @@ impl RuntimeEffect {
             }
         }
     }
-    fn retarget(&mut self, settings: &EffectSettings) -> bool {
+    pub(super) fn retarget(&mut self, settings: &EffectSettings) -> bool {
+        let routes = match &mut *self {
+            Self::Eq3(_, routes)
+            | Self::Drive(_, routes)
+            | Self::DriveV2(_, routes)
+            | Self::AutoFilter(_, routes)
+            | Self::Filter(_, routes)
+            | Self::Compressor(_, routes)
+            | Self::Ott(_, routes)
+            | Self::Limiter(_, routes)
+            | Self::DirectionMixer(_, routes)
+            | Self::StereoSpread(_, routes)
+            | Self::Saturator(_, routes)
+            | Self::Bitcrusher(_, routes)
+            | Self::Chorus(_, routes)
+            | Self::AmbientReverb(_, routes)
+            | Self::ShimmerReverb(_, routes)
+            | Self::PlateReverb(_, routes) => Some(routes),
+            _ => None,
+        };
+        if let Some(routes) = routes {
+            for (route, settings) in routes.iter_mut().zip(settings.modulations()) {
+                route.retarget_controls(*settings);
+            }
+        }
         match (self, settings) {
             (Self::Loudness(unit), EffectSettings::Loudness(s)) => unit.retarget(s),
             (Self::HarmonicLift(unit), EffectSettings::HarmonicLift(settings)) => {
@@ -550,6 +574,9 @@ impl RuntimeEffect {
             }
             (Self::Exciter(unit), EffectSettings::Exciter(settings)) => {
                 return unit.retarget(settings);
+            }
+            (Self::MultibandEq(unit), EffectSettings::MultibandEq(settings)) => {
+                unit.retarget(settings)
             }
             (Self::Eq3(unit, _), EffectSettings::Eq3(settings)) => unit.retarget(settings),
             (Self::Ott(unit, _), EffectSettings::Ott(settings)) => unit.retarget(settings),
@@ -594,10 +621,10 @@ impl RuntimeEffect {
 #[derive(Clone)]
 pub(super) struct EffectChain {
     index: std::collections::HashMap<Id, usize>,
-    mono: bool,
-    units: Vec<(Id, Option<RuntimeEffect>)>,
+    pub(super) mono: bool,
+    pub(super) units: Vec<(Id, Option<RuntimeEffect>)>,
     // Units without a portable output monitor use the same shared lifecycle here.
-    output_taps: Vec<Option<daw_unit_core::LevelMonitor<3>>>,
+    pub(super) output_taps: Vec<Option<daw_unit_core::LevelMonitor<3>>>,
 }
 impl EffectChain {
     pub fn heap_bytes(&self) -> u64 {
@@ -626,11 +653,26 @@ impl EffectChain {
         sample_rate_hz: u32,
         max_block_frames: u32,
     ) -> Self {
+        let _ = id;
+        Self::prepared(
+            effects,
+            sample_rate_hz,
+            max_block_frames,
+            &Default::default(),
+        )
+    }
+    /// Allocate only new/incompatible processors. Reusable slots are filled at publication.
+    pub(super) fn prepared(
+        effects: &[EffectInstance],
+        sample_rate_hz: u32,
+        max_block_frames: u32,
+        reuse: &std::collections::HashSet<Id>,
+    ) -> Self {
         let context = ProcessingContext {
             sample_rate_hz,
             max_block_frames,
         };
-        let _ = id;
+
         Self {
             index: effects.iter().enumerate().map(|(i, e)| (e.id, i)).collect(),
             mono: false,
@@ -649,6 +691,9 @@ impl EffectChain {
             units: effects
                 .iter()
                 .map(|effect| {
+                    if reuse.contains(&effect.id) {
+                        return (effect.id, None);
+                    }
                     (
                         effect.id,
                         match &effect.unit {
@@ -851,94 +896,86 @@ impl EffectChain {
                 .and_then(|&i| previous.units.get_mut(i))
                 && let Some(next) = next
             {
-                if let (RuntimeEffect::HarmonicLift(next), RuntimeEffect::HarmonicLift(previous)) =
-                    (&mut *next, &mut *previous)
-                {
-                    next.inherit(previous);
-                    continue;
-                }
-                if let (
-                    RuntimeEffect::MultibandCompressor(next),
-                    RuntimeEffect::MultibandCompressor(previous),
-                ) = (&mut *next, &mut *previous)
-                {
-                    next.inherit(previous);
-                    continue;
-                }
-                if let (RuntimeEffect::Exciter(next), RuntimeEffect::Exciter(previous)) =
-                    (&mut *next, &mut *previous)
-                {
-                    next.inherit(previous);
-                    continue;
-                }
-                if let (RuntimeEffect::MultibandEq(next), RuntimeEffect::MultibandEq(previous)) =
-                    (&mut *next, &mut *previous)
-                {
-                    next.inherit(previous);
-                    continue;
-                }
-                if let (
-                    RuntimeEffect::AutoFilter(_, old_routes),
-                    RuntimeEffect::AutoFilter(_, new_routes),
-                )
-                | (
-                    RuntimeEffect::Filter(_, old_routes),
-                    RuntimeEffect::Filter(_, new_routes),
-                )
-                | (RuntimeEffect::Drive(_, old_routes), RuntimeEffect::Drive(_, new_routes))
-                | (
-                    RuntimeEffect::DriveV2(_, old_routes),
-                    RuntimeEffect::DriveV2(_, new_routes),
-                )
-                | (RuntimeEffect::Eq3(_, old_routes), RuntimeEffect::Eq3(_, new_routes))
-                | (
-                    RuntimeEffect::Compressor(_, old_routes),
-                    RuntimeEffect::Compressor(_, new_routes),
-                )
-                | (RuntimeEffect::Ott(_, old_routes), RuntimeEffect::Ott(_, new_routes))
-                | (
-                    RuntimeEffect::Limiter(_, old_routes),
-                    RuntimeEffect::Limiter(_, new_routes),
-                )
-                | (
-                    RuntimeEffect::DirectionMixer(_, old_routes),
-                    RuntimeEffect::DirectionMixer(_, new_routes),
-                )
-                | (
-                    RuntimeEffect::StereoSpread(_, old_routes),
-                    RuntimeEffect::StereoSpread(_, new_routes),
-                )
-                | (
-                    RuntimeEffect::Saturator(_, old_routes),
-                    RuntimeEffect::Saturator(_, new_routes),
-                )
-                | (
-                    RuntimeEffect::Bitcrusher(_, old_routes),
-                    RuntimeEffect::Bitcrusher(_, new_routes),
-                )
-                | (
-                    RuntimeEffect::Chorus(_, old_routes),
-                    RuntimeEffect::Chorus(_, new_routes),
-                )
-                | (
-                    RuntimeEffect::AmbientReverb(_, old_routes),
-                    RuntimeEffect::AmbientReverb(_, new_routes),
-                )
-                | (
-                    RuntimeEffect::ShimmerReverb(_, old_routes),
-                    RuntimeEffect::ShimmerReverb(_, new_routes),
-                )
-                | (
-                    RuntimeEffect::PlateReverb(_, old_routes),
-                    RuntimeEffect::PlateReverb(_, new_routes),
-                ) = (&mut *previous, &mut *next)
-                {
-                    daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
-                }
-                if previous.retarget(&settings.unit) {
-                    std::mem::swap(next, previous);
-                }
+                Self::inherit_unit(next, previous, &settings.unit);
             }
+        }
+    }
+    pub(super) fn inherit_unit(
+        next: &mut RuntimeEffect,
+        previous: &mut RuntimeEffect,
+        settings: &EffectSettings,
+    ) {
+        if let (RuntimeEffect::HarmonicLift(next), RuntimeEffect::HarmonicLift(previous)) =
+            (&mut *next, &mut *previous)
+        {
+            next.inherit(previous);
+            return;
+        }
+        if let (
+            RuntimeEffect::MultibandCompressor(next),
+            RuntimeEffect::MultibandCompressor(previous),
+        ) = (&mut *next, &mut *previous)
+        {
+            next.inherit(previous);
+            return;
+        }
+        if let (RuntimeEffect::Exciter(next), RuntimeEffect::Exciter(previous)) =
+            (&mut *next, &mut *previous)
+        {
+            next.inherit(previous);
+            return;
+        }
+        if let (RuntimeEffect::MultibandEq(next), RuntimeEffect::MultibandEq(previous)) =
+            (&mut *next, &mut *previous)
+        {
+            next.inherit(previous);
+            return;
+        }
+        if let (
+            RuntimeEffect::AutoFilter(_, old_routes),
+            RuntimeEffect::AutoFilter(_, new_routes),
+        )
+        | (RuntimeEffect::Filter(_, old_routes), RuntimeEffect::Filter(_, new_routes))
+        | (RuntimeEffect::Drive(_, old_routes), RuntimeEffect::Drive(_, new_routes))
+        | (RuntimeEffect::DriveV2(_, old_routes), RuntimeEffect::DriveV2(_, new_routes))
+        | (RuntimeEffect::Eq3(_, old_routes), RuntimeEffect::Eq3(_, new_routes))
+        | (
+            RuntimeEffect::Compressor(_, old_routes),
+            RuntimeEffect::Compressor(_, new_routes),
+        )
+        | (RuntimeEffect::Ott(_, old_routes), RuntimeEffect::Ott(_, new_routes))
+        | (RuntimeEffect::Limiter(_, old_routes), RuntimeEffect::Limiter(_, new_routes))
+        | (
+            RuntimeEffect::DirectionMixer(_, old_routes),
+            RuntimeEffect::DirectionMixer(_, new_routes),
+        )
+        | (
+            RuntimeEffect::StereoSpread(_, old_routes),
+            RuntimeEffect::StereoSpread(_, new_routes),
+        )
+        | (RuntimeEffect::Saturator(_, old_routes), RuntimeEffect::Saturator(_, new_routes))
+        | (
+            RuntimeEffect::Bitcrusher(_, old_routes),
+            RuntimeEffect::Bitcrusher(_, new_routes),
+        )
+        | (RuntimeEffect::Chorus(_, old_routes), RuntimeEffect::Chorus(_, new_routes))
+        | (
+            RuntimeEffect::AmbientReverb(_, old_routes),
+            RuntimeEffect::AmbientReverb(_, new_routes),
+        )
+        | (
+            RuntimeEffect::ShimmerReverb(_, old_routes),
+            RuntimeEffect::ShimmerReverb(_, new_routes),
+        )
+        | (
+            RuntimeEffect::PlateReverb(_, old_routes),
+            RuntimeEffect::PlateReverb(_, new_routes),
+        ) = (&mut *previous, &mut *next)
+        {
+            daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
+        }
+        if previous.retarget(settings) {
+            std::mem::swap(next, previous);
         }
     }
     pub fn band_modulation_values(&self, id: Id, band: Id) -> Option<super::ModulationSnapshot> {
