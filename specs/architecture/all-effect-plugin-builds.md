@@ -48,7 +48,8 @@ The plugin prepares 64 stable band slots, each with Enabled, Mode, Frequency, Ga
 `MultibandEq::retarget` changes only same-ID/same-order prepared settings. Route/topology changes still require worker preparation and `inherit`. Reject mismatched topologies before changing any band. The plugin retains its settings vector through processing; automation must not reconstruct it. Editor and CLAP gesture queues scale to the fixed parameter count while remaining bounded. The editor starts with one band, the shared Add strip and Output. Add reveals and enables the next hidden slot; power bypass retains the visible strip. Remove resets and hides that slot while preserving its stable identity. Enabled or modified slots become visible after state recall. The visible-slot mask is instance UI state, separate from parameters and serialized presets. The bank scrolls horizontally as needed, and Add is disabled at 64 visible slots. These presentation rules do not change the fixed automation bank. Tests cover Add, power, Remove and identity preservation.
 
 Single-field automation resolves its canonical slot in constant time and calls
-`MultibandEq::retarget_prepared_band`. This entry point checks the slot index and
+`MultibandEq::retarget_prepared_band` for discrete changes and
+`retarget_prepared_band_continuous` for Gain/Frequency/Q changes. This entry point checks the slot index and
 stable UUID before changing any state. Output Level updates only the output ramp;
 Bypass updates the global ramp and all meter enable states. The full validated
 same-topology `retarget` path remains available for preset recall. Both paths use
@@ -57,7 +58,9 @@ changes processing order or creates bands. Tests compare the per-field paths
 against full retargeting at all six rates, including reset, same-sample transient
 targets, meters, presentation order and callback heap operations. The explicit
 release cost regression compares 64-frequency and 322-field automation against
-the full-bank reference using a median ratio rather than a device deadline.
+the unchanged full-bank reference using warmed, paired, alternated total-time
+measurements and a seven-run median. Retain the less-than-50% total-time gate;
+this is a relative regression check, not a device deadline.
 
 The checked Multiband EQ manifest declares state version 2. Build validation emits `MANIFEST_STATE_VERSION`; its encoder exports and uses that approved value. A wire-header contract test compares the manifest value and actual encoded envelope. Version-1 decoding remains supported.
 

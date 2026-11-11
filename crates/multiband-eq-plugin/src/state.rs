@@ -71,16 +71,19 @@ impl PluginState {
         true
     }
 
+    #[inline(always)]
     pub(crate) fn copy_parameter_from(&mut self, parameter: Parameter, source: &Self) {
         self.values[parameter.index()] = source.values[parameter.index()];
     }
     pub fn get(&self, parameter: Parameter) -> f64 {
         self.values[parameter.index()]
     }
+    #[inline(always)]
     pub fn set(&mut self, parameter: Parameter, plain: f64) -> Result<(), ParameterError> {
         self.values[parameter.index()] = parameter.validate(plain)?;
         Ok(())
     }
+    #[inline(always)]
     pub fn set_normalized(
         &mut self,
         parameter: Parameter,

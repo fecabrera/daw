@@ -140,20 +140,29 @@ fn release_dense_automation_cost_is_bounded_against_full_bank_reference() {
         workload(0, false)
     );
     for fields in [64, 322] {
-        let mut fast = [0.0_f64; 3];
-        let mut full = [0.0_f64; 3];
-        for i in 0..3 {
-            fast[i] = workload(fields, false);
-            full[i] = workload(fields, true);
+        // Warm both complete paths, then balance order to avoid a systematic
+        // first-path cache or clock bias. Keep total render time and the gate.
+        black_box(workload(fields, false));
+        black_box(workload(fields, true));
+        let mut fast = [0.0_f64; 7];
+        let mut full = [0.0_f64; 7];
+        for i in 0..7 {
+            if i % 2 == 0 {
+                fast[i] = workload(fields, false);
+                full[i] = workload(fields, true);
+            } else {
+                full[i] = workload(fields, true);
+                fast[i] = workload(fields, false);
+            }
         }
         fast.sort_by(f64::total_cmp);
         full.sort_by(f64::total_cmp);
         println!(
             "{fields} fields: per-slot median {:.3} ms,full-bank reference {:.3} ms",
-            fast[1], full[1]
+            fast[3], full[3]
         );
         assert!(
-            fast[1] < full[1] * 0.5,
+            fast[3] < full[3] * 0.5,
             "dense automation regressed to full-bank cost"
         );
     }

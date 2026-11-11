@@ -72,7 +72,10 @@ pub fn project_folder_name(name: &str) -> Result<&str> {
     if ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"].contains(&base.as_str())
         || ["COM", "LPT"].iter().any(|prefix| {
             base.strip_prefix(prefix).is_some_and(|suffix| {
-                matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+                matches!(
+                    suffix,
+                    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
             })
         })
     {

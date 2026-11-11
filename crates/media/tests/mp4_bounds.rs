@@ -162,3 +162,14 @@ fn related_chunk_index_and_fragment_tables_reject_invalid_extents() {
     let error = rejects(&bytes);
     assert!(error.contains("fragment"), "{error}");
 }
+
+#[test]
+fn timing_sample_totals_reject_before_decode_instead_of_panicking() {
+    let mut bytes = fixture();
+    let pos = atom(&bytes, b"stts");
+    let entries = u32::from_be_bytes(bytes[pos + 8..pos + 12].try_into().unwrap());
+    assert!(entries >= 2);
+    bytes[pos + 12..pos + 16].copy_from_slice(&u32::MAX.to_be_bytes());
+    bytes[pos + 20..pos + 24].copy_from_slice(&1_u32.to_be_bytes());
+    assert!(rejects(&bytes).contains("sample count overflow"));
+}

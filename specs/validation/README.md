@@ -4,6 +4,50 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Standalone review remediation, fifth pass — 2026-11-11
+
+Addressed the five non-ONNX findings validated against standalone snapshot
+`a08dde4`.
+
+- Project folder validation rejects Windows COM/LPT device names with superscript
+  ¹/²/³, including case variants and extensions. A 54-name matrix covers direct
+  and snapshot saves before directory creation, retained session/source data and
+  positive Unicode boundaries. Generated stem-folder fallback uses the same rule.
+- The pinned MP4 parser rejects cumulative sample-coordinate overflow and uses
+  checked timing lookups without an overflowing intermediate offset. Parser tests
+  cover empty fragmented tables, zero-duration entries, valid coordinates through
+  the u32 boundary and exclusive ends. The media decode fixture returns an error
+  for a count-overflow mutation. Original source and notices remain packaged.
+- Modulation guidance lists current destination examples and links each unit's
+  controls. TI-01 now describes the accepted version 2–6 to version 7 migration.
+- Multiband EQ updates only the changed canonical field. Continuous updates skip
+  unchanged mode/power targets, and each band converts its shared gain once for
+  all warm filters and channels. All modes retain their histories. Sample-exact
+  comparisons cover full retargeting, six rates, modes, power, invalid owners,
+  same-sample transient targets, reset, meters and zero callback heap operations.
+  The release cost check retains its less-than-50% total-time gate and full-bank
+  reference. It warms both paths and alternates seven paired measurements. Three
+  repeated runs passed: 64-field ratios were 47.5–49.6%; 322-field ratios were
+  17.1–17.4%. These results do not establish an audio-device deadline.
+
+Completed checks:
+
+- `cargo fmt --all --check`, `git diff --check` and all 59 local file targets in
+  changed Markdown documents: passed.
+- `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: passed.
+- `CARGO_INCREMENTAL=0 cargo test --locked --offline --workspace`: passed, 2,816
+  tests and 21 existing ignored cases, including doctests.
+- `cargo test --locked --offline --workspace --release`: passed, including doctests.
+- Explicit vendor parser library tests: three passed in both debug and release.
+- `cargo build --locked --offline -p daw-desktop -p daw-cli` and
+  `python3 tools/check_cli.py`: passed.
+- Packaging/source/native-preparation fixtures: 23 passed. The patched library's
+  original archive hash and complete file inventory were checked again.
+
+The ONNX shape-inference finding remains excluded by the user's instruction.
+These checks do not establish native UI/device, external plugin-host or
+Windows/Linux acceptance. Clean-commit macOS packaging follows this record.
+
 ## Standalone review remediation, fourth pass — 2026-11-11
 
 Addressed the seven non-ONNX findings validated against standalone snapshot

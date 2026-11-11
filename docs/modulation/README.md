@@ -28,24 +28,30 @@ Amount uses the destination's units. Pitch uses semitones, level uses dB, and fr
 
 Assigned knobs have a status dot. Filled means active; hollow means inactive. Hover to see sources, amounts, and inactive reasons. Click the dot to open connections. The outer range arc shows possible movement, and live dots show processed values during playback. The main pointer and readout keep the base setting.
 
-## Available destinations
+## Destination examples
+
+This table gives examples, not a complete control list. Open a unit's guide for
+all supported destinations and their limits. The unit's Destination dropdown
+shows the controls available on that instance.
 
 | Unit | Parameters |
 | --- | --- |
-| Oscillator | Pitch for each source |
-| Sampler | Gain |
-| Amplitude | Gain shaping |
-| Envelope | Attack/Decay/Release time, Attack/Decay note fraction, Sustain, and curve strengths |
-| LFO | Depth, Rate |
-| Macro | Value for each strip |
-| 3-band EQ | Low/Mid/High Gain; Low/High Frequency and Q |
-| Drive | Volume, Gain, Tone, Color strength, Color frequency |
-| Bitcrusher | Drive, Resolution, Downsampling, Level, Dry/Wet; Resolution and Downsampling retain whole steps |
-| Filter, Auto-filter | Frequency, Resonance, Level, Dry/Wet |
-| Compressor | Threshold, Ratio, Attack, Release, Knee, Level, Dry/Wet |
-| Limiter | Input, Release, Lookahead, Ceiling |
-| OTT | Low/High crossover; Low/Mid/High Depth, Input, Output, Attack, Release; Level, Dry/Wet |
-| Direction Mixer | Direction, Spread |
-| Stereo Spread | Lower/Upper Intensity, Lower/Upper Frequency |
+| [Oscillator](../instruments/oscillator.md) | Pitch, Gain, Cents and Width for each source; unit Pitch, Level and Cents |
+| [Sampler](../instruments/sampler.md) | Gain |
+| [Granulizer](../instruments/granulizer.md) | Gain and continuous granular controls |
+| [Noise](../instruments/noise.md) | Color, Width, Level |
+| [Amplitude](../instruments/amplitude.md) | Gain shaping |
+| [Envelope](../instruments/envelope.md) | Attack/Decay/Release time, Attack/Decay note fraction, Sustain, and curve strengths |
+| [LFO](../instruments/lfo.md) | Depth, Rate |
+| [Macro](../instruments/macro.md) | Value for each strip |
+| [3-band EQ](../effects/equalizer.md) | Low/Mid/High Gain; Low/High Frequency and Q |
+| [Drive](../effects/drive.md) | Volume, Gain, Tone, Color strength, Color frequency |
+| [Bitcrusher](../effects/bitcrusher.md) | Drive, Resolution, Downsampling, Level, Dry/Wet; Resolution and Downsampling retain whole steps |
+| [Filter](../effects/filter.md), [Auto-filter](../effects/auto-filter.md) | Frequency, Resonance, Level, Dry/Wet |
+| [Compressor](../effects/compressor.md) | Threshold, Ratio, Attack, Release, Knee, Level, Dry/Wet |
+| [Limiter](../effects/limiter.md) | Input, Release, Lookahead, Ceiling |
+| [OTT](../effects/ott.md) | Low/High crossover; Low/Mid/High Depth, Input, Output, Attack, Release; Level, Dry/Wet |
+| [Direction Mixer](../effects/direction-mixer.md) | Direction, Spread |
+| [Stereo Spread](../effects/stereo-spread.md) | Lower/Upper Intensity, Lower/Upper Frequency |
 
-Unit power, discrete mode/shape choices, and read-only meters are not destinations. See the individual [component and effect guides](../views/instrument.md) for parameter behavior and limits.
+Unit power, discrete mode/shape choices, and read-only meters are not destinations. See the [component guides](../README.md#instrument-components) and [effect guides](../README.md#effects) for parameter behavior and limits. Other compatible effects include [Multiband EQ](../effects/multiband-eq.md), [Multiband Compressor](../effects/multiband-compressor.md), [Drive v2](../effects/drive-v2.md), [Saturator](../effects/saturator.md), [Harmonic Lift](../effects/harmonic-lift.md), [Exciter](../effects/exciter.md), [Chorus](../effects/chorus.md), [Plate Reverb](../effects/plate-reverb.md), [Ambient Reverb](../effects/ambient-reverb.md), and [Shimmer Reverb](../effects/shimmer-reverb.md).

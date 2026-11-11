@@ -70,6 +70,7 @@ impl Processor {
     }
     /// Copy only the changed parameter from an already validated snapshot.
     /// Timed automation must not copy the complete state on every sample.
+    #[inline(always)]
     pub fn apply_parameter(&mut self, parameter: Parameter, state: &PluginState) {
         self.state.copy_parameter_from(parameter, state);
         self.retarget_parameter(parameter);
@@ -84,13 +85,18 @@ impl Processor {
         self.retarget_parameter(parameter);
         Ok(())
     }
+    #[inline(always)]
     fn retarget_parameter(&mut self, parameter: Parameter) {
         if let Some(slot) =
             crate::mapping::update_parameter(&self.state, parameter, &mut self.settings)
         {
-            let accepted = self
-                .drive
-                .retarget_prepared_band(slot, &self.settings.bands[slot]);
+            let accepted = if (parameter.index() - 1) % 5 >= 2 {
+                self.drive
+                    .retarget_prepared_band_continuous(slot, &self.settings.bands[slot])
+            } else {
+                self.drive
+                    .retarget_prepared_band(slot, &self.settings.bands[slot])
+            };
             debug_assert!(accepted, "prepared canonical slot identity changed");
         } else if parameter == Parameter::Bypass {
             self.drive.retarget_enabled(self.settings.enabled);

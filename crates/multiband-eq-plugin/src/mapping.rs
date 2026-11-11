@@ -42,6 +42,7 @@ fn update_band(state: &PluginState, band: &mut daw_unit_core::MultibandEqBand) {
 }
 /// Prepared plugin settings use canonical slot order regardless of UI order.
 /// Return the affected band, or None for the two global controls.
+#[inline(always)]
 pub fn update_parameter(
     state: &PluginState,
     parameter: P,
@@ -58,7 +59,15 @@ pub fn update_parameter(
         }
         _ => {
             let slot = (parameter.index() - 1) / 5;
-            update_band(state, &mut settings.bands[slot]);
+            let band = &mut settings.bands[slot];
+            let value = state.get(parameter);
+            match (parameter.index() - 1) % 5 {
+                0 => band.enabled = value != 0.0,
+                1 => band.mode = daw_unit_core::EqBandMode::ALL[value as usize],
+                2 => band.frequency_hz = value as f32,
+                3 => band.gain_db = value as f32,
+                _ => band.q = value as f32,
+            }
             Some(slot)
         }
     }

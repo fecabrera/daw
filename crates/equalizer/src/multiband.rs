@@ -191,15 +191,11 @@ impl Filter {
             EqBandMode::LowPass8 => Self::LowPass8(Cascade::new(params, EIGHT_POLE_Q_SCALE)),
         }
     }
-    fn configure(&mut self, values: [f32; 3]) {
+    fn configure(&mut self, values: [f64; 3]) {
         filter!(
             self,
             node,
-            node.set_cutoff_q_gain(
-                f64::from(values[1]),
-                f64::from(values[2]),
-                10_f64.powf(f64::from(values[0]) / 20.0)
-            )
+            node.set_cutoff_q_gain(values[1], values[2], values[0])
         );
     }
     fn sample(&mut self, input: f32) -> f32 {
@@ -290,7 +286,7 @@ impl Solo {
             f.store(false, std::sync::atomic::Ordering::Relaxed);
         }
     }
-    fn configure(&mut self, values: [f32; 3]) {
+    fn configure(&mut self, values: [f64; 3]) {
         for f in self.eq.iter_mut().chain(self.reject.iter_mut()).flatten() {
             f.configure(values);
         }
@@ -438,10 +434,17 @@ impl ModulationDestination for Band {
             (base[2] + offsets[2]).clamp(0.1, 10.0),
         ];
         if self.configured != self.effective {
+            // Every warm mode and both channels use the same parameters.
+            // Convert gain once per band, rather than once per filter.
+            let configured = [
+                10_f64.powf(f64::from(self.effective[0]) / 20.0),
+                f64::from(self.effective[1]),
+                f64::from(self.effective[2]),
+            ];
             for f in self.filters.iter_mut().flatten() {
-                f.configure(self.effective);
+                f.configure(configured);
             }
-            self.solo.configure(self.effective);
+            self.solo.configure(configured);
             self.configured = self.effective;
         }
         let weights = self.weights.advance();
@@ -577,14 +580,34 @@ impl MultibandEq {
     /// Update one validated prepared slot in constant time. A wrong index or ID
     /// leaves the complete bank unchanged; this never creates or reorders bands.
     pub fn retarget_prepared_band(&mut self, index: usize, settings: &MultibandEqBand) -> bool {
-        let Some(band) = self.bands.get_mut(index) else {
+        let frames = self.fade_frames;
+        let Some(band) = self.prepared_band_mut(index, settings.id) else {
             return false;
         };
-        if band.destination.id != settings.id {
-            return false;
-        }
-        band.destination.retarget(settings, self.fade_frames);
+        band.retarget(settings, frames);
         true
+    }
+    /// Update only validated Gain/Frequency/Q targets. Discrete mode and power
+    /// changes use `retarget_prepared_band`; this preserves their warm histories.
+    #[inline(always)]
+    pub fn retarget_prepared_band_continuous(
+        &mut self,
+        index: usize,
+        settings: &MultibandEqBand,
+    ) -> bool {
+        let frames = self.fade_frames;
+        let Some(band) = self.prepared_band_mut(index, settings.id) else {
+            return false;
+        };
+        band.parameters.set(values(settings), frames);
+        true
+    }
+    #[inline(always)]
+    fn prepared_band_mut(&mut self, index: usize, id: ModulationTargetId) -> Option<&mut Band> {
+        self.bands
+            .get_mut(index)
+            .map(|band| &mut band.destination)
+            .filter(|band| band.id == id)
     }
     /// Update validated output gain without visiting prepared bands.
     pub fn retarget_output_gain(&mut self, gain_db: f32) {
@@ -1150,6 +1173,49 @@ mod meter_tests {
 #[cfg(test)]
 mod prepared_slot_tests {
     use super::*;
+    #[test]
+    fn continuous_prepared_updates_match_full_retarget_and_reject_wrong_owners() {
+        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+            let context = ProcessingContext {
+                sample_rate_hz: rate,
+                max_block_frames: 512,
+            };
+            let mut settings = MultibandEqSettings::default();
+            let mut actual = MultibandEq::new(context, &settings);
+            let mut expected = MultibandEq::new(context, &settings);
+            actual.prepare_fixed_band_slots();
+            expected.prepare_fixed_band_slots();
+            for mode in EqBandMode::ALL {
+                for enabled in [false, true] {
+                    settings.bands[0].mode = mode;
+                    settings.bands[0].enabled = enabled;
+                    assert!(actual.retarget_prepared_band(0, &settings.bands[0]));
+                    expected.retarget(&settings);
+                    for frame in 0..64 {
+                        settings.bands[0].frequency_hz = 300.0 + frame as f32 * 40.0;
+                        settings.bands[0].gain_db = if frame % 2 == 0 { -3.0 } else { 6.0 };
+                        settings.bands[0].q = 0.7 + frame as f32 * 0.01;
+                        assert!(actual.retarget_prepared_band_continuous(0, &settings.bands[0]));
+                        expected.retarget(&settings);
+                        let input = [(frame as f32 * 0.1).sin() * 0.05, -0.03];
+                        assert_eq!(actual.process_sample(input), expected.process_sample(input));
+                    }
+                    assert!(
+                        !actual.retarget_prepared_band_continuous(usize::MAX, &settings.bands[0])
+                    );
+                    let mut wrong_owner = settings.bands[0].clone();
+                    wrong_owner.id = ModulationTargetId::new_v4();
+                    wrong_owner.frequency_hz = 10000.0;
+                    assert!(!actual.retarget_prepared_band_continuous(0, &wrong_owner));
+                    assert_eq!(
+                        actual.process_sample([0.1, -0.1]),
+                        expected.process_sample([0.1, -0.1])
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn prepared_retarget_rejects_topology_changes_and_preserves_fixed_slot_mode() {
         let context = ProcessingContext {

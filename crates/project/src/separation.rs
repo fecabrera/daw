@@ -606,6 +606,19 @@ mod tests {
     }
 
     #[test]
+    fn reserved_superscript_stem_names_use_the_portable_fallback() {
+        let (fixture, session, _) = Fixture::new();
+        let before = session.project.clone();
+        for name in ["COM¹", "cOm².wav", "LPT³.session"] {
+            let parent = fixture.0.join(Id::new_v4().to_string());
+            let path = reserve_directory(&parent, name).unwrap();
+            assert_eq!(path.file_name().unwrap(), "Clip");
+            assert_eq!(fs::read_dir(parent).unwrap().count(), 1);
+        }
+        assert_eq!(session.project, before);
+    }
+
+    #[test]
     fn stem_folder_collisions_keep_multibyte_names_within_the_byte_limit() {
         let (fixture, _, _) = Fixture::new();
         for name in [

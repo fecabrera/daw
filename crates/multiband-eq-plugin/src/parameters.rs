@@ -690,6 +690,7 @@ impl Parameter {
     pub(crate) fn index(self) -> usize {
         self as usize - 100
     }
+    #[inline(always)]
     pub fn info(self) -> ParameterInfo {
         static KEYS: [&str; 322] = [
             "bypass",

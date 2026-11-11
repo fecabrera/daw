@@ -130,3 +130,11 @@ Codec/binding copyright and license texts are in `crates/media/assets/licenses`;
 all desktop packagers already copy that directory. Keep the adapter MIT/Apache,
 opusic-sys BSD and bundled Opus COPYING notices and exact source links together.
 Import support adds no Opus export mode.
+
+MP4 timing tables check cumulative sample coordinates before publication.
+Sample/timestamp lookup uses checked sums and subtracts the entry's first sample
+before multiplying duration; do not form an overflowing intermediate sum.
+Impossible coordinates return a decode error. Empty fragmented timing tables,
+zero-duration entries and valid coordinates near the 32-bit sample limit retain
+their existing exclusive-end behavior. Bounded parser and shared media tests
+run in both debug and release configurations.

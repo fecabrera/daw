@@ -41,3 +41,13 @@ The executor prevalidates retained relocated models before filesystem commit. Ap
 [Source-bundling integration tests](../../crates/project/tests/source_bundling.rs) cover collection and Save As with original files and the old folder removed; imported and generated Redo-only media; pending and Undo owners; dirty checkpoints; stable PCM/cache Arcs and navigation; stale/foreign receipts; uncaptured owners; missing included media; later external imports; failed destinations and changed encoded bytes. Sampler and Granulizer inputs are covered without timeline clips. Collected MP3/AAC/MP4 sources retain their full encoded bytes through Save As; output extensions come from verified codec/container metadata. Trimmed, repeated, stretched and pitched clips retain their mappings, prepared buffers, deterministic render and byte-identical WAV export across collected Save As/reopen, using both saved stretch engines.
 
 Existing generated-stem lifetime, Save As failure cleanup, editable background-save and UI selection/history tests remain required. See [validation history](../validation/README.md) for executed checks. Automated local filesystem tests do not establish native Windows/Linux, device/UI, network filesystem, process-interruption or power-loss acceptance. Stage 4 exposes the desktop command; the complete portability release gate remains pending.
+
+## Portable destination folder names
+
+The naming dialog, `Session::save_new`, `SaveSnapshot::save_new` and generated
+stem-folder fallback share `project_folder_name`. Before creating a destination,
+reject COM/LPT followed by ASCII 1–9 or superscript ¹/²/³, case-insensitively and
+before extensions. Match the existing included-source basename rule while
+retaining each caller's errors. Other Unicode names remain valid. Failed names
+retain the session, recordings and original asset/clip names. This validation
+does not rename external recordings or change existing-folder collection.

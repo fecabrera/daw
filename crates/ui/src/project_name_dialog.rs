@@ -149,7 +149,7 @@ mod tests {
                 frame(&ctx, &mut dialog, vec![key(egui::Key::Enter)]).0,
                 Some(Action::Continue("Música 01".into()))
             );
-            for invalid in ["", "../escape", "CON"] {
+            for invalid in ["", "../escape", "CON", "cOm¹", "LPT².wav", "lpt³.project"] {
                 dialog.name = invalid.into();
                 assert_eq!(click(&ctx, &mut dialog, "Continue…"), None);
                 let (_, shapes) = frame(&ctx, &mut dialog, vec![]);
