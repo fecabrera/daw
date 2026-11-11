@@ -622,6 +622,15 @@ DAW source painters and their old meter drag exclusions are removed. This
 host-specific presentation choice preserves shared body/control geometry,
 per-band `band_output_level`, gain-reduction and signed gain-change meters.
 
+
+Whole-unit insertion previews include the trailing 16-point output-meter gap.
+At the end of an effects or component lane, paint the preview after the stereo
+output meter, at the next unit boundary, while retaining viewport clipping.
+Between units, keep the next unit’s left edge as the insertion boundary.
+Oscillator strip insertion lines span their source unit’s height, clipped to
+the visible viewport, rather than the full layer lane. Other internal strip
+geometry and commit indices remain unchanged.
+
 ## Effect meter lifecycle
 
 All effect-unit level, gain-change, and gain-reduction monitors stop when their owning unit is disabled. This applies to EQ, Compressor, Limiter, and OTT and to future metered effects. Individual band switches retain each unit's documented semantics. Track and Master output meters continue measuring their output buses during effect bypass.

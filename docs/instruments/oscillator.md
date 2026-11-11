@@ -20,7 +20,7 @@ The last column, **Out**, contains Level, Pitch, and Cents. Level controls the c
 
 The gap after the unit holds its [stereo output meter and held-peak indicators](../effects/output-meter.md). It measures the sum across notes after source gains, unit Level and note velocity, before Amplitude and layer processing. Click the rail to reset only the held peak. The meter stays visible in compact/collapsed views; unit power-off clears it.
 
-Use Plus inside the unit, before Out, to add another oscillator. Each source has independent controls and power. Drag unused strip space to reorder sources. Right-click a source or its knob to remove it. Removing the last source leaves the layer silent.
+Use Plus inside the unit, before Out, to add another oscillator. Each source has independent controls and power. Drag unused strip space to reorder sources. The insertion line stays within the oscillator unit’s height. Right-click a source or its knob to remove it. Removing the last source leaves the layer silent.
 
 Each source shows one cycle of its selected waveform above the Waveform dropdown. Choose Sine, Saw, Square or Triangle from that dropdown. The graphic stays visible while stopped or playing. Pitch changes the cycle duration, so it does not change the number of cycles shown. The preview shows the source shape at a fixed height; it excludes Gain, modulation, note phases, other sources, Amplitude and effects. A powered-off source keeps its shape in grey.
 

@@ -886,7 +886,7 @@ fn effects_library_drag_uses_reorder_preview_and_inserts_group_on_release() {
             let expected_x = if index < 3 {
                 app.effects_bounds.chain[index].1.left()
             } else {
-                app.effects_bounds.chain[2].1.right()
+                app.effects_bounds.chain[2].1.right() + panels::UNIT_GAP
             }
             .clamp(viewport.left() + 1.0, viewport.right() - 1.0);
             assert!(shapes.iter().any(|shape| matches!(&shape.shape,

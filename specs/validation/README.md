@@ -4,6 +4,57 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Oscillator strip insertion preview height — 2026-11-11
+
+Oscillator strip reordering now bounds the insertion line by the destination
+oscillator unit, then clips it to the visible viewport. It no longer spans the
+whole instrument lane. An empty destination uses the standard unit inset.
+Horizontal slots, transfers, release-only reordering and pitch routes retain
+their existing behavior.
+
+The existing oscillator reorder test now verifies preview endpoints against the
+unit rectangle in expanded and compact modes, along with the resulting order
+and unchanged pitch routes.
+
+Completed checks:
+
+- Focused oscillator reorder test: passed in expanded and compact modes.
+- `CARGO_INCREMENTAL=0 cargo test --workspace --offline`: passed (981 DAW UI
+  tests passed, 3 ignored), with debug assertions enabled.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native UI remains unverified. Packaging stopped at the committed-source gate.
+The executable was rebuilt; the app bundle was not updated.
+
+## Unit insertion previews after output meters — 2026-11-11
+
+Whole-unit drag previews now include the trailing 16-point output-meter gap at
+the end of effects and instrument component lanes. The line therefore appears
+after the stereo meter. Between-unit and empty-lane boundaries retain their
+positions. Slot selection, release-only commits, cancellation and internal
+oscillator/strip previews retain their existing behavior.
+
+Updated the real effect-catalog drag test for the terminal boundary, retaining
+its expanded/collapsed cases, insertion indices and release checks.
+
+Completed checks:
+
+- `CARGO_INCREMENTAL=0 cargo test --workspace --offline`: passed, including
+  981 DAW UI tests (3 ignored). The initial incremental build failed to link
+  test binaries with undefined symbols; the non-incremental run passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native UI checks remain unverified. Packaging stopped at the committed-source
+gate. The executable was rebuilt; the app bundle was not updated.
+
 ## Timeline track-size slider and saved display state — 2026-11-10
 
 Add a three-position Timeline height slider between Fit all clips and horizontal

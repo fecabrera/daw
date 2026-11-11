@@ -285,7 +285,7 @@ impl DawUi {
             .input(|i| i.pointer.latest_pos())
             .filter(|p| viewport.contains(*p))?;
         let slot = drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r));
-        drag::insertion_line(
+        drag::unit_insertion_line(
             ui,
             &slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
             slot,
@@ -378,7 +378,7 @@ impl DawUi {
             )
             .1;
         if valid && changed {
-            drag::insertion_line(
+            drag::unit_insertion_line(
                 ui,
                 &slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
                 slot,
@@ -467,7 +467,7 @@ impl DawUi {
         if let Some((slot, _, changed)) = target
             && changed
         {
-            drag::insertion_line(
+            drag::unit_insertion_line(
                 ui,
                 &slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
                 slot,

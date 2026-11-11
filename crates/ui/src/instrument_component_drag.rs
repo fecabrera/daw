@@ -238,6 +238,7 @@ impl DawUi {
                 slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
                 slot,
                 *row,
+                *owner,
             ));
             true
         });
@@ -246,9 +247,23 @@ impl DawUi {
         {
             panels::selection_border(ui, rect);
         }
-        if let Some((slots, slot, row)) = oscillator_insertion {
-            let body = Rect::from_min_max(Pos2::new(row.left() + TRACK_WIDTH, row.top()), row.max)
-                .intersect(viewport);
+        if let Some((slots, slot, row, owner)) = oscillator_insertion {
+            let unit = self
+                .instrument_ui
+                .component_slots
+                .iter()
+                .find(|(layer, component, _)| {
+                    *layer == owner && *component == daw_core::InstrumentComponent::Oscillators
+                })
+                .map_or_else(
+                    || row.shrink2(Vec2::new(0.0, panels::UNIT_VERTICAL_MARGIN)),
+                    |(_, _, rect)| *rect,
+                );
+            let body = Rect::from_min_max(
+                Pos2::new(row.left() + TRACK_WIDTH, unit.top()),
+                Pos2::new(row.right(), unit.bottom()),
+            )
+            .intersect(viewport);
             drag::insertion_line(ui, &slots, slot, body);
         }
         if let Some((slots, slot, row, changed)) = &unit_insertion
@@ -256,7 +271,7 @@ impl DawUi {
         {
             let body = Rect::from_min_max(Pos2::new(row.left() + TRACK_WIDTH, row.top()), row.max)
                 .intersect(viewport);
-            drag::insertion_line(ui, slots, *slot, body);
+            drag::unit_insertion_line(ui, slots, *slot, body);
         }
         #[cfg(test)]
         {

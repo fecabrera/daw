@@ -825,6 +825,20 @@ fn oscillator_strip_reorder_uses_insertion_slots_without_changing_pitch_routes()
         let end = app.instrument_ui.oscillator_slots[1].2.right_center() - egui::vec2(2.0, 0.0);
         start(&mut app, &ctx, p);
         frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        let unit = app
+            .instrument_ui
+            .component_slots
+            .iter()
+            .find(|(owner, component, _)| {
+                *owner == owners[0] && *component == InstrumentComponent::Oscillators
+            })
+            .unwrap()
+            .2;
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::LineSegment { points, stroke }
+                if points[0].x == points[1].x && *stroke == egui::Stroke::new(2.0, theme::accent(&ctx))
+                    && points[0].y == unit.top() && points[1].y == unit.bottom())));
         assert_eq!(
             app.session.project.tracks[0]
                 .instrument
