@@ -114,6 +114,7 @@ mod mixer;
 mod modulation_panel;
 mod ott_panel;
 mod parameter_knobs;
+mod project_display;
 mod saturator_panel;
 mod separation;
 mod stereo_spread_panel;
@@ -929,8 +930,15 @@ pub struct DawUi {
     timeline_bounds: Rect,
     fit_all_requested: bool,
     track_rows_collapsed: bool,
+    timeline_tracks_large: bool,
+    timeline_vertical_scroll: f32,
+    timeline_vertical_restore: Option<f32>,
     #[cfg(test)]
     track_rows_bounds: Rect,
+    #[cfg(test)]
+    track_size_bounds: Rect,
+    #[cfg(test)]
+    timeline_send_bounds: HashMap<Id, (Rect, Vec<(Id, Rect)>)>,
     #[cfg(test)]
     fit_all_bounds: Rect,
     #[cfg(test)]
@@ -1074,9 +1082,16 @@ impl Default for DawUi {
             lane_bounds: HashMap::new(),
             timeline_bounds: Rect::NOTHING,
             fit_all_requested: false,
-            track_rows_collapsed: true,
+            track_rows_collapsed: false,
+            timeline_tracks_large: false,
+            timeline_vertical_scroll: 0.0,
+            timeline_vertical_restore: None,
             #[cfg(test)]
             track_rows_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            track_size_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            timeline_send_bounds: HashMap::new(),
             #[cfg(test)]
             fit_all_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -1317,6 +1332,7 @@ impl DawUi {
                     daw_core::Project::new_with_audio_quality(self.settings.audio_quality)
                         .unwrap_or_default();
                 self.session.project.stretch_engine = self.settings.default_stretch_engine;
+                self.restore_project_display();
                 self.history = None;
                 self.saved_navigation_revision = self.navigation_revision;
                 self.midi_editor.cancel();
@@ -1385,7 +1401,7 @@ impl DawUi {
             self.save_snapshot(folder);
             return;
         }
-        let snapshot = match self.session.save_snapshot(self.history.as_ref()) {
+        let snapshot = match self.display_save_snapshot() {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 self.fail(error);
@@ -1406,7 +1422,7 @@ impl DawUi {
             self.unsaved_prompt = false;
             return;
         };
-        let snapshot = match self.session.save_snapshot(self.history.as_ref()) {
+        let snapshot = match self.display_save_snapshot() {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 self.fail(error);
@@ -1733,6 +1749,9 @@ impl DawUi {
         }
         self.notices = session.warnings.clone();
         self.session = session;
+        if !dirty {
+            self.restore_project_display();
+        }
         self.prune_clip_selection();
         self.selected_track = if self.master_selected {
             None
@@ -3282,6 +3301,7 @@ impl DawUi {
             #[cfg(test)]
             {
                 self.track_rows_bounds = Rect::NOTHING;
+                self.track_size_bounds = Rect::NOTHING;
             }
             if self.view_mode.has_clip_lanes() {
                 let mut zoom = self.view_zoom();
@@ -3297,6 +3317,10 @@ impl DawUi {
                     }
                     #[cfg(not(test))]
                     let _ = response;
+                    if self.view_mode == ViewMode::Timeline {
+                        self.track_size_slider(ui);
+                        ui.separator();
+                    }
                     let enabled = self.fit_all_range().is_some()
                         && self.editing_enabled()
                         && self.track_drag.is_none()
@@ -3314,7 +3338,9 @@ impl DawUi {
                     if fit.clicked() {
                         self.fit_all_requested = true;
                     }
-                    self.track_rows_button(ui);
+                    if self.view_mode == ViewMode::Timeline {
+                        self.track_rows_button(ui);
+                    }
                 });
                 if self.view_mode.has_track_overview() {
                     self.midi_editor.zoom = zoom;
@@ -3502,28 +3528,32 @@ impl DawUi {
         );
         self.lane_bounds.clear();
         let selected_before_tracks = self.selected_clip;
-        let tracks = egui::ScrollArea::vertical()
+        let mut track_scroll = egui::ScrollArea::vertical()
             .max_height((return_rect.top() - ui.cursor().top()).max(0.0))
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                let rows = self.tracks_kind(ui, false);
-                self.empty_tracks_context_menu(ui);
-                self.scroll_track_drag(ui);
-                if self
-                    .effects_drag
-                    .as_ref()
-                    .is_some_and(|d| d.active && !d.is_library())
-                {
-                    drag::scroll_drag(
-                        ui,
-                        drag::Axis::Vertical,
-                        360.0,
-                        self.edit_environment_available(),
-                        ui.clip_rect(),
-                    );
-                }
-                rows
-            });
+            .auto_shrink([false, false]);
+        if let Some(offset) = self.timeline_vertical_restore.take() {
+            track_scroll = track_scroll.vertical_scroll_offset(offset);
+        }
+        let tracks = track_scroll.show(ui, |ui| {
+            let rows = self.tracks_kind(ui, false);
+            self.empty_tracks_context_menu(ui);
+            self.scroll_track_drag(ui);
+            if self
+                .effects_drag
+                .as_ref()
+                .is_some_and(|d| d.active && !d.is_library())
+            {
+                drag::scroll_drag(
+                    ui,
+                    drag::Axis::Vertical,
+                    360.0,
+                    self.edit_environment_available(),
+                    ui.clip_rect(),
+                );
+            }
+            rows
+        });
+        self.timeline_vertical_scroll = tracks.state.offset.y;
         let return_rows = if has_returns {
             self.return_timeline_bank(ui, return_rect)
         } else {
@@ -4582,10 +4612,14 @@ impl DawUi {
                                     |ui| {
                                         let mut mute = track.muted;
                                         let mut solo = track.soloed;
-                                        let mut header_rows = track_rows::HeaderRows::track(
+                                        let mut header_rows = track_rows::HeaderRows::track_size(
                                             ui,
                                             self.track_rows_collapsed,
+                                            self.large_track_headers(),
                                         );
+                                        if let Some(sends) = &mut header_rows.sends {
+                                            self.timeline_send_knobs(sends, &track);
+                                        }
                                         let header = rows::centered(
                                             &mut header_rows.name,
                                             if self.track_rows_collapsed {

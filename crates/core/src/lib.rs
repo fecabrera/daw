@@ -1,3 +1,5 @@
+mod display;
+pub use display::{ProjectDisplay, TrackHeight};
 mod clip_channels;
 mod merge;
 pub use clip_channels::ClipChannels;
@@ -230,6 +232,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     #[serde(default)]
+    pub display: ProjectDisplay,
+    #[serde(default)]
     pub stretch_engine: StretchEngine,
     pub project_id: Id,
     pub name: String,
@@ -389,6 +393,7 @@ pub struct Loop {
 impl Default for Project {
     fn default() -> Self {
         Self {
+            display: ProjectDisplay::default(),
             stretch_engine: StretchEngine::default(),
             project_id: Id::new_v4(),
             name: "Untitled".into(),
@@ -515,6 +520,7 @@ impl Project {
         self.track_audible(track.id)
     }
     pub fn validate(&self) -> Result<()> {
+        self.display.validate()?;
         self.validate_track_groups()?;
         self.validate_sends()?;
         self.sidechain_order()?;

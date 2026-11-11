@@ -36,3 +36,7 @@ pub(super) fn header_gain(ui: &mut egui::Ui, value: &mut f32) -> egui::Response 
 pub(super) fn header_pan(ui: &mut egui::Ui, value: &mut f32) -> egui::Response {
     header_slot(ui, |ui| pan_scaled(ui, value, HEADER_SIZE / SIZE))
 }
+
+pub(super) fn header_send_gain(ui: &mut egui::Ui, value: &mut f32) -> egui::Response {
+    header_slot(ui, |ui| send_gain_scaled(ui, value, HEADER_SIZE / SIZE))
+}

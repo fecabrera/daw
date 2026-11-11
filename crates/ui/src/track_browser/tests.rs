@@ -1307,11 +1307,13 @@ fn timeline_beat_context_uses_clicked_parent_when_audio_is_primary_in_a_group_se
     let (mut app, ctx, parent, _, other, _) = beat_fixture();
     let audio = app.session.project.tracks[0].id;
     app.view_mode = ViewMode::Timeline;
+    app.timeline_vertical_restore = Some(300.0);
     app.select_track(audio, false);
     app.selected_tracks.insert(parent);
     frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
     let lane = app.lane_bounds[&parent];
-    let point = Pos2::new(lane.left() - 100.0, lane.center().y);
+    let point = Pos2::new(lane.left() - 100.0, lane.top() + 18.0);
     let original = app.session.project.clone();
     let shapes = secondary(&mut app, &ctx, point);
     assert_eq!(app.selected_track, Some(audio));

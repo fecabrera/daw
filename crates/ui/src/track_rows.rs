@@ -1,23 +1,30 @@
-//! Shared one-row and two-row track header geometry. This is view state only.
+//! Compact/regular header geometry plus the Timeline-only large sends row.
 use super::*;
 
 pub(super) struct HeaderRows {
     pub name: egui::Ui,
     pub mix: egui::Ui,
+    pub sends: Option<egui::Ui>,
 }
 
 impl HeaderRows {
     pub fn new(ui: &mut egui::Ui, collapsed: bool) -> Self {
-        Self::with_knobs(ui, collapsed, true)
+        Self::with_knobs(ui, collapsed, true, false)
     }
 
     pub fn track(ui: &mut egui::Ui, collapsed: bool) -> Self {
-        Self::with_knobs(ui, collapsed, !collapsed)
+        Self::track_size(ui, collapsed, false)
     }
 
-    fn with_knobs(ui: &mut egui::Ui, collapsed: bool, knobs: bool) -> Self {
+    pub fn track_size(ui: &mut egui::Ui, collapsed: bool, large: bool) -> Self {
+        Self::with_knobs(ui, collapsed, !collapsed, large && !collapsed)
+    }
+
+    fn with_knobs(ui: &mut egui::Ui, collapsed: bool, knobs: bool, large: bool) -> Self {
         let height = if collapsed {
             knobs::SIZE
+        } else if large {
+            LARGE_HEIGHT - 14.0
         } else {
             ROW_HEIGHT - 14.0
         };
@@ -42,7 +49,13 @@ impl HeaderRows {
             (
                 Rect::from_min_size(body.min, Vec2::new(body.width(), toolbars::CONTROL_HEIGHT)),
                 Rect::from_min_max(
-                    body.min + Vec2::new(0.0, toolbars::CONTROL_HEIGHT + 4.0),
+                    body.min
+                        + Vec2::new(
+                            0.0,
+                            toolbars::CONTROL_HEIGHT
+                                + 4.0
+                                + if large { knobs::SIZE + 4.0 } else { 0.0 },
+                        ),
                     body.max,
                 ),
             )
@@ -60,21 +73,64 @@ impl HeaderRows {
         Self {
             name: child(name, "track-name-row"),
             mix: child(mix, "track-mix-row"),
+            sends: large.then(|| {
+                child(
+                    Rect::from_min_size(
+                        body.min + Vec2::new(0.0, toolbars::CONTROL_HEIGHT + 4.0),
+                        Vec2::new(body.width(), knobs::SIZE),
+                    ),
+                    "track-sends-row",
+                )
+            }),
         }
     }
 }
 
+pub(super) const LARGE_HEIGHT: f32 = ROW_HEIGHT + knobs::SIZE + 4.0;
+
 impl DawUi {
+    pub(super) fn large_track_headers(&self) -> bool {
+        self.view_mode == mixer::ViewMode::Timeline
+            && !self.track_rows_collapsed
+            && self.timeline_tracks_large
+    }
     pub(super) fn track_row_height(&self) -> f32 {
-        if self.track_rows_collapsed {
+        if self.view_mode == mixer::ViewMode::Edit {
+            ROW_HEIGHT
+        } else if self.track_rows_collapsed {
             MASTER_HEIGHT
+        } else if self.large_track_headers() {
+            LARGE_HEIGHT
         } else {
             ROW_HEIGHT
         }
     }
 
+    pub(super) fn track_size_slider(&mut self, ui: &mut egui::Ui) {
+        let enabled = self.edit_shortcuts_available(ui.ctx()) && self.track_name_edit.is_none();
+        let mut size = if self.track_rows_collapsed {
+            0
+        } else if self.timeline_tracks_large {
+            2
+        } else {
+            1
+        };
+        let response = ui
+            .add_enabled_ui(enabled, |ui| toolbars::track_size(ui, &mut size))
+            .inner;
+        #[cfg(test)]
+        {
+            self.track_size_bounds = response.rect;
+        }
+        if enabled && ui.is_enabled() && response.changed() {
+            self.track_rows_collapsed = size == 0;
+            self.timeline_tracks_large = size == 2;
+            ui.ctx().request_repaint();
+        }
+    }
+
     pub(super) fn track_rows_button(&mut self, ui: &mut egui::Ui) {
-        let enabled = self.clip_actions_available(ui.ctx()) && self.track_name_edit.is_none();
+        let enabled = self.edit_shortcuts_available(ui.ctx()) && self.track_name_edit.is_none();
         let response = ui
             .add_enabled_ui(enabled, |ui| {
                 icons::track_rows_button(ui, self.track_rows_collapsed)
@@ -84,8 +140,9 @@ impl DawUi {
         {
             self.track_rows_bounds = response.rect;
         }
-        if response.clicked() {
+        if enabled && ui.is_enabled() && response.clicked() {
             self.track_rows_collapsed = !self.track_rows_collapsed;
+            self.timeline_tracks_large = false;
             ui.ctx().request_repaint();
         }
     }

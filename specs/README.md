@@ -130,3 +130,5 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Remaining guitar low-end regression and revision-7 auditions](validation/transient-lowend-r7.md).
 
 - [Audio Editor transient indicators](views/audio-transients.md): optional analysis, marker mapping, caching and display.
+
+- [Timeline display state](views/timeline-display.md): track heights, send rows and saved zoom/scroll.

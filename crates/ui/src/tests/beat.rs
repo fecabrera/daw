@@ -3597,7 +3597,7 @@ fn timeline_subtrack_mix_shortcuts_toggle_selected_buses_as_one_history_edit() {
     let parent_lane = app.lane_bounds[&parent];
     let point = Pos2::new(
         parent_lane.left() - TRACK_WIDTH + 60.0,
-        parent_lane.center().y,
+        parent_lane.top() + 18.0,
     );
     click(&mut app, &ctx, point);
     assert!(

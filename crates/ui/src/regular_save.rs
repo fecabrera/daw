@@ -14,6 +14,7 @@ impl DawUi {
         written: &daw_project::SavedSession,
     ) -> daw_project::Result<()> {
         written.apply(&mut self.session, self.history.as_mut())?;
+        self.session.project.display = written.session.project.display;
         for warning in &written.session.warnings {
             if !self.session.warnings.contains(warning) {
                 self.session.warnings.push(warning.clone());
@@ -32,7 +33,7 @@ impl DawUi {
     }
 
     pub(super) fn save_snapshot(&mut self, folder: PathBuf) {
-        let snapshot = match self.session.save_snapshot(self.history.as_ref()) {
+        let snapshot = match self.display_save_snapshot() {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 self.fail(error);

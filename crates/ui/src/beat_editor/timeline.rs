@@ -250,8 +250,11 @@ impl DawUi {
             let cleared =
                 meters::stereo_panel_held(&mut header, height - 14.0, levels, held, |ui| {
                     ui.add_enabled_ui(enabled, |ui| {
-                        let mut layout =
-                            track_rows::HeaderRows::track(ui, self.track_rows_collapsed);
+                        let mut layout = track_rows::HeaderRows::track_size(
+                            ui,
+                            self.track_rows_collapsed,
+                            self.large_track_headers(),
+                        );
                         rows::centered(
                             &mut layout.name,
                             if self.track_rows_collapsed {

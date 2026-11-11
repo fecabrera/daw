@@ -118,3 +118,43 @@ pub fn horizontal_zoom(
     .on_hover_text("Horizontal zoom");
     response
 }
+
+/// Discrete Timeline track height, using the horizontal zoom control's geometry.
+pub(super) fn track_size(ui: &mut Ui, size: &mut i32) -> egui::Response {
+    let response = ui
+        .push_id("track-height-slider", |ui| {
+            ui.spacing_mut().slider_width = 56.0;
+            ui.spacing_mut().slider_rail_height = 4.0;
+            ui.spacing_mut().interact_size.y = 14.0;
+            ui.style_mut()
+                .text_styles
+                .insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
+            let response = ui.add(
+                egui::Slider::new(size, 0..=2)
+                    .integer()
+                    .show_value(false)
+                    .trailing_fill(false)
+                    .handle_shape(egui::style::HandleShape::Circle),
+            );
+            let label = match *size {
+                0 => "Compact",
+                1 => "Regular",
+                _ => "Large",
+            };
+            response.widget_info(|| {
+                egui::WidgetInfo::slider(ui.is_enabled(), f64::from(*size), "Track height")
+            });
+            response.on_hover_text(format!("Track height: {label} (Compact / Regular / Large)"))
+        })
+        .inner;
+    ui.add(
+        crate::icons::Lucide::MoveVertical
+            .size(16.0)
+            .stroke_width(2.0)
+            .color(theme::palette(ui.ctx()).text)
+            .image()
+            .alt_text("Track height"),
+    )
+    .on_hover_text("Track height");
+    response
+}

@@ -24,8 +24,8 @@ fn label_rect(shapes: &[egui::epaint::ClippedShape], panel: Rect, label: &str) -
 }
 
 #[test]
-fn row_toggle_shares_compact_layout_between_timeline_and_editor_without_project_edits() {
-    assert!(DawUi::default().track_rows_collapsed);
+fn timeline_size_does_not_change_regular_editor_overviews_or_project_data() {
+    assert!(!DawUi::default().track_rows_collapsed);
     for color_theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -95,32 +95,20 @@ fn row_toggle_shares_compact_layout_between_timeline_and_editor_without_project_
                 app.set_view_mode(ViewMode::Edit, &ctx);
                 let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                 let header = app.midi_editor.track_header_bounds;
-                assert_eq!(header.height(), MASTER_HEIGHT);
-                assert_eq!(app.midi_editor.track_bounds.height(), MASTER_HEIGHT);
-                assert_eq!(header.top(), app.midi_editor.track_bounds.top());
-                assert_eq!(header.bottom(), app.midi_editor.track_bounds.bottom());
+                assert_eq!(header.height(), ROW_HEIGHT);
+                assert_eq!(app.midi_editor.track_bounds.height(), ROW_HEIGHT);
                 assert_header_meter_insets(&shapes, header, &ctx);
-                let [gain, pan] = app.midi_editor.track_mix_bounds;
-                let [mute, solo] = app.midi_editor.mix_bounds;
-                assert!(app.midi_editor.name_bounds.right() < mute.left());
-                assert!(mute.right() <= solo.left());
-                assert_eq!([gain, pan], [Rect::NOTHING; 2]);
-                for rect in [app.midi_editor.name_bounds, mute, solo] {
-                    assert!(header.contains_rect(rect));
-                    assert!(
-                        (rect.center().y - header.center().y).abs() <= 0.5 / scale,
-                        "control {rect:?}, header {header:?}, scale {scale}"
-                    );
-                }
+                assert!(
+                    app.midi_editor
+                        .track_mix_bounds
+                        .iter()
+                        .all(|rect| header.contains_rect(*rect))
+                );
+                assert_eq!(app.track_rows_bounds, Rect::NOTHING);
             }
-            let toggle = app.track_rows_bounds.center();
-            click(&mut app, &ctx, toggle);
-            frame(&mut app, &ctx, vec![]);
-            assert_eq!(app.midi_editor.track_header_bounds.height(), ROW_HEIGHT);
-            assert_eq!(app.midi_editor.track_bounds.height(), ROW_HEIGHT);
             app.set_view_mode(ViewMode::Timeline, &ctx);
             frame(&mut app, &ctx, vec![]);
-            assert_eq!(app.lane_bounds[&audio].height(), ROW_HEIGHT);
+            assert_eq!(app.lane_bounds[&audio].height(), MASTER_HEIGHT);
             assert_eq!(app.session.project, before);
             assert!(!app.dirty);
             for view in [ViewMode::Mixer, ViewMode::Instrument] {
@@ -158,8 +146,11 @@ fn compact_headers_keep_mixing_controls_and_drop_targets_on_their_track() {
         }
         assert!(app.session.project.tracks[0].muted);
         assert!(app.session.project.tracks[0].soloed);
-        assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::Circle(c) if panel.contains(c.center))));
+        assert_eq!(
+            shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Circle(c) if panel.contains(c.center))),
+            editor
+        );
         assert_eq!(app.session.project.tracks[0].pan, 0.0);
         assert_eq!(app.session.project.tracks[0].gain_db, 0.0);
         assert!(!app.session.project.tracks[1].muted);
@@ -183,12 +174,9 @@ fn compact_headers_keep_mixing_controls_and_drop_targets_on_their_track() {
 
 #[test]
 fn row_toggle_is_blocked_by_dialogs_and_active_track_gestures() {
-    for editor in [false, true] {
+    {
         let (mut app, track) = fixture();
         let ctx = context();
-        if editor {
-            app.set_view_mode(ViewMode::Edit, &ctx);
-        }
         frame(&mut app, &ctx, vec![]);
         let before = app.session.project.clone();
         let point = app.track_rows_bounds.center();
@@ -1098,4 +1086,130 @@ fn timeline_track_and_master_selection_uses_fill_without_outline() {
             assert!(!app.dirty);
         }
     }
+}
+
+#[test]
+fn timeline_size_slider_selects_three_layouts_without_editing_the_project() {
+    for theme in settings::ColorTheme::ALL {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        let selection = (app.selected_track, app.selected_clip);
+        for (fraction, height) in [
+            (0.0, MASTER_HEIGHT),
+            (0.5, ROW_HEIGHT),
+            (1.0, track_rows::LARGE_HEIGHT),
+        ] {
+            let slider = app.track_size_bounds;
+            assert!(app.fit_all_bounds.right() < slider.left());
+            assert!(slider.right() < app.midi_editor.zoom_bounds.left());
+            let point = Pos2::new(
+                slider.left() + 1.0 + fraction * (slider.width() - 2.0),
+                slider.center().y,
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(point)]);
+            click(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(app.lane_bounds[&track].height(), height);
+            assert_eq!(app.session.project, before);
+            assert_eq!((app.selected_track, app.selected_clip), selection);
+            assert!(!app.dirty);
+        }
+        app.set_view_mode(ViewMode::Edit, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.track_row_height(), ROW_HEIGHT);
+        assert_eq!(app.track_size_bounds, Rect::NOTHING);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.track_row_height(), track_rows::LARGE_HEIGHT);
+        frame(&mut app, &ctx, vec![]);
+        let point = app.track_rows_bounds.center();
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(point)]);
+        click(&mut app, &ctx, point);
+        assert_eq!(app.track_row_height(), MASTER_HEIGHT);
+        app.settings_open = true;
+        let point = app.track_size_bounds.right_center() - Vec2::new(1.0, 0.0);
+        click(&mut app, &ctx, point);
+        assert_eq!(app.track_row_height(), MASTER_HEIGHT);
+    }
+}
+
+#[test]
+fn large_timeline_headers_edit_sends_and_scroll_them_between_name_and_mix() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    for _ in 0..10 {
+        let destination = app.session.project.add_return_track().unwrap();
+        let mut send = daw_core::TrackSend::new(destination);
+        send.gain_db = -12.0;
+        app.session
+            .project
+            .tracks
+            .iter_mut()
+            .find(|t| t.id == track)
+            .unwrap()
+            .sends
+            .push(send);
+    }
+    app.timeline_tracks_large = true;
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let (sends_row, positions) = app.timeline_send_bounds[&track].clone();
+    let panel = app.lane_bounds[&track].translate(Vec2::new(-TRACK_WIDTH, 0.0));
+    let name = label_rect(&shapes, panel, &before.tracks[0].name);
+    let mute = label_rect(&shapes, panel, "M");
+    assert!(name.bottom() < sends_row.top());
+    assert!(sends_row.bottom() < mute.top());
+    assert_eq!(positions.len(), 10);
+    assert!(positions.last().unwrap().1.right() > sends_row.right());
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+    let first = positions[0].1.center();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(first), button(first, true)],
+    );
+    let moved = first - Vec2::new(0.0, 20.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(moved)]);
+    frame(&mut app, &ctx, vec![button(moved, false)]);
+    let updated = app
+        .session
+        .project
+        .tracks
+        .iter()
+        .find(|t| t.id == track)
+        .unwrap();
+    assert!(updated.sends[0].gain_db > -12.0);
+    assert!(updated.sends[1..].iter().all(|s| s.gain_db == -12.0));
+    assert!(app.track_drag.is_none());
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            egui::Event::PointerMoved(sends_row.center()),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                phase: egui::TouchPhase::Move,
+                delta: Vec2::new(-180.0, 0.0),
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    );
+    for _ in 0..5 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let (_, scrolled) = &app.timeline_send_bounds[&track];
+    assert!(scrolled[0].1.left() < positions[0].1.left());
+    assert!(scrolled.last().unwrap().1.center().x <= sends_row.right());
 }

@@ -321,6 +321,7 @@ pub(crate) fn saved_project(session: &Session) -> Result<Project> {
 fn snapshot(session: &Session) -> Result<Snapshot> {
     let mut next = session.clone();
     next.project.transport.playhead_frame = 0;
+    next.project.display = Default::default();
     // History can outlive Save As. Resolve references against their original folder,
     // without touching source files or retaining a stale relative-path base.
     for asset in &mut next.project.assets {

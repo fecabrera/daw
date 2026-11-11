@@ -175,30 +175,22 @@ impl DawUi {
             let height = self.track_row_height() - 14.0;
             let cleared = meters::stereo_panel_held(ui, height, levels, held, |ui| {
                 let track = self.editor_track().map(track_rows::header_snapshot);
-                let mut header_rows = track_rows::HeaderRows::track(ui, self.track_rows_collapsed);
-                rows::centered(
-                    &mut header_rows.name,
-                    if self.track_rows_collapsed {
-                        knobs::SIZE
-                    } else {
-                        toolbars::CONTROL_HEIGHT
-                    },
-                    |ui| {
-                        let response = rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                            if let Some(track) = track.as_ref() {
-                                self.track_name(ui, track);
-                            } else {
-                                ui.label("Select track");
-                            }
-                        });
-                        #[cfg(test)]
-                        {
-                            self.midi_editor.name_bounds = response.response.rect;
+                let mut header_rows = track_rows::HeaderRows::track(ui, false);
+                rows::centered(&mut header_rows.name, toolbars::CONTROL_HEIGHT, |ui| {
+                    let response = rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
+                        if let Some(track) = track.as_ref() {
+                            self.track_name(ui, track);
+                        } else {
+                            ui.label("Select track");
                         }
-                        #[cfg(not(test))]
-                        let _ = response;
-                    },
-                );
+                    });
+                    #[cfg(test)]
+                    {
+                        self.midi_editor.name_bounds = response.response.rect;
+                    }
+                    #[cfg(not(test))]
+                    let _ = response;
+                });
                 if let Some(mut track) = track {
                     let (controls, buttons) = header_rows
                         .mix
@@ -209,7 +201,7 @@ impl DawUi {
                                 &mut track.muted,
                                 &mut track.soloed,
                                 ["Mute track", "Solo track"],
-                                self.track_rows_collapsed,
+                                false,
                             )
                         })
                         .inner;

@@ -49,3 +49,7 @@ Project actions respect text editing, window focus, active edit gestures, jobs, 
 - Track clean/dirty state across saving, newer edits, undo, redo, and explicit seeks.
 - Test Command/Ctrl shortcuts, exact Shift handling, repeat suppression, text ownership, menu actions, blocking work, and lifecycle reset.
 - Use shared renderer synchronization and retain allocation-free audio callback behavior. Native menu/device checks remain separate from egui tests.
+
+Timeline display metadata is saved with project snapshots but excluded from
+history checkpoint comparison. Zoom, scrolling and track height do not add
+Undo steps; see [Timeline display state](../views/timeline-display.md).

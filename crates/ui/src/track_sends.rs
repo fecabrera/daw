@@ -3,6 +3,52 @@ use super::*;
 use daw_core::{SendTap, TrackKind, TrackSend};
 
 impl DawUi {
+    pub(super) fn timeline_send_knobs(&mut self, ui: &mut egui::Ui, source: &daw_core::Track) {
+        let mut sends = source.sends.clone();
+        let enabled = self.edit_shortcuts_available(ui.ctx());
+        #[cfg(test)]
+        let mut positions = Vec::new();
+        let _scroll = egui::ScrollArea::horizontal()
+            .id_salt(("timeline-send-knobs", source.id))
+            .auto_shrink([false, false])
+            .max_height(knobs::SIZE)
+            .show(ui, |ui| {
+                ui.add_enabled_ui(enabled, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = mix_controls::KNOB_GAP;
+                        for send in &mut sends {
+                            let name = self
+                                .session
+                                .project
+                                .tracks
+                                .iter()
+                                .find(|track| track.id == send.return_id)
+                                .map_or("Return", |track| track.name.as_str());
+                            ui.push_id(send.id, |ui| {
+                                ui.add_enabled_ui(send.enabled, |ui| {
+                                    let response = knobs::header_send_gain(ui, &mut send.gain_db)
+                                        .on_hover_text(format!("Send to {name}"));
+                                    #[cfg(test)]
+                                    positions.push((send.id, response.rect));
+                                    #[cfg(not(test))]
+                                    let _ = response;
+                                });
+                            });
+                        }
+                    });
+                });
+            });
+        #[cfg(test)]
+        self.timeline_send_bounds
+            .insert(source.id, (_scroll.inner_rect, positions));
+        if enabled && ui.is_enabled() && sends != source.sends {
+            self.edit(Edit::SetTrackSends {
+                track_id: source.id,
+                sends,
+            });
+        }
+    }
+
     fn return_name(&self) -> String {
         let mut n = 1;
         loop {

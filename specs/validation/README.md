@@ -4,6 +4,49 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Timeline track-size slider and saved display state — 2026-11-10
+
+Add a three-position Timeline height slider between Fit all clips and horizontal
+zoom, with a divider between sliders and buttons. Compact is 42 points, Regular
+is 68 points and the default, and Large is 100 points. Large headers have name,
+horizontally scrolling send knobs, then M/S and Pan/Gain rows. Nested beat rows
+share the height; Master stays one row. Editor overviews always use Regular and
+no longer expose the size toggle. Existing expand/collapse is a Timeline
+Compact/Regular shortcut.
+
+Optional `Project.display` metadata saves Timeline size, horizontal zoom,
+horizontal scroll seconds and vertical scroll points. Capture it in all Save /
+Save As paths and restore only on successful project opening. Older projects
+and new projects use Regular / 70 points per second / zero scroll. Validate finite
+geometry and keep presentation metadata outside audio edits and Undo. Successful
+save publication retains the metadata for later project writes without moving
+the current view.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (981 passed, 3 ignored), including
+  all slider positions, guards, Editor independence, send edits/overflow and
+  disk save/open round trips for every size and both scroll positions.
+- `cargo test -p daw-core -p daw-project --offline`: passed, including legacy
+  display defaults, validation and project/history workflows.
+- Strict workspace Clippy passed.
+- `git diff --check`: passed.
+
+- `CARGO_INCREMENTAL=0 cargo test --workspace --offline`: passed with debug
+  assertions enabled. Initial incremental runs failed at link time with missing
+  anonymous LLVM symbols in test objects; clear the stale debug incremental
+  cache and rebuild without incremental objects to complete the suite.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `cargo build -p daw-cli --offline`: passed.
+- `python3 tools/check_cli.py`: passed.
+
+Native UI/device checks remain unverified. The macOS packaging script stopped
+at its committed-source gate. The executable was rebuilt; the app bundle was
+not updated.
+
 ## M/S-only Tracks browser rows — 2026-11-10
 
 Remove Pan and Gain knobs from the shared Tracks browser in Instrument and

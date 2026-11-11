@@ -338,3 +338,56 @@ fn save_as_completion_keeps_live_transport_selection_audio_and_reports_warnings(
     );
     assert!(!app.dirty);
 }
+
+#[test]
+fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
+    let folder = std::env::temp_dir().join(format!("daw-display-{}", Id::new_v4()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let mut app = DawUi::default();
+    let track = app.session.project.add_midi_track().unwrap();
+    app.session
+        .project
+        .add_midi_pattern(track, frames(60.0))
+        .unwrap();
+    for _ in 0..20 {
+        app.session.project.add_midi_track().unwrap();
+    }
+    let original = app.session.project.clone();
+    for (compact, large, expected) in [
+        (true, false, MASTER_HEIGHT),
+        (false, false, ROW_HEIGHT),
+        (false, true, track_rows::LARGE_HEIGHT),
+    ] {
+        app.track_rows_collapsed = compact;
+        app.timeline_tracks_large = large;
+        app.zoom = 150.0;
+        app.scroll = 8.0;
+        app.timeline_vertical_scroll = 180.0;
+        let before_save = app.session.project.clone();
+        let written = app.display_save_snapshot().unwrap().save(&folder).unwrap();
+        assert_eq!(written.session.project.display.horizontal_zoom, 150.0);
+        assert_eq!(app.session.project, before_save);
+        assert!(!app.dirty);
+        app.apply_saved_sources(&written).unwrap();
+        assert_eq!(app.session.project.display, written.session.project.display);
+        assert_eq!((app.zoom, app.scroll), (150.0, 8.0));
+        let mut reopened = DawUi::default();
+        reopened.install_loaded_session(Session::open(&folder).unwrap(), false);
+        assert_eq!(reopened.track_row_height(), expected);
+        assert_eq!(
+            (
+                reopened.zoom,
+                reopened.scroll,
+                reopened.timeline_vertical_scroll
+            ),
+            (150.0, 8.0, 180.0)
+        );
+        let ctx = context();
+        frame(&mut reopened, &ctx, vec![]);
+        frame(&mut reopened, &ctx, vec![]);
+        assert!((reopened.timeline_vertical_scroll - 180.0).abs() < 1.0);
+        assert_eq!(reopened.session.project.tracks, original.tracks);
+        assert!(!reopened.dirty);
+    }
+    std::fs::remove_dir_all(folder).unwrap();
+}
