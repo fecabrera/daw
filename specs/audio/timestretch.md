@@ -240,6 +240,8 @@ timestretch process --input input.wav --output integrated.wav \
 
 Require `--input`, `--output`, `--engine`, `--ratio`, and `--report`; use the same rates/formats/ratio rules as `compare`. Accepted engine IDs are the three above. Each engine runs its current implementation. Reports record the processing identity and build metadata. `--overwrite` permits output/report replacement after successful staging, but never source replacement. Backend dispatch is shared by `process`, `compare`, and benchmarks. Do not introduce a `daw-cli stretch` dependency or duplicate the new engine's DSP in tools.
 
+The standalone WAV adapter preflights decoded PCM and source-rate-derived Rubato setup before collecting samples or constructing the converter. Known input/conversion buffers have a 1 GiB limit, separate from the engine request limit; this is not an RSS cap. Use checked rational-rate FFT extents and include simultaneous conversion/output copies. Reject pathological positive WAV rates with a processing error. An allocator-guarded one-sample 1 Hz WAV regression must reject conversion to 192 kHz before large allocation. Reject input above 1e12 magnitude when FFT conversion is needed; return a numerical error rather than allowing intermediate overflow. Same-rate finite PCM remains unchanged.
+
 ### Scripts and reports
 
 Ship portable Python batch wrappers with the standalone tool sources at `crates/timestretch-cli/scripts/compare.py` and `crates/timestretch-cli/scripts/benchmark.py`. They accept an explicit prebuilt `--binary` and work from any directory. They must not find/build `daw-cli`, assume a DAW project, or download dependencies. Keep external script dependencies explicit and pinned; use argument arrays for child processes.

@@ -18,6 +18,22 @@ const EIGHT_POLE_Q_SCALE: [f64; 4] = [
 ];
 const MODE_COUNT: usize = EqBandMode::ALL.len();
 
+// SVF histories use f64, but AudioNode returns f32. Bound representational
+// overflow before feeding another section; ordinary finite headroom is unchanged.
+fn bounded(value: f32) -> f32 {
+    value.clamp(-f32::MAX, f32::MAX)
+}
+fn mix(dry: f32, wet: f32, amount: f32) -> f32 {
+    if amount == 0.0 {
+        dry
+    } else if amount == 1.0 {
+        wet
+    } else {
+        (f64::from(dry) + (f64::from(wet) - f64::from(dry)) * f64::from(amount))
+            .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
+    }
+}
+
 #[derive(Clone)]
 struct Cascade<M: SvfMode<f64>, const N: usize> {
     stages: [FixedSvf<f64, M>; N],
@@ -47,7 +63,7 @@ impl<M: SvfMode<f64>, const N: usize> Cascade<M, N> {
     }
     fn filter_mono(&mut self, mut input: f32) -> f32 {
         for stage in &mut self.stages {
-            input = stage.filter_mono(input);
+            input = bounded(stage.filter_mono(input));
         }
         input
     }
@@ -187,7 +203,7 @@ impl Filter {
         );
     }
     fn sample(&mut self, input: f32) -> f32 {
-        filter!(self, node, node.filter_mono(input))
+        bounded(filter!(self, node, node.filter_mono(input)))
     }
     fn reset(&mut self) {
         filter!(self, node, node.reset());
@@ -280,14 +296,17 @@ impl Solo {
         }
     }
     fn equalize(&mut self, input: [f32; 2], weights: [f32; MODE_COUNT], mix: f32) -> [f32; 2] {
-        let mut out = input;
+        let mut out = input.map(f64::from);
         for (filters, w) in self.eq.iter_mut().zip(weights) {
             for ch in 0..2 {
                 let wet = filters[ch].sample(input[ch]);
-                out[ch] += (wet - input[ch]) * w * mix;
+                if w != 0.0 && mix != 0.0 {
+                    out[ch] +=
+                        (f64::from(wet) - f64::from(input[ch])) * f64::from(w) * f64::from(mix);
+                }
             }
         }
-        out
+        out.map(|v| v.clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32)
     }
     fn rejected(&mut self, input: [f32; 2]) -> [f32; 2] {
         let outputs: [[f32; 2]; 3] = self
@@ -426,14 +445,17 @@ impl ModulationDestination for Band {
             self.configured = self.effective;
         }
         let weights = self.weights.advance();
-        let mut output = input;
+        let mut output = input.map(f64::from);
         // Keep all modes warm. Crossfade responses, rather than interpolating unlike coefficients.
         for (filters, weight) in self.filters.iter_mut().zip(weights) {
             for ch in 0..2 {
                 let wet = filters[ch].sample(input[ch]);
-                output[ch] += (wet - input[ch]) * weight;
+                if weight != 0.0 {
+                    output[ch] += (f64::from(wet) - f64::from(input[ch])) * f64::from(weight);
+                }
             }
         }
+        let output = output.map(|v| v.clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32);
         self.monitor.sample_output(output);
         output
     }
@@ -464,7 +486,7 @@ impl ModulationDestination for Output {
         let base = self.gain.advance()[0];
         let offset = self.external.process([m.offset(P::Level)])[0] as f32;
         self.effective = (base + offset).clamp(daw_unit_core::SILENT_GAIN_DB, 12.0);
-        input.map(|v| v * linear(self.effective))
+        input.map(|v| bounded(v * linear(self.effective)))
     }
 }
 pub struct MultibandEq {
@@ -697,17 +719,15 @@ impl MultibandEq {
                 let weight = b.solo.weight.current[0];
                 if weight > 0.0 {
                     let filtered = b.solo.rejected(rejected);
-                    rejected = std::array::from_fn(|ch| {
-                        rejected[ch] + (filtered[ch] - rejected[ch]) * weight
-                    });
+                    rejected = std::array::from_fn(|ch| mix(rejected[ch], filtered[ch], weight));
                 }
             }
-            audition = std::array::from_fn(|ch| audition[ch] - rejected[ch]);
+            audition = std::array::from_fn(|ch| bounded(audition[ch] - rejected[ch]));
         }
-        let wet = std::array::from_fn(|ch| wet[ch] + (audition[ch] - wet[ch]) * amount);
+        let wet = std::array::from_fn(|ch| mix(wet[ch], audition[ch], amount));
         let wet = self.output.process(wet, shared, context);
-        let mix = self.bypass.advance()[0];
-        let output = std::array::from_fn(|ch| input[ch] + (wet[ch] - input[ch]) * mix);
+        let amount = self.bypass.advance()[0];
+        let output = std::array::from_fn(|ch| mix(input[ch], wet[ch], amount));
         self.output_monitor.sample_output(output);
         self.spectrum.sample(output);
         output
@@ -767,6 +787,47 @@ mod tests {
         ProcessingContext {
             sample_rate_hz: rate,
             max_block_frames: 512,
+        }
+    }
+    #[test]
+    fn finite_headroom_preserves_bypass_and_does_not_poison_warm_modes() {
+        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+            for mode in EqBandMode::ALL {
+                let mut settings = MultibandEqSettings {
+                    enabled: false,
+                    ..Default::default()
+                };
+                settings.bands[0].mode = mode;
+                settings.bands[0].gain_db = 24.0;
+                let mut eq = MultibandEq::new(context(rate), &settings);
+                let huge = [f32::MAX * 0.5, -f32::MAX * 0.5];
+                for input in [huge, [0.25, -0.125], [-0.0, 0.0]] {
+                    assert_eq!(
+                        eq.process_sample(input).map(f32::to_bits),
+                        input.map(f32::to_bits)
+                    );
+                }
+                settings.enabled = true;
+                let mut enabled = MultibandEq::new(context(rate), &settings);
+                enabled.inherit(&mut eq);
+                let mut eq = enabled;
+                for _ in 0..rate / 20 {
+                    assert!(
+                        eq.process_sample([0.25, -0.125])
+                            .iter()
+                            .all(|s| s.is_finite())
+                    );
+                }
+                eq.reset();
+                let mut fresh = MultibandEq::new(context(rate), &settings);
+                // Once reset, no overflow has left persistent poisoned mode state.
+                for _ in 0..1024 {
+                    assert_eq!(
+                        eq.process_sample([0.25, -0.125]),
+                        fresh.process_sample([0.25, -0.125])
+                    );
+                }
+            }
         }
     }
     fn response(mode: EqBandMode, rate: u32, hz: f32, gain: f32) -> f32 {

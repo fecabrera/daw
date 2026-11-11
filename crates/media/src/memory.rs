@@ -13,6 +13,13 @@ struct State {
     reserved: u64,
 }
 impl State {
+    fn reserve(&mut self, bytes: u64, budget: u64) -> Result<()> {
+        if bytes > budget.saturating_sub(self.used()) {
+            return Err(Error("Audio preparation exceeds the 2 GiB shared audio memory budget; shorten the source or close unused projects".into()));
+        }
+        self.reserved += bytes;
+        Ok(())
+    }
     fn used(&mut self) -> u64 {
         self.buffers
             .retain(|(s, p)| s.strong_count() != 0 || p.strong_count() != 0);
@@ -70,10 +77,7 @@ impl AudioReservation {
             crate::release_preparation_cache_memory();
         }
         let mut state = state().lock().unwrap();
-        if bytes > AUDIO_MEMORY_BUDGET_BYTES.saturating_sub(state.used()) {
-            return Err(Error("Audio preparation exceeds the 2 GiB shared audio memory budget; shorten the source or close unused projects".into()));
-        }
-        state.reserved += bytes;
+        state.reserve(bytes, AUDIO_MEMORY_BUDGET_BYTES)?;
         Ok(Self(bytes))
     }
 }
@@ -120,6 +124,30 @@ pub fn audio_memory_bytes() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn integrated_admission_includes_unison_scratch_and_concurrent_owners() {
+        for pitch in [
+            timestretch::Pitch::UNISON,
+            timestretch::Pitch::from_semitones(12.0).unwrap(),
+        ] {
+            let ratio = daw_core::ClipStretch::new(1, 8).unwrap();
+            let scratch =
+                crate::stretch::integrated_scratch(48000, 3_000_000, ratio, pitch).unwrap();
+            let required =
+                24_000_000 * 8 + 24_000_000_u64.div_ceil(256) * 16 + scratch + 16 * 1024 * 1024;
+            // Known simultaneous copied input, f64 overlap and f32 return alone.
+            assert!(required >= 600_000_000);
+            let mut state = State {
+                reserved: AUDIO_MEMORY_BUDGET_BYTES - 500_000_000,
+                ..Default::default()
+            };
+            assert!(state.reserve(required, AUDIO_MEMORY_BUDGET_BYTES).is_err());
+            let used = state.reserved;
+            assert!(state.reserve(required, used + required - 1).is_err());
+            state.reserve(required, used + required).unwrap();
+            assert_eq!(state.reserved, used + required);
+        }
+    }
     #[test]
     fn admission_rejects_oversized_requests_before_allocating_and_counts_shared_owners_once() {
         assert!(AudioReservation::new(u64::MAX, 0).is_err());

@@ -17,6 +17,8 @@ timestretch compare --input input.wav --ratio 3/2 --sample-rate 48000 \
 
 Inputs support mono or stereo PCM16, PCM24 and float32 WAV. Output uses float32 WAV and keeps the input channel count and headroom. `--ratio` is output duration divided by input duration; use a fraction or decimal from 1/8 to 8. `--sample-rate` accepts 44100, 48000 (default), 88200, 96000, 176400 or 192000 Hz.
 
+Large inputs or unusually low source sample rates can exceed the conversion memory limit. The tool reports a processing error before conversion. Known input and conversion buffers are limited to 1 GiB. If rate conversion is needed, float samples above 1e12 magnitude also return an error; ordinary headroom is retained. Shorten the source or convert it to a supported processing rate first.
+
 Use a new or empty comparison directory. For `process`, add `--overwrite` to permit replacement of output and report files after successful preparation. The input stays unchanged. Ctrl+C cancels a comparison. A failed comparison retains its logs and failure summary. Exit codes are 0 for success, 1 for processing or file errors, and 2 for invalid arguments.
 
 Reports include timing, frame counts and diagnostics. A successful run does not establish audio quality; retain the output for listening. Use `timestretch --help` or `timestretch <command> --help` for the full option list.

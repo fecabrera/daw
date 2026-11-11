@@ -4,6 +4,48 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Standalone review remediation, second pass — 2026-11-11
+
+Resolved the six non-ONNX findings from the standalone review of `57e21977`:
+
+- Prepared Group/Return coefficients always use stereo balance, including lowered
+  Beat Output groups with an instrument control payload. An absolute-reference
+  matrix covers all six rates, mono Oscillator and known stereo Sampler PCM,
+  internal and outer buses, sends/Returns and Master: 192 cases pass.
+- Multiband EQ retains exact settled dry bypass, including signed zero. Warm
+  sections bound f32 representation overflow before another section receives it;
+  wider response sums/crossfades avoid inactive-mode poisoning. All modes and
+  rates pass extreme-finite bypass, enabled processing and reset recovery checks.
+- Integrated preparation uses its portable working-memory estimate at zero and
+  nonzero pitch. Admission includes copied input and simultaneous output layouts
+  without counting final PCM twice. Local budget-boundary tests include concurrent
+  reservations and reject before allocating the represented audio.
+- The standalone WAV adapter checks known PCM and rational-rate FFT setup before
+  decode/converter allocation. A guarded one-sample 1 Hz WAV rejects conversion
+  to 192 kHz before large allocation. Source extents, supported rate pairs,
+  ordinary headroom and explicit extreme-headroom errors are covered.
+- Plugin summaries match the registered products and original Drive controls.
+  The sends guide distinguishes supported audio sidechain modulation from sends.
+
+Completed local macOS checks:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `CARGO_INCREMENTAL=0 cargo test --workspace --offline`: PASS, with debug
+  assertions/overflow checks enabled, including doctests and existing ignored cases.
+- `cargo test --workspace --release --offline`: PASS, including doctests.
+- `cargo build -p daw-desktop -p daw-cli --offline`: PASS.
+- `python3 tools/check_cli.py`: PASS for collection, inspection, Opus imports,
+  WAV/MP3/AAC, repeatability, missing sources, buses, overwrite and exit codes.
+- Focused DSP/media, standalone reference-disabled tool/extraction and absolute
+  bus checks: PASS. All 69 local links in changed documents resolve.
+- `git diff --check`: PASS. Logs/input hashes are in ignored
+  `work/remediation2-*.log` and `work/remediation2-validation-inputs.json`.
+
+The native ONNX shape-inference finding remains unchanged as requested. No
+native device playback, external plugin-host acceptance or Windows/Linux launch
+was performed. The macOS app will be repackaged from the clean committed tree.
+
 ## Standalone review remediation — 2026-11-11
 
 Resolved the six non-ONNX findings from the standalone review of `c3dcc081`:

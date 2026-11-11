@@ -36,4 +36,4 @@ Returns stay above Master in Timeline and beside Master in Mixer. Use the **Retu
 
 Rename and duplicate Returns through the normal Track menu. Duplicating a source copies its sends to the same Returns. Duplicating a Return copies its effects and mix settings without adding incoming sends. Deleting a Return also removes its incoming sends. Undo restores the Return and those sends together.
 
-Save/open, Undo/Redo and export retain send routing and settings. Return-to-Return sends, feedback, sidechains, send automation and separate send Pan are not available.
+Save/open, Undo/Redo and export retain send routing and settings. Return-to-Return sends, feedback, send automation and separate send Pan are not available. [Audio sidechain modulation](../modulation/audio-sidechain.md) is separate from sends. Returns can supply sidechain audio and host compatible effect destinations; routes must not create feedback cycles.

@@ -690,3 +690,193 @@ fn beat_parent_sends_once_after_output_effects_and_clip_gain() {
         assert_eq!(x, y);
     }
 }
+
+#[test]
+fn absolute_gain_laws_cover_every_prepared_bus() {
+    fn render(p: RenderPlan) -> Vec<[f32; 2]> {
+        let mut out = vec![[0.0; 2]; 8192];
+        Renderer::new(p).render_offline(&mut out);
+        out
+    }
+    fn balance(p: f32) -> [f32; 2] {
+        [1.0 - p.max(0.0), 1.0 + p.min(0.0)]
+    }
+    let mut failures = Vec::new();
+    for rate in SAMPLE_RATES {
+        for sample in [false, true] {
+            for bus in [
+                "plain-track",
+                "layer",
+                "subtrack-output",
+                "beat-output",
+                "beat-parent",
+                "outer-group",
+                "return",
+                "master",
+            ] {
+                for pan in [0.0_f32, 0.4] {
+                    let mut p = beat_plan(rate, sample, false);
+                    let parent = p.project.tracks[0].id;
+                    let child = p.project.tracks[0].beat.as_ref().unwrap().subtracks[0].id;
+                    let clip = p.project.tracks[0].clips[0].id;
+                    p.project
+                        .edit(Edit::ReplaceBeatPattern {
+                            clip_id: clip,
+                            pattern: BeatPattern::default()
+                                .with_step(child, 0, Some(127))
+                                .unwrap(),
+                        })
+                        .unwrap();
+                    let outer = Id::new_v4();
+                    p.project
+                        .edit(Edit::GroupTracks {
+                            track_ids: vec![parent],
+                            group_id: outer,
+                            name: "Outer".into(),
+                        })
+                        .unwrap();
+                    let mut isolated = p.clone().prepare_beats();
+                    let leaf = isolated
+                        .project
+                        .tracks
+                        .iter()
+                        .find(|t| t.id == child)
+                        .unwrap()
+                        .clone();
+                    isolated.project.tracks = vec![leaf];
+                    isolated.project.tracks[0].group_id = None;
+                    isolated.project.tracks[0].pan = if sample { 0.0 } else { -1.0 };
+                    let raw = render(isolated.clone());
+                    // Mono hard-left yields the source's unattenuated scalar. Stereo
+                    // Sampler is additionally anchored to known constant PCM below.
+                    if sample {
+                        assert!((raw[4000][0] - 0.4).abs() < 1e-6);
+                        assert!((raw[4000][1] + 0.2).abs() < 1e-6);
+                    } else {
+                        assert!(raw.iter().any(|s| s[0].abs() > 0.1));
+                    }
+                    let gain = linear_gain(-6.0);
+                    let mut expected_coeff = if sample {
+                        [1.0; 2]
+                    } else {
+                        [std::f32::consts::FRAC_1_SQRT_2; 2]
+                    };
+                    if bus == "plain-track" {
+                        p = isolated;
+                        p.project.tracks[0].pan = pan;
+                        p.project.tracks[0].gain_db = -6.0;
+                        expected_coeff = if sample {
+                            balance(pan)
+                        } else {
+                            let theta = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
+                            [theta.cos(), theta.sin()]
+                        };
+                    } else {
+                        let parent_index = p
+                            .project
+                            .tracks
+                            .iter()
+                            .position(|t| t.id == parent)
+                            .unwrap();
+                        match bus {
+                            "layer" | "subtrack-output" => {
+                                let i = &mut p.project.tracks[parent_index]
+                                    .beat
+                                    .as_mut()
+                                    .unwrap()
+                                    .subtracks[0]
+                                    .instrument;
+                                if bus == "layer" {
+                                    i.layers[0].pan = pan;
+                                    i.layers[0].gain_db = -6.0;
+                                } else {
+                                    i.main.pan = pan;
+                                    i.main.gain_db = -6.0;
+                                }
+                                let theta = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
+                                let internal = [
+                                    theta.cos() * std::f32::consts::SQRT_2,
+                                    theta.sin() * std::f32::consts::SQRT_2,
+                                ];
+                                expected_coeff = if !sample && pan == 0.0 {
+                                    expected_coeff
+                                } else {
+                                    internal
+                                };
+                            }
+                            "beat-output" => {
+                                let b = &mut p.project.tracks[parent_index]
+                                    .beat
+                                    .as_mut()
+                                    .unwrap()
+                                    .output;
+                                b.pan = pan;
+                                b.gain_db = -6.0;
+                                let b = balance(pan);
+                                expected_coeff =
+                                    std::array::from_fn(|ch| expected_coeff[ch] * b[ch]);
+                            }
+                            "beat-parent" | "outer-group" => {
+                                let id = if bus == "beat-parent" { parent } else { outer };
+                                let t = p.project.tracks.iter_mut().find(|t| t.id == id).unwrap();
+                                t.pan = pan;
+                                t.gain_db = -6.0;
+                                let b = balance(pan);
+                                expected_coeff =
+                                    std::array::from_fn(|ch| expected_coeff[ch] * b[ch]);
+                            }
+                            "return" => {
+                                let id = p.project.add_return_track().unwrap();
+                                let mut send = TrackSend::new(id);
+                                send.gain_db = 0.0;
+                                p.project.tracks[parent_index].sends.push(send);
+                                p.project.tracks[parent_index].muted = true;
+                                let t = p.project.tracks.iter_mut().find(|t| t.id == id).unwrap();
+                                t.pan = pan;
+                                t.gain_db = -6.0;
+                                let b = balance(pan);
+                                expected_coeff =
+                                    std::array::from_fn(|ch| expected_coeff[ch] * b[ch]);
+                            }
+                            "master" => p.project.master.gain_db = -6.0,
+                            _ => unreachable!(),
+                        }
+                    }
+                    let actual = render(p);
+                    let expected: Vec<[f32; 2]> = raw
+                        .iter()
+                        .map(|s| {
+                            std::array::from_fn(|ch| {
+                                (if sample { s[ch] } else { s[0] }) * expected_coeff[ch] * gain
+                            })
+                        })
+                        .collect();
+                    let error = actual
+                        .iter()
+                        .zip(&expected)
+                        .flat_map(|(a, b)| (0..2).map(move |ch| (a[ch] - b[ch]).abs()))
+                        .fold(0.0_f32, f32::max);
+                    let label = format!(
+                        "rate={rate} source={} bus={bus} pan={pan} max_error={error} actual4000={:?} expected4000={:?}",
+                        if sample {
+                            "stereo-sampler"
+                        } else {
+                            "mono-oscillator"
+                        },
+                        actual[4000],
+                        expected[4000]
+                    );
+                    eprintln!("{label}");
+                    if error > 2e-6 {
+                        failures.push(label);
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "absolute gain failures:\n{}",
+        failures.join("\n")
+    );
+}

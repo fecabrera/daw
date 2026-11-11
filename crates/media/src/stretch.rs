@@ -5,6 +5,38 @@ use daw_core::{ClipStretch, StretchEngine, StretchEngineId};
 use rubberband::{Options, Stretcher};
 use std::sync::Arc;
 
+// The reservation already includes final stereo PCM. The portable estimate
+// includes its returned interleaved PCM and spectral/pitch scratch. During adapter
+// conversion both output layouts coexist; input conversion remains alive too.
+pub(crate) fn integrated_scratch(
+    rate: u32,
+    input_frames: usize,
+    ratio: ClipStretch,
+    pitch: timestretch::Pitch,
+) -> Result<u64> {
+    let request = timestretch::Request::new(
+        rate,
+        2,
+        timestretch::Ratio::new(ratio.output_frames, ratio.source_frames)
+            .map_err(|e| Error(e.to_string()))?,
+    )
+    .with_pitch(pitch);
+    let working = request
+        .working_memory_bytes(input_frames)
+        .map_err(|e| Error(e.to_string()))? as u64;
+    let output = ratio
+        .scale(input_frames as u64)
+        .and_then(|n| n.checked_mul(8))
+        .ok_or_else(|| Error("Stretched audio is too long".into()))?;
+    let conversion = output
+        .checked_mul(2)
+        .ok_or_else(|| Error("Stretched audio is too long".into()))?;
+    (input_frames as u64)
+        .checked_mul(8)
+        .and_then(|n| n.checked_add(working.max(conversion) - output))
+        .ok_or_else(|| Error("Stretched audio is too long".into()))
+}
+
 /// A prepared buffer retains its source allocation, so pointer identity cannot be reused.
 /// Matching also checks processing identity; stale buffers are never served as another engine.
 #[derive(Clone)]
@@ -173,36 +205,13 @@ fn transform_audio(
     let frames = ratio
         .scale(audio.samples.len() as u64)
         .ok_or_else(|| Error("Stretched audio is too long".into()))?;
-    // Integrated materializes planar/interleaved input and output; native scratch is
-    // library-owned and is not represented as a strict RSS guarantee.
     let scratch = if engine.id == StretchEngineId::Integrated {
-        (audio.samples.len() as u64)
-            .saturating_mul(8)
-            .saturating_add(frames.saturating_mul(8))
+        integrated_scratch(audio.sample_rate_hz, audio.samples.len(), ratio, pitch)?
     } else {
         0
     };
-    // Reuse the engine's preflight estimate, including its private pitch intermediate.
-    let pitch_scratch =
-        if engine.id == StretchEngineId::Integrated && pitch != timestretch::Pitch::UNISON {
-            timestretch::Request::new(
-                audio.sample_rate_hz,
-                2,
-                timestretch::Ratio::new(ratio.output_frames, ratio.source_frames)
-                    .map_err(|e| Error(e.to_string()))?,
-            )
-            .with_pitch(pitch)
-            .working_memory_bytes(audio.samples.len())
-            .map_err(|e| Error(e.to_string()))? as u64
-        } else {
-            0
-        };
-    let _reservation = crate::AudioReservation::new(
-        frames,
-        scratch
-            .saturating_add(pitch_scratch)
-            .saturating_add(16 * 1024 * 1024),
-    )?;
+    let _reservation =
+        crate::AudioReservation::new(frames, scratch.saturating_add(16 * 1024 * 1024))?;
     match engine.id {
         StretchEngineId::RubberBand => stretch_audio_inner(audio, ratio, pitch, cancelled),
         StretchEngineId::Integrated => {

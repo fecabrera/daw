@@ -59,7 +59,14 @@ impl TrackProcessor<'_> {
 // the same coefficients. Inheritance then ramps mode changes exactly like Pan,
 // including sends and sidechains, without switching banks at a latency boundary.
 pub(super) fn track_pan_coefficients(track: &daw_core::Track) -> [[f32; 2]; 2] {
-    if let Some(instrument) = &track.instrument {
+    if matches!(
+        track.kind,
+        daw_core::TrackKind::Group | daw_core::TrackKind::Return
+    ) {
+        // Lowered Beat Output groups retain an instrument payload for controls,
+        // but their input is the already mixed stereo bus.
+        [super::pan_coefficients(track.pan, false); 2]
+    } else if let Some(instrument) = &track.instrument {
         let coefficients =
             super::pan_coefficients(track.pan, instrument_is_mono(instrument, &track.effects));
         [coefficients; 2]

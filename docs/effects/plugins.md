@@ -4,7 +4,7 @@ The registered built-in effects have separate CLAP and VST3 development previews
 
 | Product | Unit slug | Controls |
 | --- | --- | --- |
-| [Drive](drive-plugin.md) | `drive` | Gain, Color, Tone, Level, Dry/Wet |
+| [Drive](drive-plugin.md) | `drive` | Volume, Gain, Tone; Color Shape, Strength, Frequency |
 | [Drive v2](drive-v2-plugin.md) | `drive-v2` | Clip mode, Drive Gain, Drive Tone; Color power, Shape, Strength, Frequency; Input Gain, Output Level, Dry/Wet |
 | [Saturator](distortion-plugins.md) | `saturator` | Drive, Shape, Clip Mode, Level, Dry/Wet |
 | [Bitcrusher](distortion-plugins.md) | `bitcrusher` | Drive, Resolution, Downsampling, Level, Dry/Wet |
