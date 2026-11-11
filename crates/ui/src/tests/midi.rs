@@ -3631,7 +3631,12 @@ fn new_destination_tracks_use_fresh_instruments_for_copies_and_preserve_move_sou
                 assert!(instrument.layers[0].oscillators.is_empty());
                 assert!(instrument.layers[0].sampler.is_none());
             } else {
-                assert_eq!(Some(instrument), tracks[source].instrument.as_ref());
+                let original = tracks[source].instrument.as_ref().unwrap();
+                assert_ne!(instrument.layers[0].id, original.layers[0].id);
+                assert_eq!(
+                    super::clip_duplication::without_instrument_ids(instrument),
+                    super::clip_duplication::without_instrument_ids(original)
+                );
             }
             let placed = &tracks[index].clips[0];
             let mut expected = originals[source].clone();

@@ -4,9 +4,9 @@ Use header dragging to arrange installed instrument components and effects. Use 
 
 ## Unit layout
 
-Units have a 26-point vertical title header on the left with semibold title text in both collapsed and expanded states. Double-click it to collapse or expand the unit. The power dot stays at the top of the left header. Header backgrounds stay neutral when power changes; the power dot shows the on/off state.
+Units have a vertical title header on the left. Double-click it to collapse or expand the unit. The power dot stays at the top of the header and shows the on/off state.
 
-Expanded units have a right header with the modulation dot. Click it to show or hide connection strips. Collapsed units hide the body and right header. Units have no outer border or lines between ordinary control strips. When modulation is open, a 2-point divider runs the full unit height between the main controls and modulation area, using the unit-header background color, with 4-point clear space on each side. Control strips have their original background fill, no border and a 5-point corner radius, over a subdued unit background. Add buttons have no background. Their Plus symbol and circle brighten to the active strip-label color on hover or keyboard focus. Strips have 4-point gaps, 4-point top and bottom margins, and 4-point space beside both side headers. The side headers retain their previous neutral background. Units keep 7-point outside corner radii and a 16-point gap from adjacent units, plus 16-point space before the first unit and after the last unit in each scrollable row. The whole unit sits within 13-point top and bottom margins; lane heights stay unchanged.
+Expanded units have a right header with the modulation dot. Click it to show or hide connection strips. Collapsed units hide the body and right header. Controls appear in rounded strips. Add buttons show a Plus symbol in a circle; it brightens on hover or keyboard focus.
 
 Selected unit titles use the same normal text color as strip labels; unselected titles stay muted. Header backgrounds and power/modulation dot colors do not change with selection. Selection supports the same shortcuts and group actions without adding an outline to the selected unit.
 

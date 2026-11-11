@@ -7,7 +7,8 @@ use std::{
     io::{Read, Write},
 };
 
-pub const STATE_VERSION: u32 = 2;
+/// The encoder uses the same approved version as the checked build manifest.
+pub const STATE_VERSION: u32 = crate::MANIFEST_STATE_VERSION;
 pub const MAX_STATE_BYTES: usize = 16 + 8 * Parameter::COUNT + 64;
 
 /// A validated, copyable snapshot. State I/O runs outside the audio callback.
@@ -191,5 +192,20 @@ impl PluginState {
             }
         }
         Err(StateError::InvalidEnvelope)
+    }
+}
+
+#[cfg(test)]
+mod version_contract {
+    use super::*;
+    #[test]
+    fn checked_manifest_matches_encoded_state_version() {
+        let encoded = PluginState::default().encode();
+        assert_eq!(STATE_VERSION, 2);
+        assert_eq!(crate::MANIFEST_STATE_VERSION, STATE_VERSION);
+        assert_eq!(
+            u32::from_le_bytes(encoded[8..12].try_into().unwrap()),
+            crate::MANIFEST_STATE_VERSION
+        );
     }
 }

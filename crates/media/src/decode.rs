@@ -20,6 +20,15 @@ pub fn decode_audio_cancellable(
     rate: u32,
     cancelled: &impl Fn() -> bool,
 ) -> Result<AudioData> {
+    decode_with_streaming(path, rate, cancelled, crate::stream_decode::should_stream)
+}
+
+fn decode_with_streaming(
+    path: &Path,
+    rate: u32,
+    cancelled: &impl Fn() -> bool,
+    should_stream: impl Fn(u64) -> bool,
+) -> Result<AudioData> {
     if cancelled() {
         return Err(Error("Audio preparation cancelled".into()));
     }
@@ -38,6 +47,13 @@ pub fn decode_audio_cancellable(
     if let Some(extension) = path.extension().and_then(|s| s.to_str()) {
         hint.with_extension(extension);
     }
+    // The patched MP4 demuxer enforces this bounded metadata/packet policy before
+    // allocation. Reserve it before probing, including for content with misleading
+    // extensions; formats are selected from bytes, not the path suffix.
+    let _container_admission = AudioReservation::new(
+        0,
+        symphonia::default::formats::IsoMp4Reader::MAX_WORKING_BYTES,
+    )?;
     let mut format = symphonia::default::get_probe()
         .format(
             &hint,
@@ -102,7 +118,7 @@ pub fn decode_audio_cancellable(
     let mut decoder = codecs
         .make(&decoder_params, &DecoderOptions::default())
         .map_err(|e| err(&e))?;
-    let mut reservations = vec![AudioReservation::new(0, 1024 * 1024)?];
+    let mut reservations = Vec::new();
     let mut source_spec = None;
     let mut samples = Vec::new();
     let mut admitted = 0;
@@ -168,7 +184,7 @@ pub fn decode_audio_cancellable(
             .len()
             .checked_add(keep)
             .ok_or_else(|| err(&"Audio length overflow"))?;
-        if disk.is_none() && crate::stream_decode::should_stream(required as u64) {
+        if disk.is_none() && should_stream(required as u64) {
             let mut writer = DiskAudioWriter::incremental()?;
             for block in samples.chunks(8192) {
                 if cancelled() {
@@ -272,4 +288,22 @@ pub fn decode_audio_cancellable(
     };
     register_audio(&audio);
     Ok(audio)
+}
+
+#[cfg(test)]
+mod compressed_storage_tests {
+    use super::*;
+    #[test]
+    fn bounded_mp4_demuxing_preserves_resident_and_disk_pcm() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tone-2.m4a");
+        for rate in [44100, 48000, 192000] {
+            let resident = decode_with_streaming(&path, rate, &|| false, |_| false).unwrap();
+            let disk = decode_with_streaming(&path, rate, &|| false, |_| true).unwrap();
+            assert!(disk.disk.is_some());
+            let materialized = disk.materialized(&|| false).unwrap();
+            assert_eq!(resident.metadata, materialized.metadata);
+            assert_eq!(resident.samples, materialized.samples);
+            assert_eq!(resident.peaks, materialized.peaks);
+        }
+    }
 }

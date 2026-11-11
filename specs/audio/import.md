@@ -32,6 +32,35 @@ retains ordinary floating-point headroom and returns a media error instead of
 allowing FFT intermediate overflow. Equal-rate finite PCM is unchanged. Check
 converted output finiteness before publication.
 
+## MP4 allocation boundary
+
+Pin the ISO MP4 reader to the MPL-2.0 resource-bound source in
+`vendor/symphonia-format-isomp4` (upstream 0.5.5). Preserve original headers,
+archive SHA-256/VCS provenance, complete license and the modified source in
+corresponding-source packages. Codec algorithms are unchanged.
+
+Validate checked parent/file atom extents, including extended and zero-size
+headers, before parsing. Retain absolute payload positions when consuming
+container prefixes. Count aggregate parsed root metadata before allocation,
+including metadata retained across the initial seek and later fragments.
+The policy allows 8 MiB of metadata and 16 MiB per packet; table capacities and
+boxed reads are checked and fallible. Table counts must fit their encoded payload
+width and prefix before reserving. Validate sample/index coordinates and packet
+end positions with checked arithmetic. A source read wrapper or a check after
+`next_packet` is too late.
+
+`IsoMp4Reader::MAX_WORKING_BYTES` exports a conservative 145 MiB known allowance:
+16 times the metadata limit for parsed/index expansion, one maximum packet and
+one MiB of decoder scratch. Reserve it through the shared registry before probing
+compressed content, independent of filename hints. This is not a process RSS cap.
+PCM/converter/peaks retain their existing reservations. Ordinary strict WAV
+preparation bypasses this compressed-container allowance.
+
+Guarded tiny-file tests cover oversized packet/table declarations, atom/file
+bounds, aggregate metadata, chunk/index/fragment coordinates and unchanged
+ordinary M4A output. A private streaming predicate lets tests compare resident
+and disk-backed PCM/metadata/peaks at three rates without allocating a long source.
+
 Run decoding, Rubato conversion and peaks on workers. Do not allocate from a
 compressed duration header. Admit PCM and peaks in bounded growth increments
 through `AudioReservation`, including original PCM during resampling, resampler

@@ -6,7 +6,7 @@ Select the displayed track to work with its effects. The Effects catalog and lan
 
 For beat tracks, the lower editor shows the [beat step grid](beat-editor.md) and shared subtrack headers.
 
-Clips in the track overview and audio editor have a one-point visual gap between them and stay borderless when selected. At a crossfade, the gap follows the owning clip’s fade endpoint. Selecting a clip uses the Material 200 shade of its color family in the header. Headers have rounded top corners and square bottom corners.
+Clips in the track overview and audio editor have a small visual gap between them and stay borderless when selected. At a crossfade, the gap follows the owning clip’s fade endpoint. Selecting a clip uses a lighter shade of its color family in the header. Headers have rounded top corners and square bottom corners.
 
 The lower editor shows every clip on the displayed track, including beat patterns. Looped sections after each clip’s first cycle use dimmer versions of their original colors and are read-only. Edit notes, steps, or audio controls in the first cycle; those source changes also appear in its repetitions. Scrolling to a later cycle does not make it editable. Use the overview above to move, trim, loop or stretch the complete clip.
 

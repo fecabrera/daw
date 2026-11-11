@@ -27,7 +27,7 @@ The shared layout uses 90-point single strips and 161-point two-column strips, w
 
 Plugin adapters use `control_capture::scope` to collect actual widget responses and map their rectangles to frozen parameter IDs. The collection is scoped to UI painting and releases response ownership on return or unwinding. It is never accessed by the audio callback. Captured meter clicks send reset requests, not parameter edits.
 
-All registered editors have paired tessellated rendering comparisons against their portable built-in bodies in Dark, Light and Mist, at 1×, 1.5× and 2× scale, with defaults and two changed parameter snapshots. Compare clips, textures, triangles, vertex positions and colors. Separate gesture checks verify parameter identity and balanced host gestures, including both rate modes; Saturator dropdowns have dedicated selection checks. Geometry checks cover control containment and contiguous strip order. Native host attachment and display scaling still require platform checks.
+All registered editors have paired tessellated rendering comparisons against their portable built-in bodies in Dark, Light and Mist, at 1×, 1.5× and 2× scale, with defaults and two changed parameter snapshots. Compare clips, textures, triangles, vertex positions and colors. An active gesture must also send its End when host automation hides that control. Reuse the bounded enqueue/reservation path, retain the active flag on a full queue, and retry on the next frame. Host mode changes, release and focus loss must not leave an edit open. Separate gesture checks verify parameter identity and balanced host gestures, including both rate modes; Saturator dropdowns have dedicated selection checks. Geometry checks cover control containment and contiguous strip order. Native host attachment and display scaling still require platform checks.
 
 ## Timing, latency, and monitoring
 
@@ -58,6 +58,8 @@ against full retargeting at all six rates, including reset, same-sample transien
 targets, meters, presentation order and callback heap operations. The explicit
 release cost regression compares 64-frequency and 322-field automation against
 the full-bank reference using a median ratio rather than a device deadline.
+
+The checked Multiband EQ manifest declares state version 2. Build validation emits `MANIFEST_STATE_VERSION`; its encoder exports and uses that approved value. A wire-header contract test compares the manifest value and actual encoded envelope. Version-1 decoding remains supported.
 
 Standalone Multiband EQ uses the shared release-only strip gesture lifecycle. Its version-2 state appends a validated 64-slot permutation; version-1 state loads with the original order. Published automation IDs and their slot bindings remain fixed. UI controls resolve slots by stable UUID, and the prepared DSP retains canonical slot order. Shared state exchanges publish the complete bounded state, including presentation fields. CLAP consumes order from its bounded editor queue on the control thread, saves it immediately without audio-event delivery, and marks non-parameter state dirty after releasing queue borrows. Order does not enter DSP processing. VST3 stores the order in controller state and calls the host dirty-state hook. The owning host controls native state undo; native undo/recall acceptance is not established by headless tests. The visible-slot mask remains instance-only UI state as described above.
 

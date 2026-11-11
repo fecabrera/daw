@@ -4,11 +4,7 @@ The left toolbar lists **Effects** and **Chords**. **Clip settings** uses the to
 
 Timeline arranges audio and MIDI clips on tracks. Use Editor for MIDI notes, Instrument for MIDI sounds, and Mixer for track levels. Its horizontal scrollbar floats over the content, like the effects lane’s scrollbar; hover near the bottom of the timeline to reveal and expand it.
 
-Selected tracks use background highlights without a selection outline. The Timeline lane background is #181818 in Dark,
-#F3F3F3 in Light, and #DFE2E7 in Mist. Each track in a multiple
-selection is highlighted. The musical grid and clips remain visible above it.
-Selected track headers use a separate raised shade: #262626 in Dark, #F7F7F7
-in Light, and #E8EAEE in Mist. Unselected headers retain their normal theme fill.
+Selected tracks use background highlights without a selection outline. Each selected track is highlighted while its musical grid and clips remain visible. Selected track headers use a raised shade; unselected headers retain their normal theme fill.
 
 Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Their names use the same spacing as group headers. Track gain and pan, and Master gain, use compact knobs without text-entry fields. Compact tracks use one row: icon, name, Mute, Solo, then meters. Pan and Gain are hidden in this compact mode, including Master gain. In the expanded layout, the second row places Mute and Solo at the left; Pan then Gain sit at the right, immediately before the level meters. Master uses one row, with its gain knob on the right before the meters when track headers are expanded. Level meter rails align with the top and bottom padding of the other header controls. Hover or drag a knob to see its value in the tooltip. Master's meters align with the track meters at the right of the control column. Drag an audio or MIDI icon, track name, or blank header area to move the track. Release applies the move; Escape or focus loss cancels it.
 
@@ -16,7 +12,7 @@ The Tracks header’s Add and Duplicate buttons use the same rounded, borderless
 
 Click the arrow beside a beat track to show or hide its subtracks. They start collapsed. Subtracks appear inside the parent, with the same indentation and selection style as track groups. Each row has Mute, Solo, Pan, Gain and level meters shared with Editor and Instrument. Subtrack names use the same hoverable name buttons as other tracks. A single click selects; double-click the name to rename it. Click a subtrack header to select it; Shift-click selects several. Escape clears subtrack selection. The child timeline lanes stay empty; arrange clips on the parent and edit beat hits in Editor. The project saves each beat folder’s open/closed state. Expanding or collapsing it supports Undo/Redo, like track groups.
 
-Touching clips have a one-point visual gap. At a crossfade, the gap follows the owning clip’s fade endpoint. Audio, MIDI and beat clips have no selection border. Selected clips use the Material 200 shade of their color family in the header. Headers have rounded top corners and square bottom corners. The same style applies in the track overview and audio editor.
+Touching clips have a small visual gap. At a crossfade, the gap follows the owning clip’s fade endpoint. Audio, MIDI and beat clips have no selection border. Selected clips use a lighter shade of their color family in the header. Headers have rounded top corners and square bottom corners. The same style applies in the track overview and audio editor.
 
 **M** and **S** share one joined button group with a divider. They remain independent: either or both can be enabled. The same group appears in Editor, Instrument, Beat Editor, the Tracks panel and Mixer.
 
@@ -323,6 +319,10 @@ two channels are unsupported. Opus supports one mono/stereo stream
 with the standard channel mapping (family 0); chained or multiplexed streams
 and Ogg Vorbis are unsupported. Recorder files without a final end marker can
 load if they end on a complete page. A rejected import leaves the arrangement intact.
+M4A/MP4 imports reject metadata above 8 MiB or a single compressed packet above
+16 MiB. Malformed table sizes and out-of-file packets return an import error.
+Re-encode files that exceed these limits; the failed import leaves the project unchanged.
+
 MP3 encoder delay and padding are removed when the file provides that information.
 Opus imports remove encoder delay and end padding and apply the header output gain.
 AAC files can retain encoder padding, so their clip length can be slightly longer

@@ -65,7 +65,7 @@ The output directory must not exist and must be outside source directories.
 Sources are read-only, their SHA-256 hashes are checked before/after, and no
 licensed/private recordings or generated audio should be committed or redistributed.
 The tool uses the existing WAV/resampling adapter and renders Energy versus the
-revision-6 default Combined detector. Default ratios are 3/4, 3/2 and 2; sample
+current default Combined detector. Default ratios are 3/4, 3/2 and 2; sample
 rate is 48 kHz; excerpt duration is 1–30 seconds (default 10), with no repetition
 of short recordings.
 

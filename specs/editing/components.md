@@ -101,7 +101,7 @@ The component catalog groups registered entries in this order:
 
 | Category | Components, in display order |
 | --- | --- |
-| Sources | Oscillator, Sampler, Granulizer |
+| Sources | Oscillator, Sampler, Granulizer, Noise |
 | Modulators | Envelope, LFO, Macro |
 | Processors | Amplitude |
 

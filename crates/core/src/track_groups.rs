@@ -463,6 +463,17 @@ pub(crate) fn duplicate_track_settings(track: &Track, id: Id) -> Track {
     {
         s.id = Id::new_v4();
     }
+    for noise in copy
+        .instrument
+        .iter_mut()
+        .flat_map(|i| &mut i.layers)
+        .filter_map(|layer| layer.noise.as_mut())
+    {
+        noise.id = Id::new_v4();
+        for route in &mut noise.modulations {
+            route.id = Id::new_v4();
+        }
+    }
     if let Some(beat) = &mut copy.beat {
         beat.id = Id::new_v4();
         let mut remap = HashMap::new();

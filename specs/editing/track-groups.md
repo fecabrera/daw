@@ -181,3 +181,10 @@ shared inner edge square. M/S labels use the shared semibold font at the existin
 Small text size for standard buttons and 9 points for browser buttons. Explicitly clear each button stroke so hover, focus and
 selected style rules cannot restore an outline. Keep the divider outside both clickable button rectangles; reserve the added
 point in parent layouts.
+
+### Copy source identity
+
+Regular-track and group duplication retain track-scoped provider references while
+refreshing globally unique Sampler and Noise identities. Noise owned routes get
+fresh route identities; retain settings, disabled/collapsed state and sidechain
+assignments. Beat subtracks retain the shared deep instrument-copy path.

@@ -118,3 +118,122 @@ fn assert_builtin_defaults() {
     let builtin: daw_unit_core::AutoFilterSettings = Default::default();
     assert_eq!(native, builtin);
 }
+
+#[cfg(test)]
+mod hidden_gesture_tests {
+    use super::*;
+    use daw_drive_plugin::{Parameter as P, PluginState};
+    use std::sync::Arc;
+    fn frame(ctx: &egui::Context, editor: &mut Editor, events: Vec<egui::Event>, focused: bool) {
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(WIDTH as f32, HEIGHT as f32),
+                )),
+                focused,
+                events,
+                ..Default::default()
+            },
+            |ui| editor.show(ui),
+        );
+        out.textures_delta.clear();
+    }
+    #[test]
+    fn host_mode_changes_end_hidden_gestures_on_release_focus_loss_and_full_queue() {
+        for scenario in 0..3 {
+            let ctx = egui::Context::default();
+            daw_unit_ui::theme::configure(&ctx);
+            daw_unit_ui::fonts::configure(&ctx);
+            let model = Arc::new(Model::default());
+            let mut state = PluginState::default();
+            state.set(P::RateMode, 1.0).unwrap();
+            model.publish(state);
+            let mut editor = Editor::new(model.clone(), || {});
+            frame(&ctx, &mut editor, vec![], true);
+            // The reverse host transition must restore the Hz control too.
+            state.set(P::RateMode, 0.0).unwrap();
+            model.publish(state);
+            frame(&ctx, &mut editor, vec![], true);
+            let mut settings = state.to_settings();
+            let mut rect = egui::Rect::NOTHING;
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(WIDTH as f32, HEIGHT as f32),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    rect = probe_controls(ui, &mut settings)
+                        .into_iter()
+                        .find(|(p, _)| *p == P::RateHz)
+                        .unwrap()
+                        .1
+                },
+            );
+            out.textures_delta.clear();
+            frame(&ctx, &mut editor, vec![], true);
+            let start = rect.center();
+            let end = start - egui::vec2(0.0, 25.0);
+            let button = |pressed| egui::Event::PointerButton {
+                pos: if pressed { start } else { end },
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            };
+            frame(
+                &ctx,
+                &mut editor,
+                vec![egui::Event::PointerMoved(start), button(true)],
+                true,
+            );
+            frame(
+                &ctx,
+                &mut editor,
+                vec![egui::Event::PointerMoved(end)],
+                true,
+            );
+            let mut before = Vec::new();
+            while let Some(edit) = model.pop() {
+                before.push(edit);
+            }
+            assert!(before.contains(&Edit::Begin(P::RateHz)), "{before:?}");
+            assert!(!before.contains(&Edit::End(P::RateHz)));
+            if scenario == 2 {
+                assert!(model.push(&vec![Edit::Value(P::RateHz, 0.5); model.remaining()]));
+            }
+            state.set(P::RateMode, 1.0).unwrap();
+            model.publish(state);
+            frame(
+                &ctx,
+                &mut editor,
+                if scenario == 1 {
+                    vec![]
+                } else {
+                    vec![button(false)]
+                },
+                scenario != 1,
+            );
+            let mut after = Vec::new();
+            while let Some(edit) = model.pop() {
+                after.push(edit);
+            }
+            if scenario == 2 {
+                assert!(!after.contains(&Edit::End(P::RateHz)), "queue was full");
+                after.clear();
+            }
+            frame(&ctx, &mut editor, vec![], true);
+            frame(&ctx, &mut editor, vec![], true);
+            while let Some(edit) = model.pop() {
+                after.push(edit);
+            }
+            assert_eq!(
+                after.iter().filter(|e| **e == Edit::End(P::RateHz)).count(),
+                1,
+                "scenario={scenario}: {after:?}"
+            );
+        }
+    }
+}

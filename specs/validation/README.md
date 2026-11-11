@@ -4,6 +4,55 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Standalone review remediation, third pass — 2026-11-11
+
+Resolved all ten non-ONNX findings from the standalone review of `2618a17`:
+
+- Regular-track and group copies refresh Noise and owned route identities while
+  retaining disabled settings and track-scoped provider references. Beat copies
+  retain their existing shared deep-copy behavior. Three focused core cases pass.
+- Timeline moves into new-track space use the shared instrument duplication
+  contract. Real pointer tests cover selected clip groups with Noise, a prepared
+  file-backed Sampler and layer effects: valid previews, release-only publication,
+  fresh processing identities, retained sample input, cancellation, selection and
+  one-step Undo. Existing two-destination move/copy behavior also passes.
+- Shared plugin editors close active host gestures when conditional controls
+  disappear. Release, focus loss, reverse host mode changes and full-queue retry
+  tests pass. Multiband EQ's checked manifest declares state version 2; its encoder
+  uses the generated approved version. The wire-header check passes and version-1
+  decoding remains unchanged.
+- MP4 atom/table and packet allocations are bounded before probing/read allocation
+  through the pinned MPL-2.0 Symphonia 0.5.5 patch. Original archive provenance and
+  complete original/modified source and license are retained. Guarded tiny-file
+  regressions reject oversized packets/counts, atom/file extents, metadata limits,
+  chunk/index/fragment errors before large allocation. No uncontrolled OOM ran.
+  Normal compressed imports pass; forced resident/disk M4A outputs, metadata and
+  peaks match exactly at 44.1, 48 and 192 kHz. Codec algorithms are unchanged.
+- Guides retain operating instructions while specifications hold paint dimensions
+  and colors. Noise appears in the component catalog contract; listening revision,
+  Return selection and group-disclosure wording match current behavior.
+
+Completed local macOS checks:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `CARGO_INCREMENTAL=0 cargo test --workspace --offline`: PASS, including doctests,
+  with debug assertions/overflow checks enabled and existing manual cases ignored.
+- `cargo test --workspace --release --offline`: PASS, including doctests.
+- `cargo build -p daw-desktop -p daw-cli --offline`: PASS.
+- `python3 tools/check_cli.py`: PASS.
+- Python plugin, desktop and corresponding-source packaging fixtures: 15 + 1 + 3
+  PASS. Changed-document local links: 100 resolve. Staged and unstaged diff checks:
+  PASS.
+- Vendored-source provenance: original archive SHA-256 matches the previous locked
+  registry checksum; 30 original files remain byte-identical, 19 contain the
+  resource/MSRV patch and three contain the added source notice/license/helper.
+  Logs and captured inputs are in ignored `work/remediation3-*`.
+
+The native ONNX shape-inference finding remains unchanged as requested. Native
+UI/device playback, external plugin-host acceptance and Windows/Linux launch were
+not performed. The macOS app will be repackaged from the clean committed tree.
+
 ## Standalone review remediation, second pass — 2026-11-11
 
 Resolved the six non-ONNX findings from the standalone review of `57e21977`:

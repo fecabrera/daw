@@ -72,6 +72,7 @@ pub fn generate(input: &str) -> Result<String> {
             match MANIFEST_TYPE_ID {
                 daw_unit_core::PLATE_REVERB_TYPE_ID => 5,
                 daw_unit_core::AMBIENT_REVERB_TYPE_ID => 3,
+                daw_unit_core::MULTIBAND_EQ_TYPE_ID => 2,
                 _ => 1,
             },
         ),
@@ -220,9 +221,13 @@ pub fn generate(input: &str) -> Result<String> {
         .map(|p| format!("Parameter::{p:?}"))
         .join(", ");
     Ok(format!(
-        "pub const MANIFEST_SCHEMA_VERSION: u32 = 1;\npub const UNIT_TYPE_ID: &str = {:?};\npub const IDENTITY: Identity = Identity {{ vendor: {vendor:?}, product: {product:?}, version: {version:?}, clap_id: {clap_id:?}, processor_id: {processor:?}, controller_id: {controller:?} }};\npub const PANEL: [Strip; {strip_count}] = [{panels}];\npub const PARAMETER_ORDER: [Parameter; {parameter_count}] = [{order}];\n",
+        "pub const MANIFEST_SCHEMA_VERSION: u32 = 1;\npub const MANIFEST_STATE_VERSION: u32 = {state_version};\npub const UNIT_TYPE_ID: &str = {:?};\npub const IDENTITY: Identity = Identity {{ vendor: {vendor:?}, product: {product:?}, version: {version:?}, clap_id: {clap_id:?}, processor_id: {processor:?}, controller_id: {controller:?} }};\npub const PANEL: [Strip; {strip_count}] = [{panels}];\npub const PARAMETER_ORDER: [Parameter; {parameter_count}] = [{order}];\n",
         MANIFEST_TYPE_ID,
         strip_count = STRIP_BINDINGS.len(),
-        parameter_count = Parameter::COUNT
+        parameter_count = Parameter::COUNT,
+        state_version = root
+            .get("state_version")
+            .and_then(Item::as_integer)
+            .unwrap(),
     ))
 }

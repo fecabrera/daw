@@ -1,14 +1,21 @@
-Audio decoding uses unmodified Symphonia 0.5.5 crates, including the MP3 and
+Audio decoding uses Symphonia 0.5.5 crates, including the MP3 and
 AAC-LC decoders, RIFF/WAV, Ogg and ISO MP4 readers, metadata and Xiph utilities.
 Copyright (c) 2019-2022 The Project Symphonia Developers.
 Licensed under the Mozilla Public License 2.0; see Symphonia-MPL-2.0.txt.
 
 Source: https://github.com/pdeljanov/Symphonia/tree/v0.5.5
 Exact source archives: https://crates.io/crates/symphonia/0.5.5/dependencies
-Each dependency's version and archive checksum are recorded in Cargo.lock.
-The corresponding unmodified source is available from crates.io, for example:
+Registry dependency versions and archive checksums are recorded in Cargo.lock.
+The original source is available from crates.io, for example:
 https://crates.io/api/v1/crates/symphonia-codec-aac/0.5.5/download
 https://crates.io/api/v1/crates/symphonia-format-isomp4/0.5.5/download
 https://crates.io/api/v1/crates/symphonia-utils-xiph/0.5.5/download
 
 Ogg Opus decoding uses the separately licensed libopus adapter; see Opus-NOTICE.txt.
+
+The ISO MP4 reader has a local resource-bound patch. It validates atom/table
+extents and limits metadata and packet storage before fallible allocation.
+Original decoder algorithms remain unchanged. The exact modified MPL-2.0 source
+and patch provenance are included in the corresponding-source archive under
+vendor/symphonia-format-isomp4, including DAW-SOURCE-NOTICE.md and LICENSE.
+Original archive SHA-256: 243739585d11f81daf8dac8d9f3d18cc7898f6c09a259675fc364b382c30e0a5.

@@ -195,6 +195,11 @@ impl Editor {
         let next = PluginState::from_settings(&settings).unwrap_or(self.state);
         for (slot, p) in Parameter::ALL[1..].iter().copied().enumerate() {
             let Some(response) = &bounds.controls[slot] else {
+                // Host mode changes can hide the widget while it owns a drag.
+                // Keep retrying a bounded End if the queue is temporarily full.
+                if self.active[slot] && self.model.push(&[Edit::End(p)]) {
+                    self.active[slot] = false;
+                }
                 continue;
             };
             let changed = response.changed();

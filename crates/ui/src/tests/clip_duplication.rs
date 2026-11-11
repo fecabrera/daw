@@ -248,3 +248,188 @@ fn invalid_copy_group_rolls_back_neighbor_edits_and_new_tracks() {
     assert_eq!(app.selected_clip, Some(source.id));
     assert!(!app.dirty);
 }
+
+// Compare copied settings separately from identities; explicit assertions below
+// still require fresh owners and retained external sample assignments.
+pub(super) fn without_instrument_ids(
+    instrument: &daw_core::InstrumentSettings,
+) -> serde_json::Value {
+    fn strip(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::String(text) if Id::parse_str(text).is_ok() => {
+                *text = "<identity>".into()
+            }
+            serde_json::Value::Array(values) => values.iter_mut().for_each(strip),
+            serde_json::Value::Object(values) => values.values_mut().for_each(strip),
+            _ => {}
+        }
+    }
+    let mut value = serde_json::to_value(instrument).unwrap();
+    strip(&mut value);
+    value
+}
+
+#[test]
+fn moving_source_groups_to_new_tracks_previews_commits_cancels_and_undoes() {
+    for kind in ["noise", "sampler", "effect"] {
+        for cancel in [false, true] {
+            let mut app = DawUi {
+                track_rows_collapsed: false,
+                ..Default::default()
+            };
+            let sample_file = (kind == "sampler").then(TestWav::new);
+            let track = app.session.project.add_midi_track().unwrap();
+            app.session.project.add_midi_pattern(track, 0).unwrap();
+            let source_index = app.session.project.tracks.len() - 1;
+            let layer = &mut app.session.project.tracks[source_index]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0];
+            match kind {
+                "noise" => {
+                    layer.noise = Some(daw_core::NoiseSettings {
+                        color: 0.4,
+                        width: 0.7,
+                        ..Default::default()
+                    })
+                }
+                "sampler" => layer.sampler = Some(Default::default()),
+                _ => {
+                    layer.oscillators.push(Default::default());
+                    layer.effects.push(daw_core::EffectInstance::drive());
+                }
+            }
+            if let Some(file) = &sample_file {
+                let layer = app.session.project.tracks[source_index]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .layers[0]
+                    .id;
+                app.session = app
+                    .session
+                    .with_sampler_file(track, layer, &file.0)
+                    .unwrap();
+            }
+            let clip_id = app.session.project.tracks[source_index].clips[0].id;
+            app.session
+                .project
+                .edit(Edit::ReplaceMidiPattern {
+                    clip_id,
+                    pattern: daw_core::MidiPattern {
+                        length_ticks: 3840,
+                        notes: vec![daw_core::MidiNote {
+                            id: Id::new_v4(),
+                            start_tick: 0,
+                            length_ticks: 960,
+                            pitch: 60,
+                            velocity: 100,
+                        }],
+                    },
+                })
+                .unwrap();
+            let original_clip = app.session.project.tracks[source_index].clips[0].clone();
+            let mut second = original_clip.clone();
+            second.id = Id::new_v4();
+            second.start_frame = original_clip.end();
+            app.session
+                .project
+                .edit(Edit::OverwriteClips(vec![daw_core::ClipPlacement {
+                    track_id: track,
+                    clip: second.clone(),
+                }]))
+                .unwrap();
+            app.session
+                .prepare_project_audio(&|| false, &|_, _| {})
+                .unwrap();
+            let original_instrument = app.session.project.tracks[source_index]
+                .instrument
+                .clone()
+                .unwrap();
+            app.selected_clip = Some(original_clip.id);
+            app.selected_clips = HashSet::from([original_clip.id, second.id]);
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            app.history = None;
+            let before = serde_json::to_value(&app.session.project).unwrap();
+            let lane = app.lane_bounds[&track];
+            let block = app.clip_block(lane, &original_clip, original_clip.start_frame);
+            let start = Pos2::new(block.center().x, block.top() + 12.0);
+            let end = Pos2::new(start.x, lane.bottom() + 12.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            let previews = app.clip_drag_previews(app.drag.as_ref().unwrap(), end, false);
+            assert_eq!(previews.iter().filter(|p| !p.removed).count(), 2);
+            assert!(previews.iter().all(|p| p.valid), "{kind}");
+            assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+            if cancel {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            let deadline = std::time::Instant::now() + Duration::from_secs(30);
+            while app.job.is_some() || app.session.audio_preparation_needed(&app.session.project) {
+                app.poll();
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{kind}: preparation timed out"
+                );
+                std::thread::yield_now();
+            }
+            assert!(app.error.is_none(), "{kind}: {:?}", app.error);
+            if cancel {
+                assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+                continue;
+            }
+            let copied = app.session.project.tracks.last().unwrap();
+            assert_eq!(copied.clips.len(), 2);
+            let instrument = copied.instrument.as_ref().unwrap();
+            assert_ne!(instrument.layers[0].id, original_instrument.layers[0].id);
+            assert_eq!(
+                without_instrument_ids(instrument),
+                without_instrument_ids(&original_instrument)
+            );
+            if let Some(sampler) = &instrument.layers[0].sampler {
+                assert_ne!(
+                    sampler.id,
+                    original_instrument.layers[0].sampler.as_ref().unwrap().id
+                );
+                assert_eq!(
+                    sampler.input,
+                    original_instrument.layers[0]
+                        .sampler
+                        .as_ref()
+                        .unwrap()
+                        .input
+                );
+                assert!(app.session.sampler_audio.contains_key(&sampler.id));
+            }
+            assert_eq!(
+                app.session.project.tracks[source_index].instrument.as_ref(),
+                Some(&original_instrument)
+            );
+            assert_eq!(
+                app.selected_clips,
+                HashSet::from([original_clip.id, second.id])
+            );
+            app.session.project.validate().unwrap();
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+            assert!(!app.history.as_ref().unwrap().can_undo());
+        }
+    }
+}

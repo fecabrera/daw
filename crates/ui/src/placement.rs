@@ -65,7 +65,8 @@ impl DawUi {
                         .iter()
                         .find(|t| t.clips.iter().any(|c| c.asset_id == clip.asset_id))
                 })
-                .and_then(|t| t.instrument.clone());
+                .and_then(|t| t.instrument.as_ref())
+                .map(daw_core::InstrumentSettings::duplicate);
             project.tracks.last_mut().unwrap().instrument = instrument;
             Ok(id)
         } else {
