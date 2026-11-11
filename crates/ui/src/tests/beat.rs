@@ -822,7 +822,7 @@ fn compact_beat_controls_follow_track_spacing_and_requested_order() {
     let name = app.beat_ui.headers[&row];
     assert!(name.left() < mute.left() && mute.left() < solo.left());
     assert!(solo.right() < pan.left() && pan.left() < gain.left());
-    assert!((solo.left() - mute.right()).abs() < 0.1);
+    assert!((solo.left() - mute.right() - 1.0).abs() < 0.1);
     assert!(mute.left() - name.right() >= mix_controls::GROUP_GAP - 0.1);
     let right = app.midi_editor.panel_bounds.right()
         - 7.0

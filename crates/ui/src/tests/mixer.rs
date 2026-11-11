@@ -832,7 +832,7 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                                     unreachable!()
                                 };
                                 assert_eq!(rect.stroke, egui::Stroke::NONE);
-                                assert_eq!(rect.corner_radius, egui::CornerRadius::same(2));
+                                assert_eq!(rect.corner_radius, egui::CornerRadius::same(5));
                                 let text_index = shapes
                                     .iter()
                                     .position(|shape| {
@@ -860,7 +860,7 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                                     })
                                     .expect("Selected view background");
                                 assert_eq!(background.stroke, egui::Stroke::NONE);
-                                assert_eq!(background.corner_radius, egui::CornerRadius::same(2));
+                                assert_eq!(background.corner_radius, egui::CornerRadius::same(5));
                                 if let Some(size) = reference_size {
                                     assert_eq!(background.rect.size(), size);
                                 } else {
@@ -1617,7 +1617,7 @@ fn output_spacing_uses_visible_edges_instead_of_widget_slots() {
             let pan_field = field(&format!("{pan:.2}"), NUMERIC_WIDTH, fader.top());
             let gain = field("0.0", NUMERIC_WIDTH, fader.top());
             let peak = field("−∞", NUMERIC_WIDTH, fader.top());
-            let mute = field("M", 2.0 * toolbars::CONTROL_HEIGHT, strip.bottom());
+            let mute = field("M", 2.0 * toolbars::CONTROL_HEIGHT + 1.0, strip.bottom());
             let divider = shapes
                 .iter()
                 .filter_map(|s| match &s.shape {
@@ -2071,6 +2071,7 @@ fn assert_destination_row(
                     && r.rect.top() >= header_top + panels::HEADER_HEIGHT
                     && r.rect.top() < header_top + panels::HEADER_HEIGHT + 16.0 =>
             {
+                assert_eq!(r.corner_radius, egui::CornerRadius::same(5));
                 Some(r.rect)
             }
             _ => None,

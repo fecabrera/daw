@@ -251,7 +251,7 @@ impl DawUi {
                         .frame(true)
                         .fill(egui::Color32::TRANSPARENT)
                         .stroke(Stroke::NONE)
-                        .corner_radius(2)
+                        .corner_radius(icons::TOGGLE_CORNER_RADIUS)
                         .min_size(Vec2::new(0.0, toolbars::CONTROL_HEIGHT)),
                     )
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -265,7 +265,7 @@ impl DawUi {
                 {
                     self.sampler_drag_navigation(ui.ctx());
                 }
-                let radius = egui::CornerRadius::same(2);
+                let radius = icons::TOGGLE_CORNER_RADIUS;
                 ui.painter().set(
                     background,
                     egui::Shape::rect_filled(
@@ -573,7 +573,7 @@ impl DawUi {
         let (destination_rect, response) =
             ui.allocate_exact_size(Vec2::new(width, toolbars::CONTROL_HEIGHT), Sense::hover());
         ui.painter()
-            .rect_stroke(destination_rect, 2.0, border, egui::StrokeKind::Inside);
+            .rect_stroke(destination_rect, 5.0, border, egui::StrokeKind::Inside);
         let text = egui::WidgetText::from(egui::RichText::new(destination).small()).into_galley(
             ui,
             Some(egui::TextWrapMode::Truncate),
@@ -893,7 +893,10 @@ impl DawUi {
         );
         if track.is_some() {
             content.allocate_ui_with_layout(
-                Vec2::new(2.0 * toolbars::CONTROL_HEIGHT, toolbars::CONTROL_HEIGHT),
+                Vec2::new(
+                    2.0 * toolbars::CONTROL_HEIGHT + rows::GROUP_DIVIDER_WIDTH,
+                    toolbars::CONTROL_HEIGHT,
+                ),
                 egui::Layout::left_to_right(egui::Align::Center),
                 |ui| {
                     mix_controls::mute_solo(ui, &mut muted, &mut soloed, ["Mute", "Solo"]);

@@ -4190,6 +4190,7 @@ fn timeline_tracks_share_one_left_divider_with_catalog_or_toolbar() {
                             egui::Shape::LineSegment { points, stroke }
                                 if points[0].x == points[1].x
                                     && (points[0].x - left).abs() <= 1.0
+                                    && points[0].y >= adjacent.top()
                                     && *stroke == Stroke::new(1.0, palette.border) =>
                             {
                                 Some(*points)
@@ -4258,6 +4259,7 @@ fn timeline_effects_keep_toolbar_divider_and_borderless_unit_surfaces() {
                                     points,
                                     stroke: painted,
                                 } if *painted == stroke
+                                    && points[0].y >= app.effects_bounds.toolbar.top()
                                     && points[0].x == points[1].x
                                     && (points[0].x - app.effects_bounds.toolbar.right()).abs()
                                         <= 1.0 =>

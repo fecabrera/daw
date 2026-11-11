@@ -4,6 +4,12 @@ pub use egui_lucide::Lucide;
 pub use daw_unit_ui::layout::COMPACT_BUTTON_SIZE;
 pub const TOOLBAR_BUTTON_SIZE: f32 = 24.0;
 pub const TOOLBAR_ICON_SIZE: f32 = 16.0;
+pub(super) const TOGGLE_CORNER_RADIUS: egui::CornerRadius = egui::CornerRadius::same(5);
+pub(super) struct ToggleSurface {
+    pub idle: (Color32, Color32),
+    pub hovered: (Color32, Color32),
+    pub corners: egui::CornerRadius,
+}
 pub(super) const HEADER_ICON_WIDTH: f32 = 28.0;
 
 fn disclosure_icon(open: bool) -> Lucide {
@@ -295,23 +301,49 @@ pub fn borderless_toggle_with_colors(
     size: Vec2,
     active_colors: (Color32, Color32),
 ) -> Response {
+    let palette = crate::theme::palette(ui.ctx());
+    toggle_with_surface(
+        ui,
+        icon,
+        name,
+        selected,
+        size,
+        active_colors,
+        ToggleSurface {
+            idle: (Color32::TRANSPARENT, palette.secondary),
+            hovered: (crate::theme::TOOLBAR_HOVER_FILL, palette.text),
+            corners: TOGGLE_CORNER_RADIUS,
+        },
+    )
+}
+
+/// Semantic toggle with host-supplied surface colors and joined-control corners.
+pub(super) fn toggle_with_surface(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    selected: bool,
+    size: Vec2,
+    active_colors: (Color32, Color32),
+    surface_style: ToggleSurface,
+) -> Response {
+    let ToggleSurface {
+        idle,
+        hovered: (hover_fill, hover_foreground),
+        corners: radius,
+    } = surface_style;
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     if response.is_pointer_button_down_on() || response.clicked() {
         response.request_focus();
     }
     let surface = rect;
     let palette = crate::theme::palette(ui.ctx());
-    let (fill, mut color) = if selected {
-        active_colors
-    } else {
-        (Color32::TRANSPARENT, palette.secondary)
-    };
-    ui.painter().rect_filled(surface, 2.0, fill);
+    let (fill, mut color) = if selected { active_colors } else { idle };
+    ui.painter().rect_filled(surface, radius, fill);
     if !selected && ui.is_enabled() && (response.hovered() || response.is_pointer_button_down_on())
     {
-        ui.painter()
-            .rect_filled(surface, 2.0, crate::theme::TOOLBAR_HOVER_FILL);
-        color = palette.text;
+        ui.painter().rect_filled(surface, radius, hover_fill);
+        color = hover_foreground;
     }
     if !ui.is_enabled() {
         color = palette.secondary;
@@ -563,11 +595,13 @@ mod tests {
                         };
                         if enabled {
                             assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                                egui::Shape::Rect(r) if r.rect == rect && r.fill == fill && r.stroke == egui::Stroke::NONE)),
+                                egui::Shape::Rect(r) if r.rect == rect && r.fill == fill && r.stroke == egui::Stroke::NONE
+                                    && r.corner_radius == egui::CornerRadius::same(5))),
                                 "selected={selected}, enabled={enabled}, pressed={pressed:?}");
                         }
                         assert_eq!(shapes.iter().any(|shape| matches!(&shape.shape,
-                            egui::Shape::Rect(r) if r.rect == rect && r.fill == crate::theme::TOOLBAR_HOVER_FILL)),
+                            egui::Shape::Rect(r) if r.rect == rect && r.fill == crate::theme::TOOLBAR_HOVER_FILL
+                                && r.corner_radius == egui::CornerRadius::same(5))),
                             enabled && !selected);
                     }
                 }

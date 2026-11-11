@@ -328,7 +328,7 @@ fn send_row(
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 let knob_size = knobs::HEADER_SIZE;
-                let gap = f32::from(theme::TOOLBAR_PADDING);
+                let gap = (f32::from(theme::TOOLBAR_PADDING) - rows::GROUP_DIVIDER_WIDTH).max(0.0);
                 let left_width = (ui.available_width() - knob_size - gap).max(0.0);
                 ui.spacing_mut().item_spacing.x = gap;
                 ui.allocate_ui_with_layout(
@@ -336,7 +336,6 @@ fn send_row(
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
                         ui.set_width(left_width);
-                        let border = ui.visuals().widgets.inactive.bg_stroke.width;
                         let group = rows::input_group(ui, |ui| {
                             rows::input_group_edge(ui, false);
                             let height = ui.spacing().interact_size.y;
@@ -369,7 +368,7 @@ fn send_row(
                             ui.spacing_mut().button_padding.x = 2.0;
                             ui.spacing_mut().icon_width = 10.0;
                             ui.spacing_mut().icon_spacing = 2.0;
-                            let width = (left_width - 2.0 * border - height).max(0.0);
+                            let width = (left_width - rows::GROUP_DIVIDER_WIDTH - height).max(0.0);
                             rows::input_group_edge(ui, true);
                             let destination = menus::Dropdown::from_id_salt("send_return")
                                 .small_items()
@@ -396,11 +395,7 @@ fn send_row(
                             (power, destination)
                         });
                         let (_, destination) = group.inner;
-                        rows::input_group_separator(
-                            ui,
-                            group.response.rect,
-                            destination.rect.left(),
-                        );
+                        rows::group_separator(ui, group.response.rect, destination.rect.left());
                     },
                 );
                 ui.add_enabled_ui(send.enabled, |ui| {

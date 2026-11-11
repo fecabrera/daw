@@ -27,7 +27,7 @@ its colored name header, before the send rack and output controls. Fill the stri
 available width within the send rows’ horizontal margins. Use the shared strip
 padding plus the send row’s `menus::ITEM_PADDING` inset on each side. Keep the
 row eight points below the header and retain the standard eight-point gap below it. Use a one-point
-theme border, two-point corner radius, standard control height and Small text.
+theme border, five-point corner radius, standard control height and Small text.
 Place Lucide `ArrowRight` before the destination, using the standard 16-point
 artwork, a four-point gap and secondary icon color. Center the icon and visible
 text together. Truncate long names and expose the complete destination in the

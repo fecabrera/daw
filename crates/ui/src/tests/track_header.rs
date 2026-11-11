@@ -514,8 +514,8 @@ fn header_mute_solo_align_with_knobs_and_stay_on_the_left() {
                     .expect("mute/solo label in header");
                 let point = text.galley.rect.translate(text.pos.to_vec2()).center();
                 let x = panel.left()
-                    + if scope == "timeline" { 34.5 } else { 18.5 }
-                    + index as f32 * 21.0;
+                    + if scope == "timeline" { 34.0 } else { 18.0 }
+                    + index as f32 * 23.0;
                 assert!(
                     point.distance(Pos2::new(x, panel.top() + 47.0)) < 1.0,
                     "{scope} {label}: {point:?}, panel {panel:?}"

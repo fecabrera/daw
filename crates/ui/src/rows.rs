@@ -1,6 +1,7 @@
 use egui::{Align, InnerResponse, Layout, Ui, Vec2};
 
 pub(super) use daw_unit_ui::theme::panel_button_style;
+pub(super) const GROUP_DIVIDER_WIDTH: f32 = 1.0;
 
 pub const NAME_FONT_SIZE: f32 = 13.0;
 
@@ -277,7 +278,7 @@ pub fn input_group_with_height<R>(
         .corner_radius(5);
     frame.show(ui, |ui| {
         ui.spacing_mut().interact_size.y = height;
-        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.spacing_mut().item_spacing.x = GROUP_DIVIDER_WIDTH;
         // A typed segment keeps selection text feedback without a focus outline.
         ui.visuals_mut().selection.stroke.width = 0.0;
         let widgets = &mut ui.visuals_mut().widgets;
@@ -325,11 +326,14 @@ pub(super) fn input_group_edge(ui: &mut Ui, last: bool) {
 }
 
 /// Paint only the shared separator; joined controls have no outer outline.
-pub fn input_group_separator(ui: &Ui, rect: egui::Rect, divider: f32) {
+pub fn group_separator(ui: &Ui, rect: egui::Rect, next_control_left: f32) {
     ui.painter().vline(
-        divider,
+        next_control_left - GROUP_DIVIDER_WIDTH * 0.5,
         rect.y_range(),
-        egui::Stroke::new(1.0, crate::theme::unit_header_fill(ui.ctx(), false)),
+        egui::Stroke::new(
+            GROUP_DIVIDER_WIDTH,
+            crate::theme::unit_header_fill(ui.ctx(), false),
+        ),
     );
 }
 

@@ -22,16 +22,15 @@ fn mute_solo_with_size(
     size: f32,
 ) -> [Response; 2] {
     ui.allocate_ui_with_layout(
-        egui::Vec2::new(2.0 * size, size),
+        egui::Vec2::new(2.0 * size + rows::GROUP_DIVIDER_WIDTH, size),
         egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
             let background = crate::theme::unit_separator(ui.ctx());
-            let header = crate::theme::unit_header_fill(ui.ctx(), false);
             let group = egui::Frame::new()
                 .fill(background)
                 .corner_radius(5)
                 .show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.spacing_mut().item_spacing.x = rows::GROUP_DIVIDER_WIDTH;
                     ui.spacing_mut().button_padding = egui::Vec2::new(2.0, 0.0);
                     ui.spacing_mut().interact_size = egui::Vec2::splat(size);
                     rows::panel_button_style(ui);
@@ -89,11 +88,7 @@ fn mute_solo_with_size(
                     .inner
                 });
             let buttons: [Response; 2] = group.inner;
-            ui.painter().vline(
-                buttons[0].rect.right(),
-                group.response.rect.y_range(),
-                egui::Stroke::new(1.0, header),
-            );
+            rows::group_separator(ui, group.response.rect, buttons[1].rect.left());
             buttons
         },
     )
@@ -179,8 +174,10 @@ pub(super) fn named_row<R>(
 /// Fixed-width controls for the catalog-height Tracks row. No extra knob slots.
 pub(super) const BROWSER_BUTTON_SIZE: f32 = 16.0;
 pub(super) const BROWSER_KNOB_SIZE: f32 = 16.0;
-pub(super) const BROWSER_WIDTH: f32 =
-    2.0 * BROWSER_BUTTON_SIZE + 2.0 * BROWSER_KNOB_SIZE + 2.0 * KNOB_GAP;
+pub(super) const BROWSER_WIDTH: f32 = 2.0 * BROWSER_BUTTON_SIZE
+    + rows::GROUP_DIVIDER_WIDTH
+    + 2.0 * BROWSER_KNOB_SIZE
+    + 2.0 * KNOB_GAP;
 pub(super) fn browser_row(
     ui: &mut Ui,
     gain: &mut f32,
@@ -277,8 +274,8 @@ mod tests {
                         );
                         assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
                             egui::Shape::LineSegment { points, stroke }
-                                if points[0].x == bounds[0].right()
-                                    && points[1].x == bounds[0].right()
+                                if points[0].x == bounds[0].right() + 0.5
+                                    && points[1].x == bounds[0].right() + 0.5
                                     && points[0].y <= pair.top()
                                     && points[1].y >= pair.bottom()
                                     && *stroke == egui::Stroke::new(1.0, crate::theme::unit_header_fill(&ctx, false))
@@ -289,8 +286,8 @@ mod tests {
                 };
                 let (bounds, _, _) = run(vec![], true);
                 assert!(
-                    (bounds[0].right() - bounds[1].left()).abs() < 0.01,
-                    "joined controls touch at their divider"
+                    (bounds[1].left() - bounds[0].right() - 1.0).abs() < 0.01,
+                    "the divider occupies its own point between the buttons"
                 );
                 assert!((bounds[0].height() - size).abs() < 0.01);
                 for (index, enabled, expected) in [

@@ -16,7 +16,7 @@ pub(super) fn unison(
         ui.allocate_exact_size(Vec2::splat(knobs::CHOICE_SIZE), egui::Sense::hover());
     let mut child = ui.new_child(
         egui::UiBuilder::new()
-            .max_rect(input_bounds(rect))
+            .max_rect(input_bounds(rect).expand2(Vec2::new(rows::GROUP_DIVIDER_WIDTH * 0.5, 0.0)))
             .layout(egui::Layout::top_down(egui::Align::Center)),
     );
     let ui = &mut child;
@@ -80,7 +80,7 @@ pub(super) fn unison(
             });
             (mode, detune)
         });
-        rows::input_group_separator(ui, group.response.rect, group.inner.1.rect.left());
+        rows::group_separator(ui, group.response.rect, group.inner.1.rect.left());
         group.response | group.inner.0 | group.inner.1
     });
     let mut response = row_response | input;

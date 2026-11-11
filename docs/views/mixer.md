@@ -20,7 +20,7 @@ Audio track headers show a waveform icon; MIDI track headers show a keyboard ico
 
 Nested tracks have a colored gutter above their headers. Each gutter connects to its parent header and uses that parent’s color. Deeper groups add another gutter, up to three visible nesting levels. Header sizes stay the same, and the lower output controls remain aligned.
 
-Each non-Master strip shows its output destination just below its header, with a right-arrow icon and a bordered label. Its horizontal and vertical spacing matches the send controls. A track or nested group shows its immediate parent group’s name. Root tracks, root groups and Returns show **Master**. The same labels appear in Timeline’s Track mixer. These labels are read-only.
+Each non-Master strip shows its output destination just below its header, with a right-arrow icon and a bordered label with rounded corners. Its horizontal and vertical spacing matches the send controls. A track or nested group shows its immediate parent group’s name. Root tracks, root groups and Returns show **Master**. The same labels appear in Timeline’s Track mixer. These labels are read-only.
 
 Output controls have equal visible vertical gaps and outer padding. They stay aligned across tracks, Returns and Master. Gain uses a vertical fader on tracks, groups and Master. Drag it from exact silence (−∞) to +12 dB. Hold Shift for finer adjustment, or double-click the fader to reset it to 0 dB. Pan uses a knob on tracks and groups to position mono audio or balance stereo audio. Master has no Pan knob.
 

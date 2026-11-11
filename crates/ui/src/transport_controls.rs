@@ -73,17 +73,18 @@ pub(super) fn show(
     can_play: bool,
     can_loop: bool,
 ) -> Buttons {
-    let size = Vec2::splat(icons::TOOLBAR_BUTTON_SIZE);
+    let size = Vec2::new(30.0, icons::TOOLBAR_BUTTON_SIZE);
     let foreground = egui::Color32::WHITE;
     let play = ui
         .add_enabled_ui(can_play, |ui| {
-            icons::borderless_toggle_with_colors(
+            icons::toggle_with_surface(
                 ui,
                 icons::Lucide::Play,
                 if playing { "Pause" } else { "Play" },
                 playing,
                 size,
                 (PLAY_FILL, foreground),
+                standard_surface(ui),
             )
         })
         .inner;
@@ -94,25 +95,27 @@ pub(super) fn show(
     };
     let stop = ui
         .add_enabled_ui(stop_action != StopAction::AtOrigin, |ui| {
-            icons::borderless_toggle_with_colors(
+            icons::toggle_with_surface(
                 ui,
                 icon,
                 label,
                 playing,
                 size,
                 (STOP_FILL, foreground),
+                standard_surface(ui),
             )
         })
         .inner;
     let looping = ui
         .add_enabled_ui(can_loop, |ui| {
-            icons::borderless_toggle_with_colors(
+            icons::toggle_with_surface(
                 ui,
                 icons::Lucide::Repeat,
                 "Loop",
                 looping,
                 size,
                 (theme::LOOP_COLOR, foreground),
+                standard_surface(ui),
             )
         })
         .inner;
@@ -123,16 +126,32 @@ pub(super) fn show(
     }
 }
 
-/// Same geometry, hover overlay, timing-toggle fill and white active artwork as Loop.
+fn standard_surface(ui: &Ui) -> icons::ToggleSurface {
+    icons::ToggleSurface {
+        idle: (
+            theme::unit_separator(ui.ctx()),
+            theme::palette(ui.ctx()).text,
+        ),
+        hovered: (
+            theme::unit_header_fill(ui.ctx(), false),
+            ui.visuals().widgets.hovered.fg_stroke.color,
+        ),
+        corners: icons::TOGGLE_CORNER_RADIUS,
+    }
+}
+
+/// Standard metronome surface with the Loop timing color and white active artwork.
 pub(super) fn metronome(ui: &mut Ui, selected: bool, enabled: bool) -> Response {
+    let surface = standard_surface(ui);
     ui.add_enabled_ui(enabled, |ui| {
-        icons::borderless_toggle_with_colors(
+        icons::toggle_with_surface(
             ui,
             icons::Lucide::Metronome,
             "Metronome",
             selected,
-            Vec2::splat(icons::TOOLBAR_BUTTON_SIZE),
+            Vec2::new(30.0, icons::TOOLBAR_BUTTON_SIZE),
             (theme::LOOP_COLOR, egui::Color32::WHITE),
+            surface,
         )
     })
     .inner

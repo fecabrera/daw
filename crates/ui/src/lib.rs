@@ -8642,7 +8642,7 @@ mod tests {
             assert!((mute.y - (lane.top() + 47.0)).abs() < 1.0);
             assert!((solo.y - mute.y).abs() < 1.0);
             assert!(mute.x < solo.x);
-            assert!((solo.x - (lane.left() - TRACK_WIDTH + 55.5)).abs() < 1.0);
+            assert!((solo.x - (lane.left() - TRACK_WIDTH + 57.0)).abs() < 1.0);
             let header = Pos2::new(lane.left() - TRACK_WIDTH + 34.0, lane.top() + 18.0);
             let destination = Pos2::new(header.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
             frame(

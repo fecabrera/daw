@@ -986,7 +986,7 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
             bounds.toolbar,
             bounds.collapse,
         );
-        assert_eq!(solo.left() - mute.right(), 0.0);
+        assert_eq!(solo.left() - mute.right(), 1.0);
         for peer in &layers[1..] {
             let controls = app.midi_editor.layer_bounds[&peer.id].mix_controls;
             assert_eq!(controls[0].x_range(), mute.x_range());
@@ -8503,7 +8503,7 @@ fn oscillator_fine_tuning_and_joined_unison_fit_shared_columns() {
             assert!(controls[row].right() < controls[row + 3].left());
         }
         assert!(
-            (controls[3].width() - 70.0).abs() < 0.6,
+            (controls[3].width() - 71.0).abs() < 0.6,
             "{:?}",
             controls[3]
         );

@@ -603,7 +603,7 @@ fn mixer_returns_toggle_is_right_aligned_and_only_changes_presentation() {
         app.mixer_returns_bounds.size(),
         Vec2::splat(icons::TOOLBAR_BUTTON_SIZE)
     );
-    assert_eq!(app.mixer_returns_bounds.size(), app.metronome_bounds.size());
+    assert_eq!(app.mixer_returns_bounds.size(), Vec2::splat(24.0));
     assert!(app.mixer_returns_visible && app.mixer_bounds.contains_key(&destination));
     let master = app.master_bounds;
     let point = app.mixer_returns_bounds.center();
@@ -831,7 +831,7 @@ fn mixer_master_toggle_frees_space_and_preserves_selection_and_project() {
     let return_strip = app.mixer_bounds[&destination];
     assert!(app.mixer_master_visible);
     assert!(app.mixer_returns_bounds.bottom() <= app.mixer_master_bounds.top());
-    assert_eq!(app.mixer_master_bounds.size(), app.metronome_bounds.size());
+    assert_eq!(app.mixer_master_bounds.size(), Vec2::splat(24.0));
     let point = app.mixer_master_bounds.center();
     for pressed in [true, false] {
         frame(

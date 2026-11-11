@@ -618,7 +618,7 @@ fn root_note(ui: &mut egui::Ui, note: &mut u8) -> (Rect, Rect, Rect) {
         (response, toggle)
     });
     let (response, toggle) = group.inner;
-    rows::input_group_separator(ui, group.response.rect, toggle.rect.left());
+    rows::group_separator(ui, group.response.rect, toggle.rect.left());
     (response.rect, toggle.rect, group.response.rect)
 }
 /// Keep the compact numeric segment fixed even for unusually long saved values.
@@ -791,7 +791,7 @@ fn duration(
             (response, label)
         });
     let (response, label) = group.inner;
-    rows::input_group_separator(ui, group.response.rect, label.rect.left());
+    rows::group_separator(ui, group.response.rect, label.rect.left());
     (group.response.rect, response.rect, label.rect)
 }
 /// The waveform stays in input frames; the ruler and snapping share the output clock.

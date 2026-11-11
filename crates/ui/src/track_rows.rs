@@ -23,9 +23,10 @@ impl HeaderRows {
         };
         let (body, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
-        // One joined 44-point mute/solo group, a six-point group gap,
+        // Two 22-point buttons plus their divider, a six-point group gap,
         // and two 28-point knob slots separated by four points.
         let mix_width = 2.0 * toolbars::CONTROL_HEIGHT
+            + rows::GROUP_DIVIDER_WIDTH
             + if knobs {
                 mix_controls::GROUP_GAP + 2.0 * knobs::SIZE + mix_controls::KNOB_GAP
             } else {

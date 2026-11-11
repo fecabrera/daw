@@ -19,16 +19,32 @@ The held-peak field remains read-only and retains click-to-reset monitoring.
 
 Joined groups have no inset frame. Round only the outside corners of the first
 and last segments, keep the shared inner edge square, and draw a full-height
-1-point separator in the unit-header background color. Keep group heights and
-reserved footprints; existing controls can use space reclaimed from their former
-border. Source-specific controls remain owned by the DAW, while the default
+1-point separator in the unit-header background color. Each separator reserves
+its own 1-point layout gap; it must not overlap either control. Group width is
+the sum of segment widths plus 1 point per separator. Keep segment dimensions
+and group heights unchanged. This also applies to joined input/dropdown groups,
+including root/sharp, duration/mode, Unison/Detune and send destinations.
+Source-specific controls remain owned by the DAW, while the default
 surface styling lives in the shared theme.
 
-Existing explicitly borderless toolbar, view and catalog controls retain their
-transparent/semantic fills and 2-point row rounding. Circular power buttons and
-knob faces retain their prior surfaces. Popup rows retain the canonical style
-below, including 2-point corners. Workspace/panel separator geometry is separate
+Other frameless toolbar and view toggles retain their transparent idle
+surfaces and existing hover/semantic active colors. Hover, pressed and active
+backgrounds use 5-point corners through the shared DAW toggle radius. Catalog
+rows retain 2-point rounding. Circular power buttons and knob faces retain their
+prior surfaces. Popup rows retain the canonical style below, including 2-point
+corners. Workspace/panel separator geometry is separate
 from control strokes and retains its existing borders.
+
+### Transport buttons
+
+Play, Stop, Loop and Metronome are independent standard 30-by-24-point buttons
+with 16-by-16-point icons and 5-point corners on all sides. Use the standard
+7-point toolbar gap between Play, Stop and Loop. Do not draw a shared frame or
+internal dividers. Idle background/foreground and hover background/foreground
+use the standard control palette. Preserve semantic active fills: Play is green
+(51, 133, 85), Stop is red (197, 78, 88), and Loop and Metronome use `LOOP_COLOR`,
+all with white active artwork. Retain action guards, focus, keyboard shortcuts,
+return-to-origin behavior and the surrounding toolbar height.
 
 ## Shared dropdowns
 

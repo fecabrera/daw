@@ -173,7 +173,7 @@ fn end_click_sequence(app: &mut DawUi, ctx: &egui::Context) {
 }
 
 #[test]
-fn transport_buttons_share_size_hover_and_semantic_active_colors_in_both_themes() {
+fn independent_transport_buttons_preserve_size_hover_and_semantic_colors_in_all_themes() {
     for color_theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -210,7 +210,11 @@ fn transport_buttons_share_size_hover_and_semantic_active_colors_in_both_themes(
                 }
                 assert_eq!(row.height(), toolbars::HEIGHT);
                 let rects = [buttons.play.rect, buttons.stop.rect, buttons.looping.rect];
-                assert!(rects.iter().all(|rect| rect.size() == Vec2::splat(24.0)));
+                assert!(
+                    rects
+                        .iter()
+                        .all(|rect| rect.size() == Vec2::new(30.0, 24.0))
+                );
                 for pair in rects.windows(2) {
                     assert_eq!(pair[1].left() - pair[0].right(), 7.0);
                     assert_eq!(pair[0].center().y, pair[1].center().y);
@@ -218,28 +222,41 @@ fn transport_buttons_share_size_hover_and_semantic_active_colors_in_both_themes(
                 assert_eq!(rects[0].top() - row.top(), 7.0);
                 assert_eq!(rects[0].left() - row.left(), 7.0);
                 assert_eq!(row.bottom() - rects[0].bottom(), 7.0);
+                let group = rects[0].union(rects[2]);
+                assert_eq!(group.size(), Vec2::new(104.0, 24.0));
+                assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Rect(paint) if paint.rect == group
+                )));
+                assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::LineSegment { points, .. }
+                        if points[0].y == group.top() && points[1].y == group.bottom()
+                            && points[0].x > group.left() && points[0].x < group.right()
+                )));
                 let fills = [
                     if playing {
                         play_fill
                     } else {
-                        egui::Color32::TRANSPARENT
+                        theme::unit_separator(&ctx)
                     },
                     if playing {
                         stop_fill
                     } else {
-                        egui::Color32::TRANSPARENT
+                        theme::unit_separator(&ctx)
                     },
                     if looping {
                         loop_fill
                     } else {
-                        egui::Color32::TRANSPARENT
+                        theme::unit_separator(&ctx)
                     },
                 ];
                 for (rect, fill) in rects.into_iter().zip(fills) {
                     assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(image)
                         if image.brush.is_some() && image.rect == Rect::from_center_size(rect.center(), Vec2::splat(16.0)))));
-                    assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(paint)
-                        if paint.rect == rect && paint.fill == fill && paint.stroke == Stroke::NONE)));
+                    assert!(shapes.iter().any(
+                        |shape| matches!(&shape.shape, egui::Shape::Rect(paint)
+                        if paint.rect == rect && paint.fill == fill && paint.stroke == Stroke::NONE
+                            && paint.corner_radius == egui::CornerRadius::same(5))
+                    ));
                     assert!(
                         !shapes
                             .iter()
@@ -256,12 +273,15 @@ fn transport_buttons_share_size_hover_and_semantic_active_colors_in_both_themes(
                         hovered
                             .iter()
                             .any(|shape| matches!(&shape.shape, egui::Shape::Rect(paint)
-                        if paint.rect == rect && paint.fill == theme::TOOLBAR_HOVER_FILL
+                        if paint.rect == rect && paint.fill == theme::unit_header_fill(&ctx, false)
                             && paint.stroke == Stroke::NONE)),
-                        fill == egui::Color32::TRANSPARENT
+                        fill == theme::unit_separator(&ctx)
                     );
-                    assert!(hovered.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(paint)
-                        if paint.rect == rect && paint.fill == fill && paint.stroke == Stroke::NONE)));
+                    assert!(hovered.iter().any(
+                        |shape| matches!(&shape.shape, egui::Shape::Rect(paint)
+                        if paint.rect == rect && paint.fill == fill && paint.stroke == Stroke::NONE
+                            && paint.corner_radius == egui::CornerRadius::same(5))
+                    ));
                 }
             }
         }
@@ -383,10 +403,7 @@ fn transport_loop_button_keeps_validity_dirty_state_and_workspace_geometry() {
         app.transport_bounds[0].left(),
         app.effects_bounds.library_toggle.left()
     );
-    assert_eq!(
-        app.transport_bounds[0].size(),
-        app.effects_bounds.library_toggle.size()
-    );
+    assert_eq!(app.transport_bounds[0].width(), app.fit_all_bounds.width());
     let point = app.transport_bounds[2].center();
     app.session.project.transport.r#loop.start_frame = 0;
     app.session.project.transport.r#loop.end_frame = 0;
@@ -415,7 +432,7 @@ fn transport_loop_button_keeps_validity_dirty_state_and_workspace_geometry() {
     assert!(
         app.transport_bounds
             .iter()
-            .all(|rect| rect.size() == Vec2::splat(24.0))
+            .all(|rect| rect.size() == Vec2::new(30.0, 24.0))
     );
     end_click_sequence(&mut app, &ctx);
     app.dirty = false;
@@ -552,7 +569,7 @@ fn stop_control_disables_origin_and_keeps_paused_stop_available_in_both_themes()
                     buttons.stop.enabled(),
                     enabled && action != StopAction::AtOrigin
                 );
-                assert_eq!(buttons.stop.rect.size(), Vec2::splat(24.0));
+                assert_eq!(buttons.stop.rect.size(), Vec2::new(30.0, 24.0));
                 let point = buttons.stop.rect.center();
                 controls_frame_with_stop(
                     &ctx,
@@ -624,7 +641,7 @@ fn stopped_transport_returns_to_origin_once_without_an_audio_device_in_every_vie
 
 #[test]
 fn timing_section_orders_metronome_signature_tempo_and_keeps_project_and_transport_unchanged() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+    for color_theme in settings::ColorTheme::ALL {
         let (mut app, _) = fixture();
         let ctx = context();
         app.set_settings(
@@ -639,10 +656,25 @@ fn timing_section_orders_metronome_signature_tempo_and_keeps_project_and_transpo
         let before = app.session.project.clone();
         assert!(!app.metronome_enabled);
         let rect = app.metronome_bounds;
-        assert_eq!(rect.size(), app.transport_bounds[0].size());
+        assert_eq!(rect.size(), Vec2::new(30.0, 24.0));
         assert!((rect.center().y - app.transport_bounds[0].center().y).abs() < 0.1);
         assert!((app.time_signature_control.bounds[0].left() - rect.right() - 7.0).abs() < 0.1);
+        let idle = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(idle.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Rect(surface) if surface.rect == rect && surface.fill == theme::unit_separator(&ctx)
+                && surface.corner_radius == egui::CornerRadius::same(5) && surface.stroke.is_empty()
+        )));
         let point = rect.center();
+        let hover = frame_shapes(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point)],
+            Vec2::new(1280.0, 800.0),
+        );
+        assert!(hover.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Rect(surface) if surface.rect == rect && surface.fill == theme::unit_header_fill(&ctx, false)
+                && surface.corner_radius == egui::CornerRadius::same(5) && surface.stroke.is_empty()
+        )));
         frame(
             &mut app,
             &ctx,
@@ -661,6 +693,11 @@ fn timing_section_orders_metronome_signature_tempo_and_keeps_project_and_transpo
             frame(&mut app, &ctx, vec![]);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             assert!(app.metronome_enabled);
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Rect(surface) if surface.rect == app.metronome_bounds
+                    && surface.fill == theme::LOOP_COLOR && surface.corner_radius == egui::CornerRadius::same(5)
+                    && surface.stroke.is_empty()
+            )));
             assert!(app.metronome_bounds.right() < app.time_signature_control.bounds[0].left());
             assert!(
                 (app.tempo_bounds.left() - app.time_signature_control.bounds[1].right() - 7.0)

@@ -145,6 +145,8 @@ Beat patterns also support **Merge** with the same command and shortcut. See
 
 ## Navigate and play
 
+Play, Stop and Loop are separate standard buttons. They use the standard hover highlight and keep their green, red and gold active colors.
+
 Press Space to play or pause from any view, pane, or focused control. Text fields take precedence: Space inserts a space while you edit text. Holding Space does not toggle playback repeatedly. Dialogs and blocking background jobs still disable the shortcut.
 
 The transport toolbar groups **Metronome**, **time signature**, and **Tempo**, in that order, after a divider. Set the **time signature** between Metronome and Tempo. It starts at **4/4**. Drag the upper number up or down in steps of one to change beats per bar. Drag the lower number through **2, 3, 4, 6, 8, 12, 16** to change the beat note value. Double-click either number, type an integer from **1 to 65,535**, and press Enter. The text field keeps the displayed number’s width; longer input scrolls inside it. Escape or clicking elsewhere cancels text entry. The ruler and grid update during the drag. Release to apply the value to the project; Escape or loss of window focus cancels the drag.
@@ -154,7 +156,8 @@ The signature is saved with the project and supports Undo/Redo. It updates bar/b
 Use **Metronome**, immediately before the time signature, to hear a click on each
 beat during playback. A higher click marks the first beat of each bar. In 6/8, it plays six eighth-note clicks per bar. It
 follows the project tempo and playhead through seeks and loops, and fades out
-when playback pauses or stops. The button starts off and remembers its choice
+when playback pauses or stops. The button uses the standard idle and hover appearance, with a gold active
+background. It starts off and remembers its choice
 for the app session. It does not change the saved project. The click is a playback
 aid; exports retain the project mix.
 

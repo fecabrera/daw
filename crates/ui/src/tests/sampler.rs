@@ -359,7 +359,7 @@ fn sampler_catalog_root_sharp_controls_and_compact_layout_follow_shared_ui_in_bo
         let b = &app.instrument_ui.samplers[0];
         assert!((b.root.center().y - b.sharp.center().y).abs() <= 1.0);
         assert!((b.root.center().y - b.duration.center().y).abs() <= 1.0);
-        assert!((b.root.right() - b.sharp.left()).abs() < 0.01);
+        assert!((b.sharp.left() - b.root.right() - 1.0).abs() < 0.01);
         assert!(b.root_group.contains_rect(b.root) && b.root_group.contains_rect(b.sharp));
         assert!(b.root_group.right() < b.duration.left());
         assert!((b.root_group.height() - toolbars::CONTROL_HEIGHT).abs() < 0.01);
@@ -1025,12 +1025,15 @@ fn sampler_duration_input_keeps_fixed_width_and_centered_text_in_display_and_edi
                 let bounds = &app.instrument_ui.samplers[0];
                 let field = bounds.duration;
                 assert!(
-                    (field.width() - 120.0).abs() < 0.01,
+                    (field.width() - 121.0).abs() < 0.01,
                     "{field:?}, editing {editing}"
                 );
                 assert!((field.height() - toolbars::CONTROL_HEIGHT).abs() < 0.01);
                 assert!((field.height() - bounds.root_group.height()).abs() < 0.01);
-                assert!((bounds.duration_value.right() - bounds.duration_unit.left()).abs() < 0.01);
+                assert!(
+                    (bounds.duration_unit.left() - bounds.duration_value.right() - 1.0).abs()
+                        < 0.01
+                );
                 assert!((bounds.duration_unit.width() - 60.0).abs() < 0.01);
                 assert!(
                     field.contains_rect(bounds.duration_value)

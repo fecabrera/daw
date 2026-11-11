@@ -4,6 +4,139 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Mixer output destination radius — 2026-11-10
+
+The read-only output destination label now uses 5-point corners in Mixer and
+Timeline's Track mixer. Its border, size, text, spacing and routing remain.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (977 passed, 3 ignored). Existing
+  destination checks verify the radius for root, nested and Return strips in
+  Mixer and Timeline, along with destination text and unchanged project state.
+- `git diff --check`: passed.
+
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
+## Independent transport buttons — 2026-11-10
+
+Play, Stop and Loop now use independent standard surfaces with 5-point corners
+on all sides and the normal 7-point toolbar gap. Remove their shared frame and
+dividers. Metronome is now 30 points wide, matching Play, Stop and Loop. All four
+retain 24-point height, 16-point icons, standard hover colors and semantic active
+colors. Existing input guards, pointer/keyboard actions and timing state remain.
+This supersedes the transport grouping and Metronome dimensions below; the
+reserved-divider rule still applies to joined button/input groups.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (977 passed, 3 ignored). Updated
+  transport checks cover separate rounded surfaces, spacing, absent shared
+  frame/dividers, active colors, hover feedback and Metronome geometry in all
+  three themes. Mixer toolbar toggles retain their 24-point square size.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
+## Reserved group dividers and standard Metronome — 2026-11-10
+
+Each joined button/input group now reserves 1 point per vertical divider, outside
+its controls. Dividers preserve segment dimensions and group heights. Play, Stop
+and Loop now match the expand buttons' 30-point width, retaining their 24-point
+height and 16-point icons. Transport is 92 by 24 points, standard M/S is 45 by 22
+points, and browser M/S is 33 by 16
+points. Sampler root/sharp and duration/mode, Oscillator Unison/Detune and send
+power/destination groups use the same rule. Parent layouts reserve the added
+width. This supersedes the earlier divider-overlap geometry.
+
+Metronome now uses the standard idle/hover fills and 5-point corners, retaining
+its 24-by-24-point button, 16-by-16-point icon and gold/white active appearance.
+Transport actions, input editing, disabled guards and project state behavior
+remain unchanged.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (977 passed, 3 ignored). Updated
+  checks cover divider gaps and group sizes, segment sizes, parent layout and
+  Metronome idle/hover/active painting and actions in Dark/Light/Mist.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+- `cargo test --workspace --offline`: passed after the final width adjustment.
+- `cargo test --workspace --release --offline`: passed after the final width
+  adjustment.
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
+## Joined transport button group — 2026-11-10
+
+Play, Stop and Loop now form one filled 72-by-24-point group with three
+24-by-24-point controls, no gaps, 5-point outside corners, square internal edges
+and two full-height 1-point header-color separators. Idle and hover backgrounds
+and foregrounds use the standard control palette. Green Play, red Stop, gold
+Loop and their white active artwork remain. Transport actions, disabled guards,
+focus, shortcuts, return-to-origin behavior and toolbar height remain. Metronome
+stays a separate frameless toggle.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (977 passed, 3 ignored). The updated
+  transport check covers joined geometry, frame/separators, standard hover,
+  semantic active fills/artwork and existing pointer/keyboard/disabled actions
+  in Dark/Light/Mist.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
+## Frameless toggle corner radius — 2026-11-10
+
+Rectangular frameless transport, toolbar and view toggles now use 5-point corners
+for hover, pressed and active backgrounds. The shared DAW toggle radius is used
+by icon toggles and view labels. Idle transparency, semantic colors, artwork,
+sizes and hit areas remain. This supersedes their former 2-point rounding;
+catalog/menu rows and circular power controls keep their existing geometry.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline`: passed (977 passed, 3 ignored). Existing
+  toggle/view checks verify 5-point painted corners, unchanged active/hover
+  fills, disabled guards and consistent geometry in Dark/Light/Mist.
+- `cargo test --workspace --offline`: passed.
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check`: passed.
+
+Native appearance remains unverified. The macOS packaging attempt stopped at
+the source-revision gate because tracked changes are uncommitted. The executable
+was rebuilt; the app bundle was not updated.
+
 ## Default framed controls and text inputs — 2026-11-10
 
 The portable `unit-ui` theme now supplies the standard idle unit-content fill,
