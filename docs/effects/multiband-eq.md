@@ -4,7 +4,7 @@ Add **Multiband EQ** from **Effects > EQ & Filters** to a track, instrument laye
 
 Use **Multiband EQ** for targeted tonal corrections, resonant cuts and boosts, and flexible frequency shaping.
 
-The band, **+**, and **Out** strips follow the Oscillator layout. Each band keeps its four smaller knobs in one column.
+The band, **+**, and **Out** strips follow the Oscillator layout. Each band has a Mode dropdown above three smaller knobs in one column.
 
 The **Response** graph sits before the band strips and spans the three standard control rows. It shows each band's response, the combined EQ curve, and a live output spectrum. The combined curve and unselected band points use the unselected unit-header text color. The selected point uses the accent color; disabled bands and units remain muted. The spectrum uses both stereo channels and clears when the unit is off. Compact and collapsed units hide the graph.
 
@@ -14,11 +14,11 @@ Dragging previews the curve and sound. Release to apply the values; Escape or lo
 
 Click **+** to add a band. Right-click a band or its controls for **Enable band**/**Disable band**, checked **Solo**, and **Remove band**. There is no fixed band-count limit; more bands use more processing time. You can remove every band and use only Output Gain.
 
-Each band has four knobs:
+Choose the band’s filter type from the **Mode** dropdown. **High pass ×4** and **Low pass ×4** are four-pole filters with a 24 dB/octave roll-off. **High pass ×8** and **Low pass ×8** are eight-pole filters with a 48 dB/octave roll-off. Each band has these controls:
 
 | Control | Choices or range | Default |
 | --- | --- | --- |
-| Mode | Bell, Low shelf, High shelf, Low pass, High pass, Notch | Bell |
+| Mode | Bell, Low shelf, High shelf, Low pass, High pass, Notch, High pass ×4, Low pass ×4, High pass ×8, Low pass ×8 | Bell |
 | Frequency | 20 Hz–20 kHz | 1 kHz |
 | Gain | −24 to +24 dB | 0 dB |
 | Q | 0.1–10 | 0.71 |
@@ -45,6 +45,11 @@ In the built-in effect, drag a band's label or unused strip space to reorder ban
 The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.
 
 This effect also has a [standalone CLAP/VST3 plugin](plugins.md).
+
+Existing projects and plugin presets retain their filter modes. The new
+choices expand the plugin's Mode automation range. Check existing host Mode
+automation after updating: previously recorded automation can select a different
+filter mode.
 
 ## Solo
 

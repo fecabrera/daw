@@ -7,8 +7,86 @@ use daw_unit_core::{
 };
 use fundsp::{audionode::AudioNode, svf::*};
 
+// Butterworth section Qs relative to the shared default Q (1/√2):
+// √2 / (2 cos((2k + 1)π / (2 × order))). Modulated Q scales every section.
+const FOUR_POLE_Q_SCALE: [f64; 2] = [0.7653668647301796, 1.8477590650225735];
+const EIGHT_POLE_Q_SCALE: [f64; 4] = [
+    0.7209598220069479,
+    0.8504300947672565,
+    1.272758580572834,
+    3.6245097854115516,
+];
+const MODE_COUNT: usize = EqBandMode::ALL.len();
+
+#[derive(Clone)]
+struct Cascade<M: SvfMode<f64>, const N: usize> {
+    stages: [FixedSvf<f64, M>; N],
+    q_scales: [f64; N],
+}
+impl<M: SvfMode<f64>, const N: usize> Cascade<M, N> {
+    fn new(params: &SvfParams<f64>, q_scales: [f64; N]) -> Self {
+        Self {
+            stages: std::array::from_fn(|i| {
+                FixedSvf::new(
+                    M::default(),
+                    &SvfParams {
+                        sample_rate: params.sample_rate,
+                        cutoff: params.cutoff,
+                        q: params.q * q_scales[i],
+                        gain: params.gain,
+                    },
+                )
+            }),
+            q_scales,
+        }
+    }
+    fn set_cutoff_q_gain(&mut self, cutoff: f64, q: f64, gain: f64) {
+        for (stage, scale) in self.stages.iter_mut().zip(self.q_scales) {
+            stage.set_cutoff_q_gain(cutoff, q * scale, gain);
+        }
+    }
+    fn filter_mono(&mut self, mut input: f32) -> f32 {
+        for stage in &mut self.stages {
+            input = stage.filter_mono(input);
+        }
+        input
+    }
+    fn reset(&mut self) {
+        for stage in &mut self.stages {
+            stage.reset();
+        }
+    }
+    #[cfg(test)]
+    fn response(&mut self, channel: usize, frequency: f64) -> Option<fundsp::math::Complex64> {
+        let mut response = fundsp::math::Complex64::new(1.0, 0.0);
+        for stage in &mut self.stages {
+            response *= stage.response(channel, frequency)?;
+        }
+        Some(response)
+    }
+}
+
 /// Settled response of the exact portable SVF topology, for control-thread graphs.
 pub fn band_response(band: &MultibandEqBand, rate: u32) -> daw_unit_core::FrequencyResponse {
+    let cascade = match band.mode {
+        EqBandMode::HighPass4 => Some((EqBandMode::HighPass, FOUR_POLE_Q_SCALE.as_slice())),
+        EqBandMode::LowPass4 => Some((EqBandMode::LowPass, FOUR_POLE_Q_SCALE.as_slice())),
+        EqBandMode::HighPass8 => Some((EqBandMode::HighPass, EIGHT_POLE_Q_SCALE.as_slice())),
+        EqBandMode::LowPass8 => Some((EqBandMode::LowPass, EIGHT_POLE_Q_SCALE.as_slice())),
+        _ => None,
+    };
+    if let Some((mode, scales)) = cascade {
+        let mut section = band.clone();
+        section.mode = mode;
+        section.q = (f64::from(band.q) * scales[0]) as f32;
+        let mut response = band_response(&section, rate);
+        for scale in &scales[1..] {
+            section.q = (f64::from(band.q) * scale) as f32;
+            let next = band_response(&section, rate);
+            response = response.with_biquad(next.numerator, next.denominator);
+        }
+        return response;
+    }
     let params = SvfParams {
         sample_rate: f64::from(rate),
         cutoff: f64::from(
@@ -26,6 +104,12 @@ pub fn band_response(band: &MultibandEqBand, rate: u32) -> daw_unit_core::Freque
         EqBandMode::LowPass => LowpassMode::new().update(&params, &mut c),
         EqBandMode::HighPass => HighpassMode::new().update(&params, &mut c),
         EqBandMode::Notch => NotchMode::new().update(&params, &mut c),
+        EqBandMode::HighPass4
+        | EqBandMode::LowPass4
+        | EqBandMode::HighPass8
+        | EqBandMode::LowPass8 => {
+            unreachable!("handled as cascaded responses")
+        }
     }
     // H(z)=D+C(zI−A)⁻¹B from the SVF's two integrator states.
     let (a, b, c2, d) = (2.0 * c.a1 - 1.0, -2.0 * c.a2, 2.0 * c.a2, 1.0 - 2.0 * c.a3);
@@ -36,15 +120,15 @@ pub fn band_response(band: &MultibandEqBand, rate: u32) -> daw_unit_core::Freque
         -c.m1 * c.a2 + c.m2 * (1.0 - c.a3),
     );
     let det = a * d - b * c2;
-    daw_unit_core::FrequencyResponse {
-        numerator: [
+    daw_unit_core::FrequencyResponse::from_biquad(
+        [
             direct,
             -direct * (a + d) + c1 * b1 + c2out * b2,
             direct * det + c1 * (-d * b1 + b * b2) + c2out * (c2 * b1 - a * b2),
         ],
-        denominator: [1.0, -a - d, det],
-        sample_rate_hz: rate,
-    }
+        [1.0, -a - d, det],
+        rate,
+    )
 }
 
 #[derive(Clone)]
@@ -55,6 +139,10 @@ enum Filter {
     LowPass(FixedSvf<f64, LowpassMode<f64>>),
     HighPass(FixedSvf<f64, HighpassMode<f64>>),
     Notch(FixedSvf<f64, NotchMode<f64>>),
+    HighPass4(Cascade<HighpassMode<f64>, 2>),
+    LowPass4(Cascade<LowpassMode<f64>, 2>),
+    HighPass8(Cascade<HighpassMode<f64>, 4>),
+    LowPass8(Cascade<LowpassMode<f64>, 4>),
 }
 macro_rules! filter {
     ($s:expr, $v:ident, $body:expr) => {
@@ -65,6 +153,10 @@ macro_rules! filter {
             Filter::LowPass($v) => $body,
             Filter::HighPass($v) => $body,
             Filter::Notch($v) => $body,
+            Filter::HighPass4($v) => $body,
+            Filter::LowPass4($v) => $body,
+            Filter::HighPass8($v) => $body,
+            Filter::LowPass8($v) => $body,
         }
     };
 }
@@ -77,6 +169,10 @@ impl Filter {
             EqBandMode::LowPass => Self::LowPass(FixedSvf::new(LowpassMode::new(), params)),
             EqBandMode::HighPass => Self::HighPass(FixedSvf::new(HighpassMode::new(), params)),
             EqBandMode::Notch => Self::Notch(FixedSvf::new(NotchMode::new(), params)),
+            EqBandMode::HighPass4 => Self::HighPass4(Cascade::new(params, FOUR_POLE_Q_SCALE)),
+            EqBandMode::LowPass4 => Self::LowPass4(Cascade::new(params, FOUR_POLE_Q_SCALE)),
+            EqBandMode::HighPass8 => Self::HighPass8(Cascade::new(params, EIGHT_POLE_Q_SCALE)),
+            EqBandMode::LowPass8 => Self::LowPass8(Cascade::new(params, EIGHT_POLE_Q_SCALE)),
         }
     }
     fn configure(&mut self, values: [f32; 3]) {
@@ -131,7 +227,7 @@ impl<const N: usize> Ramp<N> {
         self.remaining = 0;
     }
 }
-fn weights(s: &MultibandEqBand) -> [f32; 6] {
+fn weights(s: &MultibandEqBand) -> [f32; MODE_COUNT] {
     EqBandMode::ALL.map(|m| if s.enabled && m == s.mode { 1.0 } else { 0.0 })
 }
 fn values(s: &MultibandEqBand) -> [f32; 3] {
@@ -141,7 +237,7 @@ fn values(s: &MultibandEqBand) -> [f32; 3] {
 struct Solo {
     flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     weight: Ramp<1>,
-    eq: [[Filter; 2]; 6],
+    eq: [[Filter; 2]; MODE_COUNT],
     reject: [[Filter; 2]; 3],
     region: Ramp<3>,
 }
@@ -159,7 +255,10 @@ impl Clone for Solo {
 fn region(mode: EqBandMode) -> [f32; 3] {
     let selected = match mode {
         EqBandMode::Bell | EqBandMode::Notch => 0,
-        EqBandMode::LowShelf | EqBandMode::LowPass => 1,
+        EqBandMode::LowShelf
+        | EqBandMode::LowPass
+        | EqBandMode::LowPass4
+        | EqBandMode::LowPass8 => 1,
         _ => 2,
     };
     std::array::from_fn(|i| f32::from(i == selected))
@@ -180,7 +279,7 @@ impl Solo {
             f.configure(values);
         }
     }
-    fn equalize(&mut self, input: [f32; 2], weights: [f32; 6], mix: f32) -> [f32; 2] {
+    fn equalize(&mut self, input: [f32; 2], weights: [f32; MODE_COUNT], mix: f32) -> [f32; 2] {
         let mut out = input;
         for (filters, w) in self.eq.iter_mut().zip(weights) {
             for ch in 0..2 {
@@ -211,9 +310,9 @@ struct Band {
     id: ModulationTargetId,
     fixed_slot: bool,
     solo: Solo,
-    filters: [[Filter; 2]; 6],
+    filters: [[Filter; 2]; MODE_COUNT],
     parameters: Ramp<3>,
-    weights: Ramp<6>,
+    weights: Ramp<MODE_COUNT>,
     external: ModulationSmoother<3>,
     effective: [f32; 3],
     configured: [f32; 3],
@@ -304,7 +403,7 @@ impl ModulationDestination for Band {
             && !self.solo.selected()
             && self.solo.weight.current[0] == 0.0
             && self.weights.remaining == 0
-            && self.weights.target == [0.0; 6]
+            && self.weights.target == [0.0; MODE_COUNT]
         {
             self.monitor.sample_output(input);
             return input;
@@ -712,7 +811,7 @@ mod tests {
                         let expected = filter!(&mut filter, node, node.response(0, hz))
                             .unwrap()
                             .norm();
-                        let db = (20.0 * expected.max(1e-7).log10()) as f32;
+                        let db = (20.0 * expected.max(1e-20).log10()).clamp(-144.0, 144.0) as f32;
                         assert!(
                             (curve.db(hz as f32) - db).abs() < 0.02,
                             "{mode:?} {rate} {q} {hz}: {} vs {db}",
@@ -733,6 +832,30 @@ mod tests {
             assert!(response(EqBandMode::LowPass, rate, 12000.0, 24.0) < -40.0);
             assert!(response(EqBandMode::HighPass, rate, 50.0, 24.0) < -40.0);
             assert!(response(EqBandMode::Notch, rate, 1000.0, 24.0) < -60.0);
+            for mode in [
+                EqBandMode::LowPass4,
+                EqBandMode::HighPass4,
+                EqBandMode::LowPass8,
+                EqBandMode::HighPass8,
+            ] {
+                assert!((response(mode, rate, 1000.0, 24.0) + 3.0103).abs() < 0.1);
+            }
+            assert!(
+                response(EqBandMode::LowPass4, rate, 4000.0, 0.0)
+                    < response(EqBandMode::LowPass, rate, 4000.0, 0.0) - 20.0
+            );
+            assert!(
+                response(EqBandMode::HighPass4, rate, 250.0, 0.0)
+                    < response(EqBandMode::HighPass, rate, 250.0, 0.0) - 20.0
+            );
+            assert!(
+                response(EqBandMode::LowPass8, rate, 4000.0, 0.0)
+                    < response(EqBandMode::LowPass4, rate, 4000.0, 0.0) - 40.0
+            );
+            assert!(
+                response(EqBandMode::HighPass8, rate, 250.0, 0.0)
+                    < response(EqBandMode::HighPass4, rate, 250.0, 0.0) - 40.0
+            );
         }
     }
     #[test]
@@ -1081,11 +1204,21 @@ mod audition_tests {
         assert!((energy(EqBandMode::Bell, 1000.0, true, 6.0, 1) - 6.0).abs() < 0.03);
         assert!(energy(EqBandMode::Bell, 50.0, false, 0.0, 1) < -20.0);
         assert!(energy(EqBandMode::Notch, 1000.0, true, 0.0, 1) < -60.0);
-        for mode in [EqBandMode::LowShelf, EqBandMode::LowPass] {
+        for mode in [
+            EqBandMode::LowShelf,
+            EqBandMode::LowPass,
+            EqBandMode::LowPass4,
+            EqBandMode::LowPass8,
+        ] {
             assert!(energy(mode, 100.0, false, 0.0, 1).abs() < 0.3);
             assert!(energy(mode, 15000.0, false, 0.0, 1) < -20.0);
         }
-        for mode in [EqBandMode::HighShelf, EqBandMode::HighPass] {
+        for mode in [
+            EqBandMode::HighShelf,
+            EqBandMode::HighPass,
+            EqBandMode::HighPass4,
+            EqBandMode::HighPass8,
+        ] {
             assert!(energy(mode, 15000.0, false, 0.0, 1).abs() < 0.3);
             assert!(energy(mode, 50.0, false, 0.0, 1) < -20.0);
         }

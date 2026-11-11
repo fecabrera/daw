@@ -29,7 +29,7 @@ scale = "boolean"
 id = 102
 key = "band_1_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -69,7 +69,7 @@ scale = "boolean"
 id = 107
 key = "band_2_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -109,7 +109,7 @@ scale = "boolean"
 id = 112
 key = "band_3_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -149,7 +149,7 @@ scale = "boolean"
 id = 117
 key = "band_4_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -189,7 +189,7 @@ scale = "boolean"
 id = 122
 key = "band_5_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -229,7 +229,7 @@ scale = "boolean"
 id = 127
 key = "band_6_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -269,7 +269,7 @@ scale = "boolean"
 id = 132
 key = "band_7_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -309,7 +309,7 @@ scale = "boolean"
 id = 137
 key = "band_8_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -349,7 +349,7 @@ scale = "boolean"
 id = 142
 key = "band_9_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -389,7 +389,7 @@ scale = "boolean"
 id = 147
 key = "band_10_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -429,7 +429,7 @@ scale = "boolean"
 id = 152
 key = "band_11_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -469,7 +469,7 @@ scale = "boolean"
 id = 157
 key = "band_12_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -509,7 +509,7 @@ scale = "boolean"
 id = 162
 key = "band_13_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -549,7 +549,7 @@ scale = "boolean"
 id = 167
 key = "band_14_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -589,7 +589,7 @@ scale = "boolean"
 id = 172
 key = "band_15_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -629,7 +629,7 @@ scale = "boolean"
 id = 177
 key = "band_16_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -669,7 +669,7 @@ scale = "boolean"
 id = 182
 key = "band_17_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -709,7 +709,7 @@ scale = "boolean"
 id = 187
 key = "band_18_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -749,7 +749,7 @@ scale = "boolean"
 id = 192
 key = "band_19_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -789,7 +789,7 @@ scale = "boolean"
 id = 197
 key = "band_20_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -829,7 +829,7 @@ scale = "boolean"
 id = 202
 key = "band_21_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -869,7 +869,7 @@ scale = "boolean"
 id = 207
 key = "band_22_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -909,7 +909,7 @@ scale = "boolean"
 id = 212
 key = "band_23_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -949,7 +949,7 @@ scale = "boolean"
 id = 217
 key = "band_24_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -989,7 +989,7 @@ scale = "boolean"
 id = 222
 key = "band_25_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1029,7 +1029,7 @@ scale = "boolean"
 id = 227
 key = "band_26_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1069,7 +1069,7 @@ scale = "boolean"
 id = 232
 key = "band_27_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1109,7 +1109,7 @@ scale = "boolean"
 id = 237
 key = "band_28_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1149,7 +1149,7 @@ scale = "boolean"
 id = 242
 key = "band_29_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1189,7 +1189,7 @@ scale = "boolean"
 id = 247
 key = "band_30_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1229,7 +1229,7 @@ scale = "boolean"
 id = 252
 key = "band_31_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1269,7 +1269,7 @@ scale = "boolean"
 id = 257
 key = "band_32_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1309,7 +1309,7 @@ scale = "boolean"
 id = 262
 key = "band_33_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1349,7 +1349,7 @@ scale = "boolean"
 id = 267
 key = "band_34_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1389,7 +1389,7 @@ scale = "boolean"
 id = 272
 key = "band_35_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1429,7 +1429,7 @@ scale = "boolean"
 id = 277
 key = "band_36_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1469,7 +1469,7 @@ scale = "boolean"
 id = 282
 key = "band_37_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1509,7 +1509,7 @@ scale = "boolean"
 id = 287
 key = "band_38_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1549,7 +1549,7 @@ scale = "boolean"
 id = 292
 key = "band_39_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1589,7 +1589,7 @@ scale = "boolean"
 id = 297
 key = "band_40_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1629,7 +1629,7 @@ scale = "boolean"
 id = 302
 key = "band_41_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1669,7 +1669,7 @@ scale = "boolean"
 id = 307
 key = "band_42_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1709,7 +1709,7 @@ scale = "boolean"
 id = 312
 key = "band_43_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1749,7 +1749,7 @@ scale = "boolean"
 id = 317
 key = "band_44_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1789,7 +1789,7 @@ scale = "boolean"
 id = 322
 key = "band_45_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1829,7 +1829,7 @@ scale = "boolean"
 id = 327
 key = "band_46_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1869,7 +1869,7 @@ scale = "boolean"
 id = 332
 key = "band_47_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1909,7 +1909,7 @@ scale = "boolean"
 id = 337
 key = "band_48_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1949,7 +1949,7 @@ scale = "boolean"
 id = 342
 key = "band_49_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -1989,7 +1989,7 @@ scale = "boolean"
 id = 347
 key = "band_50_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2029,7 +2029,7 @@ scale = "boolean"
 id = 352
 key = "band_51_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2069,7 +2069,7 @@ scale = "boolean"
 id = 357
 key = "band_52_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2109,7 +2109,7 @@ scale = "boolean"
 id = 362
 key = "band_53_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2149,7 +2149,7 @@ scale = "boolean"
 id = 367
 key = "band_54_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2189,7 +2189,7 @@ scale = "boolean"
 id = 372
 key = "band_55_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2229,7 +2229,7 @@ scale = "boolean"
 id = 377
 key = "band_56_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2269,7 +2269,7 @@ scale = "boolean"
 id = 382
 key = "band_57_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2309,7 +2309,7 @@ scale = "boolean"
 id = 387
 key = "band_58_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2349,7 +2349,7 @@ scale = "boolean"
 id = 392
 key = "band_59_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2389,7 +2389,7 @@ scale = "boolean"
 id = 397
 key = "band_60_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2429,7 +2429,7 @@ scale = "boolean"
 id = 402
 key = "band_61_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2469,7 +2469,7 @@ scale = "boolean"
 id = 407
 key = "band_62_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2509,7 +2509,7 @@ scale = "boolean"
 id = 412
 key = "band_63_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 
@@ -2549,7 +2549,7 @@ scale = "boolean"
 id = 417
 key = "band_64_mode"
 minimum = 0.0
-maximum = 5.0
+maximum = 9.0
 default = 0.0
 scale = "choice"
 

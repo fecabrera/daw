@@ -124,7 +124,11 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
             modifiers: Default::default(),
         }
     }
-    fn frame(ctx: &egui::Context, editor: &mut Editor, events: Vec<Event>) {
+    fn frame(
+        ctx: &egui::Context,
+        editor: &mut Editor,
+        events: Vec<Event>,
+    ) -> Vec<egui::epaint::ClippedShape> {
         let mut out = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(
@@ -138,6 +142,7 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
             |ui| editor.show(ui),
         );
         out.textures_delta.clear();
+        out.shapes
     }
     for note_mode in [false, true] {
         let mut state = PluginState::default();
@@ -186,6 +191,27 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
             );
             if parameter.info().scale == daw_drive_plugin::Scale::Boolean {
                 frame(&ctx, &mut editor, vec![event(start, false)]);
+            } else if daw_drive_plugin::IDENTITY.product == "Multiband EQ"
+                && parameter.info().key.ends_with("_mode")
+            {
+                frame(&ctx, &mut editor, vec![event(start, false)]);
+                let shapes = frame(&ctx, &mut editor, vec![]);
+                let option = shapes
+                    .iter()
+                    .rev()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == "Low shelf" => {
+                            Some(text.pos + text.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .expect("EQ mode popup");
+                frame(
+                    &ctx,
+                    &mut editor,
+                    vec![Event::PointerMoved(option), event(option, true)],
+                );
+                frame(&ctx, &mut editor, vec![event(option, false)]);
             } else {
                 let direction = if parameter.normalize(state.get(parameter)).unwrap() > 0.95 {
                     1.0

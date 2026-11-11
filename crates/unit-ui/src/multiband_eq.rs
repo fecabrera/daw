@@ -1,5 +1,5 @@
 use crate::{
-    knobs::{self, Knob, KnobSpec},
+    knobs::{self, Knob},
     layout as panels, menus, meters, parameter_knobs, rows,
 };
 use daw_unit_core::{EqBandMode, ModulationParameter as P};
@@ -7,25 +7,6 @@ use egui::{Rect, Ui, Vec2};
 pub const CONTROL_SIZE: f32 = 42.0;
 const CONTROL_SCALE: f32 = CONTROL_SIZE / knobs::CHOICE_SIZE;
 pub const CONTROL_GAP: f32 = 3.0;
-pub fn diagram(value: f32) -> Vec<Vec2> {
-    let mode = EqBandMode::ALL[value.round() as usize];
-    (0..=24)
-        .map(|i| {
-            let x = i as f32 / 24.0;
-            let low = 1.0 / (1.0 + ((x - 0.5) * 12.0).exp());
-            let peak = (-((x - 0.5) * 5.0).powi(2)).exp();
-            let y = match mode {
-                EqBandMode::Bell => 0.5 + 0.5 * peak,
-                EqBandMode::LowShelf => 0.25 + 0.5 * low,
-                EqBandMode::HighShelf => 0.75 - 0.5 * low,
-                EqBandMode::LowPass => low,
-                EqBandMode::HighPass => 1.0 - low,
-                EqBandMode::Notch => 1.0 - peak,
-            };
-            Vec2::new(x - 0.5, 0.5 - y)
-        })
-        .collect()
-}
 pub fn band_controls(
     ui: &mut Ui,
     band: &mut daw_unit_core::MultibandEqBand,
@@ -36,44 +17,62 @@ pub fn band_controls(
     unit_enabled: bool,
 ) -> [Rect; 4] {
     std::array::from_fn(|row| {
-        let response = knobs::row(ui, band, CONTROL_SIZE, |ui, band| {
-            if row == 0 {
-                return crate::lfo_controls::choice(
-                    ui,
-                    &mut band.mode,
-                    &EqBandMode::ALL,
-                    KnobSpec::new("Band mode", 0.0..=5.0, 0.0, 1.0)
-                        .stepped(1.0)
-                        .cyclic()
-                        .diagrams(diagram)
-                        .display_scale(CONTROL_SCALE)
-                        .format(|v| EqBandMode::ALL[v.round() as usize].label().into()),
-                );
-            }
-            let i = match row {
-                1 => 1,
-                2 => 0,
-                _ => 2,
-            };
-            let enabled = i != 0 || band.mode.uses_gain();
-            let value = match i {
-                0 => &mut band.gain_db,
-                1 => &mut band.frequency_hz,
-                _ => &mut band.q,
-            };
-            ui.add_enabled_ui(enabled, |ui| {
-                ui.add(
-                    Knob::new(
-                        value,
-                        parameter_knobs::destination(P::EQ_BAND[i]).display_scale(CONTROL_SCALE),
+        let response = if row == 0 {
+            rows::centered(ui, CONTROL_SIZE, |ui| {
+                let previous = band.mode;
+                let mut response = menus::Dropdown::from_id_salt(("band-mode", band.id))
+                    .small_items()
+                    .selected_text(
+                        egui::RichText::new(band.mode.label()).size(panels::HEADER_FONT_SIZE),
                     )
-                    .modulated(markers[i].as_ref(), open),
-                )
+                    .width(ui.available_width())
+                    .truncate()
+                    .show_ui(ui, |ui| {
+                        for mode in EqBandMode::ALL {
+                            ui.selectable_value(&mut band.mode, mode, mode.label());
+                        }
+                    })
+                    .response;
+                if band.mode != previous {
+                    response.mark_changed();
+                }
+                crate::control_capture::record(ui, &response);
+                response.on_hover_text(format!("Band mode: {}", band.mode.label()))
             })
             .inner
-        });
+        } else {
+            knobs::row(ui, band, CONTROL_SIZE, |ui, band| {
+                let i = match row {
+                    1 => 1,
+                    2 => 0,
+                    _ => 2,
+                };
+                let enabled = i != 0 || band.mode.uses_gain();
+                let value = match i {
+                    0 => &mut band.gain_db,
+                    1 => &mut band.frequency_hz,
+                    _ => &mut band.q,
+                };
+                ui.add_enabled_ui(enabled, |ui| {
+                    ui.add(
+                        Knob::new(
+                            value,
+                            parameter_knobs::destination(P::EQ_BAND[i])
+                                .display_scale(CONTROL_SCALE),
+                        )
+                        .modulated(markers[i].as_ref(), open),
+                    )
+                })
+                .inner
+            })
+        };
+        let mut menu_response = response.clone();
+        if row == 0 {
+            // The selector popup and its secondary-click actions need separate IDs.
+            menu_response.id = response.id.with("band-actions");
+        }
         menus::band_context_menu(
-            &response,
+            &menu_response,
             &mut band.enabled,
             solo,
             remove,

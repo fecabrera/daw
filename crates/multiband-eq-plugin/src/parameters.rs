@@ -1353,7 +1353,7 @@ impl Parameter {
                     Scale::Boolean,
                     1,
                 ),
-                1 => (0.0, 5.0, 0.0, Scale::Choice, 5),
+                1 => (0.0, 9.0, 0.0, Scale::Choice, 9),
                 2 => (20.0, 20000.0, 1000.0, Scale::Logarithmic, 0),
                 3 => (-24.0, 24.0, 0.0, Scale::Linear, 0),
                 _ => (0.1, 10.0, 0.7071067690849304, Scale::Logarithmic, 0),

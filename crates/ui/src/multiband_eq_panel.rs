@@ -407,9 +407,16 @@ mod tests {
                 b.output
             );
             if !compact {
-                for rect in b.knobs[0] {
+                for (index, rect) in b.knobs[0].into_iter().enumerate() {
                     assert!(b.bands[0].contains_rect(rect));
-                    assert_eq!(rect.width(), CONTROL_SIZE);
+                    assert_eq!(
+                        rect.width(),
+                        if index == 0 {
+                            UNIT_STRIP_WIDTH - 2.0 * f32::from(panels::PanelStyle::default().margin)
+                        } else {
+                            CONTROL_SIZE
+                        }
+                    );
                     assert!((rect.center().x - b.bands[0].center().x).abs() < 0.1);
                 }
                 let id = s.bands[0].id;
@@ -418,17 +425,6 @@ mod tests {
                 click(&ctx, &mut s, b.add.center());
                 assert_eq!(s.bands.len(), 2);
                 assert_ne!(s.bands[1].id, id);
-            }
-        }
-    }
-    #[test]
-    fn multiband_mode_diagrams_are_finite_and_distinct() {
-        for i in 0..6 {
-            let path = diagram(i as f32);
-            assert_eq!(path.len(), 25);
-            assert!(path.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
-            for j in 0..i {
-                assert_ne!(path, diagram(j as f32));
             }
         }
     }
@@ -494,9 +490,6 @@ mod meter_tests {
         }
     }
 }
-
-#[cfg(test)]
-use daw_unit_ui::multiband_eq::diagram;
 
 #[cfg(test)]
 use crate::icons;

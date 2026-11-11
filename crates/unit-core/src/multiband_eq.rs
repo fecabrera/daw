@@ -15,15 +15,23 @@ pub enum EqBandMode {
     LowPass,
     HighPass,
     Notch,
+    HighPass4,
+    LowPass4,
+    HighPass8,
+    LowPass8,
 }
 impl EqBandMode {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 10] = [
         Self::Bell,
         Self::LowShelf,
         Self::HighShelf,
         Self::LowPass,
         Self::HighPass,
         Self::Notch,
+        Self::HighPass4,
+        Self::LowPass4,
+        Self::HighPass8,
+        Self::LowPass8,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -33,6 +41,10 @@ impl EqBandMode {
             Self::LowPass => "Low pass",
             Self::HighPass => "High pass",
             Self::Notch => "Notch",
+            Self::HighPass4 => "High pass ×4",
+            Self::LowPass4 => "Low pass ×4",
+            Self::HighPass8 => "High pass ×8",
+            Self::LowPass8 => "Low pass ×8",
         }
     }
     pub fn uses_gain(self) -> bool {
@@ -185,5 +197,35 @@ mod tests {
         let future = serde_json::from_value::<EffectInstance>(future).unwrap();
         assert!(matches!(future.unit, EffectSettings::Missing { .. }));
         assert!(future.unit.valid());
+    }
+}
+
+#[cfg(test)]
+mod mode_compatibility_tests {
+    use super::*;
+    #[test]
+    fn higher_order_modes_append_to_legacy_values_and_roundtrip() {
+        let legacy = [
+            EqBandMode::Bell,
+            EqBandMode::LowShelf,
+            EqBandMode::HighShelf,
+            EqBandMode::LowPass,
+            EqBandMode::HighPass,
+            EqBandMode::Notch,
+        ];
+        assert_eq!(&EqBandMode::ALL[..legacy.len()], &legacy);
+        for (index, mode) in EqBandMode::ALL.into_iter().enumerate() {
+            assert_eq!(mode as usize, index);
+            let encoded = serde_json::to_string(&mode).unwrap();
+            assert_eq!(serde_json::from_str::<EqBandMode>(&encoded).unwrap(), mode);
+        }
+        for mode in [
+            EqBandMode::HighPass4,
+            EqBandMode::LowPass4,
+            EqBandMode::HighPass8,
+            EqBandMode::LowPass8,
+        ] {
+            assert!(!mode.uses_gain());
+        }
     }
 }

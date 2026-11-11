@@ -58,33 +58,14 @@ mod tests;
 mod band_input_tests {
     use super::*;
     #[test]
-    fn mode_uses_whole_keyboard_steps_and_preserves_band_identity() {
+    fn mode_dropdown_selects_all_choices_and_preserves_band_identity() {
         let ctx = egui::Context::default();
         daw_unit_ui::theme::configure(&ctx);
         daw_unit_ui::fonts::configure(&ctx);
         let mut settings = daw_drive_plugin::PluginState::default().to_settings();
         let original = settings.bands[0].id;
-        let mut point = egui::Pos2::ZERO;
-        for phase in 0..4 {
-            let events = match phase {
-                1 | 2 => vec![
-                    egui::Event::PointerMoved(point),
-                    egui::Event::PointerButton {
-                        pos: point,
-                        button: egui::PointerButton::Primary,
-                        pressed: phase == 1,
-                        modifiers: Default::default(),
-                    },
-                ],
-                3 => vec![egui::Event::Key {
-                    key: egui::Key::ArrowRight,
-                    physical_key: None,
-                    pressed: true,
-                    repeat: false,
-                    modifiers: Default::default(),
-                }],
-                _ => vec![],
-            };
+        let mut render = |events| {
+            let mut mode_rect = egui::Rect::NOTHING;
             let mut output = ctx.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
@@ -104,12 +85,74 @@ mod band_input_tests {
                         &std::array::from_fn(|_| None),
                         daw_unit_ui::meters::OutputLevel::new(0.0, None),
                     );
-                    point = bounds.controls[1].as_ref().unwrap().rect.center();
+                    mode_rect = bounds.controls[1].as_ref().unwrap().rect;
                 },
             );
             output.textures_delta.clear();
+            (mode_rect, output.shapes, settings.bands[0].mode)
+        };
+        render(vec![]);
+        render(vec![]);
+        let click_event = |point, pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        for mode in daw_unit_core::EqBandMode::ALL {
+            let (mode_rect, _, _) = render(vec![]);
+            let point = mode_rect.center();
+            render(vec![egui::Event::PointerMoved(point)]);
+            render(vec![
+                egui::Event::PointerMoved(point),
+                click_event(point, true),
+            ]);
+            render(vec![click_event(point, false)]);
+            let (_, mut shapes, _) = render(vec![]);
+            if !shapes.iter().any(|shape| {
+                matches!(&shape.shape,
+                egui::Shape::Text(text) if text.galley.text() == mode.label())
+            }) {
+                let popup_point = shapes
+                    .iter()
+                    .rev()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == "Low pass ×4" => {
+                            Some(text.pos + text.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .expect("visible option in the scrollable mode popup");
+                render(vec![
+                    egui::Event::PointerMoved(popup_point),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: egui::vec2(0.0, -160.0),
+                        phase: egui::TouchPhase::Move,
+                        modifiers: Default::default(),
+                    },
+                ]);
+                (_, shapes, _) = render(vec![]);
+            }
+            let option = shapes
+                .iter()
+                .rev()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == mode.label() => {
+                        Some(text.pos + text.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("mode option {} in the shared popup", mode.label()));
+            render(vec![
+                egui::Event::PointerMoved(option),
+                click_event(option, true),
+            ]);
+            let (_, _, selected) = render(vec![click_event(option, false)]);
+            assert_eq!(selected, mode);
+            render(vec![]);
         }
-        assert_eq!(settings.bands[0].mode, daw_unit_core::EqBandMode::LowShelf);
+        assert_eq!(settings.bands[0].mode, daw_unit_core::EqBandMode::LowPass8);
         assert_eq!(settings.bands[0].id, original);
     }
 }

@@ -4,6 +4,39 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Multiband EQ mode dropdown and higher-order pass filters — 2026-11-11
+
+The built-in and standalone editors share a standard Mode dropdown with ten
+choices. High/Low pass ×4 use four poles (24 dB/octave); High/Low pass ×8 use
+eight poles (48 dB/octave). Their serial SVF sections use Butterworth Qs at the
+default setting. Existing two-pole filters retain their processing. All mode
+paths remain warm and use the existing 5 ms transition ramps.
+
+Focused automated checks cover all ten dropdown selections (including popup
+scrolling), stable band identity, context actions, bound plugin gestures,
+serialization, Solo regions, cutoff response, steeper roll-off and graph/backend
+agreement at every supported rate. Graph tests include minimum, default and
+maximum Q. The plugin manifest retains the original parameter IDs and plain
+mode values, then appends values 6–9. Its normalized Mode range changes; old
+normalized host automation can select different modes. The user guide documents
+this limit.
+
+Completed checks:
+
+- Focused equalizer, unit-core, Multiband EQ editor and plugin suites: passed.
+- `CARGO_INCREMENTAL=0 cargo test --workspace --offline`: passed with debug
+  assertions enabled (980 DAW UI tests passed, 3 ignored).
+- `cargo test --workspace --release --offline`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop -p daw-cli --offline`: passed.
+- `python3 tools/check_cli.py`: passed.
+- `git diff --check`: passed.
+
+Native UI, host automation and Windows/Linux checks remain unverified. macOS
+packaging stopped at the committed-source gate. The executable was rebuilt;
+the app bundle was not updated.
+
 ## Oscillator strip insertion preview height — 2026-11-11
 
 Oscillator strip reordering now bounds the insertion line by the destination
