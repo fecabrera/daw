@@ -682,3 +682,45 @@ fn cancelled_collection_keeps_cleanup_warnings_in_the_status_bar() {
     assert!(!has_text(&shapes, "Close"));
     assert!(app.collection_status.is_none());
 }
+
+#[test]
+fn collection_saves_live_display_for_copy_and_zero_copy_without_history_edits() {
+    for height in [
+        daw_core::TrackHeight::Compact,
+        daw_core::TrackHeight::Regular,
+        daw_core::TrackHeight::Large,
+    ] {
+        let fixture = Fixture::new();
+        let mut app = fixture.app();
+        app.track_rows_collapsed = height == daw_core::TrackHeight::Compact;
+        app.timeline_tracks_large = height == daw_core::TrackHeight::Large;
+        let revision = app.change_revision;
+        for (zoom, scroll, vertical) in [(160.0, 12.5, 300.0), (95.0, 3.0, 50.0)] {
+            app.zoom = zoom;
+            app.scroll = scroll;
+            app.timeline_vertical_scroll = vertical;
+            app.perform_file_action(FileAction::CollectSources);
+            assert!(app.job.is_some());
+            wait(&mut app);
+            assert_eq!(
+                app.collection_status.as_ref().unwrap().report,
+                job_report::State::Complete
+            );
+            let saved =
+                daw_project::inspect_project(app.session.folder.as_deref().unwrap()).unwrap();
+            assert_eq!(
+                saved.display,
+                daw_core::ProjectDisplay {
+                    track_height: height,
+                    horizontal_zoom: zoom,
+                    horizontal_scroll_seconds: scroll,
+                    vertical_scroll_points: vertical,
+                }
+            );
+            assert_eq!(app.session.project.display, saved.display);
+            assert_eq!(app.change_revision, revision);
+            assert!(!app.dirty);
+            app.collection_status = None;
+        }
+    }
+}

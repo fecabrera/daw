@@ -26,6 +26,12 @@ clip lengths and resampling. Reject premature EOF when exact MP3/MP4 packet end
 bounds are present; ADTS duration is only an estimate. Preserve strict WAV length
 checks.
 
+Rate-changing resident and streaming conversion reject sample magnitudes above
+1e12 (240 dBFS) before entering the bounded f32 FFT. This numerical safety bound
+retains ordinary floating-point headroom and returns a media error instead of
+allowing FFT intermediate overflow. Equal-rate finite PCM is unchanged. Check
+converted output finiteness before publication.
+
 Run decoding, Rubato conversion and peaks on workers. Do not allocate from a
 compressed duration header. Admit PCM and peaks in bounded growth increments
 through `AudioReservation`, including original PCM during resampling, resampler

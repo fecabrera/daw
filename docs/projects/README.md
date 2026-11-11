@@ -24,7 +24,11 @@ MIDI edits that need new sample pitches stay visible while existing playback use
 
 The app saves disposable audio caches outside project folders. These speed up reopening and repeated pitch edits. They do not replace recordings and are not included by Collect project sources. Moving or deleting the cache causes recalculation. Keep the original or collected recordings available. A first uncached pitch can still take time, especially with a long Sampler region.
 
+Sample-rate conversion rejects extreme floating-point sample magnitudes above 1e12 (240 dBFS). Ordinary audio headroom is preserved. An import error retains the current project and playback.
+
 ## Collect project sources
+
+Collection also saves the current Timeline track size, zoom and scroll positions.
 
 For headless collection, save and close the desktop project, then use the [collect-sources CLI command](../cli/collect-sources.md). It collects saved assets without desktop Undo/Redo history.
 

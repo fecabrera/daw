@@ -249,6 +249,20 @@ pub fn resample_cancellable(
     )?;
     convert_samples(samples, input_rate, output_rate, cancelled)
 }
+// The f32 FFT converter has bounded blocks but can overflow on extreme finite
+// PCM. This leaves 240 dB of headroom and ample intermediate FFT safety margin.
+const MAX_RESAMPLE_SAMPLE: f32 = 1.0e12;
+fn validate_resample_frame(frame: [f32; 2]) -> Result<()> {
+    if frame
+        .into_iter()
+        .any(|s| !s.is_finite() || s.abs() > MAX_RESAMPLE_SAMPLE)
+    {
+        return Err(Error(
+            "Audio magnitude exceeds the safe sample-rate conversion range".into(),
+        ));
+    }
+    Ok(())
+}
 fn convert_samples(
     samples: &[[f32; 2]],
     input_rate: u32,
@@ -263,6 +277,9 @@ fn convert_samples(
     }
     if input_rate == output_rate {
         return Ok(samples.to_vec());
+    }
+    for frame in samples {
+        validate_resample_frame(*frame)?;
     }
     let mut converter =
         rubato::FftFixedIn::<f32>::new(input_rate as usize, output_rate as usize, 1024, 2, 2)
@@ -296,7 +313,18 @@ fn convert_samples(
             .map_err(|e| Error(e.to_string()))?;
         let first = delay.saturating_sub(produced).min(frames);
         let count = (frames - first).min(target - out.len());
-        out.extend((first..first + count).map(|i| [block[0][i], block[1][i]]));
+        for (&left, &right) in block[0][first..first + count]
+            .iter()
+            .zip(&block[1][first..first + count])
+        {
+            let frame = [left, right];
+            if frame.into_iter().any(|s| !s.is_finite()) {
+                return Err(Error(
+                    "Sample-rate conversion produced non-finite audio".into(),
+                ));
+            }
+            out.push(frame);
+        }
         produced += frames;
         position += input_size;
     }

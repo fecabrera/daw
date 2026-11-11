@@ -491,6 +491,7 @@ fn clip_pitch(pitch: u8, transpose: i8) -> u8 {
 
 #[derive(Clone)]
 pub(crate) struct MidiTrackRuntime {
+    mono: bool,
     beat_stopped: bool,
     loop_wrapped: bool,
     tail_clip_gain: f32,
@@ -906,6 +907,7 @@ impl MidiTrackRuntime {
                     .any(|r| r.source.is_some() && r.enabled && r.amount != 0.0)
             }),
             parallel_latency,
+            mono: super::track_processing::instrument_is_mono(instrument, &track.effects),
             has_bus_effects: layers.iter().any(|l| !l.effects.is_empty())
                 || !instrument.main.effects.is_empty(),
             layer_index: layers.iter().enumerate().map(|(i, l)| (l.id, i)).collect(),
@@ -1220,6 +1222,7 @@ impl MidiTrackRuntime {
         {
             old.retarget(next, fade_frames, idle);
         }
+        self.mono = prepared.mono;
         self.has_bus_effects = prepared.has_bus_effects;
         self.envelope_history = prepared.envelope_history;
         if self.main_target != prepared.main_target {
@@ -1619,6 +1622,9 @@ impl MidiTrackRuntime {
     pub(super) fn publish_sidechains(&mut self, values: &[ModulationValue]) {
         let start = self.shared.values.len() - values.len();
         self.shared.values[start..].copy_from_slice(values);
+    }
+    pub fn output_is_mono(&self) -> bool {
+        self.mono
     }
     pub fn held_sample(&self) -> [f32; 2] {
         self.held_sample

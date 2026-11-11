@@ -124,6 +124,7 @@ impl DawUi {
         let snapshot = match self
             .session
             .source_collection_snapshot(self.history.as_ref(), self.change_revision)
+            .and_then(|snapshot| snapshot.with_display(self.current_project_display()))
         {
             Ok(snapshot) => snapshot,
             Err(e) => {

@@ -317,8 +317,7 @@ impl Renderer {
                 } else {
                     0.0
                 };
-                let mono = pan_coefficients(t.pan, true);
-                let stereo = pan_coefficients(t.pan, false);
+                let [mono, stereo] = track_processing::track_pan_coefficients(t);
                 let target = [
                     mono[0] * gate,
                     mono[1] * gate,

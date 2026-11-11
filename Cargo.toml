@@ -22,7 +22,6 @@ rust-version = "1.95"
 
 [workspace.dependencies]
 audio-analysis = { path = "crates/audio-analysis", version = "0.1.0" }
-rustfft = "=6.4.1"
 daw-shimmer-reverb = { path = "crates/shimmer-reverb" }
 daw-multiband-compressor = { path = "crates/multiband-compressor" }
 daw-loudness = { path = "crates/loudness" }

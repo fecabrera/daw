@@ -4,6 +4,53 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Standalone review remediation — 2026-11-11
+
+Resolved the six non-ONNX findings from the standalone review of `c3dcc081`:
+
+- Portable analysis/stretch manifests pin RustFFT without inheriting the DAW
+  workspace. Real isolated metadata resolves both reference configurations.
+  A minimal external consumer builds and processes identity audio; the actual
+  reference-disabled CLI also builds and runs outside the repository.
+- Source collection captures current Timeline display through the shared Save
+  helper. Save-only display metadata is separate from the immutable model/history
+  fingerprint, reaches copied and zero-copy manifests, and applies only after
+  confirmed publication. Height, zoom and both scroll positions survive reopen
+  without a history/edit revision.
+- Prepared instrument channel semantics select stereo balance for stereo-capable
+  sources/buses and retain plain mono oscillator pan and empty-Sampler behavior.
+  Shared prepared coefficient banks preserve the existing five-ms live ramps
+  across mixer, sends and sidechains, including delayed metadata.
+- Resident and streamed rate conversion reject extreme finite magnitudes before
+  the f32 FFT, with a typed media error and ordinary headroom retained. Equal-rate
+  finite samples remain unchanged. Synthetic WAV checks cover every changed
+  project rate and both preparation paths.
+- Processing-revision guidance uses the exported constants consistently. Windows
+  setup lists Python and Git for corresponding-source ZIP packaging.
+
+Completed checks:
+
+- Affected engine checks: 46 library, 105 MIDI and eight send tests passed.
+- Affected media/project/UI/tool checks passed, including copy/zero-copy display
+  persistence, finite-WAV conversion, full isolated resolution and external build.
+- `CARGO_INCREMENTAL=0 cargo test --workspace --offline`: passed with debug
+  assertions enabled (981 DAW UI tests passed, three ignored).
+- `cargo test --workspace --release --offline`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo build -p daw-desktop -p daw-cli --offline`: passed.
+- `python3 tools/check_cli.py`: passed.
+- Isolated `cargo run --offline --no-default-features --bin timestretch -- --help`
+  against extracted actual sources: passed.
+- `git diff --check`: passed.
+
+ONNX shape inference is excluded from this remediation at the user's request.
+The prior explicit dense-automation cost-check failures remain historical evidence;
+no benchmark threshold or unsupported benchmark-design finding was changed.
+Native UI/device, external-host and Windows/Linux execution were not performed.
+The macOS packager requires a clean commit and runs after this record; this entry
+claims no new native deployment or release acceptance.
+
 ## Multiband EQ mode dropdown and higher-order pass filters — 2026-11-11
 
 The built-in and standalone editors share a standard Mode dropdown with ten

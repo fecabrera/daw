@@ -58,6 +58,8 @@ struct Root {
 pub struct SourceCollectionSnapshot {
     operation_id: Id,
     project_revision: u64,
+    // Save-only presentation is separate from the immutable stale-state fingerprint.
+    display: daw_core::ProjectDisplay,
     roots: Vec<Root>,
     saved_metadata: Option<Project>,
     owners: Vec<SourceOwner>,
@@ -123,6 +125,7 @@ impl Session {
         Ok(SourceCollectionSnapshot {
             operation_id: Id::new_v4(),
             project_revision,
+            display: self.project.display,
             roots,
             saved_metadata: history
                 .and_then(SessionHistory::saved_collection_metadata)
@@ -134,6 +137,14 @@ impl Session {
 }
 
 impl SourceCollectionSnapshot {
+    /// Capture live presentation without weakening model/history stale-job checks.
+    pub fn with_display(mut self, display: daw_core::ProjectDisplay) -> Result<Self> {
+        let mut project = self.project().clone();
+        project.display = display;
+        project.validate().map_err(error)?;
+        self.display = display;
+        Ok(self)
+    }
     pub fn operation_id(&self) -> Id {
         self.operation_id
     }

@@ -29,7 +29,7 @@ Use a new or empty comparison/benchmark directory. `process --overwrite` permits
 
 Reports contain source/prepared/output SHA-256 identities, exact ratio, channels/rate/frame counts, engine revision/options/native versions, build identity, host information, diagnostics, and separate decode/conversion/engine/encoding/measurement timings. Peak RSS is explicitly unavailable in this version; do not interpret it as zero or as engine scratch usage. Benchmark rotates engine order, discards warmups, retains runs/failures, and emits JSON/CSV median/min/max/MAD summaries. R3 is the fixed comparison baseline. File processing success is not a quality acceptance result.
 
-The additive `pitch` report object records semitones, frequency factor, and the Integrated pitch-path revision. The stretch revision is 4; the pitch-path revision is 2. Reference reports retain their own revision and record their actual pitch scale. Benchmark rows and summaries include the requested semitone value. Prepared-input hashes describe the unchanged input; pitch belongs to the processing identity.
+The additive `pitch` report object records semitones, frequency factor, and the Integrated pitch-path revision. The current stretch revision is exported as `timestretch::REVISION`; the pitch-path revision is exported as `timestretch::PITCH_REVISION`. Reference reports retain their own revision and record their actual pitch scale. Benchmark rows and summaries include the requested semitone value. Prepared-input hashes describe the unchanged input; pitch belongs to the processing identity.
 
 `--fixture-manifest` accepts a JSON object with `schema_version: 1`, `metric_profile: "synthetic-v1"`, and `prepared_sha256` matching the hash from a process report. Include `generator` and `seed` metadata when generating fixtures. Supported measurements:
 
@@ -42,7 +42,7 @@ Metrics report their pass/fail flags. Unspecified metrics remain unassessed. Arb
 
 ## Reuse and licensing
 
-Keep sibling `timestretch` and `timestretch-cli` directories when extracting these packages. Their manifests specify portable dependencies and have no workspace inheritance. Build with `cargo build --manifest-path /path/to/timestretch-cli/Cargo.toml --release`; scripts and the installed binary have no repository-relative runtime paths.
+Keep sibling `audio-analysis`, `timestretch` and `timestretch-cli` directories when extracting these packages. Their manifests specify portable dependencies and have no workspace inheritance. Build with `cargo build --manifest-path /path/to/timestretch-cli/Cargo.toml --release`; scripts and the installed binary have no repository-relative runtime paths.
 
 Original tool/adapters are BSD-2-Clause. Reference-enabled distributions include GPL-2.0-or-later Rubber Band dependencies; ship [notices](licenses) with the binary and retain the applicable obligations. The reference option does not change the standalone core's dependency graph. Reference adapters use public APIs; no Rubber Band implementation material is incorporated in the new engine. See the engine's [provenance record](../timestretch/PROVENANCE.md).
 

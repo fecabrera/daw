@@ -34,8 +34,10 @@ metadata or missing fields uses Regular, 70 pt/s and zero offsets. Reject
 non-finite/non-positive zoom and non-finite/negative offsets on validation.
 Fit all can produce positive zoom outside manual slider limits; retain it.
 
-Capture current display state in regular Save, blocking Save and Save As
-snapshots. Restore it after successful project installation; apply vertical
+Capture current display state in regular Save, blocking Save, Save As and
+Collect project sources snapshots. Collection carries save-only presentation
+separately from the immutable model/history fingerprint; keep stale-job checks
+unchanged and apply the written display metadata only after confirmed publication. Restore it after successful project installation; apply vertical
 offset to the main track scroll area once, then record actual clamped scrolling.
 New projects reset to defaults. Failed loads retain the current display. These
 are presentation values: they do not alter audio, mark an edit, or enter Undo.

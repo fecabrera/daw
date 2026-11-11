@@ -522,3 +522,7 @@ Human listeners must score the supplied recordings; automatic waveform metrics
 or larger detected-onset counts cannot fill ratings. A ready pack remains
 `awaiting human listening`. This Energy/Combined A/B workflow is additional to,
 and does not satisfy, the twelve-excerpt three-engine listening acceptance gate.
+
+## Portable package extraction
+
+Extract `audio-analysis`, `timestretch` and `timestretch-cli` as sibling directories. Their portable manifests pin RustFFT directly so resolving either library or the CLI needs no enclosing DAW workspace. The explicit shared version is an exception to workspace inheritance required by this extraction contract. Verify full isolated Cargo metadata (including path dependencies) with references enabled and disabled, then build/run a minimal external consumer of the actual portable library sources. A `--no-deps` manifest probe is insufficient. Processing identity consumers use exported `REVISION` and `PITCH_REVISION` constants.

@@ -15,8 +15,7 @@ impl SourceMix {
         } else {
             linear_gain(t.gain_db)
         };
-        let mono = pan_coefficients(t.pan, true);
-        let stereo = pan_coefficients(t.pan, false);
+        let [mono, stereo] = super::track_processing::track_pan_coefficients(t);
         let current = [
             mono[0],
             mono[1],

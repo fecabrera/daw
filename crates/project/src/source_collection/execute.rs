@@ -102,7 +102,9 @@ impl CollectionOutcome {
             session: written,
             relocations,
         }
-        .apply(live, history)
+        .apply(live, history)?;
+        live.project.display = self.project.display;
+        Ok(())
     }
     pub fn status(&self) -> CollectionStatus {
         self.status
@@ -570,6 +572,7 @@ fn build_receipt(
         .map(|e| e.ok_or_else(|| error("Collection owner is missing a relocation target")))
         .collect::<Result<Vec<_>>>()?;
     let mut project = plan.snapshot().project().clone();
+    project.display = plan.snapshot().display;
     for entry in entries.iter().filter(|e| e.scope == SourceScope::Current) {
         let asset = &mut project.assets[plan.snapshot().owners[entry.owner].asset_index];
         if asset.id != entry.asset_id || asset.source != entry.original_source {

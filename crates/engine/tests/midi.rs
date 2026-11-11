@@ -967,6 +967,7 @@ fn layer_mixing_controls_route_stereo_and_share_track_solo_precedence() {
         layer.soloed = soloed;
         layer.gain_db = gain_db;
         layer.pan = pan;
+        let layer_pan = layer.pan;
         let mut actual = centered.clone();
         Renderer::new(changed.clone()).render_offline(&mut actual);
         let pan = daw_engine::pan_coefficients(pan, true);
@@ -974,7 +975,9 @@ fn layer_mixing_controls_route_stereo_and_share_track_solo_precedence() {
         for (value, source) in actual.iter().zip(&centered) {
             for ch in 0..2 {
                 let expected = if mix_audible(muted, soloed, soloed) {
-                    source[ch] * linear_gain(gain_db) * pan[ch] / center[ch]
+                    source[ch] * linear_gain(gain_db) * pan[ch]
+                        / center[ch]
+                        / if layer_pan == 0.0 { 1.0 } else { center[ch] }
                 } else {
                     0.0
                 };
@@ -1001,7 +1004,10 @@ fn layer_mixing_controls_route_stereo_and_share_track_solo_precedence() {
     instrument.layers.push(peer);
     let mut actual = centered.clone();
     Renderer::new(combined.clone()).render_offline(&mut actual);
-    assert_eq!(actual, centered);
+    // A panned peer makes this a stereo bus even when Solo excludes it.
+    assert!(actual.iter().zip(&centered).all(|(a, b)| {
+        (0..2).all(|ch| (a[ch] - b[ch] / std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-6)
+    }));
     combined.project.tracks[0]
         .instrument
         .as_mut()
@@ -1020,7 +1026,9 @@ fn layer_mixing_controls_route_stereo_and_share_track_solo_precedence() {
     Renderer::new(combined).render_offline(&mut actual);
     assert!(actual.iter().zip(centered.iter().zip(expected_peer)).all(
         |(actual, (first, second))| {
-            (0..2).all(|ch| (actual[ch] - first[ch] - second[ch]).abs() < 1e-6)
+            (0..2).all(|ch| {
+                (actual[ch] - first[ch] / std::f32::consts::FRAC_1_SQRT_2 - second[ch]).abs() < 1e-6
+            })
         }
     ));
 }
@@ -1059,6 +1067,14 @@ fn live_layer_gain_pan_mute_and_solo_edits_preserve_voices_and_ramp_without_allo
             let center = daw_engine::pan_coefficients(0.0, true);
             std::array::from_fn::<_, 2, _>(|ch| gain * pan[ch] / center[ch])
         };
+        let before_mono = current.plan.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .pan
+            == 0.0;
+        let after_mono = layer.pan == 0.0;
         let old_gain = coefficients(
             &current.plan.project.tracks[0]
                 .instrument
@@ -1089,7 +1105,13 @@ fn live_layer_gain_pan_mute_and_solo_edits_preserve_voices_and_ramp_without_allo
             assert!(
                 (0..2).all(|ch| {
                     let gain = old_gain[ch] + (new_gain[ch] - old_gain[ch]) * progress;
-                    (actual[ch] - source[ch] * gain).abs() < 1e-6
+                    {
+                        let center = std::f32::consts::FRAC_1_SQRT_2;
+                        let old_track = if before_mono { center } else { 1.0 };
+                        let new_track = if after_mono { center } else { 1.0 };
+                        let track = old_track + (new_track - old_track) * progress;
+                        (actual[ch] - source[ch] * gain * track / center).abs() < 1e-6
+                    }
                 }),
                 "Active layer controls must ramp over 5 ms without resetting the source"
             );
@@ -3985,7 +4007,11 @@ fn layer_effects_process_voice_sum_before_mix_and_isolate_other_layers() {
         combined
             .iter()
             .zip(processed.iter().zip(reference))
-            .all(|(sum, (wet, dry))| (0..2).all(|ch| (sum[ch] - wet[ch] - dry[ch]).abs() < 1e-5))
+            .all(|(sum, (wet, dry))| (0..2).all(|ch| (sum[ch]
+                - wet[ch] / std::f32::consts::FRAC_1_SQRT_2
+                - dry[ch])
+                .abs()
+                < 1e-5))
     );
 }
 
@@ -5801,6 +5827,35 @@ fn multiband_eq_spectrum_keeps_published_frames_through_repeated_band_point_upda
             TRACK_ALLOCATIONS.with(|v| v.set(false));
             assert_eq!(ALLOCATIONS.with(Cell::get), 0);
             current = next;
+        }
+    }
+}
+
+#[test]
+fn stereo_sampler_uses_unity_center_and_linear_track_balance_in_all_render_paths() {
+    for rate in SAMPLE_RATES {
+        for pan in [-0.5, 0.0, 0.5] {
+            let mut p = sampler_plan(rate, SamplerTrigger::OneShot);
+            p.project.tracks[0].pan = pan;
+            let coefficients = daw_engine::pan_coefficients(pan, false);
+            let expected = [0.4 * coefficients[0], -0.2 * coefficients[1]];
+            let frame = u64::from(rate / 20);
+            let mut reference = [[0.0; 2]; 1];
+            p.render(frame, &mut reference);
+            let mut live = Renderer::new(p.clone());
+            live.play();
+            let mut offline = Renderer::new(p);
+            let mut output = vec![[0.0; 2]; frame as usize + 1];
+            offline.render_offline(&mut output);
+            let mut sample = [0.0; 2];
+            for _ in 0..=frame {
+                sample = live.next_sample();
+            }
+            for ch in 0..2 {
+                assert!((reference[0][ch] - expected[ch]).abs() < 1e-5);
+                assert!((output[frame as usize][ch] - expected[ch]).abs() < 1e-5);
+                assert!((sample[ch] - expected[ch]).abs() < 1e-5);
+            }
         }
     }
 }

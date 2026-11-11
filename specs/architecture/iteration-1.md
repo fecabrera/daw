@@ -211,6 +211,7 @@ Use the following render order: source range, clip fade, pan/balance, track gain
 ### Mixing rules
 
 - For mono, use equal-power panning. At center, send approximately 0.7071 times the source to each channel; at either extreme, send unity gain to that side and zero to the other.
+- Prepare MIDI instrument output channel semantics from its source and bus graph, not instantaneous L/R equality. Sampler, Noise, unison, panned layer/Main buses and stereo-generating effect chains use stereo balance; centered plain mono oscillators retain equal-power panning. Carry the prepared flag through compatible live retargets without allocation.
 - For stereo, retain both channels at unity gain at center. Attenuate the opposite channel toward zero at either extreme. Do not transfer its content across channels.
 - If any track is soloed, render only soloed tracks, including tracks that are also muted. Otherwise, render unmuted tracks.
 - Default clip boundaries and repeat seams use 5 ms linear fades. User-set audio clip envelopes and crossfades replace the corresponding outer boundary fade under [Audio clip fades and crossfades](../editing/fades.md). At 48 kHz, the nominal fade length is 240 frames. Use floor(sample_rate_hz / 200) frames, shortened to half the range duration for short ranges. For looped clips, use the lower of the outer clip fade and the fade at the current position within the repeat base. Playback and export must use the same source mapping and fades without duplicating decoded samples.

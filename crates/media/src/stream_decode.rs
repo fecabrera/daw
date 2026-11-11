@@ -56,6 +56,9 @@ impl RateWriter {
         })
     }
     fn push(&mut self, frame: [f32; 2]) -> Result<()> {
+        if self.converter.is_some() {
+            crate::validate_resample_frame(frame)?;
+        }
         for (channel, value) in self.input.iter_mut().zip(frame) {
             channel[self.filled] = value;
         }
@@ -208,6 +211,62 @@ pub(crate) fn large_wav(path: &std::path::Path, rate: u32) -> bool {
 mod tests {
     use super::*;
     use crate::AudioEncoder;
+    #[test]
+    fn extreme_finite_wav_returns_errors_in_resident_and_streamed_conversion() {
+        let path = std::env::temp_dir().join(format!("daw-finite-{}.wav", daw_core::Id::new_v4()));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+        let mut wav = hound::WavWriter::create(
+            &path,
+            hound::WavSpec {
+                channels: 2,
+                sample_rate: 48000,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            },
+        )
+        .unwrap();
+        for _ in 0..4800 {
+            wav.write_sample(f32::MAX).unwrap();
+            wav.write_sample(-f32::MAX).unwrap();
+        }
+        wav.finalize().unwrap();
+        for rate in daw_core::SAMPLE_RATES.into_iter().filter(|r| *r != 48000) {
+            let resident = crate::decode_wav_at_rate(&path, rate)
+                .err()
+                .expect("extreme resident input must fail");
+            let streamed = decode_wav(hound::WavReader::open(&path).unwrap(), rate, &|| false)
+                .err()
+                .expect("extreme streamed input must fail");
+            assert!(
+                resident
+                    .to_string()
+                    .contains("safe sample-rate conversion range")
+            );
+            assert!(
+                streamed
+                    .to_string()
+                    .contains("safe sample-rate conversion range")
+            );
+        }
+        // No FFT is used at the original rate; finite PCM remains bit exact.
+        assert_eq!(
+            crate::decode_wav_at_rate(&path, 48000).unwrap().samples[0],
+            [f32::MAX, -f32::MAX]
+        );
+        for rate in daw_core::SAMPLE_RATES {
+            let source = vec![[8.0, -4.0]; 4800];
+            let out = crate::resample(&source, 48000, rate).unwrap();
+            let middle = out[out.len() / 2];
+            assert!((middle[0] - 8.0).abs() < 0.01);
+            assert!((middle[1] + 4.0).abs() < 0.01);
+        }
+    }
     #[test]
     #[ignore = "requires DAW_STREAM_INPUT pointing to local long compressed audio"]
     fn local_long_compressed_source_uses_bounded_pcm_storage() {

@@ -4,7 +4,12 @@ use super::*;
 impl DawUi {
     pub(super) fn display_save_snapshot(&self) -> daw_project::Result<daw_project::SaveSnapshot> {
         let mut session = self.session.clone();
-        session.project.display = daw_core::ProjectDisplay {
+        session.project.display = self.current_project_display();
+        session.save_snapshot(self.history.as_ref())
+    }
+
+    pub(super) fn current_project_display(&self) -> daw_core::ProjectDisplay {
+        daw_core::ProjectDisplay {
             track_height: if self.track_rows_collapsed {
                 daw_core::TrackHeight::Compact
             } else if self.timeline_tracks_large {
@@ -15,8 +20,7 @@ impl DawUi {
             horizontal_zoom: self.zoom,
             horizontal_scroll_seconds: self.scroll,
             vertical_scroll_points: self.timeline_vertical_scroll,
-        };
-        session.save_snapshot(self.history.as_ref())
+        }
     }
 
     pub(super) fn restore_project_display(&mut self) {

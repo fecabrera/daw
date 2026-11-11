@@ -7,4 +7,5 @@ license = "BSD-2-Clause"
 description = "Portable offline audio analysis over host-owned PCM"
 
 [dependencies]
-rustfft.workspace = true
+# Explicit version keeps this package usable outside the DAW workspace.
+rustfft = "=6.4.1"

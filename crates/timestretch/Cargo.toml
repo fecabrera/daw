@@ -7,5 +7,6 @@ license = "BSD-2-Clause"
 description = "Independent experimental offline time stretching and pitch shifting"
 
 [dependencies]
-rustfft.workspace = true
+# Explicit version keeps this package usable outside the DAW workspace.
+rustfft = "=6.4.1"
 audio-analysis = { path = "../audio-analysis", version = "0.1.0" }

@@ -11,7 +11,7 @@ These steps target Windows x64 with the MSVC Rust toolchain. Install the followi
 | [CMake](https://cmake.org/download/) | Add CMake to `PATH`; it builds the bundled Opus decoder. |
 | [LLVM](https://github.com/llvm/llvm-project/releases/latest) | Download the **Windows x64 installer** from the official release page. It must include Clang and `libclang.dll`, which bindgen uses to generate the Rubber Band Rust bindings. Install LLVM separately from Rustup. |
 
-[Git for Windows](https://git-scm.com/downloads/win) is needed if you clone the repository. [Python 3](https://www.python.org/downloads/windows/) is needed only for the demo generator and CLI smoke checks. Rubber Band, LAME and Opus sources are bundled, so you do not need separate installations of these audio libraries.
+[Git for Windows](https://git-scm.com/downloads/win) is needed to clone the repository and to package the exact committed source. [Python 3](https://www.python.org/downloads/windows/) is required for ZIP packaging, the demo generator and CLI smoke checks. Keep Git and Python on `PATH` when packaging corresponding-source materials. Ordinary Cargo builds do not require Python. Rubber Band, LAME and Opus sources are bundled, so you do not need separate installations of these audio libraries.
 
 The desktop requires an OpenGL-capable graphics driver on Windows. No separate Windows App SDK installation is needed. Include the font, icon, UI dependency, and media notices under `crates/ui/assets` and `crates/media/assets/licenses` when distributing the application.
 
