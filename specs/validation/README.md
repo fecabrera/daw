@@ -4,6 +4,51 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Standalone review remediation, fourth pass — 2026-11-11
+
+Addressed the seven non-ONNX findings validated against standalone snapshot
+`bfa2e70`. Retained the later explorer-skill commit without changes.
+
+- Stretch transactions retain checked, scaled fade durations, curve controls,
+  crossfade flags and automatic defaults before directional overlap resolution.
+- Generated Four/Six stems retain complete saved fades. An injected backend
+  verifies all six rates, exact input without outer fades, unchanged source and
+  staged state, history retention, frame alignment and rendered envelopes applied
+  once. Dormant crossfades use the shared boundary fallback on isolated tracks.
+  Saved/unsaved stem history and save/reopen retain custom envelopes.
+- MIDI/chord and beat previews share an isolated session that retains routing
+  owners, Returns and external sidechain references, clears unrelated clips and
+  resets unrelated solos. Direct/ancestor, disabled/silent sends, held preview
+  chunks, unrelated sounding/soloed tracks and ordinary mute are covered.
+- Auto-filter remains stereo-capable at layer, Output and track preparation,
+  including compiled beat rows. Regular/beat stage, power, phase modulation,
+  pan and send cases match an independent bypassed stereo identity exactly.
+  The existing all-rate live/export test now compares the same prepared pan law.
+- Original Drive editor snapshots refresh host Bypass before painting. Stale
+  current/held readings are masked immediately; re-enable needs no editor reopen
+  and synchronization emits no parameter gestures.
+- Timeline's shared Clip-menu reference includes Merge and Normalize targeting.
+  Exact JSON/CoreMLTools source grants supplement the upstream Runtime notices.
+  Inventory hashes, desktop/source packaging and CRLF checkout preserve the texts;
+  plugin fixture expectations respect deliverable selection.
+
+Completed checks:
+
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: passed.
+- `CARGO_INCREMENTAL=0 cargo test --locked --offline --workspace`: passed, including
+  debug assertions, overflow checks and doctests.
+- `cargo test --locked --offline --workspace --release`: passed, including doctests.
+- `cargo build --locked --offline -p daw-desktop -p daw-cli`: passed.
+- `python3 tools/check_cli.py`: passed with temporary outputs; tracked demo retained.
+- Packaging/source/native-preparation fixtures: 23 passed.
+- All 83 local file targets checked in changed Markdown documents resolve.
+
+The ONNX shape-inference finding remains excluded by the user's instruction.
+The automated checks do not establish native UI/device, external plugin-host or
+Windows/Linux execution acceptance. Clean-commit macOS packaging is a separate
+step; no native interaction check is claimed here.
+
 ## Independent implementation explorer skill — 2026-11-11
 
 Added `.agents/skills/daw-explorer` for feature, bugfix and improvement planning

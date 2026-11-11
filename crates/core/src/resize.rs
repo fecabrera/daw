@@ -98,6 +98,8 @@ impl Project {
             clip.repeat = candidate.repeat;
             if update_stretch {
                 clip.stretch = candidate.stretch;
+                // stretched_to scales saved durations; ordinary trim/loop paths retain them.
+                clip.fades = candidate.fades;
             }
             self.validate_clip(&clip)?;
             // Source ticks, source frames, and stretched frames round separately.

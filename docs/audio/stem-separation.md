@@ -26,7 +26,7 @@ Model loading needs substantial memory. CoreML can take tens of seconds to compi
 
 The dialog and status bar show the same phase: **Preparing audio and loading model…**, **Separating audio…**, then **Preparing stem tracks…**. Cancellation changes both to **Cancelling…** while the job stops. Windows and Linux load the CPU model. On Apple Silicon macOS, a selected CoreML model can also need time to compile.
 
-Separation uses the clicked clip's trim, repeats, stretch, and transpose. It excludes track, group, and Master processing. Each stem keeps the clip gain. The source file stays unchanged.
+Separation uses the clicked clip's trim, repeats, stretch, and transpose. It excludes track, group, and Master processing. Each stem keeps the clip gain and saved fades. Ordinary fades apply once during playback. Saved crossfades stay inactive on the new tracks until an eligible neighboring clip touches the edge; otherwise playback uses the normal boundary fade. The source file stays unchanged.
 
 A new group appears at the end of the track list with one audio track per stem. The selected model determines whether four or six tracks are created. All resulting clips start at the original clip's position and have its duration. The original clip stays in place, disabled with a neutral header and muted foreground colors. Its translucent body shows the grid underneath. Right-click it and choose **Enable clip** to hear it again. Disable or mute the stems first if you do not want both versions to play.
 

@@ -835,6 +835,24 @@
         "desktop"
       ],
       "reason": "Linux GTK desktop dependency notice."
+    },
+    {
+      "component": "json-3.11.3",
+      "notice": "crates/separation/assets/licenses/JSON-MIT.txt",
+      "sha256": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14",
+      "deliverables": [
+        "desktop"
+      ],
+      "reason": "Exact copyright and grant from the selected native dependency source pin."
+    },
+    {
+      "component": "coremltools-9.0",
+      "notice": "crates/separation/assets/licenses/CoreMLTools-BSD.txt",
+      "sha256": "d467a35319f25bd5310100d06ac8be62f880d1cb425181f1ec2b8333a1000afa",
+      "deliverables": [
+        "desktop"
+      ],
+      "reason": "Exact copyright and grant from the selected native dependency source pin."
     }
   ]
 }

@@ -7,6 +7,19 @@ enum BeatPreview {
 }
 
 impl Session {
+    fn isolated_audition(&self) -> Self {
+        let mut session = self.clone();
+        // Preserve routing and referenced owners, including Returns and sidechains.
+        // Only the preview adds scheduled clips; unrelated solos cannot gate it.
+        for track in &mut session.project.tracks {
+            track.clips.clear();
+            track.soloed = false;
+        }
+        session.project.transport.playhead_frame = 0;
+        session.project.transport.r#loop.enabled = false;
+        session
+    }
+
     /// Render an isolated chord without changing the session or transport.
     /// Limit the gate to eight seconds, followed by one second of release/effect tail.
     pub fn audition_chord(
@@ -133,17 +146,7 @@ impl Session {
             .beat(track)
             .filter(|beat| beat.subtracks.iter().any(|row| row.id == subtrack))
             .ok_or_else(|| error("Beat subtrack not found"))?;
-        let mut session = self.clone();
-        session
-            .project
-            .tracks
-            .retain(|t| t.id == track || self.project.track_is_descendant(track, t.id));
-        for t in &mut session.project.tracks {
-            t.clips.clear();
-            t.soloed = false;
-        }
-        session.project.transport.playhead_frame = 0;
-        session.project.transport.r#loop.enabled = false;
+        let mut session = self.isolated_audition();
         // Keep local solo eligibility, but prevent other continuous sources from sounding.
         for row in &mut session
             .project
@@ -233,21 +236,7 @@ impl Session {
         if cancelled() {
             return Err(error("MIDI audition cancelled"));
         }
-        let mut session = self.clone();
-        // Keep the selected track's group path, including its mix controls and effects.
-        session
-            .project
-            .tracks
-            .retain(|t| t.id == track || self.project.track_is_descendant(track, t.id));
-        for t in &mut session.project.tracks {
-            t.clips.clear();
-        }
-        // Other soloed tracks must not gate this isolated preview. Local mute remains audible behavior.
-        for t in &mut session.project.tracks {
-            t.soloed = false;
-        }
-        session.project.transport.playhead_frame = 0;
-        session.project.transport.r#loop.enabled = false;
+        let mut session = self.isolated_audition();
         let frames = session.project.midi_frame(pattern.length_ticks);
         let clip_id = session.project.add_midi_pattern(track, 0).map_err(error)?;
         session

@@ -171,6 +171,9 @@ impl Editor {
         ui.painter()
             .rect_filled(ui.max_rect(), 0.0, theme::unit_separator(ui.ctx()));
         if let Some(state) = self.model.current() {
+            let _ = self
+                .state
+                .set(Parameter::Bypass, state.get(Parameter::Bypass));
             for (slot, p) in Parameter::ALL[1..].iter().copied().enumerate() {
                 if !self.active[slot] {
                     let _ = self.state.set(p, state.get(p));
@@ -379,6 +382,29 @@ mod tests {
         drop(editor);
         let edits = events(&model);
         assert_eq!(edits.last(), Some(&Edit::End(Parameter::Gain)));
+    }
+    #[test]
+    fn host_bypass_masks_queued_output_and_reenable_refreshes_without_gestures() {
+        let (ctx, model, mut editor) = setup();
+        for bypass in [true, true, false] {
+            let mut state = PluginState::default();
+            state
+                .set(Parameter::Bypass, if bypass { 1.0 } else { 0.0 })
+                .unwrap();
+            model.publish(state);
+            model.receive_output([0.75, 1.5]);
+            frame(&ctx, &mut editor, vec![], true);
+            assert_eq!(
+                editor.state.get(Parameter::Bypass),
+                state.get(Parameter::Bypass)
+            );
+            assert_eq!(editor.state.to_settings().enabled, !bypass);
+            assert_eq!(
+                model.output_meter.boost_peaks()[0].peak(),
+                if bypass { 0.0 } else { 1.5 }
+            );
+            assert!(events(&model).is_empty());
+        }
     }
     #[test]
     fn output_peak_reset_is_not_a_parameter_gesture() {

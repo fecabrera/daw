@@ -105,6 +105,8 @@ class PackagingTests(unittest.TestCase):
                         inventory = json.loads((ROOT / "tools/runtime_notices.json").read_text())
                         for entry in inventory["notices"]:
                             source = ROOT / entry["notice"]
+                            if "plugins" not in entry["deliverables"]:
+                                continue
                             expected = source.read_bytes()
                             self.assertEqual(hashlib.sha256(expected).hexdigest(), entry["sha256"], entry["notice"])
                             self.assertEqual(zipped.read(license_prefix + "ui/" + source.name), expected)

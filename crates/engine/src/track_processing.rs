@@ -88,6 +88,7 @@ pub(super) fn instrument_is_mono(
         use daw_core::EffectSettings as E;
         effects.iter().all(|effect| match &effect.unit {
             E::DirectionMixer(_)
+            | E::AutoFilter(_)
             | E::StereoSpread(_)
             | E::Chorus(_)
             | E::PlateReverb(_)
@@ -101,7 +102,6 @@ pub(super) fn instrument_is_mono(
             | E::HarmonicLift(_)
             | E::Drive(_)
             | E::DriveV2(_)
-            | E::AutoFilter(_)
             | E::Filter(_)
             | E::Compressor(_)
             | E::Ott(_)

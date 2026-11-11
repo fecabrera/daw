@@ -115,3 +115,13 @@ The inspected CI artifacts came from [run 39808533403](https://github.com/fecabr
 4. Query current OSV and primary component advisories; review affected API/language and fixed ranges. Use MSRC/Apple/OS vendor servicing records for external platform runtimes. Do not infer safety from missing Cargo findings or empty commit queries.
 5. Inspect built executables with `llvm-readobj --coff-imports` on PE, `llvm-readobj --needed-libs --version-info` on ELF, and `otool -L`/`nm` on Mach-O. Compare the actual package, not only the build cache.
 6. Verify notices, corresponding source delivery and runtime prerequisites for each distributed executable. Native OS/architecture smoke tests remain required for deployment claims.
+
+## Exact supplemental source grants
+
+Retain `JSON-MIT.txt` and `CoreMLTools-BSD.txt` in the separation notice directory
+with the upstream Runtime notices. These unmodified texts come from JSON commit
+`9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03` and CoreMLTools commit
+`428d4b2658dfc44194f27f4f36870751be402ff7`. Their exact hashes and source filenames
+are in `Native-Stem-SOURCE-NOTICE.txt`; `tools/runtime_notices.json` checks their
+desktop/source delivery. This supplements older copyright years in the Runtime's
+ThirdPartyNotices without editing or discarding that upstream file.

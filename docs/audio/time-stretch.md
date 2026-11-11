@@ -9,7 +9,7 @@ Time stretching changes audio duration while retaining pitch. Timeline clips and
 3. Use Shift to bypass snapping if needed.
 4. Release to prepare the stretched audio. Escape cancels an active gesture.
 
-Stretching supports durations from one eighth to eight times the source duration. Original recordings stay unchanged. Preparation failure or cancellation keeps the previous arrangement and audio.
+Stretching supports durations from one eighth to eight times the source duration. Saved fade durations scale with the clip duration; their curve shapes stay the same. Original recordings stay unchanged. Preparation failure or cancellation keeps the previous arrangement and audio.
 
 Wait for project audio to finish before stretching audio clips or a selection containing both audio and MIDI clips. Releasing such a stretch while preparation is running, paused or failed keeps the previous arrangement. If preparation is paused or failed, use Retry first. MIDI-only stretching remains available.
 

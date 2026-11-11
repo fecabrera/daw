@@ -57,3 +57,10 @@ hashes. The archive includes application source, local patches, locked Cargo
 sources, build/relink directions and this immutable native source inventory.
 Retain these source materials and the public native-source routes above when
 redistributing the binary; a source notice alone does not replace source access.
+
+Supplemental exact source grants (retained unchanged alongside the Runtime's
+ThirdPartyNotices, whose older entries do not replace these notices):
+JSON-MIT.txt: json commit 9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03, LICENSE.MIT;
+SHA-256 86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14.
+CoreMLTools-BSD.txt: coremltools commit 428d4b2658dfc44194f27f4f36870751be402ff7, LICENSE.txt;
+SHA-256 d467a35319f25bd5310100d06ac8be62f880d1cb425181f1ec2b8333a1000afa.

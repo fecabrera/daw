@@ -74,3 +74,12 @@ the upper rail fills the workspace height and the buttons remain at its bottom.
 The effects collapse control stays in the lower rail. The upper right toolbar
 owns the single divider against Master; Master must not add an adjacent border.
 Remove both toggles from the playback toolbar.
+
+## Prepared instrument channel policy
+
+Resolve instrument channel semantics during preparation. Auto-filter is stereo-capable
+at layer, Output and track positions, including compiled beat-subtrack instruments.
+Keep that classification in bypass and at zero Stereo phase because power and
+phase modulation can change during playback. Use the existing stereo pan/send
+coefficients; do not classify from instantaneous sample equality. Legacy mono
+instruments without stereo-capable processing retain the mono pan law.

@@ -1368,8 +1368,16 @@ fn midi_track_drive_processes_the_instrument_bus_in_playback_and_export() {
 fn midi_track_auto_filter_processes_the_instrument_bus_in_playback_and_export() {
     for rate in SAMPLE_RATES {
         let mut source = plan(Waveform::Sine, rate);
+        // Bypass retains stereo-capable channel semantics. Compare against the
+        // same prepared pan law rather than an unprocessed mono instrument.
+        let mut dry_source = source.clone();
+        let mut identity = EffectInstance::direction_mixer();
+        if let EffectSettings::DirectionMixer(settings) = &mut identity.unit {
+            settings.enabled = false;
+        }
+        dry_source.project.tracks[0].effects.push(identity);
         let mut dry = vec![[0.0; 2]; 4096];
-        Renderer::new(source.clone()).render_offline(&mut dry);
+        Renderer::new(dry_source).render_offline(&mut dry);
         let mut effect = EffectInstance::auto_filter();
         let EffectSettings::AutoFilter(settings) = &mut effect.unit else {
             unreachable!()

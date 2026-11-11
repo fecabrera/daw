@@ -234,6 +234,7 @@ impl Session {
             stem.gain_db = clip.gain_db;
             stem.channels = clip.channels;
             stem.color = clip.color;
+            stem.fades = clip.fades;
             tracks.push(track.id);
             let asset = next
                 .project
@@ -370,12 +371,173 @@ mod tests {
     }
 
     #[test]
+    fn generated_stems_retain_fades_and_apply_outer_envelopes_once() {
+        for rate in daw_core::SAMPLE_RATES {
+            for stems in [SeparationStemSet::Four, SeparationStemSet::Six] {
+                for crossfade in [false, true] {
+                    let (fixture, session, clip_id) = Fixture::new();
+                    let mut session = session.with_audio_settings(rate, 512).unwrap();
+                    let original_bytes = std::fs::read(fixture.0.join("original.wav")).unwrap();
+                    let original = &mut session.project.tracks[0].clips[0];
+                    original.fades.fade_in = daw_core::ClipFade {
+                        length_frames: 1200,
+                        midpoint: 0.25,
+                        midpoint_position: 0.35,
+                        crossfade,
+                    };
+                    original.fades.fade_out = daw_core::ClipFade {
+                        length_frames: 800,
+                        midpoint: 0.75,
+                        midpoint_position: 0.65,
+                        crossfade,
+                    };
+                    // Exercise temporary and saved ownership without doubling the matrix.
+                    if crossfade {
+                        session.folder = None;
+                    }
+                    let original = &session.project.tracks[0].clips[0];
+                    let expected = original.fades;
+                    let original = original.clone();
+                    session.project.validate().unwrap();
+                    let before = session.project.clone();
+                    let audio = session.audio_for_clip(&original).unwrap();
+                    let mut reader = daw_media::FrameReader::new(audio);
+                    let arranged: Vec<_> = (0..original.length_frames)
+                        .map(|local| {
+                            let source = original.source_frame(local);
+                            reader
+                                .sample(source)
+                                .unwrap()
+                                .map(|v| v * daw_engine::clip_repeat_fade(&original, source, rate))
+                        })
+                        .collect();
+                    let expected_input = daw_media::resample_cancellable(
+                        &arranged,
+                        rate,
+                        daw_separation::MODEL_RATE,
+                        &|| false,
+                    )
+                    .unwrap();
+                    let prepared = session
+                        .separate_clip_with(
+                            clip_id,
+                            &SeparationProgress::default(),
+                            |input, path| {
+                                assert_eq!(
+                                    input, expected_input,
+                                    "outer fades entered model input"
+                                );
+                                fake_stems(input, path, stems)
+                            },
+                        )
+                        .unwrap();
+                    assert_eq!(
+                        session.project, before,
+                        "preparation mutated original project"
+                    );
+                    assert_eq!(
+                        std::fs::read(fixture.0.join("original.wav")).unwrap(),
+                        original_bytes
+                    );
+                    let mut history = crate::SessionHistory::new(&session, false).unwrap();
+                    let next = prepared.publish();
+                    history.record(&next).unwrap();
+                    let undone = history.undo(&next).unwrap();
+                    assert_eq!(undone.project, before);
+                    assert_eq!(
+                        history.redo(&undone).unwrap().project.tracks,
+                        next.project.tracks
+                    );
+                    let retained = next
+                        .project
+                        .tracks
+                        .iter()
+                        .flat_map(|t| &t.clips)
+                        .find(|c| c.id == clip_id)
+                        .unwrap();
+                    let mut expected_original = original.clone();
+                    expected_original.muted = true;
+                    assert_eq!(retained, &expected_original);
+                    let generated: Vec<_> = next
+                        .project
+                        .tracks
+                        .iter()
+                        .filter(|t| t.group_id.is_some())
+                        .collect();
+                    assert_eq!(generated.len(), stems.names().len());
+                    for track in generated {
+                        let stem = &track.clips[0];
+                        assert_eq!(
+                            (stem.start_frame, stem.length_frames),
+                            (original.start_frame, original.length_frames)
+                        );
+                        assert_eq!(stem.fades, expected);
+                    }
+                    let mut neutral = next.clone();
+                    for track in &mut neutral.project.tracks {
+                        if track.group_id.is_some() {
+                            for stem in &mut track.clips {
+                                stem.fades = daw_core::ClipFades {
+                                    fade_in: daw_core::ClipFade {
+                                        length_frames: 1,
+                                        ..Default::default()
+                                    },
+                                    fade_out: daw_core::ClipFade {
+                                        length_frames: 1,
+                                        ..Default::default()
+                                    },
+                                };
+                            }
+                        }
+                    }
+                    let mut wet = vec![[0.0; 2]; original.length_frames as usize];
+                    let mut dry = wet.clone();
+                    next.plan().render(original.start_frame, &mut wet);
+                    neutral.plan().render(original.start_frame, &mut dry);
+                    let effective = if crossfade {
+                        daw_core::ClipFades::default()
+                    } else {
+                        expected
+                    };
+                    assert!(dry.iter().flatten().any(|v| v.abs() > 0.01));
+                    for (local, (wet, dry)) in
+                        wet.iter().zip(&dry).enumerate().skip(1).take(wet.len() - 2)
+                    {
+                        let gain = effective.gain(local as u64, original.length_frames, rate);
+                        for channel in 0..2 {
+                            assert!(
+                                (wet[channel] - dry[channel] * gain).abs() < 2e-6,
+                                "{rate}/{stems:?}/{crossfade}: envelope at {local}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn six_stem_import_is_atomic_and_survives_history_and_save() {
         for saved in [false, true] {
             let (fixture, mut session, clip) = Fixture::new();
             if !saved {
                 session.folder = None;
             }
+            session.project.tracks[0].clips[0].fades = daw_core::ClipFades {
+                fade_in: daw_core::ClipFade {
+                    length_frames: 1200,
+                    midpoint: 0.3,
+                    midpoint_position: 0.4,
+                    crossfade: false,
+                },
+                fade_out: daw_core::ClipFade {
+                    length_frames: 800,
+                    midpoint: 0.7,
+                    midpoint_position: 0.6,
+                    crossfade: false,
+                },
+            };
+            let fades = session.project.tracks[0].clips[0].fades;
             let before = session.project.clone();
             let mut history = crate::SessionHistory::new(&session, false).unwrap();
             let prepared = session
@@ -401,6 +563,7 @@ mod tests {
             );
             for track in tracks {
                 let stem = &track.clips[0];
+                assert_eq!(stem.fades, fades);
                 assert_eq!(
                     (stem.start_frame, stem.length_frames, stem.gain_db),
                     (9600, 2400, -3.0)
@@ -412,6 +575,11 @@ mod tests {
             let destination = fixture.0.join("six-stem-save");
             next.save(&destination).unwrap();
             let reopened = Session::open(&destination).unwrap();
+            for track in &reopened.project.tracks {
+                for stem in &track.clips {
+                    assert_eq!(stem.fades, fades);
+                }
+            }
             assert!(reopened.warnings.is_empty());
             assert_eq!(reopened.project.tracks.len(), 8);
             assert_eq!(
