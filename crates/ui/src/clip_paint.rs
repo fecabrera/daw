@@ -219,6 +219,31 @@ impl DawUi {
                 self.paint_clip_fade_background(&clip_painter, block, clip);
                 self.paint_neighbor_crossfades(&clip_painter, block, clip, true);
             }
+            if !clip.muted && !missing {
+                // Recover the lane origin from the clip's project position, not
+                // the painter's clip rect (which can start inside a scrolled clip).
+                let origin = block.left()
+                    - (self.session.project.seconds(clip.start_frame) - self.view_scroll()) as f32
+                        * self.view_zoom();
+                let grid = Rect::from_min_max(
+                    Pos2::new(
+                        block.left(),
+                        (block.top() + HEADER_HEIGHT).min(block.bottom()),
+                    ),
+                    block.max,
+                )
+                .intersect(clip_painter.clip_rect());
+                if grid.is_positive() {
+                    let mut grid_painter = clip_painter.with_clip_rect(grid);
+                    grid_painter.multiply_opacity(0.1);
+                    // Colored clip fills need the same contrast in every theme.
+                    self.musical_timeline().paint_grid_with_palette(
+                        &grid_painter,
+                        Rect::from_min_max(Pos2::new(origin, grid.top()), grid.max),
+                        theme::DARK,
+                    );
+                }
+            }
             if missing {
                 clip_painter.text(
                     block.center(),

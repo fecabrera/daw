@@ -19,6 +19,8 @@ clear. Paint before fade curves/controls and selection outlines. Lines span both
 stereo lanes and have no pointer hit areas. Only the lower audio Editor shows
 indicators; Timeline and the Editor overview do not. Existing fade, stretch,
 trim, selection and context-menu gestures retain their ownership.
+Use the dark palette's beat-grid color in every theme at 45% opacity, above the active clip grid's 10%
+opacity. Preserve marker positions, line width and clip background colors.
 
 Use one line per visible logical pixel at most. Query sorted onsets by binary
 search rather than enumerating every repeated occurrence. Reuse

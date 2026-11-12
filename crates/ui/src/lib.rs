@@ -12548,6 +12548,150 @@ mod tests {
         app.session.project.validate().unwrap();
     }
     #[test]
+    fn active_clip_grid_keeps_colors_and_matches_lane_ticks_after_scroll_and_clipping() {
+        let source = TestWav::new();
+        let mut audio = daw_media::decode_wav(&source.0).unwrap();
+        audio.metadata.channels = 2;
+        let pattern = daw_core::MidiPattern {
+            notes: vec![daw_core::MidiNote {
+                id: Id::new_v4(),
+                start_tick: 0,
+                length_ticks: 480,
+                pitch: 60,
+                velocity: 100,
+            }],
+            ..Default::default()
+        };
+        let beat = daw_core::BeatPatternSource::new(Id::new_v4(), Default::default()).unwrap();
+        for appearance in [
+            settings::ColorTheme::Dark,
+            settings::ColorTheme::Light,
+            settings::ColorTheme::Mist,
+        ] {
+            for editor in [false, true] {
+                for kind in 0..3 {
+                    for selected in [false, true] {
+                        let (mut app, _) = fixture();
+                        let ctx = context();
+                        app.set_settings(
+                            &ctx,
+                            settings::AppSettings {
+                                theme: appearance,
+                                ..Default::default()
+                            },
+                        );
+                        app.midi_editor.content_active = editor;
+                        app.zoom = 180.0;
+                        app.scroll = 0.65;
+                        app.midi_editor.content.zoom = 280.0;
+                        app.midi_editor.content.scroll = 0.73;
+                        let mut clip = app.session.project.tracks[0].clips[0].clone();
+                        clip.start_frame = frames(0.25);
+                        // Long offscreen clips must not generate offscreen tick banks.
+                        clip.length_frames = frames(3600.0);
+                        clip.color = Some(daw_core::RgbColor {
+                            r: 245,
+                            g: 190,
+                            b: 0,
+                        });
+                        let lane =
+                            Rect::from_min_size(Pos2::new(250.0, 30.0), Vec2::new(500.0, 90.0));
+                        let block = app.clip_block(lane, &clip, clip.start_frame);
+                        let colors =
+                            theme::clip_colors(app.session.project.tracks[0].color, clip.color);
+                        let palette = theme::palette(&ctx);
+                        let prepared = match kind {
+                            0 => PreparedClipSource::Audio(&audio),
+                            1 => PreparedClipSource::Midi(&pattern),
+                            _ => PreparedClipSource::Beat(&beat),
+                        };
+                        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                            let painter = ui.painter().with_clip_rect(lane);
+                            app.paint_grid(&painter, lane);
+                            app.paint_clip(
+                                &painter,
+                                app.session.project.tracks[0].color,
+                                block,
+                                &clip,
+                                selected.into(),
+                                Some(prepared),
+                            );
+                        });
+                        out.textures_delta.clear();
+                        let fill = out
+                            .shapes
+                            .iter()
+                            .position(|s| {
+                                matches!(&s.shape,
+                            egui::Shape::Rect(r) if r.rect == block && r.fill == colors.body)
+                            })
+                            .unwrap();
+                        let grid_line =
+                            |s: &egui::epaint::ClippedShape, overlay: bool| match &s.shape {
+                                egui::Shape::LineSegment { points, stroke }
+                                    if points[0].x == points[1].x
+                                        && (if overlay {
+                                            (1..=32).contains(&stroke.color.a())
+                                                && [
+                                                    theme::DARK.border,
+                                                    theme::DARK.grid,
+                                                    theme::DARK.grid_subdivision,
+                                                ]
+                                                .map(|color| color.gamma_multiply(0.1))
+                                                .contains(&stroke.color)
+                                        } else {
+                                            [palette.border, palette.grid, palette.grid_subdivision]
+                                                .contains(&stroke.color)
+                                        }) =>
+                                {
+                                    Some(points[0].x)
+                                }
+                                _ => None,
+                            };
+                        let lane_ticks: Vec<_> = out.shapes[..fill]
+                            .iter()
+                            .filter_map(|s| grid_line(s, false))
+                            .collect();
+                        let clip_ticks: Vec<_> = out.shapes[fill + 1..]
+                            .iter()
+                            .filter(|s| {
+                                s.clip_rect.top() >= block.top() + clip_paint::HEADER_HEIGHT
+                                    && s.clip_rect.bottom() <= block.bottom()
+                            })
+                            .filter_map(|s| grid_line(s, true))
+                            .collect();
+                        assert!(
+                            !out.shapes[fill + 1..].iter().any(|s| {
+                                s.clip_rect.top() >= block.top() + clip_paint::HEADER_HEIGHT
+                                    && grid_line(s, false).is_some()
+                            }),
+                            "Active clips must not repaint full-opacity grid lines"
+                        );
+                        assert!(!clip_ticks.is_empty());
+                        assert!(clip_ticks.len() < 100);
+                        for x in clip_ticks {
+                            assert!(
+                                lane_ticks
+                                    .iter()
+                                    .any(|expected| (x - expected).abs() < 0.001)
+                            );
+                        }
+                        let header = if selected {
+                            colors.selection_header
+                        } else {
+                            colors.header
+                        };
+                        assert!(out.shapes.iter().any(|s| matches!(&s.shape,
+                            egui::Shape::Rect(r) if r.fill == header)));
+                        assert_eq!(app.session.project.tracks[0].clips[0].color, None);
+                        assert!(!app.dirty);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn disabled_clips_reveal_the_grid_and_keep_neutral_foregrounds_and_selection() {
         let source = TestWav::new();
         let mut audio = daw_media::decode_wav(&source.0).unwrap();

@@ -254,7 +254,7 @@ impl DawUi {
         }
         let scale = f64::from(self.session.project.sample_rate_hz) / f64::from(self.view_zoom());
         let painter = painter.with_clip_rect(visible);
-        let color = theme::palette(painter.ctx()).text.linear_multiply(0.45);
+        let color = theme::DARK.grid.gamma_multiply(0.45);
         // At most one line per visible logical pixel, even for very short loops.
         for pixel in visible.left().floor() as i32..visible.right().ceil() as i32 {
             let start = ((f64::from(pixel) - f64::from(body.left())) * scale)

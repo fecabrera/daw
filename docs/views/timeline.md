@@ -14,6 +14,12 @@ Click the arrow beside a beat track to show or hide its subtracks. They start co
 
 Touching clips have a small visual gap. At a crossfade, the gap follows the owning clip’s fade endpoint. Audio, MIDI and beat clips have no selection border. Selected clips use a lighter shade of their color family in the header. Headers have rounded top corners and square bottom corners. The same style applies in the track overview and audio editor.
 
+The musical grid uses a subtle overlay in active audio, MIDI and beat clip
+bodies, below their waveforms and notes. Clip backgrounds remain opaque, and
+their colors and headers stay unchanged.
+These overlay lines use the dark palette's colors in every theme so they remain
+visible against colored clips.
+
 **M** and **S** share one joined button group with a divider. They remain independent: either or both can be enabled. The same group appears in Editor, Instrument, Beat Editor, the Tracks panel and Mixer.
 
 Each L/R meter bar has a held-peak marker. Click either bar or the gap between them to reset both held peaks and the clipping warning. This applies to tracks, groups, Returns and Master. Held levels are shared with Mixer.

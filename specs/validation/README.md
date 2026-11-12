@@ -4,6 +4,93 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Dark colors for clip overlays in every theme — 2026-11-12
+
+User screenshots showed that light-theme overlay colors lacked contrast against
+colored clip fills. Active clip grid overlays now use the existing dark palette's
+bar/beat/subdivision colors in Dark, Light and Mist. Transient indicators use the
+dark beat-grid color in every theme. Grid opacity stays at 10% and transient
+opacity at 45%. Clip fills and headers stay unchanged; uncovered lane grids keep
+their normal theme palette.
+
+Paint tests require the same dark overlay colors across all three themes while
+retaining the existing color, opacity, tick-alignment, clipping and transient
+position checks. `cargo test -p daw-ui --offline` passed: 985 tests, three existing
+ignored cases, and doctests.
+
+Completed checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed, including doctests.
+- `cargo test --workspace --release --offline`: passed, including doctests.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check` and all 223 local file targets in changed Markdown: passed.
+
+Native visual acceptance and Windows/Linux execution remain open. macOS
+packaging still stops at its clean committed-source guard; no app bundle was
+refreshed and no changes were committed for packaging.
+
+## Subtle grid overlay — 2026-11-12
+
+The dark-color entry above supersedes this entry's theme-dependent overlay colors.
+
+User screenshots showed excessive contrast from the full-opacity grid over
+colored clips. Active clip grids now use 10% opacity. Only the grid painter is
+attenuated: body/channel fills, headers, waveforms and notes retain their colors
+and opacity. Muted clips keep their existing grid-through-transparent-body path.
+Lower-Editor transient indicators use the theme's beat-grid color at 45% opacity,
+making them stronger than the 10% grid without changing marker positions or
+backgrounds. Their cached-marker paint test covers all three themes.
+
+The paint regression checks faint overlay strokes, rejects full-opacity grid
+strokes over active bodies, and retains its color, alignment, theme, selection,
+scrolling, clipping and bounded-tick checks.
+
+Completed checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- Updated active-clip paint regression: passed in the debug workspace run.
+- `cargo test -p daw-ui --offline editor_transients`: all five tests passed.
+- `cargo test --workspace --offline`: passed, including doctests.
+- `cargo test --workspace --release --offline`: passed, including doctests and
+  the grid/transient paint regressions.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check` and all 223 local file targets in changed Markdown: passed.
+
+Native visual acceptance of the reduced contrast and Windows/Linux execution
+remain open. The macOS packaging command stops at its clean committed-source
+guard. No app bundle was refreshed and no changes were committed for packaging.
+
+## Grid inside active clips — 2026-11-12
+
+The subtle overlay entry above supersedes this initial full-opacity grid styling.
+
+Active audio, MIDI and beat clip bodies repaint the shared musical grid above
+their existing fills and below waveforms/notes. Background colors, headers and
+selection colors remain unchanged. Muted clips retain their existing transparent
+body behavior. Timeline, Editor and drag previews use the shared clip painter.
+
+The paint regression covers audio/MIDI/beat sources, all three themes, selected
+and unselected headers, Timeline and lower-Editor transforms, horizontal scroll,
+clipped clip edges and hour-long offscreen clips. It checks exact fill colors,
+alignment with lane ticks and bounded visible tick counts.
+
+Completed checks:
+
+- Targeted `cargo test -p daw-ui --offline active_clip_grid`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed, including doctests.
+- `cargo test --workspace --release --offline`: passed, including doctests.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check` and all 208 local file targets in changed Markdown: passed.
+
+Native visual checks and Windows/Linux execution remain open. The macOS
+packaging command stopped at its clean committed-source guard. The app bundle
+was not refreshed and no changes were committed for packaging.
+
 ## Live drag modifiers — 2026-11-11
 
 Clip-edge drags read Option on macOS or Ctrl on Windows/Linux on each frame.

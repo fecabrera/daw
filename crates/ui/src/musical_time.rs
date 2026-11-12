@@ -339,6 +339,15 @@ impl Timeline {
 
     /// Shared bar/beat/subdivision lines for arrangement, piano roll, and sample previews.
     pub fn paint_grid(&self, painter: &egui::Painter, rect: egui::Rect) {
+        self.paint_grid_with_palette(painter, rect, crate::theme::palette(painter.ctx()));
+    }
+
+    pub fn paint_grid_with_palette(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        palette: crate::theme::Palette,
+    ) {
         use egui::{Pos2, Stroke};
         for tick in self.ticks(rect.width()) {
             let x = rect.left() + tick.x;
@@ -346,11 +355,11 @@ impl Timeline {
                 continue;
             }
             let color = if tick.bar {
-                crate::theme::palette(painter.ctx()).border
+                palette.border
             } else if tick.whole_beat {
-                crate::theme::palette(painter.ctx()).grid
+                palette.grid
             } else {
-                crate::theme::palette(painter.ctx()).grid_subdivision
+                palette.grid_subdivision
             };
             painter.line_segment(
                 [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],

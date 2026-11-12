@@ -124,6 +124,8 @@ continue into the next iteration.
 Enable **Show transients** in the toolbar above the lower audio ruler. Thin
 vertical lines mark detected attacks, from the bottom of the clip header to the
 clip bottom. They are visual guides and do not capture clicks or drags.
+They use the dark palette's beat-grid color in every theme, at a higher opacity
+than the subtle grid overlay, to distinguish attacks.
 
 Analysis runs in the background. A spinner indicates work in progress. Results
 follow trims, loop phases, stretching and transpose using the displayed source
