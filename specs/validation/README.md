@@ -4,6 +4,39 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Merge non-contiguous MIDI and beat clips — 2026-11-12
+
+The shared pattern-merge eligibility check accepts gaps on one track. The result
+retains the exact first-start/last-end span and the existing note/hit positions;
+gaps stay silent. Overlaps and intervening unselected clips remain blocked before
+menu enablement or publication. Source assets remain unchanged. Beat subdivision,
+stretch and instrument compatibility, the 16-source-bar span limit and the 4,096
+note/hit occurrence limits remain in force.
+
+Core regressions cover gapped MIDI and beat patterns at all six processing rates
+and two tempos, stretched beat clocks, exact outer bounds, stable identities,
+source retention and serialization. Existing tests retain overlap, unselected
+clip, setting, grid and resource-limit rejection coverage. UI regressions cover
+menu availability, shortcut dispatch, result selection and one-step Undo/Redo in
+Timeline and Editor for both pattern types.
+
+Completed checks:
+
+- `cargo test -p daw-core --offline merge`: 23 tests passed.
+- `cargo test -p daw-ui --offline clip_merge`: six tests passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed, including doctests.
+- `cargo test --workspace --release --offline`: passed, including doctests and
+  the gapped MIDI/beat and Undo/Redo regressions.
+- `cargo build -p daw-desktop -p daw-cli --offline`: passed.
+- `python3 tools/check_cli.py` with an isolated audio cache: passed.
+- `git diff --check` and all 197 local file targets in changed Markdown: passed.
+
+Native interaction and Windows/Linux checks remain open. macOS packaging stops
+at its clean committed-source guard; no app bundle was refreshed and no changes
+were committed for packaging.
+
 ## Multiband EQ footer alignment — 2026-11-12
 
 Expanded band Power/label/Solo rows now reserve the standard footer position

@@ -120,11 +120,12 @@ Duplicating into new track space creates fresh track defaults. Group paste also 
 
 ## Merge MIDI clips
 
-Select two or more MIDI clips that touch on the same track. Choose **Merge**
+Select two or more MIDI clips on the same track. They can touch or have gaps. Choose **Merge**
 from the **Clip** menu or a selected clip's context menu. You can also press
 **Command+J** on macOS or **Ctrl+J** on Windows and Linux. This works in Timeline
-and Editor. Tiny gaps caused by sample rounding are accepted when both edges
-resolve to the same musical position at the pattern’s timing precision.
+and Editor. The result spans the first selected clip's start to the last selected
+clip's end. Gaps remain silent; later notes keep their timeline positions.
+Select any intervening clips too: Merge cannot cover an unselected clip.
 
 You can also select one MIDI clip, including a looped or trimmed clip, and use
 **Merge**. This rebuilds only its visible notes in one unlooped pattern. Notes

@@ -118,7 +118,7 @@ processing lookahead is active. This applies to MIDI and beat instruments. Nonlo
 their existing behavior. Audio clips repeat only the selected region; existing
 track, group and Master effect histories continue through the wrap.
 
-## Merge adjacent beat patterns
+## Merge beat patterns
 
 `Project::merge_pattern_clips` dispatches MIDI and beat sources through their
 shared selection validation and final snapshot publication. `merge_beat_clips`
@@ -126,10 +126,9 @@ accepts one or more clips on one beat track through the shared eligibility rule.
 Single clips consolidate their visible range, including loops and trims; current
 bounds do not need to prove prior trimming. This also permits full-length single
 patterns and remains consistent after source-edge trims and save/reopen.
-Shared adjacency accepts
-sample-rounding gaps when both edges map to the same nearest MIDI tick relative
-to the first clip, while retaining the exact outer frame range. Reject larger
-musical gaps and all overlaps. All sources retain their
+Accept gaps while retaining the exact outer frame range and existing hit times.
+Gaps count toward the 16-source-bar limit and must preserve the common grid.
+Reject overlaps and intervening unselected clips. All sources retain their
 beat container binding. Require matching gain, transpose, mute, channels,
 subdivision and stretch. Validate clip bounds, source offsets and repeat
 length/phase against the common subdivision in source ticks. Convert frame

@@ -37,12 +37,13 @@ Pattern edits affect only the active clip and create a new source. Other clips k
 
 ## Merge beat patterns
 
-Select two or more adjacent beat clips on the same track. Choose **Merge** from
+Select two or more beat clips on the same track, with or without gaps. Choose **Merge** from
 the **Clip** menu or a selected clip's context menu. Press **Command+J** on macOS
 or **Ctrl+J** on Windows and Linux. This works in Timeline and Editor.
 
-Small gaps caused by sample rounding are accepted when the edges resolve to the
-same musical position at the pattern’s timing precision.
+Gaps remain silent and later hits keep their timeline positions. Select any
+intervening clips too: Merge cannot cover an unselected clip. Gaps count toward
+the merged pattern's length limit and must preserve the common subdivision.
 
 Select one beat clip, including a looped or trimmed clip, and use **Merge** to rebuild its visible
 hits into one unlooped pattern. It keeps the same clip start and length, clears

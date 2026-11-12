@@ -390,20 +390,20 @@ nonlooping clip behavior. Reuse the same allocation-free
 transport-wrap path as beat instruments, including latency-compensated feed clocks.
 Audio clips repeat only the selected range while effects retain their histories.
 
-## Merge adjacent MIDI clips
+## Merge MIDI clips
 
 `Project::merge_midi_clips` returns a validated project snapshot and the surviving
 clip ID. Accept one or more distinct selected MIDI clips on one track, sorted
-into one contiguous musical range. A single clip can consolidate its visible
+by timeline position, with or without gaps. Retain gaps as silence at the existing
+MIDI tick precision. Reject overlapping selections and any unselected clip within
+the merged span. A single clip can consolidate its visible
 range, including loops and trims. Full-length unlooped clips also qualify; do not
-infer trim history from current source bounds or require unsaved provenance. Accept sample-rounding gaps
-when both edges resolve to the same nearest MIDI tick relative to the first clip;
-reject overlaps and gaps that resolve to different ticks. Keep the exact outer
+infer trim history from current source bounds or require unsaved provenance. Keep the exact outer
 frame bounds. Require matching clip gain,
 transpose, mute and channel settings. Reject missing IDs, audio, mixed tracks,
-musical gaps and incompatible settings without changing the project. Menu availability
+intervening unselected clips and incompatible settings without changing the project. Menu availability
 uses `can_merge_pattern_clips` for the shared structural rules. Beat sources use
-the [beat Merge contract](../views/beat-model.md#merge-adjacent-beat-patterns).
+the [beat Merge contract](../views/beat-model.md#merge-beat-patterns).
 
 Reuse split occurrence mapping and pattern construction for source offsets,
 stretch ratios, repeat bases/phases and boundary clipping. Convert visible frame

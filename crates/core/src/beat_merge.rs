@@ -197,6 +197,61 @@ mod tests {
     }
 
     #[test]
+    fn merge_beat_retains_grid_aligned_gaps_and_stretched_hit_times_at_all_rates() {
+        for rate in crate::SAMPLE_RATES {
+            for tempo in [120.0, 123.25] {
+                for scale in [1, 2] {
+                    let (mut p, _, mut ids, rows) = fixture(rate, tempo);
+                    let starts = [BAR_TICKS, 3 * BAR_TICKS, 6 * BAR_TICKS]
+                        .map(|tick| p.midi_frame(tick * scale));
+                    let source_length = p.midi_frame(BAR_TICKS);
+                    for (clip, start) in p.tracks[0].clips.iter_mut().zip(starts) {
+                        clip.start_frame = start;
+                        clip.stretch = (scale != 1).then(|| crate::ClipStretch::new(1, 2).unwrap());
+                        clip.length_frames = clip.source_length(source_length).unwrap();
+                    }
+                    p.validate().unwrap();
+                    let before = p.clone();
+                    ids.reverse();
+                    let (next, id) = p.merge_pattern_clips(&ids).unwrap_or_else(|error| {
+                        panic!("rate={rate}, tempo={tempo}, scale={scale}: {error}")
+                    });
+                    assert!(p.can_merge_pattern_clips(&ids));
+                    assert_eq!(p, before);
+                    let clip = &next.tracks[0].clips[0];
+                    assert_eq!(id, ids[2]);
+                    assert_eq!(clip.start_frame, starts[0]);
+                    assert_eq!(clip.end(), before.tracks[0].clips[2].end());
+                    assert_eq!(clip.stretch, before.tracks[0].clips[0].stretch);
+                    assert_eq!(&next.assets[..before.assets.len()], &before.assets);
+                    let mut hits: Vec<_> = pattern(&next)
+                        .steps
+                        .iter()
+                        .map(|s| (s.start_tick, s.subtrack_id, s.velocity))
+                        .collect();
+                    hits.sort_by_key(|s| s.0);
+                    assert_eq!(
+                        hits,
+                        [
+                            (0, rows[0], 80),
+                            (960, rows[1], 120),
+                            (2 * BAR_TICKS, rows[0], 80),
+                            (2 * BAR_TICKS + 960, rows[1], 120),
+                            (5 * BAR_TICKS, rows[0], 80),
+                            (5 * BAR_TICKS + 960, rows[1], 120),
+                        ]
+                    );
+                    assert_eq!(
+                        serde_json::from_str::<Project>(&serde_json::to_string(&next).unwrap())
+                            .unwrap(),
+                        next
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn merge_beat_preserves_three_clips_lanes_settings_assets_and_serialization() {
         for rate in crate::SAMPLE_RATES {
             for tempo in [120.0, 123.25] {
@@ -290,9 +345,15 @@ mod tests {
     }
 
     #[test]
-    fn merge_beat_rejects_gaps_mixed_grids_stretch_off_grid_and_oversized_ranges() {
+    fn merge_beat_rejects_intervening_clips_mixed_grids_stretch_off_grid_and_oversized_ranges() {
         let (p, _, ids, _) = fixture(48_000, 120.0);
-        assert!(p.merge_beat_clips(&[ids[0], ids[2]]).is_err());
+        assert!(!p.can_merge_pattern_clips(&[ids[0], ids[2]]));
+        assert!(
+            p.merge_beat_clips(&[ids[0], ids[2]])
+                .unwrap_err()
+                .to_string()
+                .contains("unselected")
+        );
         for mode in 0..4 {
             let mut changed = p.clone();
             match mode {
@@ -447,7 +508,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![(0, 100), (7200, 90), (7680, 100), (14880, 90)]
         );
-        // A gap of a full tick is an intentional separation, not sample rounding.
+        // Off-grid clip positions still cannot preserve the saved beat subdivision.
         p.tracks[0].clips[1].start_frame = p.tracks[0].clips[0].end() + p.midi_frame(1);
         assert!(!p.can_merge_pattern_clips(&ids[..2]));
     }

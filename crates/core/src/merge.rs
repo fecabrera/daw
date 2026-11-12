@@ -1,4 +1,4 @@
-//! Merge a contiguous selection without changing shared pattern assets.
+//! Merge selected pattern clips, retaining gaps and shared source assets.
 use crate::split::{note_occurrences, piece_pattern};
 use crate::{Asset, Clip, ClipLoop, Error, Id, MidiNoteSplit, Project, Result};
 use std::collections::HashSet;
@@ -23,26 +23,24 @@ impl Project {
             .filter(|clip| ids.contains(&clip.id))
             .collect();
         clips.sort_by_key(|clip| clip.start_frame);
-        let origin = clips[0].start_frame;
-        let musical_tick = |frame: u64| {
-            ((frame - origin) as f64
-                * f64::from(self.tempo_bpm)
-                * f64::from(crate::MIDI_TICKS_PER_BEAT)
-                / (f64::from(self.sample_rate_hz) * 60.0))
-                .round()
-        };
         if clips.len() != ids.len()
-            || clips.windows(2).any(|pair| {
-                let end = pair[0].end();
-                let start = pair[1].start_frame;
-                // Tempo/rate edits and ruler snapping can round the same tick to
-                // different sample frames. Keep that small gap in the merged span.
-                end > start || (end != start && musical_tick(end) != musical_tick(start))
-            })
+            || clips
+                .windows(2)
+                .any(|pair| pair[0].end() > pair[1].start_frame)
         {
-            return Err(Error("Merge requires adjacent clips on one track".into()));
+            return Err(Error(
+                "Merge requires non-overlapping clips on one track".into(),
+            ));
         }
         let first = clips[0];
+        let end = clips.last().unwrap().end();
+        if track.clips.iter().any(|clip| {
+            !ids.contains(&clip.id) && clip.start_frame < end && clip.end() > first.start_frame
+        }) {
+            return Err(Error(
+                "Merge would cover an unselected clip; select it too".into(),
+            ));
+        }
         let midi = self
             .assets
             .iter()
@@ -87,7 +85,7 @@ impl Project {
         })
     }
 
-    /// Merge adjacent patterns or consolidate the visible range of one pattern.
+    /// Merge patterns with silent gaps, or consolidate one pattern's visible range.
     pub fn merge_pattern_clips(&self, ids: &[Id]) -> Result<(Self, Id)> {
         let (_, clips) = self.pattern_merge_targets(ids)?;
         if self
@@ -101,7 +99,7 @@ impl Project {
         }
     }
 
-    /// Return one unlooped pattern containing the visible notes of adjacent clips.
+    /// Return one unlooped pattern containing selected notes at their existing times.
     /// Keep the earliest clip's identity, name, color and common playback settings.
     pub fn merge_midi_clips(&self, ids: &[Id]) -> Result<(Self, Id)> {
         let (track, clips) = self.pattern_merge_targets(ids)?;
@@ -182,7 +180,15 @@ mod tests {
     use crate::{Edit, MidiNote, MidiPattern};
 
     fn fixture() -> (Project, Vec<Id>) {
-        let mut project = Project::default();
+        fixture_at(crate::SAMPLE_RATE, 120.0)
+    }
+
+    fn fixture_at(rate: u32, tempo: f32) -> (Project, Vec<Id>) {
+        let mut project = Project {
+            sample_rate_hz: rate,
+            tempo_bpm: tempo,
+            ..Project::default()
+        };
         let track = project.add_midi_track().unwrap();
         let mut ids = Vec::new();
         for index in 0..3 {
@@ -214,6 +220,52 @@ mod tests {
             ids.push(id);
         }
         (project, ids)
+    }
+
+    #[test]
+    fn merge_midi_retains_gaps_note_times_and_outer_bounds_at_all_rates() {
+        for rate in crate::SAMPLE_RATES {
+            for tempo in [120.0, 123.25] {
+                let (mut p, mut ids) = fixture_at(rate, tempo);
+                let starts = [960, 3840, 7680].map(|tick| p.midi_frame(tick));
+                for (clip, start) in p.tracks[0].clips.iter_mut().zip(starts) {
+                    clip.start_frame = start;
+                }
+                p.validate().unwrap();
+                let before = p.clone();
+                ids.reverse();
+                assert!(p.can_merge_pattern_clips(&ids));
+                let (next, id) = p.merge_pattern_clips(&ids).unwrap();
+                assert_eq!(p, before);
+                let clip = &next.tracks[0].clips[0];
+                assert_eq!(id, ids[2]);
+                assert_eq!(clip.start_frame, starts[0]);
+                assert_eq!(clip.end(), before.tracks[0].clips[2].end());
+                assert_eq!(&next.assets[..before.assets.len()], &before.assets);
+                let notes = &next
+                    .assets
+                    .last()
+                    .unwrap()
+                    .midi_pattern
+                    .as_ref()
+                    .unwrap()
+                    .notes;
+                assert_eq!(
+                    notes
+                        .iter()
+                        .map(|n| (n.start_tick, n.length_ticks, n.pitch))
+                        .collect::<Vec<_>>(),
+                    [(240, 480, 60), (3120, 480, 61), (6960, 480, 62)]
+                );
+                assert!(clip.repeat.is_none());
+                assert!(clip.stretch.is_none());
+                assert_eq!(
+                    serde_json::from_str::<Project>(&serde_json::to_string(&next).unwrap())
+                        .unwrap(),
+                    next
+                );
+            }
+        }
     }
 
     #[test]
@@ -250,10 +302,17 @@ mod tests {
     }
 
     #[test]
-    fn merge_rejects_gaps_missing_clips_other_tracks_and_incompatible_settings() {
+    fn merge_rejects_intervening_unselected_clips_missing_ids_and_incompatible_settings() {
         let (project, ids) = fixture();
         assert!(project.can_merge_midi_clips(&ids[..1]));
         assert!(!project.can_merge_midi_clips(&[ids[0], ids[2]]));
+        assert!(
+            project
+                .merge_pattern_clips(&[ids[0], ids[2]])
+                .unwrap_err()
+                .to_string()
+                .contains("unselected")
+        );
         assert!(!project.can_merge_midi_clips(&[ids[0], Id::new_v4()]));
         let mut changed = project.clone();
         changed.tracks[0].clips[1].gain_db = -6.0;
@@ -320,8 +379,9 @@ mod tests {
         assert_eq!(project, original);
     }
     #[test]
-    fn merge_midi_accepts_rounded_edges_but_rejects_a_full_tick_gap() {
+    fn merge_midi_preserves_rounded_and_full_tick_gaps_but_rejects_overlaps() {
         let (mut p, ids) = fixture();
+        p.tracks[0].clips.truncate(2);
         let boundary = p.tracks[0].clips[0].end();
         p.tracks[0].clips[0].length_frames -= 1;
         p.tracks[0].clips[1].start_frame = boundary + 1;
@@ -331,7 +391,9 @@ mod tests {
         let (merged, _) = p.merge_midi_clips(&ids[..2]).unwrap();
         assert_eq!(merged.tracks[0].clips[0].length_frames, end);
         p.tracks[0].clips[1].start_frame = p.tracks[0].clips[0].end() + p.midi_frame(1);
-        assert!(!p.can_merge_midi_clips(&ids[..2]));
+        assert!(p.can_merge_midi_clips(&ids[..2]));
+        let (merged, _) = p.merge_midi_clips(&ids[..2]).unwrap();
+        assert_eq!(merged.tracks[0].clips[0].end(), p.tracks[0].clips[1].end());
         p.tracks[0].clips[1].start_frame = p.tracks[0].clips[0].end() - 1;
         assert!(!p.can_merge_midi_clips(&ids[..2]));
     }

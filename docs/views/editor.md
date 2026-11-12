@@ -51,10 +51,10 @@ notes. The overview and lower pane keep their own zoom and scroll.
 
 Timeline and Editor offer the same clip selection, time-range selection, copy/paste, split, move, trim, loop, and stretch actions. Delete or Backspace removes all selected clips when clip editing is active. Note and beat-step editing keep Delete in their own pane. Click a clip header to switch back to clip deletion; selecting notes gives note deletion priority. A selected time range takes precedence and removes only that range. Clip deletion supports Undo and keeps source media. Text fields, active gestures, dialogs and unfocused windows retain their existing keyboard protection. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Editor's clip moves keep their track assignments. Shift bypasses grid snapping.
 
-To join adjacent MIDI clips, select them and choose **Merge** from the **Clip**
+To join MIDI clips with or without gaps, select them and choose **Merge** from the **Clip**
 menu or a selected clip’s context menu. Press **Command+J** on macOS or **Ctrl+J**
 on Windows and Linux. See [Merge MIDI clips](timeline.md#merge-midi-clips) for limits.
-The same command joins [adjacent beat patterns](beat-editor.md#merge-beat-patterns).
+The same command joins [beat patterns with or without gaps](beat-editor.md#merge-beat-patterns).
 Select one looped or trimmed MIDI or beat clip to consolidate its visible range
 with **Merge**, using the same menus and shortcut.
 

@@ -39,6 +39,52 @@ fn merge_fixture(beat: bool) -> (DawUi, egui::Context, Vec<Id>) {
 }
 
 #[test]
+fn non_contiguous_merge_retains_gaps_and_one_undo_step_in_both_views() {
+    for beat in [false, true] {
+        for view in [ViewMode::Timeline, ViewMode::Edit] {
+            let (mut app, ctx, ids) = merge_fixture(beat);
+            let length = app.session.project.tracks[0].clips[0].length_frames;
+            for (clip, multiple) in app.session.project.tracks[0]
+                .clips
+                .iter_mut()
+                .zip([1, 3, 6])
+            {
+                clip.start_frame = multiple * length;
+            }
+            app.session.project.validate().unwrap();
+            app.set_view_mode(view, &ctx);
+            app.history = None;
+            app.ensure_history();
+            app.dirty = false;
+            let before = app.session.project.clone();
+            assert!(app.clip_menu_action_enabled(ClipMenuAction::Merge, &ctx));
+            let shortcut = ClipAction::Merge.shortcut();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: shortcut.logical_key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: shortcut.modifiers,
+                }],
+            );
+            assert!(app.error.is_none(), "{:?}", app.error);
+            let merged = app.session.project.clone();
+            assert_eq!(merged.tracks[0].clips.len(), 1);
+            assert_eq!(merged.tracks[0].clips[0].start_frame, length);
+            assert_eq!(merged.tracks[0].clips[0].end(), 7 * length);
+            assert_eq!(app.selected_clips, HashSet::from([ids[0]]));
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            assert_eq!(app.session.project, before);
+            app.perform_history_action(HistoryAction::Redo, &ctx);
+            assert_eq!(app.session.project, merged);
+        }
+    }
+}
+
+#[test]
 fn merge_shortcut_selects_result_and_undo_restores_all_clips() {
     for beat in [false, true] {
         let (mut app, ctx, ids) = merge_fixture(beat);
