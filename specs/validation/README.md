@@ -8,7 +8,6 @@ The prototype implements the iteration 1 feature scope. Automated checks and a m
 
 The third standalone five-reviewer run and separate validator confirmed three
 corrections. The ONNX shape-inference finding remains excluded from remediation.
-At the user's request, work stops after this round's fixes and checks.
 
 Time-range moves/copies now give incompatible incoming previews forbidden cursor
 precedence and reject release before dispatch or selection/history mutation.
@@ -34,10 +33,13 @@ move/copy target matrix), `cargo test --locked --workspace`,
 (44 tests), changed-document file targets, all 90 notice hashes and
 `git diff --check`. Workspace debug and release include doctests.
 `python3 tools/build_desktop.py debug macos` passed with the real toolchain.
+After commit `cd90dec8`, `sh tools/package_macos.sh debug` passed. The actual
+bundle and source ZIP retain the full Chromium grant, the original derived-source
+header and exact AccessKit version/revision/path/hash mapping. The binary matches
+the Cargo artifact byte for byte; binary/source hashes match the source manifest.
 
 Automated egui checks are not native gesture/device acceptance. Native UI,
 audio-device/listening, external hosts and Windows/Linux execution remain unrun.
-No further independent review round is scheduled.
 
 ## Source grant and guide corrections — 2026-11-12
 
