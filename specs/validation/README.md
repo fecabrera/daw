@@ -5,6 +5,22 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Standalone manifest CI cache fix — 2026-11-12
+
+The extracted Timestretch CLI manifest test now seeds the temporary package with
+the repository lockfile and filters offline metadata to the compiler host target.
+The packages still resolve outside the DAW workspace, with path dependencies
+included, in both reference-enabled and reference-disabled modes. This avoids
+requesting uncached packages for other platforms during a native CI run and
+keeps resolution on the tested dependency versions.
+
+Both standalone tests passed locally. A temporary Cargo cache excluding
+`anstyle-wincon` reproduced the previous offline metadata failure; both corrected
+tests passed with that package still absent. Formatting, workspace/all-target
+Clippy with warnings denied, and complete offline workspace tests in debug and
+release passed on macOS arm64. Native Windows/Linux CI reruns remain external
+checks.
+
 ## Clip and track Bounce — 2026-11-12
 
 See [Bounce validation](bounce.md) for the shared capture/routing transaction,

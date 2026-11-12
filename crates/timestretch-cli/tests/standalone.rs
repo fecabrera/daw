@@ -15,12 +15,33 @@ fn extracted_manifests_resolve_without_the_daw_workspace() {
         fs::copy(source.join("Cargo.toml"), destination.join("Cargo.toml")).unwrap();
         fs::write(destination.join("src").join(entry), "").unwrap();
     }
+    // Reuse the tested versions, without leaving the extracted packages in the
+    // DAW workspace. Cargo prunes unrelated lockfile entries during resolution.
+    fs::copy(
+        cli.join("../../Cargo.lock"),
+        extracted.path().join("timestretch-cli/Cargo.lock"),
+    )
+    .unwrap();
+    let rustc = Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()))
+        .arg("-vV")
+        .output()
+        .unwrap();
+    assert!(rustc.status.success(), "rustc -vV failed");
+    let version = String::from_utf8(rustc.stdout).unwrap();
+    let host = version
+        .lines()
+        .find_map(|line| line.strip_prefix("host: "))
+        .expect("rustc must report its host target");
     for reference_disabled in [false, true] {
         let mut command = Command::new(env!("CARGO"));
         command.current_dir(extracted.path()).args([
             "metadata",
             "--offline",
             "--format-version=1",
+            // A native build does not cache other platforms' packages. Full
+            // metadata would try to download those even with --offline.
+            "--filter-platform",
+            host,
             "--manifest-path=timestretch-cli/Cargo.toml",
         ]);
         if reference_disabled {
