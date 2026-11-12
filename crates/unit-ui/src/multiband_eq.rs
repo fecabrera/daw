@@ -110,10 +110,12 @@ pub fn band(
         egui::UiBuilder::new().sense(egui::Sense::click_and_drag()),
         |ui| {
             panels::unit_strip(ui, height, egui::UiBuilder::new(), |ui| {
+                let footer_top = ui.cursor().top() + height - crate::layout::COMPACT_BUTTON_SIZE;
                 ui.spacing_mut().item_spacing.y = CONTROL_GAP;
                 if !compact {
                     controls =
                         band_controls(ui, band, markers, open, &mut remove, solo, unit_enabled);
+                    ui.add_space((footer_top - ui.cursor().top()).max(0.0));
                 }
                 rows::centered(
                     ui,

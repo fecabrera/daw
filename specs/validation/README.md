@@ -4,6 +4,33 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Multiband EQ footer alignment — 2026-11-12
+
+Expanded band Power/label/Solo rows now reserve the standard footer position
+instead of following the packed control rows immediately. B1, B2 and later band
+labels align with Response and Out. Shared `unit-ui` rendering applies the change
+to the built-in effect and standalone editors. Compact mode, knob positions,
+strip dimensions and parameter bindings remain unchanged.
+
+The targeted egui regression passes in dark and light themes. It compares the
+painted vertical text centers of B1/B2/B3, Response and Out within half a logical
+point, rather than checking only the outer strip heights.
+
+Completed checks:
+
+- `cargo test -p daw-ui --offline band_labels_share`: passed.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed, including doctests.
+- `cargo test --workspace --release --offline`: passed, including the footer
+  regression and doctests.
+- `cargo build -p daw-desktop --offline`: passed.
+- `git diff --check` and all 137 local file targets in changed Markdown: passed.
+
+Native DAW/plugin visual checks and Windows/Linux execution remain open. macOS
+packaging stops at its clean committed-source guard; no app bundle was refreshed
+and no changes were committed for packaging.
+
 ## Dark colors for clip overlays in every theme — 2026-11-12
 
 User screenshots showed that light-theme overlay colors lacked contrast against

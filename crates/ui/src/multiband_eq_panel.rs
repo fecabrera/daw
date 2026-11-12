@@ -343,6 +343,60 @@ mod tests {
         result.unwrap()
     }
     #[test]
+    fn band_labels_share_the_response_and_output_footer_baseline() {
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            let ctx = egui::Context::default();
+            crate::theme::configure(&ctx);
+            crate::fonts::configure(&ctx);
+            ctx.set_theme(theme);
+            let mut settings = MultibandEqSettings::default();
+            settings
+                .bands
+                .extend([Default::default(), Default::default()]);
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(1200.0, 600.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    show(
+                        ui,
+                        &mut settings,
+                        (false, panels::unit_height(false)),
+                        &[],
+                        |_| None,
+                        |_| 0.0,
+                        0.0.into(),
+                    );
+                },
+            );
+            output.textures_delta.clear();
+            let center = |label| {
+                output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == label => {
+                            Some(text.pos.y + text.galley.size().y * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("Missing footer: {label}"))
+            };
+            let baseline = center("Out");
+            for label in ["Response", "B1", "B2", "B3"] {
+                assert!(
+                    (center(label) - baseline).abs() <= 0.5,
+                    "{theme:?}: {label} is not aligned with Out"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn graph_band_and_output_strips_have_the_same_standard_height() {
         for theme in [egui::Theme::Dark, egui::Theme::Light] {
             let ctx = egui::Context::default();

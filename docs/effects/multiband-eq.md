@@ -5,6 +5,7 @@ Add **Multiband EQ** from **Effects > EQ & Filters** to a track, instrument laye
 Use **Multiband EQ** for targeted tonal corrections, resonant cuts and boosts, and flexible frequency shaping.
 
 The band, **+**, and **Out** strips follow the Oscillator layout. Each band has a Mode dropdown above three smaller knobs in one column.
+Expanded band labels align with the **Response** and **Out** footers.
 
 The **Response** graph sits before the band strips and spans the three standard control rows. It shows each band's response, the combined EQ curve, and a live output spectrum. The combined curve and unselected band points use the unselected unit-header text color. The selected point uses the accent color; disabled bands and units remain muted. The spectrum uses both stereo channels and clears when the unit is off. Compact and collapsed units hide the graph.
 

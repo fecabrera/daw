@@ -55,6 +55,9 @@ This unit also has independent CLAP/VST3 previews. The [shared build contract](.
 Reuse `rows::band_solo` beside the bottom band power label, matching Multiband
 Compressor. Compact 90-point EQ footers use B1, B2, etc. to fit the power and S
 buttons without changing lane height. The accessibility labels retain Band N.
+In expanded mode, anchor the band Power/label/Solo row to the standard footer
+position, aligned with Response and Out. The packed control rows must not move
+the footer upward. Apply the same shared layout in the DAW and standalone editors.
 The live-only binding and offline-mode rules follow [Multiband Compressor](multiband-compressor.md#temporary-solo).
 
 Solo uses separate EQ and rejection histories. Bell/Notch reject a notch at the
