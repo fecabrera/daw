@@ -33,6 +33,8 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 ## Current features
 
+- **Bounce:** [render selected clips or complete tracks](docs/editing/bounce.md) to new audio tracks while retaining the disabled originals.
+
 - **Timeline:** arrange, trim, loop, stretch, transpose, split, merge, move, copy, and duplicate audio, MIDI and beat clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog. Audio clips support editable fades and adjacent crossfades.
 - **Beat editor:** build rhythms with [step patterns](docs/views/beat-editor.md) and independently configured subtrack instruments.
 - **MIDI editor:** create patterns and edit notes in a piano roll, with a project track browser, track controls and optional scale snapping.

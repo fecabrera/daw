@@ -281,3 +281,9 @@ order and row spacing, with Plus at the same baseline for zero, one or many send
 Retain the 8-point visible Plus-to-divider gap. Shorter stacks leave unused space
 above their rows; the tallest stack still controls common rack height and global
 Mixer overflow.
+
+## Bounce integration
+
+The [Bounce contract](../editing/bounce.md) extends this lifecycle for versioned
+rendered sources, synchronized routing leaves and one atomic history transaction.
+Bounce keeps its editing guard through prepared publication or worker cleanup.

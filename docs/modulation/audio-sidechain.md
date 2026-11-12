@@ -67,3 +67,9 @@ Playback and export use the same detector and mapping. Source and destination
 effect delays are aligned. Starting or seeking prepares detector history before playback resumes. Loop playback keeps the detector's response continuous
 across the boundary. Audio sidechains can drive shared effects and compatible
 per-note controls; they cannot keep a released note alive.
+
+## Bounced tracks
+
+[Bounce](../editing/bounce.md) keeps downstream routing live and retains captured
+audio for existing sends and sidechains. Keep the original track when its identity
+is still used as a sidechain source. Captured routing stages are snapshots.

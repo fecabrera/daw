@@ -19,6 +19,7 @@ fn fixture(rate: u32, mono: bool) -> (RenderPlan, Vec<Id>) {
         bits_per_sample: 32,
     };
     project.assets.push(Asset {
+        rendered_audio: None,
         compound_audio: None,
         midi_pattern: None,
         beat_pattern: None,

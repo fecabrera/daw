@@ -12,11 +12,14 @@ pub enum SourceStorage {
 }
 
 impl Source {
+    pub fn is_generated(&self) -> bool {
+        matches!(self.kind.as_str(), "generated" | "rendered_audio")
+    }
     /// Interpret omitted storage exactly as the legacy source lifecycle did.
     /// Validation rejects unsupported provenance/storage combinations.
     pub fn storage_kind(&self) -> SourceStorage {
         self.storage.unwrap_or(match self.kind.as_str() {
-            "generated" => SourceStorage::Project,
+            "generated" | "rendered_audio" => SourceStorage::Project,
             "midi_pattern" | "beat_pattern" | "compound_audio" => SourceStorage::Embedded,
             _ => SourceStorage::External,
         })
@@ -25,7 +28,7 @@ impl Source {
     pub fn validate_storage(&self) -> Result<()> {
         match (self.kind.as_str(), self.storage_kind()) {
             ("external", SourceStorage::External)
-            | ("generated", SourceStorage::Project)
+            | ("generated" | "rendered_audio", SourceStorage::Project)
             | ("midi_pattern" | "beat_pattern" | "compound_audio", SourceStorage::Embedded) => {
                 Ok(())
             }

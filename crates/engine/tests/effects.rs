@@ -50,6 +50,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         id,
         name: "tone".into(),
         midi_pattern: None,
+        rendered_audio: None,
         compound_audio: None,
         beat_pattern: None,
         source: Source {

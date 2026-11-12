@@ -21,6 +21,7 @@ to the same source. Existing external relative parent references remain valid. I
 | --- | --- | --- | --- |
 | `external` | External reference | `external` or `project` | External references retain absolute/relative resolution, including `..`. Project-owned recordings require `relative` and `assets/sources/<portable filename>`. |
 | `generated` | Project-owned | `project` | Preserve existing temporary absolute paths and saved `stems/` paths. Collection must retain generated provenance and lifecycle. |
+| `rendered_audio` | Project-owned | `project` | Bounce extension: retain main/routing leaf ownership and required versioned source capability; older readers reject this kind. See [Bounce](../editing/bounce.md). |
 | `midi_pattern` | Embedded | `embedded` | Retain the existing empty path, `embedded` path kind and pattern validation. |
 
 Deserialization rejects unknown storage values. `Project::validate` rejects conflicting ownership/provenance combinations and invalid included recording paths. Paths inside a project do not imply ownership: an unmarked external source under `assets/` remains an external reference.

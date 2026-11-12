@@ -502,6 +502,10 @@ impl NativeMenu {
             }
             if let MenuAction::ClipMenu(action) = action {
                 item.setTitle(&NSString::from_str(ui.clip_menu_action_label(*action)));
+                let hint = ui
+                    .clip_menu_action_disabled_hint(*action)
+                    .map(NSString::from_str);
+                item.setToolTip(hint.as_deref());
             }
             if let MenuAction::Track(action) = action {
                 item.setTitle(&NSString::from_str(ui.track_action_label(*action)));

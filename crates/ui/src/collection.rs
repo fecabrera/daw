@@ -267,6 +267,8 @@ impl DawUi {
             || self.overwrite.is_some()
             || self.export_status.is_some()
             || self.separation_status.is_some()
+            || self.bounce_status.is_some()
+            || self.bounce_input_blocked
         {
             if let Some(status) = &mut self.collection_status {
                 Self::collection_error(status, "Source collection could not continue because another operation or dialog is active.".into());

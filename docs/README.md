@@ -75,6 +75,8 @@ need a selection retain their usual empty-selection prompts.
 
 ## Workflows and limits
 
+- [Bounce clips and tracks](editing/bounce.md): bake sound to audio and retain disabled originals.
+
 - [Normalize clip gain](editing/normalize-gain.md): set audio clips to individual peak or loudness targets.
 
 - [Modulation](modulation/README.md), [Audio sidechains](modulation/audio-sidechain.md), and [Oscillator modulation](modulation/oscillator-pitch.md).

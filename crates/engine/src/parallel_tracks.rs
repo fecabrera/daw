@@ -128,7 +128,14 @@ impl ParallelTracks {
                     + 128)
     }
     pub fn new(renderer: &Renderer, available: u64) -> Option<Self> {
-        if renderer.sidechains.active() {
+        if renderer.sidechains.active()
+            || renderer
+                .plan
+                .project
+                .assets
+                .iter()
+                .any(|a| a.rendered_audio.is_some())
+        {
             return None;
         }
         let bytes = Self::estimate(renderer);
@@ -323,8 +330,8 @@ impl ParallelTracks {
                     renderer.buses.output[index] = buffer[offset];
                     renderer.buses.raw[index] = self.raw_buffers[index][offset];
                 }
-                let mix = renderer.sample_buses(from + offset as u64, region, false);
-                renderer.sample_master(mix, from + offset as u64, region);
+                let mix = renderer.sample_buses(from + offset as u64, region, false, false);
+                renderer.sample_master(mix, from + offset as u64, region, false);
             }
         }
         if failed {

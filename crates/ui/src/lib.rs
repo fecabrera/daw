@@ -1,3 +1,4 @@
+mod bounce;
 mod eq_graph_preview;
 mod time_signature_control;
 mod view_panels;
@@ -382,6 +383,15 @@ enum Job {
     Exported(Vec<String>),
     Separated(daw_project::PreparedSeparation),
     Normalized(Vec<Edit>),
+    Bounced(
+        Box<
+            Result<
+                (daw_project::PreparedBounce, daw_project::SessionHistory),
+                daw_project::BounceError,
+            >,
+        >,
+    ),
+    BounceCleaned(Option<String>),
     ModelValidated(Result<daw_project::SeparationModelInfo, String>),
     CollectionPreflight(
         Id,
@@ -459,13 +469,20 @@ impl FileAction {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClipAction {
+    Bounce,
     Copy,
     Paste,
     Split,
     Merge,
 }
 impl ClipAction {
-    pub const ALL: [Self; 4] = [Self::Copy, Self::Paste, Self::Split, Self::Merge];
+    pub const ALL: [Self; 5] = [
+        Self::Copy,
+        Self::Paste,
+        Self::Split,
+        Self::Merge,
+        Self::Bounce,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -473,6 +490,7 @@ impl ClipAction {
             Self::Paste => "Paste",
             Self::Split => "Split at playhead",
             Self::Merge => "Merge",
+            Self::Bounce => "Bounce clips",
         }
     }
 
@@ -484,6 +502,7 @@ impl ClipAction {
                 Self::Paste => egui::Key::V,
                 Self::Split => egui::Key::T,
                 Self::Merge => egui::Key::J,
+                Self::Bounce => egui::Key::B,
             },
         )
     }
@@ -491,6 +510,7 @@ impl ClipAction {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrackAction {
+    Bounce,
     Group,
     Ungroup,
     Add,
@@ -506,7 +526,7 @@ pub enum TrackAction {
     Delete,
 }
 impl TrackAction {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Add,
         Self::AddMidi,
         Self::AddBeat,
@@ -515,6 +535,7 @@ impl TrackAction {
         Self::AddSubtrack,
         Self::Rename,
         Self::Duplicate,
+        Self::Bounce,
         Self::Group,
         Self::Ungroup,
         Self::Mute,
@@ -543,6 +564,7 @@ impl TrackAction {
             Self::Solo => "Solo",
             Self::Rename => "Rename track",
             Self::Duplicate => "Duplicate track",
+            Self::Bounce => "Bounce tracks",
             Self::Delete => "Delete track",
         }
     }
@@ -559,6 +581,10 @@ impl TrackAction {
             | Self::Delete => {
                 return None;
             }
+            Self::Bounce => (
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                egui::Key::B,
+            ),
             Self::Group => (egui::Modifiers::COMMAND, egui::Key::G),
             Self::Ungroup => (
                 egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -982,6 +1008,12 @@ pub struct DawUi {
     collection_input_ready: bool,
     collection_focus: Option<egui::Id>,
     separation_status: Option<separation::Status>,
+    bounce_status: Option<bounce::Status>,
+    bounce_pending: Option<bounce::Pending>,
+    bounce_input_blocked: bool,
+    bounce_restore_focus: Option<egui::Id>,
+    bounce_suppressed_keys: HashSet<egui::Key>,
+    bounce_block_pointer: bool,
     normalize_dialog: Option<normalize::Draft>,
     normalize_progress: Option<daw_project::NormalizeProgress>,
     overwrite_settings: ExportSettings,
@@ -1135,6 +1167,12 @@ impl Default for DawUi {
             collection_input_ready: true,
             collection_focus: None,
             separation_status: None,
+            bounce_status: None,
+            bounce_pending: None,
+            bounce_input_blocked: false,
+            bounce_restore_focus: None,
+            bounce_suppressed_keys: HashSet::new(),
+            bounce_block_pointer: false,
             normalize_dialog: None,
             normalize_progress: None,
             overwrite_settings: ExportSettings::default(),
@@ -1655,6 +1693,8 @@ impl DawUi {
                     self.perform_pending();
                 }
                 Ok(Job::Normalized(edits)) => self.finish_normalization(Ok(edits)),
+                Ok(Job::Bounced(result)) => self.finish_bounce(*result),
+                Ok(Job::BounceCleaned(error)) => self.finish_bounce_cleanup(error),
                 Ok(Job::Separated(prepared)) => {
                     if let Some(status) = &mut self.separation_status {
                         if status
@@ -1681,7 +1721,9 @@ impl DawUi {
                     }
                 }
                 Err(e) => {
-                    if self.normalize_progress.is_some() {
+                    if self.bounce_status.is_some() {
+                        self.fail_bounce(e);
+                    } else if self.normalize_progress.is_some() {
                         self.finish_normalization(Err(e));
                     } else if self.separation_models.running() {
                         self.finish_model_validation(Err(e));
@@ -2105,6 +2147,10 @@ impl DawUi {
     pub fn clip_action_enabled(&self, action: ClipAction, ctx: &egui::Context) -> bool {
         self.clip_actions_available(ctx)
             && match action {
+                ClipAction::Bounce => {
+                    self.selection_shortcut_environment_available(ctx)
+                        && self.bounce_request_enabled(daw_core::BounceMode::Clips)
+                }
                 ClipAction::Copy => {
                     self.portion_has_content()
                         || self
@@ -2145,6 +2191,7 @@ impl DawUi {
             return;
         }
         match action {
+            ClipAction::Bounce => self.start_bounce(daw_core::BounceMode::Clips, None, ctx),
             ClipAction::Copy => self.copy_clip(ctx),
             ClipAction::Paste => self.paste_clip(),
             ClipAction::Merge => self.merge_clips(&self.selected_clip_ids()),
@@ -2317,6 +2364,7 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.update_bounce_input_guard(ui.ctx());
         self.update_clip_edge_mode(ui);
         self.editor_transients
             .poll(self.session.project.project_id, ui.ctx());
@@ -2369,6 +2417,7 @@ impl DawUi {
             worker.set_waker(move || wake.request_repaint());
         }
         self.poll();
+        self.poll_bounce_publication();
         self.poll_audio_devices(&ctx);
         // Publish completed jobs before a new pointer gesture starts its own undo step.
         if ui.is_enabled()
@@ -2410,22 +2459,46 @@ impl DawUi {
         if let Some(output) = &mut self.output {
             output.drain();
             if let Some(error) = output.take_preparation_error() {
-                self.error = Some(error);
+                if self.bounce_status.is_some() {
+                    if let Some(status) = &mut self.bounce_status {
+                        status.state = job_report::State::Failed(error);
+                        status.publishing = false;
+                    }
+                    let _ = output.sync_reconstructed(self.session.plan());
+                } else {
+                    self.error = Some(error);
+                }
             }
             self.session.project.transport.playhead_frame = output.displayed_frame();
             if output.status.source_failed.load(Ordering::Relaxed) {
-                self.error = Some(output.source_error().unwrap_or_else(|| {
-                    "Cannot read prepared disk audio. Playback stopped.".into()
-                }));
+                let error = output
+                    .source_error()
+                    .unwrap_or_else(|| "Cannot read prepared disk audio. Playback stopped.".into());
+                if let Some(status) = &mut self.bounce_status {
+                    status.state = job_report::State::Failed(error);
+                    status.progress.cancel.store(true, Ordering::Release);
+                } else {
+                    self.error = Some(error);
+                }
                 self.output = None;
             } else if output.status.failed.load(Ordering::Relaxed) {
-                self.error=Some("Audio output failed or disconnected. Playback stopped. Editing and export remain available.".into());
+                let error = "Audio output failed or disconnected. Playback stopped.".to_owned();
+                if let Some(status) = &mut self.bounce_status {
+                    status.state = job_report::State::Failed(error);
+                    status.progress.cancel.store(true, Ordering::Release);
+                } else {
+                    self.error = Some(error);
+                }
                 self.output = None;
             }
         }
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            if self.job.is_none() && self.regular_save.is_none() && self.collection_status.is_none()
+            if self.job.is_none()
+                && self.regular_save.is_none()
+                && self.collection_status.is_none()
+                && self.bounce_status.is_none()
+                && !self.bounce_input_blocked
             {
                 self.project_name_dialog = None;
                 self.settings_open = false;
@@ -2469,6 +2542,8 @@ impl DawUi {
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
                         && self.separation_status.is_none()
+                        && self.bounce_status.is_none()
+                        && !self.bounce_input_blocked
                         && self.normalize_dialog.is_none()
                         && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
@@ -2498,6 +2573,8 @@ impl DawUi {
                         // Keep normalization, separation and model-check receivers until
                         // acknowledgement. Their publication paths reject cancelled results.
                         if self.separation_status.is_none()
+                            && self.bounce_status.is_none()
+                            && !self.bounce_input_blocked
                             && self.normalize_progress.is_none()
                             && self.collection_status.is_none()
                             && !self.separation_models.running()
@@ -2540,6 +2617,8 @@ impl DawUi {
                             && self.overwrite.is_none()
                             && self.export_status.is_none()
                             && self.separation_status.is_none()
+                            && self.bounce_status.is_none()
+                            && !self.bounce_input_blocked
                             && self.normalize_dialog.is_none()
                             && self.collection_status.is_none()
                             && self.project_name_dialog.is_none()
@@ -2566,6 +2645,8 @@ impl DawUi {
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
                         && self.separation_status.is_none()
+                        && self.bounce_status.is_none()
+                        && !self.bounce_input_blocked
                         && self.normalize_dialog.is_none()
                         && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
@@ -2585,6 +2666,7 @@ impl DawUi {
             || self
                 .eq_graph_preview
                 .needs_sync(&wanted, self.output.is_some()))
+            && self.bounce_pending.is_none()
             && !self.reconcile_background_media()
         {
             match eq_graph_preview::State::plan(&self.session, wanted.as_ref()) {
@@ -2650,6 +2732,9 @@ impl DawUi {
         if self.view_mode == ViewMode::Instrument {
             self.finish_clip_drag(ui);
         }
+        if ui.is_enabled() {
+            self.bounce_shortcuts(&ctx);
+        }
         self.clip_shortcuts(&ctx);
         if ui.is_enabled() {
             self.track_shortcuts(&ctx);
@@ -2657,6 +2742,8 @@ impl DawUi {
         if self.job.is_none()
             && self.export_status.is_none()
             && self.separation_status.is_none()
+            && self.bounce_status.is_none()
+            && !self.bounce_input_blocked
             && self.normalize_dialog.is_none()
             && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
@@ -2871,6 +2958,8 @@ impl DawUi {
             && self.export_dialog.is_none()
             && self.export_status.is_none()
             && self.separation_status.is_none()
+            && self.bounce_status.is_none()
+            && !self.bounce_input_blocked
             && self.normalize_dialog.is_none()
             && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
@@ -6013,6 +6102,7 @@ impl DawUi {
         {
             self.error = None;
         }
+        self.show_bounce(ctx);
         self.show_normalization(ctx);
         self.show_collection(ctx);
         if let Some(status) = &self.separation_status
@@ -6071,6 +6161,8 @@ mod tests {
     mod audio_editor;
     mod background_audio;
     mod beat;
+    #[path = "bounce.rs"]
+    mod bounce_tests;
     mod chords;
     mod clip_duplication;
     mod clip_fades;
@@ -6136,6 +6228,7 @@ mod tests {
         let asset = Id::new_v4();
         app.session.project.assets.push(daw_core::Asset {
             midi_pattern: None,
+            rendered_audio: None,
             compound_audio: None,
             beat_pattern: None,
             id: asset,

@@ -747,11 +747,7 @@ fn export_settings_keep_overwrite_protection_and_float_headroom() {
             .export_with_settings(&output, true, settings)
             .unwrap();
         if settings.format == ExportFormat::Wav && settings.wav_codec == WavCodec::Float32 {
-            assert!(
-                warnings
-                    .iter()
-                    .any(|warning| warning.contains("preserves headroom"))
-            );
+            assert!(warnings.is_empty(), "{warnings:?}");
             assert!(
                 hound::WavReader::open(&output)
                     .unwrap()

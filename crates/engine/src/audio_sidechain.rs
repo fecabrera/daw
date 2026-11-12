@@ -104,7 +104,13 @@ pub(super) fn specs(project: &Project) -> Vec<Spec> {
     out
 }
 #[derive(Clone)]
+struct Contribution {
+    source: usize,
+    tap: super::captured_taps::Tap,
+}
+#[derive(Clone)]
 struct Edge {
+    captured: Vec<Contribution>,
     id: Id,
     source: Option<usize>,
     settings: daw_unit_core::AudioSidechain,
@@ -159,7 +165,37 @@ impl Sidechains {
                 spec.route.id,
                 (spec.destination, this.edges[spec.destination].len()),
             );
+            let captured = if source.is_none() {
+                Vec::new()
+            } else {
+                p.tracks
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, track)| {
+                        let tap = super::captured_taps::Tap::new(
+                            plan,
+                            track,
+                            |r| {
+                                r.feeds
+                                    .iter()
+                                    .find(|f| f.provider == settings.track)
+                                    .map(|f| {
+                                        if settings.tap == SidechainTap::PreFader {
+                                            f.raw_asset
+                                        } else {
+                                            f.post_asset
+                                        }
+                                    })
+                            },
+                            0,
+                            time + spec.stage,
+                        )?;
+                        Some(Contribution { source: index, tap })
+                    })
+                    .collect()
+            };
             this.edges[spec.destination].push(Edge {
+                captured,
                 id: spec.route.id,
                 source,
                 settings,
@@ -183,6 +219,18 @@ impl Sidechains {
             .collect();
         this
     }
+    pub(super) fn taps_mut(&mut self) -> impl Iterator<Item = &mut super::captured_taps::Tap> {
+        self.edges
+            .iter_mut()
+            .flatten()
+            .flat_map(|e| e.captured.iter_mut().map(|c| &mut c.tap))
+    }
+    pub(super) fn taps(&self) -> impl Iterator<Item = &super::captured_taps::Tap> {
+        self.edges
+            .iter()
+            .flatten()
+            .flat_map(|e| e.captured.iter().map(|c| &c.tap))
+    }
     pub fn active(&self) -> bool {
         self.active
     }
@@ -197,6 +245,8 @@ impl Sidechains {
         raw: &[latency::Sample],
         post: &[[f32; 4]],
         frame: u64,
+        region: Option<(u64, u64)>,
+        realtime: bool,
     ) {
         for (edge, value) in self.edges[destination]
             .iter_mut()
@@ -210,6 +260,18 @@ impl Sidechains {
                 sample = std::array::from_fn(|ch| sample[ch] * post[s][base + ch]);
             }
             let (sample, _) = edge.delay.tick((sample, mono));
+            let mut sample = sample;
+            for contribution in &mut edge.captured {
+                let (value, _) = contribution.tap.sample(frame, region, realtime);
+                for ch in 0..2 {
+                    let gain = if edge.settings.tap == SidechainTap::PostFader {
+                        post[contribution.source][2 + ch]
+                    } else {
+                        1.0
+                    };
+                    sample[ch] += value[ch] * gain;
+                }
+            }
             edge.follower.feed(sample);
             *value = edge.output.sample(
                 &mut edge.follower,
@@ -229,6 +291,9 @@ impl Sidechains {
         self.clocks.fill(None);
         for e in self.edges.iter_mut().flatten() {
             e.delay.reset();
+            for c in &mut e.captured {
+                c.tap.delay.reset();
+            }
             e.follower.reset();
             e.output.reset();
         }
@@ -245,6 +310,10 @@ impl Sidechains {
                         && a.settings.track == b.settings.track
                         && a.settings.tap == b.settings.tap
                         && a.delay.frames() == b.delay.frames()
+                        && a.captured.len() == b.captured.len()
+                        && a.captured.iter().zip(&b.captured).all(|(a, b)| {
+                            a.source == b.source && a.tap.reader.same_source(&b.tap.reader)
+                        })
                 })
         }) && self.edges.len() == old.edges.len()
     }
@@ -280,7 +349,16 @@ impl Sidechains {
             + self
                 .edges
                 .iter()
-                .map(|v| vec_bytes(v) + v.iter().map(|e| e.delay.heap_bytes()).sum::<u64>())
+                .map(|v| {
+                    vec_bytes(v)
+                        + v.iter()
+                            .map(|e| {
+                                e.delay.heap_bytes()
+                                    + daw_unit_core::memory::vec_bytes(&e.captured)
+                                    + e.captured.iter().map(|c| c.tap.heap_bytes()).sum::<u64>()
+                            })
+                            .sum::<u64>()
+                })
                 .sum::<u64>()
     }
 }

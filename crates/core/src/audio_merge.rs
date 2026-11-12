@@ -62,6 +62,7 @@ impl Project {
         let asset = Asset {
             id: Id::new_v4(),
             name: first.name.clone(),
+            rendered_audio: None,
             compound_audio: Some(source),
             midi_pattern: None,
             beat_pattern: None,

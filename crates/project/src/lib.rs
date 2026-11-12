@@ -1,3 +1,7 @@
+mod bounce;
+mod bounce_tail;
+mod generated_media;
+pub use bounce::{BounceError, BounceProgress, PreparedBounce};
 mod normalize;
 pub use normalize::{NormalizeMode, NormalizeOptions, NormalizeProgress};
 mod background_audio;
@@ -448,6 +452,7 @@ impl Session {
         };
         next.assets.push(Asset {
             midi_pattern: None,
+            rendered_audio: None,
             compound_audio: None,
             beat_pattern: None,
             id: asset_id,
@@ -533,7 +538,7 @@ impl Session {
         let requested_tail = self.project.all_effects().fold(0_u64, |sum, effect| {
             sum.saturating_add(effect.unit.tail_frames(self.project.sample_rate_hz))
         });
-        let tail_cap = u64::from(self.project.sample_rate_hz) * 10;
+        let tail_cap = daw_engine::offline_tail_cap(self.project.sample_rate_hz);
         let end = arranged_end
             .checked_add(requested_tail.min(tail_cap))
             .ok_or_else(|| error("Export duration exceeds the supported frame range"))?;
@@ -594,16 +599,12 @@ impl Session {
             if requested_tail > tail_cap {
                 warnings.push("Reverb tail limited to 10 seconds after the arrangement; the remaining tail was truncated".into());
             }
-            if clipped {
-                warnings.push(
-                    if settings.format == ExportFormat::Wav
-                        && settings.wav_codec == WavCodec::Float32
-                    {
-                        "Master output exceeds 0 dBFS; floating-point WAV preserves headroom".into()
-                    } else {
-                        "Master output clipped; lower master gain to avoid distortion".into()
-                    },
-                );
+            if clipped
+                && !(settings.format == ExportFormat::Wav
+                    && settings.wav_codec == WavCodec::Float32)
+            {
+                warnings
+                    .push("Master output clipped; lower master gain to avoid distortion".into());
             }
             Ok(warnings)
         })();

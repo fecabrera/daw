@@ -16,6 +16,9 @@ impl Project {
                         + a.source.path.capacity() as u64
                         + a.source.path_kind.capacity() as u64
                         + a.source_metadata.sample_format.capacity() as u64
+                        + a.rendered_audio.as_ref().map_or(0, |r| {
+                            (r.feeds.capacity() * std::mem::size_of::<crate::RenderedFeed>()) as u64
+                        })
                         + a.compound_audio
                             .as_ref()
                             .map_or(0, |s| s.metadata_bytes().unwrap_or(u64::MAX))

@@ -9,21 +9,7 @@ use std::{
     sync::atomic::Ordering,
 };
 
-/// Only owns a fresh, exclusively created temporary directory. Session/history
-/// clones keep files alive independently of the separation job and save worker.
-pub(super) struct TemporaryStems(PathBuf);
-impl TemporaryStems {
-    fn new() -> Result<Self> {
-        let path = std::env::temp_dir().join(format!("daw-temporary-stems-{}", Id::new_v4()));
-        fs::create_dir(&path).map_err(error)?;
-        Ok(Self(path))
-    }
-}
-impl Drop for TemporaryStems {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+pub(super) use crate::generated_media::GeneratedDirectory as TemporaryStems;
 
 /// Unpublished output owns its directory. Failure, cancellation, or a dropped
 /// worker receiver removes only this job's files. Published files survive undo.
@@ -164,7 +150,11 @@ impl Session {
             if source >= audio.frame_count() {
                 return Err(error("Clip source range is unavailable"));
             }
-            let fade = daw_engine::clip_repeat_fade(&clip, source, self.project.sample_rate_hz);
+            let fade = if self.project.rendered_loop_has_baked_edges(&clip) {
+                1.0
+            } else {
+                daw_engine::clip_repeat_fade(&clip, source, self.project.sample_rate_hz)
+            };
             input.push(reader.sample(source).map_err(error)?.map(|v| v * fade));
         }
         let resampled = daw_media::resample_cancellable(

@@ -111,7 +111,7 @@ pub(super) fn run(
                 continue;
             }
         };
-        if owner.source.kind == "generated" {
+        if owner.source.is_generated() {
             let stored_root = crate::absolute(live.folder.as_deref().unwrap())?;
             let relative = path
                 .strip_prefix(&root)

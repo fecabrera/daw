@@ -1,3 +1,8 @@
+mod bounce;
+pub use bounce::{
+    BounceMode, BounceOutput, BounceRequest, BounceTarget, BounceTargets, RenderedAudio,
+    RenderedFeed,
+};
 mod display;
 pub use display::{ProjectDisplay, TrackHeight};
 mod clip_channels;
@@ -269,6 +274,8 @@ pub struct Master {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rendered_audio: Option<RenderedAudio>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compound_audio: Option<CompoundAudio>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -613,8 +620,10 @@ impl Project {
                 }
                 continue;
             }
-            if !matches!(a.source.kind.as_str(), "external" | "generated")
-                || !matches!(a.source.path_kind.as_str(), "relative" | "absolute")
+            if !matches!(
+                a.source.kind.as_str(),
+                "external" | "generated" | "rendered_audio"
+            ) || !matches!(a.source.path_kind.as_str(), "relative" | "absolute")
                 || a.source.path.is_empty()
             {
                 return Err(invalid("Invalid external source reference"));
@@ -633,6 +642,7 @@ impl Project {
             }
         }
         self.validate_compound_graph()?;
+        self.validate_rendered_sources()?;
         let assets: std::collections::HashMap<_, _> =
             self.assets.iter().map(|a| (a.id, a)).collect();
         for t in &self.tracks {
@@ -708,6 +718,7 @@ impl Project {
     fn validate_clip_asset(&self, c: &Clip, a: &Asset) -> Result<()> {
         let invalid = |s: &str| Error(s.into());
         if a.compound_audio.is_none()
+            && a.rendered_audio.is_none()
             && (c.fades.fade_in.inherit_source || c.fades.fade_out.inherit_source)
         {
             return Err(invalid(
@@ -1070,6 +1081,9 @@ impl Project {
             Edit::SetClipName { clip_id, name } => {
                 self.clip_mut(clip_id)?.name = clip_name(&name)?.to_owned();
             }
+            Edit::Bounce { request, outputs } => {
+                *self = self.bounced(&request, outputs)?;
+            }
             Edit::SetClipMuted { clip_id, muted } => {
                 self.clip_mut(clip_id)?.muted = muted;
             }
@@ -1210,6 +1224,10 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    Bounce {
+        request: BounceRequest,
+        outputs: Vec<BounceOutput>,
+    },
     AddReturn {
         track_id: Id,
         name: String,
@@ -1730,6 +1748,7 @@ mod tests {
         let asset_id = Id::new_v4();
         project.assets.push(Asset {
             midi_pattern: None,
+            rendered_audio: None,
             compound_audio: None,
             beat_pattern: None,
             id: asset_id,

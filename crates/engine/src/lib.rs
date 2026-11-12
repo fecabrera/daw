@@ -1,3 +1,6 @@
+mod bounce;
+mod captured_taps;
+pub use bounce::{BounceCapture, BounceFrame, bounce_tail_frames, offline_tail_cap};
 mod effect_updates;
 pub use effect_updates::{EffectUpdate, EffectUpdateFallback};
 mod beat;
@@ -56,7 +59,7 @@ impl RenderPlan {
         self.project
             .assets
             .iter()
-            .any(|a| a.compound_audio.is_some())
+            .any(|a| a.compound_audio.is_some() || a.rendered_audio.is_some())
             || self
                 .project
                 .tracks
@@ -226,6 +229,7 @@ pub enum ModulationTarget {
 /// Immutable decoded/prepared audio remains shared.
 #[derive(Clone)]
 pub struct Renderer {
+    capture_controls: Option<Vec<Vec<daw_unit_core::ModulationValue>>>,
     /// Prepared model. Update only through an effect transaction or renderer inheritance.
     pub plan: RenderPlan,
     end_frame: u64,
@@ -253,6 +257,7 @@ pub struct Renderer {
     previous: [f32; 2],
     latent_held_mix: [f32; 2],
     source_fingerprint: u64,
+    rendered_fingerprint: u64,
     effect_fingerprint: u64,
     prime_offset: u64,
     prime_pending: bool,
@@ -397,6 +402,20 @@ impl Renderer {
             }
         }
         let source_fingerprint = hash.finish();
+        let mut rendered_hash = std::collections::hash_map::DefaultHasher::new();
+        for asset in &plan.project.assets {
+            if let Some(source) = &asset.rendered_audio {
+                asset.id.hash(&mut rendered_hash);
+                source.version.hash(&mut rendered_hash);
+                source.pre_send_asset.hash(&mut rendered_hash);
+                for feed in &source.feeds {
+                    feed.provider.hash(&mut rendered_hash);
+                    feed.raw_asset.hash(&mut rendered_hash);
+                    feed.post_asset.hash(&mut rendered_hash);
+                }
+            }
+        }
+        let rendered_fingerprint = rendered_hash.finish();
         let effect_fingerprint = effect_updates::fingerprint(&plan);
         let alignment = latency::Alignment::new(&plan.project);
         let buses = buses::Buses::new(&plan, &alignment);
@@ -419,6 +438,7 @@ impl Renderer {
             midi,
             effects,
             master_effects,
+            capture_controls: None,
             plan,
             playhead,
             playing: false,
@@ -434,6 +454,7 @@ impl Renderer {
             previous: [0.0; 2],
             latent_held_mix: [0.0; 2],
             source_fingerprint,
+            rendered_fingerprint,
             effect_fingerprint,
             prime_offset: 0,
             prime_pending: false,
@@ -743,7 +764,10 @@ impl Renderer {
     pub fn can_inherit_without_preroll(&self, old: &Self) -> bool {
         let new_loop = &self.plan.project.transport.r#loop;
         let old_loop = &old.plan.project.transport.r#loop;
-        self.alignment.compatible(&old.alignment)
+        // A new/removed baked source changes ownership of source DSP history.
+        // Compare cached worker tags; do not inspect source metadata on the callback.
+        self.rendered_fingerprint == old.rendered_fingerprint
+            && self.alignment.compatible(&old.alignment)
             && self.sidechains.compatible(&old.sidechains)
             && self.midi.iter().enumerate().all(|(index, runtime)| {
                 runtime.as_ref().is_none_or(|next| {
@@ -772,7 +796,14 @@ impl Renderer {
     /// Shared preparation admission for cache workers and direct reconstruction.
     /// A bus chain must retain the history of its complete child mix.
     fn needs_processing_history(&self) -> bool {
-        if self.sidechains.active() {
+        if self.sidechains.active()
+            || self
+                .plan
+                .project
+                .assets
+                .iter()
+                .any(|a| a.rendered_audio.is_some())
+        {
             return true;
         }
         self.plan.project.all_effects().any(|e| {
@@ -1148,8 +1179,8 @@ impl Renderer {
     fn offline_frame(&mut self, frame: u64, live: bool, realtime: bool) -> [f32; 2] {
         let loop_region = self.loop_region(live);
         self.sample_tracks(frame, loop_region, true, false, realtime);
-        let mix = self.sample_buses(frame, loop_region, false);
-        self.sample_master(mix, frame, loop_region)
+        let mix = self.sample_buses(frame, loop_region, false, realtime);
+        self.sample_master(mix, frame, loop_region, realtime)
             .map(|value| value * self.master_target)
     }
     fn sample_master(
@@ -1157,10 +1188,17 @@ impl Renderer {
         mix: [f32; 2],
         frame: u64,
         loop_region: Option<(u64, u64)>,
+        realtime: bool,
     ) -> [f32; 2] {
         let index = self.plan.project.tracks.len();
-        self.sidechains
-            .tick(index, &self.buses.raw, &self.sidechain_post, frame);
+        self.sidechains.tick(
+            index,
+            &self.buses.raw,
+            &self.sidechain_post,
+            frame,
+            loop_region,
+            realtime,
+        );
         self.master_effects
             .sample(
                 mix,
@@ -1268,8 +1306,8 @@ impl Renderer {
                     self.suspend_analysis(true);
                 }
                 self.sample_tracks(frame, loop_region, self.playing, true, true);
-                mix = self.sample_buses(frame, loop_region, true);
-                mix = self.sample_master(mix, frame, loop_region);
+                mix = self.sample_buses(frame, loop_region, true, true);
+                mix = self.sample_master(mix, frame, loop_region, true);
                 if !self.playing {
                     self.suspend_analysis(false);
                 }
@@ -1740,6 +1778,7 @@ mod tests {
         };
         project.assets.push(Asset {
             midi_pattern: None,
+            rendered_audio: None,
             compound_audio: None,
             beat_pattern: None,
             id,

@@ -36,7 +36,7 @@ impl<'a> TargetPlanner<'a> {
                 .iter()
                 .copied()
                 .filter(|&i| {
-                    (self.snapshot.owners[i].source.kind == "generated")
+                    (self.snapshot.owners[i].source.is_generated())
                         == (kind == CollectionTargetKind::GeneratedStem)
                 })
                 .collect::<Vec<_>>();

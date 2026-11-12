@@ -152,7 +152,7 @@ exports include codec priming and a padded final frame. Reimported AAC clips can
 therefore start with a short delay and last slightly longer than the arrangement.
 Use WAV when exact sample alignment is required.
 
-Export includes the arranged project duration and appends enabled effect tails up to ten seconds. Bypassed effects add no tail. The completion report warns when a longer tail is truncated. Extend the arrangement with silence for longer fades. It follows the same mute, solo, pan, and effect settings as playback. Missing sources produce warnings and silence. Integer WAV, MP3, and AAC clamp clipping; float32 WAV retains headroom and reports levels above 0 dBFS. No automatic normalization is applied.
+Export includes the arranged project duration and appends enabled effect tails up to ten seconds. Bypassed effects add no tail. The completion report warns when a longer tail is truncated. Extend the arrangement with silence for longer fades. It follows the same mute, solo, pan, and effect settings as playback. Missing sources produce warnings and silence. Integer WAV, MP3, and AAC clamp clipping and report it. Float32 WAV retains levels above 0 dBFS without a warning. No automatic normalization is applied.
 
 Progress and completion appear in the status dialog. An existing destination requires replacement confirmation. A running desktop export has no Cancel control. Failure leaves the previous destination intact.
 

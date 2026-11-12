@@ -49,3 +49,8 @@ Send rows always appear above Pan, with a grouped power button and Return dropdo
 Master stays at the right while tracks scroll, unless you hide it with its toolbar toggle. It controls the combined track mix. Master effects run before Master gain. Any gain after a Limiter can raise its output above the limiter ceiling.
 
 The project Master is separate from [Instrument Output](../instruments/main.md), which controls the layers of one MIDI instrument. See [instruments and effects](instrument.md) for effect placement.
+
+## Bounce to audio
+
+See [Bounce clips and tracks](../editing/bounce.md) for rendering selected clips
+or full tracks to new audio tracks with disabled originals.

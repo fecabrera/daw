@@ -188,3 +188,12 @@ The first release gate is a saved project collected, moved and reopened with ori
 - Content-based deduplication across different source files.
 
 These items do not block the explicit collection command and are not implicit first-version requirements.
+
+## Rendered bounce sources
+
+[Clip and track Bounce](../editing/bounce.md) adds the required `rendered_audio`
+source discriminator with project ownership. All main and auxiliary routing leaves
+participate in the same inventory, generated-source path handling, byte accounting,
+overwrite protection, collection and relocation receipts as generated stems.
+History-only leaves remain protected through first Save and Save As. Collection
+must retain the required source kind and its versioned binding metadata.

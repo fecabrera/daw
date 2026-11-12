@@ -5,6 +5,16 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Clip and track Bounce — 2026-11-12
+
+See [Bounce validation](bounce.md) for the shared capture/routing transaction,
+background preparation, generated-source history, progress dialog, immediate
+post-bounce unlock and expected-notice policy. Workspace debug/release gates and
+CLI smoke checks passed; native UI/device/platform limits are recorded separately.
+The tail follow-up removes unused rendered endings while preserving requested
+geometry, late echoes and synchronized routing leaves; both workspace test modes
+passed again.
+
 ## Clip channel button group — 2026-11-12
 
 Timeline Clip settings and Editor Clip options join L/R in the existing shared

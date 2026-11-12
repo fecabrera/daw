@@ -112,6 +112,7 @@ mod tests {
         let asset = crate::Id::new_v4();
         project.assets.push(crate::Asset {
             midi_pattern: None,
+            rendered_audio: None,
             compound_audio: None,
             beat_pattern: None,
             id: asset,

@@ -140,3 +140,8 @@ If a source exceeds the 128 MiB analysis memory
 limit or cannot be analyzed, a small status label provides details in its tooltip;
 editing and playback remain available. Toggle the option off and on to retry a
 failed analysis. Original recordings remain unchanged.
+
+## Bounce to audio
+
+See [Bounce clips and tracks](../editing/bounce.md) for rendering selected clips
+or full tracks to new audio tracks with disabled originals.

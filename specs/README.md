@@ -43,6 +43,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 ## Instruments and editing
 
+- [Clip and track bounce](editing/bounce.md): isolated capture, routing feeds and atomic publication.
+
 - [MIDI patterns, Oscillator, Envelope, and rendering](instruments/midi-patterns.md).
 - [Granulizer](instruments/granulizer.md)
 - [Noise](instruments/noise.md).

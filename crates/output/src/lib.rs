@@ -900,6 +900,21 @@ impl AudioOutput {
         }
         Ok(())
     }
+    /// Publish a baked arrangement through exact worker reconstruction. Inheriting
+    /// source effect tails would add history already present in the rendered clip.
+    pub fn sync_reconstructed(&mut self, plan: RenderPlan) -> Result<(), String> {
+        if plan.project.sample_rate_hz != self.project_rate_hz
+            || plan.project.buffer_size_frames != self.buffer_size_frames
+            || plan.project.output_sample_format != self.plan.project.output_sample_format
+        {
+            return Err("Recreate output after changing project audio settings".into());
+        }
+        self.drain();
+        let state = self.current_transport();
+        self.plan = Arc::new(plan);
+        self.prepare(Some(state));
+        Ok(())
+    }
     fn prepare_effects(&mut self) {
         let Some(previous) = self.active_plan.clone() else {
             self.prepare(None);
@@ -1179,6 +1194,20 @@ impl AudioOutput {
         state.frame = frame;
         self.prepare(Some(state));
         Ok(())
+    }
+    /// Publication receipt for hosts that stage an atomic model transaction.
+    pub fn current_plan_published(&self) -> bool {
+        self.active_plan
+            .as_ref()
+            .is_some_and(|p| Arc::ptr_eq(p, &self.plan))
+            && self.active_publication == self.status.processing_publication.load(Ordering::Acquire)
+            && self.prepare_revision == self.status.applied_revision.load(Ordering::Acquire)
+    }
+    pub fn requested_revision(&self) -> u64 {
+        self.prepare_revision
+    }
+    pub fn applied_revision(&self) -> u64 {
+        self.status.applied_revision.load(Ordering::Acquire)
     }
     pub fn preparing(&self) -> bool {
         !self.preparation_failed
@@ -1841,6 +1870,7 @@ mod tests {
         };
         project.assets.push(Asset {
             midi_pattern: None,
+            rendered_audio: None,
             compound_audio: None,
             beat_pattern: None,
             id,

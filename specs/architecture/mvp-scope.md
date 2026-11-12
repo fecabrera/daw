@@ -496,3 +496,12 @@ Beat tracks, immutable embedded beat patterns, the lower Editor step grid and in
 ## Track sends and Returns
 
 The accepted [track sends contract](../editing/track-sends.md) adds source-owned Pre/Post sends to dedicated Return buses. Returns start empty and are created explicitly, with no defaults or presets. Source mute retains sends; source Solo gates other feeders. Return banks stay pinned above Master in Timeline and beside Master in Mixer. This supersedes earlier references to deferred track-level sends.
+
+## Clip and track Bounce
+
+Audio, MIDI and Beat parents support [clip and track Bounce](../editing/bounce.md).
+The transaction creates rendered Audio siblings, retains disabled originals, bakes
+local processing and keeps downstream buses live. Preparation runs on workers
+with guarded progress, cancellation cleanup and complete publication. The dedicated
+contract supersedes earlier menu lists that omit Bounce. See
+[Bounce validation](../validation/bounce.md) for executed checks and native limits.

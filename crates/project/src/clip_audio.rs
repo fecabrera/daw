@@ -18,6 +18,24 @@ pub(super) fn requests(project: &Project) -> impl Iterator<Item = ClipAudioKey> 
         .flat_map(|track| &track.clips)
         .filter_map(key)
         .chain(project.compound_members().filter_map(key))
+        .chain(project.tracks.iter().flat_map(move |t| {
+            t.clips.iter().flat_map(move |c| {
+                let mut variants = Vec::new();
+                if let Some(r) = project
+                    .audio_asset(c.asset_id)
+                    .and_then(|a| a.rendered_audio.as_ref())
+                {
+                    for id in r.dependencies() {
+                        let mut leaf = c.clone();
+                        leaf.asset_id = id;
+                        if let Some(k) = key(&leaf) {
+                            variants.push(k);
+                        }
+                    }
+                }
+                variants
+            })
+        }))
         .chain(
             project
                 .samplers()

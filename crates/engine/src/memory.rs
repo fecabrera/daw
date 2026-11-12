@@ -111,7 +111,9 @@ impl Renderer {
                     .iter()
                     .map(|t| t.heap_bytes())
                     .sum::<u64>(),
-            processor_bytes: std::mem::size_of::<Self>() as u64
+            processor_bytes: self.capture_controls.as_ref().map_or(0, |controls| {
+                vec_bytes(controls) + controls.iter().map(vec_bytes).sum::<u64>()
+            }) + std::mem::size_of::<Self>() as u64
                 + map_bytes(&self.track_index)
                 + map_bytes(&self.effect_tracks)
                 + vec_bytes(&self.gains)

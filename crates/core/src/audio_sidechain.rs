@@ -52,6 +52,20 @@ impl Project {
                     .into_iter()
                     .filter_map(|(dest, r)| r.sidechain.map(|s| (s.track, dest))),
             )
+            .chain(
+                self.audio_sidechain_routes()
+                    .into_iter()
+                    .flat_map(|(dest, route)| {
+                        let provider = route.sidechain.unwrap().track;
+                        self.tracks
+                            .iter()
+                            .filter(move |t| {
+                                self.tracks.iter().any(|s| s.id == provider)
+                                    && self.rendered_providers(t).contains(&provider)
+                            })
+                            .map(move |t| (t.id, dest))
+                    }),
+            )
             .collect()
     }
     /// Missing identities remain saved and neutral; existing edges must form an acyclic graph.

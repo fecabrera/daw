@@ -70,7 +70,7 @@ impl Session {
                     continue;
                 }
                 asset.source = saved.source.clone();
-                if asset.source.kind == "generated" {
+                if asset.source.is_generated() {
                     asset.source.path = written
                         .source_path_unchecked(saved)?
                         .to_string_lossy()
@@ -91,7 +91,7 @@ impl Session {
     }
 }
 pub(crate) fn owned(source: &Source) -> bool {
-    source.kind == "generated" || source.is_included_recording()
+    source.is_generated() || source.is_included_recording()
 }
 fn same_audio(a: Option<&AudioData>, b: Option<&AudioData>) -> bool {
     match (a, b) {
@@ -138,7 +138,7 @@ pub(crate) fn relocated_project(
             asset.source = entry.source.clone();
             // Generated history can retain an absolute path. Included recordings
             // must retain a relative path and the matching new folder.
-            if asset.source.kind == "generated" {
+            if asset.source.is_generated() {
                 asset.source.path = folder
                     .join(&entry.source.path)
                     .to_string_lossy()
@@ -424,14 +424,14 @@ impl SaveSnapshot {
                 // Keep external parent paths in their captured absolute spelling.
                 // Rewriting them relative to a new save root would change pure
                 // history identities or resolve through another symlink.
-                asset.source.kind == "generated"
+                asset.source.is_generated()
                     || (!relative
                         .components()
                         .any(|c| c == std::path::Component::ParentDir)
                         && crate::same_file(&requested_folder.join(relative), &path))
             }) {
                 asset.source.path = relative.to_string_lossy().into_owned();
-                if asset.source.kind == "generated" {
+                if asset.source.is_generated() {
                     // Project-owned paths must reopen on hosts with a different
                     // native separator. External references retain host spelling.
                     asset.source.path = asset.source.path.replace('\\', "/");

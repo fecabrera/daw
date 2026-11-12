@@ -239,3 +239,9 @@ UI drags keep one 0.1 dB or 0.1 Hz input step between paired limits. Clamp after
 knob's floating-point conversion. Do not shrink the gap on successive frames.
 Retain narrower valid saved ranges without changing them during painting; an
 edit cannot narrow them further. Bound no-ops must not reach validation as errors.
+
+## Bounce integration
+
+The [Bounce contract](../editing/bounce.md) extends this lifecycle for versioned
+rendered sources, synchronized routing leaves and one atomic history transaction.
+Bounce keeps its editing guard through prepared publication or worker cleanup.

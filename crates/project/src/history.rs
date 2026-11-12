@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 const HISTORY_LIMIT: usize = 100;
 const HISTORY_BYTES: u64 = 128 * 1024 * 1024;
 
+#[derive(Clone)]
 struct Snapshot {
     session: Session,
     model_bytes: u64,
@@ -30,6 +31,7 @@ impl HistoryMemory {
     }
 }
 
+#[derive(Clone)]
 pub struct SessionHistory {
     current: Snapshot,
     undo: VecDeque<Snapshot>,

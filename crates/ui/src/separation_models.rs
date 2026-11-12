@@ -77,6 +77,8 @@ impl DawUi {
             || self.error.is_some()
             || self.export_status.is_some()
             || self.separation_status.is_some()
+            || self.bounce_status.is_some()
+            || self.bounce_input_blocked
             || self.collection_status.is_some()
             || self.project_settings.is_some()
             || self.project_name_dialog.is_some()

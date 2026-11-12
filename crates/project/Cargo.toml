@@ -17,5 +17,6 @@ thiserror.workspace = true
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
+daw-unit-core.workspace = true
 hound.workspace = true
 symphonia = { workspace = true, features = ["mp3"] }

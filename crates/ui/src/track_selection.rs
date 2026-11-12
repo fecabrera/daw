@@ -97,7 +97,8 @@ impl DawUi {
             {
                 !ctx.text_edit_focused() && ctx.dragged_id().is_none()
             }
-            TrackAction::Add
+            TrackAction::Bounce
+            | TrackAction::Add
             | TrackAction::AddMidi
             | TrackAction::AddBeat
             | TrackAction::AddGroup
@@ -114,13 +115,14 @@ impl DawUi {
             }
             _ => !ctx.egui_wants_keyboard_input(),
         };
-        (action != TrackAction::Group
-            || !self
-                .session
-                .project
-                .tracks
-                .iter()
-                .any(|t| self.track_selected(t.id) && t.kind == daw_core::TrackKind::Return))
+        (action != TrackAction::Bounce || self.bounce_request_enabled(daw_core::BounceMode::Tracks))
+            && (action != TrackAction::Group
+                || !self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .any(|t| self.track_selected(t.id) && t.kind == daw_core::TrackKind::Return))
             && (action != TrackAction::Ungroup || self.selected_group().is_some())
             && (action != TrackAction::AddSubtrack || self.selected_beat_parent().is_some())
             && (action != TrackAction::AddMidi
@@ -168,6 +170,10 @@ impl DawUi {
             || (matches!(action, TrackAction::Mute | TrackAction::Solo)
                 && ctx.input(|input| input.pointer.any_down()))
         {
+            return;
+        }
+        if action == TrackAction::Bounce {
+            self.start_bounce(daw_core::BounceMode::Tracks, None, ctx);
             return;
         }
         self.ensure_history();
@@ -582,6 +588,7 @@ impl DawUi {
         for (index, action) in [
             TrackAction::Rename,
             TrackAction::Duplicate,
+            TrackAction::Bounce,
             TrackAction::Group,
             TrackAction::Ungroup,
             TrackAction::Delete,

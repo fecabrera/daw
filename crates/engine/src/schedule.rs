@@ -62,6 +62,7 @@ pub(super) struct AudioTrack {
     clocks: Vec<Vec<daw_core::CompiledAudioEnvelope>>,
     rate: u32,
     envelopes: Vec<daw_core::ClipFades>,
+    baked_loops: Vec<bool>,
     transitions: Vec<Transition>,
     transition_ranges: Ranges,
     staged: Option<(usize, u64, [f32; 2])>,
@@ -70,6 +71,9 @@ pub(super) struct AudioTrack {
     reader_indices: Vec<Option<usize>>,
 }
 impl AudioTrack {
+    pub fn active_at(&mut self, frame: u64) -> bool {
+        self.ranges.at(frame).is_some_and(|i| !self.clips[i].muted)
+    }
     pub fn same_source(&self, other: &Self) -> bool {
         self.compile_error.is_none()
             && other.compile_error.is_none()
@@ -82,6 +86,7 @@ impl AudioTrack {
     fn fingerprint(&self, hash: &mut impl std::hash::Hasher) {
         use std::hash::Hash;
         self.rate.hash(hash);
+        self.baked_loops.hash(hash);
         self.clips.len().hash(hash);
         for (i, clip) in self.clips.iter().enumerate() {
             // Private provenance IDs and presentation do not change source samples.
@@ -118,7 +123,8 @@ impl AudioTrack {
         }
     }
     pub fn heap_bytes(&self) -> u64 {
-        daw_unit_core::memory::vec_bytes(&self.contexts)
+        daw_unit_core::memory::vec_bytes(&self.baked_loops)
+            + daw_unit_core::memory::vec_bytes(&self.contexts)
             + daw_unit_core::memory::vec_bytes(&self.context_readers)
             + self
                 .contexts
@@ -420,6 +426,11 @@ impl AudioTrack {
             Ranges::new(transitions.iter().map(|t| (t.start, t.start + t.length)));
         let mut prepared = Self {
             fingerprint_id: 0,
+            baked_loops: track
+                .clips
+                .iter()
+                .map(|c| plan.project.rendered_loop_has_baked_edges(c))
+                .collect(),
             clips: compiled.clips.clone(),
             compounds,
             layouts,
@@ -545,7 +556,12 @@ impl AudioTrack {
             return Ok(([0.; 2], None));
         };
         let gain = daw_core::linear_gain(clip.gain_db)
-            * super::clip_repeat_fade(clip, signed.max(0) as u64, self.rate);
+            * repeat_fade(
+                self.baked_loops[index],
+                clip,
+                signed.max(0) as u64,
+                self.rate,
+            );
         Ok((clip.channels.apply(value).map(|v| v * gain), mono))
     }
     pub fn source_error(&self) -> Option<String> {
@@ -715,7 +731,12 @@ impl AudioTrack {
                     + extra[ch]
                         * gain
                         * weight
-                        * super::clip_repeat_fade(clip, signed.max(0) as u64, self.rate)
+                        * repeat_fade(
+                            self.baked_loops[t.owner],
+                            clip,
+                            signed.max(0) as u64,
+                            self.rate,
+                        )
                         * scale;
             }
         }
@@ -731,7 +752,8 @@ impl AudioTrack {
         let clock = &self.clocks[index][0];
         let mut gain = self.envelopes[index]
             .gain(local + clock.offset, clock.length_frames, self.rate)
-            .min(super::clip_repeat_fade(
+            .min(repeat_fade(
+                self.baked_loops[index],
                 clip,
                 clip.source_frame(local),
                 self.rate,
@@ -754,7 +776,12 @@ impl AudioTrack {
         let clock = &self.clocks[index][0];
         let mut fade = self.envelopes[index]
             .gain(local + clock.offset, clock.length_frames, self.rate)
-            .min(super::clip_repeat_fade(clip, position, self.rate));
+            .min(repeat_fade(
+                self.baked_loops[index],
+                clip,
+                position,
+                self.rate,
+            ));
         for stage in &self.clocks[index][1..] {
             fade *= stage
                 .fades
@@ -858,6 +885,14 @@ fn transition_position(_t: &Transition, clip: &daw_core::Clip, frame: u64) -> i1
     let local = i128::from(frame) - i128::from(clip.start_frame);
     clip.extended_source_frame(local)
         .map_or_else(|| i128::from(clip.source_offset_frame) + local, i128::from)
+}
+
+fn repeat_fade(baked: bool, clip: &daw_core::Clip, position: u64, rate: u32) -> f32 {
+    if baked {
+        1.0
+    } else {
+        super::clip_repeat_fade(clip, position, rate)
+    }
 }
 
 #[cfg(test)]

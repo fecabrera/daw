@@ -3,6 +3,7 @@ use super::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClipMenuAction {
+    Bounce,
     Import,
     AddMidi,
     Split,
@@ -15,11 +16,12 @@ pub enum ClipMenuAction {
 }
 
 impl ClipMenuAction {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Import,
         Self::AddMidi,
         Self::Split,
         Self::Merge,
+        Self::Bounce,
         Self::Separate,
         Self::Normalize,
         Self::Edit,
@@ -28,7 +30,13 @@ impl ClipMenuAction {
     ];
     pub const GROUPS: [&'static [Self]; 3] = [
         &[Self::Import, Self::AddMidi],
-        &[Self::Split, Self::Merge, Self::Separate, Self::Normalize],
+        &[
+            Self::Split,
+            Self::Merge,
+            Self::Bounce,
+            Self::Separate,
+            Self::Normalize,
+        ],
         &[Self::Edit, Self::ToggleMuted, Self::Delete],
     ];
 
@@ -38,6 +46,7 @@ impl ClipMenuAction {
             Self::AddMidi => "Add MIDI pattern",
             Self::Split => "Split at playhead",
             Self::Merge => "Merge",
+            Self::Bounce => "Bounce clips",
             Self::Separate => "Stem separation",
             Self::Normalize => "Normalize gain",
             Self::Edit => "Edit clip",
@@ -51,6 +60,7 @@ impl ClipMenuAction {
             Self::Import => FileAction::Import.shortcut(),
             Self::Split => Some(ClipAction::Split.shortcut()),
             Self::Merge => Some(ClipAction::Merge.shortcut()),
+            Self::Bounce => Some(ClipAction::Bounce.shortcut()),
             _ => None,
         }
     }
@@ -101,6 +111,13 @@ impl DawUi {
         action.label()
     }
 
+    pub fn clip_menu_action_disabled_hint(&self, action: ClipMenuAction) -> Option<&'static str> {
+        (action == ClipMenuAction::Bounce).then_some(if self.portion.is_some() {
+            "Clear the time-range selection to bounce whole clips"
+        } else {
+            "Select whole clips and finish the current operation before bouncing"
+        })
+    }
     pub fn clip_menu_action_enabled(&self, action: ClipMenuAction, ctx: &egui::Context) -> bool {
         self.clip_menu_enabled_for(action, None, ctx)
     }
@@ -133,6 +150,10 @@ impl DawUi {
             return false;
         };
         match action {
+            ClipMenuAction::Bounce => self.bounce_targets_enabled(
+                daw_core::BounceMode::Clips,
+                self.menu_clip_targets(clip.id),
+            ),
             ClipMenuAction::Merge => self
                 .session
                 .project
@@ -186,6 +207,11 @@ impl DawUi {
         };
         let (id, muted) = (clip.id, clip.muted);
         match action {
+            ClipMenuAction::Bounce => self.start_bounce(
+                daw_core::BounceMode::Clips,
+                Some(self.menu_clip_targets(id)),
+                ctx,
+            ),
             ClipMenuAction::Merge => self.merge_clips(&self.menu_clip_targets(id)),
             ClipMenuAction::Split => self.split_at(&self.menu_clip_targets(id)),
             ClipMenuAction::Separate => self.separate_clip(id),
@@ -234,7 +260,11 @@ impl DawUi {
                 }
                 let response =
                     ui.add_enabled(self.clip_menu_enabled_for(action, target, ui.ctx()), button);
-                let response = if action == ClipMenuAction::Separate {
+                let response = if action == ClipMenuAction::Bounce {
+                    response.on_disabled_hover_text(
+                        self.clip_menu_action_disabled_hint(action).unwrap(),
+                    )
+                } else if action == ClipMenuAction::Separate {
                     let audio_in_timeline = self.view_mode == ViewMode::Timeline
                         && self.menu_clip(target).is_some_and(|(_, clip)| {
                             self.session

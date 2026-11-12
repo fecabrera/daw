@@ -56,3 +56,9 @@ Undo steps; see [Timeline display state](../views/timeline-display.md).
 
 Audio Merge records the prepared compound recipe, leaf owners and sparse waveform
 clocks together as one source transaction. See [Audio Merge](audio-merge.md).
+
+## Bounce integration
+
+The [Bounce contract](../editing/bounce.md) extends this lifecycle for versioned
+rendered sources, synchronized routing leaves and one atomic history transaction.
+Bounce keeps its editing guard through prepared publication or worker cleanup.

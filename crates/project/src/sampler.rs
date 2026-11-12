@@ -102,6 +102,7 @@ impl Session {
             id,
             name: name.clone(),
             midi_pattern: None,
+            rendered_audio: None,
             compound_audio: None,
             beat_pattern: None,
             source: Source {

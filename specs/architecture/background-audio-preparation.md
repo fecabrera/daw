@@ -173,3 +173,9 @@ acceptance remains separate from device-independent orchestration tests.
 Audio Merge follows the atomic source-job branch. New recipes and whole-source
 compound transforms do not enter the editor before complete preparation. See
 [Audio Merge](../editing/audio-merge.md).
+
+## Bounce integration
+
+The [Bounce contract](../editing/bounce.md) extends this lifecycle for versioned
+rendered sources, synchronized routing leaves and one atomic history transaction.
+Bounce keeps its editing guard through prepared publication or worker cleanup.

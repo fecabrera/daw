@@ -236,3 +236,10 @@ is hovered, including during a drag; dragging outside does not retain guides.
 Compound source wrappers can delegate an edge through `inherit_source`. Captured
 member clocks retain their envelopes; edits and new cuts use the boundary rules
 in [Audio Merge](audio-merge.md).
+
+## Rendered bounce edges
+
+[Rendered bounce sources](bounce.md) also validate `inherit_source` edges. Their
+PCM already contains the captured clip envelopes. Full-source loops of the main
+file and routing leaves must not apply those edge fades twice. Cropped loops and
+explicit new cuts/fade edits retain the ordinary envelope contract.

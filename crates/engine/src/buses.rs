@@ -11,7 +11,7 @@ pub(super) struct Buses {
     pub raw: Vec<latency::Sample>,
     pub sends: super::send_routing::Sends,
     pub output: Vec<[f32; 2]>,
-    clip_gains: Vec<super::beat_gain::Envelope>,
+    pub(super) clip_gains: Vec<super::beat_gain::Envelope>,
 }
 impl Buses {
     pub fn new(plan: &RenderPlan, alignment: &latency::Alignment) -> Self {
@@ -39,7 +39,7 @@ impl Buses {
             roots: Vec::new(),
             groups: Vec::new(),
             raw: vec![([0.0; 2], false); project.tracks.len()],
-            sends: super::send_routing::Sends::new(project, alignment),
+            sends: super::send_routing::Sends::new(plan, alignment),
             output: vec![[0.0; 2]; project.tracks.len()],
         };
         for (i, t) in project.tracks.iter().enumerate() {
@@ -141,12 +141,13 @@ impl Renderer {
         frame: u64,
         region: Option<(u64, u64)>,
         live: bool,
+        realtime: bool,
     ) -> [f32; 2] {
         if !self.sidechains.active() {
             self.buses.sends.advance(live);
             for position in 0..self.buses.groups.len() {
                 let index = self.buses.groups[position];
-                self.sample_bus(index, frame, region, live);
+                self.sample_bus(index, frame, region, live, realtime);
             }
         }
         let mut sum = [0.0; 2];
@@ -157,9 +158,18 @@ impl Renderer {
         }
         sum
     }
-    fn sample_bus(&mut self, index: usize, frame: u64, region: Option<(u64, u64)>, live: bool) {
+    fn sample_bus(
+        &mut self,
+        index: usize,
+        frame: u64,
+        region: Option<(u64, u64)>,
+        live: bool,
+        realtime: bool,
+    ) {
         let mut sum = if self.plan.project.tracks[index].kind == TrackKind::Return {
-            self.buses.sends.sum(index, &self.buses.raw, live)
+            self.buses
+                .sends
+                .sum(index, &self.buses.raw, live, frame, region, realtime)
         } else {
             [0.0; 2]
         };
@@ -222,8 +232,17 @@ impl Renderer {
             let index = self.sidechains.order[position];
             let clock = latency::delayed_frame(frame, self.alignment.input_frames[index], region);
             let wrapped = self.sidechains.wrapped(index, clock, region);
-            self.sidechains
-                .tick(index, &self.buses.raw, &self.sidechain_post, frame);
+            self.sidechains.tick(
+                index,
+                &self.buses.raw,
+                &self.sidechain_post,
+                frame,
+                region,
+                realtime,
+            );
+            if let Some(values) = &self.capture_controls {
+                self.sidechains.values[index].copy_from_slice(&values[index]);
+            }
             if let Some(runtime) = &mut self.midi[index] {
                 if wrapped {
                     runtime.wrap_loop();
@@ -231,7 +250,7 @@ impl Renderer {
                 runtime.publish_sidechains(&self.sidechains.values[index]);
             }
             if super::send_routing::is_bus(self.plan.project.tracks[index].kind) {
-                self.sample_bus(index, frame, region, live);
+                self.sample_bus(index, frame, region, live, realtime);
             } else {
                 let input = self.alignment.input_frames[index];
                 let clock = latency::delayed_frame(frame, input, region);

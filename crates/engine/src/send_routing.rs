@@ -42,6 +42,7 @@ impl SourceMix {
 struct Edge {
     source: usize,
     delay: latency::Delay,
+    pre_delay: latency::Delay,
     level: Ramp,
     post: Ramp,
 }
@@ -51,11 +52,31 @@ pub(super) struct Sends {
     edges: Vec<Edge>,
     incoming: Vec<Vec<usize>>,
     frames: u32,
+    pre_taps: Vec<Option<super::captured_taps::Tap>>,
 }
 impl Sends {
-    pub fn new(project: &Project, alignment: &latency::Alignment) -> Self {
+    pub fn new(plan: &RenderPlan, alignment: &latency::Alignment) -> Self {
+        let project = &plan.project;
         let audible = project.track_send_audible();
         let mut sends = Self {
+            pre_taps: project
+                .tracks
+                .iter()
+                .enumerate()
+                .map(|(i, t)| {
+                    if t.sends.is_empty() {
+                        None
+                    } else {
+                        super::captured_taps::Tap::new(
+                            plan,
+                            t,
+                            |r| Some(r.pre_send_asset),
+                            alignment.node_frames[i],
+                            0,
+                        )
+                    }
+                })
+                .collect(),
             sources: if alignment.send_delays.is_empty() {
                 Vec::new()
             } else {
@@ -81,18 +102,33 @@ impl Sends {
             sends.edges.push(Edge {
                 source,
                 delay: latency::Delay::new(id, delay),
+                pre_delay: latency::Delay::new(id, delay),
                 level: Ramp::new(level),
                 post: Ramp::new(f32::from(s.tap == SendTap::PostFader)),
             });
         }
         sends
     }
+    pub(super) fn taps_mut(&mut self) -> impl Iterator<Item = &mut super::captured_taps::Tap> {
+        self.pre_taps.iter_mut().flatten()
+    }
+    pub(super) fn taps(&self) -> impl Iterator<Item = &super::captured_taps::Tap> {
+        self.pre_taps.iter().flatten()
+    }
     pub fn advance(&mut self, live: bool) {
         for s in &mut self.sources {
             s.advance(live);
         }
     }
-    pub fn sum(&mut self, destination: usize, raw: &[latency::Sample], live: bool) -> [f32; 2] {
+    pub fn sum(
+        &mut self,
+        destination: usize,
+        raw: &[latency::Sample],
+        live: bool,
+        frame: u64,
+        region: Option<(u64, u64)>,
+        realtime: bool,
+    ) -> [f32; 2] {
         let mut sum = [0.0; 2];
         for &i in &self.incoming[destination] {
             let edge = &mut self.edges[i];
@@ -108,11 +144,17 @@ impl Sends {
                 edge.post.target()
             };
             let values = self.sources[edge.source].current;
+            let pre = self.pre_taps[edge.source].as_mut().and_then(|tap| {
+                let value = edge.pre_delay.tick(tap.sample(frame, region, realtime)).0;
+                let clock = latency::delayed_frame(frame, edge.pre_delay.frames() as u64, region);
+                tap.active_at(clock, region).then_some(value)
+            });
             let base = if mono { 0 } else { 2 };
             for ch in 0..2 {
-                sum[ch] += sample[ch]
-                    * (values[base + ch] * (1.0 - post) + values[base + 4 + ch] * post)
-                    * gain;
+                // Captured pre-send audio already includes the original pan, but
+                // never its fader. Keep the output track's new pan/level live.
+                let pre = pre.map_or(sample[ch] * values[base + ch], |v| v[ch] * values[2 + ch]);
+                sum[ch] += (pre * (1.0 - post) + sample[ch] * values[base + 4 + ch] * post) * gain;
             }
         }
         sum
@@ -131,6 +173,7 @@ impl Sends {
             let target = edge.level.target();
             let post = edge.post.target();
             std::mem::swap(&mut edge.delay, &mut previous.delay);
+            std::mem::swap(&mut edge.pre_delay, &mut previous.pre_delay);
             edge.level = previous.level;
             edge.post = previous.post;
             edge.level.set(target, self.frames);
@@ -140,6 +183,7 @@ impl Sends {
     pub fn reset(&mut self) {
         for e in &mut self.edges {
             e.delay.reset();
+            e.pre_delay.reset();
             e.level.reset();
             e.post.reset();
         }
@@ -151,11 +195,22 @@ impl Sends {
     }
     pub fn heap_bytes(&self) -> u64 {
         use daw_unit_core::memory::vec_bytes;
-        vec_bytes(&self.sources)
+        vec_bytes(&self.pre_taps)
+            + self
+                .pre_taps
+                .iter()
+                .flatten()
+                .map(|t| t.heap_bytes())
+                .sum::<u64>()
+            + vec_bytes(&self.sources)
             + vec_bytes(&self.edges)
             + vec_bytes(&self.incoming)
             + self.incoming.iter().map(vec_bytes).sum::<u64>()
-            + self.edges.iter().map(|e| e.delay.heap_bytes()).sum::<u64>()
+            + self
+                .edges
+                .iter()
+                .map(|e| e.delay.heap_bytes() + e.pre_delay.heap_bytes())
+                .sum::<u64>()
     }
 }
 
