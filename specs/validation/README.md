@@ -32,6 +32,9 @@ and Cargo configuration, and preservation of previous packages after build,
 missing-artifact or source-vendor failure. These tests use controlled build shims.
 `python3 tools/build_desktop.py debug macos` also passed with the real native
 compiler and Cargo executable report.
+After committing the fixes, `sh tools/package_macos.sh debug` passed. The
+bundle's executable matches the current Cargo artifact byte for byte, and its
+source manifest records runtime commit `9484a673` with a matching binary hash.
 
 Native GUI/device/listening, external plugin-host acceptance and Windows/Linux
 execution remain separate and were not performed. The ONNX shape-inference
