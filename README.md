@@ -2,6 +2,35 @@
 
 A desktop digital audio workstation for macOS, Windows and Linux, written in Rust. It imports external WAV, MP3, AAC, and Opus sources, and shares its rendering engine with a headless command-line interface.
 
+## Screenshots
+
+![Timeline during playback, with audio, MIDI and beat tracks and a track effects chain](docs/assets/screenshots/timeline-playback.png)
+
+<details>
+<summary>More screenshots</summary>
+
+**[Timeline](docs/views/timeline.md) with master effects**
+
+![Timeline arrangement with Shimmer Reverb and Saturator on the master effects lane](docs/assets/screenshots/timeline-effects.png)
+
+**[Instrument](docs/views/instrument.md)**
+
+![Layered instrument with oscillator modulation, layer meters and Output effects](docs/assets/screenshots/instrument.png)
+
+**[MIDI editor](docs/views/editor.md)**
+
+![Piano roll with a chord pattern and the track overview above it](docs/assets/screenshots/midi-editor.png)
+
+**[Beat editor](docs/views/beat-editor.md)**
+
+![Beat pattern with six subtracks, step controls and live subtrack meters](docs/assets/screenshots/beat-editor.png)
+
+**[Mixer](docs/views/mixer.md)**
+
+![Mixer with four track strips, output routing, sends and the pinned Master strip](docs/assets/screenshots/mixer.png)
+
+</details>
+
 ## Current features
 
 - **Timeline:** arrange, trim, loop, stretch, transpose, split, merge, move, copy, and duplicate audio, MIDI and beat clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog. Audio clips support editable fades and adjacent crossfades.
