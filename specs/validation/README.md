@@ -30,6 +30,10 @@ source mismatch rejection, real Git CRLF checkout and packaging failure retentio
 The initial checkout test caught notice conversion; adding the attribute fixed
 it before the complete suite passed. Changed-document file targets, complete
 catalog/folder parity, all 89 notice hashes and `git diff --check` passed.
+After commit `cbca08b4`, `sh tools/package_macos.sh debug` passed with the real
+Cargo/native toolchain. Both the binary notice directory and source ZIP contain
+the exact RealFFT grant, with its 3.5.0 revision/hash mapping. The source manifest
+and binary/source archive hashes match that committed package.
 
 Rust source, manifests and lockfiles are unchanged from the preceding validated
 runtime. Debug/release workspace and strict Clippy evidence remains applicable;
