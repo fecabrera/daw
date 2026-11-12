@@ -2,7 +2,10 @@
 
 Inspect tracks, validate projects, collect sources and export a mix without opening a window or an audio device. Commands use the saved project; save desktop edits first.
 
-Build from the repository root with `cargo build -p daw-cli`. The executable is `target/debug/daw-cli` (`daw-cli.exe` on Windows). Platform prerequisites are in the [development guides](../development/README.md). The examples below use `daw-cli` on your command search path. From the repository root, you can also use `cargo run -p daw-cli --` before the command and its arguments.
+Use the [headless tool build instructions](../development/README.md#headless-tools)
+to prepare the executable. The examples below use `daw-cli` on your command
+search path. From the repository root, you can also use `cargo run -p daw-cli --`
+before the command and its arguments.
 
 | Command | Purpose |
 | --- | --- |

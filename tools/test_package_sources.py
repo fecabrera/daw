@@ -21,11 +21,14 @@ def fixture():
         subprocess.run(['git', 'init', '-q', str(root)], check=True)
         for name, value in [('user.name', 'Source fixture'), ('user.email', 'fixture@example.invalid')]:
             subprocess.run(['git', '-C', str(root), 'config', name, value], check=True)
-        entry=next(e for e in json.loads((sources.ROOT/'tools/runtime_notices.json').read_text())['notices'] if e['component']=='valuable-0.1.1')
+        entries=[e for e in json.loads((sources.ROOT/'tools/runtime_notices.json').read_text())['notices']
+                 if e['component'] in ('valuable-0.1.1', 'realfft-3.5.0')]
+        entries.sort(key=lambda e: e['component'] != 'valuable-0.1.1')
         (root/'tools').mkdir()
-        (root/'tools/runtime_notices.json').write_text(json.dumps({'notices':[entry]}))
-        notice=root/entry['notice']; notice.parent.mkdir(parents=True)
-        shutil.copyfile(sources.ROOT/entry['notice'],notice)
+        (root/'tools/runtime_notices.json').write_text(json.dumps({'notices':entries}))
+        for entry in entries:
+            notice=root/entry['notice']; notice.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(sources.ROOT/entry['notice'],notice)
         (root/'Cargo.lock').write_text('exact locked sources\n')
         (root/'.cargo').mkdir()
         (root/'.cargo/config.toml').write_text('[build]\njobs = 2\n')
@@ -49,10 +52,10 @@ class SourcePackages(unittest.TestCase):
                     vendor = Path(args[-1])
                     (vendor/'dependency-1.0').mkdir(parents=True)
                     (vendor/'dependency-1.0/LICENSE').write_text('upstream grant')
-                    entry=json.loads((root/'tools/runtime_notices.json').read_text())['notices'][0]
-                    package=entry['source_package']; valuable=vendor/'valuable-0.1.1'; valuable.mkdir()
-                    (valuable/'.cargo_vcs_info.json').write_text(json.dumps({'git':{'sha1':package['git_revision']},'path_in_vcs':package['path_in_vcs']}))
-                    (valuable/'.cargo-checksum.json').write_text(json.dumps({'files':{},'package':package['registry_checksum']}))
+                    for entry in json.loads((root/'tools/runtime_notices.json').read_text())['notices']:
+                        package=entry['source_package']; source=vendor/(package['name']+'-'+package['version']); source.mkdir()
+                        (source/'.cargo_vcs_info.json').write_text(json.dumps({'git':{'sha1':package['git_revision']},'path_in_vcs':package['path_in_vcs']}))
+                        (source/'.cargo-checksum.json').write_text(json.dumps({'files':{},'package':package['registry_checksum']}))
 
                     os.utime(vendor/'dependency-1.0/LICENSE',(0,0))
                     return f'[source.crates-io]\nreplace-with = "vendored-sources"\n[source.vendored-sources]\ndirectory = "{vendor}"\n'.encode()
@@ -72,11 +75,19 @@ class SourcePackages(unittest.TestCase):
                 self.assertFalse(any('private-recording' in name or '.git/' in name for name in archive.namelist()))
                 self.assertEqual(len(archive.namelist()),len(set(archive.namelist())))
                 notices=json.loads(archive.read('DAW/SOURCE-LICENSES/index.json'))
-                self.assertEqual(len(notices),1)
+                self.assertEqual(len(notices),2)
                 notice=archive.read('DAW/SOURCE-LICENSES/'+notices[0]['notice'])
                 self.assertIn(b'Copyright (c) 2021 Valuable Contributors',notice)
                 self.assertEqual(hashlib.sha256(notice).hexdigest(),notices[0]['sha256'])
                 self.assertEqual(notices[0]['git_revision'],'9efc29b6e58cef28f6566a47aa7e142a55fead77')
+                realfft=next(entry for entry in notices if entry['name']=='realfft')
+                grant=archive.read('DAW/SOURCE-LICENSES/'+realfft['notice'])
+                self.assertIn(b'Copyright (c) 2020 Henrik Enquist and RealFFT contributors',grant)
+                self.assertIn(b'Permission is hereby granted',grant)
+                self.assertEqual(hashlib.sha256(grant).hexdigest(),realfft['sha256'])
+                self.assertEqual(realfft['version'],'3.5.0')
+                self.assertEqual(realfft['git_revision'],'d0d4eee0525fd27c96c8a046d6d107acd5ed84a6')
+                self.assertIn('9fdcf59c60c7ecacbf75774d378a068811a2e6ea',realfft['license_url'])
 
             manifest=json.loads((destination/'source-manifest.json').read_text())
             self.assertEqual(manifest['revision'],revision)

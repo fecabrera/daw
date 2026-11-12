@@ -11,6 +11,25 @@ Run commands from the repository root with the toolchain pinned in [rust-toolcha
 - [GitHub Actions builds](ci.md): platform artifacts, downloads, and logs.
 
 For CLI commands, see the [CLI guide](../cli/README.md). For contribution rules and validation commands, see [repository instructions](../../AGENTS.md#build-and-validation-workflow). Architecture and implementation contracts remain in [specifications](../../specs/README.md).
+## Headless tools
+
+With the platform prerequisites installed, build from the repository root:
+
+```sh
+cargo build --locked -p daw-cli
+cargo build --locked -p timestretch-cli --release
+```
+
+The executables are `target/debug/daw-cli` and `target/release/timestretch`
+(`.exe` on Windows). Cargo target and target-directory settings can change these
+paths. Add their directories to your command search path or use their full paths.
+The [CLI guide](../cli/README.md) and [time-stretch guide](../cli/timestretch.md)
+explain operation. The [standalone tool reference](../../crates/timestretch-cli/README.md)
+covers reference-enabled and Integrated-only build options.
+Keep the [media dependency notices](../../crates/media/assets/licenses), including
+RealFFT, with separately distributed tools that use them. Retain the source and
+relinking materials required by the enabled backends.
+
 ## Audio cache and preparation benchmark
 
 Desktop and CLI startup enable the shared prepared-audio cache. Default directories are `~/Library/Caches/daw/prepared-audio-v1` on macOS, `%LOCALAPPDATA%/daw/prepared-audio-v1` on Windows, and `$XDG_CACHE_HOME/daw/prepared-audio-v1` on Linux (falling back to `~/.cache`). Set `DAW_AUDIO_CACHE` to override the directory. An empty value disables disk caching while keeping bounded memory reuse. Cache write failures fall back to normal preparation.

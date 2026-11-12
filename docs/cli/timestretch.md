@@ -4,7 +4,7 @@ A separate command-line comparison tool can process WAV files with the Integrate
 
 ## Process or compare WAV files
 
-Build with `cargo build -p timestretch-cli --release`. The executable is `target/release/timestretch` (`timestretch.exe` on Windows). It runs without a DAW project, window or audio device.
+Use the [headless tool build instructions](../development/README.md#headless-tools) to prepare `timestretch`. It runs without a DAW project, window or audio device.
 
 ```sh
 timestretch process --input input.wav --engine timestretch --ratio 3/2 \

@@ -3,3 +3,4 @@
 crates/ui/assets/licenses/* -text
 crates/separation/assets/licenses/JSON-MIT.txt -text -whitespace
 crates/separation/assets/licenses/CoreMLTools-BSD.txt -text -whitespace
+crates/media/assets/licenses/RealFFT-MIT.txt -text

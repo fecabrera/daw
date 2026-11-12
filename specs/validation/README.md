@@ -4,6 +4,38 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Source grant and guide corrections — 2026-11-12
+
+The next five-reviewer standalone run and separate validation confirmed a
+RealFFT notice omission and four documentation issues. The ONNX shape-inference
+exception remains reported and unchanged.
+
+RealFFT 3.5.0 now has the complete upstream MIT copyright/grant in media notices.
+The source supplement binds its registry checksum and VCS revision to those
+exact notice bytes. Upstream commit `9fdcf59c` directly follows the locked
+`d0d4eee0` source and adds the license without changing DSP. Binary packages and
+`DAW-source.zip` retain the grant; Git attributes prevent checkout conversion
+from changing its hash. Separate CLI/tool delivery guidance retains applicable
+media notices and source/relink requirements.
+
+The general modulation guide and matching MIDI specification use dedicated LFO
+and Envelope lanes. The parallel-preparation specification describes serial
+combined-graph replay for sidechains. The Instrument effect table matches all
+21 registered effects in six folders. Drive v2 and headless-tool build procedures
+point to development guides; exact editor/button geometry stays in specifications.
+
+Passed: `python3 -m unittest discover -s tools -p 'test_*.py'` (44 tests), including
+binary notice copy rules, source-ZIP RealFFT grant/version/revision/hash checks,
+source mismatch rejection, real Git CRLF checkout and packaging failure retention.
+The initial checkout test caught notice conversion; adding the attribute fixed
+it before the complete suite passed. Changed-document file targets, complete
+catalog/folder parity, all 89 notice hashes and `git diff --check` passed.
+
+Rust source, manifests and lockfiles are unchanged from the preceding validated
+runtime. Debug/release workspace and strict Clippy evidence remains applicable;
+unrelated DSP suites were not repeated. Native GUI/device/listening, external
+plugin-host and Windows/Linux execution remain unperformed.
+
 ## Standalone main review corrections — 2026-11-12
 
 Five independent reviewers and a separate validator confirmed three corrections:

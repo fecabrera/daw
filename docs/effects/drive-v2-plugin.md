@@ -1,20 +1,10 @@
-# Drive v2 plugin development builds
+# Drive v2 plugins
 
 Drive v2 has separate CLAP and VST3 development plugins. Both use the built-in [Drive v2](drive-v2.md) DSP and the same three-strip controls. They have separate identities from original Drive, so both products can be installed together. Neither format loads original Drive plugin state.
 
-## Build and package
-
-Use the native platform prerequisites in the [development guides](../development/README.md). On macOS Apple Silicon:
-
-```sh
-cargo build --release --locked --target aarch64-apple-darwin \
-  -p daw-drive-v2-clap -p daw-drive-v2-vst3 --lib
-python3 tools/package_plugins.py --units drive-v2 --target aarch64-apple-darwin
-```
-
-The generic packager requires Python 3.11 or later and both libraries. Use `--units drive,drive-v2` to package both products or `--units all` for every unit manifest; build every selected unit first. On Windows x64 use `x86_64-pc-windows-msvc`; on Linux x64 use `x86_64-unknown-linux-gnu`. It writes separate `Drive-v2-…-clap.zip` and `Drive-v2-…-vst3.zip` archives and SHA-256 checksums into `target/plugin-artifacts`. macOS bundles are signed ad hoc after assembly. These are development previews, without notarization or distribution signatures.
-
-The Build plugins workflow builds both Drive products and both formats independently on macOS arm64, Windows x64, and Linux x64. Artifacts use `Drive-v2-CLAP-<target>` and `Drive-v2-VST3-<target>` names. CI configuration does not establish native host acceptance.
+For build and package instructions, use the [plugin development guide](../development/plugins.md).
+These are development previews without notarization or distribution signatures.
+Native host acceptance requires separate checks.
 
 ## Install locally
 
@@ -22,7 +12,7 @@ Extract the ZIP. On macOS copy the complete `Drive v2.vst3` bundle into `~/Libra
 
 ## Controls and state
 
-The fixed editor is 270 × 218 logical points. Drive contains the Soft/Hard/Tube dropdown, Gain and Tone; Color contains Shape, Strength and Frequency with its own footer power button; Output contains Input Gain, Output Level and Dry/Wet. Color power disables its three controls without deleting their values. Automation can still update them while Color is off.
+The editor has a fixed size. Drive contains the Soft/Hard/Tube dropdown, Gain and Tone; Color contains Shape, Strength and Frequency with its own footer power button; Output contains Input Gain, Output Level and Dry/Wet. Color power disables its three controls without deleting their values. Automation can still update them while Color is off.
 
 The host exposes all ten controls plus whole-unit Bypass. Input Gain and Output Level support exact silence through +12 dB. Audio is stereo 32-bit at 44.1/48/88.2/96/176.4/192 kHz. Latency is zero, with a one-second residual tail declaration. Unsupported rates and formats are rejected. Processing, smoothing, and bypass match built-in Drive v2.
 

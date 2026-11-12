@@ -853,6 +853,27 @@
         "desktop"
       ],
       "reason": "Exact copyright and grant from the selected native dependency source pin."
+    },
+    {
+      "component": "realfft-3.5.0",
+      "notice": "crates/media/assets/licenses/RealFFT-MIT.txt",
+      "sha256": "080766c57f9e48f00218f4e43c7d671d4b6ffee85a39417b5ab3c916dfe29b0d",
+      "deliverables": [
+        "desktop",
+        "source"
+      ],
+      "reason": "RealFFT supplies media processing for desktop, CLI and tools. Registry 3.5.0 omits its MIT file. The immediate upstream successor adds the grant without changing DSP source; retain it in binary notices and corresponding-source materials.",
+      "source_package": {
+        "name": "realfft",
+        "version": "3.5.0",
+        "registry_checksum": "f821338fddb99d089116342c46e9f1fbf3828dba077674613e734e01d6ea8677",
+        "git_revision": "d0d4eee0525fd27c96c8a046d6d107acd5ed84a6",
+        "path_in_vcs": "",
+        "license_url": "https://raw.githubusercontent.com/HEnquist/realfft/9fdcf59c60c7ecacbf75774d378a068811a2e6ea/LICENSE",
+        "license_expression": "MIT",
+        "license_revision": "9fdcf59c60c7ecacbf75774d378a068811a2e6ea",
+        "source_equivalence": "The license revision directly follows the source revision and changes only Cargo.toml, LICENSE and README.md."
+      }
     }
   ]
 }

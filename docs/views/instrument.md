@@ -81,10 +81,10 @@ The Effects catalog has the same six folders in every view:
 | Folder | Effects |
 | --- | --- |
 | EQ & Filters | [3-band EQ](../effects/equalizer.md), [Filter](../effects/filter.md), [Auto-filter](../effects/auto-filter.md), [Multiband EQ](../effects/multiband-eq.md) |
-| Dynamics | [Compressor](../effects/compressor.md), [OTT](../effects/ott.md), [Limiter](../effects/limiter.md) |
+| Dynamics | [Compressor](../effects/compressor.md), [OTT](../effects/ott.md), [Limiter](../effects/limiter.md), [Multiband Compressor](../effects/multiband-compressor.md) |
 | Distortion | [Drive](../effects/drive.md), [Drive v2](../effects/drive-v2.md), [Bitcrusher](../effects/bitcrusher.md), [Saturator](../effects/saturator.md), [Multiband Exciter](../effects/exciter.md), [Harmonic Lift](../effects/harmonic-lift.md) |
 | Imaging | [Direction Mixer](../effects/direction-mixer.md), [Stereo Spread](../effects/stereo-spread.md), [Chorus](../effects/chorus.md) |
-| Reverb | [Plate Reverb](../effects/plate-reverb.md), [Ambient Reverb](../effects/ambient-reverb.md) |
+| Reverb | [Plate Reverb](../effects/plate-reverb.md), [Ambient Reverb](../effects/ambient-reverb.md), [Shimmer Reverb](../effects/shimmer-reverb.md) |
 | Analysis | [Loudness Meter](../effects/loudness-meter.md) |
 
 Folders start collapsed. Click a folder to hide or show its effects. Use Up/Down to move through visible rows. Enter toggles a focused folder; Left closes it and Right opens it. Left on an effect closes its folder. Closing a folder deselects its hidden effects. Each catalog retains its own folder choices while the application is open.

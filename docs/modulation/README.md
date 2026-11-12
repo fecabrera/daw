@@ -4,7 +4,7 @@ Modulation changes a parameter over time without changing its base setting. Enve
 
 ## Make a connection
 
-1. Add an Envelope, LFO, or Macro to a MIDI instrument layer or Output.
+1. Add an Envelope or LFO to its matching [instrument modulation lane](../instruments/modulation-lanes.md). Add Macro to a regular layer or Output.
 2. Open the receiving unit's modulation controls with the secondary-color dot in its header.
 3. Click Plus to add a connection.
 4. Select a Source and Destination, then turn Amount up or down.
@@ -14,7 +14,7 @@ New connections are enabled but have no source and zero Amount. They do not affe
 
 ## Choose sources and amounts
 
-The Source dropdown starts with None, followed by a divider. Each layer has its own submenu, with Output listed after the layers. Open a submenu to select its Envelope, LFO, or Macro. Groups with no compatible sources are hidden. The selected value includes the layer name so repeated component names remain clear. Source and Destination selectors fill the space inside their strip.
+The Source dropdown starts with None, followed by a divider. Select LFO or Envelope to choose a provider from its instrument-wide lane. Regular layer and Output submenus contain their Macros. Groups with no compatible sources are hidden. The selected value includes the group name so repeated component names remain clear. Source and Destination selectors fill the space inside their strip.
 
 Envelope, LFO and Macro sources stay within one MIDI instrument. Output sources can reach compatible layer, layer-effect, and track-effect parameters. Audio tracks and the project Master do not have instrument providers, but their effects can receive audio sidechains from tracks, groups and Returns. These appear after a second divider in Source.
 
