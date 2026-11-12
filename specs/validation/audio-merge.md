@@ -53,7 +53,7 @@ previews.
 | `python3 tools/check_cli.py` | Passed, including the compound fixture; repeated with an isolated temporary `DAW_AUDIO_CACHE`. |
 | `git diff --check` | Passed. |
 | Changed Markdown local file targets | Passed; 342 local file targets. |
-| `sh tools/package_macos.sh debug` | Initial attempt blocked by the existing corresponding-source guard: `Commit tracked changes before packaging corresponding source.` No commit or bypass was made. |
+| `sh tools/package_macos.sh debug` | Passed after implementation commit `fa98c66d`; produced `target/debug/DAW.app` and its corresponding source. The initial uncommitted attempt was rejected by the source guard; it was not bypassed. |
 
 No dependencies, lockfile, effect DSP, plugin products or notices changed.
 No Rubber Band implementation source was inspected or adapted; preparation
@@ -66,5 +66,5 @@ playback, Stop during preparation, listening across joins, underruns and platfor
 filesystem lifetime checks were not run. Windows and Linux native checks remain
 for their platform jobs. Automated egui and allocation tests do not establish
 these results. No older executable was run; old-reader rejection follows the
-strict source-kind validator contract. The desktop binary was built. The initial bundle attempt required committed
-source; packaging is checked again after the implementation commit.
+strict source-kind validator contract. The desktop binary and macOS app bundle were built from implementation commit
+`fa98c66d`. The later validation-record update changes documentation only.
