@@ -64,9 +64,11 @@ Reject an empty or control-character name, a non-finite gain or a gain outside s
 ## Audio channel and polarity controls
 
 Place Channels and Polarity field rows after Transpose and before the fade-section
-divider in the shared Timeline/Editor body. Channels uses compact 18-point L and R
-square toggles with 10-point text followed by an Invert checkbox. Polarity has a
-separate Invert checkbox. Both checkbox labels use Small text. There is no polarity
+divider in the shared Timeline/Editor body. Channels joins the compact 18-point
+L and R toggles with 10-point text in the shared input-group frame: 5-point outer
+corners, no outline and a 1-point divider that adds to the total width. Each
+channel remains independently toggleable. An Invert checkbox follows the group.
+Polarity has a separate Invert checkbox. Both checkbox labels use Small text. There is no polarity
 selector. Use Small labels and the existing field label width. Show these controls
 when the selection includes audio; skip MIDI and beat clips. Selected means all
 audio targets have the flag enabled; a mixed flag is explained by the tooltip.

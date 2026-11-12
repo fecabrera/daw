@@ -275,9 +275,10 @@ the saved durations. Loop seams retain their automatic anti-click fades.
 In Timeline, use the headphone-file button in the right toolbar to open Clip settings beside it. The panel can stay open with the Effects or Chords catalog on the left. Closing it gives its space back to the timeline. When the effects lane is hidden, the right toolbar extends to the status bar. Leaving Timeline closes this panel and discards any unconfirmed text. Audio tracks also offer these controls under **Clip options** in [Editor](editor.md).
 
 Audio clips also have **Channels** and **Polarity** rows after Transpose, before
-the fade sections. **L** and **R** enable the left and right playback channels;
-both start enabled. The small **Invert** checkbox beside them swaps the left and
-right audio signals before these channel controls. It starts unchecked. Turning
+the fade sections. The joined **L** and **R** buttons independently enable the
+left and right playback channels; both start enabled. The small **Invert**
+checkbox beside them swaps the left and right audio signals before these channel
+controls. It starts unchecked. Turning
 both channels off silences the clip. Mono recordings still
 use these controls for the left and right playback outputs. The separate small **Polarity > Invert** checkbox flips the
 polarity of both channels; it starts unchecked. It does not reverse audio in time.

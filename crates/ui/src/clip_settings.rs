@@ -141,24 +141,31 @@ impl super::DawUi {
         }
         panel.field_row(ui, label_width, |ui| { ui.small("Channels"); }, |ui| {
             ui.horizontal(|ui| {
-                for (left, label) in [(true, "L"), (false, "R")] {
-                    let enabled = |clip: &&Clip| if left { clip.channels.left } else { clip.channels.right };
-                    let selected = audio.iter().all(enabled);
-                    let mixed = audio.iter().any(enabled) && !selected;
-                    let response = ui.scope(|ui| {
-                        ui.spacing_mut().button_padding = Vec2::ZERO;
-                        ui.spacing_mut().interact_size = Vec2::splat(18.0);
-                        ui.add_sized(Vec2::splat(18.0), egui::Button::new(egui::RichText::new(label).size(10.0)).selected(selected))
-                    }).inner
-                        .on_hover_text(if mixed { "Mixed selection. Click to enable this channel on selected audio clips." } else if left { "Enable left playback channel" } else { "Enable right playback channel" });
-                    if response.clicked() {
-                        for clip in &audio {
-                            let mut channels = clip.channels;
-                            if left { channels.left = !selected; } else { channels.right = !selected; }
-                            if channels != clip.channels { commands.push(Edit::SetClipChannels { clip_id: clip.id, channels }); }
+                let group = crate::rows::input_group_with_height(ui, 18.0, |ui| {
+                    let mut right = Rect::NOTHING;
+                    for (left, label) in [(true, "L"), (false, "R")] {
+                        let enabled = |clip: &&Clip| if left { clip.channels.left } else { clip.channels.right };
+                        let selected = audio.iter().all(enabled);
+                        let mixed = audio.iter().any(enabled) && !selected;
+                        let response = ui.scope(|ui| {
+                            crate::rows::input_group_edge(ui, !left);
+                            ui.spacing_mut().button_padding = Vec2::ZERO;
+                            ui.spacing_mut().interact_size = Vec2::splat(18.0);
+                            ui.add_sized(Vec2::splat(18.0), egui::Button::new(egui::RichText::new(label).size(10.0)).selected(selected))
+                        }).inner
+                            .on_hover_text(if mixed { "Mixed selection. Click to enable this channel on selected audio clips." } else if left { "Enable left playback channel" } else { "Enable right playback channel" });
+                        right = response.rect;
+                        if response.clicked() {
+                            for clip in &audio {
+                                let mut channels = clip.channels;
+                                if left { channels.left = !selected; } else { channels.right = !selected; }
+                                if channels != clip.channels { commands.push(Edit::SetClipChannels { clip_id: clip.id, channels }); }
+                            }
                         }
                     }
-                }
+                    right
+                });
+                crate::rows::group_separator(ui, group.response.rect, group.inner.left());
                 let mut swapped = audio.iter().all(|clip| clip.channels.swapped);
                 let mixed = audio.iter().any(|clip| clip.channels.swapped) && !swapped;
                 if ui.checkbox(&mut swapped, egui::RichText::new("Invert").small()).on_hover_text(if mixed { "Mixed selection. Click to swap left and right on all selected audio clips." } else { "Swap left and right audio signals before channel enable controls" }).changed() {

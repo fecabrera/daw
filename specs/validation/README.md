@@ -4,6 +4,30 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+
+## Clip channel button group — 2026-11-12
+
+Timeline Clip settings and Editor Clip options join L/R in the existing shared
+input-group frame. Each segment retains its 18-point size, 10-point label,
+independent selected/mixed behavior and per-selection edit commands. The group
+uses 5-point outside corners, no outline and the shared 1-point divider. Channel
+swapping and polarity keep their separate checkboxes.
+
+Completed checks:
+
+- Existing clip-settings interaction suite: 22 passed, including selected-group
+  channel edits and Undo.
+- `cargo fmt --all --check`, `git diff --check` and changed guide/specification
+  local file targets: passed.
+- `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: passed.
+- `CARGO_INCREMENTAL=0 cargo test --locked --offline --workspace` and
+  `cargo test --locked --offline --workspace --release`: each passed 2,869 tests,
+  with 21 existing ignored cases and completed doctests.
+- `cargo build --locked --offline -p daw-desktop`: passed.
+
+No native UI interaction or audio-device check was run for this presentation
+change.
+
 ## Range-drop and AccessKit corrections — 2026-11-12
 
 The third standalone five-reviewer run and separate validator confirmed three
