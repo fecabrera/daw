@@ -17,6 +17,9 @@ pub struct ClipFade {
     pub midpoint_position: f32,
     #[serde(default)]
     pub crossfade: bool,
+    /// Compound edges delegate to captured source envelopes until explicitly edited.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inherit_source: bool,
 }
 impl Default for ClipFade {
     fn default() -> Self {
@@ -24,6 +27,7 @@ impl Default for ClipFade {
             length_frames: 0,
             midpoint: 0.5,
             midpoint_position: 0.5,
+            inherit_source: false,
             crossfade: false,
         }
     }
@@ -124,7 +128,7 @@ impl ClipFades {
         }
         let legacy = (u64::from(rate) / 200).max(1).min(length / 2);
         let edge = |fade: ClipFade, position: u64| {
-            if fade.crossfade && fade.length_frames > 0 {
+            if fade.inherit_source || (fade.crossfade && fade.length_frames > 0) {
                 return 1.0;
             }
             let duration = if fade.length_frames == 0 {
@@ -165,11 +169,21 @@ impl crate::Project {
         else {
             return 0;
         };
-        let clip = track.clips.iter().find(|c| c.id == id).unwrap();
+        self.clip_fade_limit_in(track, id, left, crossfade)
+    }
+    pub fn clip_fade_limit_in(
+        &self,
+        track: &crate::Track,
+        id: crate::Id,
+        left: bool,
+        crossfade: bool,
+    ) -> u64 {
+        let Some(clip) = track.clips.iter().find(|c| c.id == id) else {
+            return 0;
+        };
         if !crossfade {
             return clip.length_frames.saturating_sub(1);
         }
-        let own = clip.length_frames.saturating_sub(1) / 2;
         if clip.muted {
             return 0;
         }
@@ -184,36 +198,23 @@ impl crate::Project {
         }) else {
             return 0;
         };
-        let Some(asset) = self
-            .assets
-            .iter()
-            .find(|a| a.id == clip.asset_id && a.is_audio())
-        else {
+        let Some(own) = self.audio_edge_geometry(clip, left) else {
             return 0;
         };
-        let Some(other_asset) = self
-            .assets
-            .iter()
-            .find(|a| a.id == neighbor.asset_id && a.is_audio())
-        else {
+        let Some(other) = self.audio_edge_geometry(neighbor, !left) else {
             return 0;
         };
-        if asset.source_metadata.channels != other_asset.source_metadata.channels {
+        if own.channels != other.channels {
             return 0;
         }
-        let handles = if clip.repeat.is_some() {
-            u64::MAX
-        } else if left {
-            clip.source_offset_frame
-        } else {
-            clip.source_length(asset.decoded_frame_count)
-                .unwrap_or(0)
-                .saturating_sub(clip.source_offset_frame.saturating_add(clip.length_frames))
-        };
-        own.min(neighbor.length_frames.saturating_sub(1) / 2)
-            .min(handles)
+        own.cap.min(other.cap).min(own.handles)
     }
-    pub(crate) fn set_clip_fades(&mut self, id: crate::Id, fades: ClipFades) -> crate::Result<()> {
+
+    pub(crate) fn set_clip_fades(
+        &mut self,
+        id: crate::Id,
+        mut fades: ClipFades,
+    ) -> crate::Result<()> {
         if !fades.valid() {
             return Err(crate::Error("Invalid fade shape or duration".into()));
         }
@@ -255,6 +256,12 @@ impl crate::Project {
                     }
                 }
             }
+        }
+        if fades.fade_in != old.fades.fade_in {
+            fades.fade_in.inherit_source = false;
+        }
+        if fades.fade_out != old.fades.fade_out {
+            fades.fade_out.inherit_source = false;
         }
         self.clip_mut(id)?.fades = fades;
         Ok(())

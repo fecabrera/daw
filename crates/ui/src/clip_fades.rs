@@ -748,7 +748,7 @@ impl DawUi {
         move |local| {
             let mut gain = 1.0_f32;
             for (left, fade) in [(true, fades.fade_in), (false, fades.fade_out)] {
-                if !fade.crossfade && fade.length_frames > 0 {
+                if !fade.inherit_source && !fade.crossfade && fade.length_frames > 0 {
                     let position = if left {
                         local
                     } else {
@@ -814,20 +814,10 @@ impl DawUi {
                 if length == 0 {
                     continue;
                 }
-                let cached = self.session.audio_for_clip(other);
-                let Some(audio) = cached.or_else(|| self.session.audio.get(&other.asset_id)) else {
+                let Some(source) = self.continuation_waveform(other, left, length) else {
                     continue;
                 };
-                let mut visual = other.clone();
-                if left {
-                    visual.start_frame -= length;
-                    if let Some(repeat) = &mut visual.repeat {
-                        *repeat = repeat.shifted(-i128::from(length));
-                    } else {
-                        visual.source_offset_frame -= length;
-                    }
-                }
-                visual.length_frames += length;
+                let visual = &source.clip;
                 let delta = (visual.start_frame as f64 - clip.start_frame as f64)
                     / f64::from(self.session.project.sample_rate_hz)
                     * f64::from(self.view_zoom());
@@ -844,27 +834,35 @@ impl DawUi {
                     rect.max,
                 );
                 let painter = painter.with_clip_rect(block.intersect(painter.clip_rect()));
-                waveforms::paint_peaks_with_gain(
-                    &painter,
-                    body,
-                    audio,
-                    &visual,
-                    f64::from(self.session.project.sample_rate_hz) / f64::from(self.view_zoom()),
-                    theme::clip_colors(track.color, other.color),
-                    if cached.is_none() {
-                        other.stretch
+                let gain = |local: u64| {
+                    let position = if left {
+                        local
                     } else {
-                        None
-                    },
-                    |local| {
-                        let position = if left {
-                            local
-                        } else {
-                            visual.length_frames.saturating_sub(1).saturating_sub(local)
-                        };
-                        fade.gain(position as f32 / length.saturating_sub(1).max(1) as f32)
-                    },
-                );
+                        length.saturating_sub(1).saturating_sub(local)
+                    };
+                    source.gain
+                        * fade.gain(position as f32 / length.saturating_sub(1).max(1) as f32)
+                };
+                let colors = theme::clip_colors(track.color, other.color);
+                match source.source {
+                    crate::compound_waveform::ContinuationSource::Audio(audio, unprepared) => {
+                        waveforms::paint_source_peaks_with_gain(
+                            &painter,
+                            body,
+                            audio,
+                            visual,
+                            f64::from(self.session.project.sample_rate_hz)
+                                / f64::from(self.view_zoom()),
+                            colors,
+                            unprepared,
+                            source.channels,
+                            gain,
+                        )
+                    }
+                    crate::compound_waveform::ContinuationSource::Compound => {
+                        self.paint_compound_peaks_with_gain(&painter, body, visual, colors, 1, gain)
+                    }
+                }
             }
         }
     }
@@ -1229,6 +1227,7 @@ mod tests {
                         midpoint: 0.7,
                         midpoint_position: position,
                         crossfade,
+                        inherit_source: false,
                     };
                     let (handle, midpoint) = points(block, fade, left, 100.0, 100);
                     let curve = curve_points(block, fade, left, handle);
@@ -1255,6 +1254,7 @@ mod tests {
                     midpoint: 0.7,
                     midpoint_position: 0.35,
                     crossfade,
+                    inherit_source: false,
                 };
                 let (handle, _) = points(block, fade, left, 100.0, 100);
                 let curve = curve_points(block, fade, left, handle);
@@ -1319,6 +1319,7 @@ mod tests {
                 length_frames: 100,
                 midpoint: 0.7,
                 midpoint_position: 0.3,
+                inherit_source: false,
                 crossfade: true,
             };
             let (handle, _) = points(block, fade, left, 100.0, 100);
@@ -1373,6 +1374,7 @@ mod tests {
                 let fade = ClipFade {
                     length_frames: 100,
                     crossfade,
+                    inherit_source: false,
                     ..Default::default()
                 };
                 let (handle, midpoint) = points(block, fade, left, 100.0, 100);
@@ -1396,6 +1398,7 @@ mod tests {
                     midpoint: 0.7,
                     midpoint_position: 0.3,
                     crossfade,
+                    inherit_source: false,
                 };
                 let (handle, _) = points(block, fade, left, 100.0, 100);
                 let top = handle.y - HANDLE_RADIUS;

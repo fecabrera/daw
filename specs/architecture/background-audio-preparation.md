@@ -169,3 +169,7 @@ Play. Preparation failure retains stopped intent and the callback revision,
 clears the preparation indicator and reports the error. A later Play prepares
 that retained position; it cannot resume the old paused DSP clock. Native device
 acceptance remains separate from device-independent orchestration tests.
+
+Audio Merge follows the atomic source-job branch. New recipes and whole-source
+compound transforms do not enter the editor before complete preparation. See
+[Audio Merge](../editing/audio-merge.md).

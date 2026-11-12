@@ -68,6 +68,54 @@ def check_collect_sources(parent, manifest):
         assert sorted(p.name for p in blocked.iterdir()) == ["project.json"]
 
 
+def check_compound_audio(parent, manifest):
+    folder = parent / "compound"
+    folder.mkdir()
+    project = folder / "project.json"
+    baseline = copy.deepcopy(manifest)
+    baseline["tracks"] = [baseline["tracks"][0]]
+    track = baseline["tracks"][0]
+    track.update(gain_db=0.0, pan=0.0, effects=[], muted=False, soloed=False)
+    first = copy.deepcopy(track["clips"][0])
+    first.update(start_frame=0, length_frames=4800, source_offset_frame=0, gain_db=-3.0)
+    second = copy.deepcopy(first)
+    second.update(id=str(uuid.uuid4()), start_frame=10400, length_frames=3200,
+                  source_offset_frame=8000, gain_db=-6.0)
+    track["clips"] = [first, second]
+    project.write_text(json.dumps(baseline))
+    reference = folder / "before.wav"
+    run(0, "render", "--project", folder, "--output", reference)
+    merged = copy.deepcopy(baseline)
+    source_id = str(uuid.uuid4())
+    members = copy.deepcopy(track["clips"])
+    for member in members:
+        member["id"] = str(uuid.uuid4())
+    merged["assets"].append(dict(
+        id=source_id, name="Merged audio",
+        source=dict(kind="compound_audio", storage="embedded", path_kind="embedded", path=""),
+        source_metadata=dict(sample_rate_hz=merged["sample_rate_hz"], channels=2,
+                             sample_format="ieee_float", bits_per_sample=32),
+        decoded_frame_count=13600, compound_audio=dict(version=1, members=members)))
+    wrapper = copy.deepcopy(first)
+    inherited = dict(length_frames=0, midpoint=0.5, midpoint_position=0.5,
+                     crossfade=False, inherit_source=True)
+    wrapper.update(asset_id=source_id, length_frames=13600, gain_db=0.0,
+                   fades=dict(fade_in=inherited, fade_out=inherited))
+    merged["tracks"][0]["clips"] = [wrapper]
+    project.write_text(json.dumps(merged))
+    run(0, "validate", "--project", folder)
+    run(0, "tracks", track["name"], "--project", folder)
+    output = folder / "after.wav"
+    run(0, "render", "--project", folder, "--output", output)
+    assert reference.read_bytes() == output.read_bytes()
+    run(0, "collect-sources", "--project", folder)
+    assert json.loads(project.read_text())["assets"][-1]["source"]["kind"] == "compound_audio"
+    unsupported = copy.deepcopy(merged)
+    unsupported["assets"][-1]["compound_audio"]["version"] = 99
+    project.write_text(json.dumps(unsupported))
+    run(1, "validate", "--project", folder)
+
+
 def main():
     assert BINARY.exists(), "Build daw-cli first"
     manifest = json.loads((ROOT / "examples/demo/project.json").read_text())
@@ -77,6 +125,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="daw-cli-check-") as temp:
         folder = Path(temp)
         check_collect_sources(folder, manifest)
+        check_compound_audio(folder, manifest)
         project = folder / "project.json"
         project.write_text(json.dumps(manifest))
         run(0, "validate", "--project", folder)
@@ -227,7 +276,7 @@ def main():
         run(1, "tracks", cwd=folder)
         run(1, "validate", "--project", folder)
         run(2, "render")
-    print("CLI smoke check passed: source collection, track inspection, Opus imports, WAV/MP3/AAC codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
+    print("CLI smoke check passed: compound audio, source collection, track inspection, Opus imports, WAV/MP3/AAC codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
 
 
 if __name__ == "__main__":

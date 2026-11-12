@@ -42,6 +42,7 @@ pub(crate) fn integrated_scratch(
 #[derive(Clone)]
 pub struct PreparedStretch {
     pub audio: AudioData,
+    pub context: Option<PreparedSourceContext>,
     source: Arc<Vec<[f32; 2]>>,
     sample_rate_hz: u32,
     engine: StretchEngine,
@@ -49,13 +50,78 @@ pub struct PreparedStretch {
     pitch: timestretch::Pitch,
     pitch_revision: u32,
 }
+#[derive(Clone)]
+pub struct PreparedSourceContext {
+    pub audio: AudioData,
+    pub start_frame: u64,
+}
 impl PreparedStretch {
+    /// Keep transformed continuation around a source while exposing its ordinary
+    /// zero-based body to all existing consumers. Call on a preparation worker.
+    pub fn with_source_context(
+        mut self,
+        original: &AudioData,
+        start_frame: u64,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Self> {
+        let mut start = self
+            .ratio
+            .scale(start_frame)
+            .ok_or_else(|| Error("Compound context offset overflow".into()))?;
+        let length = self
+            .ratio
+            .scale(original.frame_count())
+            .ok_or_else(|| Error("Compound context length overflow".into()))?;
+        let _memory = crate::AudioReservation::new(length, 0)?;
+        // Prefix and body round independently. Keep the exact body length when
+        // their summed rounding exceeds the complete context by one frame.
+        start = start.min(self.audio.frame_count().saturating_sub(length));
+        let end = start
+            .checked_add(length)
+            .filter(|e| *e <= self.audio.frame_count())
+            .ok_or_else(|| Error("Transformed source context is incomplete".into()))?;
+        let mut samples = Vec::new();
+        samples
+            .try_reserve_exact(usize::try_from(length).map_err(|e| Error(e.to_string()))?)
+            .map_err(|e| Error(e.to_string()))?;
+        let mut reader = crate::FrameReader::new(&self.audio);
+        for frame in start..end {
+            if frame.is_multiple_of(1024) && cancelled() {
+                return Err(Error("Audio preparation cancelled".into()));
+            }
+            samples.push(reader.sample(frame)?);
+        }
+        let peaks = crate::prepare_peaks(&samples, cancelled)?;
+        let body = AudioData {
+            sample_rate_hz: self.audio.sample_rate_hz,
+            metadata: self.audio.metadata.clone(),
+            samples: Arc::new(samples),
+            peaks: Arc::new(peaks),
+            disk: None,
+        };
+        crate::register_audio(&body);
+        self.context = Some(PreparedSourceContext {
+            audio: self.audio,
+            start_frame: start,
+        });
+        self.audio = body;
+        self.source = original.samples.clone();
+        self.sample_rate_hz = original.sample_rate_hz;
+        Ok(self)
+    }
     pub fn visit_memory(&self, usage: &mut crate::AudioMemoryUsage) {
         usage.samples(&self.source);
         usage.audio(&self.audio);
+        if let Some(context) = &self.context {
+            usage.audio(&context.audio);
+        }
     }
     pub fn heap_bytes(&self) -> u64 {
         self.audio.metadata.sample_format.capacity() as u64
+            + self
+                .context
+                .as_ref()
+                .map_or(0, |c| c.audio.metadata.sample_format.capacity() as u64)
     }
 
     pub fn new(source: &AudioData, ratio: ClipStretch, engine: StretchEngine) -> Result<Self> {
@@ -86,6 +152,7 @@ impl PreparedStretch {
             return Err(Error("Unsupported clip stretch ratio".into()));
         }
         Ok(Self {
+            context: None,
             audio: {
                 if !crate::preparation_cache::configured() {
                     crate::preparation_cache::transform_slot(cancelled, || {

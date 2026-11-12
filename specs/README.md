@@ -58,6 +58,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Project undo and redo](editing/undo-redo.md).
 - [Component editing and registration](editing/components.md).
 - [Clip settings](editing/clip-settings.md).
+- [Audio clip Merge](editing/audio-merge.md): immutable compound sources, sparse gaps, captured clip edits and live track processing.
 - [Audio fades and crossfades](editing/fades.md): edge handles, midpoint shaping, fixed-boundary transitions and shared rendering.
 - [Clip gain normalization](editing/normalize-gain.md).
 - [Chord catalog](editing/chords.md).

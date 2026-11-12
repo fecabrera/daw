@@ -395,6 +395,7 @@ impl Project {
                 bits_per_sample: 0,
             },
             midi_pattern: Some(pattern),
+            compound_audio: None,
             beat_pattern: None,
         })
     }

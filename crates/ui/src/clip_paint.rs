@@ -151,7 +151,8 @@ impl DawUi {
                 _ => None,
             })
             .or(live_beat);
-        let missing = audio.is_none() && pattern.is_none() && beat.is_none();
+        let compound = self.session.compound_views.contains_key(&clip.asset_id);
+        let missing = audio.is_none() && pattern.is_none() && beat.is_none() && !compound;
         let lane = painter.clip_rect();
         let colors = if missing {
             theme::ClipColors::default()
@@ -311,6 +312,17 @@ impl DawUi {
                 );
             }
 
+            if compound && audio.is_none() {
+                self.paint_compound_peaks(&clip_painter, body, clip, colors);
+                self.paint_compound_transients(
+                    &clip_painter,
+                    Rect::from_min_max(
+                        Pos2::new(body.left(), painted_header.bottom().min(body.bottom())),
+                        body.max,
+                    ),
+                    clip,
+                );
+            }
             if pattern.is_none() && beat.is_none() {
                 if let Some(audio) = audio {
                     self.paint_editor_transients(

@@ -348,6 +348,7 @@ fn inspector_painting_preserves_boundary_control_points_and_inactive_crossfades(
                     midpoint: level,
                     midpoint_position: position,
                     crossfade,
+                    inherit_source: false,
                 };
                 let id = clip.id;
                 app.select_clip(id, track, false);
@@ -380,6 +381,7 @@ fn crossfade_shading_is_applied_once_regardless_of_saved_clip_order() {
                 length_frames: 24_000,
                 midpoint: 0.7,
                 midpoint_position: 0.35,
+                inherit_source: false,
                 crossfade: true,
             };
             let owner = if left {
@@ -691,6 +693,7 @@ fn midpoint_drags_stop_at_position_and_shape_limits_in_both_directions_and_modes
                 let fade = daw_core::ClipFade {
                     length_frames: 24_000,
                     crossfade,
+                    inherit_source: false,
                     ..Default::default()
                 };
                 let owner = if left {
@@ -757,6 +760,7 @@ fn fade_controls_are_hover_only_and_whole_at_shared_boundaries() {
     first.length_frames = 96_000;
     first.fades.fade_out = daw_core::ClipFade {
         length_frames: 24_000,
+        inherit_source: false,
         crossfade: true,
         ..Default::default()
     };
@@ -821,6 +825,7 @@ fn waveform_fade_envelope_tracks_both_edges_and_shape() {
         length_frames: 1000,
         midpoint: 0.8,
         midpoint_position: 0.25,
+        inherit_source: false,
         crossfade: false,
     };
     clip.fades.fade_out = clip.fades.fade_in;
@@ -1088,6 +1093,7 @@ fn looped_crossfade_controls_and_waveforms_support_either_owner_direction() {
             app.session.project.tracks[0].clips = vec![first, second];
             let fade = daw_core::ClipFade {
                 length_frames: 24_000,
+                inherit_source: false,
                 crossfade: true,
                 ..Default::default()
             };

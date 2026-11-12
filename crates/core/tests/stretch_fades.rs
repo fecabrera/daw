@@ -24,6 +24,7 @@ fn stretch_transactions_retain_scaled_group_fades_and_trim_neighbors() {
             },
             decoded_frame_count: 960000,
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
         });
         let make = |start, length| Clip {

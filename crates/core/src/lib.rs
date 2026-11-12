@@ -1,7 +1,13 @@
 mod display;
 pub use display::{ProjectDisplay, TrackHeight};
 mod clip_channels;
+mod compound_audio;
 mod merge;
+pub use compound_audio::{
+    COMPOUND_AUDIO_VERSION, COMPOUND_METADATA_LIMIT, CompiledAudioEnvelope, CompiledAudioTrack,
+    CompoundAudio,
+};
+mod audio_merge;
 pub use clip_channels::ClipChannels;
 mod fades;
 pub use fades::{ClipFade, ClipFades};
@@ -263,6 +269,8 @@ pub struct Master {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compound_audio: Option<CompoundAudio>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub midi_pattern: Option<MidiPattern>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -561,6 +569,10 @@ impl Project {
                 return Err(invalid("Duplicate asset ID"));
             }
             a.source.validate_storage()?;
+            if a.compound_audio.is_some() {
+                self.validate_compound_asset(a)?;
+                continue;
+            }
             if a.midi_pattern.is_some() && a.beat_pattern.is_some() {
                 return Err(invalid(
                     "A source cannot contain both MIDI and beat content",
@@ -620,6 +632,7 @@ impl Project {
                 return Err(invalid("Unsupported source metadata"));
             }
         }
+        self.validate_compound_graph()?;
         let assets: std::collections::HashMap<_, _> =
             self.assets.iter().map(|a| (a.id, a)).collect();
         for t in &self.tracks {
@@ -694,6 +707,13 @@ impl Project {
     }
     fn validate_clip_asset(&self, c: &Clip, a: &Asset) -> Result<()> {
         let invalid = |s: &str| Error(s.into());
+        if a.compound_audio.is_none()
+            && (c.fades.fade_in.inherit_source || c.fades.fade_out.inherit_source)
+        {
+            return Err(invalid(
+                "Inherited envelopes require a compound audio source",
+            ));
+        }
         if !a.is_audio() && !c.channels.is_default() {
             return Err(invalid("Channel settings require an audio clip"));
         }
@@ -1162,7 +1182,7 @@ impl Project {
                     return Err(Error("Split must be inside the clip".into()));
                 }
                 let left_len = at - c.start_frame;
-                let right = Clip {
+                let mut right = Clip {
                     id: Id::new_v4(),
                     start_frame: at,
                     source_offset_frame: if c.repeat.is_some() {
@@ -1175,6 +1195,12 @@ impl Project {
                     ..c.clone()
                 };
                 c.length_frames = left_len;
+                if c.fades.fade_out.inherit_source {
+                    c.fades.fade_out = Default::default();
+                }
+                if right.fades.fade_in.inherit_source {
+                    right.fades.fade_in = Default::default();
+                }
                 t.clips.push(right);
             }
         }
@@ -1704,6 +1730,7 @@ mod tests {
         let asset_id = Id::new_v4();
         project.assets.push(Asset {
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
             id: asset_id,
             name: "Take".into(),

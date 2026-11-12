@@ -4,6 +4,14 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Compound audio clip Merge — 2026-11-12
+
+Audio Merge uses immutable compound sources to retain gaps and captured clip
+edits while leaving track processing live. Preparation, source consumers,
+persistence, history and sparse waveforms use the shared source paths. See the
+[executed validation record](audio-merge.md) for commands, coverage, resource
+checks and remaining native/device/package limits.
+
 ## Merge non-contiguous MIDI and beat clips — 2026-11-12
 
 The shared pattern-merge eligibility check accepts gaps on one track. The result

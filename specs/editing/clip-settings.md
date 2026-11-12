@@ -119,3 +119,7 @@ showing inactive crossfades and identify their automatic boundary fallback.
 Reuse Project::clip_fade_limit for bounds. Inspection does not decode media,
 probe source availability, edit the project or prepare audio. Omit audio-only
 fields for MIDI/beat clips. The summary track list remains unchanged.
+
+Merged audio uses the [compound source contract](audio-merge.md). Source shows
+the retained name and a section-count tooltip. Whole-source transforms prepare
+the body and exterior context on workers before publication.

@@ -146,6 +146,7 @@ fn crossfades_stream_both_sources_without_callback_allocations_and_match_residen
                     length_frames: 256,
                     midpoint: 0.75,
                     midpoint_position: 0.35,
+                    inherit_source: false,
                     crossfade: true,
                 };
                 if left {
@@ -186,4 +187,124 @@ fn crossfades_stream_both_sources_without_callback_allocations_and_match_residen
             }
         }
     }
+}
+
+#[test]
+fn compound_disk_playback_seeks_loops_and_callback_allocations_match_resident() {
+    let (mut resident, _) = plan(48000, 1);
+    resident.project.assets[0].source_metadata.sample_format = "ieee_float".into();
+    resident
+        .audio
+        .values_mut()
+        .next()
+        .unwrap()
+        .metadata
+        .sample_format = "ieee_float".into();
+    let clip = &mut resident.project.tracks[0].clips[0];
+    clip.length_frames = 10000;
+    let mut next = clip.clone();
+    next.id = Id::new_v4();
+    next.start_frame = 20000;
+    next.source_offset_frame = 20000;
+    resident.project.tracks[0].clips.push(next);
+    let ids: Vec<_> = resident.project.tracks[0]
+        .clips
+        .iter()
+        .map(|c| c.id)
+        .collect();
+    resident.project = resident.project.merge_audio_clips(&ids).unwrap().0;
+    let clip = &mut resident.project.tracks[0].clips[0];
+    clip.repeat = Some(ClipLoop {
+        length_frames: 30000,
+        phase_frame: 777,
+    });
+    clip.length_frames = 90000;
+    resident.project.transport.r#loop = Loop {
+        enabled: true,
+        start_frame: 500,
+        end_frame: 32000,
+    };
+    resident.project.validate().unwrap();
+    let mut streamed = resident.clone();
+    let id = resident.project.assets[0].id;
+    let source = &resident.audio[&id];
+    let mut writer = DiskAudioWriter::new(source.frame_count()).unwrap();
+    writer.write(&source.samples).unwrap();
+    streamed
+        .audio
+        .insert(id, writer.finish(48000, source.metadata.clone()).unwrap());
+    let mut expected = Renderer::new(resident);
+    let mut actual = Renderer::new(streamed);
+    actual.prepare_streaming().unwrap();
+    for start in [0, 9000, 29990, 31990, 700] {
+        actual.seek(start);
+        expected.seek(start);
+        actual.play();
+        expected.play();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        for _ in 0..5000 {
+            let value = loop {
+                COUNT.with(|c| c.set(Some(0)));
+                let value = actual.next_sample();
+                let allocations = COUNT.with(|c| c.replace(None));
+                assert_eq!(allocations, Some(0));
+                if !actual.buffering() {
+                    break value;
+                }
+                assert!(Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(1));
+            };
+            assert_eq!(value, expected.next_sample());
+        }
+    }
+    assert!(actual.source_error().is_none());
+}
+
+#[test]
+fn transparent_merge_retains_warm_disk_reader_state_without_callback_allocations() {
+    let (mut source, _) = plan(48000, 1);
+    source.project.assets[0].source_metadata.sample_format = "ieee_float".into();
+    let clip = &mut source.project.tracks[0].clips[0];
+    clip.length_frames = 90000;
+    let mut next = clip.clone();
+    next.id = Id::new_v4();
+    next.start_frame = 95000;
+    next.source_offset_frame = 90500;
+    next.length_frames = 500;
+    source.project.tracks[0].clips.push(next);
+    let id = source.project.assets[0].id;
+    let data = &source.audio[&id];
+    let mut writer = DiskAudioWriter::new(data.frame_count()).unwrap();
+    writer.write(&data.samples).unwrap();
+    source
+        .audio
+        .insert(id, writer.finish(48000, data.metadata.clone()).unwrap());
+    let mut live = Renderer::new(source.clone());
+    live.prepare_streaming().unwrap();
+    live.play();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    for _ in 0..80000 {
+        loop {
+            live.next_sample();
+            if !live.buffering() {
+                break;
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+    let ids: Vec<_> = source.project.tracks[0]
+        .clips
+        .iter()
+        .map(|c| c.id)
+        .collect();
+    source.project = source.project.merge_audio_clips(&ids).unwrap().0;
+    let mut replacement = Renderer::new(source);
+    replacement.prepare_streaming().unwrap();
+    COUNT.with(|c| c.set(Some(0)));
+    replacement.inherit(&mut live);
+    replacement.next_sample();
+    let count = COUNT.with(|c| c.replace(None));
+    assert_eq!(count, Some(0));
+    assert!(!replacement.buffering());
 }

@@ -237,6 +237,7 @@ impl Project {
             id: source.id,
             name,
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: Some(source),
             decoded_frame_count: frames,
             source: Source {

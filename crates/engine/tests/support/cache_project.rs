@@ -82,6 +82,7 @@ pub fn add_audio(plan: &mut RenderPlan, count: usize, fx: usize, mono: bool) -> 
         id: asset,
         name: "synthetic".into(),
         midi_pattern: None,
+        compound_audio: None,
         beat_pattern: None,
         source: Source {
             kind: "external".into(),

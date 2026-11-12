@@ -17,7 +17,7 @@ impl Source {
     pub fn storage_kind(&self) -> SourceStorage {
         self.storage.unwrap_or(match self.kind.as_str() {
             "generated" => SourceStorage::Project,
-            "midi_pattern" | "beat_pattern" => SourceStorage::Embedded,
+            "midi_pattern" | "beat_pattern" | "compound_audio" => SourceStorage::Embedded,
             _ => SourceStorage::External,
         })
     }
@@ -26,7 +26,9 @@ impl Source {
         match (self.kind.as_str(), self.storage_kind()) {
             ("external", SourceStorage::External)
             | ("generated", SourceStorage::Project)
-            | ("midi_pattern" | "beat_pattern", SourceStorage::Embedded) => Ok(()),
+            | ("midi_pattern" | "beat_pattern" | "compound_audio", SourceStorage::Embedded) => {
+                Ok(())
+            }
             ("external", SourceStorage::Project) if self.path_kind == "relative" => {
                 validate_included_source_path(&self.path)
             }

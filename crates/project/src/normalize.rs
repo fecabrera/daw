@@ -93,10 +93,9 @@ impl Session {
         let mut edits = Vec::new();
         for clip in clips {
             let analyze = || -> Result<Option<f32>> {
-                let audio = self
-                    .audio_for_clip(clip)
-                    .ok_or_else(|| error("Prepared clip audio is missing"))?;
-                let mut reader = daw_media::FrameReader::new(audio);
+                let audio =
+                    self.render_clip_source(clip, &|| progress.cancel.load(Ordering::Relaxed))?;
+                let mut reader = daw_media::FrameReader::new(&audio);
                 let mut analyzer =
                     daw_loudness::OfflineAnalyzer::new(self.project.sample_rate_hz, options.mode)
                         .map_err(error)?;

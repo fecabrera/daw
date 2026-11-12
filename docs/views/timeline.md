@@ -95,7 +95,7 @@ Choose **Add MIDI pattern** with a MIDI track selected to place a new pattern at
 
 Edit, Disable and Stem separation use the primary selected clip. Disable changes to **Enable clip** for a disabled clip. Delete removes all selected clips. Split acts on selected clips that cross the playhead. Unavailable actions are disabled; Stem separation requires an audio clip in Timeline and a validated model.
 
-Right-click a clip for the same last two groups: Split/Merge/Stem separation/Normalize gain, then Edit/Disable/Delete. Edit, Disable and Stem separation use the clicked clip. Split, Merge, Normalize gain and Delete use the selected group when the clicked clip belongs to it; otherwise they use that clip. See the requirements for [MIDI merging](#merge-midi-clips), [beat merging](beat-editor.md#merge-beat-patterns), and [Normalize gain](../editing/normalize-gain.md). MIDI headers retain the separate selected-note Velocity and Delete note controls.
+Right-click a clip for the same last two groups: Split/Merge/Stem separation/Normalize gain, then Edit/Disable/Delete. Edit, Disable and Stem separation use the clicked clip. Split, Merge, Normalize gain and Delete use the selected group when the clicked clip belongs to it; otherwise they use that clip. See the requirements for [audio merging](#merge-audio-clips), [MIDI merging](#merge-midi-clips), [beat merging](beat-editor.md#merge-beat-patterns), and [Normalize gain](../editing/normalize-gain.md). MIDI headers retain the separate selected-note Velocity and Delete note controls.
 
 ## Select and edit clips
 
@@ -117,6 +117,30 @@ Split the selected clips at the playhead with Clip > Split at playhead, or with 
 MIDI notes that cross the playhead follow Settings > MIDI > Split MIDI notes. Split into two is the default: the note becomes two notes. Preserve first keeps the part before the playhead on the original clip and does not continue it. The choice is saved on this computer, not in the project. Undo restores both pieces in one step. If a looping MIDI clip needs note rewriting, one split operation can unfold up to 4,096 note occurrences across the selection. A larger operation reports an error and leaves the project unchanged. Shorten the looping clips before retrying. Splitting between notes does not have this limit.
 
 Duplicating into new track space creates fresh track defaults. Group paste also creates fresh tracks when needed and preserves gaps between tracks. A new MIDI track starts with an empty instrument and needs a source before it makes sound. Existing destination tracks keep their settings. Moving MIDI clips to new track space retains their instrument.
+
+## Merge audio clips
+
+Select audio clips on one track and choose **Merge** from the **Clip** menu or a
+selected clip's context menu. Press **Command+J** on macOS or **Ctrl+J** on Windows
+and Linux for the same command. It works in Timeline and Editor.
+
+Clips can touch or have gaps. The result keeps their outer bounds, silent gaps,
+gain, fades, stretch, transpose, channel settings and enabled states. Settings
+can differ between clips. Select intervening clips too; Merge cannot cover an
+unselected clip. Track effects, mixing and routing remain live.
+
+The result keeps the first clip's name and color and becomes the selected clip.
+Undo restores the original clips in one step. You can also consolidate one
+trimmed or looped audio clip. Merging an unchanged complete result again makes
+no edit.
+
+Preparation runs in the background. Failure or cancellation keeps the original
+arrangement. The merged clip still needs its original recordings. Use
+[Collect sources](../projects/README.md#collect-project-sources) before moving the project
+without them. Very complex merges or later operations that need too much
+continuous audio report a preparation error; shorten the selection and retry.
+Trimming or splitting a merged source can need continuous preparation, where
+long silent gaps also count toward the limit.
 
 ## Merge MIDI clips
 

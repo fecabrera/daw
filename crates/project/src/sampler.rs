@@ -14,7 +14,10 @@ impl Session {
                 return false;
             };
             let Some(source) = self.audio_for_clip(&Clip::from(input)) else {
-                return self.audio.contains_key(&input.asset_id);
+                return self.audio.contains_key(&input.asset_id)
+                    || project
+                        .audio_asset(input.asset_id)
+                        .is_some_and(|a| a.compound_audio.is_some());
             };
             let Some(length) = s.output_frames(project.sample_rate_hz, project.tempo_bpm) else {
                 return true;
@@ -99,6 +102,7 @@ impl Session {
             id,
             name: name.clone(),
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
             source: Source {
                 kind: "external".into(),

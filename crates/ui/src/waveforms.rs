@@ -76,6 +76,31 @@ pub(super) fn paint_peaks_with_gain(
     unprepared: Option<daw_core::ClipStretch>,
     gain: impl Fn(u64) -> f32,
 ) {
+    paint_source_peaks_with_gain(
+        painter,
+        body,
+        audio,
+        clip,
+        frames_per_pixel,
+        colors,
+        unprepared,
+        daw_core::ClipChannels::default(),
+        gain,
+    );
+}
+/// Source-stage channel operations are intrinsic to compound continuation previews.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn paint_source_peaks_with_gain(
+    painter: &egui::Painter,
+    body: egui::Rect,
+    audio: &AudioData,
+    clip: &Clip,
+    frames_per_pixel: f64,
+    colors: crate::theme::ClipColors,
+    unprepared: Option<daw_core::ClipStretch>,
+    source_channels: daw_core::ClipChannels,
+    gain: impl Fn(u64) -> f32,
+) {
     if !body.intersect(painter.clip_rect()).is_positive() {
         return;
     }
@@ -84,7 +109,11 @@ pub(super) fn paint_peaks_with_gain(
             .ctx()
             .request_repaint_after(std::time::Duration::from_millis(50));
     }
-    let channels = usize::from(audio.metadata.channels).clamp(1, 2);
+    let channels = if source_channels.is_default() {
+        usize::from(audio.metadata.channels).clamp(1, 2)
+    } else {
+        2
+    };
     let height = body.height() / channels as f32;
     let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));
     for channel in 0..channels {
@@ -95,13 +124,24 @@ pub(super) fn paint_peaks_with_gain(
         {
             let local =
                 ((pixel as f64 - f64::from(body.left())) * frames_per_pixel).max(0.0) as u64;
-            let [min, max] = if let Some(stretch) = unprepared {
+            let input_channel = if source_channels.swapped {
+                1 - channel
+            } else {
+                channel
+            };
+            let [min, max] = if !(if channel == 0 {
+                source_channels.left
+            } else {
+                source_channels.right
+            }) {
+                [0.; 2]
+            } else if let Some(stretch) = unprepared {
                 preview_extrema(
                     audio,
                     clip,
                     local,
                     frames_per_pixel.ceil() as u64 + 1,
-                    channel,
+                    input_channel,
                     Some(stretch),
                 )
             } else {
@@ -110,8 +150,13 @@ pub(super) fn paint_peaks_with_gain(
                     clip,
                     local,
                     frames_per_pixel.ceil() as u64 + 1,
-                    channel,
+                    input_channel,
                 )
+            };
+            let [min, max] = if source_channels.inverted {
+                [-max, -min]
+            } else {
+                [min, max]
             };
             let gain = gain(local);
             let [min, max] = [min * gain, max * gain];

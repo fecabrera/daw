@@ -21,7 +21,7 @@ mod decode;
 mod opus_import;
 pub use decode::{IMPORT_EXTENSIONS, decode_audio, decode_audio_at_rate, decode_audio_cancellable};
 mod clip_audio;
-pub use clip_audio::{ClipAudioCache, ClipAudioKey, clip_audio};
+pub use clip_audio::{ClipAudioCache, ClipAudioKey, clip_audio, prepared_clip_audio};
 mod export;
 mod memory;
 pub use cache::decode_audio_cached;
@@ -34,7 +34,10 @@ pub use export::{
     WavEncoder,
 };
 pub use sampler::PreparedSampler;
-pub use stretch::{PreparedStretch, prepared_audio, stretch_audio, stretch_audio_with_engine};
+pub use stretch::{
+    PreparedSourceContext, PreparedStretch, prepared_audio, stretch_audio,
+    stretch_audio_with_engine,
+};
 use symphonia::core::{
     audio::SampleBuffer, codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,
     meta::MetadataOptions, probe::Hint,
@@ -468,7 +471,7 @@ fn resample_scratch(input_rate: u32, output_rate: u32) -> Result<u64> {
     Ok(bytes)
 }
 
-fn prepare_peaks(
+pub fn prepare_peaks(
     samples: &[[f32; 2]],
     cancelled: &impl Fn() -> bool,
 ) -> Result<Vec<[[f32; 2]; 2]>> {

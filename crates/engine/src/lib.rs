@@ -18,9 +18,11 @@ mod lfo;
 mod midi;
 mod source_meters;
 pub use source_meters::{SourceOutputStage, SourceOutputTarget};
+mod compound_audio;
 mod modulation;
 mod parallel_tracks;
 mod schedule;
+pub use compound_audio::CompoundAudioSource;
 mod streaming;
 mod track_processing;
 pub use parallel_tracks::{PreparationMode, PreparationStats};
@@ -52,10 +54,15 @@ impl RenderPlan {
     }
     fn needs_stateful_render(&self) -> bool {
         self.project
-            .tracks
+            .assets
             .iter()
-            .flat_map(|t| &t.clips)
-            .any(|c| c.fades.fade_in.crossfade || c.fades.fade_out.crossfade)
+            .any(|a| a.compound_audio.is_some())
+            || self
+                .project
+                .tracks
+                .iter()
+                .flat_map(|t| &t.clips)
+                .any(|c| c.fades.fade_in.crossfade || c.fades.fade_out.crossfade)
             || self.audio.values().any(|audio| audio.disk.is_some())
             || self
                 .stretched_audio
@@ -302,7 +309,7 @@ impl Renderer {
             })
             .chain(plan.project.master.effects.iter().map(|e| (e.id, None)))
             .collect();
-        let audio_tracks = plan
+        let audio_tracks: Vec<_> = plan
             .project
             .tracks
             .iter()
@@ -375,7 +382,7 @@ impl Renderer {
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         plan.project.sample_rate_hz.hash(&mut hash);
-        for (track, runtime) in plan.project.tracks.iter().zip(&midi) {
+        for (index, (track, runtime)) in plan.project.tracks.iter().zip(&midi).enumerate() {
             track.id.hash(&mut hash);
             track.group_id.hash(&mut hash);
             for send in &track.sends {
@@ -386,15 +393,7 @@ impl Renderer {
                 Some(runtime.fingerprint()).hash(&mut hash);
             } else {
                 None::<u64>.hash(&mut hash);
-                format!("{:?}", track.clips).hash(&mut hash);
-                for clip in &track.clips {
-                    clip.muted.hash(&mut hash);
-                    if let Some(audio) = plan.audio_for_clip(clip) {
-                        std::sync::Arc::as_ptr(&audio.samples).hash(&mut hash);
-                        audio.sample_rate_hz.hash(&mut hash);
-                        audio.metadata.channels.hash(&mut hash);
-                    }
-                }
+                audio_tracks[index].source_identity().hash(&mut hash);
             }
         }
         let source_fingerprint = hash.finish();
@@ -871,6 +870,18 @@ impl Renderer {
         self.playing = old.playing;
         self.paused = old.paused;
         self.playback_start = old.playback_start;
+        // Equivalent prepared sources retain read-ahead, loop pins and staged PCM.
+        // The unused candidate moves into the renderer retired by the host.
+        for (index, track) in self.plan.project.tracks.iter().enumerate() {
+            if let Some(&previous) = old.track_index.get(&track.id)
+                && self.audio_tracks[index].same_source(&old.audio_tracks[previous])
+            {
+                std::mem::swap(
+                    &mut self.audio_tracks[index],
+                    &mut old.audio_tracks[previous],
+                );
+            }
+        }
         self.ramp = old.ramp;
         self.master = old.master;
         self.master_remaining = fade_frames;
@@ -1360,6 +1371,7 @@ mod tests {
                 length_frames: 200,
                 midpoint: 0.8,
                 midpoint_position: 0.35,
+                inherit_source: false,
                 crossfade: true,
             };
             let mut fades = daw_core::ClipFades::default();
@@ -1464,6 +1476,7 @@ mod tests {
             length_frames: 1000,
             midpoint: 0.2,
             midpoint_position: 0.25,
+            inherit_source: false,
             crossfade: false,
         };
         assert!((plan.sample_at(250)[0] - 0.05).abs() < 0.00001);
@@ -1502,6 +1515,7 @@ mod tests {
                     length_frames: 200,
                     midpoint: 0.7,
                     midpoint_position: 0.35,
+                    inherit_source: false,
                     crossfade: true,
                 };
                 let mut fades = daw_core::ClipFades::default();
@@ -1664,6 +1678,7 @@ mod tests {
             };
             let fade = daw_core::ClipFade {
                 length_frames: 200,
+                inherit_source: false,
                 crossfade: true,
                 ..Default::default()
             };
@@ -1725,6 +1740,7 @@ mod tests {
         };
         project.assets.push(Asset {
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
             id,
             name: "Test".into(),

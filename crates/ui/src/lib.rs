@@ -23,6 +23,7 @@ pub use clip_menu::ClipMenuAction;
 mod audio_editor;
 mod clip_paint;
 mod clip_settings;
+mod compound_waveform;
 mod editor_transients;
 mod editor_viewport;
 mod fit_viewport;
@@ -2118,7 +2119,7 @@ impl DawUi {
                         && self
                             .session
                             .project
-                            .can_merge_pattern_clips(&self.selected_clip_ids())
+                            .can_merge_clips(&self.selected_clip_ids())
                 }
                 ClipAction::Split => {
                     self.view_mode.has_clip_lanes()
@@ -2184,13 +2185,23 @@ impl DawUi {
         if !self.editing_enabled() {
             return;
         }
-        let (project, id) = match self.session.project.merge_pattern_clips(ids) {
+        let (project, id) = match self.session.project.merged_clips(ids) {
             Ok(merged) => merged,
             Err(error) => {
                 self.fail(error);
                 return;
             }
         };
+        if project == self.session.project {
+            if let Some(track) = project
+                .tracks
+                .iter()
+                .find(|t| t.clips.iter().any(|c| c.id == id))
+            {
+                self.select_clip(id, track.id, false);
+            }
+            return;
+        }
         let track = project
             .tracks
             .iter()
@@ -6125,6 +6136,7 @@ mod tests {
         let asset = Id::new_v4();
         app.session.project.assets.push(daw_core::Asset {
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
             id: asset,
             name: "Missing".into(),

@@ -85,6 +85,7 @@ mod tests {
         let asset_id = Id::new_v4();
         project.assets.push(Asset {
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
             id: asset_id,
             name: "Source".into(),

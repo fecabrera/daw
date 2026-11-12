@@ -51,3 +51,7 @@ before extensions. Match the existing included-source basename rule while
 retaining each caller's errors. Other Unicode names remain valid. Failed names
 retain the session, recordings and original asset/clip names. This validation
 does not rename external recordings or change existing-folder collection.
+
+Embedded [compound audio sources](../editing/audio-merge.md) have no file path.
+Their retained leaf assets participate in the same current/history/saved source
+inventory. Relocation changes leaf paths and keeps recipe asset references.

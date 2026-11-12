@@ -53,3 +53,6 @@ Project actions respect text editing, window focus, active edit gestures, jobs, 
 Timeline display metadata is saved with project snapshots but excluded from
 history checkpoint comparison. Zoom, scrolling and track height do not add
 Undo steps; see [Timeline display state](../views/timeline-display.md).
+
+Audio Merge records the prepared compound recipe, leaf owners and sparse waveform
+clocks together as one source transaction. See [Audio Merge](audio-merge.md).

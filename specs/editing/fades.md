@@ -232,3 +232,7 @@ for the header fill, shade boundary and guide tops. Curve endpoints retain
 their handle-top attachment at 23 points. Inset each stroke center by half a point toward the overlap to
 keep the full stroke inside the host clip. Show the pair only when the crossover
 is hovered, including during a drag; dragging outside does not retain guides.
+
+Compound source wrappers can delegate an edge through `inherit_source`. Captured
+member clocks retain their envelopes; edits and new cuts use the boundary rules
+in [Audio Merge](audio-merge.md).

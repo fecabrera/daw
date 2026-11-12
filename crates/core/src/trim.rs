@@ -61,6 +61,15 @@ impl Clip {
         if effective == 0 {
             return Some(self.clone());
         }
+        match edge {
+            ClipEdge::Left if clip.fades.fade_in.inherit_source => {
+                clip.fades.fade_in = Default::default()
+            }
+            ClipEdge::Right if clip.fades.fade_out.inherit_source => {
+                clip.fades.fade_out = Default::default()
+            }
+            _ => {}
+        }
         clip.restore_source_range();
         Some(clip)
     }

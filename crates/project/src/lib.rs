@@ -17,7 +17,9 @@ mod inspection;
 pub use inspection::inspect_project;
 mod history;
 pub use history::{HistoryMemory, SessionHistory};
+mod audio_merge;
 mod clip_audio;
+mod compound_audio;
 mod file_publish;
 mod relative_path;
 use relative_path::relative_path;
@@ -90,6 +92,8 @@ pub struct Session {
     pub audio: HashMap<Id, AudioData>,
     pub sampler_audio: HashMap<Id, daw_media::PreparedSampler>,
     pub stretched_audio: daw_media::ClipAudioCache,
+    /// Worker-compiled sparse waveform clocks. No bins are allocated for gaps.
+    pub compound_views: HashMap<Id, std::sync::Arc<daw_core::CompiledAudioTrack>>,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
     // A verified missing source may render silence; an undecoded source must wait.
@@ -164,7 +168,7 @@ impl Session {
             if cancelled() {
                 return Err(error("Audio preparation cancelled"));
             }
-            if !asset.is_audio() {
+            if !asset.is_file_audio() {
                 continue;
             }
             let Some(cached) = self.audio.get(&asset.id) else {
@@ -209,6 +213,7 @@ impl Session {
             audio: HashMap::new(),
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
+            compound_views: HashMap::new(),
             folder: Some(folder),
             temporary_stems: Vec::new(),
             missing_audio: HashSet::new(),
@@ -256,7 +261,7 @@ impl Session {
             .project
             .assets
             .iter()
-            .filter(|asset| asset.is_audio())
+            .filter(|asset| asset.is_file_audio())
             .count() as u64
             + 1;
         let mut done = 0;
@@ -265,7 +270,7 @@ impl Session {
             if cancelled() {
                 return Err(error("Audio preparation cancelled"));
             }
-            if !asset.is_audio() {
+            if !asset.is_file_audio() {
                 continue;
             }
             if session.audio.contains_key(&asset.id) {
@@ -340,6 +345,9 @@ impl Session {
     /// Pure path resolution for captured/validated owners; no filesystem access.
     pub(crate) fn source_path_unchecked(&self, asset: &Asset) -> Result<PathBuf> {
         asset.source.validate_storage().map_err(error)?;
+        if !asset.is_file_audio() {
+            return Err(error("Embedded sources have no file path"));
+        }
         let p = PathBuf::from(&asset.source.path);
         if asset.source.path_kind == "absolute" {
             if !p.is_absolute() {
@@ -440,6 +448,7 @@ impl Session {
         };
         next.assets.push(Asset {
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
             id: asset_id,
             name,
@@ -531,7 +540,7 @@ impl Session {
         progress(0, end);
         let path = absolute(path)?;
         for asset in &self.project.assets {
-            if !asset.is_audio() {
+            if !asset.is_file_audio() {
                 continue;
             }
             let source = self.source_path(asset)?;

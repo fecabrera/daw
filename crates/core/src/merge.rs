@@ -6,10 +6,10 @@ use std::collections::HashSet;
 const MAX_MERGE_NOTES: usize = 4096;
 
 impl Project {
-    pub(crate) fn pattern_merge_targets(&self, ids: &[Id]) -> Result<(usize, Vec<&Clip>)> {
+    pub(crate) fn merge_targets(&self, ids: &[Id]) -> Result<(usize, Vec<&Clip>)> {
         let ids: HashSet<_> = ids.iter().copied().collect();
         if ids.is_empty() {
-            return Err(Error("Select one or more MIDI or beat patterns".into()));
+            return Err(Error("Select one or more clips".into()));
         }
         let (index, track) = self
             .tracks
@@ -41,6 +41,12 @@ impl Project {
                 "Merge would cover an unselected clip; select it too".into(),
             ));
         }
+        Ok((index, clips))
+    }
+
+    pub(crate) fn pattern_merge_targets(&self, ids: &[Id]) -> Result<(usize, Vec<&Clip>)> {
+        let (index, clips) = self.merge_targets(ids)?;
+        let first = clips[0];
         let midi = self
             .assets
             .iter()

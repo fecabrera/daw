@@ -3463,6 +3463,7 @@ fn sampler_plan(rate: u32, trigger: SamplerTrigger) -> RenderPlan {
         source_metadata: metadata.clone(),
         decoded_frame_count: length,
         midi_pattern: None,
+        compound_audio: None,
         beat_pattern: None,
     });
     let audio = daw_media::AudioData {

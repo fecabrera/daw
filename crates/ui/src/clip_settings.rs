@@ -914,6 +914,15 @@ fn drag_transpose(ui: &Ui, response: &Response, current: i8) -> Option<i8> {
 }
 
 fn source_label(asset: &Asset) -> (String, String) {
+    if let Some(source) = &asset.compound_audio {
+        return (
+            asset.name.clone(),
+            format!(
+                "Merged audio · {} sections. Original recordings remain required.",
+                source.members.len()
+            ),
+        );
+    }
     if asset.beat_pattern.is_some() {
         return (
             "Beat pattern".into(),

@@ -24,12 +24,27 @@ impl Project {
                 .map_err(|_| Error("Sample rate change exceeds timeline bounds".into()))
         };
         for asset in &mut next.assets {
-            asset.decoded_frame_count = u64::try_from(
-                (u128::from(asset.decoded_frame_count) * numerator).div_ceil(denominator),
-            )
-            .map_err(|_| Error("Sample rate change exceeds source bounds".into()))?;
+            asset.decoded_frame_count = if asset.compound_audio.is_some() {
+                asset.source_metadata.sample_rate_hz = sample_rate_hz;
+                scale(asset.decoded_frame_count)?
+            } else {
+                u64::try_from(
+                    (u128::from(asset.decoded_frame_count) * numerator).div_ceil(denominator),
+                )
+                .map_err(|_| Error("Sample rate change exceeds source bounds".into()))?
+            };
         }
-        for clip in next.tracks.iter_mut().flat_map(|track| &mut track.clips) {
+        for clip in next
+            .tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.clips)
+            .chain(
+                next.assets
+                    .iter_mut()
+                    .filter_map(|a| a.compound_audio.as_mut())
+                    .flat_map(|s| &mut s.members),
+            )
+        {
             let end = scale(clip.end())?;
             let source_length = clip
                 .repeat
@@ -97,6 +112,7 @@ mod tests {
         let asset = crate::Id::new_v4();
         project.assets.push(crate::Asset {
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
             id: asset,
             name: "source.wav".into(),

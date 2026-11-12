@@ -367,3 +367,142 @@ fn single_full_unlooped_pattern_can_be_consolidated() {
         assert!(app.dirty);
     }
 }
+
+fn audio_merge_fixture() -> (DawUi, egui::Context, Vec<Id>) {
+    let (mut app, track) = fixture();
+    let asset = &mut app.session.project.assets[0];
+    asset.decoded_frame_count = 4800;
+    app.session.audio.insert(
+        asset.id,
+        daw_media::AudioData {
+            sample_rate_hz: 48000,
+            metadata: asset.source_metadata.clone(),
+            disk: None,
+            samples: std::sync::Arc::new(vec![[0.2, -0.1]; 4800]),
+            peaks: Default::default(),
+        },
+    );
+    let a = &mut app.session.project.tracks[0].clips[0];
+    a.length_frames = 1200;
+    let first = a.id;
+    let mut b = a.clone();
+    b.id = Id::new_v4();
+    b.start_frame = 3600;
+    b.source_offset_frame = 1200;
+    b.gain_db = -3.0;
+    let second = b.id;
+    app.session.project.tracks[0].clips.push(b);
+    app.select_clip(first, track, false);
+    app.select_clip(second, track, true);
+    app.history = None;
+    app.ensure_history();
+    app.dirty = false;
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    (app, ctx, vec![first, second])
+}
+#[test]
+fn audio_merge_publishes_prepared_source_waveform_selection_and_one_history_step() {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
+        let (mut app, ctx, ids) = audio_merge_fixture();
+        app.set_view_mode(view, &ctx);
+        let before = app.session.project.clone();
+        app.perform_clip_action(ClipAction::Merge, &ctx);
+        assert!(app.job.is_some());
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+        wait_for_save(&mut app);
+        assert!(app.error.is_none(), "{:?}", app.error);
+        let after = app.session.project.clone();
+        assert_eq!(after.tracks[0].clips.len(), 1);
+        assert_eq!(app.selected_clips, HashSet::from([ids[0]]));
+        assert_eq!(app.session.compound_views.len(), 1);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280., 800.));
+        assert!(
+            !shapes.iter().any(
+                |s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="Missing source")
+            )
+        );
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert_eq!(app.session.project, before);
+        app.perform_history_action(HistoryAction::Redo, &ctx);
+        assert_eq!(app.session.project, after);
+        app.dirty = false;
+        app.perform_clip_action(ClipAction::Merge, &ctx);
+        assert!(!app.dirty);
+        assert!(app.job.is_none());
+    }
+}
+#[test]
+fn audio_merge_failure_preserves_arrangement_selection_and_history() {
+    let (mut app, ctx, ids) = audio_merge_fixture();
+    app.session.audio.clear();
+    let new_asset = Id::new_v4();
+    app.session.project.assets[0].id = new_asset;
+    for clip in &mut app.session.project.tracks[0].clips {
+        clip.asset_id = new_asset;
+    }
+    let before = app.session.project.clone();
+    app.perform_clip_action(ClipAction::Merge, &ctx);
+    assert!(app.job.is_some());
+    wait_for_save(&mut app);
+    assert!(app.error.is_some());
+    assert_eq!(app.session.project, before);
+    assert_eq!(app.selected_clips, ids.into_iter().collect());
+    assert!(!app.dirty);
+    assert!(!app.history.as_ref().unwrap().can_undo());
+}
+
+#[test]
+fn compound_waveforms_keep_source_controls_and_map_unprepared_stretch_previews() {
+    let (mut app, ctx, _) = audio_merge_fixture();
+    app.perform_clip_action(ClipAction::Merge, &ctx);
+    wait_for_save(&mut app);
+    assert!(app.error.is_none());
+    let mut clip = app.session.project.tracks[0].clips[0].clone();
+    let source = app.compound_clip_extrema(&clip, 500, 1, 0, 0);
+    let captured = app.compound_clip_extrema(&clip, 4100, 1, 0, 0);
+    assert!((captured[1] - source[1] * daw_core::linear_gain(-3.0)).abs() < 1e-6);
+    clip.gain_db = 12.0;
+    clip.channels.left = false;
+    clip.channels.swapped = true;
+    clip.channels.inverted = true;
+    clip.muted = true;
+    assert_eq!(app.compound_clip_extrema(&clip, 500, 1, 0, 0), source);
+    clip.stretch = daw_core::ClipStretch::new(1, 2);
+    clip.length_frames *= 2;
+    assert_eq!(app.compound_clip_extrema(&clip, 1000, 1, 0, 0), source);
+}
+
+#[test]
+fn compound_crossfade_continuations_use_leaf_windows_and_prepared_context_offsets() {
+    let (mut app, ctx, _) = audio_merge_fixture();
+    for clip in &mut app.session.project.tracks[0].clips {
+        clip.start_frame += 1000;
+    }
+    app.session.project.tracks[0].clips[0].source_offset_frame = 500;
+    app.perform_clip_action(ClipAction::Merge, &ctx);
+    wait_for_save(&mut app);
+    assert!(app.error.is_none(), "{:?}", app.error);
+    let owner = app.session.project.tracks[0].clips[0].clone();
+    let left = app.continuation_waveform(&owner, true, 100).unwrap();
+    assert_eq!(left.clip.source_offset_frame, 400);
+    assert_eq!(left.clip.length_frames, 100);
+    let right = app.continuation_waveform(&owner, false, 100).unwrap();
+    assert_eq!(right.clip.source_offset_frame, 2400);
+    assert!((right.gain - daw_core::linear_gain(-3.0)).abs() < 1e-6);
+    app.session = app
+        .session
+        .with_edit(daw_core::Edit::SetClipTranspose {
+            clip_id: owner.id,
+            transpose: 3,
+        })
+        .unwrap();
+    let owner = app.session.project.tracks[0].clips[0].clone();
+    let left = app.continuation_waveform(&owner, true, 100).unwrap();
+    assert_eq!(left.clip.source_offset_frame, 400);
+    assert!(matches!(
+        left.source,
+        crate::compound_waveform::ContinuationSource::Audio(_, None)
+    ));
+}

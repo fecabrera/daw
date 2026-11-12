@@ -25,6 +25,12 @@ impl Clip {
     pub(crate) fn retained_range(&self, start: u64, end: u64) -> Self {
         let advance = start - self.start_frame;
         let mut clip = self.clone();
+        if start != self.start_frame && clip.fades.fade_in.inherit_source {
+            clip.fades.fade_in = Default::default();
+        }
+        if end != self.end() && clip.fades.fade_out.inherit_source {
+            clip.fades.fade_out = Default::default();
+        }
         clip.start_frame = start;
         clip.length_frames = end - start;
         if let Some(repeat) = clip.repeat {
@@ -96,6 +102,21 @@ impl Project {
             clip.source_offset_frame = candidate.source_offset_frame;
             clip.length_frames = candidate.length_frames;
             clip.repeat = candidate.repeat;
+            if !update_stretch {
+                if clip.source_offset_frame != original.source_offset_frame
+                    && clip.fades.fade_in.inherit_source
+                {
+                    clip.fades.fade_in = Default::default();
+                }
+                if clip.source_offset_frame.saturating_add(clip.length_frames)
+                    != original
+                        .source_offset_frame
+                        .saturating_add(original.length_frames)
+                    && clip.fades.fade_out.inherit_source
+                {
+                    clip.fades.fade_out = Default::default();
+                }
+            }
             if update_stretch {
                 clip.stretch = candidate.stretch;
                 // stretched_to scales saved durations; ordinary trim/loop paths retain them.
@@ -179,6 +200,7 @@ mod tests {
         let asset = Id::new_v4();
         project.assets.push(Asset {
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
             id: asset,
             name: "Source".into(),

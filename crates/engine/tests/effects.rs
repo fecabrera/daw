@@ -50,6 +50,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         id,
         name: "tone".into(),
         midi_pattern: None,
+        compound_audio: None,
         beat_pattern: None,
         source: Source {
             kind: "external".into(),
@@ -2133,4 +2134,44 @@ fn send_levels_taps_power_and_solo_retarget_without_callback_heap_work() {
             current = next;
         }
     }
+}
+
+#[test]
+fn audio_merge_inherits_live_effect_state_without_callback_allocations() {
+    let mut source = plan(48000, false);
+    source.project.tracks[0].clips[0].length_frames = 4096;
+    let mut right = source.project.tracks[0].clips[0].clone();
+    right.id = Id::new_v4();
+    right.start_frame = 4096;
+    right.source_offset_frame = 4096;
+    source.project.tracks[0].clips.push(right);
+    source.project.tracks[0]
+        .effects
+        .push(EffectInstance::chorus());
+    add_compressor(&mut source, CompressorDetection::Rms);
+    let mut live = Renderer::new(source.clone());
+    let mut reference = Renderer::new(source.clone());
+    live.play();
+    reference.play();
+    for _ in 0..3000 {
+        assert_eq!(live.next_sample(), reference.next_sample());
+    }
+    let ids: Vec<_> = source.project.tracks[0]
+        .clips
+        .iter()
+        .map(|c| c.id)
+        .collect();
+    source.project = source.project.merge_audio_clips(&ids).unwrap().0;
+    let mut replacement = Renderer::new(source);
+    assert!(replacement.can_inherit_without_preroll(&live));
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACK_ALLOCATIONS.with(|c| c.set(true));
+    replacement.inherit(&mut live);
+    let mut equal = true;
+    for _ in 0..8000 {
+        equal &= replacement.next_sample() == reference.next_sample();
+    }
+    TRACK_ALLOCATIONS.with(|c| c.set(false));
+    assert!(equal);
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
 }

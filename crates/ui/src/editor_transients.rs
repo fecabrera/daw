@@ -29,13 +29,28 @@ struct Identity {
     // Keep allocation identities from being reused without retaining source PCM.
     _samples: Weak<Vec<[f32; 2]>>,
     _disk: Option<Weak<daw_media::DiskAudio>>,
+    _compound: Option<Weak<daw_core::CompiledAudioTrack>>,
 }
 impl Identity {
+    fn compound(view: &Arc<daw_core::CompiledAudioTrack>, rate: u32) -> Self {
+        Self {
+            key: Key {
+                samples: Arc::as_ptr(view) as usize,
+                disk: usize::MAX,
+                rate,
+                channels: 2,
+            },
+            _samples: Weak::new(),
+            _disk: None,
+            _compound: Some(Arc::downgrade(view)),
+        }
+    }
     fn of(audio: &AudioData) -> Self {
         Self {
             key: Key::of(audio),
             _samples: Arc::downgrade(&audio.samples),
             _disk: audio.disk.as_ref().map(Arc::downgrade),
+            _compound: None,
         }
     }
 }
@@ -112,8 +127,7 @@ impl State {
             self.entries.pop_front();
         }
     }
-    pub fn request(&mut self, audio: &AudioData, ctx: &egui::Context) {
-        let key = Key::of(audio);
+    fn cached_or_busy(&mut self, key: Key) -> bool {
         if let Some(index) = self
             .entries
             .iter()
@@ -121,13 +135,49 @@ impl State {
         {
             let entry = self.entries.remove(index).unwrap();
             self.entries.push_back(entry);
+            return true;
+        }
+        self.job.is_some()
+    }
+    pub fn request(&mut self, audio: &AudioData, ctx: &egui::Context) {
+        if self.cached_or_busy(Key::of(audio)) || audio.frame_count() == 0 {
             return;
         }
-        if self.job.is_some() || audio.frame_count() == 0 {
-            return;
-        }
+        let identity = Identity::of(audio);
         let audio = audio.clone();
-        let identity = Identity::of(&audio);
+        self.spawn(identity, ctx, move |cancel| {
+            daw_media::audio_transients(&audio, &|| cancel.load(Ordering::Relaxed))
+                .map_err(|e| e.to_string())
+        });
+    }
+    pub fn request_compound(
+        &mut self,
+        session: &daw_project::Session,
+        id: Id,
+        ctx: &egui::Context,
+    ) {
+        let Some(view) = session.compound_views.get(&id) else {
+            return;
+        };
+        let identity = Identity::compound(view, session.project.sample_rate_hz);
+        if self.cached_or_busy(identity.key) {
+            return;
+        }
+        let session = session.clone();
+        self.spawn(identity, ctx, move |cancel| {
+            let cancelled = || cancel.load(Ordering::Relaxed);
+            let audio = session
+                .render_compound_source(id, &cancelled)
+                .map_err(|e| e.to_string())?;
+            daw_media::audio_transients(&audio, &cancelled).map_err(|e| e.to_string())
+        });
+    }
+    fn spawn(
+        &mut self,
+        identity: Identity,
+        ctx: &egui::Context,
+        action: impl FnOnce(&AtomicBool) -> Result<Vec<u64>, String> + Send + 'static,
+    ) {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancel = cancelled.clone();
         let (sender, receiver) = mpsc::sync_channel(1);
@@ -135,10 +185,7 @@ impl State {
         match std::thread::Builder::new()
             .name("editor-transients".into())
             .spawn(move || {
-                let result =
-                    daw_media::audio_transients(&audio, &|| worker_cancel.load(Ordering::Relaxed))
-                        .map_err(|e| e.to_string());
-                let _ = sender.send(result);
+                let _ = sender.send(action(&worker_cancel));
                 repaint.request_repaint();
             }) {
             Ok(_) => {
@@ -198,13 +245,25 @@ impl State {
             result: Ok(Arc::new(markers)),
         });
     }
+    pub fn compound_markers(&self, session: &daw_project::Session, id: Id) -> Option<&[u64]> {
+        self.markers_for_key(
+            Identity::compound(
+                session.compound_views.get(&id)?,
+                session.project.sample_rate_hz,
+            )
+            .key,
+        )
+    }
     pub fn markers(&self, audio: &AudioData) -> Option<&[u64]> {
+        self.markers_for_key(Key::of(audio))
+    }
+    fn markers_for_key(&self, key: Key) -> Option<&[u64]> {
         if !self.enabled {
             return None;
         }
         self.entries
             .iter()
-            .find(|entry| entry.identity.key == Key::of(audio))?
+            .find(|entry| entry.identity.key == key)?
             .result
             .as_ref()
             .ok()
@@ -242,10 +301,32 @@ impl DawUi {
         audio: &AudioData,
         stretch: Option<daw_core::ClipStretch>,
     ) {
+        let markers = self.editor_transients.markers(audio);
+        self.paint_transient_markers(painter, body, clip, markers, stretch);
+    }
+    pub(super) fn paint_compound_transients(
+        &self,
+        painter: &egui::Painter,
+        body: Rect,
+        clip: &Clip,
+    ) {
+        let markers = self
+            .editor_transients
+            .compound_markers(&self.session, clip.asset_id);
+        self.paint_transient_markers(painter, body, clip, markers, None);
+    }
+    fn paint_transient_markers(
+        &self,
+        painter: &egui::Painter,
+        body: Rect,
+        clip: &Clip,
+        markers: Option<&[u64]>,
+        stretch: Option<daw_core::ClipStretch>,
+    ) {
         if !self.midi_editor.content_active || self.view_mode != mixer::ViewMode::Edit {
             return;
         }
-        let Some(markers) = self.editor_transients.markers(audio) else {
+        let Some(markers) = markers else {
             return;
         };
         let visible = body.intersect(painter.clip_rect());

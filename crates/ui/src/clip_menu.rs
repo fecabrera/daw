@@ -136,7 +136,7 @@ impl DawUi {
             ClipMenuAction::Merge => self
                 .session
                 .project
-                .can_merge_pattern_clips(&self.menu_clip_targets(clip.id)),
+                .can_merge_clips(&self.menu_clip_targets(clip.id)),
             ClipMenuAction::Split => !self
                 .clips_crossed_by_playhead(&self.menu_clip_targets(clip.id))
                 .is_empty(),

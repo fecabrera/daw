@@ -148,12 +148,10 @@ impl Session {
             .find(|c| c.id == clip_id)
             .ok_or_else(|| error("Clip not found"))?
             .clone();
-        let audio = self
-            .audio_for_clip(&clip)
-            .ok_or_else(|| error("Prepared audio is missing; separation requires an audio clip"))?;
+        let audio = self.render_clip_source(&clip, &|| progress.cancel.load(Ordering::Relaxed))?;
         let _input_memory =
             daw_media::AudioReservation::new(clip.length_frames, 0).map_err(error)?;
-        let mut reader = daw_media::FrameReader::new(audio);
+        let mut reader = daw_media::FrameReader::new(&audio);
         let mut input = Vec::new();
         input
             .try_reserve_exact(usize::try_from(clip.length_frames).map_err(error)?)
@@ -235,6 +233,14 @@ impl Session {
             stem.channels = clip.channels;
             stem.color = clip.color;
             stem.fades = clip.fades;
+            // Delegated member envelopes are already in the extracted source.
+            // New generated file edges use the standard boundary policy.
+            if stem.fades.fade_in.inherit_source {
+                stem.fades.fade_in = Default::default();
+            }
+            if stem.fades.fade_out.inherit_source {
+                stem.fades.fade_out = Default::default();
+            }
             tracks.push(track.id);
             let asset = next
                 .project
@@ -384,12 +390,14 @@ mod tests {
                         midpoint: 0.25,
                         midpoint_position: 0.35,
                         crossfade,
+                        inherit_source: false,
                     };
                     original.fades.fade_out = daw_core::ClipFade {
                         length_frames: 800,
                         midpoint: 0.75,
                         midpoint_position: 0.65,
                         crossfade,
+                        inherit_source: false,
                     };
                     // Exercise temporary and saved ownership without doubling the matrix.
                     if crossfade {
@@ -528,12 +536,14 @@ mod tests {
                     length_frames: 1200,
                     midpoint: 0.3,
                     midpoint_position: 0.4,
+                    inherit_source: false,
                     crossfade: false,
                 },
                 fade_out: daw_core::ClipFade {
                     length_frames: 800,
                     midpoint: 0.7,
                     midpoint_position: 0.6,
+                    inherit_source: false,
                     crossfade: false,
                 },
             };
@@ -1395,6 +1405,40 @@ mod tests {
                 .unwrap();
             assert_ne!(first.directory, second.directory);
         }
+    }
+    #[test]
+    fn compound_separation_consumes_captured_audio_and_creates_valid_file_edges() {
+        let (_fixture, session, id) = Fixture::new();
+        let (merged, id) = session.merged_audio_clips(&[id], &|| false).unwrap();
+        let next = merged
+            .separate_clip_with(id, &SeparationProgress::default(), fake)
+            .unwrap()
+            .publish();
+        next.project.validate().unwrap();
+        let stems: Vec<_> = next
+            .project
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .filter(|c| {
+                next.project
+                    .audio_asset(c.asset_id)
+                    .is_some_and(|a| a.source.kind == "generated")
+            })
+            .collect();
+        assert_eq!(stems.len(), 4);
+        assert!(
+            stems
+                .iter()
+                .all(|c| !c.fades.fade_in.inherit_source && !c.fades.fade_out.inherit_source)
+        );
+        assert!(
+            next.project
+                .tracks
+                .iter()
+                .flat_map(|t| &t.clips)
+                .any(|c| c.id == id && c.muted)
+        );
     }
 }
 

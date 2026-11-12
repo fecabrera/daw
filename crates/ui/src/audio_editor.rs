@@ -74,6 +74,18 @@ impl DawUi {
                     {
                         self.editor_transients.request(audio, ui.ctx());
                     }
+                    if self.editor_transients.enabled
+                        && self.drag.is_none()
+                        && self.job.is_none()
+                        && !self.background_media.required
+                        && self.session.audio_for_clip(clip).is_none()
+                    {
+                        self.editor_transients.request_compound(
+                            &self.session,
+                            clip.asset_id,
+                            ui.ctx(),
+                        );
+                    }
                     let original = self.editor_original_span(lane, clip);
                     self.paint_clip(
                         &painter.with_clip_rect(original.intersect(lane)),

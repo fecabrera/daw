@@ -55,6 +55,10 @@ Move the whole project folder, including `assets/` and `stems/`, rather than onl
 
 A failure before saving retains the previous project and playback. If the report says sources were saved but active state was retained, close the report and reopen the saved destination. If commit could not be confirmed, keep all destination files and the candidate manifest named in the report. Recovery is not automatic. If cleanup reports retained files, those copies stay in place because the app cannot verify that it created them. Collection does not remove unused media or crash leftovers.
 
+Merged audio clips still depend on their original recordings, including the
+sections hidden inside the merged clip. Collect sources before sharing a project
+that contains [merged audio](../views/timeline.md#merge-audio-clips).
+
 ## Project Settings
 
 Use File > Project Settings to change the name, processing rate, output bit depth, buffer size, or [time-stretch engine](../audio/time-stretch.md). Apply accepts valid changes; Cancel or Escape discards the draft.

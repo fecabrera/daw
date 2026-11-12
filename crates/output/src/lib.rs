@@ -1841,6 +1841,7 @@ mod tests {
         };
         project.assets.push(Asset {
             midi_pattern: None,
+            compound_audio: None,
             beat_pattern: None,
             id,
             name: "Test".into(),

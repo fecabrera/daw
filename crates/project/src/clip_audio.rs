@@ -4,17 +4,25 @@ use daw_core::{Clip, Project};
 use daw_media::ClipAudioKey;
 use std::collections::HashMap;
 
-fn requests(project: &Project) -> impl Iterator<Item = ClipAudioKey> + '_ {
+pub(super) fn requests(project: &Project) -> impl Iterator<Item = ClipAudioKey> + '_ {
+    let key = |clip: &Clip| {
+        ClipAudioKey::for_clip(clip).or_else(|| {
+            project
+                .compound_window_requires_preparation(clip)
+                .then(|| ClipAudioKey::unity(clip.asset_id))
+        })
+    };
     project
         .tracks
         .iter()
         .flat_map(|track| &track.clips)
-        .filter_map(ClipAudioKey::for_clip)
+        .filter_map(key)
+        .chain(project.compound_members().filter_map(key))
         .chain(
             project
                 .samplers()
                 .filter_map(|sampler| sampler.input.as_ref())
-                .filter_map(|input| ClipAudioKey::for_clip(&Clip::from(input))),
+                .filter_map(move |input| key(&Clip::from(input))),
         )
 }
 impl Session {
@@ -35,9 +43,28 @@ impl Session {
     /// Decide on the control thread; all missing DSP is built by the existing job.
     pub fn audio_preparation_needed(&self, project: &Project) -> bool {
         if project.assets.iter().any(|asset| {
-            asset.is_audio()
+            asset.compound_audio.is_some()
+                && (!self.project.assets.iter().any(|old| old == asset)
+                    || !self.compound_views.contains_key(&asset.id))
+        }) {
+            return true;
+        }
+        if project.assets.iter().any(|asset| {
+            asset.is_file_audio()
                 && !self.audio.contains_key(&asset.id)
                 && !self.missing_audio.contains(&asset.id)
+        }) {
+            return true;
+        }
+        if requests(project).any(|key| {
+            project
+                .audio_asset(key.asset_id)
+                .is_some_and(|a| a.compound_audio.is_some())
+                && self.audio.get(&key.asset_id).is_none_or(|source| {
+                    self.stretched_audio.get(&key).is_none_or(|prepared| {
+                        !key.matches(prepared, source, project.stretch_engine)
+                    })
+                })
         }) {
             return true;
         }
@@ -59,6 +86,7 @@ impl Session {
         self.missing_audio = prepared.missing_audio.clone();
         self.stretched_audio = prepared.stretched_audio.clone();
         self.sampler_audio = prepared.sampler_audio.clone();
+        self.compound_views = prepared.compound_views.clone();
     }
 
     /// MIDI and metadata changes can publish before their audio is ready.
@@ -134,7 +162,32 @@ impl Session {
         cancelled: &impl Fn() -> bool,
         samplers: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<()> {
+        if cancelled() {
+            return Err(error("Audio preparation cancelled"));
+        }
+        let mut candidate = self.clone();
+        candidate.prepare_stretches_in_place(cancelled, samplers)?;
+        self.audio = candidate.audio;
+        self.stretched_audio = candidate.stretched_audio;
+        self.sampler_audio = candidate.sampler_audio;
+        self.compound_views = candidate.compound_views;
+        Ok(())
+    }
+    fn prepare_stretches_in_place(
+        &mut self,
+        cancelled: &impl Fn() -> bool,
+        samplers: impl FnOnce(&mut Self) -> Result<()>,
+    ) -> Result<()> {
         self.project.validate().map_err(error)?;
+        self.prepare_compound_sources(cancelled)?;
+        for track in &self.project.tracks {
+            if cancelled() {
+                return Err(error("Audio preparation cancelled"));
+            }
+            self.project
+                .compile_audio_track(track, |id| self.audio.contains_key(&id))
+                .map_err(error)?;
+        }
         let mut prepared = HashMap::new();
         for key in requests(&self.project) {
             if cancelled() {
@@ -160,12 +213,11 @@ impl Session {
         if cancelled() {
             return Err(error("Audio preparation cancelled"));
         }
-        let mut next = self.clone();
-        next.stretched_audio = prepared;
-        samplers(&mut next)?;
-        self.sampler_audio = next.sampler_audio;
-        self.stretched_audio = next.stretched_audio;
-        self.audio = next.audio;
+        self.stretched_audio = prepared;
+        samplers(self)?;
+        self.plan()
+            .compound_schedule_bytes(cancelled)
+            .map_err(error)?;
         Ok(())
     }
 }

@@ -14,6 +14,17 @@ pub struct ClipAudioKey {
 pub type ClipAudioCache = HashMap<ClipAudioKey, PreparedStretch>;
 
 impl ClipAudioKey {
+    pub fn unity(asset_id: Id) -> Self {
+        Self {
+            asset_id,
+            stretch: ClipStretch {
+                source_frames: 1,
+                output_frames: 1,
+            },
+            transpose: 0,
+        }
+    }
+
     pub fn for_clip(clip: &Clip) -> Option<Self> {
         if clip.stretch.is_none() && clip.transpose == 0 {
             return None;
@@ -55,6 +66,19 @@ impl ClipAudioKey {
     }
 }
 
+/// A prepared unity view can carry source context for cropped compound windows.
+pub fn prepared_clip_audio<'a>(
+    clip: &Clip,
+    originals: &'a HashMap<Id, AudioData>,
+    prepared: &'a ClipAudioCache,
+    engine: StretchEngine,
+) -> Option<&'a PreparedStretch> {
+    let source = originals.get(&clip.asset_id)?;
+    let key = ClipAudioKey::for_clip(clip).unwrap_or_else(|| ClipAudioKey::unity(clip.asset_id));
+    prepared
+        .get(&key)
+        .filter(|p| key.matches(p, source, engine))
+}
 /// Missing/stale transformed audio is silent; never substitute the original pitch.
 pub fn clip_audio<'a>(
     clip: &Clip,
@@ -64,10 +88,9 @@ pub fn clip_audio<'a>(
 ) -> Option<&'a AudioData> {
     let source = originals.get(&clip.asset_id)?;
     match ClipAudioKey::for_clip(clip) {
-        Some(key) => prepared
-            .get(&key)
-            .filter(|audio| key.matches(audio, source, engine))
-            .map(|audio| &audio.audio),
-        None => Some(source),
+        Some(_) => prepared_clip_audio(clip, originals, prepared, engine).map(|p| &p.audio),
+        None => Some(
+            prepared_clip_audio(clip, originals, prepared, engine).map_or(source, |p| &p.audio),
+        ),
     }
 }

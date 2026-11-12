@@ -363,6 +363,7 @@ mod tests {
             length_frames: 4800,
             midpoint: 0.7,
             midpoint_position: 0.25,
+            inherit_source: false,
             crossfade: false,
         };
         project.assets.push(asset);
@@ -385,6 +386,7 @@ mod tests {
         assert_eq!(project, before);
         project.tracks[1].clips[0].fades.fade_out = daw_core::ClipFade {
             length_frames: 1000,
+            inherit_source: false,
             crossfade: true,
             ..Default::default()
         };
