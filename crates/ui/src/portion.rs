@@ -193,11 +193,14 @@ impl DawUi {
             };
             self.mask_neighbor_previews(ui, self.timeline_bounds, &display);
             self.paint_preview_clips(ui, self.timeline_bounds, &display);
-            ui.ctx().set_cursor_icon(if duplicate {
-                egui::CursorIcon::Copy
-            } else {
-                egui::CursorIcon::Grabbing
-            });
+            ui.ctx()
+                .set_cursor_icon(if previews.iter().any(|preview| !preview.valid) {
+                    egui::CursorIcon::NotAllowed
+                } else if duplicate {
+                    egui::CursorIcon::Copy
+                } else {
+                    egui::CursorIcon::Grabbing
+                });
         }
         if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
             self.portion_drag = None;
@@ -362,6 +365,10 @@ impl DawUi {
         previews: Vec<ClipPreview>,
         duplicate: bool,
     ) {
+        // Match whole-clip drops: incompatible targets cancel without an edit or dialog.
+        if previews.iter().any(|preview| !preview.valid) {
+            return;
+        }
         if frame_delta == 0 && track_delta == 0 {
             return;
         }

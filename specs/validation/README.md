@@ -4,6 +4,41 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Range-drop and AccessKit corrections — 2026-11-12
+
+The third standalone five-reviewer run and separate validator confirmed three
+corrections. The ONNX shape-inference finding remains excluded from remediation.
+At the user's request, work stops after this round's fixes and checks.
+
+Time-range moves/copies now give incompatible incoming previews forbidden cursor
+precedence and reject release before dispatch or selection/history mutation.
+Whole-clip and time-range gestures share this eligibility rule; core validation
+continues to report other failures. New egui gesture checks cover audio/MIDI
+mismatches, group buses expanded/collapsed, headers/lanes, a multi-track range
+with only its secondary target invalid, and return to a valid target. They check
+unchanged clips, selected range, track/clip selection, history and error state.
+
+AccessKit 0.24.1's additional Chromium BSD grant is retained verbatim in UI notice
+inputs. Its source supplement binds the registry checksum, common/ VCS path,
+exact revision and grant hash. Source-ZIP checks retain the copyright, conditions
+and disclaimer with the matching package mapping. Existing UI notice attributes
+preserve its bytes with CRLF checkouts. The stem-separation specification now
+states the shared disk-backed prepared-PCM policy while retaining arranged-input
+and native-inference memory limits.
+
+Passed: `cargo test --locked -p daw-ui tests::clip_portion` (six tests with the
+move/copy target matrix), `cargo test --locked --workspace`,
+`cargo test --locked --workspace --release`,
+`cargo clippy --locked --workspace --all-targets -- -D warnings`,
+`cargo fmt --all --check`, `python3 -m unittest discover -s tools -p 'test_*.py'`
+(44 tests), changed-document file targets, all 90 notice hashes and
+`git diff --check`. Workspace debug and release include doctests.
+`python3 tools/build_desktop.py debug macos` passed with the real toolchain.
+
+Automated egui checks are not native gesture/device acceptance. Native UI,
+audio-device/listening, external hosts and Windows/Linux execution remain unrun.
+No further independent review round is scheduled.
+
 ## Source grant and guide corrections — 2026-11-12
 
 The next five-reviewer standalone run and separate validation confirmed a

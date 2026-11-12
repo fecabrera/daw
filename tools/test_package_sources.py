@@ -22,7 +22,7 @@ def fixture():
         for name, value in [('user.name', 'Source fixture'), ('user.email', 'fixture@example.invalid')]:
             subprocess.run(['git', '-C', str(root), 'config', name, value], check=True)
         entries=[e for e in json.loads((sources.ROOT/'tools/runtime_notices.json').read_text())['notices']
-                 if e['component'] in ('valuable-0.1.1', 'realfft-3.5.0')]
+                 if e['component'] in ('valuable-0.1.1', 'realfft-3.5.0', 'accesskit-0.24.1-chromium')]
         entries.sort(key=lambda e: e['component'] != 'valuable-0.1.1')
         (root/'tools').mkdir()
         (root/'tools/runtime_notices.json').write_text(json.dumps({'notices':entries}))
@@ -75,7 +75,7 @@ class SourcePackages(unittest.TestCase):
                 self.assertFalse(any('private-recording' in name or '.git/' in name for name in archive.namelist()))
                 self.assertEqual(len(archive.namelist()),len(set(archive.namelist())))
                 notices=json.loads(archive.read('DAW/SOURCE-LICENSES/index.json'))
-                self.assertEqual(len(notices),2)
+                self.assertEqual(len(notices),3)
                 notice=archive.read('DAW/SOURCE-LICENSES/'+notices[0]['notice'])
                 self.assertIn(b'Copyright (c) 2021 Valuable Contributors',notice)
                 self.assertEqual(hashlib.sha256(notice).hexdigest(),notices[0]['sha256'])
@@ -88,6 +88,15 @@ class SourcePackages(unittest.TestCase):
                 self.assertEqual(realfft['version'],'3.5.0')
                 self.assertEqual(realfft['git_revision'],'d0d4eee0525fd27c96c8a046d6d107acd5ed84a6')
                 self.assertIn('9fdcf59c60c7ecacbf75774d378a068811a2e6ea',realfft['license_url'])
+                accesskit=next(entry for entry in notices if entry['name']=='accesskit')
+                grant=archive.read('DAW/SOURCE-LICENSES/'+accesskit['notice'])
+                self.assertIn(b'Copyright 2015 The Chromium Authors',grant)
+                self.assertIn(b'Redistributions in binary form must reproduce',grant)
+                self.assertIn(b'THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS',grant)
+                self.assertEqual(hashlib.sha256(grant).hexdigest(),accesskit['sha256'])
+                self.assertEqual(accesskit['version'],'0.24.1')
+                self.assertEqual(accesskit['path_in_vcs'],'common')
+                self.assertEqual(accesskit['git_revision'],'a55d3e1a18bb9ef0e4bccc9083fb13c3e0ad8969')
 
             manifest=json.loads((destination/'source-manifest.json').read_text())
             self.assertEqual(manifest['revision'],revision)

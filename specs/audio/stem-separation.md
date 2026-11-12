@@ -24,7 +24,7 @@ Publish a new processing group and four or six ordinary audio tracks at the end 
 
 The separation crate has no UI/device dependency. Dependencies flow project → separation → media. Decoding, model construction, inference, WAV I/O, peaks, and resampling stay on the existing worker. Nothing is added to the audio callback.
 
-Charon runs windows in its existing serial stream pipeline. The adapter retains only one output block per write, not complete model-rate output arrays for every stem. The arranged input and resampled input still need memory; imported project-rate buffers and peaks use the normal shared media path. There is no streaming disk-backed project audio or fixed job-memory guarantee.
+Charon runs windows in its existing serial stream pipeline. The adapter retains only one output block per write, not complete model-rate output arrays for every stem. The arranged input and resampled input still need memory; imported project-rate buffers and peaks use the normal shared media path. Large prepared project-rate stems use the shared [disk-backed PCM policy](../architecture/disk-backed-audio.md). Arranged model input and native inference retain their memory limits; there is no fixed total job-memory guarantee.
 
 ## Model selection and validation
 

@@ -369,3 +369,241 @@ fn range_overwrite_previews_match_release_and_escape_preserves_project() {
         }
     }
 }
+
+#[test]
+fn incompatible_range_moves_and_copies_cancel_without_a_dialog_or_edit() {
+    for source_midi in [false, true] {
+        for group_collapsed in [None, Some(false), Some(true)] {
+            for controls in [false, true] {
+                for duplicate in [false, true] {
+                    let (mut app, audio) = fixture();
+                    let source = if source_midi {
+                        let source = app.session.project.add_midi_track().unwrap();
+                        app.session.project.add_midi_pattern(source, 0).unwrap();
+                        source
+                    } else {
+                        audio
+                    };
+                    let target = if let Some(collapsed) = group_collapsed {
+                        let child = app.session.project.add_track().unwrap();
+                        let group = Id::new_v4();
+                        app.session
+                            .project
+                            .edit(Edit::GroupTracks {
+                                track_ids: vec![child],
+                                group_id: group,
+                                name: "Group".into(),
+                            })
+                            .unwrap();
+                        app.session
+                            .project
+                            .edit(Edit::SetGroupCollapsed {
+                                track_id: group,
+                                collapsed,
+                            })
+                            .unwrap();
+                        group
+                    } else if source_midi {
+                        audio
+                    } else {
+                        app.session.project.add_midi_track().unwrap()
+                    };
+                    let ctx = context();
+                    app.selected_track = Some(source);
+                    frame(&mut app, &ctx, vec![]);
+                    app.portion = Some(super::super::portion::ClipPortion {
+                        tracks: vec![source],
+                        start_frame: frames(0.0),
+                        end_frame: frames(0.5),
+                    });
+                    app.selected_clip = None;
+                    app.selected_clips.clear();
+                    let before = app.session.project.clone();
+                    let source_lane = app.lane_bounds[&source];
+                    let from = Pos2::new(
+                        x_at(&app, source_lane, frames(0.25)),
+                        source_lane.top() + 40.0,
+                    );
+                    let target_lane = app.lane_bounds[&target];
+                    let to = Pos2::new(
+                        if controls {
+                            app.timeline_bounds.left() - 100.0
+                        } else {
+                            x_at(&app, target_lane, frames(4.5))
+                        },
+                        target_lane.center().y,
+                    );
+                    let modifiers = egui::Modifiers {
+                        alt: duplicate && cfg!(target_os = "macos"),
+                        ctrl: duplicate && !cfg!(target_os = "macos"),
+                        ..Default::default()
+                    };
+                    modifiers_frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(from), button(from, true)],
+                        modifiers,
+                    );
+                    let cursor = modifiers_frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(to)],
+                        modifiers,
+                    );
+                    assert!(app.portion_drag.is_some());
+                    assert_eq!(
+                        cursor,
+                        egui::CursorIcon::NotAllowed,
+                        "midi={source_midi}, group={group_collapsed:?}, controls={controls}, copy={duplicate}"
+                    );
+                    assert_eq!(app.session.project, before);
+                    modifiers_frame(&mut app, &ctx, vec![button(to, false)], modifiers);
+                    assert!(app.error.is_none(), "{:?}", app.error);
+                    assert_eq!(app.session.project, before);
+                    assert_eq!(app.selected_track, Some(source));
+                    assert!(app.selected_clip.is_none() && app.selected_clips.is_empty());
+                    let portion = app.portion.as_ref().unwrap();
+                    assert_eq!(portion.tracks, vec![source]);
+                    assert_eq!(
+                        (portion.start_frame, portion.end_frame),
+                        (frames(0.0), frames(0.5))
+                    );
+                    assert!(app.portion_drag.is_none() && app.job.is_none());
+                    assert!(!app.dirty);
+                    assert!(!app.history.as_ref().unwrap().can_undo());
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn range_drop_rejects_all_members_when_only_the_secondary_target_is_incompatible() {
+    for duplicate in [false, true] {
+        let (mut app, source) = fixture();
+        let second = app.session.project.add_track().unwrap();
+        let mut clip = app.session.project.tracks[0].clips[0].clone();
+        clip.id = Id::new_v4();
+        app.session.project.tracks[1].clips.push(clip);
+        app.session.project.add_midi_track().unwrap();
+        let ctx = context();
+        app.selected_track = Some(source);
+        frame(&mut app, &ctx, vec![]);
+        app.portion = Some(super::super::portion::ClipPortion {
+            tracks: vec![source, second],
+            start_frame: frames(1.0),
+            end_frame: frames(2.0),
+        });
+        app.selected_clip = None;
+        app.selected_clips.clear();
+        let before = app.session.project.clone();
+        let lane = app.lane_bounds[&source];
+        let from = Pos2::new(x_at(&app, lane, frames(1.5)), lane.top() + 40.0);
+        let target = app.lane_bounds[&second];
+        let to = Pos2::new(x_at(&app, target, frames(4.5)), target.center().y);
+        let modifiers = egui::Modifiers {
+            alt: duplicate && cfg!(target_os = "macos"),
+            ctrl: duplicate && !cfg!(target_os = "macos"),
+            ..Default::default()
+        };
+        modifiers_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(from), button(from, true)],
+            modifiers,
+        );
+        let cursor = modifiers_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(to)],
+            modifiers,
+        );
+        assert_eq!(cursor, egui::CursorIcon::NotAllowed);
+        modifiers_frame(&mut app, &ctx, vec![button(to, false)], modifiers);
+        assert!(app.error.is_none(), "{:?}", app.error);
+        assert_eq!(app.session.project, before);
+        assert_eq!(app.selected_track, Some(source));
+        assert!(app.selected_clip.is_none() && app.selected_clips.is_empty());
+        let portion = app.portion.as_ref().unwrap();
+        assert_eq!(portion.tracks, vec![source, second]);
+        assert_eq!(
+            (portion.start_frame, portion.end_frame),
+            (frames(1.0), frames(2.0))
+        );
+        assert!(!app.dirty && app.job.is_none());
+        assert!(!app.history.as_ref().unwrap().can_undo());
+    }
+}
+
+#[test]
+fn range_drag_recovers_from_an_invalid_target_before_release() {
+    for duplicate in [false, true] {
+        let (mut app, source) = fixture();
+        let invalid = app.session.project.add_midi_track().unwrap();
+        let valid = app.session.project.add_track().unwrap();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        app.portion = Some(super::super::portion::ClipPortion {
+            tracks: vec![source],
+            start_frame: frames(1.0),
+            end_frame: frames(2.0),
+        });
+        let lane = app.lane_bounds[&source];
+        let from = Pos2::new(x_at(&app, lane, frames(1.5)), lane.top() + 40.0);
+        let to = |app: &DawUi, track| {
+            let lane = app.lane_bounds[&track];
+            Pos2::new(x_at(app, lane, frames(4.5)), lane.center().y)
+        };
+        let invalid_point = to(&app, invalid);
+        let valid_point = to(&app, valid);
+        let modifiers = egui::Modifiers {
+            alt: duplicate && cfg!(target_os = "macos"),
+            ctrl: duplicate && !cfg!(target_os = "macos"),
+            ..Default::default()
+        };
+        modifiers_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(from), button(from, true)],
+            modifiers,
+        );
+        assert_eq!(
+            modifiers_frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(invalid_point)],
+                modifiers
+            ),
+            egui::CursorIcon::NotAllowed
+        );
+        let cursor = modifiers_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(valid_point)],
+            modifiers,
+        );
+        assert_eq!(
+            cursor,
+            if duplicate {
+                egui::CursorIcon::Copy
+            } else {
+                egui::CursorIcon::Grabbing
+            }
+        );
+        modifiers_frame(&mut app, &ctx, vec![button(valid_point, false)], modifiers);
+        assert!(app.error.is_none(), "{:?}", app.error);
+        assert_eq!(
+            app.session
+                .project
+                .tracks
+                .iter()
+                .find(|track| track.id == valid)
+                .unwrap()
+                .clips
+                .len(),
+            1
+        );
+        assert_eq!(app.portion.as_ref().unwrap().tracks, vec![valid]);
+        assert!(app.dirty && app.history.as_ref().unwrap().can_undo());
+    }
+}
