@@ -60,6 +60,29 @@ impl DawUi {
                     ui.ctx().request_repaint();
                 }
             }
+            // Mark the complete visible set before requests can evict any result.
+            self.editor_transients.begin_view();
+            if self.editor_transients.enabled {
+                for clip in &track.clips {
+                    if self
+                        .clip_block(lane, clip, clip.start_frame)
+                        .intersect(lane)
+                        .is_positive()
+                    {
+                        if let Some(audio) = self
+                            .session
+                            .audio_for_clip(clip)
+                            .or_else(|| self.session.audio.get(&clip.asset_id))
+                        {
+                            self.editor_transients.visible(audio);
+                        }
+                        if self.session.audio_for_clip(clip).is_none() {
+                            self.editor_transients
+                                .visible_compound(&self.session, clip.asset_id);
+                        }
+                    }
+                }
+            }
             for clip in &track.clips {
                 let block = self.clip_block(lane, clip, clip.start_frame);
                 if block.intersect(lane).is_positive() {

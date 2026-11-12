@@ -133,7 +133,10 @@ audio. Changing this view option does not edit the project or affect playback.
 Markers describe the prepared source before clip gain, fades and channel controls.
 Quiet tonal attacks or hits less than 30 ms apart can be missed.
 
-Results are cached in memory. If a source exceeds the 128 MiB analysis memory
+Results are cached for up to 32 sources. Visible results remain stable. When all
+cache entries are visible, **Transient cache full** indicates that other sources
+are deferred. Zoom in or scroll to free cache entries for those sources.
+If a source exceeds the 128 MiB analysis memory
 limit or cannot be analyzed, a small status label provides details in its tooltip;
 editing and playback remain available. Toggle the option off and on to retry a
 failed analysis. Original recordings remain unchanged.

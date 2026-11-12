@@ -4,6 +4,39 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Standalone main review corrections — 2026-11-12
+
+Five independent reviewers and a separate validator confirmed three corrections:
+
+- Optional transient analysis protects visible cached results and failures. A
+  static 33-source viewport stops work at the 32-entry capacity; navigation
+  frees entries. A late result cannot evict a visible result. The cache-full
+  status explains deferred analysis. Weak ownership and one worker remain.
+- POSIX desktop packaging selects the native Rust target and validates Cargo's
+  executable report. Target/target-directory overrides cannot select an older
+  executable. Linux archive names follow the compiled target architecture.
+- Direction Mixer ownership includes regular layer and instrument Output effects,
+  consistent with the shared engine and Output guide.
+
+Passed: `cargo test --locked -p daw-ui editor_transients` (including success,
+failure, navigation and late completion), `cargo test --locked --workspace`,
+`cargo test --locked --workspace --release`,
+`cargo clippy --locked --workspace --all-targets -- -D warnings`,
+`cargo fmt --all --check`, `git diff --check`, shell syntax and changed-document
+file-link checks. Debug and release workspace runs include doctests.
+
+`python3 -m unittest discover -s tools -p 'test_*.py'` passed all 44 tests.
+After the Linux archive-name adjustment, the desktop packaging matrix passed
+again: both profiles/platforms, target and directory overrides from environment
+and Cargo configuration, and preservation of previous packages after build,
+missing-artifact or source-vendor failure. These tests use controlled build shims.
+`python3 tools/build_desktop.py debug macos` also passed with the real native
+compiler and Cargo executable report.
+
+Native GUI/device/listening, external plugin-host acceptance and Windows/Linux
+execution remain separate and were not performed. The ONNX shape-inference
+finding remains unchanged under the requested exception.
+
 ## Compound audio clip Merge — 2026-11-12
 
 Audio Merge uses immutable compound sources to retain gaps and captured clip

@@ -3,11 +3,8 @@ set -eu
 cd "$(dirname "$0")/.."
 source_revision="$(python3 tools/package_sources.py --revision-only)"
 profile="${1:-debug}"
-case "$profile" in
-  debug) cargo build --locked --target-dir "$PWD/target" -p daw-desktop ;;
-  release) cargo build --locked --target-dir "$PWD/target" -p daw-desktop --release ;;
-  *) echo "Usage: $0 [debug|release]" >&2; exit 2 ;;
-esac
+executable="$(python3 tools/build_desktop.py "$profile" macos)"
+mkdir -p "$PWD/target/$profile"
 artifact="target/$profile/DAW.app"
 staging_directory="$(mktemp -d "$PWD/target/$profile/.daw-app.XXXXXX")"
 trap 'rm -rf "$staging_directory"' EXIT
@@ -17,7 +14,7 @@ mkdir -p "$bundle/Contents/MacOS"
 mkdir -p "$bundle/Contents/Resources/licenses"
 # Publish a fresh inode so a running DAW instance can keep its mapped executable.
 temporary_executable="$(mktemp "$bundle/Contents/MacOS/.daw-desktop.XXXXXX")"
-cp "target/$profile/daw-desktop" "$temporary_executable"
+cp "$executable" "$temporary_executable"
 chmod 755 "$temporary_executable"
 mv -f "$temporary_executable" "$bundle/Contents/MacOS/daw-desktop"
 cp LICENSE "$bundle/Contents/Resources/LICENSE.txt"

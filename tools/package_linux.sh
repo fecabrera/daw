@@ -7,14 +7,13 @@ if [ "$(uname -s)" != Linux ]; then
 fi
 source_revision="$(python3 tools/package_sources.py --revision-only)"
 profile="${1:-debug}"
-case "$profile" in
-  debug) cargo build --locked --target-dir "$PWD/target" -p daw-desktop ;;
-  release) cargo build --locked --target-dir "$PWD/target" -p daw-desktop --release ;;
-  *) echo "Usage: $0 [debug|release]" >&2; exit 2 ;;
-esac
-case "$(uname -m)" in
-  x86_64) architecture=x64 ;;
-  aarch64|arm64) architecture=arm64 ;;
+executable="$(python3 tools/build_desktop.py "$profile" linux)"
+mkdir -p "$PWD/target/$profile"
+# Name the archive for the validated Rust target, including translated hosts.
+build_target="$(basename "$(dirname "$(dirname "$executable")")")"
+case "$build_target" in
+  x86_64-*-linux-*) architecture=x64 ;;
+  aarch64-*-linux-*) architecture=arm64 ;;
   *) echo 'Unsupported Linux architecture.' >&2; exit 2 ;;
 esac
 
@@ -23,7 +22,7 @@ trap 'rm -rf "$staging_directory"' EXIT
 trap 'exit 1' HUP INT TERM
 package="$staging_directory/DAW"
 mkdir -p "$package/licenses"
-cp "target/$profile/daw-desktop" "$package/daw-desktop"
+cp "$executable" "$package/daw-desktop"
 chmod 755 "$package/daw-desktop"
 cp LICENSE "$package/LICENSE.txt"
 cp docs/development/linux-runtime.txt "$package/LINUX-REQUIREMENTS.txt"

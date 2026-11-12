@@ -57,6 +57,7 @@ impl Identity {
 struct Entry {
     identity: Identity,
     result: Result<Arc<Vec<u64>>, String>,
+    visible: bool,
 }
 struct Job {
     identity: Identity,
@@ -71,6 +72,7 @@ pub(super) struct State {
     job: Option<Job>,
     project: Option<Id>,
     generation: u64,
+    capacity_limited: bool,
     #[cfg(test)]
     pub toggle_bounds: Option<Rect>,
 }
@@ -112,6 +114,7 @@ impl State {
                 self.insert(Entry {
                     identity: job.identity,
                     result: result.map(Arc::new),
+                    visible: false,
                 });
             }
         }
@@ -122,9 +125,36 @@ impl State {
     fn insert(&mut self, entry: Entry) {
         self.entries
             .retain(|old| old.identity.key != entry.identity.key);
+        if self.entries.len() == 32 {
+            // A late result must not evict a source still visible in the current view.
+            let Some(index) = self.entries.iter().position(|entry| !entry.visible) else {
+                return;
+            };
+            self.entries.remove(index);
+        }
         self.entries.push_back(entry);
-        while self.entries.len() > 32 {
-            self.entries.pop_front();
+    }
+    pub fn begin_view(&mut self) {
+        self.capacity_limited = false;
+        for entry in &mut self.entries {
+            entry.visible = false;
+        }
+    }
+    fn visible_key(&mut self, key: Key) {
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.identity.key == key)
+        {
+            entry.visible = true;
+        }
+    }
+    pub fn visible(&mut self, audio: &AudioData) {
+        self.visible_key(Key::of(audio));
+    }
+    pub fn visible_compound(&mut self, session: &daw_project::Session, id: Id) {
+        if let Some(view) = session.compound_views.get(&id) {
+            self.visible_key(Identity::compound(view, session.project.sample_rate_hz).key);
         }
     }
     fn cached_or_busy(&mut self, key: Key) -> bool {
@@ -137,7 +167,14 @@ impl State {
             self.entries.push_back(entry);
             return true;
         }
-        self.job.is_some()
+        if self.job.is_some() {
+            return true;
+        }
+        // Protect every visible result, including failures, before admitting work.
+        // Otherwise a 33-source viewport continually evicts and reanalyzes itself.
+        self.capacity_limited =
+            self.entries.len() == 32 && self.entries.iter().all(|entry| entry.visible);
+        self.capacity_limited
     }
     pub fn request(&mut self, audio: &AudioData, ctx: &egui::Context) {
         if self.cached_or_busy(Key::of(audio)) || audio.frame_count() == 0 {
@@ -199,6 +236,7 @@ impl State {
             Err(error) => self.insert(Entry {
                 identity,
                 result: Err(format!("Cannot start transient analysis: {error}")),
+                visible: false,
             }),
         }
         ctx.request_repaint();
@@ -224,6 +262,11 @@ impl State {
             }
         }
         if self.enabled {
+            if self.capacity_limited {
+                ui.small("Transient cache full").on_hover_text(
+                    "Up to 32 visible sources retain transient results. Zoom in or scroll to analyze other sources.",
+                );
+            }
             if self.job.is_some() {
                 ui.spinner().on_hover_text("Analyzing transients");
             }
@@ -243,6 +286,7 @@ impl State {
         self.insert(Entry {
             identity: Identity::of(audio),
             result: Ok(Arc::new(markers)),
+            visible: false,
         });
     }
     pub fn compound_markers(&self, session: &daw_project::Session, id: Id) -> Option<&[u64]> {
@@ -413,6 +457,91 @@ mod tests {
         }
     }
     #[test]
+    fn over_capacity_view_stops_work_and_navigation_releases_slots() {
+        for fail in [false, true] {
+            let sources: Vec<_> = (0..33).map(|_| audio()).collect();
+            let ctx = egui::Context::default();
+            let project = Id::new_v4();
+            let mut state = State::default();
+            state.enabled = true;
+            let mut started = 0;
+            for _ in 0..100 {
+                state.poll(project, &ctx);
+                state.begin_view();
+                for audio in &sources {
+                    state.visible(audio);
+                }
+                for audio in &sources {
+                    if !state.cached_or_busy(Key::of(audio)) {
+                        started += 1;
+                        state.spawn(Identity::of(audio), &ctx, move |_| {
+                            if fail {
+                                Err("unavailable".into())
+                            } else {
+                                Ok(vec![100])
+                            }
+                        });
+                    }
+                }
+                let deadline = std::time::Instant::now() + Duration::from_secs(3);
+                while state.job.is_some() && std::time::Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(1));
+                    state.poll(project, &ctx);
+                }
+                assert!(state.job.is_none());
+            }
+            assert_eq!(started, 32, "unchanged visible sources must stop analysis");
+            assert_eq!(state.entries.len(), 32);
+            assert!(state.capacity_limited);
+            assert_eq!(
+                state
+                    .entries
+                    .iter()
+                    .filter(|entry| entry.result.is_err())
+                    .count(),
+                if fail { 32 } else { 0 }
+            );
+            assert_eq!(Arc::strong_count(&sources[0].samples), 1);
+
+            state.begin_view();
+            state.visible(&sources[32]);
+            assert!(
+                !state.cached_or_busy(Key::of(&sources[32])),
+                "navigation must permit another source without an explicit retry"
+            );
+            state.insert(Entry {
+                identity: Identity::of(&sources[32]),
+                result: Ok(Arc::new(vec![200])),
+                visible: true,
+            });
+            assert_eq!(state.entries.len(), 32);
+            assert_eq!(state.markers(&sources[32]), Some([200].as_slice()));
+        }
+    }
+    #[test]
+    fn late_completion_does_not_evict_visible_results() {
+        let sources: Vec<_> = (0..33).map(|_| audio()).collect();
+        let mut state = State::default();
+        state.enabled = true;
+        for audio in &sources[..32] {
+            state.insert(Entry {
+                identity: Identity::of(audio),
+                result: Ok(Arc::new(vec![100])),
+                visible: true,
+            });
+        }
+        state.insert(Entry {
+            identity: Identity::of(&sources[32]),
+            result: Err("late failure".into()),
+            visible: false,
+        });
+        assert_eq!(state.entries.len(), 32);
+        for audio in &sources[..32] {
+            assert_eq!(state.markers(audio), Some([100].as_slice()));
+        }
+        assert!(state.markers(&sources[32]).is_none());
+    }
+    #[test]
     fn optional_worker_publishes_once_and_new_audio_invalidates_cache() {
         let source = audio();
         let ctx = egui::Context::default();
@@ -450,6 +579,7 @@ mod tests {
         state.insert(Entry {
             identity: Identity::of(&audio),
             result: Ok(Arc::new(vec![100])),
+            visible: false,
         });
         assert_eq!(Arc::strong_count(&audio.samples), 1);
         assert_eq!(state.markers(&audio), Some([100].as_slice()));
@@ -469,6 +599,7 @@ mod tests {
         state.insert(Entry {
             identity: Identity::of(&audio),
             result: Ok(Arc::new(vec![300])),
+            visible: false,
         });
         state.enabled = false;
         assert!(state.markers(&audio).is_none());

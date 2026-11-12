@@ -77,7 +77,13 @@ A project change cancels the job and clears entries. Generation/cancellation
 checks discard late results. Failed analysis is cached to prevent automatic
 retry loops. Show a spinner while working and a small unavailable label with an
 error tooltip for cached failures. Toggling off/on clears failures for retry.
-Cache eviction permits later reanalysis. Optional analysis errors do not stop
+Before requesting work, mark all cached sources visible in the lower viewport.
+Evict only non-visible entries. If all 32 entries remain visible, defer other
+sources and show a cache-full status with a zoom/scroll explanation. This keeps
+visible results and failures stable and stops analysis in an unchanged viewport,
+including views with more than 32 source owners. Navigation can free slots for
+later analysis; shared owners count once. A late result cannot evict a visible
+entry. Cache eviction permits later reanalysis. Optional analysis errors do not stop
 playback or replace prepared audio. Original media and project manifests remain
 unchanged; no marker editing, snapping, splitting or warping is implemented.
 
@@ -86,7 +92,8 @@ unchanged; no marker editing, snapping, splitting or warping is implemented.
 Automated checks cover resident/disk parity and source preservation, invalid
 input, cancellation, memory admission, trim/loop/exclusive-end/preview mapping,
 weak cache ownership, replacement invalidation, stale completion rejection,
-worker completion/reuse, toggle/dirty-state behavior, lower-editor-only painting
+worker completion/reuse, 33-source success/failure admission, late completion
+without visible eviction, navigation re-admission, toggle/dirty-state behavior, lower-editor-only painting
 and exact header-bottom/clip-bottom line geometry. Run shared waveform/fade and
 Editor interaction tests after mapping or painting changes. Native screenshot
 review, device behavior and Windows/Linux execution are separate checks.

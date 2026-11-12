@@ -4,9 +4,9 @@ Implementation requirements and acceptance criteria. For operation, see the [use
 
 ## Ownership and integration
 
-`crates/unit-core` owns `DirectionMixerSettings`, `DirectionMixerInput`, and the versioned `daw.direction-mixer` effect identity. `crates/direction-mixer` owns portable stereo DSP, base ramps, and final parameter bounds, with no DAW, UI, device, or third-party DSP dependencies. The shared engine constructs it for track and Master chains and invokes the typed modulation entry point. Playback, offline export, random-access rendering, and CLI rendering share that path.
+`crates/unit-core` owns `DirectionMixerSettings`, `DirectionMixerInput`, and the versioned `daw.direction-mixer` effect identity. `crates/direction-mixer` owns portable stereo DSP, base ramps, and final parameter bounds, with no DAW, UI, device, or third-party DSP dependencies. The shared engine constructs it for regular layer, instrument Output, track, and Master chains and invokes the typed modulation entry point. Playback, offline export, random-access rendering, and CLI rendering share that path.
 
-Register Direction Mixer once in `effects_catalog.rs::ENTRIES` under Imaging. Keep earlier registration indices stable. The catalog, selection, folder defaults, keyboard input, group addition/drop, reorder/copy/delete, stable IDs, and transactions retain their shared behavior. Main is a modulation-provider bus, not another audio-effect installation target.
+Register Direction Mixer once in `effects_catalog.rs::ENTRIES` under Imaging. Keep earlier registration indices stable. The catalog, selection, folder defaults, keyboard input, group addition/drop, reorder/copy/delete, stable IDs, and transactions retain their shared behavior. Regular layers and instrument Output use the [shared layer-effect contract](../instruments/layer-effects.md). Output also hosts shared modulation providers; see the [Output contract](../instruments/main.md).
 
 ## Controls and state
 
