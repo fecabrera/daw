@@ -161,10 +161,7 @@ impl ControllerData {
                 .store(true, std::sync::atomic::Ordering::Release);
             return;
         }
-        self.meter_connection.send(
-            crate::telemetry::Kind::Request,
-            [0.0; daw_drive_plugin::METER_VALUES],
-        );
+        self.meter_connection.request_reading();
     }
 }
 #[cfg(target_os = "macos")]
@@ -483,6 +480,12 @@ mod audition_tests {
                 *values.get_mut(77 + index).unwrap() = 3.0;
                 *values.get_mut(141 + index).unwrap() = 6.0;
             }
+            if daw_drive_plugin::METER_VALUES == 668 {
+                *values.get_mut(141).unwrap() = 48_000.0;
+                *values
+                    .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(14))
+                    .unwrap() = 2.0;
+            }
             daw_drive_plugin::receive_meter(&meter, values);
             requests.fetch_or(1 | (1_u64 << 63), Ordering::Release);
             data.main();
@@ -509,6 +512,12 @@ mod audition_tests {
                 if has_reduction {
                     *values.get_mut(141 + index).unwrap() = 6.0;
                 }
+            }
+            if daw_drive_plugin::METER_VALUES == 668 {
+                *values.get_mut(141).unwrap() = 48_000.0;
+                *values
+                    .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(14))
+                    .unwrap() = 2.0;
             }
             daw_drive_plugin::receive_meter(&meter, values);
             requests.fetch_or(1 | (1_u64 << 63), Ordering::Release);

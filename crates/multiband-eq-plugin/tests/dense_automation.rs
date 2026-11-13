@@ -167,3 +167,44 @@ fn release_dense_automation_cost_is_bounded_against_full_bank_reference() {
         );
     }
 }
+
+#[test]
+fn continuous_spectrum_processing_and_lifecycle_preserve_pcm_without_heap_operations() {
+    use daw_unit_core::{EffectUnit, MultibandEqSettings, ProcessingContext, SpectrumMeter};
+    for rate in SUPPORTED_RATES {
+        let settings = MultibandEqSettings::default();
+        let c = ProcessingContext {
+            sample_rate_hz: rate,
+            max_block_frames: 32,
+        };
+        let mut actual = daw_equalizer::MultibandEq::new(c, &settings);
+        let mut reference = actual.clone();
+        let meter = Arc::new(SpectrumMeter::default());
+        actual.set_spectrum_meter(meter.clone());
+        let mut prepared = daw_equalizer::MultibandEq::new(c, &settings);
+        prepared.set_spectrum_meter(meter.clone());
+        OPERATIONS.with(|n| n.set(0));
+        TRACK.with(|t| t.set(true));
+        for frame in 0..rate {
+            let phase = frame as f64 * std::f64::consts::TAU * 87.3 / f64::from(rate);
+            let input = [phase.sin() as f32 * 1.3, phase.cos() as f32 * 0.7];
+            assert_eq!(
+                actual.process_sample(input),
+                reference.process_sample(input)
+            );
+        }
+        // Retain prepared/retired owners until after the heap guard ends.
+        prepared.inherit(&mut actual);
+        prepared.reset();
+        prepared.retarget_enabled(false);
+        for _ in 0..512 {
+            black_box(prepared.process_sample([0.1, -0.1]));
+        }
+        prepared.retarget_enabled(true);
+        for _ in 0..512 {
+            black_box(prepared.process_sample([0.1, -0.1]));
+        }
+        TRACK.with(|t| t.set(false));
+        assert_eq!(OPERATIONS.with(Cell::get), 0, "rate={rate}");
+    }
+}

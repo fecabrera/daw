@@ -207,9 +207,16 @@ unsafe extern "C" fn start(plugin: *const clap_plugin) -> bool {
 unsafe extern "C" fn stop(plugin: *const clap_plugin) {
     boundary((), || {
         if let Some(i) = unsafe { instance(plugin) } {
-            let _ = i
-                .lifecycle
-                .compare_exchange(3, 2, Ordering::AcqRel, Ordering::Acquire);
+            if i.lifecycle
+                .compare_exchange(3, 2, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                // CLAP serializes stop_processing with audio processing. Do not
+                // clear from preparation/editor threads sharing the live handle.
+                daw_drive_plugin::BandAudition::clear_spectrum(
+                    i.editor.model.output_meter.as_ref(),
+                );
+            }
             i.editor.model.output_meter.current()[0].store(0, Ordering::Relaxed);
         }
     });

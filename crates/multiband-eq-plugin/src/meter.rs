@@ -1,8 +1,63 @@
 //! Shared plugin meter storage. The portable DSP owns publication and bypass clearing.
 use daw_unit_core::{BandMeter, MeterStorage, PeakHold, PeakMeter};
 use std::sync::Arc;
+#[derive(Default)]
+struct TelemetryCache {
+    last: daw_unit_core::SpectrumMeter,
+    epoch: std::sync::atomic::AtomicU64,
+    writing: std::sync::atomic::AtomicBool,
+}
+impl TelemetryCache {
+    fn read(
+        &self,
+        source: &daw_unit_core::SpectrumMeter,
+        rate: u32,
+    ) -> daw_unit_core::SpectrumReading {
+        use std::sync::atomic::Ordering::SeqCst;
+        let empty = || daw_unit_core::SpectrumReading {
+            sample_rate_hz: rate,
+            ..Default::default()
+        };
+        let epoch = source.clear_epoch();
+        if let Some(frame) = source.try_reading() {
+            if frame.valid_branches == 0 {
+                self.epoch.store(0, SeqCst);
+            } else if self
+                .writing
+                .compare_exchange(false, true, SeqCst, SeqCst)
+                .is_ok()
+            {
+                self.last.store(frame);
+                self.epoch.store(epoch, SeqCst);
+                self.writing.store(false, SeqCst);
+            }
+            return if source.clear_epoch() == epoch {
+                if frame.valid_branches == 0 {
+                    daw_unit_core::SpectrumReading {
+                        sample_rate_hz: rate,
+                        ..frame
+                    }
+                } else {
+                    frame
+                }
+            } else {
+                empty()
+            };
+        }
+        if self.epoch.load(SeqCst) == epoch
+            && let Some(frame) = self.last.try_reading()
+            && source.clear_epoch() == epoch
+        {
+            return frame;
+        }
+        empty()
+    }
+}
 pub struct OutputMeter {
     pub spectrum: Arc<daw_unit_core::SpectrumMeter>,
+    prepared_rate: std::sync::atomic::AtomicU32,
+    // Control-thread telemetry consumer. Bounded atomic snapshots; no heap or waiting.
+    telemetry_cache: TelemetryCache,
     pub band_level_resets: std::sync::atomic::AtomicU64,
     pub audition_allowed: Arc<std::sync::atomic::AtomicBool>,
     pub solos: [Arc<std::sync::atomic::AtomicBool>; 64],
@@ -15,6 +70,8 @@ impl Default for OutputMeter {
     fn default() -> Self {
         Self {
             spectrum: Arc::default(),
+            prepared_rate: std::sync::atomic::AtomicU32::new(48_000),
+            telemetry_cache: Default::default(),
             band_level_resets: std::sync::atomic::AtomicU64::new(0),
             audition_allowed: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             solos: std::array::from_fn(|_| Arc::default()),
@@ -26,6 +83,14 @@ impl Default for OutputMeter {
     }
 }
 impl OutputMeter {
+    pub fn sample_rate_hz(&self) -> u32 {
+        self.prepared_rate
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+    pub(crate) fn set_prepared_rate(&self, rate: u32) {
+        self.prepared_rate
+            .store(rate, std::sync::atomic::Ordering::Relaxed);
+    }
     pub fn current(&self) -> &Arc<[std::sync::atomic::AtomicU32; 3]> {
         self.output.current()
     }
@@ -36,7 +101,29 @@ impl OutputMeter {
         self.output.boost_peaks()
     }
 }
-pub const METER_VALUES: usize = 142 + daw_unit_core::SPECTRUM_BINS;
+pub const SPECTRUM_FIRST: usize = 142;
+pub const SPECTRUM_SCHEMA: usize = SPECTRUM_FIRST + daw_unit_core::SPECTRUM_BINS;
+pub const SPECTRUM_VALID: usize = SPECTRUM_SCHEMA + 1;
+pub const SPECTRUM_GENERATION: usize = SPECTRUM_SCHEMA + 2;
+pub const SPECTRUM_UPPER_END: usize = SPECTRUM_SCHEMA + 6;
+pub const SPECTRUM_BASS_END: usize = SPECTRUM_SCHEMA + 10;
+pub const METER_VALUES: usize = SPECTRUM_SCHEMA + 14;
+fn put_clock(values: &mut [f64; METER_VALUES], first: usize, clock: u64) {
+    for i in 0..4 {
+        values[first + i] = ((clock >> (16 * i)) & 0xffff) as f64;
+    }
+}
+fn clock(values: &[f32; METER_VALUES], first: usize) -> Option<u64> {
+    let mut clock = 0;
+    for i in 0..4 {
+        let word = values[first + i];
+        if !word.is_finite() || word.fract() != 0.0 || !(0.0..65536.0).contains(&word) {
+            return None;
+        }
+        clock |= u64::from(word as u16) << (16 * i);
+    }
+    Some(clock)
+}
 pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
     let mut v = [0.0; METER_VALUES];
     v[0] = f64::from(m.readings()[0]);
@@ -52,21 +139,55 @@ pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
         v[77 + i] = f64::from(m.eq_bands[i].boost_peaks()[0].peak());
         v[13 + i] = f64::from(m.eq_bands[i].readings()[0]);
     }
-    let spectrum = m.spectrum.reading();
+    let spectrum = m.telemetry_cache.read(&m.spectrum, m.sample_rate_hz());
     v[141] = f64::from(spectrum.sample_rate_hz);
     for i in 0..daw_unit_core::SPECTRUM_BINS {
         v[142 + i] = f64::from(spectrum.magnitudes[i]);
     }
+    v[SPECTRUM_SCHEMA] = 2.0;
+    v[SPECTRUM_VALID] = f64::from(spectrum.valid_branches);
+    put_clock(&mut v, SPECTRUM_GENERATION, spectrum.generation);
+    put_clock(&mut v, SPECTRUM_UPPER_END, spectrum.upper_end_frame);
+    put_clock(&mut v, SPECTRUM_BASS_END, spectrum.bass_end_frame);
     v
 }
+fn spectrum_frame(v: &[f32; METER_VALUES]) -> Option<daw_unit_core::SpectrumReading> {
+    if v[SPECTRUM_SCHEMA] != 2.0
+        || ![0.0, 1.0, 3.0].contains(&v[SPECTRUM_VALID])
+        || !crate::SUPPORTED_RATES
+            .iter()
+            .any(|rate| *rate as f32 == v[141])
+        || v.iter().any(|value| !value.is_finite())
+        || v[SPECTRUM_FIRST..SPECTRUM_SCHEMA]
+            .iter()
+            .any(|value| *value < 0.0)
+    {
+        return None;
+    }
+    let reading = daw_unit_core::SpectrumReading {
+        sample_rate_hz: v[141] as u32,
+        magnitudes: std::array::from_fn(|i| v[SPECTRUM_FIRST + i]),
+        valid_branches: v[SPECTRUM_VALID] as u32,
+        generation: clock(v, SPECTRUM_GENERATION)?,
+        upper_end_frame: clock(v, SPECTRUM_UPPER_END)?,
+        bass_end_frame: clock(v, SPECTRUM_BASS_END)?,
+    };
+    if reading.valid_branches != 0 && (reading.generation == 0 || reading.upper_end_frame == 0) {
+        return None;
+    }
+    if reading.valid_branches & daw_unit_core::SPECTRUM_BASS_READY != 0
+        && (reading.bass_end_frame == 0 || reading.bass_end_frame > reading.upper_end_frame)
+    {
+        return None;
+    }
+    Some(reading)
+}
 pub fn receive_meter(m: &OutputMeter, v: [f32; METER_VALUES]) {
-    m.spectrum.store(daw_unit_core::SpectrumReading {
-        sample_rate_hz: match v[141] as u32 {
-            rate @ (44100 | 48000 | 88200 | 96000 | 176400 | 192000) => rate,
-            _ => 48000,
-        },
-        magnitudes: std::array::from_fn(|i| v[142 + i]),
-    });
+    let Some(spectrum) = spectrum_frame(&v) else {
+        return;
+    };
+    m.set_prepared_rate(spectrum.sample_rate_hz);
+    m.spectrum.store(spectrum);
     m.output.clear();
     m.output.store([v[1], 0.0, 0.0]);
     m.output.initialize([v[0], 0.0, 0.0]);
@@ -120,6 +241,9 @@ impl MeterStorage for OutputMeter {
 }
 
 impl daw_unit_core::BandAudition for OutputMeter {
+    fn clear_spectrum(&self) {
+        self.spectrum.clear();
+    }
     fn band_level_reset_requests(&self) -> Option<&std::sync::atomic::AtomicU64> {
         Some(&self.band_level_resets)
     }

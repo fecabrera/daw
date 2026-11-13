@@ -1,5 +1,5 @@
 //! Display interpolation for the shared EQ spectrum; never processes audio.
-use daw_unit_core::{SPECTRUM_BINS, SpectrumReading};
+use daw_unit_core::{SPECTRUM_BASS_READY, SPECTRUM_BINS, SpectrumReading, spectrum_frequency};
 use egui::{Id, Pos2, Rect, Ui};
 
 const FLOOR_DB: f32 = -90.0;
@@ -11,21 +11,43 @@ struct Display {
     rate: u32,
     time: f64,
     frame: u64,
+    ready: u32,
+    generation: u64,
 }
 
 impl Display {
+    #[cfg(test)]
     fn follow(&mut self, target: [f32; SPECTRUM_BINS], rate: u32, time: f64, frame: u64) {
-        if self.rate != rate || frame > self.frame + 1 {
+        self.follow_frame(target, rate, self.ready, self.generation, time, frame);
+    }
+    fn follow_frame(
+        &mut self,
+        target: [f32; SPECTRUM_BINS],
+        rate: u32,
+        ready: u32,
+        generation: u64,
+        time: f64,
+        frame: u64,
+    ) {
+        if self.rate != rate || self.generation != generation || frame > self.frame + 1 {
             self.db = target;
         } else {
             let amount = (1.0 - (-(time - self.time).max(0.0) / FOLLOW_SECONDS).exp()) as f32;
-            for (current, target) in self.db.iter_mut().zip(target) {
-                *current += (target - *current) * amount;
+            let new_bass =
+                ready & SPECTRUM_BASS_READY != 0 && self.ready & SPECTRUM_BASS_READY == 0;
+            for (index, (current, target)) in self.db.iter_mut().zip(target).enumerate() {
+                if new_bass && spectrum_frequency(index) < 400.0 {
+                    *current = target;
+                } else {
+                    *current += (target - *current) * amount;
+                }
             }
         }
         self.rate = rate;
         self.time = time;
         self.frame = frame;
+        self.ready = ready;
+        self.generation = generation;
     }
 }
 
@@ -40,7 +62,9 @@ pub(super) fn points(
     reading: Option<&SpectrumReading>,
     enabled: bool,
 ) -> Vec<Pos2> {
-    let Some(reading) = reading.filter(|r| enabled && r.magnitudes.iter().any(|v| *v > 0.0)) else {
+    let Some(reading) = reading
+        .filter(|r| enabled && r.valid_branches != 0 && r.magnitudes.iter().any(|v| *v > 0.0))
+    else {
         clear(ui, id);
         return Vec::new();
     };
@@ -60,8 +84,17 @@ pub(super) fn points(
             rate: reading.sample_rate_hz,
             time,
             frame,
+            ready: reading.valid_branches,
+            generation: reading.generation,
         });
-    display.follow(target, reading.sample_rate_hz, time, frame);
+    display.follow_frame(
+        target,
+        reading.sample_rate_hz,
+        reading.valid_branches,
+        reading.generation,
+        time,
+        frame,
+    );
     let points = curve(plot, &display.db);
     if display.db.iter().any(|db| *db > FLOOR_DB + 0.05) {
         ui.ctx()
@@ -87,8 +120,10 @@ fn curve(plot: Rect, db: &[f32; SPECTRUM_BINS]) -> Vec<Pos2> {
             }
         }
     });
-    let segments = plot.width().ceil().clamp(SPECTRUM_BINS as f32, 1024.0) as usize;
-    (0..=segments)
+    // Include every measured center exactly, plus cubic midpoints. Reduce only
+    // after this step so a narrow peak cannot fall between drawing samples.
+    let segments = 2 * (SPECTRUM_BINS - 1);
+    let dense: Vec<_> = (0..=segments)
         .map(|index| {
             let fraction = index as f32 / segments as f32;
             let bin = fraction * (SPECTRUM_BINS - 1) as f32;
@@ -105,7 +140,44 @@ fn curve(plot: Rect, db: &[f32; SPECTRUM_BINS]) -> Vec<Pos2> {
                 plot.bottom() - plot.height() * (value - FLOOR_DB) / -FLOOR_DB,
             )
         })
-        .collect()
+        .collect();
+    reduce(plot, &dense)
+}
+
+fn reduce(plot: Rect, dense: &[Pos2]) -> Vec<Pos2> {
+    // Retain the min and max of each logical column in their original order.
+    // Two extrema per column preserve both peaks and valleys at pixel limits.
+    let columns = plot.width().ceil().clamp(64.0, 511.0) as usize;
+    let mut result = Vec::with_capacity(2 * columns + 2);
+    let mut push = |index: usize| {
+        if result.last() != Some(&dense[index]) {
+            result.push(dense[index]);
+        }
+    };
+    push(0);
+    let mut start = 0;
+    while start < dense.len() {
+        let column = ((dense[start].x - plot.left()) / plot.width() * columns as f32) as usize;
+        let mut end = start + 1;
+        let mut minimum = start;
+        let mut maximum = start;
+        while end < dense.len()
+            && ((dense[end].x - plot.left()) / plot.width() * columns as f32) as usize == column
+        {
+            if dense[end].y < dense[minimum].y {
+                minimum = end;
+            }
+            if dense[end].y > dense[maximum].y {
+                maximum = end;
+            }
+            end += 1;
+        }
+        push(minimum.min(maximum));
+        push(minimum.max(maximum));
+        start = end;
+    }
+    push(dense.len() - 1);
+    result
 }
 
 #[cfg(test)]
@@ -119,6 +191,8 @@ mod tests {
             rate: 48_000,
             time: 0.0,
             frame: 0,
+            ready: 3,
+            generation: 1,
         };
         let mut one = initial.clone();
         one.follow([-12.0; SPECTRUM_BINS], 48_000, 0.03, 1);
@@ -145,15 +219,16 @@ mod tests {
         let plot = Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(240.0, 150.0));
         let db = std::array::from_fn(|i| if i % 3 == 0 { -5.0 } else { -80.0 });
         let points = curve(plot, &db);
-        assert_eq!(points.len(), 241);
+        assert!((65..=1025).contains(&points.len()));
         assert_eq!(points.first().unwrap().x, plot.left());
         assert_eq!(points.last().unwrap().x, plot.right());
         for pair in points.windows(2) {
             assert!(pair[0].x < pair[1].x);
         }
-        for (index, point) in points.iter().enumerate() {
+        for point in &points {
             assert!(plot.contains(*point));
-            let bin = (index as f32 / 240.0 * (SPECTRUM_BINS - 1) as f32).floor() as usize;
+            let bin = ((point.x - plot.left()) / plot.width() * (SPECTRUM_BINS - 1) as f32).floor()
+                as usize;
             let bin = bin.min(SPECTRUM_BINS - 2);
             let value = FLOOR_DB + (plot.bottom() - point.y) / plot.height() * -FLOOR_DB;
             assert!(value >= db[bin].min(db[bin + 1]) - 0.0001);
@@ -167,6 +242,7 @@ mod tests {
         let id = Id::new("spectrum-test");
         let reading = SpectrumReading {
             magnitudes: [0.1; SPECTRUM_BINS],
+            valid_branches: 3,
             ..Default::default()
         };
         let empty = SpectrumReading::default();
@@ -194,6 +270,58 @@ mod tests {
                 ctx.data(|data| data.get_temp::<Display>(id).is_some()),
                 active
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::*;
+    #[test]
+    fn first_ready_bass_is_painted_without_an_extra_easing_delay() {
+        for refresh in [1.0 / 60.0, 1.0 / 120.0, 0.041] {
+            let mut display = Display {
+                db: [FLOOR_DB; SPECTRUM_BINS],
+                rate: 48000,
+                time: 1.0,
+                frame: 10,
+                ready: 1,
+                generation: 2,
+            };
+            display.follow_frame([-12.0; SPECTRUM_BINS], 48000, 3, 2, 1.0 + refresh, 11);
+            for (index, value) in display.db.iter().enumerate() {
+                if spectrum_frequency(index) < 400.0 {
+                    assert_eq!(*value, -12.0);
+                } else {
+                    assert!(*value > FLOOR_DB && *value < -12.0);
+                }
+            }
+            display.follow_frame([-24.0; SPECTRUM_BINS], 48000, 3, 2, 1.0 + 2.0 * refresh, 12);
+            assert!(display.db[0] < -12.0 && display.db[0] > -24.0);
+            display.follow_frame([-60.0; SPECTRUM_BINS], 48000, 1, 3, 1.0 + 3.0 * refresh, 13);
+            assert_eq!(display.db, [-60.0; SPECTRUM_BINS]);
+        }
+    }
+    #[test]
+    fn pixel_limited_reduction_keeps_measured_peaks_and_valleys() {
+        for width in [90.0, 240.0, 800.0] {
+            let plot = Rect::from_min_size(Pos2::ZERO, egui::vec2(width, 100.0));
+            let mut db = [-90.0; SPECTRUM_BINS];
+            db[100] = -6.0;
+            db[125] = -12.0;
+            let points = curve(plot, &db);
+            for index in [100, 125] {
+                let x = index as f32 / 511.0 * width;
+                let y = 100.0 - 100.0 * (db[index] - FLOOR_DB) / -FLOOR_DB;
+                assert!(
+                    points
+                        .iter()
+                        .any(|p| (p.x - x).abs() < 0.001 && (p.y - y).abs() < 0.001)
+                );
+            }
+            assert!(points.iter().any(|p| p.x > 100.0 / 511.0 * width
+                && p.x < 125.0 / 511.0 * width
+                && p.y == plot.bottom()));
         }
     }
 }

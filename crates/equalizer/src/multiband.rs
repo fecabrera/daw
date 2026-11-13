@@ -673,7 +673,7 @@ impl MultibandEq {
     /// Transfer histories into a prepared topology. Removed owners stay in the retired processor.
     pub fn inherit(&mut self, previous: &mut Self) {
         let spectrum_enabled = self.spectrum.is_enabled();
-        if self.spectrum.is_connected() {
+        if self.spectrum.is_bound() {
             previous.spectrum.retarget(&mut self.spectrum);
         }
         std::mem::swap(&mut self.spectrum, &mut previous.spectrum);
@@ -803,6 +803,7 @@ impl EffectUnit for MultibandEq {
                 .map(RoutedDestination::heap_bytes)
                 .sum::<u64>()
             + self.output.heap_bytes()
+            + self.spectrum.heap_bytes()
     }
 }
 

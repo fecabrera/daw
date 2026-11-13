@@ -39,7 +39,7 @@ Tail declarations use each product's fixed host bound. The original four product
 
 All added products include standard output current/held sample-peak telemetry. Compressor/Limiter also attach their portable reduction peak meters; OTT attaches its signed band meter. Portable `UnitMeter`/`LevelMonitor` owns enable clearing and publication. The shared body places only the meters present in its built-in counterpart. Equalizer uses per-band levels; Multiband EQ uses per-band levels and an output rail. Direction Mixer and Stereo Spread retain their built-in controls without an extra output rail. Shared meter painters live in `unit-ui`.
 
-CLAP shares prepared atomics with the editor. VST3 exchanges copied scalar snapshots only on the control thread. The original output-only products retain two wire values (`current`, `peak`); nine of the new products carry thirteen values: output current/hold, reduction current/hold, three signed band currents, three reduction holds, and three boost holds. Multiband EQ appends 64 linear band readings and 64 held sample peaks for 141 values, followed by sample rate and 64 spectrum magnitudes for 206 values total, with independent per-band peak reset requests. Equalizer uses the existing three band-current fields for its linear band readings. Extra attributes use `meter.<index>`. Reset masks select independent held readings. Meter messages, appearance, and resets never enter parameter/state payloads.
+CLAP shares prepared atomics with the editor. VST3 exchanges copied scalar snapshots only on the control thread. The original output-only products retain two wire values (`current`, `peak`); nine of the new products carry thirteen values: output current/hold, reduction current/hold, three signed band currents, three reduction holds, and three boost holds. Multiband EQ appends 64 linear band readings and 64 held sample peaks for 141 values, followed by sample rate, 512 spectrum magnitudes and coherent-frame metadata for 668 values total, with independent per-band peak reset requests. See [spectrum wire compatibility](#spectrum-wire-compatibility). Equalizer uses the existing three band-current fields for its linear band readings. Extra attributes use `meter.<index>`. Reset masks select independent held readings. Meter messages, appearance, and resets never enter parameter/state payloads.
 
 ## Multiband EQ prepared bank
 
@@ -143,3 +143,21 @@ a 611-point shared body, independent CLAP/VST3 identities and version 1 bounded
 state. Both formats receive transport tempo for synced pre-delay. It reports zero
 alignment latency and a fixed 120-second tail budget. The original portable DSP
 uses bounded pitch regeneration and a contractive eight-line late tank.
+
+## Spectrum wire compatibility
+
+Multiband EQ schema 2 uses `daw.output-meter.request.v2` and
+`daw.output-meter.reading.v2`, with a required `value-count` integer of 668.
+The controller tries v2 first and falls back to v1 when unsupported. V1 requests
+receive only 206 exposed attributes and zero spectrum. New controllers accept
+the original 142-value scalar/rate prefix, mask legacy spectrum and mark it
+unavailable. Other products retain their existing v1 messages and payload sizes.
+Shared adapter code must not require EQ-only symbols from other product crates.
+
+The [effect contract](../effects/multiband-eq.md#response-graph-and-live-spectrum)
+defines all 668 offsets. Four exact unsigned 16-bit words encode each u64 clock
+or generation. Reject unsupported schemas, lengths, flags, rates, nonfinite
+values, invalid words and impossible ready clocks before applying the frame.
+Stopped transport masks magnitudes/readiness/clocks while retaining scalar held
+peaks. CLAP uses the same coherent portable frame directly; transient telemetry
+never changes parameter IDs, product identities or persistent state bytes.

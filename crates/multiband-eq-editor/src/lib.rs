@@ -12,7 +12,18 @@ fn show_body(
     let mut visible = model
         .visible_band_slots
         .load(std::sync::atomic::Ordering::Relaxed);
-    let spectrum = model.output_meter.spectrum.reading();
+    let cache_id = ui.id().with("eq-spectrum-consumer");
+    let mut cache = ui
+        .data(|data| data.get_temp::<daw_unit_core::SpectrumCache>(cache_id))
+        .unwrap_or_default();
+    let spectrum =
+        cache
+            .read(&model.output_meter.spectrum)
+            .unwrap_or(daw_unit_core::SpectrumReading {
+                sample_rate_hz: model.output_meter.sample_rate_hz(),
+                ..Default::default()
+            });
+    ui.data_mut(|data| data.insert_temp(cache_id, cache));
     let result = body::render_visual(
         ui,
         settings,
@@ -163,7 +174,18 @@ fn paint_reference(
     settings: &mut daw_unit_core::MultibandEqSettings,
     model: &Model,
 ) {
-    let spectrum = model.output_meter.spectrum.reading();
+    let cache_id = ui.id().with("eq-spectrum-consumer");
+    let mut cache = ui
+        .data(|data| data.get_temp::<daw_unit_core::SpectrumCache>(cache_id))
+        .unwrap_or_default();
+    let spectrum =
+        cache
+            .read(&model.output_meter.spectrum)
+            .unwrap_or(daw_unit_core::SpectrumReading {
+                sample_rate_hz: model.output_meter.sample_rate_hz(),
+                ..Default::default()
+            });
+    ui.data_mut(|data| data.insert_temp(cache_id, cache));
     let level = daw_unit_ui::meters::OutputLevel::new(
         model.output_meter.readings()[0],
         Some(&model.output_meter.boost_peaks()[0]),

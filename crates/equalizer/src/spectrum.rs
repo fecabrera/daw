@@ -1,244 +1,205 @@
-//! Prepared, incremental radix-2 spectrum analysis. At most eight butterflies/bin reads per sample.
-//! No processing-thread allocation, FFT-sized burst, locks or audio-path changes.
-use daw_unit_core::{SPECTRUM_BINS, SpectrumMeter, SpectrumReading, UnitMeter, spectrum_frequency};
+//! Prepared multirate, overlapped analysis; no audio-path changes or callback allocation.
+mod decimator;
+mod fft;
+mod mapping;
+use daw_unit_core::{
+    SPECTRUM_BASS_READY, SPECTRUM_BINS, SPECTRUM_UPPER_READY, SpectrumMeter, SpectrumReading,
+    UnitMeter, spectrum_frequency,
+};
 use std::sync::Arc;
 type Complex = [f32; 2];
+const WORK_PER_FRAME: usize = 80;
 #[derive(Clone)]
 pub(crate) struct Spectrum {
     meter: UnitMeter<SpectrumMeter>,
     reading: SpectrumReading,
-    accum: [f32; SPECTRUM_BINS],
-    release: f32,
-    input: Vec<Complex>,
-    work: Vec<Complex>,
-    window: Vec<f32>,
-    reverse: Vec<usize>,
-    twiddles: Vec<Complex>,
-    position: usize,
-    len: usize,
-    butterfly: usize,
-    bin: usize,
-    scan: usize,
-    ranges: [(usize, usize); SPECTRUM_BINS],
-    pending: bool,
+    upper: fft::Branch,
+    bass: fft::Branch,
+    decimator: decimator::Decimator,
+    bass_weights: [f32; SPECTRUM_BINS],
+    frames: u64,
+    last_publication: u64,
+    active: bool,
+    #[cfg(test)]
+    max_work: usize,
+    #[cfg(test)]
+    overruns: usize,
 }
 impl Spectrum {
     pub fn new(rate: u32, enabled: bool) -> Self {
-        let n = 4096 * (rate / 44_100).max(1).next_power_of_two() as usize;
-        let bits = n.trailing_zeros();
+        let scale = (rate / 44_100).max(1).next_power_of_two() as usize;
+        let n = 4096 * scale;
+        let decimator = decimator::Decimator::new(5 + scale.trailing_zeros() as usize);
+        let factor = decimator.factor();
+        let warmup = decimator.delay_frames().div_ceil(factor as u64) as usize;
         Self {
             meter: UnitMeter::new(enabled),
             reading: SpectrumReading {
                 sample_rate_hz: rate,
                 ..Default::default()
             },
-            accum: [0.0; SPECTRUM_BINS],
-            release: (-(n as f32) / (rate as f32 * 0.3)).exp(),
-            input: vec![[0.0; 2]; n],
-            work: vec![[0.0; 2]; n],
-            window: (0..n)
-                .map(|i| 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / n as f32).cos())
-                .collect(),
-            reverse: (0..n)
-                .map(|i| i.reverse_bits() >> (usize::BITS - bits))
-                .collect(),
-            twiddles: (0..n / 2)
-                .map(|i| {
-                    let w = -std::f32::consts::TAU * i as f32 / n as f32;
-                    [w.cos(), w.sin()]
-                })
-                .collect(),
-            ranges: std::array::from_fn(|i| {
-                let center = spectrum_frequency(i) * n as f32 / rate as f32;
-                let half = (1000.0_f32.powf(0.5 / (SPECTRUM_BINS - 1) as f32) - 1.0) * center;
-                (
-                    (center - half).floor().max(1.0) as usize,
-                    (center + half).ceil().min((n / 2 - 1) as f32).max(1.0) as usize,
-                )
+            upper: fft::Branch::new(n, rate as f32, n / 4, n, 20_000.0, 26, 2400),
+            bass: fft::Branch::new(
+                1024,
+                rate as f32 / factor as f32,
+                32,
+                1024 + warmup,
+                400.0,
+                4,
+                512,
+            ),
+            decimator,
+            bass_weights: std::array::from_fn(|i| {
+                ((400.0 - spectrum_frequency(i)) / 150.0).clamp(0.0, 1.0)
             }),
-            position: 0,
-            len: 2,
-            butterfly: 0,
-            bin: 0,
-            scan: 0,
-            pending: false,
+            frames: 0,
+            last_publication: 0,
+            active: false,
+            #[cfg(test)]
+            max_work: 0,
+            #[cfg(test)]
+            overruns: 0,
         }
     }
-    pub fn is_connected(&self) -> bool {
-        self.meter.is_connected()
+    pub fn heap_bytes(&self) -> u64 {
+        self.upper.heap_bytes() + self.bass.heap_bytes()
+    }
+    pub fn is_bound(&self) -> bool {
+        self.meter.spectrum_bound()
     }
     pub fn is_enabled(&self) -> bool {
         self.meter.is_enabled()
     }
     pub fn attach(&mut self, meter: Arc<SpectrumMeter>) {
-        // Preparation can share this handle with an audible renderer. Do not
-        // replace its last frame with the new analyzer's empty startup buffer.
-        let previous = meter.reading();
-        let initial = if previous.sample_rate_hz == self.reading.sample_rate_hz {
-            previous
-        } else {
-            self.reading
-        };
-        self.meter.attach(meter, initial);
+        self.meter.attach_prepared(meter);
+        self.active = false;
     }
     pub fn set_enabled(&mut self, enabled: bool) {
-        self.meter.set_enabled(enabled);
+        if self.meter.is_enabled() == enabled {
+            return;
+        }
+        if self.active {
+            self.meter.set_enabled(enabled);
+        } else {
+            self.meter.set_prepared_enabled(enabled);
+        }
         if !enabled {
-            self.reset();
+            self.reset_state();
         }
     }
     pub fn retarget(&mut self, prepared: &mut Self) {
-        self.meter.retarget(&mut prepared.meter, self.reading);
-        if !self.meter.is_connected() {
-            self.reset();
+        self.meter.retarget_spectrum(&mut prepared.meter);
+        self.active = true;
+        if !self.meter.is_enabled() {
+            self.reset_state();
         }
     }
-    pub fn reset(&mut self) {
-        self.position = 0;
-        self.pending = false;
+    fn reset_state(&mut self) {
+        self.upper.reset();
+        self.bass.reset();
+        self.decimator.reset();
+        self.frames = 0;
+        self.last_publication = 0;
         self.reading.magnitudes.fill(0.0);
-        self.accum.fill(0.0);
-        self.meter.publish(self.reading);
+        self.reading.valid_branches = 0;
+        self.reading.upper_end_frame = 0;
+        self.reading.bass_end_frame = 0;
     }
-    pub fn sample(&mut self, input: [f32; 2]) {
+    pub fn reset(&mut self) {
+        self.reset_state();
+        if self.active {
+            self.meter.clear();
+        }
+    }
+    pub fn sample(&mut self, input: Complex) {
+        if !self.active {
+            self.active = true;
+            self.meter.activate_spectrum(self.reading.sample_rate_hz);
+        }
         if !self.meter.is_connected() {
             return;
         }
-        let n = self.input.len();
-        self.input[self.reverse[self.position]] = input.map(|v| {
+        // Service oldest capture samples before the ring ingests/overwrites one.
+        // Eight copies finish the full window in half a hop. Bass copying ends
+        // earlier; its small FFT runs while the upper capture is still copying.
+        let mut work = 0;
+        for _ in 0..8 {
+            work += usize::from(self.upper.copy());
+        }
+        for _ in 0..8 {
+            work += usize::from(self.bass.copy());
+        }
+        self.frames += 1;
+        let input = input.map(|v| {
             if v.is_finite() {
-                v.clamp(-1e6, 1e6) * self.window[self.position]
+                v.clamp(-1e6, 1e6)
             } else {
                 0.0
             }
         });
-        for _ in 0..8 {
-            if !self.pending {
+        let upper_ok = self.upper.feed(input, self.frames);
+        let bass_ok = self
+            .decimator
+            .sample(input)
+            .is_none_or(|value| self.bass.feed(value, self.frames));
+        if !upper_ok || !bass_ok {
+            #[cfg(test)]
+            {
+                self.overruns += 1;
+            }
+            self.reset(); // Bounded logical invalidation; never clear FFT-sized storage.
+            return;
+        }
+        while work < WORK_PER_FRAME {
+            if !(self.upper.step() || self.bass.step()) {
                 break;
             }
-            if self.len <= n {
-                let half = self.len / 2;
-                let group = self.butterfly / half;
-                let j = self.butterfly % half;
-                let a = group * self.len + j;
-                let b = a + half;
-                let w = self.twiddles[j * n / self.len];
-                let v = self.work[b];
-                let t = [v[0] * w[0] - v[1] * w[1], v[0] * w[1] + v[1] * w[0]];
-                let u = self.work[a];
-                self.work[a] = [u[0] + t[0], u[1] + t[1]];
-                self.work[b] = [u[0] - t[0], u[1] - t[1]];
-                self.butterfly += 1;
-                if self.butterfly == n / 2 {
-                    self.butterfly = 0;
-                    self.len *= 2;
-                }
+            work += 1;
+        }
+        #[cfg(test)]
+        {
+            self.max_work = self.max_work.max(work);
+        }
+        if self.upper.valid
+            && !self.upper.pending
+            && !self.bass.pending
+            && self.upper.end_frame != self.last_publication
+        {
+            let elapsed = self.upper.end_frame - self.last_publication;
+            let release = (-(elapsed as f32)
+                / self.reading.sample_rate_hz as f32
+                / daw_unit_core::LEVEL_METER_RELEASE_SECONDS)
+                .exp();
+            for i in 0..SPECTRUM_BINS {
+                let weight = self.bass_weights[i];
+                let power = if self.bass.valid {
+                    self.bass.powers[i] * weight + self.upper.powers[i] * (1.0 - weight)
+                } else if weight < 1.0 {
+                    self.upper.powers[i]
+                } else {
+                    0.0
+                };
+                let amplitude = power.max(0.0).sqrt();
+                self.reading.magnitudes[i] = amplitude.max(self.reading.magnitudes[i] * release);
+            }
+            self.reading.valid_branches = SPECTRUM_UPPER_READY
+                | if self.bass.valid {
+                    SPECTRUM_BASS_READY
+                } else {
+                    0
+                };
+            self.reading.upper_end_frame = self.upper.end_frame;
+            self.reading.bass_end_frame = if self.bass.valid {
+                self.bass
+                    .end_frame
+                    .saturating_sub(self.decimator.delay_frames())
             } else {
-                let (start, end) = self.ranges[self.bin];
-                let k = start + self.scan;
-                let power = |v: Complex| v[0] * v[0] + v[1] * v[1];
-                // Packed L+iR preserves anti-phase stereo; mean channel power is |Zk|²+|Z−k|².
-                let amplitude =
-                    (power(self.work[k]) + power(self.work[n - k])).sqrt() * 2.0 / n as f32;
-                self.accum[self.bin] = self.accum[self.bin].max(amplitude);
-                self.scan += 1;
-                if start + self.scan > end {
-                    self.scan = 0;
-                    self.bin += 1;
-                }
-                if self.bin == SPECTRUM_BINS {
-                    self.pending = false;
-                    for i in 0..SPECTRUM_BINS {
-                        self.reading.magnitudes[i] =
-                            self.accum[i].max(self.reading.magnitudes[i] * self.release);
-                    }
-                    self.meter.publish(self.reading);
-                }
-            }
-        }
-        self.position += 1;
-        if self.position == n {
-            debug_assert!(
-                !self.pending,
-                "bounded spectrum work must finish before buffer reuse"
-            );
-            std::mem::swap(&mut self.input, &mut self.work);
-            self.position = 0;
-            self.len = 2;
-            self.butterfly = 0;
-            self.bin = 0;
-            self.scan = 0;
-            self.accum.fill(0.0);
-            self.pending = true;
+                0
+            };
+            self.meter.publish_spectrum(self.reading);
+            self.last_publication = self.upper.end_frame;
         }
     }
 }
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use daw_unit_core::MeterStorage;
-    #[test]
-    fn preparing_repeated_updates_never_clears_the_visible_spectrum() {
-        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
-            let meter = Arc::new(SpectrumMeter::default());
-            let mut current = Spectrum::new(rate, true);
-            current.attach(meter.clone());
-            for i in 0..current.input.len() * 3 {
-                let v = (std::f32::consts::TAU * 1000.0 * i as f32 / rate as f32).sin() * 0.5;
-                current.sample([v, v]);
-            }
-            let before = meter.reading();
-            assert!(before.magnitudes.iter().any(|v| *v > 0.3));
-            for _ in 0..20 {
-                let mut prepared = Spectrum::new(rate, true);
-                prepared.attach(meter.clone());
-                assert_eq!(meter.reading().magnitudes, before.magnitudes);
-                current.retarget(&mut prepared);
-                assert_eq!(meter.reading().magnitudes, before.magnitudes);
-            }
-            current.set_enabled(false);
-            assert!(meter.reading().magnitudes.iter().all(|v| *v == 0.0));
-        }
-    }
-    #[test]
-    fn spectrum_tracks_tones_at_every_rate_without_stereo_cancellation_and_clears_bypass() {
-        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
-            for hz in [80.0, 1000.0, 12000.0] {
-                let mut spectrum = Spectrum::new(rate, true);
-                let meter = Arc::new(SpectrumMeter::default());
-                spectrum.attach(meter.clone());
-                for i in 0..spectrum.input.len() * 3 {
-                    let v = 0.5 * (std::f32::consts::TAU * hz * i as f32 / rate as f32).sin();
-                    spectrum.sample([v, -v]);
-                }
-                let reading = meter.reading();
-                let peak = reading
-                    .magnitudes
-                    .iter()
-                    .enumerate()
-                    .max_by(|a, b| a.1.total_cmp(b.1))
-                    .unwrap();
-                assert!(
-                    (spectrum_frequency(peak.0) / hz).log2().abs() < 0.25,
-                    "{rate} {hz} {}",
-                    spectrum_frequency(peak.0)
-                );
-                assert!(*peak.1 > 0.3 && *peak.1 < 0.55, "{rate} {hz} {}", peak.1);
-                assert_eq!(reading.sample_rate_hz, rate);
-                let clone = spectrum.clone();
-                assert!(!clone.meter.is_connected());
-                spectrum.set_enabled(false);
-                assert!(meter.reading().magnitudes.iter().all(|v| *v == 0.0));
-                for _ in 0..100 {
-                    spectrum.sample([1.0; 2]);
-                }
-                assert!(meter.reading().magnitudes.iter().all(|v| *v == 0.0));
-                spectrum.set_enabled(true);
-                spectrum.reset();
-                assert!(meter.reading().magnitudes.iter().all(|v| *v == 0.0));
-                meter.clear();
-            }
-        }
-    }
-}
+mod tests;

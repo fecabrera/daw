@@ -5771,13 +5771,14 @@ fn multiband_eq_spectrum_is_display_only_allocation_free_and_scoped_to_every_bus
             reference.play();
             ALLOCATIONS.with(|n| n.set(0));
             TRACK_ALLOCATIONS.with(|v| v.set(true));
-            for _ in 0..rate / 3 {
+            for _ in 0..rate {
                 assert_eq!(actual.next_sample(), reference.next_sample());
             }
             TRACK_ALLOCATIONS.with(|v| v.set(false));
             assert_eq!(ALLOCATIONS.with(Cell::get), 0);
             let reading = meter.reading();
             assert_eq!(reading.sample_rate_hz, rate);
+            assert_eq!(reading.valid_branches, 3);
             assert!(
                 reading.magnitudes.iter().any(|v| *v > 0.05),
                 "{owner} {rate}"
@@ -5808,7 +5809,7 @@ fn multiband_eq_spectrum_keeps_published_frames_through_repeated_band_point_upda
         let mut current = Renderer::new(p.clone());
         current.set_effect_spectrum_meter(id, meter.clone());
         current.play();
-        for _ in 0..rate / 3 {
+        for _ in 0..rate {
             current.next_sample();
         }
         assert!(meter.reading().magnitudes.iter().any(|v| *v > 0.05));

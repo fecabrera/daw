@@ -254,11 +254,15 @@ impl IConnectionPointTrait for Controller {
     }
     unsafe fn notify(&self, message: *mut IMessage) -> tresult {
         boundary(kInternalError, || {
-            let Some((crate::telemetry::Kind::Reading, values)) =
-                (unsafe { crate::telemetry::read(message) })
-            else {
+            let Some((kind, values)) = (unsafe { crate::telemetry::read(message) }) else {
                 return kInvalidArgument;
             };
+            if !matches!(
+                kind,
+                crate::telemetry::Kind::Reading | crate::telemetry::Kind::ReadingV2
+            ) {
+                return kInvalidArgument;
+            }
             self.data.model.receive_output(values);
             kResultOk
         })
@@ -286,8 +290,25 @@ mod output_meter_tests {
             .store(true, std::sync::atomic::Ordering::Release);
         component.output_meter.store([2.0, 0.0, 0.0]);
         component.output_meter.initialize([0.25, 0.0, 0.0]);
+        if daw_drive_plugin::METER_VALUES == 668 {
+            let mut values =
+                daw_drive_plugin::meter_values(&component.output_meter).map(|v| v as f32);
+            *values.get_mut(141).unwrap() = 48_000.0;
+            values.get_mut(142..654).unwrap().fill(0.25);
+            *values.get_mut(654).unwrap() = 2.0;
+            *values.get_mut(655).unwrap() = 3.0;
+            *values.get_mut(656).unwrap() = 17.0;
+            *values.get_mut(660).unwrap() = 48_000.0;
+            *values.get_mut(664).unwrap() = 47_039.0;
+            daw_drive_plugin::receive_meter(&component.output_meter, values);
+        }
+        let expected = daw_drive_plugin::meter_values(&component.output_meter);
         let state = controller.data.state.get();
         controller.data.main();
+        assert_eq!(
+            daw_drive_plugin::meter_values(&controller.data.model.output_meter),
+            expected
+        );
         assert_eq!(
             controller.data.model.output_meter.readings(),
             [0.25, 0.0, 0.0]

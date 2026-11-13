@@ -49,7 +49,10 @@ include!(concat!(env!("OUT_DIR"), "/manifest.rs"));
 
 /// Standard current/held output telemetry; allocate and attach outside processing.
 mod meter;
-pub use meter::{METER_VALUES, OutputMeter, meter_values, receive_meter, reset_meter};
+pub use meter::{
+    METER_VALUES, OutputMeter, SPECTRUM_BASS_END, SPECTRUM_FIRST, SPECTRUM_GENERATION,
+    SPECTRUM_SCHEMA, SPECTRUM_UPPER_END, SPECTRUM_VALID, meter_values, receive_meter, reset_meter,
+};
 
 use daw_equalizer::MultibandEq as Dsp;
 const MAGIC: &[u8; 8] = b"DAWMBEQ!";

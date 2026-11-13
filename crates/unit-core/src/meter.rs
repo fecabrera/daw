@@ -212,6 +212,24 @@ impl<T: MeterStorage> UnitMeter<T> {
         self.handle = Some(handle);
     }
 
+    /// Control-thread binding for an unactivated processor sharing a live handle.
+    /// Neither enabled nor disabled preparation may write to that handle.
+    pub fn attach_prepared(&mut self, handle: Arc<T>) {
+        self.handle = Some(handle);
+    }
+
+    /// Configure an unactivated prepared instance without publishing bypass.
+    pub fn set_prepared_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
+    /// Serialized active producer reset. Never call this during shared preparation.
+    pub fn clear(&self) {
+        if let Some(handle) = &self.handle {
+            handle.clear();
+        }
+    }
+
     /// Transfer prepared handles without dropping a final owner on the callback.
     pub fn retarget(&mut self, prepared: &mut Self, reading: T::Reading) {
         let enabled = prepared.enabled;
@@ -248,6 +266,32 @@ impl<T: MeterStorage> UnitMeter<T> {
         if self.enabled
             && let Some(handle) = &self.handle
         {
+            handle.store(reading);
+        }
+    }
+}
+
+impl UnitMeter<crate::SpectrumMeter> {
+    pub fn activate_spectrum(&self, rate: u32) {
+        if let Some(handle) = &self.handle {
+            handle.clear_at_rate(rate);
+        }
+    }
+    pub fn spectrum_bound(&self) -> bool {
+        self.handle.is_some()
+    }
+    pub fn retarget_spectrum(&mut self, prepared: &mut Self) {
+        std::mem::swap(&mut self.handle, &mut prepared.handle);
+        self.enabled = prepared.enabled;
+        if !self.enabled {
+            self.clear();
+        }
+    }
+    pub fn publish_spectrum(&self, mut reading: crate::SpectrumReading) {
+        if self.enabled
+            && let Some(handle) = &self.handle
+        {
+            reading.generation = handle.generation();
             handle.store(reading);
         }
     }
@@ -645,9 +689,12 @@ mod prepared_level_binding_tests {
     }
 }
 
-/// Optional transient band audition controls shared by native plugin adapters.
+/// Optional transient meter and band audition controls shared by native plugin adapters.
 /// These atomics are not parameters and must never enter serialized state.
 pub trait BandAudition {
+    /// Serialized processing-stop hook. Preserve held scalar peaks; invalidate
+    /// only a live spectrum so a stopped editor cannot retain a ghost frame.
+    fn clear_spectrum(&self) {}
     fn band_level_reset_requests(&self) -> Option<&std::sync::atomic::AtomicU64> {
         None
     }

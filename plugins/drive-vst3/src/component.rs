@@ -403,15 +403,19 @@ impl IConnectionPointTrait for Component {
                     );
                     kResultOk
                 }
-                crate::telemetry::Kind::Request => {
-                    self.meter_connection
-                        .send(crate::telemetry::Kind::Reading, {
-                            let mut values = daw_drive_plugin::meter_values(&self.output_meter);
-                            if !self.processing.load(Ordering::Acquire) {
-                                values[0] = 0.0;
-                            }
-                            values
-                        })
+                crate::telemetry::Kind::Request | crate::telemetry::Kind::RequestV2 => {
+                    let reply = if kind == crate::telemetry::Kind::RequestV2 {
+                        crate::telemetry::Kind::ReadingV2
+                    } else {
+                        crate::telemetry::Kind::Reading
+                    };
+                    self.meter_connection.send(reply, {
+                        let mut values = daw_drive_plugin::meter_values(&self.output_meter);
+                        if !self.processing.load(Ordering::Acquire) {
+                            crate::telemetry::mask_stopped(&mut values);
+                        }
+                        values
+                    })
                 }
                 _ => kResultFalse,
             }

@@ -547,6 +547,7 @@ pub struct AudioOutput {
     source_meters: source_meters::Sources,
     band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     spectra: effect_spectrum::Spectra,
+    spectrum_cache: std::cell::RefCell<HashMap<Id, daw_unit_core::SpectrumCache>>,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
     live_pitches: daw_engine::LiveMidiPitches,
 }
@@ -749,6 +750,7 @@ impl AudioOutput {
             exciter_solos,
             band_meters: changes,
             spectra,
+            spectrum_cache: Default::default(),
             output_meters: outputs,
             loudness_meters: loudness,
             source_meters: sources,
@@ -972,11 +974,20 @@ impl AudioOutput {
     }
     /// Display-only block snapshots. No synthetic animation when playback is stopped.
     pub fn effect_spectrum(&self, effect: Id) -> Option<daw_unit_core::SpectrumReading> {
-        let mut reading = self.spectra.get(&effect)?.reading();
+        let meter = self.spectra.get(&effect)?;
+        let mut caches = self.spectrum_cache.borrow_mut();
+        let cache = caches.entry(effect).or_default();
         if !self.status.playing.load(Ordering::Relaxed) {
-            reading.magnitudes.fill(0.0);
+            cache.clear();
+            return Some(daw_unit_core::SpectrumReading {
+                sample_rate_hz: self.plan.project.sample_rate_hz,
+                ..Default::default()
+            });
         }
-        Some(reading)
+        Some(cache.read(meter).unwrap_or(daw_unit_core::SpectrumReading {
+            sample_rate_hz: self.plan.project.sample_rate_hz,
+            ..Default::default()
+        }))
     }
     pub fn modulation_values(&self, key: ModulationTarget) -> Option<[f32; 5]> {
         self.modulation_snapshot(key)
@@ -1220,6 +1231,9 @@ impl AudioOutput {
         self.exciter_solos = ready.exciter_solos;
         self.band_meters = ready.bands;
         self.spectra = ready.spectra;
+        self.spectrum_cache
+            .borrow_mut()
+            .retain(|id, _| self.spectra.contains_key(id));
         self.output_meters = ready.outputs;
         self.loudness_meters = ready.loudness;
         self.source_meters = ready.sources;

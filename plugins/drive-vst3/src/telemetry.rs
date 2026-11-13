@@ -1,6 +1,12 @@
 //! Main-thread meter messages through the host's component/controller connection.
 //! Audio only publishes atomics; no GUI pointers or SDK calls cross processing.
 use daw_drive_plugin::METER_VALUES;
+// v1 has a 142-value scalar/band prefix and 64 legacy spectrum cells.
+// Extended snapshots append their spectrum metadata in the final fourteen slots.
+const LEGACY_VALUES: usize = 206;
+// This is the EQ schema-2 wire size, not a threshold: Compressor and
+// Loudness also have large v1 payloads and must retain their complete layout.
+const EXTENDED: bool = METER_VALUES == 668;
 use daw_plugin_vst3::{
     boundary,
     sys::{
@@ -17,6 +23,8 @@ use std::{
 pub(crate) enum Kind {
     Request,
     Reading,
+    RequestV2,
+    ReadingV2,
     Reset,
     Solo,
     BandReset,
@@ -26,6 +34,8 @@ impl Kind {
         match self {
             Self::Request => c"daw.output-meter.request.v1",
             Self::Reading => c"daw.output-meter.reading.v1",
+            Self::RequestV2 => c"daw.output-meter.request.v2",
+            Self::ReadingV2 => c"daw.output-meter.reading.v2",
             Self::BandReset => c"daw.band-peak.reset.v1",
             Self::Solo => c"daw.band-solo.v1",
             Self::Reset => c"daw.output-meter.reset.v1",
@@ -61,13 +71,33 @@ impl Connection {
         let old = self.0.borrow_mut().take();
         drop(old);
     }
-    pub fn send(&self, kind: Kind, values: [f64; METER_VALUES]) -> tresult {
+    pub fn request_reading(&self) -> tresult {
+        if EXTENDED && self.send(Kind::RequestV2, [0.0; METER_VALUES]) == kResultOk {
+            return kResultOk;
+        }
+        self.send(Kind::Request, [0.0; METER_VALUES])
+    }
+    pub fn send(&self, kind: Kind, mut values: [f64; METER_VALUES]) -> tresult {
+        let extended = matches!(kind, Kind::ReadingV2 | Kind::RequestV2);
+        if extended && !EXTENDED {
+            return kInvalidArgument;
+        }
+        let length = if EXTENDED && !extended {
+            LEGACY_VALUES
+        } else {
+            METER_VALUES
+        };
+        if EXTENDED && kind == Kind::Reading {
+            let prefix = 142.min(METER_VALUES);
+            values[prefix..].fill(0.0); // Never send new bin meanings under the v1 ID.
+        }
         let Some(peer) = self.0.borrow().clone() else {
             return kResultFalse;
         };
-        let attributes = ComWrapper::new(Attributes(values.map(Cell::new)))
-            .to_com_ptr::<IAttributeList>()
-            .expect("attribute interface");
+        let attributes =
+            ComWrapper::new(Attributes::complete(values.map(Cell::new)).with_length(length))
+                .to_com_ptr::<IAttributeList>()
+                .expect("attribute interface");
         let message = ComWrapper::new(Message {
             kind: Cell::new(Some(kind)),
             attributes,
@@ -99,19 +129,39 @@ impl IMessageTrait for Message {
             [
                 Kind::Request,
                 Kind::Reading,
+                Kind::RequestV2,
+                Kind::ReadingV2,
                 Kind::Reset,
                 Kind::Solo,
                 Kind::BandReset,
             ]
             .into_iter()
-            .find(|k| k.id() == unsafe { CStr::from_ptr(id) }),
+            .find(|k| {
+                k.id() == unsafe { CStr::from_ptr(id) }
+                    && (EXTENDED || !matches!(k, Kind::RequestV2 | Kind::ReadingV2))
+            }),
         );
     }
     unsafe fn getAttributes(&self) -> *mut IAttributeList {
         self.attributes.as_ptr()
     }
 }
-struct Attributes([Cell<f64>; METER_VALUES]);
+struct Attributes {
+    values: [Cell<f64>; METER_VALUES],
+    length: usize,
+}
+impl Attributes {
+    fn complete(values: [Cell<f64>; METER_VALUES]) -> Self {
+        Self {
+            values,
+            length: METER_VALUES,
+        }
+    }
+    fn with_length(mut self, length: usize) -> Self {
+        self.length = length;
+        self
+    }
+}
 impl Class for Attributes {
     type Interfaces = (IAttributeList,);
 }
@@ -135,12 +185,22 @@ impl IAttributeListTrait for Attributes {
     unsafe fn setInt(&self, _: IAttributeList_::AttrID, _: int64) -> tresult {
         kNotImplemented
     }
-    unsafe fn getInt(&self, _: IAttributeList_::AttrID, _: *mut int64) -> tresult {
-        kNotImplemented
+    unsafe fn getInt(&self, id: IAttributeList_::AttrID, value: *mut int64) -> tresult {
+        if id.is_null() || value.is_null() {
+            return kInvalidArgument;
+        }
+        // SAFETY: caller supplies a live attribute name and writable integer.
+        if unsafe { CStr::from_ptr(id) } != c"value-count" {
+            return kResultFalse;
+        }
+        unsafe {
+            value.write(self.length as int64);
+        }
+        kResultOk
     }
     unsafe fn setFloat(&self, id: IAttributeList_::AttrID, value: f64) -> tresult {
         boundary(kInternalError, || {
-            let Some(slot) = slot(id) else {
+            let Some(slot) = slot(id).filter(|slot| *slot < self.length) else {
                 return kInvalidArgument;
             };
             if !value.is_finite()
@@ -149,13 +209,13 @@ impl IAttributeListTrait for Attributes {
             {
                 return kInvalidArgument;
             }
-            self.0[slot].set(value);
+            self.values[slot].set(value);
             kResultOk
         })
     }
     unsafe fn getFloat(&self, id: IAttributeList_::AttrID, value: *mut f64) -> tresult {
         boundary(kInternalError, || {
-            let Some(slot) = slot(id) else {
+            let Some(slot) = slot(id).filter(|slot| *slot < self.length) else {
                 return kInvalidArgument;
             };
             if value.is_null() {
@@ -163,7 +223,7 @@ impl IAttributeListTrait for Attributes {
             }
             // SAFETY: caller provides storage for one SDK double.
             unsafe {
-                value.write(self.0[slot].get());
+                value.write(self.values[slot].get());
             }
             kResultOk
         })
@@ -197,17 +257,37 @@ pub unsafe fn read(message: *mut IMessage) -> Option<(Kind, [f32; METER_VALUES])
     let kind = [
         Kind::Request,
         Kind::Reading,
+        Kind::RequestV2,
+        Kind::ReadingV2,
         Kind::Reset,
         Kind::Solo,
         Kind::BandReset,
     ]
     .into_iter()
-    .find(|k| k.id() == unsafe { CStr::from_ptr(id) })?;
+    .find(|k| {
+        k.id() == unsafe { CStr::from_ptr(id) }
+            && (EXTENDED || !matches!(k, Kind::RequestV2 | Kind::ReadingV2))
+    })?;
     let mut values = [0.0; METER_VALUES];
-    if kind == Kind::Reading || kind == Kind::Reset || kind == Kind::Solo || kind == Kind::BandReset
-    {
+    if matches!(
+        kind,
+        Kind::Reading | Kind::ReadingV2 | Kind::Reset | Kind::Solo | Kind::BandReset
+    ) {
         let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }?;
-        for (index, value) in values.iter_mut().enumerate() {
+        let length = if kind == Kind::ReadingV2 {
+            let mut count = 0;
+            if unsafe { attributes.getInt(c"value-count".as_ptr(), &mut count) } != kResultOk
+                || count != METER_VALUES as i64
+            {
+                return None;
+            }
+            METER_VALUES
+        } else if EXTENDED {
+            LEGACY_VALUES
+        } else {
+            METER_VALUES
+        };
+        for (index, value) in values.iter_mut().enumerate().take(length) {
             let key = attribute_key(index);
             let mut plain = 0.0;
             if unsafe { attributes.getFloat(key.as_ptr(), &mut plain) } != kResultOk
@@ -220,6 +300,17 @@ pub unsafe fn read(message: *mut IMessage) -> Option<(Kind, [f32; METER_VALUES])
             *value = plain as f32;
         }
     }
+    if EXTENDED && kind == Kind::Reading {
+        let prefix = 142.min(METER_VALUES);
+        values[prefix..].fill(0.0);
+        let schema = METER_VALUES.saturating_sub(14);
+        values[schema] = 2.0;
+        if let Some(rate) = values.get_mut(141)
+            && ![44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0].contains(rate)
+        {
+            *rate = 48000.0;
+        }
+    }
     Some((kind, values))
 }
 
@@ -228,7 +319,7 @@ mod tests {
     use super::*;
     #[test]
     fn meter_messages_reject_unknown_ids_nonfinite_values_and_out_of_range_attributes() {
-        let attributes = ComWrapper::new(Attributes(std::array::from_fn(|i| {
+        let attributes = ComWrapper::new(Attributes::complete(std::array::from_fn(|i| {
             Cell::new(if i == 0 {
                 0.25
             } else if i == 1 {
@@ -268,7 +359,7 @@ mod tests {
                 kInvalidArgument
             );
             assert!(read(message.as_ptr()).is_some());
-            let invalid = ComWrapper::new(Attributes(std::array::from_fn(|i| {
+            let invalid = ComWrapper::new(Attributes::complete(std::array::from_fn(|i| {
                 Cell::new(if i == 0 { f64::NAN } else { 1.0 })
             })))
             .to_com_ptr::<IAttributeList>()
@@ -284,13 +375,31 @@ mod tests {
     }
 }
 
-fn attribute_key(index: usize) -> std::ffi::CString {
-    std::ffi::CString::new(match index {
-        0 => "current".into(),
-        1 => "peak".into(),
-        _ => format!("meter.{index}"),
-    })
-    .expect("fixed attribute name")
+/// Control-thread name table. No per-value allocation during polling.
+fn attribute_key(index: usize) -> &'static CStr {
+    static KEYS: std::sync::OnceLock<Vec<std::ffi::CString>> = std::sync::OnceLock::new();
+    if index == 0 {
+        return c"current";
+    }
+    if index == 1 {
+        return c"peak";
+    }
+    &KEYS.get_or_init(|| {
+        (0..METER_VALUES)
+            .map(|i| std::ffi::CString::new(format!("meter.{i}")).expect("fixed attribute name"))
+            .collect()
+    })[index]
+}
+
+pub(crate) fn mask_stopped(values: &mut [f64; METER_VALUES]) {
+    values[0] = 0.0;
+    if EXTENDED {
+        let first = 142.min(METER_VALUES);
+        let schema = METER_VALUES.saturating_sub(14);
+        values[first..schema].fill(0.0);
+        values[schema + 1] = 0.0;
+        values[schema + 6..].fill(0.0);
+    }
 }
 
 #[cfg(test)]
@@ -299,11 +408,15 @@ mod extended_tests {
     #[test]
     fn extended_snapshots_retain_signed_band_values_and_reset_masks() {
         let values = std::array::from_fn(|i| if i == 4 { -6.0 } else { i as f64 });
-        let attributes = ComWrapper::new(Attributes(values.map(Cell::new)))
+        let attributes = ComWrapper::new(Attributes::complete(values.map(Cell::new)))
             .to_com_ptr::<IAttributeList>()
             .unwrap();
         let message = ComWrapper::new(Message {
-            kind: Cell::new(Some(Kind::Reading)),
+            kind: Cell::new(Some(if EXTENDED {
+                Kind::ReadingV2
+            } else {
+                Kind::Reading
+            })),
             attributes: attributes.clone(),
         })
         .to_com_ptr::<IMessage>()
@@ -317,6 +430,47 @@ mod extended_tests {
             let (kind, received) = read(message.as_ptr()).unwrap();
             assert!(kind == Kind::Reset);
             assert_eq!(received[0], 6.0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+    #[test]
+    fn schema_two_requires_exact_count_and_legacy_spectrum_is_masked() {
+        if !EXTENDED {
+            return;
+        }
+        for length in [LEGACY_VALUES, METER_VALUES - 1, METER_VALUES] {
+            let attributes = ComWrapper::new(
+                Attributes::complete(std::array::from_fn(|i| Cell::new(i as f64)))
+                    .with_length(length),
+            )
+            .to_com_ptr::<IAttributeList>()
+            .unwrap();
+            let message = ComWrapper::new(Message {
+                kind: Cell::new(Some(Kind::ReadingV2)),
+                attributes,
+            })
+            .to_com_ptr::<IMessage>()
+            .unwrap();
+            // SAFETY: owned COM objects remain live throughout synchronous calls.
+            unsafe {
+                assert_eq!(read(message.as_ptr()).is_some(), length == METER_VALUES);
+                message.setMessageID(Kind::Reading.id().as_ptr());
+                let (_, values) = read(message.as_ptr()).unwrap();
+                assert_eq!(*values.get(140).unwrap(), 140.0);
+                assert!(
+                    values
+                        .get(142..METER_VALUES.saturating_sub(14))
+                        .unwrap()
+                        .iter()
+                        .all(|v| *v == 0.0)
+                );
+                assert_eq!(*values.get(METER_VALUES.saturating_sub(14)).unwrap(), 2.0);
+                assert_eq!(*values.get(METER_VALUES.saturating_sub(13)).unwrap(), 0.0);
+            }
         }
     }
 }

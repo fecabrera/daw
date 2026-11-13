@@ -15,6 +15,7 @@ impl std::error::Error for ConfigurationError {}
 /// Prepared outside processing. Only the portable effect owns audio DSP.
 pub struct Processor {
     drive: Drive,
+    sample_rate_hz: u32,
     state: PluginState,
     settings: crate::mapping::Settings,
     frame: u64,
@@ -46,6 +47,7 @@ impl Processor {
         drive.prepare_fixed_band_slots();
         Ok(Self {
             drive,
+            sample_rate_hz: rate as u32,
             settings,
             frame: 0,
             tempo: 120.0,
@@ -53,6 +55,7 @@ impl Processor {
         })
     }
     pub fn set_output_meter(&mut self, meter: std::sync::Arc<crate::OutputMeter>) {
+        meter.set_prepared_rate(self.sample_rate_hz);
         self.drive.set_spectrum_meter(meter.spectrum.clone());
         self.drive.set_audition_gate(meter.audition_allowed.clone());
         self.drive.set_output_peak_meter(meter.output.clone());

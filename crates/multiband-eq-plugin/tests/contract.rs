@@ -17,7 +17,7 @@ fn all_fixed_band_levels_survive_meter_transport_and_clear_on_bypass() {
         processor.process_sample([v, -v]);
     }
     let values = plugin::meter_values(&meter);
-    assert_eq!(values.len(), 142 + daw_unit_core::SPECTRUM_BINS);
+    assert_eq!(values.len(), 668);
     assert!(
         values[13] > 0.0 && values[13 + 63] > 0.0,
         "first and final band must publish levels"
@@ -152,4 +152,87 @@ fn band_holds_capture_raw_samples_and_reset_without_affecting_other_bands_or_out
             .all(|m| m.boost_peaks()[0].peak() == 0.0)
     );
     assert_eq!(processor.state().get(plugin::Parameter::Bypass), 1.0);
+}
+
+#[test]
+fn coherent_spectrum_wire_preserves_full_clocks_and_rejects_malformed_frames_atomically() {
+    use daw_unit_core::{MeterStorage, SPECTRUM_BINS, SpectrumReading};
+    let source = plugin::OutputMeter::default();
+    let frame = SpectrumReading {
+        sample_rate_hz: 192000,
+        magnitudes: std::array::from_fn(|i| i as f32 / SPECTRUM_BINS as f32),
+        valid_branches: 3,
+        generation: u64::MAX - 17,
+        upper_end_frame: u64::MAX - 3,
+        bass_end_frame: u64::MAX - 4000,
+    };
+    source.spectrum.store(frame);
+    let wire = plugin::meter_values(&source).map(|v| v as f32);
+    let receiver = plugin::OutputMeter::default();
+    plugin::receive_meter(&receiver, wire);
+    assert_eq!(receiver.spectrum.reading(), frame);
+    for (slot, value) in [
+        (plugin::SPECTRUM_SCHEMA, 1.0),
+        (plugin::SPECTRUM_VALID, 2.0),
+        (plugin::SPECTRUM_GENERATION, 65536.0),
+        (plugin::SPECTRUM_UPPER_END + 1, 0.5),
+        (plugin::SPECTRUM_FIRST, -1.0),
+        (plugin::SPECTRUM_FIRST + 1, f32::NAN),
+        (141, 12345.0),
+        (1, f32::INFINITY),
+    ] {
+        let mut malformed = wire;
+        malformed[0] = 100.0;
+        malformed[slot] = value;
+        plugin::receive_meter(&receiver, malformed);
+        assert_eq!(receiver.spectrum.reading(), frame);
+        assert_eq!(receiver.readings()[0], 0.0);
+    }
+    source.spectrum.clear();
+    let wire = plugin::meter_values(&source).map(|v| v as f32);
+    plugin::receive_meter(&receiver, wire);
+    assert_eq!(receiver.spectrum.reading().valid_branches, 0);
+    assert!(
+        receiver
+            .spectrum
+            .reading()
+            .magnitudes
+            .iter()
+            .all(|v| *v == 0.0)
+    );
+}
+
+#[test]
+fn serialized_processing_stop_clears_spectrum_and_consumer_cache_without_resetting_holds() {
+    use daw_unit_core::{BandAudition, MeterStorage, SpectrumCache, SpectrumReading};
+    let meter = plugin::OutputMeter::default();
+    meter.output.store([0.8, 0.0, 0.0]);
+    meter.spectrum.store(SpectrumReading {
+        magnitudes: [0.5; daw_unit_core::SPECTRUM_BINS],
+        valid_branches: 3,
+        upper_end_frame: 48000,
+        bass_end_frame: 47039,
+        ..Default::default()
+    });
+    let mut cache = SpectrumCache::default();
+    assert!(cache.read(&meter.spectrum).is_some());
+    meter.clear_spectrum();
+    assert!(cache.read(&meter.spectrum).is_none());
+    assert_eq!(meter.boost_peaks()[0].peak(), 0.8);
+    assert_eq!(meter.readings()[0], 0.8);
+}
+
+#[test]
+fn empty_prepared_spectrum_uses_the_configured_processing_rate_before_first_audio() {
+    use std::sync::Arc;
+    for rate in plugin::SUPPORTED_RATES {
+        let meter = Arc::new(plugin::OutputMeter::default());
+        let mut processor =
+            plugin::Processor::new(f64::from(rate), 1, 512, plugin::PluginState::default())
+                .unwrap();
+        processor.set_output_meter(meter.clone());
+        let wire = plugin::meter_values(&meter);
+        assert_eq!(wire[141], f64::from(rate));
+        assert_eq!(wire[plugin::SPECTRUM_VALID], 0.0);
+    }
 }

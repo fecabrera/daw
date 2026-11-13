@@ -5,6 +5,16 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Multiband EQ measured spectrum resolution — 2026-11-13
+
+The spectrum now uses 512 measured log cells, overlapping upper analysis and a
+longer decimated bass observation. Coherent frame publication, bounded readers,
+clear generations, complete history transfer and versioned VST3 transport retain
+smooth shared presentation and unchanged PCM. This supersedes the 64-bin analyzer
+and telemetry described in the historical entry below. See the [resolution
+validation record](eq-spectrum-resolution.md) for signal, timing, resource,
+transport, performance and remaining native coverage.
+
 ## Multiband EQ spectrum display — 2026-11-12
 
 The graph previously drew 64 straight segments from analysis frames arriving
