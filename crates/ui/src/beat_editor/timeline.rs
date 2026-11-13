@@ -156,7 +156,7 @@ impl DawUi {
         &mut self,
         ui: &mut egui::Ui,
         parent: Id,
-        last_track: bool,
+        following_depth: usize,
     ) -> Vec<(Id, Rect)> {
         if !self.timeline_beat_open(parent) {
             return Vec::new();
@@ -170,7 +170,8 @@ impl DawUi {
         let height = self.track_row_height();
         let depth = self.session.project.track_depth(parent) + 1;
         let mut panels = Vec::with_capacity(rows.len());
-        for row in rows {
+        let count = rows.len();
+        for (index, row) in rows.into_iter().enumerate() {
             let bounds = Rect::from_min_size(
                 ui.next_widget_position(),
                 Vec2::new(ui.available_width(), height),
@@ -255,52 +256,38 @@ impl DawUi {
                             self.track_rows_collapsed,
                             self.large_track_headers(),
                         );
-                        rows::centered(
-                            &mut layout.name,
-                            if self.track_rows_collapsed {
-                                knobs::SIZE
-                            } else {
-                                toolbars::CONTROL_HEIGHT
-                            },
-                            |ui| {
-                                rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                                    icons::header_icon_tinted(
-                                        ui,
-                                        icons::Lucide::AudioLines,
-                                        Sense::hover(),
-                                        None,
-                                        icons::HEADER_ICON_WIDTH,
-                                    );
-                                    name_response =
-                                        Some(
-                                            self.beat_rename_input(
+                        rows::centered(&mut layout.name, knobs::SIZE, |ui| {
+                            rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
+                                icons::header_icon_tinted(
+                                    ui,
+                                    icons::Lucide::AudioLines,
+                                    Sense::hover(),
+                                    None,
+                                    icons::HEADER_ICON_WIDTH,
+                                );
+                                name_response = Some(
+                                    self.beat_rename_input(ui, parent, &row, rows::NAME_FONT_SIZE)
+                                        .unwrap_or_else(|| {
+                                            let (response, text) = rows::name_button(
                                                 ui,
-                                                parent,
-                                                &row,
+                                                ("beat_name_text", row.id),
+                                                &row.name,
                                                 rows::NAME_FONT_SIZE,
-                                            )
-                                            .unwrap_or_else(|| {
-                                                let (response, text) = rows::name_button(
-                                                    ui,
-                                                    ("beat_name_text", row.id),
-                                                    &row.name,
-                                                    rows::NAME_FONT_SIZE,
-                                                    selected,
-                                                    Sense::click(),
-                                                    None,
-                                                );
-                                                name_text = text.unwrap_or(Rect::NOTHING);
-                                                response
-                                                    .on_hover_text(format!(
-                                                        "{}\nDouble-click the name to edit.",
-                                                        row.name
-                                                    ))
-                                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                            }),
-                                        );
-                                });
-                            },
-                        );
+                                                selected,
+                                                Sense::click(),
+                                                None,
+                                            );
+                                            name_text = text.unwrap_or(Rect::NOTHING);
+                                            response
+                                                .on_hover_text(format!(
+                                                    "{}\nDouble-click the name to edit.",
+                                                    row.name
+                                                ))
+                                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                        }),
+                                );
+                            });
+                        });
                         let (knobs, toggles) = mix_controls::track_header_row(
                             &mut layout.mix,
                             (&mut gain, &mut pan),
@@ -366,15 +353,18 @@ impl DawUi {
                     },
                 );
             }
-            panels::GroupPanel::row_dividers(ui, bounds, depth, true, false);
-            ui.allocate_space(bounds.size());
-        }
-        if last_track && let Some((_, last)) = panels.last() {
-            let bounds = Rect::from_min_max(
-                Pos2::new(last.left() - panels::GroupPanel::indent(depth), last.top()),
-                Pos2::new(ui.max_rect().right(), last.bottom()),
+            panels::GroupPanel::row_dividers(
+                ui,
+                bounds,
+                if index + 1 == count {
+                    following_depth
+                } else {
+                    depth
+                },
+                false,
+                true,
             );
-            panels::GroupPanel::row_dividers(ui, bounds, 0, false, true);
+            ui.allocate_space(bounds.size());
         }
         panels
     }

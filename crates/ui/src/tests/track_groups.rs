@@ -520,7 +520,7 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                                 lane.top(),
                                 lane.bottom(),
                                 23.0,
-                                lane.top() + 18.0,
+                                lane.top() + 21.0,
                             )
                         }
                         (ViewMode::Timeline, None) => {

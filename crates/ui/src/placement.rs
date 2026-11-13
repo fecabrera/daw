@@ -209,12 +209,7 @@ impl DawUi {
                 painter.rect_filled(block, 0.0, theme::palette(ui.ctx()).background);
                 self.paint_grid(&painter, lane);
                 if self.view_mode == ViewMode::Timeline {
-                    panels::ControlPanel::paint_row_dividers(
-                        &painter,
-                        lane,
-                        preview.track_index > 0,
-                        preview.track_index + 1 == self.session.project.tracks.len(),
-                    );
+                    panels::ControlPanel::paint_row_dividers(&painter, lane, false, true);
                 } else {
                     painter.line_segment(
                         [lane.left_bottom(), lane.right_bottom()],

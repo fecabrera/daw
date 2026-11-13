@@ -45,7 +45,7 @@ fn timeline_size_does_not_change_regular_editor_overviews_or_project_data() {
             ctx.set_pixels_per_point(scale);
             frame(&mut app, &ctx, vec![]);
             frame(&mut app, &ctx, vec![]);
-            assert_eq!(app.lane_bounds[&audio].height(), ROW_HEIGHT);
+            assert_eq!(app.lane_bounds[&audio].height(), track_rows::REGULAR_HEIGHT);
             assert!(app.track_rows_bounds.right() < app.fit_all_bounds.left());
             let before = app.session.project.clone();
             let selection = (
@@ -287,7 +287,7 @@ fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
                             app.lane_bounds[&audio].left() - TRACK_WIDTH,
                             app.lane_bounds[&audio].top(),
                         ),
-                        Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+                        Vec2::new(TRACK_WIDTH, track_rows::REGULAR_HEIGHT),
                     ),
                     true,
                 ),
@@ -297,16 +297,16 @@ fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
                             app.lane_bounds[&midi].left() - TRACK_WIDTH,
                             app.lane_bounds[&midi].top(),
                         ),
-                        Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+                        Vec2::new(TRACK_WIDTH, track_rows::REGULAR_HEIGHT),
                     ),
                     true,
                 ),
                 (app.master_bounds, false),
             ];
-            assert_eq!(app.lane_bounds[&audio].height(), 68.0);
-            assert_eq!(app.lane_bounds[&midi].height(), 68.0);
+            assert_eq!(app.lane_bounds[&audio].height(), 70.0);
+            assert_eq!(app.lane_bounds[&midi].height(), 70.0);
             for (header, has_pan) in headers {
-                assert_eq!(header.height(), if has_pan { 68.0 } else { 42.0 });
+                assert_eq!(header.height(), if has_pan { 70.0 } else { 42.0 });
                 assert_header_meter_insets(&shapes, header, &ctx);
                 for x in if has_pan {
                     vec![47.0, 79.0]
@@ -314,7 +314,7 @@ fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
                     vec![21.0]
                 } {
                     let center = if has_pan {
-                        Pos2::new(header.right() - x, header.top() + 47.0)
+                        Pos2::new(header.right() - x, header.top() + 49.0)
                     } else {
                         Pos2::new(header.right() - 47.0, header.center().y)
                     };
@@ -482,7 +482,7 @@ fn header_mute_solo_align_with_knobs_and_stay_on_the_left() {
                         app.lane_bounds[&target].left() - TRACK_WIDTH,
                         app.lane_bounds[&target].top(),
                     ),
-                    Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+                    Vec2::new(TRACK_WIDTH, track_rows::REGULAR_HEIGHT),
                 ),
             };
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
@@ -505,7 +505,10 @@ fn header_mute_solo_align_with_knobs_and_stay_on_the_left() {
                     + if scope == "timeline" { 34.0 } else { 18.0 }
                     + index as f32 * 23.0;
                 assert!(
-                    point.distance(Pos2::new(x, panel.top() + 47.0)) < 1.0,
+                    point.distance(Pos2::new(
+                        x,
+                        panel.top() + if scope == "timeline" { 49.0 } else { 47.0 }
+                    )) < 1.0,
                     "{scope} {label}: {point:?}, panel {panel:?}"
                 );
                 frame(
@@ -662,7 +665,7 @@ fn smaller_track_and_master_knobs_keep_keyboard_editing_and_double_click_reset()
         );
         double_click(&mut app, &ctx, point);
         assert_eq!(value(&app), 0.0);
-        assert_eq!(app.lane_bounds[&audio].height(), 68.0);
+        assert_eq!(app.lane_bounds[&audio].height(), 70.0);
         assert_eq!(app.master_bounds.height(), 42.0);
     }
 }
@@ -892,7 +895,7 @@ fn timeline_row_dividers_share_track_panel_bounds_at_different_scales_and_scroll
                     assert!(app.lane_bounds[&tracks[0]].top() < first.top());
                 }
                 let mut visible_rows = 0;
-                for (index, track) in tracks.iter().enumerate() {
+                for track in &tracks {
                     let lane = app.lane_bounds[track];
                     if lane.top() < app.timeline_bounds.top()
                         || lane.bottom() > app.master_bounds.top()
@@ -914,8 +917,8 @@ fn timeline_row_dividers_share_track_panel_bounds_at_different_scales_and_scroll
                         })
                         .unwrap();
                     assert_eq!(panel.y_range(), lane.y_range());
-                    if index > 0 {
-                        let y = panel.top() + 0.5;
+                    {
+                        let y = panel.bottom() - 0.5;
                         let lines = shapes.iter().filter(|shape| matches!(
                             &shape.shape, egui::Shape::LineSegment { points, stroke }
                                 if *points == [Pos2::new(panel.left(), y), Pos2::new(lane.right(), y)]
@@ -1032,13 +1035,8 @@ fn shortened_clip_previews_restore_lane_dividers_at_the_shared_row_coordinates()
                         };
                         let palette = theme::palette(&ctx);
                         let mask = shapes.iter().rposition(|s| matches!(&s.shape,egui::Shape::Rect(r) if r.rect == block && r.fill == palette.background)).expect("original clip erased by preview mask");
-                        for y in [
-                            (index > 0).then_some(lane.top() + 0.5),
-                            (index + 1 == count).then_some(lane.bottom() - 0.5),
-                        ]
-                        .into_iter()
-                        .flatten()
                         {
+                            let y = lane.bottom() - 0.5;
                             let point = Pos2::new(gap_x, y);
                             assert!(shapes[mask+1..].iter().any(|s| s.clip_rect.contains(point) && matches!(&s.shape,egui::Shape::LineSegment {points,stroke} if points[0].y==y && points[1].y==y && points[0].x<=gap_x && points[1].x>=gap_x && *stroke==Stroke::new(1.0,palette.border))), "separator erased during trim: midi={midi}, left={left}, row={index}/{count}, scale={scale}, y={y}");
                         }
@@ -1106,7 +1104,7 @@ fn timeline_size_slider_selects_three_layouts_without_editing_the_project() {
         let selection = (app.selected_track, app.selected_clip);
         for (fraction, height) in [
             (0.0, MASTER_HEIGHT),
-            (0.5, ROW_HEIGHT),
+            (0.5, track_rows::REGULAR_HEIGHT),
             (1.0, track_rows::LARGE_HEIGHT),
         ] {
             let slider = app.track_size_bounds;
@@ -1212,4 +1210,80 @@ fn large_timeline_headers_edit_sends_and_scroll_them_between_name_and_mix() {
     let (_, scrolled) = &app.timeline_send_bounds[&track];
     assert!(scrolled[0].1.left() < positions[0].1.left());
     assert!(scrolled.last().unwrap().1.center().x <= sends_row.right());
+}
+
+#[test]
+fn first_middle_and_last_headers_have_equal_control_geometry_and_one_bottom_separator() {
+    for theme in settings::ColorTheme::ALL {
+        for scale in [1.0, 1.25, 2.0] {
+            for size in [0, 1, 2] {
+                let mut app = DawUi::default();
+                let tracks: Vec<_> = (0..3)
+                    .map(|_| app.session.project.add_track().unwrap())
+                    .collect();
+                app.selected_track = Some(tracks[0]);
+                app.selected_tracks = tracks.iter().copied().collect();
+                app.track_rows_collapsed = size == 0;
+                app.timeline_tracks_large = size == 2;
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme,
+                        ..Default::default()
+                    },
+                );
+                ctx.set_pixels_per_point(scale);
+                let before = app.session.project.clone();
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 900.0));
+                let mut control_offset: Option<Vec2> = None;
+                for track in tracks {
+                    let lane = app.lane_bounds[&track];
+                    let panel = Rect::from_min_max(
+                        lane.min - Vec2::new(TRACK_WIDTH, 0.0),
+                        Pos2::new(lane.left(), lane.bottom()),
+                    );
+                    assert_eq!(
+                        panel.height(),
+                        [
+                            MASTER_HEIGHT,
+                            track_rows::REGULAR_HEIGHT,
+                            track_rows::LARGE_HEIGHT
+                        ][size]
+                    );
+                    assert_eq!(panel.height() - 14.0, [28.0, 56.0, 84.0][size]);
+                    assert_header_meter_insets(&shapes, panel, &ctx);
+                    let mute = label_rect(&shapes, panel, "M");
+                    let offset = mute.center() - panel.min;
+                    if let Some(expected) = control_offset {
+                        assert!((offset - expected).length() < 0.1);
+                    }
+                    control_offset = Some(offset);
+                    let separators: Vec<_> = shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::LineSegment { points, stroke }
+                                if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                                    && points[0].x == panel.left()
+                                    && points[1].x >= lane.right()
+                                    && points[0].y >= panel.top()
+                                    && points[0].y < panel.bottom()
+                                    && points[0].y == points[1].y =>
+                            {
+                                Some(points[0].y)
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(
+                        separators,
+                        vec![panel.bottom() - 0.5],
+                        "one bottom line in every row"
+                    );
+                }
+                assert_eq!(app.session.project, before);
+                assert!(!app.dirty);
+            }
+        }
+    }
 }

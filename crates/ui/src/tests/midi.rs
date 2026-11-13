@@ -210,10 +210,9 @@ fn editor_and_timeline_share_clip_painting_and_group_selection() {
                         .collect::<Vec<_>>();
                     assert_eq!(repeats, vec![240]);
                     appearances.push((
-                        (
-                            header.rect.height(),
-                            body.rect.height() - header.rect.height(),
-                        ),
+                        // The two views have different row heights, but retain
+                        // the same header, style and normalized source preview.
+                        header.rect.height(),
                         body.fill,
                         body.corner_radius,
                         header.fill,

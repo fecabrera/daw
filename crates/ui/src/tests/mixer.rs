@@ -1050,7 +1050,7 @@ fn fader_scales_fit_the_strips_and_silence_survives_view_changes() {
         let lane = app.lane_bounds[&track];
         let track_panel = Rect::from_min_size(
             Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
-            Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+            Vec2::new(TRACK_WIDTH, app.track_row_height()),
         );
         for panel in [track_panel, app.master_bounds] {
             let rails: Vec<_> = shapes

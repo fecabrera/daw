@@ -355,7 +355,7 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
     let original = app.session.project.clone();
     for (compact, large, expected) in [
         (true, false, MASTER_HEIGHT),
-        (false, false, ROW_HEIGHT),
+        (false, false, track_rows::REGULAR_HEIGHT),
         (false, true, track_rows::LARGE_HEIGHT),
     ] {
         app.track_rows_collapsed = compact;

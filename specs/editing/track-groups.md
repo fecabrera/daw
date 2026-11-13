@@ -73,8 +73,11 @@ External audio-file drags reuse `file_target` for both hover feedback and releas
 
 Timeline track groups use `panels::GroupPanel`
 for depth indentation, control-column bounds and row separators. Its bounds inset
-the left edge while keeping the right edge fixed. Expanded group headers use the
-child depth for their bottom separator, leaving the gutter open. Both reuse
+the left edge while keeping the right edge fixed. Every Timeline row uses one
+bottom separator. Its inset follows the next visible row’s depth: expanded group
+headers leave the child gutter open, and final descendants close to the next
+sibling/ancestor. Row position never adds another separator or changes content
+height. Both reuse
 `ControlPanel::row_left_divider` for nested edges, the shared disclosure button,
 and the shared selection-border painter. Keep project hierarchy/edit commands
 with their respective owners; presentation helpers do not change project data.

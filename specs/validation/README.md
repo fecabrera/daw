@@ -5,6 +5,27 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Timeline header inner sizes and row separators — 2026-11-13
+
+Timeline Compact/Regular/Large content heights are 28/56/84 logical points,
+using equal 28-point slots. Seven-point top/bottom padding gives 42/70/98-point
+allocated rows. Controls retain their size and align by slot; Editor’s independent
+68-point overview and unit/instrument headers retain their existing geometry.
+Every Timeline row uses one bottom separator instead of position-dependent top
+and final-bottom rules. Nested beat rows and virtualized rows use the same rule,
+with following-row depth preserving hierarchy gutters. Clip preview masks restore
+that bottom line. The final Return shares the pinned Master boundary without
+painting a duplicate line. No project audio, source timing or undo change.
+
+The complete debug UI suite passed (1,010 tests, three performance probes ignored).
+New first/middle/last coverage checks all three inner heights, equal actual control
+and meter geometry, and exactly one bottom separator in every theme at 1×/1.25×/2×.
+Existing hierarchy, pinned Return/Master, preview, selection, editing and saved
+layout tests pass with the new dimensions. Full debug and release workspace
+suites, strict workspace/all-target Clippy, formatting, documentation links and
+diff checks passed. The macOS arm64 debug desktop executable build passed.
+Native visual and Windows/Linux checks remain open.
+
 ## Beat source-pattern view and beat gutters — 2026-11-13
 
 The lower beat editor now shows the selected clip’s complete source pattern once,

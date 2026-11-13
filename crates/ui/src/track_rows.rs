@@ -9,22 +9,29 @@ pub(super) struct HeaderRows {
 
 impl HeaderRows {
     pub fn new(ui: &mut egui::Ui, collapsed: bool) -> Self {
-        Self::with_knobs(ui, collapsed, true, false)
+        Self::with_knobs(ui, collapsed, true, false, false)
     }
 
     pub fn track(ui: &mut egui::Ui, collapsed: bool) -> Self {
-        Self::track_size(ui, collapsed, false)
+        Self::with_knobs(ui, collapsed, !collapsed, false, false)
     }
 
+    /// Timeline uses equal 28-point slots; the Editor overview retains its own layout.
     pub fn track_size(ui: &mut egui::Ui, collapsed: bool, large: bool) -> Self {
-        Self::with_knobs(ui, collapsed, !collapsed, large && !collapsed)
+        Self::with_knobs(ui, collapsed, !collapsed, large && !collapsed, true)
     }
 
-    fn with_knobs(ui: &mut egui::Ui, collapsed: bool, knobs: bool, large: bool) -> Self {
+    fn with_knobs(
+        ui: &mut egui::Ui,
+        collapsed: bool,
+        knobs: bool,
+        large: bool,
+        timeline: bool,
+    ) -> Self {
         let height = if collapsed {
             knobs::SIZE
-        } else if large {
-            LARGE_HEIGHT - 14.0
+        } else if timeline {
+            knobs::SIZE * if large { 3.0 } else { 2.0 }
         } else {
             ROW_HEIGHT - 14.0
         };
@@ -47,14 +54,26 @@ impl HeaderRows {
             )
         } else {
             (
-                Rect::from_min_size(body.min, Vec2::new(body.width(), toolbars::CONTROL_HEIGHT)),
+                Rect::from_min_size(
+                    body.min,
+                    Vec2::new(
+                        body.width(),
+                        if timeline {
+                            knobs::SIZE
+                        } else {
+                            toolbars::CONTROL_HEIGHT
+                        },
+                    ),
+                ),
                 Rect::from_min_max(
                     body.min
                         + Vec2::new(
                             0.0,
-                            toolbars::CONTROL_HEIGHT
-                                + 4.0
-                                + if large { knobs::SIZE + 4.0 } else { 0.0 },
+                            if timeline {
+                                height - knobs::SIZE
+                            } else {
+                                toolbars::CONTROL_HEIGHT + 4.0
+                            },
                         ),
                     body.max,
                 ),
@@ -76,7 +95,7 @@ impl HeaderRows {
             sends: large.then(|| {
                 child(
                     Rect::from_min_size(
-                        body.min + Vec2::new(0.0, toolbars::CONTROL_HEIGHT + 4.0),
+                        body.min + Vec2::new(0.0, knobs::SIZE),
                         Vec2::new(body.width(), knobs::SIZE),
                     ),
                     "track-sends-row",
@@ -86,7 +105,9 @@ impl HeaderRows {
     }
 }
 
-pub(super) const LARGE_HEIGHT: f32 = ROW_HEIGHT + knobs::SIZE + 4.0;
+/// Timeline content consists of one, two or three 28-point slots, plus 7-point outer padding.
+pub(super) const REGULAR_HEIGHT: f32 = 2.0 * knobs::SIZE + 14.0;
+pub(super) const LARGE_HEIGHT: f32 = 3.0 * knobs::SIZE + 14.0;
 
 impl DawUi {
     pub(super) fn large_track_headers(&self) -> bool {
@@ -101,6 +122,8 @@ impl DawUi {
             MASTER_HEIGHT
         } else if self.large_track_headers() {
             LARGE_HEIGHT
+        } else if self.view_mode == mixer::ViewMode::Timeline {
+            REGULAR_HEIGHT
         } else {
             ROW_HEIGHT
         }

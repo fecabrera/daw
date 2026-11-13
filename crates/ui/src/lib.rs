@@ -4644,10 +4644,23 @@ impl DawUi {
             .collect();
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let count = tracks.len();
-            let mut outlines = Vec::with_capacity(count);
+            let mut outlines = Vec::with_capacity(tracks.len());
             let mut context_action = None;
-            for (row_index, (index, id)) in tracks.into_iter().enumerate() {
+            for (row_index, &(index, id)) in tracks.iter().enumerate() {
+                let following_depth = tracks
+                    .get(row_index + 1)
+                    .map_or(0, |(_, next)| self.session.project.track_depth(*next));
+                let separator_depth = if self.timeline_beat_open(id)
+                    && self
+                        .session
+                        .project
+                        .beat(id)
+                        .is_some_and(|beat| !beat.subtracks.is_empty())
+                {
+                    self.session.project.track_depth(id) + 1
+                } else {
+                    following_depth
+                };
                 let row = Rect::from_min_size(
                     ui.next_widget_position(),
                     Vec2::new(ui.available_width(), row_height),
@@ -4669,12 +4682,11 @@ impl DawUi {
                     let (panel, lane) = rows::placeholder(ui, id, TRACK_WIDTH, row_height, inset);
                     self.lane_bounds.insert(id, lane);
                     outlines.push((id, panel));
+                    if !returns || row_index + 1 < tracks.len() {
+                        panels::GroupPanel::row_dividers(ui, row, separator_depth, false, true);
+                    }
                     if !returns && has_children {
-                        outlines.extend(self.timeline_beat_children(
-                            ui,
-                            id,
-                            row_index + 1 == count,
-                        ));
+                        outlines.extend(self.timeline_beat_children(ui, id, following_depth));
                     }
                     continue;
                 }
@@ -4735,11 +4747,7 @@ impl DawUi {
                                         }
                                         let header = rows::centered(
                                             &mut header_rows.name,
-                                            if self.track_rows_collapsed {
-                                                knobs::SIZE
-                                            } else {
-                                                toolbars::CONTROL_HEIGHT
-                                            },
+                                            knobs::SIZE,
                                             |ui| {
                                                 let name = ui.allocate_ui_with_layout(
                                                     Vec2::new(
@@ -4873,10 +4881,15 @@ impl DawUi {
                     {
                         context_action = Some((track.id, action));
                     }
-                    self.lane(ui, &track, inner.response.rect, row_index, count);
+                    self.lane(
+                        ui,
+                        &track,
+                        inner.response.rect,
+                        (!returns || row_index + 1 < tracks.len()).then_some(separator_depth),
+                    );
                 });
                 if !returns {
-                    outlines.extend(self.timeline_beat_children(ui, id, row_index + 1 == count));
+                    outlines.extend(self.timeline_beat_children(ui, id, following_depth));
                 }
             }
             if let Some((track, action)) = context_action {
@@ -5892,8 +5905,7 @@ impl DawUi {
         ui: &mut egui::Ui,
         track: &daw_core::Track,
         panel: Rect,
-        index: usize,
-        count: usize,
+        separator_depth: Option<usize>,
     ) {
         let track_id = track.id;
         let (rect, _) = ui.allocate_exact_size(
@@ -5917,24 +5929,11 @@ impl DawUi {
         self.paint_grid(&painter, rect);
         // Keep row separators below clip shells and their selection outlines.
         let row = Rect::from_min_max(Pos2::new(rect.left() - TRACK_WIDTH, rect.top()), rect.max);
-        panels::GroupPanel::row_dividers(
-            ui,
-            row,
-            self.session.project.track_depth(track_id),
-            index > 0,
-            false,
-        );
-        if index + 1 == count
-            && track.kind != daw_core::TrackKind::Return
-            && !(self.timeline_beat_open(track.id)
-                && track
-                    .beat
-                    .as_ref()
-                    .is_some_and(|beat| !beat.subtracks.is_empty()))
-        {
-            // The final child and all enclosing groups share one bottom edge.
-            // The pinned Master owns the Return bank's bottom divider.
-            panels::GroupPanel::row_dividers(ui, row, 0, false, true);
+        // Every row owns one bottom separator, independent of list position.
+        // Its inset follows the next row so expanded hierarchy gutters stay open.
+        // The final Return shares its bottom line with the pinned Master boundary.
+        if let Some(depth) = separator_depth {
+            panels::GroupPanel::row_dividers(ui, row, depth, false, true);
         }
         for clip in &track.clips {
             let block = self.clip_block(rect, clip, clip.start_frame);
@@ -8794,11 +8793,11 @@ mod tests {
                     .unwrap();
                 assert_eq!(rect.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
             }
-            assert!((mute.y - (lane.top() + 47.0)).abs() < 1.0);
+            assert!((mute.y - (lane.top() + 49.0)).abs() < 1.0);
             assert!((solo.y - mute.y).abs() < 1.0);
             assert!(mute.x < solo.x);
             assert!((solo.x - (lane.left() - TRACK_WIDTH + 57.0)).abs() < 1.0);
-            let header = Pos2::new(lane.left() - TRACK_WIDTH + 34.0, lane.top() + 18.0);
+            let header = Pos2::new(lane.left() - TRACK_WIDTH + 34.0, lane.top() + 21.0);
             let destination = Pos2::new(header.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
             frame(
                 &mut app,
@@ -11595,7 +11594,10 @@ mod tests {
         let target = app.file_drop_target.as_ref().unwrap();
         assert_eq!(target.track, Some(second));
         assert_eq!(target.start, frames(3.0));
-        let block = Rect::from_min_size(point - Vec2::new(0.0, 12.0), Vec2::new(140.0, ROW_HEIGHT));
+        let block = Rect::from_min_size(
+            point - Vec2::new(0.0, 12.0),
+            Vec2::new(140.0, app.track_row_height()),
+        );
         assert!(has_preview_outline(&shapes, block, theme::ACCENT));
         assert!(shapes.iter().any(
             |shape| matches!(&shape.shape, egui::Shape::LineSegment {stroke, ..}
@@ -11693,7 +11695,10 @@ mod tests {
                                 lane.left() + (seconds(start) - scroll) as f32 * zoom,
                                 lane.top(),
                             ),
-                            Vec2::new(seconds(frames(length)) as f32 * zoom, ROW_HEIGHT),
+                            Vec2::new(
+                                seconds(frames(length)) as f32 * zoom,
+                                app.track_row_height(),
+                            ),
                         );
                         assert!(has_preview_outline(&shapes, block, theme::ACCENT));
                         let samples = app
@@ -11828,7 +11833,7 @@ mod tests {
             assert_eq!(target.start, 0);
             let block = Rect::from_min_size(
                 lane.min - Vec2::new(scroll as f32 * zoom, 0.0),
-                Vec2::new(zoom, ROW_HEIGHT),
+                Vec2::new(zoom, app.track_row_height()),
             );
             assert!(has_preview_outline(&shapes, block, theme::ACCENT));
             assert!(app.session.project.tracks[1].clips.is_empty());
@@ -11908,8 +11913,10 @@ mod tests {
         let lane = app.lane_bounds[&track];
         let point = lane.min + Vec2::new(70.0, 12.0);
         let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
-        let block =
-            Rect::from_min_size(lane.min + Vec2::new(70.0, 0.0), Vec2::new(70.0, ROW_HEIGHT));
+        let block = Rect::from_min_size(
+            lane.min + Vec2::new(70.0, 0.0),
+            Vec2::new(70.0, app.track_row_height()),
+        );
         assert!(has_preview_outline(&shapes, block, theme::ACCENT));
         frame(&mut app, &ctx, vec![]);
         assert!(app.file_hover.is_none());
@@ -12339,7 +12346,7 @@ mod tests {
             let lane = app.lane_bounds[&second];
             let block = Rect::from_min_size(
                 lane.min + Vec2::new((3.25 - scroll as f32) * zoom, 0.0),
-                Vec2::new(10.0 * zoom, ROW_HEIGHT),
+                Vec2::new(10.0 * zoom, app.track_row_height()),
             );
             assert!(has_preview_outline(&shapes, block, theme::ACCENT));
             assert_eq!(
@@ -12591,7 +12598,7 @@ mod tests {
             assert_eq!(preview.track, target);
             assert_eq!(preview.clip.start_frame, 0);
             assert!(preview.valid);
-            let block = Rect::from_min_size(lane.min, Vec2::new(700.0, ROW_HEIGHT));
+            let block = Rect::from_min_size(lane.min, Vec2::new(700.0, app.track_row_height()));
             assert!(has_preview_outline(&shapes, block, theme::ACCENT));
             assert_eq!(
                 app.session.project.tracks[0].clips[0].start_frame,
@@ -12641,7 +12648,7 @@ mod tests {
         assert!(preview.valid);
         let block = Rect::from_min_size(
             lane.min + Vec2::new(70.0, 0.0),
-            Vec2::new(700.0, ROW_HEIGHT),
+            Vec2::new(700.0, app.track_row_height()),
         );
         assert!(has_preview_outline(&shapes, block, theme::ACCENT));
         assert!(app.error.is_none());
