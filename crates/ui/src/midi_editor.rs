@@ -76,6 +76,8 @@ pub(super) struct MidiEditor {
     #[cfg(test)]
     pub(crate) scale_mode_bounds: Rect,
     #[cfg(test)]
+    pub(crate) velocity_bounds: Rect,
+    #[cfg(test)]
     pub(crate) mix_bounds: [Rect; 2],
     #[cfg(test)]
     pub(crate) track_header_bounds: Rect,
@@ -164,6 +166,8 @@ impl Default for MidiEditor {
             scale_root_bounds: Rect::NOTHING,
             #[cfg(test)]
             scale_mode_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            velocity_bounds: Rect::NOTHING,
             #[cfg(test)]
             mix_bounds: [Rect::NOTHING; 2],
             #[cfg(test)]
@@ -259,7 +263,6 @@ impl MidiEditor {
         self.selection = None;
         self.clear_note_selection();
     }
-    #[cfg(test)]
     pub(crate) fn selected_notes(&self) -> &HashSet<(Id, Id)> {
         &self.selected_notes
     }

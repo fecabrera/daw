@@ -64,6 +64,13 @@ The left panel stays visible while you scroll the piano roll. Its track header i
 
 For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to **Off**, which disables Scale and Snap to scale. Select a root to enable those controls. Choose a scale to dim the piano keys and unselected notes outside it. Enable **Snap to scale** to constrain newly drawn notes and pitch moves. Major is the initial scale and snapping starts off. Returning Root to Off removes the dimming and bypasses snapping; it retains your scale and snapping choices.
 
+**MIDI options** contains a horizontal **Velocity** slider. It stays visible but
+disabled when no notes are selected. Select one or more notes to enable it.
+Set velocity from 1 to 127. With multiple notes selected, the slider applies one shared
+offset, preserving their velocity differences across patterns. The group stops
+when any selected note reaches 1 or 127. Each drag is
+one Undo step. Other notes and other clips that share the source stay unchanged.
+
 Each MIDI track keeps its own Root, Scale, and Snap to scale settings. Save the project to retain them after reopening. Changing these settings marks the project modified and supports Undo/Redo. Duplicating a MIDI track copies its options. Older projects start with Root Off, Major, and snapping off.
 
 Changing the root, scale, or snapping option leaves existing notes unchanged. Drawing snaps to the nearest scale note; equal distances use the lower note. Moving a group snaps the dragged note and keeps the intervals between selected notes. Timing-only moves and edge resizes keep the original pitches. Hold Shift to bypass both grid and scale snapping.

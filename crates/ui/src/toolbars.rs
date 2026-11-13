@@ -2,6 +2,7 @@ use crate::{fonts, theme};
 use egui::{Frame, InnerResponse, RichText, Ui, Vec2};
 
 pub const CONTROL_HEIGHT: f32 = 22.0;
+pub(super) const SLIDER_RAIL_HEIGHT: f32 = 4.0;
 pub const HEIGHT: f32 = CONTROL_HEIGHT + 2.0 * theme::TOOLBAR_PADDING as f32;
 
 /// Menu shortcuts use Command's symbol on macOS even when other modifier glyphs are absent.
@@ -89,7 +90,7 @@ pub fn horizontal_zoom(
     let response = ui
         .scope(|ui| {
             ui.spacing_mut().slider_width = 56.0;
-            ui.spacing_mut().slider_rail_height = 4.0;
+            ui.spacing_mut().slider_rail_height = SLIDER_RAIL_HEIGHT;
             ui.spacing_mut().interact_size.y = 14.0;
             ui.style_mut()
                 .text_styles
@@ -124,7 +125,7 @@ pub(super) fn track_size(ui: &mut Ui, size: &mut i32) -> egui::Response {
     let response = ui
         .push_id("track-height-slider", |ui| {
             ui.spacing_mut().slider_width = 56.0;
-            ui.spacing_mut().slider_rail_height = 4.0;
+            ui.spacing_mut().slider_rail_height = SLIDER_RAIL_HEIGHT;
             ui.spacing_mut().interact_size.y = 14.0;
             ui.style_mut()
                 .text_styles

@@ -83,6 +83,7 @@ impl DawUi {
             self.midi_editor.scale_root_bounds = Rect::NOTHING;
             self.midi_editor.scale_mode_bounds = Rect::NOTHING;
             self.midi_editor.scale_snap_bounds = Rect::NOTHING;
+            self.midi_editor.velocity_bounds = Rect::NOTHING;
         }
         if audio {
             let allowed = ui.is_enabled() && self.editing_enabled();
@@ -102,7 +103,7 @@ impl DawUi {
                 panel.padded_body(ui, |ui| {
                     ui.add_space(8.0);
                     ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
-                    ui.add_enabled_ui(midi && !self.midi_editor.dragging(), |ui| {
+                    ui.add_enabled_ui(midi && !self.midi_editor.editing_note(), |ui| {
                         panel.field_row(ui, 45.0, |ui| { ui.label("Root"); }, |ui| {
                             const ROOTS: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
                             let response = crate::menus::Dropdown::from_id_salt("scale-root")
@@ -136,6 +137,9 @@ impl DawUi {
                             });
                         });
                     });
+                    if let Some(track_id) = track_id {
+                        self.midi_velocity_row(ui, &panel, track_id);
+                    }
                 });
             });
         }
@@ -145,6 +149,127 @@ impl DawUi {
             self.edit(Edit::SetMidiOptions { track_id, options });
         }
         panel.finish(ui);
+    }
+
+    fn midi_velocity_row(&mut self, ui: &mut egui::Ui, panel: &panels::ControlPanel, track_id: Id) {
+        let selected = self.midi_editor.selected_notes().clone();
+        let Some(track) = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == track_id)
+        else {
+            return;
+        };
+        let patterns: Vec<_> = track
+            .clips
+            .iter()
+            .filter_map(|clip| {
+                let pattern = self
+                    .session
+                    .project
+                    .assets
+                    .iter()
+                    .find(|asset| asset.id == clip.asset_id)?
+                    .midi_pattern
+                    .as_ref()?;
+                pattern
+                    .notes
+                    .iter()
+                    .any(|note| selected.contains(&(clip.id, note.id)))
+                    .then_some((clip.id, pattern))
+            })
+            .collect();
+        let note = patterns.iter().find_map(|(clip, pattern)| {
+            pattern
+                .notes
+                .iter()
+                .find(|note| selected.contains(&(*clip, note.id)))
+        });
+        let mut velocity = note.map_or(100, |note| note.velocity);
+        let original_velocity = i16::from(velocity);
+        let (minimum, maximum) = patterns
+            .iter()
+            .flat_map(|(clip, pattern)| {
+                pattern
+                    .notes
+                    .iter()
+                    .filter(|note| selected.contains(&(*clip, note.id)))
+            })
+            .fold((127_i16, 1_i16), |(minimum, maximum), note| {
+                let velocity = i16::from(note.velocity);
+                (minimum.min(velocity), maximum.max(velocity))
+            });
+        let response = ui
+            .add_enabled_ui(
+                note.is_some() && self.editing_enabled_with_midi_selection(true),
+                |ui| {
+                    panel
+                        .field_row(
+                            ui,
+                            45.0,
+                            |ui| {
+                                ui.label("Velocity");
+                            },
+                            |ui| {
+                                ui.scope(|ui| {
+                                    let font = egui::TextStyle::Small.resolve(ui.style());
+                                    ui.style_mut()
+                                        .text_styles
+                                        .insert(egui::TextStyle::Body, font);
+                                    ui.style_mut().drag_value_text_style = egui::TextStyle::Small;
+                                    ui.spacing_mut().interact_size = Vec2::new(32.0, 14.0);
+                                    ui.spacing_mut().slider_rail_height = toolbars::SLIDER_RAIL_HEIGHT;
+                                    // Reserve the value input and its standard gap so the
+                                    // complete control stays inside the panel's right inset.
+                                    ui.spacing_mut().slider_width = (ui.available_width()
+                                        - ui.spacing().interact_size.x
+                                        - ui.spacing().item_spacing.x)
+                                        .max(1.0);
+                                    ui.add(
+                                        egui::Slider::new(&mut velocity, 1..=127)
+                                            .trailing_fill(false)
+                                            .handle_shape(egui::style::HandleShape::Circle),
+                                    )
+                                    .on_hover_text("Adjust selected note velocities together, preserving their differences")
+                                })
+                                .inner
+                            },
+                        )
+                        .inner
+                },
+            )
+            .inner;
+        #[cfg(test)]
+        {
+            self.midi_editor.velocity_bounds = response.rect;
+        }
+        if response.changed() {
+            // Clamp the shared offset, rather than individual notes, so no
+            // velocity differences are lost at either MIDI boundary.
+            let delta = (i16::from(velocity) - original_velocity).clamp(1 - minimum, 127 - maximum);
+            if delta == 0 {
+                return;
+            }
+            let commands: Vec<_> = patterns
+                .into_iter()
+                .filter_map(|(clip_id, pattern)| {
+                    let mut pattern = pattern.clone();
+                    let mut changed = false;
+                    for note in &mut pattern.notes {
+                        if selected.contains(&(clip_id, note.id)) {
+                            note.velocity = (i16::from(note.velocity) + delta) as u8;
+                            changed = true;
+                        }
+                    }
+                    changed.then_some(Edit::ReplaceMidiPattern { clip_id, pattern })
+                })
+                .collect();
+            if !commands.is_empty() {
+                self.edit(Edit::Batch(commands));
+            }
+        }
     }
 
     fn editor_track_header(&mut self, ui: &mut egui::Ui) {
@@ -194,7 +319,7 @@ impl DawUi {
                 if let Some(mut track) = track {
                     let (controls, buttons) = header_rows
                         .mix
-                        .add_enabled_ui(!self.midi_editor.dragging(), |ui| {
+                        .add_enabled_ui(!self.midi_editor.editing_note(), |ui| {
                             mix_controls::track_header_row(
                                 ui,
                                 (&mut track.gain_db, &mut track.pan),

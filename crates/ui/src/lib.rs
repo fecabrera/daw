@@ -2936,13 +2936,23 @@ impl DawUi {
     }
 
     fn editing_enabled(&self) -> bool {
+        self.editing_enabled_with_midi_selection(false)
+    }
+
+    // Selection does not mutate a pattern. Its inspector can stay enabled
+    // without allowing edits during note moves, drawing, or other gestures.
+    fn editing_enabled_with_midi_selection(&self, allow_selection: bool) -> bool {
         !self.beat_dragging()
             && !self.strip_dragging
             && self.chords.drag.is_none()
             && self.effects_drag.is_none()
             && self.component_drag.is_none()
             && self.drag.is_none()
-            && !self.midi_editor.dragging()
+            && !(if allow_selection {
+                self.midi_editor.editing_note()
+            } else {
+                self.midi_editor.dragging()
+            })
             && !self.instrument_ui.dragging()
             && self.edit_environment_available()
     }

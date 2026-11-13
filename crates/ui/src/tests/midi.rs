@@ -8520,3 +8520,174 @@ fn oscillator_fine_tuning_and_joined_unison_fit_shared_columns() {
         );
     }
 }
+
+#[test]
+fn midi_velocity_slider_updates_selected_patterns_and_undoes_one_drag() {
+    let (mut app, track, clip, note) = fixture();
+    let source = app.session.project.tracks[0].clips[0].clone();
+    let second = Clip {
+        id: Id::new_v4(),
+        start_frame: 96_000,
+        ..source.clone()
+    };
+    let untouched = Clip {
+        id: Id::new_v4(),
+        start_frame: 192_000,
+        ..source
+    };
+    let second_id = second.id;
+    let untouched_id = untouched.id;
+    app.session.project.tracks[0]
+        .clips
+        .extend([second, untouched]);
+    let original = pattern_for_clip(&app, clip).clone();
+    let mut second_original = original.clone();
+    second_original.notes[0].velocity = 40;
+    app.session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: second_id,
+            pattern: second_original.clone(),
+        })
+        .unwrap();
+    let ctx = context();
+    app.open_clip_editor(clip, track, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.midi_editor.velocity_bounds.is_positive());
+    let disabled_slider = app.midi_editor.velocity_bounds;
+    click_note_or_lane(
+        &mut app,
+        &ctx,
+        disabled_slider.left_center() + Vec2::new(8.0, 0.0),
+    );
+    assert!(app.midi_editor.selected_notes().is_empty());
+    assert_eq!(pattern_for_clip(&app, clip), &original);
+    assert_eq!(pattern_for_clip(&app, second_id), &second_original);
+    let first_bounds = app.midi_editor.track_note_bounds[&(clip, note)][0];
+    let second_bounds = app.midi_editor.track_note_bounds[&(second_id, note)][0];
+    select_note_box(&mut app, &ctx, first_bounds.union(second_bounds));
+    assert_eq!(
+        *app.midi_editor.selected_notes(),
+        HashSet::from([(clip, note), (second_id, note)])
+    );
+    let slider = app.midi_editor.velocity_bounds;
+    assert!(slider.is_positive());
+    assert!(app.midi_editor.panel_bounds.contains_rect(slider));
+    assert!(
+        slider.right() <= app.midi_editor.panel_bounds.right() - f32::from(theme::TOOLBAR_PADDING)
+    );
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::Text(text) if text.galley.text() == "100"
+            && slider.contains(text.pos)
+            && text.galley.job.sections[0].format.font_id.size
+                == egui::TextStyle::Small.resolve(&ctx.global_style()).size)));
+    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::Rect(rect) if rect.rect.height() == toolbars::SLIDER_RAIL_HEIGHT
+            && slider.contains_rect(rect.rect))));
+    let start = Pos2::new(slider.left() + 2.0, slider.center().y);
+    let end = Pos2::new(slider.right() - 40.0, slider.center().y);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+    );
+    assert_eq!(pattern_for_clip(&app, clip).notes[0].velocity, 61);
+    assert_eq!(pattern_for_clip(&app, second_id).notes[0].velocity, 1);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(slider.center())],
+    );
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    assert_eq!(pattern_for_clip(&app, clip).notes[0].velocity, 127);
+    assert_eq!(pattern_for_clip(&app, second_id).notes[0].velocity, 67);
+    // Reverse after reaching the boundary; the initial difference must survive.
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(slider.center())],
+    );
+    assert_eq!(
+        pattern_for_clip(&app, clip).notes[0].velocity
+            - pattern_for_clip(&app, second_id).notes[0].velocity,
+        60
+    );
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    frame(&mut app, &ctx, vec![]);
+    let velocity = pattern_for_clip(&app, clip).notes[0].velocity;
+    assert_ne!(velocity, 100);
+    assert_eq!(
+        pattern_for_clip(&app, second_id).notes[0].velocity,
+        velocity - 60
+    );
+    assert_eq!(pattern_for_clip(&app, untouched_id), &original);
+    for id in [clip, second_id] {
+        let updated = &pattern_for_clip(&app, id).notes[0];
+        assert_eq!(
+            (
+                updated.id,
+                updated.pitch,
+                updated.start_tick,
+                updated.length_ticks
+            ),
+            (note, 60, 960, 960)
+        );
+    }
+    app.perform_history_action(crate::HistoryAction::Undo, &ctx);
+    assert_eq!(pattern_for_clip(&app, clip), &original);
+    assert_eq!(pattern_for_clip(&app, second_id), &second_original);
+    app.perform_history_action(crate::HistoryAction::Redo, &ctx);
+    assert_eq!(pattern_for_clip(&app, clip).notes[0].velocity, velocity);
+    assert_eq!(
+        pattern_for_clip(&app, second_id).notes[0].velocity,
+        velocity - 60
+    );
+}
+
+#[test]
+fn deselecting_midi_notes_keeps_options_panel_colors_and_geometry_stable() {
+    let (mut app, track, clip, note) = fixture();
+    let ctx = context();
+    app.open_clip_editor(clip, track, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let note_center = app.midi_editor.track_note_bounds[&(clip, note)][0].center();
+    click_note_or_lane(&mut app, &ctx, note_center);
+    let size = Vec2::new(1280.0, 800.0);
+    let before = frame_shapes(&mut app, &ctx, vec![], size);
+    let panel = app.midi_editor.panel_bounds;
+    let root = app.midi_editor.scale_root_bounds;
+    let velocity = app.midi_editor.velocity_bounds;
+    let label = |shapes: &[egui::epaint::ClippedShape], name: &str| {
+        shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text)
+                    if text.galley.text() == name && panel.contains(text.pos) =>
+                {
+                    Some((text.pos, text.fallback_color, text.opacity_factor))
+                }
+                _ => None,
+            })
+            .unwrap()
+    };
+    let expected_root = label(&before, "Root");
+    let expected_scale = label(&before, "Scale");
+    let empty = note_center - Vec2::new(0.0, 60.0);
+    for events in [
+        vec![egui::Event::PointerMoved(empty), button(empty, true)],
+        vec![],
+        vec![button(empty, false)],
+        vec![],
+    ] {
+        let shapes = frame_shapes(&mut app, &ctx, events, size);
+        assert_eq!(label(&shapes, "Root"), expected_root);
+        assert_eq!(label(&shapes, "Scale"), expected_scale);
+        assert_eq!(app.midi_editor.scale_root_bounds, root);
+        assert_eq!(app.midi_editor.velocity_bounds, velocity);
+        assert_eq!(app.midi_editor.panel_bounds, panel);
+    }
+    assert!(app.midi_editor.selected_notes().is_empty());
+    assert!(app.midi_editor.velocity_bounds.is_positive());
+}

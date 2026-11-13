@@ -5,6 +5,49 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## MIDI selected-note velocity slider — 2026-11-12
+
+MIDI options shows Velocity in the shared field-row layout when notes are
+selected on the current MIDI track. The integer slider applies a shared offset
+to the selection through a batch of immutable pattern replacements. It retains other
+source users and groups one pointer drag into one history step.
+
+The headless interaction regression checks the visible, disabled row without selection,
+fits inside the panel, edits selected notes in two patterns,
+preserves an unselected shared source user and note identity/timing/pitch, and supports one
+Undo and Redo after several drag updates. Formatting, local documentation links,
+workspace/all-target Clippy with warnings denied, all 1,006 UI tests (three ignored)
+and the native macOS arm64 debug executable build passed. The first full debug
+workspace run failed in the existing Bounce disk read-ahead test with a silent
+peak; its separate rerun and the complete workspace retry passed. The full release
+workspace run also passed. The presentation follow-up reuses horizontal zoom’s 4-point rail without
+trailing fill, circular handle and Small value text, and reserves the value field plus the
+standard gap inside the right panel inset. Shape assertions verify the rail,
+text size and inset. The updated debug/release UI suites, strict workspace Clippy and
+macOS executable build passed. The relative-velocity follow-up applies one offset
+clamped by the selected group's minimum and maximum. The regression starts with
+100/40, verifies both bounds (61/1 and 127/67), reverses the drag, and verifies
+unchanged 60-point spacing and one Undo/Redo step. The complete debug workspace
+run, strict Clippy and macOS build passed again after that change. The release
+workspace run then hit the same Bounce read-ahead assertion (`peak > 0.0`);
+the same compiled test passed separately. The compiled release UI test binary
+passed all 1,006 tests (three ignored), including the revised velocity regression.
+That full release run is not recorded as passing. The final horizontal-zoom rail
+parity change passed the focused velocity interaction/shape test, UI all-target
+Clippy, formatting and the macOS debug executable build. Native UI checks remain
+open.
+
+The deselection follow-up reproduced a one-frame disabled-color change when a
+plain empty-space click briefly started a note marquee. Inspector controls now
+exclude selection-only gestures from their disabled condition while retaining
+note edit, job and other gesture guards. Velocity stays visible and disabled
+without a valid selection. The regression compares Root/Scale colors, panel and
+field bounds on press, hold, release and the following frame; it also checks
+that clicking the disabled velocity slider does not change patterns.
+The final debug and release UI suites each passed 1,007 tests (three ignored).
+Workspace/all-target Clippy, formatting and the macOS debug build passed. Native
+UI checks remain open.
+
 ## Standalone manifest CI cache fix — 2026-11-12
 
 The extracted Timestretch CLI manifest test now seeds the temporary package with

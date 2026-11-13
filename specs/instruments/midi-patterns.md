@@ -27,6 +27,29 @@ Draw bounded analytic periodic shapes in the UI without creating or clocking an
 audio processor. No callback capture, background worker, dependency or saved-state
 change is required.
 
+## Selected-note velocity control
+
+Show a horizontal Velocity slider in MIDI options for the current MIDI track.
+Keep its row visible but disabled with a default readout of 100 when no valid
+notes are selected. Use the standard ControlPanel field row with Small text,
+label at the left and slider at the right. Reuse horizontal zoom's 4-point rail
+without trailing fill, circular handle and 14-point interaction height. Use Small
+text for the 32-point numeric input. Reserve the input and standard control gap
+inside the panel inset. Hide the row on other track kinds.
+
+Keep velocity independent of scale snapping. Use integer velocity 1–127; display
+the first selected note in track/pattern order when values differ. Apply changes
+as one shared offset to all selected notes. Clamp that offset at the group's
+minimum and maximum so every velocity stays within 1–127 and all differences
+survive, including when reversing a drag at either bound. Commit one batch of
+ReplaceMidiPattern edits. Preserve note IDs, timing, pitch, selection and
+unselected source users. Reuse pointer history grouping for one Undo step per
+drag and the existing asynchronous audio preparation path.
+
+Disable the control during note moves, drawing or blocked editing. A marquee
+changes selection only; it must not dim the options panel or track header. Keep
+Root Off's disabled Scale/Snap appearance unchanged when selection starts or ends.
+
 ## Controls
 
 1. In Timeline or Editor, choose Track > Add MIDI track. Both views support MIDI track/pattern creation, MIDI paste, and track duplication through the same guarded actions.
