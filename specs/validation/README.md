@@ -5,6 +5,23 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Review skill reviewer stances — 2026-11-13
+
+The DAW review skill accepts separate adversarial/neutral counts or per-reviewer
+stance/model/focus configuration. Adversarial reviewers challenge complete flows,
+state transitions, edge cases and gaps in actual test assertions. Both stances
+retain the same evidence, scope and severity rules; the adjudicator stays neutral.
+Run metadata, reviewer JSON, Markdown output and audit artifacts retain stances.
+Legacy total-count configuration and historical reports remain supported.
+
+`python3 -B .agents/skills/daw-review/scripts/test_review.py` passed all 30 tests.
+Coverage includes mixed and single-stance configurations, config-only counts,
+invalid counts/stances, conflicting inputs, legacy reports, report/config stance
+mismatches, and an isolated Git fixture through CLI preparation, private reviewer
+prompts, rendering and audit output. The skill-creator frontmatter validator passed.
+Diff and skill-reference link checks passed. No DAW runtime or dependency changed;
+native checks do not apply. Live reviewer behavior has not been tested in this task.
+
 ## Renderer retry binding reconciliation — 2026-11-13
 
 An incomplete track-meter map reproduced the reported `PreparedRenderer::try_new`

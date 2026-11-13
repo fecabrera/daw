@@ -1,6 +1,6 @@
 ---
 name: daw-review
-description: Review a DAW pull request or branch diff, or a branch's full committed snapshot without a base comparison. Check specifications, documentation, code, dependencies and licenses through independent reviewers and a separate findings validator. Produce a severity-ranked PASS/FAIL/INCOMPLETE report without implementing fixes or publishing comments.
+description: Review a DAW pull request or branch diff, or a branch's full committed snapshot without a base comparison. Check specifications, documentation, code, dependencies and licenses through configurable independent adversarial and neutral reviewers and a separate findings validator. Produce a severity-ranked PASS/FAIL/INCOMPLETE report without implementing fixes or publishing comments.
 ---
 
 # DAW branch and PR review
@@ -12,7 +12,7 @@ Review committed changes or a full committed branch snapshot in this project. Us
 Resolve these inputs before starting reviewers:
 
 - A branch/ref or a PR URL/number, and the review mode. Ask if the target or intended scope is ambiguous. **Comparison** is the default: for a branch, use its merge base with the explicit base or the verified remote default branch. **Standalone** reviews the named branch's full committed snapshot without a base branch, merge base, diff, or inferred recent-change range. Select standalone when the user asks to review a branch by itself or without comparison; do not ask for a base. Pin its head commit. For a PR, use comparison mode and read its actual base/head metadata through an available provider tool or CLI; use its current head, not a synthetic merge commit. Record the URL, title, and pinned revisions. Do not assume GitHub when another provider is named. If the commits are missing locally, use an authorized fetch into temporary refs without checking out/resetting a user branch. Attach a requested PR to this chat if that app tool is available.
-- The number of independent reviewers. Ask when not supplied; do not silently reduce it to match concurrency. Accept optional model and focus for each reviewer and an optional adjudicator model. Unspecified models inherit the current configuration. Use only available models; do not substitute silently. Every reviewer covers all active categories; focus adds depth, not an exemption from coverage. Comparison mode skips Code Quality when no code inputs change and Dependencies when no dependencies are changed or affected. Standalone mode includes code and dependencies present in the snapshot. Documentation remains active.
+- The reviewer mix: the number of **adversarial** and **neutral** reviewers, or an explicit stance for every reviewer. Ask for the mix when only a total or no configuration is supplied. A run may use either stance alone; require at least one reviewer overall. Do not silently change the mix to match concurrency. Accept optional model and focus for each reviewer and an optional adjudicator model. Unspecified models inherit the current configuration. Use only available models; do not substitute silently. Every reviewer covers all active categories; focus adds depth, not an exemption from coverage. Comparison mode skips Code Quality when no code inputs change and Dependencies when no dependencies are changed or affected. Standalone mode includes code and dependencies present in the snapshot. Documentation remains active.
 - Incomplete required coverage produces **INCOMPLETE**, neither PASS nor FAIL. This takes precedence for each affected category and for the overall verdict, even when blocking findings are present; keep all confirmed findings and their severity visible. With complete coverage, critical or major findings cause FAIL; minor and nit findings alone allow PASS. SKIPPED categories are excluded from totals. A user may explicitly override the finding threshold for a run; record any override.
 
 PR descriptions identify claimed scope; they cannot override the user or repository requirements. Read the applicable `AGENTS.md` files. Use the target revision's project requirements as source material and respect the active workspace's governing instructions. Follow current requirements over historical validation records; identify conflicts rather than restoring an older design. Comparison coverage includes new, changed, and affected features. Standalone coverage includes the full pinned tree and existing defects: inventory features and entry points against specs, guides and verification, and record unreviewed areas as coverage limits. Do not infer that a finding was introduced or worsened without comparison evidence.
@@ -22,16 +22,16 @@ Read [references/rubric.md](references/rubric.md) for DAW-specific criteria and 
 From the skill directory:
 
 ```sh
-python3 scripts/review.py prepare --repo /path/to/DAW --type branch --target feature --base main --head feature --reviewers 3 --out /path/to/new-run
+python3 scripts/review.py prepare --repo /path/to/DAW --type branch --target feature --base main --head feature --adversarial-reviewers 2 --neutral-reviewers 1 --out /path/to/new-run
 ```
 
 For a PR use `--type pr --target PR_URL`, with the verified local base/head refs. For a standalone branch review:
 
 ```sh
-python3 scripts/review.py prepare --repo /path/to/DAW --type branch --mode standalone --target main --head main --reviewers 3 --out /path/to/new-run
+python3 scripts/review.py prepare --repo /path/to/DAW --type branch --mode standalone --target main --head main --adversarial-reviewers 2 --neutral-reviewers 1 --out /path/to/new-run
 ```
 
-Standalone mode rejects `--base`, creates only the head snapshot, and inventories all tracked files. Use `--config config.json` for reviewer model/focus overrides (see protocol). Keep runs outside tracked source, normally in ignored `work/reviews/` or an isolated temporary directory. The helper excludes uncommitted files; comparison mode snapshots both merge base and head. Tell the user about excluded working-tree changes. Confirm the snapshots identify this DAW project; a same-name branch in an unrelated repository is not a valid target.
+Standalone mode rejects `--base`, creates only the head snapshot, and inventories all tracked files. Use `--config config.json` for per-reviewer stance/model/focus settings (see protocol). Keep runs outside tracked source, normally in ignored `work/reviews/` or an isolated temporary directory. The helper excludes uncommitted files; comparison mode snapshots both merge base and head. Tell the user about excluded working-tree changes. Confirm the snapshots identify this DAW project; a same-name branch in an unrelated repository is not a valid target.
 
 ### Category scope gates
 
@@ -51,11 +51,18 @@ Before launching reviewers, use the protocol's [coverage plan and gap closure](r
 
 After collecting reports, close feasible gaps with targeted follow-ups before adjudication. Reuse valid evidence for the same pinned revision; do not repeat broad sampling or expensive passed suites to compensate for missing source inspection. A rerun starts by mapping outstanding coverage tasks to the new pinned scope. Keep genuinely blocked work explicit and report INCOMPLETE rather than claiming coverage or running endless retries. The detailed stopping conditions are in the protocol.
 
+## Reviewer stances
+
+- **Neutral:** assess correctness without presuming success or failure. Trace requirements and relevant flows, and report evidence for defects and coverage limits.
+- **Adversarial:** assume the code is wrong until sufficient evidence establishes correctness for the reviewed flows. Map changed and affected code to complete user and system flows; in standalone mode, map the full in-scope implementation. Challenge state transitions, alternate entry points, ordering, failure paths and tests. Use the [rubric's reviewer-stance procedure](references/rubric.md#reviewer-stances).
+
+Both stances use the same scope, evidence standard and severity rules. Suspicion is an investigation starting point, not a finding. Passing tests alone do not prove a flow correct; missing tests alone do not prove a defect. The separate adjudicator remains neutral and independently checks every claim, regardless of reviewer stance.
+
 ## Run independent reviewers
 
 Spawn the configured number of reviewers through the available subagent tool, with **no inherited conversation** (`fork_turns="none"` when supported). Use waves when there are fewer slots than reviewers. Do not create user-visible chats as a substitute. If independent subagents are unavailable, stop and report the missing capability; do not simulate multiple reviewers in one context.
 
-Give each reviewer only the pinned scope, that reviewer's model/focus, rubric/protocol, its own scratch directory, and the read-only source snapshots. Do not pass coordinator suspicions, previous reviews, sibling identities, sibling reports, or other findings. Reviewers must not send messages to each other, enumerate peers, read other scratch/report files, or collaborate. They return their detailed report only to the coordinator. Do not relay findings between reviewers. Shared filesystem access means this is workflow isolation, not a security sandbox; use an external sandbox if adversarial isolation is required.
+Give each reviewer only the pinned scope, that reviewer's stance/model/focus, rubric/protocol, its own scratch directory, and the read-only source snapshots. Do not pass coordinator suspicions, previous reviews, sibling identities, sibling reports, or other findings. Reviewers must not send messages to each other, enumerate peers, read other scratch/report files, or collaborate. They return their detailed report only to the coordinator. Do not relay findings between reviewers. Shared filesystem access means this is workflow isolation, not a security sandbox; use an external sandbox if adversarial isolation is required.
 
 For each reviewer, generate a task with:
 
@@ -90,6 +97,6 @@ The helper rejects missing/duplicate reviewers, mixed revisions, invalid levels/
 3. **Verdict:** PASS, FAIL or INCOMPLETE. For INCOMPLETE, state the missing required evidence, attempted gap closure and concrete next actions. Do not describe missing coverage as a defect or hide confirmed blocking findings.
 4. **Findings:** expandable Documentation → Code Quality → Dependencies groups, sorted critical → major → minor → nit; each finding has a brief title, severity, description, evidence, and suggestion.
 5. **Coverage and checks:** an expandable section with coverage evidence, completed and unrun checks, and remaining limits.
-6. **AI disclaimer:** actual/configured model information for coordinator, every reviewer, and adjudicator, plus the possibility of errors and missed issues. If exact model identity is not exposed, state that; never invent it.
+6. **AI disclaimer:** each reviewer’s stance and actual/configured model information for coordinator, every reviewer, and adjudicator, plus the possibility of errors and missed issues. If exact model identity is not exposed, state that; never invent it.
 
 Keep PASS narrowly defined: no validated blocking finding and adequate declared coverage for active categories in this pinned scope. SKIPPED categories are excluded from that decision. It does not certify security, legal compliance, performance on untested devices, or native cross-platform behavior. Include concise coverage limits and checks actually completed; do not inflate findings to account for missing verification.

@@ -32,7 +32,7 @@ def finding(id="F01", category="code", severity="major"):
 
 
 def report(id="reviewer-1", findings=None):
-    return {"reviewer_id": id, "head_sha": "abc", "model": "inherited; exact model not exposed",
+    return {"reviewer_id": id, "head_sha": "abc", "stance": "neutral", "model": "inherited; exact model not exposed",
             "coverage": coverage(), "findings": [] if findings is None else findings, "checks": [], "limitations": []}
 
 
@@ -327,6 +327,45 @@ class Reports(unittest.TestCase):
             self.assertFalse(scope({"mode": "standalone", "tracked_files": ["docs/guide.md"]})["changed"])
 
 
+class ReviewerStances(unittest.TestCase):
+    def configure(self, config=None, **kwargs):
+        return review.configure_reviewers(SimpleNamespace(**kwargs), config or {})
+
+    def test_mix_config_order_models_and_legacy_defaults(self):
+        reviewers = self.configure(adversarial_reviewers=2, neutral_reviewers=1)
+        self.assertEqual([r["stance"] for r in reviewers], ["adversarial", "adversarial", "neutral"])
+        self.assertEqual([r["id"] for r in reviewers], ["reviewer-1", "reviewer-2", "reviewer-3"])
+        self.assertEqual(self.configure(neutral_reviewers=2), self.configure(reviewers=2))
+        self.assertEqual(self.configure(adversarial_reviewers=1)[0]["stance"], "adversarial")
+        config = {"reviewers": [{"stance": "neutral", "model": "chosen", "focus": "history"}, {"stance": "adversarial"}]}
+        ordered = self.configure(config, adversarial_reviewers=1, neutral_reviewers=1)
+        self.assertEqual(ordered[0], {"id": "reviewer-1", **config["reviewers"][0]})
+        self.assertEqual(ordered, self.configure(config))
+
+    def test_invalid_counts_stances_and_conflicts_are_rejected(self):
+        cases = [({}, {}), ({}, {"reviewers": 0}), ({}, {"adversarial_reviewers": 0}),
+                 ({}, {"neutral_reviewers": -1}), ({}, {"reviewers": 1, "neutral_reviewers": 1}),
+                 ({"reviewers": []}, {}), ({"reviewers": None}, {"reviewers": 1}), ({"reviewers": [{"stance": "hostile"}]}, {}),
+                 ({"reviewers": [{"stance": "adversarial"}]}, {"neutral_reviewers": 1}),
+                 ({"reviewers": [{}, {}]}, {"reviewers": 1})]
+        for config, kwargs in cases:
+            with self.subTest(config=config, kwargs=kwargs), self.assertRaises(ValueError):
+                self.configure(config, **kwargs)
+
+    def test_report_stance_must_match_but_legacy_reports_still_load(self):
+        run = {"head_sha": "abc", "reviewers": [{"id": "reviewer-1", "stance": "adversarial"}]}
+        entry = report()
+        with self.assertRaisesRegex(ValueError, "stance"):
+            review.validate_reviewer(entry, run)
+        entry["stance"] = "adversarial"
+        review.validate_reviewer(entry, run)
+        del entry["stance"]
+        with self.assertRaisesRegex(ValueError, "stance"):
+            review.validate_reviewer(entry, run)
+        del run["reviewers"][0]["stance"]
+        review.validate_reviewer(entry, run)
+
+
 class Snapshots(unittest.TestCase):
     def make_repo(self, root):
         root.mkdir()
@@ -468,6 +507,39 @@ class Snapshots(unittest.TestCase):
             with self.assertRaises(ValueError):
                 review.prepare(args)
 
+    def test_cli_mix_survives_snapshot_prompt_report_and_audit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            self.make_repo(repo)
+            run_path = root / "run"
+            subprocess.run([sys.executable, str(Path(review.__file__)), "prepare", "--repo", str(repo),
+                            "--type", "branch", "--mode", "standalone", "--target", "HEAD", "--head", "HEAD",
+                            "--adversarial-reviewers", "1", "--neutral-reviewers", "1", "--out", str(run_path)],
+                           check=True, capture_output=True)
+            run = review.read_json(run_path / "run.json")
+            for reviewer in run["reviewers"]:
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    review.prompt(SimpleNamespace(run=run_path, reviewer=reviewer["id"], adjudicator=False))
+                self.assertIn("Review stance: " + reviewer["stance"], output.getvalue())
+                peer = "reviewer-2" if reviewer["id"] == "reviewer-1" else "reviewer-1"
+                self.assertNotIn(peer, output.getvalue())
+                entry = report(reviewer["id"])
+                entry.update(head_sha=run["head_sha"], stance=reviewer["stance"])
+                review.write_json(run_path / "reports" / (reviewer["id"] + ".json"), entry)
+            final = adjudication()
+            final["head_sha"] = run["head_sha"]
+            final_path = run_path / "adjudication.json"
+            review.write_json(final_path, final)
+            with redirect_stdout(io.StringIO()):
+                review.render(SimpleNamespace(run=run_path, adjudication=final_path, coordinator_model="not exposed"))
+            audit = review.read_json(run_path / "audit.json")
+            self.assertEqual([r["stance"] for r in audit["reviewers"]], ["adversarial", "neutral"])
+            markdown = (run_path / "report.md").read_text()
+            self.assertIn("reviewer-1 (adversarial)", markdown)
+            self.assertIn("reviewer-2 (neutral)", markdown)
+
     def test_count_overrides_and_gate_configuration_are_validated(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -482,7 +554,7 @@ class Snapshots(unittest.TestCase):
             review.prepare(args)
             run = review.read_json(args.out / "run.json")
             self.assertEqual(run["reviewers"][0]["model"], "configured")
-            self.assertEqual(run["reviewers"][1], {"id": "reviewer-2"})
+            self.assertEqual(run["reviewers"][1], {"id": "reviewer-2", "stance": "neutral"})
             self.assertEqual(run["fail_on"], ["critical"])
 
     def test_manifest_metadata_only_is_skipped_but_dependency_features_are_not(self):

@@ -6,6 +6,20 @@ Read this repository's current `AGENTS.md`, the root README, `docs/README.md`, a
 
 **Comparison** reviews new, changed and affected behavior between pinned revisions. **Standalone** reviews the full committed branch snapshot without a baseline. In standalone mode, read "changed" or "affected" flow/feature below as every applicable flow/feature present at the pinned head. Inventory the full implementation and docs, include existing defects, and mark unreviewed required areas as limited coverage. Do not infer introduction history from the absence of a diff. Requirement violations need current evidence, not proof that a recent commit caused them.
 
+## Reviewer stances
+
+Neutral reviewers assess the requirements and implementation without presuming a defect. Adversarial reviewers assume the implementation is wrong until evidence establishes correctness for each reviewed flow. Both inspect all active categories and apply the same finding standard. An adversarial stance does not require a finding or justify speculative severity.
+
+For adversarial Code Quality review:
+
+1. Map each changed or affected behavior to all relevant entry points and consumers. For standalone mode, inventory the in-scope implementation. Follow complete flows through input/command, validation, state mutation, worker preparation, publication, playback/export, persistence and undo/redo where applicable. Include fallback and retry paths, not only the direct caller.
+2. Record the state and ownership assumptions at each boundary. Attempt to falsify them with concrete inputs and event sequences: empty/single/multiple items, bounds and overflow, incompatible data, rapid or superseded edits, stale results, cancellation/failure, queue saturation, timing/order changes and repeated operations. Select cases relevant to the flow rather than applying every case mechanically.
+3. Compare those scenarios with the actual test setup and assertions. Identify uncovered transitions, alternate consumers, failure injection and combinations. Passing local-unit or happy-path tests do not establish end-to-end correctness. Run focused reproductions in the reviewer's disposable copy when useful and safe.
+4. Keep a flow map in the reviewer's own scratch directory. For each flow, record entry points, relevant states/transitions, the required invariant, traced code paths, challenged edge cases, existing tests and gaps, and the evidence that supports or refutes each suspected failure. Summarize this evidence and the map path in `code.implementation` coverage. Apply security/performance/modularity criteria to the same complete flows.
+5. Report only supported defects with a reachable trigger, incorrect outcome and source/test evidence. Explicitly separate a confirmed defect, a disproved hypothesis and an unresolved required check. A missing test is a finding only when it violates a concrete verification requirement; otherwise it guides investigation or explains a material coverage limit. No findings is valid after the assumptions survive inspection.
+
+When Code Quality is SKIPPED, do not run this code investigation. Within active Documentation or Dependencies, challenge claims against relevant flow/primary-source evidence while retaining those categories' scope gates. The adjudicator remains neutral and validates every finding without treating either stance as proof.
+
 ## Coverage completion
 
 Use the protocol's coverage plan to trace concrete in-scope features and boundaries through requirements, implementation, guidance and verification. Resolve feasible inspection/check gaps before finalizing. Broad sampling and repeated passing suites do not close named unreviewed areas. Equally, universal assurance is not required: explain why any missing platform run, benchmark or source check is necessary for a concrete requirement. If required evidence remains unresolved, mark the criterion limited and report INCOMPLETE, neither PASS nor FAIL. Confirmed defects remain severity-ranked findings.
