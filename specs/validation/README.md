@@ -5,6 +5,17 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Clip menu bounce separator — 2026-11-13
+
+The shared Clip action groups now separate Split/Merge/Bounce from Stem separation/
+Normalize gain. The native macOS Clip menu, application menu and clip context menu
+use this same definition. Action order, native tags, shortcuts and guards remain
+unchanged. The existing menu-render test verifies three separators in the full
+Clip menu and two in the context menu; all four focused Clip-menu tests passed.
+Strict workspace/all-target Clippy and the macOS arm64 debug desktop build passed.
+Full debug/release workspace suites, formatting, documentation links and diff
+checks passed. Native visual and Windows/Linux checks remain open.
+
 ## Timeline header inner sizes and row separators — 2026-11-13
 
 Timeline Compact/Regular/Large content heights are 28/56/84 logical points,

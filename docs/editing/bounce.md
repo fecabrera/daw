@@ -11,6 +11,9 @@ processing live. Audio, MIDI and Beat parent tracks are supported.
    on macOS or Ctrl+B on Windows/Linux.
 3. Wait for the Bounce progress dialog. Editing is disabled while it runs.
 
+**Bounce clips** follows **Merge**. A separator places **Stem separation** and
+**Normalize gain** in the next group in both the Clip menu and clip context menu.
+
 Bounce creates one Audio track for each source track in the selection. Each new
 track contains one clip, with the selected clips joined and their gaps retained.
 The clip starts at the first selected clip. Unselected clips stay enabled.

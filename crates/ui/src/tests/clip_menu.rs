@@ -69,7 +69,7 @@ fn clip_menu_and_context_have_grouped_actions_and_edit_keeps_copy_paste() {
             .collect();
         assert_eq!(labels, expected);
         let separators = shapes.iter().filter(|s| matches!(&s.shape, egui::Shape::LineSegment { points, .. } if points[0].y == points[1].y)).count();
-        assert_eq!(separators, if target.is_some() { 1 } else { 2 });
+        assert_eq!(separators, if target.is_some() { 2 } else { 3 });
     }
     let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.edit_menu(ui));
     output.textures_delta.clear();

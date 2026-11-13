@@ -28,15 +28,10 @@ impl ClipMenuAction {
         Self::ToggleMuted,
         Self::Delete,
     ];
-    pub const GROUPS: [&'static [Self]; 3] = [
+    pub const GROUPS: [&'static [Self]; 4] = [
         &[Self::Import, Self::AddMidi],
-        &[
-            Self::Split,
-            Self::Merge,
-            Self::Bounce,
-            Self::Separate,
-            Self::Normalize,
-        ],
+        &[Self::Split, Self::Merge, Self::Bounce],
+        &[Self::Separate, Self::Normalize],
         &[Self::Edit, Self::ToggleMuted, Self::Delete],
     ];
 
