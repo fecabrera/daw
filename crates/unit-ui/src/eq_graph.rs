@@ -1,8 +1,6 @@
 //! Shared EQ graph. DAW hosts stage transient plans; native editors publish bounded host gestures.
 use crate::{layout, rows, theme};
-use daw_unit_core::{
-    FrequencyResponse, MultibandEqBand, MultibandEqSettings, SpectrumReading, spectrum_frequency,
-};
+use daw_unit_core::{FrequencyResponse, MultibandEqBand, MultibandEqSettings, SpectrumReading};
 use egui::{Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 pub const WIDTH: f32 = 3.0 * layout::UNIT_STRIP_WIDTH;
 const POINTS: usize = 160;
@@ -72,6 +70,7 @@ pub fn show(
 ) -> Bounds {
     let id = ui.make_persistent_id("eq-graph-drag");
     let selection = ui.make_persistent_id("eq-graph-selection");
+    let spectrum_id = ui.make_persistent_id("eq-spectrum-display");
     let frame = ui.ctx().cumulative_frame_nr();
     let mut drag = ui.data_mut(|d| d.get_temp::<Drag>(id));
     let external_change = drag.as_ref().is_some_and(|d| {
@@ -103,6 +102,7 @@ pub fn show(
         drag = None;
     }
     if !visible {
+        crate::eq_spectrum::clear(ui, spectrum_id);
         ui.data_mut(|d| d.remove::<Drag>(id));
         return Bounds::default();
     }
@@ -162,22 +162,8 @@ pub fn show(
             );
         }
         let p = ui.painter_at(plot);
-        if s.enabled
-            && let Some(spectrum) = input.spectrum
-            && spectrum.magnitudes.iter().any(|v| *v > 0.0)
-        {
-            let points: Vec<_> = spectrum
-                .magnitudes
-                .iter()
-                .enumerate()
-                .map(|(i, v)| {
-                    let db = 20.0 * v.max(1e-8).log10();
-                    egui::pos2(
-                        x(plot, spectrum_frequency(i)),
-                        plot.bottom() - plot.height() * ((db + 90.0) / 90.0).clamp(0.0, 1.0),
-                    )
-                })
-                .collect();
+        let points = crate::eq_spectrum::points(ui, spectrum_id, plot, input.spectrum, s.enabled);
+        if !points.is_empty() {
             // A triangle fan avoids convex-fill assumptions for a non-convex spectrum skyline.
             let mut mesh = egui::Mesh::default();
             for pair in points.windows(2) {

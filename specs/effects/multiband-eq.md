@@ -101,6 +101,23 @@ The DAW keeps held drafts outside Session. Clone the render plan, validate the c
 
 `SpectrumMeter` and `SpectrumReading` in unit-core contain 64 logarithmic bins and sample-rate metadata. The portable EQ analyzer packs L+iR into a prepared radix-2 FFT, preserving opposite-phase stereo energy. Hann windows use 4096 samples at 44.1/48 kHz, 8192 at 88.2/96 kHz, and 16384 at 176.4/192 kHz. Precompute tables and buffers on preparation threads. Spread FFT and bin work over input samples, capped at eight work items per sample. Publish complete frames with 300 ms release; never expose partially collected bins. Monitoring is display-only, allocation-free, and adds no audio latency.
 
+The shared graph interpolates spectrum presentation without changing analyzer
+cadence, the 64-bin telemetry layout, saved state or audio. Keep per-graph,
+ephemeral dB values in egui state. Follow new bins with a 35 ms exponential time
+constant using elapsed UI time, independent of frame rate and duplicate layout
+passes. Initialize directly from the first reading. Clear display history on
+missing/all-zero readings, bypass or hiding; reset it on rate changes or a gap
+in graph frames. Stop/paused masking must clear immediately rather than leave a
+smoothed ghost spectrum. Request 16 ms redraws while the display is active.
+
+Draw a shape-preserving cubic curve in logarithmic frequency/dB space. Use zero
+slopes at extrema, harmonic-mean slopes between monotonic segments and clamp each
+segment within its adjacent displayed bin values. Sample once per logical horizontal
+point, with 64–1024 segments. This removes angular joins without claiming extra
+frequency resolution or introducing peaks beyond the telemetry. Keep the existing
+fill, stroke, plot bounds, response curves and band interaction geometry. DAW,
+CLAP and VST3 editors call this same graph renderer.
+
 Reuse `UnitMeter` enable/clear behavior and prepared handle ownership. Attach prepared renderers without clearing the last visible frame at the same sample rate. Compatible updates transfer analyzer history and retarget handles without final-owner retirement on the callback. Bind after worker preroll, retain handles by effect ID, and mask stopped/paused readings. Test repeated band edits through both the portable analyzer and renderer at all six rates; preparation and inheritance must retain a nonzero published frame. Track, layer, Main and Master scopes use the same binding path.
 
 CLAP shares the prepared spectrum handle. VST3 retains slots 0…140 and appends sample rate at 141 and 64 magnitudes at 142…205, for 206 telemetry values. This changes no saved state or automation IDs. Test transport, bypass clearing, unchanged PCM, and allocation-free callbacks and inheritance.

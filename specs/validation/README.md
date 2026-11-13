@@ -5,6 +5,24 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Multiband EQ spectrum display — 2026-11-12
+
+The graph previously drew 64 straight segments from analysis frames arriving
+roughly 10–12 times per second. The shared DAW/plugin graph now follows bin dB
+values over 35 ms using elapsed UI time and draws a dense, shape-preserving cubic
+contour bounded by adjacent displayed bins. Analyzer timing, 64-bin telemetry,
+audio, plugin parameter/state contracts and graph gesture geometry are unchanged.
+Missing/zero readings, bypass and hiding clear display history; sample-rate
+changes and skipped graph frames reset it.
+
+All 47 unit-ui tests passed. New tests verify frame-rate-independent motion,
+duplicate-pass stability, rate/visibility resets, dense bounded geometry without
+overshoot, and immediate cache removal for missing/silent/disabled readings.
+Both the DAW panel and standalone Multiband EQ editor use `eq_graph::show`.
+Full debug and release workspace suites, strict workspace/all-target Clippy,
+formatting and the macOS arm64 debug build passed. Native visual playback checks
+remain open.
+
 ## Float32 export notices on Windows — 2026-11-12
 
 The headroom regression incorrectly required an empty export warning list.
