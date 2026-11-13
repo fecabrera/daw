@@ -2176,3 +2176,101 @@ fn audio_merge_inherits_live_effect_state_without_callback_allocations() {
     assert!(equal);
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn eq_spectrum_readiness_follows_transport_without_changing_pcm() {
+    use daw_unit_core::{SPECTRUM_UPPER_READY, SpectrumMeter};
+    for rate in SAMPLE_RATES {
+        for latent in [false, true] {
+            if latent && ![44100, 192000].contains(&rate) {
+                continue;
+            }
+            let mut p = plan(rate, false);
+            let clip = &mut p.project.tracks[0].clips[0];
+            clip.repeat = Some(ClipLoop {
+                length_frames: clip.length_frames,
+                phase_frame: 0,
+            });
+            clip.length_frames = u64::from(rate) * 3;
+            let eq = EffectInstance::multiband_equalizer();
+            let id = eq.id;
+            p.project.tracks[0].effects.push(eq);
+            if latent {
+                p.project.master.effects.push(EffectInstance::limiter());
+            }
+            let meter = Arc::new(SpectrumMeter::default());
+            let mut actual = Renderer::new(p.clone());
+            actual.set_effect_spectrum_meter(id, meter.clone());
+            let mut reference = Renderer::new(p.clone());
+            actual.play();
+            reference.play();
+            for _ in 0..rate / 4 {
+                assert_eq!(actual.next_sample(), reference.next_sample());
+            }
+            let ready = meter.reading();
+            assert_eq!(
+                ready.valid_branches, SPECTRUM_UPPER_READY,
+                "{rate} latent={latent}"
+            );
+            actual.pause();
+            reference.pause();
+            for _ in 0..rate / 100 {
+                assert_eq!(actual.next_sample(), reference.next_sample());
+            }
+            assert_eq!(meter.reading().generation, ready.generation);
+            actual.play();
+            reference.play();
+            for _ in 0..rate {
+                assert_eq!(actual.next_sample(), reference.next_sample());
+            }
+            assert_eq!(meter.reading().valid_branches, SPECTRUM_UPPER_READY);
+            assert_eq!(meter.reading().generation, ready.generation);
+            let warm = meter.reading();
+            // Preparation has no live writer. Only activation may clear a frame.
+            let mut next = Renderer::new(p.clone());
+            next.set_effect_spectrum_meter(id, meter.clone());
+            assert_eq!(meter.reading(), warm);
+            next.inherit(&mut actual);
+            assert_eq!(meter.reading(), warm);
+            actual = next;
+            actual.seek(0);
+            reference.seek(0);
+            for _ in 0..rate / 4 {
+                assert_eq!(actual.next_sample(), reference.next_sample());
+            }
+            assert_eq!(meter.reading().valid_branches, SPECTRUM_UPPER_READY);
+            assert!(meter.reading().generation > warm.generation);
+            actual.stop();
+            reference.stop();
+            actual.play();
+            reference.play();
+            for _ in 0..rate / 4 {
+                assert_eq!(actual.next_sample(), reference.next_sample());
+            }
+            assert_eq!(meter.reading().valid_branches, SPECTRUM_UPPER_READY);
+            let untouched = meter.reading();
+            let transport = daw_engine::TransportState {
+                frame: u64::from(rate),
+                playing: true,
+                paused: false,
+                playback_start: Some(0),
+            };
+            let mut prepared = Renderer::new(p.clone());
+            assert!(!prepared.prepare_transport_cancellable(transport, || true));
+            assert_eq!(meter.reading(), untouched);
+            assert!(prepared.prepare_transport_cancellable(transport, || false));
+            prepared.set_effect_spectrum_meter(id, meter.clone());
+            assert_eq!(meter.reading(), untouched);
+            // Replay and latency priming occurred before binding. Fresh live input
+            // must still collect a full window; it cannot inherit replayed bins.
+            for _ in 0..rate / 4 {
+                prepared.next_sample();
+            }
+            assert_eq!(meter.reading().valid_branches, SPECTRUM_UPPER_READY);
+            for _ in 0..rate {
+                prepared.next_sample();
+            }
+            assert_eq!(meter.reading().valid_branches, SPECTRUM_UPPER_READY);
+        }
+    }
+}

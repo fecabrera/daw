@@ -1,30 +1,27 @@
 //! Display interpolation for the shared EQ spectrum; never processes audio.
-use daw_unit_core::{SPECTRUM_BASS_READY, SPECTRUM_BINS, SpectrumReading, spectrum_frequency};
+use daw_unit_core::{SPECTRUM_BINS, SpectrumReading};
 use egui::{Id, Pos2, Rect, Ui};
 
 const FLOOR_DB: f32 = -90.0;
 const FOLLOW_SECONDS: f64 = 0.035;
-
 #[derive(Clone)]
 struct Display {
     db: [f32; SPECTRUM_BINS],
     rate: u32,
     time: f64,
     frame: u64,
-    ready: u32,
     generation: u64,
 }
 
 impl Display {
     #[cfg(test)]
     fn follow(&mut self, target: [f32; SPECTRUM_BINS], rate: u32, time: f64, frame: u64) {
-        self.follow_frame(target, rate, self.ready, self.generation, time, frame);
+        self.follow_frame(target, rate, self.generation, time, frame);
     }
     fn follow_frame(
         &mut self,
         target: [f32; SPECTRUM_BINS],
         rate: u32,
-        ready: u32,
         generation: u64,
         time: f64,
         frame: u64,
@@ -33,20 +30,13 @@ impl Display {
             self.db = target;
         } else {
             let amount = (1.0 - (-(time - self.time).max(0.0) / FOLLOW_SECONDS).exp()) as f32;
-            let new_bass =
-                ready & SPECTRUM_BASS_READY != 0 && self.ready & SPECTRUM_BASS_READY == 0;
-            for (index, (current, target)) in self.db.iter_mut().zip(target).enumerate() {
-                if new_bass && spectrum_frequency(index) < 400.0 {
-                    *current = target;
-                } else {
-                    *current += (target - *current) * amount;
-                }
+            for (current, target) in self.db.iter_mut().zip(target) {
+                *current += (target - *current) * amount;
             }
         }
         self.rate = rate;
         self.time = time;
         self.frame = frame;
-        self.ready = ready;
         self.generation = generation;
     }
 }
@@ -84,13 +74,11 @@ pub(super) fn points(
             rate: reading.sample_rate_hz,
             time,
             frame,
-            ready: reading.valid_branches,
             generation: reading.generation,
         });
     display.follow_frame(
         target,
         reading.sample_rate_hz,
-        reading.valid_branches,
         reading.generation,
         time,
         frame,
@@ -191,7 +179,6 @@ mod tests {
             rate: 48_000,
             time: 0.0,
             frame: 0,
-            ready: 3,
             generation: 1,
         };
         let mut one = initial.clone();
@@ -277,31 +264,6 @@ mod tests {
 #[cfg(test)]
 mod readiness_tests {
     use super::*;
-    #[test]
-    fn first_ready_bass_is_painted_without_an_extra_easing_delay() {
-        for refresh in [1.0 / 60.0, 1.0 / 120.0, 0.041] {
-            let mut display = Display {
-                db: [FLOOR_DB; SPECTRUM_BINS],
-                rate: 48000,
-                time: 1.0,
-                frame: 10,
-                ready: 1,
-                generation: 2,
-            };
-            display.follow_frame([-12.0; SPECTRUM_BINS], 48000, 3, 2, 1.0 + refresh, 11);
-            for (index, value) in display.db.iter().enumerate() {
-                if spectrum_frequency(index) < 400.0 {
-                    assert_eq!(*value, -12.0);
-                } else {
-                    assert!(*value > FLOOR_DB && *value < -12.0);
-                }
-            }
-            display.follow_frame([-24.0; SPECTRUM_BINS], 48000, 3, 2, 1.0 + 2.0 * refresh, 12);
-            assert!(display.db[0] < -12.0 && display.db[0] > -24.0);
-            display.follow_frame([-60.0; SPECTRUM_BINS], 48000, 1, 3, 1.0 + 3.0 * refresh, 13);
-            assert_eq!(display.db, [-60.0; SPECTRUM_BINS]);
-        }
-    }
     #[test]
     fn pixel_limited_reduction_keeps_measured_peaks_and_valleys() {
         for width in [90.0, 240.0, 800.0] {

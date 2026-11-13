@@ -236,3 +236,59 @@ fn empty_prepared_spectrum_uses_the_configured_processing_rate_before_first_audi
         assert_eq!(wire[plugin::SPECTRUM_VALID], 0.0);
     }
 }
+
+#[test]
+fn silent_partial_and_complete_readiness_survive_both_meter_paths() {
+    use daw_unit_core::{BandAudition, MeterStorage, SpectrumCache, SpectrumReading};
+    let shared = plugin::OutputMeter::default();
+    let receiver = plugin::OutputMeter::default();
+    let mut shared_cache = SpectrumCache::default();
+    let mut wire_cache = SpectrumCache::default();
+    for ready in [1, 3, 1] {
+        let frame = SpectrumReading {
+            sample_rate_hz: 48000,
+            valid_branches: ready,
+            upper_end_frame: 34816,
+            bass_end_frame: if ready == 3 { 32831 } else { 0 },
+            ..Default::default()
+        };
+        shared.spectrum.store(frame);
+        plugin::receive_meter(&receiver, plugin::meter_values(&shared).map(|v| v as f32));
+        // CLAP shares this handle; VST3 receives the same metadata over its wire.
+        assert_eq!(shared_cache.read(&shared.spectrum), Some(frame));
+        assert_eq!(wire_cache.read(&receiver.spectrum), Some(frame));
+    }
+    shared.clear_spectrum();
+    plugin::receive_meter(&receiver, plugin::meter_values(&shared).map(|v| v as f32));
+    assert!(shared_cache.read(&shared.spectrum).is_none());
+    assert!(wire_cache.read(&receiver.spectrum).is_none());
+}
+
+#[test]
+fn musical_transport_stop_retains_readiness_but_bypass_and_reset_clear_it() {
+    use std::sync::Arc;
+    let meter = Arc::new(plugin::OutputMeter::default());
+    let mut processor =
+        plugin::Processor::new(48000.0, 1, 512, plugin::PluginState::default()).unwrap();
+    processor.set_output_meter(meter.clone());
+    for _ in 0..12000 {
+        assert_eq!(processor.process_sample([0.; 2]), [0.; 2]);
+    }
+    let partial = meter.spectrum.reading();
+    assert_eq!(partial.valid_branches, 1);
+    processor.set_transport_state(Some(12000), Some(120.0), Some(false));
+    assert_eq!(meter.spectrum.reading(), partial);
+    for _ in 12000..48000 {
+        processor.process_sample([0.; 2]);
+    }
+    assert_eq!(meter.spectrum.reading().valid_branches, 1);
+    processor.set(plugin::Parameter::Bypass, 1.0).unwrap();
+    assert_eq!(meter.spectrum.reading().valid_branches, 0);
+    processor.set(plugin::Parameter::Bypass, 0.0).unwrap();
+    for _ in 0..12000 {
+        processor.process_sample([0.; 2]);
+    }
+    assert_eq!(meter.spectrum.reading().valid_branches, 1);
+    processor.reset();
+    assert_eq!(meter.spectrum.reading().valid_branches, 0);
+}

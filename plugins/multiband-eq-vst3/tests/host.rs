@@ -84,7 +84,7 @@ mod spectrum_wire {
         }
     }
     #[test]
-    fn actual_factory_transports_ready_bass_and_masks_legacy_and_stopped_spectrum() {
+    fn actual_factory_transports_full_range_spectrum_and_masks_legacy_and_stopped_frames() {
         let _serial = SERIAL.lock().unwrap();
         let mut plugin = Plugin::new();
         let component = plugin.component.cast::<IConnectionPoint>().unwrap();
@@ -117,14 +117,14 @@ mod spectrum_wire {
             assert_eq!(frame.len(), 668);
             assert_eq!(frame[141], rate as f32);
             assert_eq!(frame[654], 2.0);
-            assert_eq!(frame[655], 3.0);
+            assert_eq!(frame[655], 1.0);
             assert!(frame[142..654].iter().any(|v| *v > 0.3));
             let output = daw_drive_plugin::OutputMeter::default();
             daw_drive_plugin::receive_meter(&output, frame.as_slice().try_into().unwrap());
             let r = output.spectrum.reading();
             assert!(r.upper_end_frame <= frames as u64);
             assert!((frames as u64 - r.upper_end_frame) as f64 / f64::from(rate) < 0.05);
-            assert!(r.bass_end_frame <= r.upper_end_frame);
+            assert_eq!(r.bass_end_frame, 0);
             drop(frame);
             let legacy = ComWrapper::new(Request(c"daw.output-meter.request.v1"))
                 .to_com_ptr::<IMessage>()

@@ -1,5 +1,11 @@
 # Multiband EQ spectrum resolution — 2026-11-13
 
+**Historical validation:** this records the former dual-resolution analyzer.
+The later permanent full-range fast spectrum decision supersedes its bass
+resolution, collection, transition and timing requirements. See the current
+[effect contract](../effects/multiband-eq.md#response-graph-and-live-spectrum) and
+[validation history](README.md). CPU figures below describe the old analyzer.
+
 The [effect contract](../effects/multiband-eq.md#response-graph-and-live-spectrum)
 replaces the earlier 64-cell, non-overlapping analyzer with 512 measured log cells,
 a long decimated bass branch, and a shorter overlapping upper branch. Both

@@ -1,5 +1,5 @@
 use super::*;
-use daw_unit_core::MeterStorage;
+use daw_unit_core::{MeterStorage, spectrum_frequency};
 #[test]
 fn preparing_repeated_updates_never_clears_the_visible_spectrum() {
     for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
@@ -91,9 +91,9 @@ fn signal(rate: u32, tones: &[(f64, f64)], seconds: usize) -> SpectrumReading {
     meter.reading()
 }
 #[test]
-fn bass_pairs_have_measured_valleys_at_all_rates_and_phases() {
+fn resolved_pairs_have_measured_valleys_at_all_rates_and_phases() {
     for rate in RATES {
-        for (a, b) in [(40.0, 46.0), (80.0, 88.0), (200.0, 220.0), (230.0, 250.0)] {
+        for (a, b) in [(40.0, 80.0), (80.0, 160.0), (200.0, 250.0)] {
             for offset in [0.0, 1.7] {
                 let r = signal(rate, &[(a, 0.0), (b, offset)], 1);
                 let a_peak = peak(&r, a as f32 - 2.0, a as f32 + 2.0);
@@ -124,11 +124,9 @@ fn cold_readiness_scheduler_memory_and_release_meet_the_bounds() {
     for rate in RATES {
         let mut s = Spectrum::new(rate, true);
         assert!(s.heap_bytes() + (std::mem::size_of::<Spectrum>() as u64) < 600 * 1024);
-        assert!(rate as f32 / s.decimator.factor() as f32 / 1024.0 <= 1.5);
         let meter = Arc::new(SpectrumMeter::default());
         s.attach(meter.clone());
         let mut upper = 0;
-        let mut bass = 0;
         // Irregular block sizes do not change the sample scheduler.
         let mut frame = 0;
         for block in [1, 17, 32, 64, 128, 512, 4096].into_iter().cycle() {
@@ -144,24 +142,22 @@ fn cold_readiness_scheduler_memory_and_release_meet_the_bounds() {
                 if s.reading.valid_branches & SPECTRUM_UPPER_READY != 0 && upper == 0 {
                     upper = frame;
                 }
-                if s.reading.valid_branches & SPECTRUM_BASS_READY != 0 && bass == 0 {
-                    bass = frame;
-                }
-                if bass == 0 {
-                    assert_eq!(peak(&s.reading, 20.0, 250.0), 0.0);
+                if upper != 0 {
+                    assert_eq!(s.reading.valid_branches, SPECTRUM_UPPER_READY);
+                    assert_eq!(s.reading.bass_end_frame, 0);
+                    if frame < rate as usize {
+                        assert!(peak(&s.reading, 70.0, 90.0) > 0.3);
+                    }
                 }
             }
             if frame == rate as usize * 3 {
                 break;
             }
         }
+        println!("spectrum startup rate={rate} full_range_frame={upper}");
         assert!(
             upper > 0 && upper as f64 / f64::from(rate) <= 0.125,
             "{rate} upper {upper}"
-        );
-        assert!(
-            bass > 0 && bass as f64 / f64::from(rate) <= 0.8,
-            "{rate} bass {bass}"
         );
         assert!(peak(&s.reading, 70.0, 90.0) < 0.5 * 10.0_f32.powf(-26.0 / 20.0));
         assert_eq!(s.overruns, 0);
@@ -183,7 +179,7 @@ fn compatible_retarget_preserves_pending_jobs_and_next_publication_exactly() {
     for i in 0..40001 {
         current.sample([(i as f32 * 0.017).sin(); 2]);
     }
-    assert!(current.upper.pending || current.bass.pending);
+    assert!(current.branch.pending);
     let mut reference = current.clone();
     reference.attach(Arc::new(SpectrumMeter::default()));
     reference.active = true;
@@ -265,7 +261,7 @@ fn analyzer_cpu_and_32_frame_tails() {
 }
 
 #[test]
-fn warmed_onsets_remain_responsive_and_weak_bass_tones_remain_distinct() {
+fn warmed_onsets_remain_responsive_and_resolved_stereo_tones_remain_distinct() {
     for rate in RATES {
         for hz in [80.0, 1000.0] {
             let mut s = Spectrum::new(rate, true);
@@ -286,10 +282,7 @@ fn warmed_onsets_remain_responsive_and_weak_bass_tones_remain_distinct() {
             }
             let seconds = f64::from(reached.expect("warmed onset")) / f64::from(rate);
             // Reserve 35 ms for ordinary display easing on top of producer age.
-            assert!(
-                seconds + 0.035 <= if hz < 250.0 { 0.650 } else { 0.150 },
-                "{rate} {hz}: {seconds}"
-            );
+            assert!(seconds + 0.035 <= 0.150, "{rate} {hz}: {seconds}");
         }
         let mut s = Spectrum::new(rate, true);
         s.attach(Arc::new(SpectrumMeter::default()));
@@ -297,13 +290,50 @@ fn warmed_onsets_remain_responsive_and_weak_bass_tones_remain_distinct() {
             let phase = std::f64::consts::TAU * f64::from(i) / f64::from(rate);
             s.sample([
                 (phase * 80.0).sin() as f32 * 0.5,
-                (phase * 88.0).sin() as f32 * 0.05,
+                (phase * 160.0).sin() as f32 * 0.05,
             ]);
         }
         // Independent channels must preserve the weaker tone as mean stereo energy.
-        let weak = peak(&s.reading, 86.0, 90.0);
+        let weak = peak(&s.reading, 155.0, 165.0);
         assert!(weak > 0.05 / 2.0_f32.sqrt() * 0.70, "{rate}: {weak}");
-        let valley = peak(&s.reading, 83.0, 84.0);
+        let valley = peak(&s.reading, 118.0, 122.0);
         assert!(valley < weak * 0.5, "{rate} weak/valley {weak}/{valley}");
+    }
+}
+
+#[test]
+fn bass_keeps_the_fast_resolution_without_a_later_handoff() {
+    for rate in RATES {
+        for hz in [20.3, 40.0, 80.0, 240.0, 317.0] {
+            let mut s = Spectrum::new(rate, true);
+            s.attach(Arc::new(SpectrumMeter::default()));
+            let mut early_peak = 0.0;
+            for frame in 0..rate * 2 {
+                let phase = std::f64::consts::TAU * hz * f64::from(frame) / f64::from(rate);
+                let sample = 0.25 * phase.sin() as f32;
+                s.sample([sample, -sample]);
+                if frame == rate / 4 {
+                    early_peak = peak(&s.reading, hz as f32 - 12.0, hz as f32 + 12.0);
+                    assert!(early_peak > 0.1, "{rate} {hz}");
+                }
+                if frame >= rate / 4 {
+                    assert_eq!(s.reading.valid_branches, SPECTRUM_UPPER_READY);
+                    assert_eq!(s.reading.bass_end_frame, 0);
+                }
+            }
+            let late_peak = peak(&s.reading, hz as f32 - 12.0, hz as f32 + 12.0);
+            assert!(
+                (20.0 * (late_peak / early_peak).log10()).abs() < 0.5,
+                "no resolution handoff: {rate} {hz}"
+            );
+            s.reset();
+            for _ in 0..rate / 4 {
+                s.sample([0.0; 2]);
+            }
+            assert_eq!(s.reading.valid_branches, SPECTRUM_UPPER_READY);
+            assert!(s.reading.magnitudes.iter().all(|v| *v == 0.0));
+            assert_eq!(s.overruns, 0);
+            assert!(s.max_work <= WORK_PER_FRAME);
+        }
     }
 }

@@ -91,6 +91,11 @@ current-level release must not create held peaks.
 
 The shared `unit-ui::eq_graph` body precedes the band strips in expanded mode. Its 270-point section contains a 172-point graph across the three standard control rows and a centered Response footer. Use only the standard eight-point item gap before the 18-point footer: the content totals 198 points and the padded section totals 218 points, matching the band/Add/Out strips. Do not add another explicit footer gap. Compact/collapsed units hide it. Reuse theme colors, fonts, dividers and lane geometry in the DAW and standalone editors. Frequency spans 20 Hz–20 kHz logarithmically; response spans −24…+24 dB. Draw individual responses, the combined curve, a subdued −90…0 dBFS output spectrum, and numbered draggable points. Keep the existing band/Add/Out section indices; graph bounds are separate.
 
+The footer always reads `Response`. There is no bass collection state, collection
+repaint or resolution transition. DAW output masks the spectrum while
+stopped/paused. Plugin musical transport Stop does not imply a processing reset:
+hosts can continue callbacks while stopped.
+
 The combined curve and unselected band points use `palette.secondary`, matching unselected unit-header text. Selected enabled points retain the accent color. Disabled bands and units use `palette.secondary`.
 
 `equalizer::band_response` derives a portable `FrequencyResponse` from the actual private FunDSP SVF coefficients. Test it against the backend transfer response for every mode, Q range and supported sample rate. Effective modulation snapshots drive curves outside active edits; active drafts show their proposed base settings. The graph does not alter DSP or persist display state.
@@ -100,50 +105,50 @@ Normal point drags change logarithmic Frequency and, for gain-using modes, Gain.
 The DAW keeps held drafts outside Session. Clone the render plan, validate the changed effect chain through its ordinary project edit, then send the transient plan through the existing coalesced audio-preparation worker. Preserve saved state and history until release, which commits one ordinary effect-chain transaction. Cancellation publishes the current committed plan. Standalone editors update bounded host parameter gestures live and restore starting values on cancellation, with balanced Begin/Value/End events and fixed slot automation IDs. Both hosts paint through the same body. The standalone viewport grows by 270 points to 488×218 at its default band count; overflow still scrolls.
 
 `SpectrumMeter` publishes coherent frames with 512 logarithmic measured cells
-from 20 Hz to 20 kHz, sample rate, branch readiness, reset generation, and separate
-exclusive observation-end frame clocks. Bass clocks exclude FIR group delay.
-The analyzer packs L+iR into prepared radix-2 FFTs. Sum the positive/negative
-coefficient powers to preserve mean stereo energy, including opposite-phase audio.
-Analysis follows final output, never enters PCM, and adds no audio latency.
+from 20 Hz to 20 kHz, sample rate, readiness, reset generation and an exclusive
+observation-end frame clock. A single full-range Hann branch packs L+iR into a
+prepared radix-2 FFT. Sum positive/negative coefficient powers to preserve mean
+stereo energy, including opposite-phase audio. Analysis follows final output,
+never enters PCM, and adds no audio latency.
 
-Two overlapping Hann branches share a source-clock hop:
+| Project rate | FFT / hop | Coefficient spacing | Observation |
+| --- | --- | --- | --- |
+| 44.1 / 48 kHz | 4096 / 1024 | 10.767 / 11.719 Hz | 93 / 85 ms |
+| 88.2 / 96 kHz | 8192 / 2048 | 10.767 / 11.719 Hz | 93 / 85 ms |
+| 176.4 / 192 kHz | 16384 / 4096 | 10.767 / 11.719 Hz | 93 / 85 ms |
 
-| Project rate | Upper FFT / hop | Bass decimation | Bass FFT / hop | Bass observation |
-| --- | --- | --- | --- | --- |
-| 44.1 / 48 kHz | 4096 / 1024 | 32 | 1024 / 32 | 743 / 683 ms |
-| 88.2 / 96 kHz | 8192 / 2048 | 64 | 1024 / 32 | 743 / 683 ms |
-| 176.4 / 192 kHz | 16384 / 4096 | 128 | 1024 / 32 | 743 / 683 ms |
+Use this branch at every frequency for the whole processing lifetime. This
+supersedes the decimated high-resolution bass branch, provisional preview,
+collection footer and resolution blend. No bass FIR, decimator, separate FFT or
+cross-band power blending remains. Prepare windows, bit reversal, twiddles, maps
+and buffers outside processing; no new thread is required.
 
-Bass coefficient spacing is 1.346–1.465 Hz. Upper spacing is 10.767–11.719 Hz.
-A five/six/seven-stage cascade of independently generated 63-tap Kaiser halfbands
-prevents aliasing before bass decimation. Its source-frame group delay is
-31 × (decimation − 1), at most 22.32 ms. Prepare coefficients, windows, bit reversal,
-twiddles, maps and all buffers outside processing. No new thread is required.
-
-Use bass power through 250 Hz, linearly blend bass/upper powers over 250–400 Hz,
-and use upper power above 400 Hz. A cell spans the geometric midpoints to adjacent
-published centers. Pool the maximum calibrated coefficient power inside that
-cell; interpolate adjacent powers only when it contains no coefficient center.
-This preserves off-center peaks. Mapping validates at most 26 contributions per
-upper cell / four per bass cell, with aggregate caps of 2400 / 512.
+A cell spans geometric midpoints to adjacent published centers. Pool the maximum
+calibrated coefficient power inside each cell; interpolate adjacent powers only
+when it contains no coefficient center. This preserves off-center peaks without
+claiming finer measured resolution. Close bass tones can merge. Mapping validates
+at most 26 contributions per cell, with an aggregate cap of 2400.
 
 Service oldest ring copies before overwrite. Incremental copies, butterflies and
-mapped contributions share an 80-item budget per source frame. FIR filtering is
-separate, with at most 238 stereo multiplications on a coincident tick. A complete
+mapped contributions share an 80-item budget per source frame. A complete
 publication combines 512 bins and uses fewer than 528 atomic stores. The prepared
 analyzer, including inline storage, is less than 600 KiB. Live, prepared and retired
 renderers can each own an analyzer until ordinary worker retirement completes.
 Reset invalidates counters/jobs without clearing FFT-sized buffers. Missed analysis
 deadlines invalidate analysis and restart capture; they never alter PCM.
 
-The first complete upper publication is available within 125 ms, and the first
-complete bass publication within 800 ms after activation/reset on the processing
-sample clock. These include observation, FIR and computation, but exclude GUI
-transport/polling and painting. Bass stays empty until its full window is valid.
-After warmed silence, target onset within 3 dB in 150 ms for upper and 650 ms for
-bass, including ordinary display easing. Amplitude release uses the actual hop
-and the shared 300 ms time constant. Old bass-window content can persist before
-release; the signal gate requires at least 26 dB fall within 1.8 seconds.
+The first full-range publication is available within 125 ms of processed audio
+after activation/reset, including observation and computation but excluding
+transport/polling and painting. After warmed silence, target onset within 3 dB
+in 150 ms, including ordinary display easing. Amplitude release uses the actual
+hop and the shared 300 ms time constant. The signal gate requires at least 26 dB
+fall within 1.8 seconds. Keep resolution constant after startup.
+
+For schema-2 compatibility, current producers publish `SPECTRUM_UPPER_READY` for
+the full-range branch, its clock in `upper_end_frame`, and zero `bass_end_frame`.
+The legacy `SPECTRUM_BASS_READY` bit and bass-clock fields remain supported by
+receivers; no current producer sets that bit. Do not change the wire layout,
+plugin identities, project schema or parameter state.
 
 The sole serialized active producer writes a sequentially consistent atomic
 versioned frame. Readers make at most two attempts. Each UI/control consumer
@@ -151,19 +156,17 @@ retains its last complete frame on ordinary contention and discards it on clear
 epoch changes. Clear invalidates caches before payload publication. Prepared
 attachments and prepared enable changes never write a live handle. Activation
 invalidates stale rate/source data; compatible inheritance transfers complete
-ring, FIR, pending jobs, release and readiness history, and retargets handles
+ring, pending jobs, release and readiness history, and retargets handles
 without final-owner retirement on the callback. Track, layer, beat, Main/Output
 and Master scopes retain existing effect discovery and bindings.
 
 The shared graph keeps ephemeral per-graph dB state, with 35 ms UI-time easing
 and 16 ms repaint requests. Duplicate layout passes do not advance easing.
-Newly valid bass and transition cells initialize directly from the first ready
-frame, without another easing delay. Upper-only cells retain ordinary easing.
-A deterministic 60 Hz display must paint newly ready bass within 50 ms after the
-frame reaches shared display input; this is separate from producer startup and
-transport age. Missing/all-zero readings, bypass, hiding and stopped/paused
-masking clear immediately. Rate/generation changes and skipped graph frames
-reset display history.
+All frequencies use the same ordinary easing throughout playback. There is no
+readiness-triggered blend, delayed fine target or retained outgoing contour.
+Missing/all-zero readings, bypass, hiding and stopped/paused masking clear
+immediately. Rate/generation changes and skipped graph frames reset display
+history. Silent ready frames must not request collection repaints.
 
 Draw a shape-preserving cubic contour bounded by adjacent displayed values.
 Include every measured center and an interpolated midpoint. At limited logical

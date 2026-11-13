@@ -723,3 +723,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "eq_graph/readiness_tests.rs"]
+mod readiness_tests;

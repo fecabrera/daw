@@ -1,10 +1,8 @@
-//! Prepared multirate, overlapped analysis; no audio-path changes or callback allocation.
-mod decimator;
+//! Prepared full-range, overlapped analysis; no audio-path changes or callback allocation.
 mod fft;
 mod mapping;
 use daw_unit_core::{
-    SPECTRUM_BASS_READY, SPECTRUM_BINS, SPECTRUM_UPPER_READY, SpectrumMeter, SpectrumReading,
-    UnitMeter, spectrum_frequency,
+    SPECTRUM_BINS, SPECTRUM_UPPER_READY, SpectrumMeter, SpectrumReading, UnitMeter,
 };
 use std::sync::Arc;
 type Complex = [f32; 2];
@@ -13,10 +11,7 @@ const WORK_PER_FRAME: usize = 80;
 pub(crate) struct Spectrum {
     meter: UnitMeter<SpectrumMeter>,
     reading: SpectrumReading,
-    upper: fft::Branch,
-    bass: fft::Branch,
-    decimator: decimator::Decimator,
-    bass_weights: [f32; SPECTRUM_BINS],
+    branch: fft::Branch,
     frames: u64,
     last_publication: u64,
     active: bool,
@@ -29,29 +24,13 @@ impl Spectrum {
     pub fn new(rate: u32, enabled: bool) -> Self {
         let scale = (rate / 44_100).max(1).next_power_of_two() as usize;
         let n = 4096 * scale;
-        let decimator = decimator::Decimator::new(5 + scale.trailing_zeros() as usize);
-        let factor = decimator.factor();
-        let warmup = decimator.delay_frames().div_ceil(factor as u64) as usize;
         Self {
             meter: UnitMeter::new(enabled),
             reading: SpectrumReading {
                 sample_rate_hz: rate,
                 ..Default::default()
             },
-            upper: fft::Branch::new(n, rate as f32, n / 4, n, 20_000.0, 26, 2400),
-            bass: fft::Branch::new(
-                1024,
-                rate as f32 / factor as f32,
-                32,
-                1024 + warmup,
-                400.0,
-                4,
-                512,
-            ),
-            decimator,
-            bass_weights: std::array::from_fn(|i| {
-                ((400.0 - spectrum_frequency(i)) / 150.0).clamp(0.0, 1.0)
-            }),
+            branch: fft::Branch::new(n, rate as f32, n / 4, n, 20_000.0, 26, 2400),
             frames: 0,
             last_publication: 0,
             active: false,
@@ -62,7 +41,7 @@ impl Spectrum {
         }
     }
     pub fn heap_bytes(&self) -> u64 {
-        self.upper.heap_bytes() + self.bass.heap_bytes()
+        self.branch.heap_bytes()
     }
     pub fn is_bound(&self) -> bool {
         self.meter.spectrum_bound()
@@ -95,9 +74,7 @@ impl Spectrum {
         }
     }
     fn reset_state(&mut self) {
-        self.upper.reset();
-        self.bass.reset();
-        self.decimator.reset();
+        self.branch.reset();
         self.frames = 0;
         self.last_publication = 0;
         self.reading.magnitudes.fill(0.0);
@@ -120,14 +97,10 @@ impl Spectrum {
             return;
         }
         // Service oldest capture samples before the ring ingests/overwrites one.
-        // Eight copies finish the full window in half a hop. Bass copying ends
-        // earlier; its small FFT runs while the upper capture is still copying.
+        // Eight copies finish the full window in half a hop.
         let mut work = 0;
         for _ in 0..8 {
-            work += usize::from(self.upper.copy());
-        }
-        for _ in 0..8 {
-            work += usize::from(self.bass.copy());
+            work += usize::from(self.branch.copy());
         }
         self.frames += 1;
         let input = input.map(|v| {
@@ -137,12 +110,7 @@ impl Spectrum {
                 0.0
             }
         });
-        let upper_ok = self.upper.feed(input, self.frames);
-        let bass_ok = self
-            .decimator
-            .sample(input)
-            .is_none_or(|value| self.bass.feed(value, self.frames));
-        if !upper_ok || !bass_ok {
+        if !self.branch.feed(input, self.frames) {
             #[cfg(test)]
             {
                 self.overruns += 1;
@@ -151,7 +119,7 @@ impl Spectrum {
             return;
         }
         while work < WORK_PER_FRAME {
-            if !(self.upper.step() || self.bass.step()) {
+            if !self.branch.step() {
                 break;
             }
             work += 1;
@@ -160,44 +128,26 @@ impl Spectrum {
         {
             self.max_work = self.max_work.max(work);
         }
-        if self.upper.valid
-            && !self.upper.pending
-            && !self.bass.pending
-            && self.upper.end_frame != self.last_publication
+        if self.branch.valid
+            && !self.branch.pending
+            && self.branch.end_frame != self.last_publication
         {
-            let elapsed = self.upper.end_frame - self.last_publication;
+            let elapsed = self.branch.end_frame - self.last_publication;
             let release = (-(elapsed as f32)
                 / self.reading.sample_rate_hz as f32
                 / daw_unit_core::LEVEL_METER_RELEASE_SECONDS)
                 .exp();
             for i in 0..SPECTRUM_BINS {
-                let weight = self.bass_weights[i];
-                let power = if self.bass.valid {
-                    self.bass.powers[i] * weight + self.upper.powers[i] * (1.0 - weight)
-                } else if weight < 1.0 {
-                    self.upper.powers[i]
-                } else {
-                    0.0
-                };
-                let amplitude = power.max(0.0).sqrt();
+                let amplitude = self.branch.powers[i].max(0.0).sqrt();
                 self.reading.magnitudes[i] = amplitude.max(self.reading.magnitudes[i] * release);
             }
-            self.reading.valid_branches = SPECTRUM_UPPER_READY
-                | if self.bass.valid {
-                    SPECTRUM_BASS_READY
-                } else {
-                    0
-                };
-            self.reading.upper_end_frame = self.upper.end_frame;
-            self.reading.bass_end_frame = if self.bass.valid {
-                self.bass
-                    .end_frame
-                    .saturating_sub(self.decimator.delay_frames())
-            } else {
-                0
-            };
+            // Preserve the schema-2 full-range branch flag/clock. Legacy bass
+            // fields stay empty; there is no second analysis branch to await.
+            self.reading.valid_branches = SPECTRUM_UPPER_READY;
+            self.reading.upper_end_frame = self.branch.end_frame;
+            self.reading.bass_end_frame = 0;
             self.meter.publish_spectrum(self.reading);
-            self.last_publication = self.upper.end_frame;
+            self.last_publication = self.branch.end_frame;
         }
     }
 }

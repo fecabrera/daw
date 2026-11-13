@@ -947,3 +947,44 @@ mod graph_binding_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod spectrum_status_tests {
+    use super::*;
+    use daw_unit_core::{MeterStorage, SpectrumReading};
+    #[test]
+    fn shared_editor_keeps_response_footer_without_parameter_changes() {
+        let ctx = egui::Context::default();
+        daw_unit_ui::theme::configure(&ctx);
+        daw_unit_ui::fonts::configure(&ctx);
+        let model = std::sync::Arc::new(Model::default());
+        let mut editor = Editor::new(model.clone(), || {});
+        let original = model.current().unwrap();
+        for ready in [0, 1, 3, 0] {
+            model.output_meter.spectrum.store(SpectrumReading {
+                sample_rate_hz: 48000,
+                valid_branches: ready,
+                upper_end_frame: if ready != 0 { 34816 } else { 0 },
+                bass_end_frame: if ready == 3 { 32831 } else { 0 },
+                ..Default::default()
+            });
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(WIDTH as f32, HEIGHT as f32),
+                    )),
+                    ..Default::default()
+                },
+                |ui| editor.show(ui),
+            );
+            let caption = "Response";
+            assert!(output.shapes.iter().any(
+                |shape| matches!(&shape.shape, egui::Shape::Text(t) if t.galley.text() == caption)
+            ));
+            output.textures_delta.clear();
+            assert_eq!(model.current().unwrap(), original);
+            assert!(model.pop().is_none());
+        }
+    }
+}

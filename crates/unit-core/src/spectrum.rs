@@ -2,7 +2,9 @@
 use crate::MeterStorage;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 pub const SPECTRUM_BINS: usize = 512;
+/// Current full-range FFT readiness; the name is retained for wire compatibility.
 pub const SPECTRUM_UPPER_READY: u32 = 1;
+/// Legacy high-resolution bass readiness, accepted from older schema-2 producers.
 pub const SPECTRUM_BASS_READY: u32 = 2;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpectrumReading {
@@ -10,7 +12,8 @@ pub struct SpectrumReading {
     pub magnitudes: [f32; SPECTRUM_BINS],
     pub valid_branches: u32,
     pub generation: u64,
-    /// Exclusive source-frame clocks since the last analyzer reset. Bass excludes FIR delay.
+    /// Exclusive source-frame clocks since reset. Current producers use upper only;
+    /// legacy bass clocks exclude the former FIR delay.
     pub upper_end_frame: u64,
     pub bass_end_frame: u64,
 }

@@ -5,6 +5,144 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Multiband EQ permanent full-range fast spectrum — 2026-11-13
+
+The user selected permanent preview resolution. One full-range FFT now serves
+20 Hz–20 kHz. The high-resolution bass branch, FIR/decimator, power crossover,
+collection footer and display handoff are removed. Ordinary 35 ms display easing,
+300 ms peak release, 512 logarithmic cells and shared desktop/plugin presentation
+remain. Schema-2 compatibility fields remain; current frames use readiness 1,
+the full-range observation clock and a zero legacy bass clock. This supersedes
+all earlier dual-resolution, collection-status and handoff requirements below.
+
+Focused analyzer and shared graph checks pass at all six project rates. They
+cover full-range startup within 125 ms, steady bass without a later handoff,
+resolved tone pairs at the selected resolution, off-center tones, stereo energy,
+warmed onset/release, bypass/reset, compatible history, bounded scheduler/memory,
+constant Response footer and no silent collection repaint. Commands:
+`cargo test -p daw-equalizer --offline spectrum -- --nocapture` and
+`cargo test -p daw-unit-ui --offline eq_`.
+
+Six-rate attached/detached PCM and callback allocation checks, transport lifecycle,
+plugin/editor contracts and actual VST3 factory transport pass. The read-only pad
+probe publishes bass at 101.604 ms at 48 kHz and retains the same single-branch
+readiness and zero legacy bass clock through two seconds. The project is unchanged.
+Commands include engine `multiband_eq_spectrum` and `eq_spectrum_readiness` filters,
+plugin/editor package tests and VST3 `actual_factory_transports_full_range`.
+
+Full offline debug and release workspace tests pass on the final source. Strict
+workspace/all-target Clippy, formatting, changed-document file links and diff checks
+pass. The macOS arm64 debug desktop executable, Multiband EQ CLAP/VST3 libraries
+and CLI build pass; `python3 tools/check_cli.py` passes. Final code hashes remain
+unchanged throughout verification. Commands:
+`cargo fmt --all --check`,
+`cargo clippy --workspace --all-targets --offline -- -D warnings`,
+`cargo test --workspace --offline`,
+`cargo test --workspace --release --offline`,
+`python3 tools/build_desktop.py debug macos` and
+`cargo build -p daw-cli -p daw-multiband-eq-clap -p daw-multiband-eq-vst3 --offline`.
+
+Native UI/device and representative CLAP/VST3 host checks remain unverified.
+
+## Multiband EQ gradual resolution handoff — 2026-11-13
+
+The initial 35 ms easing made the coarse-to-full shape change too abrupt.
+The shared graph now retains the outgoing displayed bass contour and blends it
+into live full-resolution data over 300 ms with zero endpoint slopes. Ordinary
+35 ms following continues under the blend and above 400 Hz. Repeated fine
+publications do not restart it. Reset, rate change, graph hiding/skipped frames
+and bypass retain immediate invalidation. Analyzer, telemetry and audio are
+unchanged.
+
+Focused shared graph tests pass at 60/120 Hz and irregular 41 ms intervals.
+They cover an unchanged first handoff frame, gradual start, intermediate shapes,
+300 ms completion, duplicate passes, live fine data, independent upper response,
+and reset isolation. Command: `cargo test -p daw-unit-ui --offline eq_`.
+
+Full offline debug/release workspace tests, strict workspace/all-target Clippy,
+formatting, changed-document file links and diff checks pass. The macOS arm64
+debug desktop executable and Multiband EQ CLAP/VST3 library builds pass. Final
+code hashes remain unchanged through verification. Commands:
+`cargo fmt --all --check`,
+`cargo clippy --workspace --all-targets --offline -- -D warnings`,
+`cargo test --workspace --offline`,
+`cargo test --workspace --release --offline`,
+`python3 tools/build_desktop.py debug macos` and
+`cargo build -p daw-multiband-eq-clap -p daw-multiband-eq-vst3 --offline`.
+
+Native visual/device and representative CLAP/VST3 host checks remain unverified.
+
+## Multiband EQ provisional bass preview — 2026-11-13
+
+This supersedes empty bass during collection and direct first-bass display
+initialization. Upper-ready frames now include coarse bass from the existing
+full-rate FFT. Full-ready frames retain the established bass resolution. The
+first full frame replaces coarse peak holds below 400 Hz; the shared graph uses
+35 ms easing for the handoff. Readiness flags, observation clocks, schema, FFTs,
+memory and processing work limits are unchanged. The collection footer remains
+visible until full bass readiness, including valid silence.
+
+Focused analyzer tests pass at all six project rates, including coarse 20.3,
+40, 80, 240 and 317 Hz anti-phase stereo input, first-full hold removal, silent
+reset, readiness clocks, close-tone valleys, onset/release, alias rejection and
+scheduler/memory bounds. Shared graph tests pass for 60/120 Hz and irregular
+41 ms steps, an intermediate handoff frame, convergence within 1 dB after 150 ms,
+same-time layout passes and reset isolation. Commands:
+`cargo test -p daw-equalizer --offline spectrum -- --nocapture` and
+`cargo test -p daw-unit-ui --offline eq_`.
+
+The read-only pad probe now measures nonzero coarse bass at 101.604 ms and
+full-resolution bass at 720.271 ms at 48 kHz. The saved project is unchanged.
+Plugin/editor tests and six-rate attached/detached PCM/allocation checks pass:
+`cargo test -p daw-multiband-eq-plugin -p daw-multiband-eq-editor --offline` and
+`cargo test -p daw-engine --test midi --offline multiband_eq_spectrum`.
+
+Full offline debug and release workspace tests pass. Strict workspace/all-target
+Clippy, formatting, changed-document links and diff checks pass. The macOS arm64
+debug desktop executable, Multiband EQ CLAP/VST3 libraries and CLI build pass.
+`python3 tools/check_cli.py` passes. Final code hashes remain unchanged during
+verification. These checks use the same commands recorded in the preceding
+collection-status entry, plus the CLI build/smoke checks.
+
+Native UI/device and representative CLAP/VST3 host checks remain unverified.
+
+## Multiband EQ bass collection status — 2026-11-13
+
+The shared graph shows `Response · Bass collecting` for enabled upper-only
+readiness, including silent frames. It retains the normal footer geometry and
+requests 16 ms repaint during collection. Tooltip and accessible text explain the
+processed-audio observation window. FFT, mapping, DSP and telemetry are unchanged.
+
+Focused checks pass: shared graph themes/scales, silent partial/full repaint,
+standalone editor presentation without parameter edits, plugin shared-handle and
+schema-2 wire readiness, bypass/reset versus musical Stop, five-scope output
+binding, six-rate attached/detached neutral/shaped PCM, and transport/seek/compatible
+inheritance/cancelled preparation with latent-chain coverage.
+
+A disposable headless probe opened the supplied saved project read-only and
+isolated its pad track. At 48 kHz, its Main EQ first published upper readiness at
+101.604 ms and bass at 720.271 ms of rendered audio. Bass remained available
+through two seconds without a generation change. PCM was already nonzero before
+bass publication. This reproduces the observation delay, not native UI timing.
+No project data or private media is added to the repository.
+
+Formatting (`cargo fmt --all --check`), strict offline workspace/all-target Clippy,
+changed-document file links and `git diff --check` pass. The macOS arm64 debug
+desktop executable build (`tools/build_desktop.py debug macos`) and offline
+Multiband EQ CLAP/VST3 library builds pass. Focused commands include
+`cargo test -p daw-equalizer --offline spectrum -- --nocapture`,
+`cargo test -p daw-unit-ui --offline readiness_tests`,
+`cargo test -p daw-multiband-eq-plugin -p daw-multiband-eq-editor --offline`,
+`cargo test -p daw-engine --test midi --offline multiband_eq_spectrum`,
+`cargo test -p daw-engine --test effects --offline eq_spectrum_readiness` and
+`cargo test -p daw-output --offline every_eq_scope`.
+
+`cargo test --workspace --offline` and `cargo test --workspace --release --offline`
+pass. Final code hashes remain unchanged through verification.
+
+Native UI/device listening, representative CLAP/VST3 hosts and Windows/Linux
+checks remain unverified. Automated checks do not establish native timing.
+
 ## Compound routing and crossfade staging fixes — 2026-11-13
 
 Audio Merge preserves captured Pre sends and historical sidechain providers in

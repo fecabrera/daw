@@ -9,12 +9,13 @@ Expanded band labels align with the **Response** and **Out** footers.
 
 The **Response** graph sits before the band strips and spans the three standard control rows. It shows each band's response, the combined EQ curve, and a live output spectrum. The combined curve and unselected band points use the unselected unit-header text color. The selected point uses the accent color; disabled bands and units remain muted. The spectrum uses both stereo channels, moves smoothly between analysis updates, and draws a rounded contour without adding peaks between measured bins. It clears when the unit is off. Compact and collapsed units hide the graph.
 
-The spectrum separates close bass tones more clearly and updates about every
-22 ms. Bass detail needs about 0.7 seconds of audio, so low-frequency changes
-settle more slowly than higher frequencies. Bass appears after a complete
-observation; it is not filled with a short, less detailed estimate. A narrow graph
-can combine details that fall within one screen pixel. Monitoring does not change
-the sound or add playback latency.
+The spectrum uses the same resolution across the full frequency range. It appears
+after about 0.1 seconds of processed audio and updates about every 22 ms. At a
+48 kHz project rate, analysis bins are about 11.72 Hz apart. Closely spaced bass
+tones can appear as one broad peak. Resolution stays constant during playback;
+there is no later bass-detail transition. In the DAW, the spectrum clears while
+playback is stopped or paused. A narrow graph can combine details that fall within
+one screen pixel. Monitoring does not change the sound or add playback latency.
 
 Drag a numbered band point left or right to change Frequency. For Bell and shelf bands, drag up or down to change Gain. Hold Command on macOS or Ctrl on Windows/Linux during the drag to adjust only Q: up or right increases Q; down or left decreases it. Press or release the modifier without releasing the mouse to switch modes. Each switch retains the current Frequency, Gain and Q; further movement changes only the active mode. Hold Shift for fine adjustment. The selected point shows Frequency, Gain where available, and Q.
 

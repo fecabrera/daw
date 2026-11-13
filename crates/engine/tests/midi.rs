@@ -5745,9 +5745,21 @@ fn oscillator_cents_width_modulation_has_stereo_live_export_seek_and_allocation_
 fn multiband_eq_spectrum_is_display_only_allocation_free_and_scoped_to_every_bus() {
     use std::sync::Arc;
     for rate in SAMPLE_RATES {
-        for owner in ["track", "layer", "main", "master"] {
+        for (owner, shaped) in ["track", "layer", "main", "master"]
+            .into_iter()
+            .flat_map(|owner| [false, true].map(|shaped| (owner, shaped)))
+        {
             let mut p = plan(Waveform::Sine, rate);
-            let effect = EffectInstance::multiband_equalizer();
+            let mut effect = EffectInstance::multiband_equalizer();
+            if shaped {
+                let EffectSettings::MultibandEq(settings) = &mut effect.unit else {
+                    unreachable!()
+                };
+                settings.bands[0].frequency_hz = 90.0;
+                settings.bands[0].gain_db = 9.0;
+                settings.bands[0].q = 1.6;
+                settings.output_gain_db = -3.0;
+            }
             let id = effect.id;
             match owner {
                 "track" => p.project.tracks[0].effects.push(effect),
@@ -5778,7 +5790,7 @@ fn multiband_eq_spectrum_is_display_only_allocation_free_and_scoped_to_every_bus
             assert_eq!(ALLOCATIONS.with(Cell::get), 0);
             let reading = meter.reading();
             assert_eq!(reading.sample_rate_hz, rate);
-            assert_eq!(reading.valid_branches, 3);
+            assert_eq!(reading.valid_branches, daw_unit_core::SPECTRUM_UPPER_READY);
             assert!(
                 reading.magnitudes.iter().any(|v| *v > 0.05),
                 "{owner} {rate}"
