@@ -17,7 +17,8 @@ pub mod memory;
 pub use loudness::*;
 mod meter;
 pub use meter::{
-    BandAudition, BandMeter, LevelMonitor, MeterStorage, PeakHold, PeakMeter, UnitMeter,
+    BandAudition, BandMeter, LEVEL_METER_RELEASE_SECONDS, LevelMonitor, MeterStorage, PeakHold,
+    PeakMeter, UnitMeter,
 };
 mod note_name;
 pub use note_name::{natural_note, note_name};

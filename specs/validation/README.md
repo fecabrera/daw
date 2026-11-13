@@ -5,6 +5,28 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Playback meter release — 2026-11-12
+
+Bus meters previously published each callback's raw peak directly to the UI.
+Alternating loud and quiet buffers could blank the bars between peaks. The
+callback now applies instant attack and a 300 ms release to track, group, Return,
+instrument-layer, Output-layer and Master readings, sharing the existing effect
+monitor time constant. Device-buffer duration controls release independently of
+project rate and callback size. Cached converter output advances that time too.
+Held peaks and clipping still capture raw samples; resetting them does not
+relatch decaying display values. Visible bars request redraws through their
+post-stop release. Audio rendering and effect bypass remain unchanged.
+
+Output tests passed (88), and unit-core tests passed (79). New regressions cover
+all six processing rates and 32/128/512/4096-frame buffers, the expected decay
+after 300 ms, dynamic alternating buffers, independent stereo channels, raw held
+peaks and clipping/reset isolation. All 1,007 UI tests passed (three ignored), as
+did strict workspace/all-target Clippy, formatting and the macOS arm64 debug
+executable build. The full debug workspace run hit the existing Bounce disk
+read-ahead assertion (`peak > 0.0`); the same test passed on its separate rerun.
+That complete debug run is not recorded as passing. The complete release
+workspace run passed. Native device/UI checks remain open.
+
 ## MIDI selected-note velocity slider — 2026-11-12
 
 MIDI options shows Velocity in the shared field-row layout when notes are

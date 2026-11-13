@@ -145,7 +145,7 @@ mod tests {
         for _ in 0..4096 {
             renderer.next_sample();
         }
-        renderer.publish_track_peaks();
+        renderer.publish_track_peaks(0.0);
         assert!(meters[&(track, layer)].levels()[0].0 > 0.0);
         assert_eq!(meters[&(track, layer)].levels()[1].0, 0.0);
         assert_eq!(
@@ -154,7 +154,7 @@ mod tests {
         );
         let held = meters[&(track, layer)].held_peak();
         renderer.reset_track_peaks();
-        renderer.publish_track_peaks();
+        renderer.publish_track_peaks(0.0);
         assert_eq!(meters[&(track, layer)].levels().map(|v| v.0), [0.0; 2]);
         assert_eq!(meters[&(track, layer)].held_peak(), held);
     }

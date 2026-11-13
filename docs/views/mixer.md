@@ -34,7 +34,9 @@ Press Escape to deselect tracks, groups and Master. Active edits and drags cance
 
 Track shortcuts work from other Mixer panes and non-text controls: Mute (M), Solo (S), Rename (Command/Ctrl+R), Group (Command/Ctrl+G), and Ungroup (Command/Ctrl+Shift+G). Text entry, active gestures, dialogs and blocking jobs retain their guards. Selection requirements still apply.
 
-Meters show current output. Each L/R bar has a held-peak marker that stays at its highest level until reset. The peak readout shows the higher of the two held levels. Its read-only field uses the same rounded surface as the gain field. Click either bar, the gap between L and R, or the peak readout to reset both held peaks and the clipping warning. Reduce gain if the project output clips.
+Meters rise immediately with new peaks and fall gradually with a 300 ms release,
+so dynamic passages remain readable. This applies to track, group, Return,
+instrument-layer and Master meters in every view. Each L/R bar has a held-peak marker that stays at its highest level until reset. The peak readout shows the higher of the two held levels. Its read-only field uses the same rounded surface as the gain field. Click either bar, the gap between L and R, or the peak readout to reset both held peaks and the clipping warning. Reduce gain if the project output clips.
 
 ## Track groups
 

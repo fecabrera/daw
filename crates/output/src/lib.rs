@@ -149,10 +149,10 @@ impl PreparedRenderer {
             .map(|(key, meter)| (*key, meter.clone()))
             .collect();
     }
-    fn publish_track_peaks(&self) {
+    fn publish_track_peaks(&self, release: f32) {
         for (key, peaks) in self.renderer.layer_peaks() {
             if let Some(meter) = self.layer_meters.get(&key) {
-                meter.publish_peaks(peaks);
+                meter.publish_block_peaks(peaks, release);
             }
         }
         for (key, meter) in &self.modulation {
@@ -165,7 +165,7 @@ impl PreparedRenderer {
             }
         }
         for (meter, peaks) in self.meters.iter().zip(self.renderer.track_peaks()) {
-            meter.publish_peaks(peaks);
+            meter.publish_block_peaks(peaks, release);
         }
     }
 }
@@ -1411,7 +1411,6 @@ struct Callback {
     output: Vec<Vec<f32>>,
     output_count: usize,
     index: usize,
-    rendered_input: bool,
 }
 impl Callback {
     fn audition_chunk_frames(&self, device_frames: usize, device_rate: u32) -> usize {
@@ -1495,7 +1494,6 @@ impl Callback {
             output,
             output_count: 0,
             index: 0,
-            rendered_input: false,
         })
     }
     fn update(&mut self) {
@@ -1748,7 +1746,6 @@ impl Callback {
     fn next(&mut self) -> [f32; 2] {
         if self.converter.is_some() {
             while self.index >= self.output_count {
-                self.rendered_input = true;
                 let count = self.converter.as_ref().unwrap().input_frames_next();
                 for i in 0..count {
                     let s = self.next_project_sample();
@@ -1807,7 +1804,6 @@ where
                 callback.audition.set_stream_chunk_frames(frames);
                 callback.update();
                 callback.renderer.reset_track_peaks();
-                callback.rendered_input = false;
                 let mut peaks = [0.0_f32; 2];
                 for frame in data.chunks_mut(channels) {
                     let sample = callback.next();
@@ -1825,12 +1821,11 @@ where
                         *value = T::from_sample(s.clamp(-1.0, 1.0));
                     }
                 }
-                // Keep the last input-block level when this buffer consumes only
-                // cached converter output. Publish silence after new silent input.
-                if callback.converter.is_none() || callback.rendered_input {
-                    callback.renderer.publish_track_peaks();
-                }
-                callback.status.meter.publish_peaks(peaks);
+                let release = meters::release_for_frames(data.len() / channels, device_rate);
+                // Cached converter output still advances display time. No new
+                // input peaks means release, rather than a jump to silence.
+                callback.renderer.publish_track_peaks(release);
+                callback.status.meter.publish_block_peaks(peaks, release);
                 callback
                     .status
                     .rendered_frames
@@ -2075,7 +2070,7 @@ mod tests {
         for ch in 0..2 {
             assert!((actual[ch] - expected[ch]).abs() < 1e-6);
         }
-        prepared.publish_track_peaks();
+        prepared.publish_track_peaks(0.0);
         assert_eq!(meters.len(), 8);
         for meter in meters.values() {
             for peak in &meter.peaks {
@@ -2108,7 +2103,7 @@ mod tests {
         for ch in 0..2 {
             assert!((actual[ch] - expected[ch]).abs() < 1e-6);
         }
-        updated.publish_track_peaks();
+        updated.publish_track_peaks(0.0);
         assert_eq!(updated_meters.len(), 9);
         let last = plan.project.tracks.last().unwrap().id;
         assert_eq!(
@@ -2825,8 +2820,8 @@ mod modulation_meter_tests {
         assert!(spread[4..].iter().all(|v| v.is_nan()));
         let expected = renderer.modulation_snapshot(key).unwrap();
         let frame = renderer.playhead;
-        renderer.publish_track_peaks();
-        renderer.publish_track_peaks();
+        renderer.publish_track_peaks(0.0);
+        renderer.publish_track_peaks(0.0);
         assert_eq!(renderer.playhead, frame);
         assert_eq!(
             expected.map(f32::to_bits),

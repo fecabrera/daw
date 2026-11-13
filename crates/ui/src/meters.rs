@@ -267,6 +267,8 @@ fn channel_with_inset(
     };
     painter.rect_filled(rail, 1.0, theme::palette(ui.ctx()).input);
     if progress > 0.0 {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(16));
         let fill = Rect::from_min_max(
             Pos2::new(rail.left(), rail.bottom() - rail.height() * progress),
             rail.max,

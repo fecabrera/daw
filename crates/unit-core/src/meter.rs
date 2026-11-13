@@ -4,6 +4,9 @@ use std::sync::{
     atomic::{AtomicU32, Ordering},
 };
 
+/// Time constant for instant-attack output level displays, in seconds.
+pub const LEVEL_METER_RELEASE_SECONDS: f32 = 0.3;
+
 /// Atomic storage for a scalar or fixed-size set of readings.
 pub trait MeterStorage {
     type Reading: Copy;
@@ -274,7 +277,7 @@ impl<const N: usize> LevelMonitor<N> {
     pub fn new(sample_rate_hz: u32, enabled: bool) -> Self {
         Self {
             peaks: [0.0; N],
-            release: (-1.0 / (0.3 * sample_rate_hz as f32)).exp(),
+            release: (-1.0 / (LEVEL_METER_RELEASE_SECONDS * sample_rate_hz as f32)).exp(),
             meter: UnitMeter::new(enabled),
             peak_meter: UnitMeter::new(enabled),
         }

@@ -633,6 +633,22 @@ geometry and commit indices remain unchanged.
 
 ## Effect meter lifecycle
 
+Track, group, Return, instrument-layer, Output-layer and Master level bars use
+instant attack and the same 300 ms exponential release as effect output monitors.
+Share the release constant through `unit-core::LEVEL_METER_RELEASE_SECONDS`.
+For bus meters, calculate one release coefficient per device buffer from its
+actual frame count and device rate. Publish `max(raw_peak, previous * release)`
+per channel. Cached sample-rate-converter output still advances display time;
+when no project frames were rendered, zero new input peaks release the previous
+reading rather than blanking the bars. Continue UI redraws while visible bars
+are above the display floor, including after playback stops.
+
+Held peaks and clipping capture raw, pre-clamp peaks before display release.
+Resetting their latches must not capture or relatch decaying display values.
+Monitoring does not alter audio, project state, routing, callback allocation or
+renderer ownership. Effect bypass retains its immediate-clear policy below.
+
+
 All effect-unit level, gain-change, and gain-reduction monitors stop when their owning unit is disabled. This applies to EQ, Compressor, Limiter, and OTT and to future metered effects. Individual band switches retain each unit's documented semantics. Track and Master output meters continue measuring their output buses during effect bypass.
 
 `unit-core::UnitMeter` owns the enabled state and optional prepared atomic handle. `MeterStorage` supports scalar `AtomicU32` readings and fixed-size atomic arrays through the same lifecycle. Attaching publishes the current reading for an enabled unit or zero for a disabled unit. The enabled-to-disabled transition writes zero once; subsequent publication calls do not write until re-enabled. Keep handles owned until processor retirement; enable changes, publication, reset, and compatible renderer retargeting must not allocate, lock, or release final owners in the callback. Existing host meter discovery, binding, and stable-ID retention remain shared.
