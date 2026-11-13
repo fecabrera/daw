@@ -2,7 +2,7 @@
 use crate::{layout, rows, theme};
 use daw_unit_core::{FrequencyResponse, MultibandEqBand, MultibandEqSettings, SpectrumReading};
 use egui::{Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
-pub const WIDTH: f32 = 3.0 * layout::UNIT_STRIP_WIDTH;
+pub const WIDTH: f32 = crate::spectrum_graph::WIDTH;
 const POINTS: usize = 160;
 #[derive(Clone, Copy)]
 pub struct Input<'a> {
@@ -121,70 +121,10 @@ pub fn show(
         let palette = theme::palette(ui.ctx());
         let accent = theme::accent(ui.ctx());
         let painter = ui.painter_at(chart);
-        painter.rect_filled(chart, 2.0, palette.background);
-        let grid = Stroke::new(1.0, palette.secondary.gamma_multiply(0.12));
+        crate::spectrum_graph::axes(ui, chart, (-24.0, 24.0), &[-24.0, -12.0, 0.0, 12.0, 24.0]);
         let font = egui::FontId::proportional(9.0);
-        for hz in [
-            20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0,
-        ] {
-            painter.vline(x(plot, hz), plot.y_range(), grid);
-            if [20.0, 100.0, 1000.0, 10000.0, 20000.0].contains(&hz) {
-                let label = if hz >= 1000.0 {
-                    format!("{:.0}k", hz / 1000.0)
-                } else {
-                    format!("{hz:.0}")
-                };
-                painter.text(
-                    egui::pos2(x(plot, hz), plot.bottom() + 4.0),
-                    egui::Align2::CENTER_TOP,
-                    label,
-                    font.clone(),
-                    palette.secondary,
-                );
-            }
-        }
-        for db in [-24.0, -12.0, 0.0, 12.0, 24.0] {
-            painter.hline(
-                plot.x_range(),
-                y(plot, db),
-                if db == 0.0 {
-                    Stroke::new(1.0, palette.secondary.gamma_multiply(0.5))
-                } else {
-                    grid
-                },
-            );
-            painter.text(
-                egui::pos2(plot.left() - 4.0, y(plot, db)),
-                egui::Align2::RIGHT_CENTER,
-                format!("{db:+.0}"),
-                font.clone(),
-                palette.secondary,
-            );
-        }
         let p = ui.painter_at(plot);
-        let points = crate::eq_spectrum::points(ui, spectrum_id, plot, input.spectrum, s.enabled);
-        if !points.is_empty() {
-            // A triangle fan avoids convex-fill assumptions for a non-convex spectrum skyline.
-            let mut mesh = egui::Mesh::default();
-            for pair in points.windows(2) {
-                let base = mesh.vertices.len() as u32;
-                for pos in [
-                    egui::pos2(pair[0].x, plot.bottom()),
-                    pair[0],
-                    pair[1],
-                    egui::pos2(pair[1].x, plot.bottom()),
-                ] {
-                    mesh.colored_vertex(pos, palette.secondary.gamma_multiply(0.12));
-                }
-                mesh.add_triangle(base, base + 1, base + 2);
-                mesh.add_triangle(base, base + 2, base + 3);
-            }
-            p.add(egui::Shape::mesh(mesh));
-            p.add(egui::Shape::line(
-                points,
-                Stroke::new(1.0, palette.secondary.gamma_multiply(0.5)),
-            ));
-        }
+        crate::spectrum_graph::paint(ui, spectrum_id, plot, input.spectrum, s.enabled);
         for (i, b) in s.bands.iter().enumerate() {
             let node = point(
                 plot,
@@ -369,16 +309,13 @@ pub fn show(
                 .filter(|d| d.id == b.id)
                 .map_or(&s.bands[i], |d| &d.preview);
             let center = point(plot, base);
-            let color = if s.enabled && b.enabled && selected == Some(b.id) {
-                accent
-            } else {
-                palette.secondary
-            };
-            painter.circle_filled(center, node_radius(i), palette.panel);
-            painter.circle_stroke(
+            let color = crate::spectrum_graph::band_handle(
+                ui,
+                &painter,
                 center,
-                node_radius(i) + if selected == Some(b.id) { 1.0 } else { 0.0 },
-                Stroke::new(1.25, color),
+                node_radius(i),
+                selected == Some(b.id),
+                s.enabled && b.enabled,
             );
             painter.text(
                 center,

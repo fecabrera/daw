@@ -7,6 +7,7 @@ license = "BSD-2-Clause"
 publish = false
 
 [dependencies]
+daw-spectrum.workspace = true
 uuid.workspace = true
 daw-plugin-support.workspace = true
 daw-multiband-compressor.workspace = true

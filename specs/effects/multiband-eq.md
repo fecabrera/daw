@@ -106,7 +106,8 @@ The DAW keeps held drafts outside Session. Clone the render plan, validate the c
 
 `SpectrumMeter` publishes coherent frames with 512 logarithmic measured cells
 from 20 Hz to 20 kHz, sample rate, readiness, reset generation and an exclusive
-observation-end frame clock. A single full-range Hann branch packs L+iR into a
+observation-end frame clock. The shared `daw-spectrum::SpectrumAnalyzer` packs L+iR through a full-range Hann
+branch into a
 prepared radix-2 FFT. Sum positive/negative coefficient powers to preserve mean
 stereo energy, including opposite-phase audio. Analysis follows final output,
 never enters PCM, and adds no audio latency.
@@ -160,6 +161,8 @@ ring, pending jobs, release and readiness history, and retargets handles
 without final-owner retirement on the callback. Track, layer, beat, Main/Output
 and Master scopes retain existing effect discovery and bindings.
 
+EQ and Multiband Compressor reuse `unit-ui::spectrum_graph` for grid and contour
+painting, and `daw-spectrum::telemetry` for coherent snapshots/wire validation.
 The shared graph keeps ephemeral per-graph dB state, with 35 ms UI-time easing
 and 16 ms repaint requests. Duplicate layout passes do not advance easing.
 All frequencies use the same ordinary easing throughout playback. There is no

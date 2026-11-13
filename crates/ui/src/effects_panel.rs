@@ -965,7 +965,42 @@ impl DawUi {
                                                         )
                                                     })
                                                 },
+                                                self.output
+                                                    .as_ref()
+                                                    .and_then(|o| o.effect_spectrum(effect.id)),
                                             );
+                                        if !self.background_media.required
+                                            && let (Some(target), Some((band, hz))) =
+                                                (target, bounds.crossover_preview)
+                                            && let Some(before) =
+                                                settings.bands.iter().find(|b| b.id == band)
+                                            && before.upper_hz != hz
+                                        {
+                                            self.eq_graph_preview.offer_compressor(
+                                                ui.ctx().cumulative_frame_nr(),
+                                                self.session.project.project_id,
+                                                target,
+                                                effect.id,
+                                                before.clone(),
+                                                hz,
+                                            );
+                                        }
+                                        if !self.background_media.required
+                                            && let (Some(target), Some((band, hz))) =
+                                                (target, bounds.threshold_preview)
+                                            && let Some(before) =
+                                                settings.bands.iter().find(|b| b.id == band)
+                                            && before.threshold_db != hz
+                                        {
+                                            self.eq_graph_preview.offer_compressor_threshold(
+                                                ui.ctx().cumulative_frame_nr(),
+                                                self.session.project.project_id,
+                                                target,
+                                                effect.id,
+                                                before.clone(),
+                                                hz,
+                                            );
+                                        }
                                         if bounds.solo_changed
                                             && let Some(output) = &self.output
                                         {

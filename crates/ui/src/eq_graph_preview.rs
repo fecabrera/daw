@@ -1,12 +1,27 @@
-//! Transient EQ plans use the ordinary coalesced preparation worker, never project/history state.
-use daw_core::{EffectChainTarget, EffectSettings, Id, MultibandEqBand, Project};
+//! Transient graph plans reuse the coalesced worker, never project/history state.
+use daw_core::{
+    EffectChainTarget, EffectSettings, Id, MultibandCompressorBand, MultibandEqBand, Project,
+};
+#[derive(Clone, PartialEq)]
+enum Band {
+    Eq(MultibandEqBand),
+    Compressor(MultibandCompressorBand),
+}
+impl Band {
+    fn id(&self) -> Id {
+        match self {
+            Self::Eq(b) => b.id,
+            Self::Compressor(b) => b.id,
+        }
+    }
+}
 #[derive(Clone, PartialEq)]
 pub(super) struct Preview {
     project: Id,
     target: EffectChainTarget,
     effect: Id,
-    before: MultibandEqBand,
-    band: MultibandEqBand,
+    before: Band,
+    band: Band,
 }
 #[derive(Default)]
 pub(super) struct State {
@@ -30,8 +45,52 @@ impl State {
                 project,
                 target,
                 effect,
-                before,
-                band,
+                before: Band::Eq(before),
+                band: Band::Eq(band),
+            },
+        ));
+    }
+    pub fn offer_compressor(
+        &mut self,
+        frame: u64,
+        project: Id,
+        target: EffectChainTarget,
+        effect: Id,
+        before: MultibandCompressorBand,
+        hz: f32,
+    ) {
+        let mut band = before.clone();
+        band.upper_hz = hz;
+        self.offered = Some((
+            frame,
+            Preview {
+                project,
+                target,
+                effect,
+                before: Band::Compressor(before),
+                band: Band::Compressor(band),
+            },
+        ));
+    }
+    pub fn offer_compressor_threshold(
+        &mut self,
+        frame: u64,
+        project: Id,
+        target: EffectChainTarget,
+        effect: Id,
+        before: MultibandCompressorBand,
+        db: f32,
+    ) {
+        let mut band = before.clone();
+        band.threshold_db = db;
+        self.offered = Some((
+            frame,
+            Preview {
+                project,
+                target,
+                effect,
+                before: Band::Compressor(before),
+                band: Band::Compressor(band),
             },
         ));
     }
@@ -41,10 +100,17 @@ impl State {
             return None;
         }
         let (chain, _) = project.effect_chain(p.target)?;
-        let EffectSettings::MultibandEq(s) = &chain.iter().find(|e| e.id == p.effect)?.unit else {
-            return None;
+        let unit = &chain.iter().find(|e| e.id == p.effect)?.unit;
+        let current = match (unit, &p.before) {
+            (EffectSettings::MultibandEq(s), Band::Eq(_)) => {
+                Band::Eq(s.bands.iter().find(|b| b.id == p.band.id())?.clone())
+            }
+            (EffectSettings::MultibandCompressor(s), Band::Compressor(_)) => {
+                Band::Compressor(s.bands.iter().find(|b| b.id == p.band.id())?.clone())
+            }
+            _ => return None,
         };
-        (s.bands.iter().find(|b| b.id == p.band.id) == Some(&p.before)).then(|| p.clone())
+        (current == p.before).then(|| p.clone())
     }
     pub fn needs_sync(&self, wanted: &Option<Preview>, output: bool) -> bool {
         self.published != *wanted || (wanted.is_some() && self.output_present != output)
@@ -66,22 +132,28 @@ impl State {
             let (chain, compact) = plan
                 .project
                 .effect_chain(p.target)
-                .ok_or("EQ preview owner is unavailable")?;
+                .ok_or("Effect preview owner is unavailable")?;
             let mut chain = chain.to_vec();
-            let EffectSettings::MultibandEq(s) = &mut chain
+            let unit = &mut chain
                 .iter_mut()
                 .find(|e| e.id == p.effect)
-                .ok_or("EQ preview effect is unavailable")?
-                .unit
-            else {
-                return Err("EQ preview effect changed".into());
-            };
-            let band = s
-                .bands
-                .iter_mut()
-                .find(|b| b.id == p.band.id)
-                .ok_or("EQ preview band is unavailable")?;
-            *band = p.band.clone();
+                .ok_or("Effect preview effect is unavailable")?
+                .unit;
+            match (unit, &p.band) {
+                (EffectSettings::MultibandEq(s), Band::Eq(band)) => {
+                    *s.bands
+                        .iter_mut()
+                        .find(|b| b.id == band.id)
+                        .ok_or("Effect preview band is unavailable")? = band.clone()
+                }
+                (EffectSettings::MultibandCompressor(s), Band::Compressor(band)) => {
+                    *s.bands
+                        .iter_mut()
+                        .find(|b| b.id == band.id)
+                        .ok_or("Effect preview band is unavailable")? = band.clone()
+                }
+                _ => return Err("Effect preview effect changed".into()),
+            }
             plan.project
                 .edit(p.target.edit(chain, compact))
                 .map_err(|e| e.to_string())?;

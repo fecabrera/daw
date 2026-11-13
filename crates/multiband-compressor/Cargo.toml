@@ -6,6 +6,7 @@ rust-version.workspace = true
 license = "BSD-2-Clause"
 
 [dependencies]
+daw-spectrum.workspace = true
 daw-unit-core.workspace = true
 daw-compressor.workspace = true
 daw-filter.workspace = true

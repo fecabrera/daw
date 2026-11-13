@@ -290,16 +290,18 @@ mod output_meter_tests {
             .store(true, std::sync::atomic::Ordering::Release);
         component.output_meter.store([2.0, 0.0, 0.0]);
         component.output_meter.initialize([0.25, 0.0, 0.0]);
-        if daw_drive_plugin::METER_VALUES == 668 {
+        if matches!(daw_drive_plugin::METER_VALUES, 668 | 796) {
             let mut values =
                 daw_drive_plugin::meter_values(&component.output_meter).map(|v| v as f32);
-            *values.get_mut(141).unwrap() = 48_000.0;
-            values.get_mut(142..654).unwrap().fill(0.25);
-            *values.get_mut(654).unwrap() = 2.0;
-            *values.get_mut(655).unwrap() = 3.0;
-            *values.get_mut(656).unwrap() = 17.0;
-            *values.get_mut(660).unwrap() = 48_000.0;
-            *values.get_mut(664).unwrap() = 47_039.0;
+            let rate = daw_drive_plugin::METER_VALUES.saturating_sub(527);
+            let schema = daw_drive_plugin::METER_VALUES.saturating_sub(14);
+            *values.get_mut(rate).unwrap() = 48_000.0;
+            values.get_mut(rate + 1..schema).unwrap().fill(0.25);
+            *values.get_mut(schema).unwrap() = 2.0;
+            *values.get_mut(schema + 1).unwrap() = 3.0;
+            *values.get_mut(schema + 2).unwrap() = 17.0;
+            *values.get_mut(schema + 6).unwrap() = 48_000.0;
+            *values.get_mut(schema + 10).unwrap() = 47_039.0;
             daw_drive_plugin::receive_meter(&component.output_meter, values);
         }
         let expected = daw_drive_plugin::meter_values(&component.output_meter);

@@ -1,12 +1,14 @@
 //! Main-thread meter messages through the host's component/controller connection.
 //! Audio only publishes atomics; no GUI pointers or SDK calls cross processing.
 use daw_drive_plugin::METER_VALUES;
-// v1 has a 142-value scalar/band prefix and 64 legacy spectrum cells.
+// EQ v1 has a scalar/rate prefix plus legacy bins; compressor v1 has 269 scalar/band values.
 // Extended snapshots append their spectrum metadata in the final fourteen slots.
-const LEGACY_VALUES: usize = 206;
-// This is the EQ schema-2 wire size, not a threshold: Compressor and
-// Loudness also have large v1 payloads and must retain their complete layout.
-const EXTENDED: bool = METER_VALUES == 668;
+const LEGACY_VALUES: usize = if METER_VALUES == 796 { 269 } else { 206 };
+const LEGACY_PREFIX: usize = if METER_VALUES == 796 { 269 } else { 142 };
+const SPECTRUM_RATE: usize = if METER_VALUES == 796 { 269 } else { 141 };
+// Exact EQ and Multiband Compressor schema-2 sizes, never a threshold.
+// Other products retain their full v1 payloads.
+const EXTENDED: bool = METER_VALUES == 668 || METER_VALUES == 796;
 use daw_plugin_vst3::{
     boundary,
     sys::{
@@ -88,7 +90,7 @@ impl Connection {
             METER_VALUES
         };
         if EXTENDED && kind == Kind::Reading {
-            let prefix = 142.min(METER_VALUES);
+            let prefix = LEGACY_PREFIX.min(METER_VALUES);
             values[prefix..].fill(0.0); // Never send new bin meanings under the v1 ID.
         }
         let Some(peer) = self.0.borrow().clone() else {
@@ -301,11 +303,11 @@ pub unsafe fn read(message: *mut IMessage) -> Option<(Kind, [f32; METER_VALUES])
         }
     }
     if EXTENDED && kind == Kind::Reading {
-        let prefix = 142.min(METER_VALUES);
+        let prefix = LEGACY_PREFIX.min(METER_VALUES);
         values[prefix..].fill(0.0);
         let schema = METER_VALUES.saturating_sub(14);
         values[schema] = 2.0;
-        if let Some(rate) = values.get_mut(141)
+        if let Some(rate) = values.get_mut(SPECTRUM_RATE)
             && ![44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0].contains(rate)
         {
             *rate = 48000.0;
@@ -394,7 +396,7 @@ fn attribute_key(index: usize) -> &'static CStr {
 pub(crate) fn mask_stopped(values: &mut [f64; METER_VALUES]) {
     values[0] = 0.0;
     if EXTENDED {
-        let first = 142.min(METER_VALUES);
+        let first = (SPECTRUM_RATE + 1).min(METER_VALUES);
         let schema = METER_VALUES.saturating_sub(14);
         values[first..schema].fill(0.0);
         values[schema + 1] = 0.0;
@@ -463,7 +465,7 @@ mod compatibility_tests {
                 assert_eq!(*values.get(140).unwrap(), 140.0);
                 assert!(
                     values
-                        .get(142..METER_VALUES.saturating_sub(14))
+                        .get(SPECTRUM_RATE + 1..METER_VALUES.saturating_sub(14))
                         .unwrap()
                         .iter()
                         .all(|v| *v == 0.0)

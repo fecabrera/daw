@@ -1,12 +1,13 @@
 use daw_drive_plugin::{Parameter as P, PluginState, Settings};
 use daw_unit_ui::{control_capture, layout::*, meters, multiband_compressor as shared};
 use egui::{Rect, Response, Ui, Vec2};
-pub const SIZE: Vec2 = Vec2::new(720.0, unit_control_height() + 2.0 * PANEL_MARGIN as f32);
+pub const SIZE: Vec2 = Vec2::new(990.0, unit_control_height() + 2.0 * PANEL_MARGIN as f32);
 pub struct Bounds {
     pub sections: Vec<Rect>,
     pub controls: [Option<Response>; P::COUNT - 1],
 }
 pub fn render(ui: &mut Ui, s: &mut Settings, model: &crate::Model) -> Bounds {
+    let spectrum = daw_unit_ui::spectrum_graph::cached_reading(ui, &model.output_meter.spectrum);
     let before = PluginState::from_settings(s).ok();
     let owner = ui.make_persistent_id("compressor-band-order");
     let reordering = daw_unit_ui::strip_reorder::active(ui, owner);
@@ -55,6 +56,8 @@ pub fn render(ui: &mut Ui, s: &mut Settings, model: &crate::Model) -> Bounds {
                         &mut s.core,
                         (false, unit_control_height()),
                         shared::Controls {
+                            live_graph_edits: true,
+                            spectrum: spectrum.as_ref(),
                             solos: &mut solos,
                             band_markers: &[],
                             output_markers: &[None, None],
@@ -147,7 +150,7 @@ pub fn render(ui: &mut Ui, s: &mut Settings, model: &crate::Model) -> Bounds {
         s.core.presentation = order.iter().map(|b| b.id).collect();
     }
     let after = PluginState::from_settings(s).ok();
-    let controls = std::array::from_fn(|i| {
+    let mut controls = std::array::from_fn(|i| {
         let mut response = control_capture::at(&captured, rects[i]);
         if let (Some(before), Some(after)) = (before, after)
             && before.get(P::ALL[i + 1]) != after.get(P::ALL[i + 1])
@@ -163,6 +166,14 @@ pub fn render(ui: &mut Ui, s: &mut Settings, model: &crate::Model) -> Bounds {
         }
         response
     });
+    for (id, response) in &b.crossover_edits {
+        let slot = (id.as_u128() - 1) as usize;
+        controls[10 * slot + 2] = Some(response.clone());
+    }
+    for (id, response) in &b.threshold_edits {
+        let slot = (id.as_u128() - 1) as usize;
+        controls[10 * slot + 3] = Some(response.clone());
+    }
     let mut sections = vec![b.ranges];
     sections.extend(b.bands);
     sections.push(b.add);

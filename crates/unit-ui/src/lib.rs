@@ -1,5 +1,6 @@
 //! Portable unit controls and presentation. No project, device, or host dependencies.
 pub mod ambient_reverb;
+mod compressor_graph;
 pub mod drive;
 pub mod drive_v2;
 pub mod eq_graph;
@@ -17,6 +18,7 @@ pub mod plate_reverb;
 mod reverb_controls;
 pub mod rows;
 pub mod shimmer_reverb;
+pub mod spectrum_graph;
 pub mod theme;
 
 pub mod bitcrusher;

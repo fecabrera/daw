@@ -12,6 +12,7 @@ impl std::error::Error for ConfigurationError {}
 pub struct Processor {
     drive: Dsp,
     state: PluginState,
+    sample_rate_hz: u32,
 }
 impl Processor {
     pub fn new(
@@ -40,9 +41,15 @@ impl Processor {
             state.get(Parameter::Level) as f32,
             state.get(Parameter::DryWet) as f32,
         );
-        Ok(Self { drive, state })
+        Ok(Self {
+            drive,
+            state,
+            sample_rate_hz: rate as u32,
+        })
     }
     pub fn set_output_meter(&mut self, meter: std::sync::Arc<crate::OutputMeter>) {
+        meter.set_prepared_rate(self.sample_rate_hz);
+        self.drive.set_spectrum_meter(meter.spectrum.clone());
         self.drive.set_audition_gate(meter.audition_allowed.clone());
         self.drive.set_output_peak_meter(meter.output.clone());
         for slot in 0..64 {

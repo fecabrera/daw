@@ -251,3 +251,177 @@ fn eq_band_context_menu_keeps_solo_temporary_and_can_remove_the_last_band() {
     assert!(!app.exciter_audition.solos.contains(&(effect, band)));
     assert!(app.dirty);
 }
+
+#[test]
+fn compressor_crossover_graph_previews_without_edits_and_commits_one_undo_step() {
+    fn settings(app: &DawUi, master: bool) -> daw_core::MultibandCompressorSettings {
+        let effects = if master {
+            &app.session.project.master.effects
+        } else {
+            &app.session.project.tracks[0].effects
+        };
+        let daw_core::EffectSettings::MultibandCompressor(s) = &effects[0].unit else {
+            panic!()
+        };
+        s.clone()
+    }
+    fn button(p: Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos: p,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        }
+    }
+    for master in [false, true] {
+        for cancel in [false, true] {
+            let (mut app, ctx, _) = fixture();
+            if master {
+                app.session.project.master.effects =
+                    std::mem::take(&mut app.session.project.tracks[0].effects);
+                app.master_selected = true;
+            }
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            app.history = None;
+            app.ensure_history();
+            let original = settings(&app, master);
+            let start = app.effects_bounds.multiband_compressor_units[0]
+                .body
+                .crossover_markers[0]
+                .center();
+            let end = start + Vec2::new(20.0, 0.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(settings(&app, master), original);
+            assert!(!app.dirty);
+            let preview = app.eq_graph_preview.published_plan(&app.session);
+            let target = if master {
+                daw_core::EffectChainTarget::Master
+            } else {
+                daw_core::EffectChainTarget::Track(app.session.project.tracks[0].id)
+            };
+            let (chain, _) = preview.project.effect_chain(target).unwrap();
+            let daw_core::EffectSettings::MultibandCompressor(s) = &chain[0].unit else {
+                panic!()
+            };
+            assert!(s.bands[0].upper_hz > original.bands[0].upper_hz);
+            if cancel {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            if cancel {
+                assert_eq!(settings(&app, master), original);
+                assert!(!app.dirty);
+            } else {
+                let changed = settings(&app, master);
+                assert!(changed.bands[0].upper_hz > original.bands[0].upper_hz);
+                app.perform_history_action(HistoryAction::Undo, &ctx);
+                assert_eq!(settings(&app, master), original);
+                app.perform_history_action(HistoryAction::Redo, &ctx);
+                assert_eq!(settings(&app, master), changed);
+            }
+        }
+    }
+}
+
+#[test]
+fn compressor_threshold_graph_previews_without_edits_and_commits_one_undo_step() {
+    fn settings(app: &DawUi, master: bool) -> daw_core::MultibandCompressorSettings {
+        let effects = if master {
+            &app.session.project.master.effects
+        } else {
+            &app.session.project.tracks[0].effects
+        };
+        let daw_core::EffectSettings::MultibandCompressor(s) = &effects[0].unit else {
+            panic!()
+        };
+        s.clone()
+    }
+    fn button(p: Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos: p,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        }
+    }
+    for master in [false, true] {
+        for cancel in [false, true] {
+            let (mut app, ctx, _) = fixture();
+            if master {
+                app.session.project.master.effects =
+                    std::mem::take(&mut app.session.project.tracks[0].effects);
+                app.master_selected = true;
+            }
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            app.history = None;
+            app.ensure_history();
+            let original = settings(&app, master);
+            let start = app.effects_bounds.multiband_compressor_units[0]
+                .body
+                .threshold_markers[0]
+                .center();
+            let end = start + Vec2::new(0.0, -15.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(settings(&app, master), original);
+            assert!(!app.dirty);
+            let preview = app.eq_graph_preview.published_plan(&app.session);
+            let target = if master {
+                daw_core::EffectChainTarget::Master
+            } else {
+                daw_core::EffectChainTarget::Track(app.session.project.tracks[0].id)
+            };
+            let (chain, _) = preview.project.effect_chain(target).unwrap();
+            let daw_core::EffectSettings::MultibandCompressor(s) = &chain[0].unit else {
+                panic!()
+            };
+            assert!(s.bands[0].threshold_db > original.bands[0].threshold_db);
+            if cancel {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            if cancel {
+                assert_eq!(settings(&app, master), original);
+                assert!(!app.dirty);
+            } else {
+                let changed = settings(&app, master);
+                assert!(changed.bands[0].threshold_db > original.bands[0].threshold_db);
+                app.perform_history_action(HistoryAction::Undo, &ctx);
+                assert_eq!(settings(&app, master), original);
+                app.perform_history_action(HistoryAction::Redo, &ctx);
+                assert_eq!(settings(&app, master), changed);
+            }
+        }
+    }
+}

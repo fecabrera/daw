@@ -1,6 +1,7 @@
 //! Prepared full-range, overlapped analysis; no audio-path changes or callback allocation.
 mod fft;
 mod mapping;
+pub mod telemetry;
 use daw_unit_core::{
     SPECTRUM_BINS, SPECTRUM_UPPER_READY, SpectrumMeter, SpectrumReading, UnitMeter,
 };
@@ -8,7 +9,7 @@ use std::sync::Arc;
 type Complex = [f32; 2];
 const WORK_PER_FRAME: usize = 80;
 #[derive(Clone)]
-pub(crate) struct Spectrum {
+pub struct SpectrumAnalyzer {
     meter: UnitMeter<SpectrumMeter>,
     reading: SpectrumReading,
     branch: fft::Branch,
@@ -20,7 +21,7 @@ pub(crate) struct Spectrum {
     #[cfg(test)]
     overruns: usize,
 }
-impl Spectrum {
+impl SpectrumAnalyzer {
     pub fn new(rate: u32, enabled: bool) -> Self {
         let scale = (rate / 44_100).max(1).next_power_of_two() as usize;
         let n = 4096 * scale;

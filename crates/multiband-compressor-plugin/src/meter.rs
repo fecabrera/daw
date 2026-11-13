@@ -2,6 +2,9 @@
 use daw_unit_core::{BandMeter, MeterStorage, PeakHold, PeakMeter};
 use std::sync::Arc;
 pub struct OutputMeter {
+    pub spectrum: Arc<daw_unit_core::SpectrumMeter>,
+    prepared_rate: std::sync::atomic::AtomicU32,
+    telemetry_cache: daw_spectrum::telemetry::TelemetryCache,
     pub band_level_resets: std::sync::atomic::AtomicU64,
     pub band_resets: std::sync::atomic::AtomicU64,
     pub audition_allowed: Arc<std::sync::atomic::AtomicBool>,
@@ -15,6 +18,9 @@ pub struct OutputMeter {
 impl Default for OutputMeter {
     fn default() -> Self {
         Self {
+            spectrum: Arc::default(),
+            prepared_rate: std::sync::atomic::AtomicU32::new(48000),
+            telemetry_cache: Default::default(),
             band_level_resets: std::sync::atomic::AtomicU64::new(0),
             band_resets: std::sync::atomic::AtomicU64::new(0),
             audition_allowed: Arc::new(std::sync::atomic::AtomicBool::new(true)),
@@ -28,6 +34,14 @@ impl Default for OutputMeter {
     }
 }
 impl OutputMeter {
+    pub fn sample_rate_hz(&self) -> u32 {
+        self.prepared_rate
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+    pub(crate) fn set_prepared_rate(&self, rate: u32) {
+        self.prepared_rate
+            .store(rate, std::sync::atomic::Ordering::Relaxed);
+    }
     pub fn current(&self) -> &Arc<[std::sync::atomic::AtomicU32; 3]> {
         self.output.current()
     }
@@ -38,7 +52,8 @@ impl OutputMeter {
         self.output.boost_peaks()
     }
 }
-pub const METER_VALUES: usize = 269;
+pub const LEGACY_METER_VALUES: usize = 269;
+pub const METER_VALUES: usize = LEGACY_METER_VALUES + daw_spectrum::telemetry::VALUES;
 pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
     let mut v = [0.0; METER_VALUES];
     v[0] = f64::from(m.readings()[0]);
@@ -56,9 +71,22 @@ pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
         v[141 + i] = f64::from(m.reductions[i].peak());
         v[13 + i] = f64::from(m.eq_bands[i].readings()[0]);
     }
+    let reading = m.telemetry_cache.read(&m.spectrum, m.sample_rate_hz());
+    daw_spectrum::telemetry::encode(&mut v[LEGACY_METER_VALUES..], reading);
     v
 }
 pub fn receive_meter(m: &OutputMeter, v: [f32; METER_VALUES]) {
+    if v[..LEGACY_METER_VALUES]
+        .iter()
+        .any(|value| !value.is_finite())
+    {
+        return;
+    }
+    let Some(reading) = daw_spectrum::telemetry::decode(&v[LEGACY_METER_VALUES..]) else {
+        return;
+    };
+    m.set_prepared_rate(reading.sample_rate_hz);
+    m.spectrum.store(reading);
     m.output.clear();
     m.output.store([v[1], 0.0, 0.0]);
     m.output.initialize([v[0], 0.0, 0.0]);
@@ -104,6 +132,7 @@ impl MeterStorage for OutputMeter {
         self.output.initialize(v);
     }
     fn clear(&self) {
+        self.spectrum.clear();
         self.output.clear();
         self.reduction.clear();
         self.bands.clear();
@@ -117,6 +146,9 @@ impl MeterStorage for OutputMeter {
 }
 
 impl daw_unit_core::BandAudition for OutputMeter {
+    fn clear_spectrum(&self) {
+        self.spectrum.clear();
+    }
     fn band_level_reset_requests(&self) -> Option<&std::sync::atomic::AtomicU64> {
         Some(&self.band_level_resets)
     }

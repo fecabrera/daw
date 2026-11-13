@@ -38,7 +38,7 @@ struct Band {
     id: ModulationTargetId,
     settings: MultibandCompressorBand,
     compressor: daw_compressor::Compressor,
-    monitor: daw_unit_core::UnitMeter<daw_unit_core::BandMeter<3>>,
+    monitor: LevelMonitor<3>,
     solo: Option<Arc<AtomicBool>>,
     audible: Ramp,
 }
@@ -62,7 +62,7 @@ impl Band {
             id: s.id,
             settings: s.clone(),
             compressor,
-            monitor: daw_unit_core::UnitMeter::new(enabled),
+            monitor: LevelMonitor::new(c.sample_rate_hz, enabled),
             solo: None,
             audible: Ramp::new(1.0),
         }
@@ -89,11 +89,7 @@ impl ModulationDestination for Band {
         c: ModulationContext,
     ) -> [f32; 2] {
         let out = self.compressor.process_with_modulation(input, m, c);
-        self.monitor.publish([
-            out[0].abs().max(out[1].abs()),
-            self.compressor.gain_reduction_db(),
-            0.0,
-        ]);
+        self.monitor.sample_output(out);
         out
     }
 }
@@ -144,6 +140,7 @@ pub struct MultibandCompressor {
     bypass: Ramp,
     fade_frames: u32,
     monitor: LevelMonitor<3>,
+    spectrum: daw_spectrum::SpectrumAnalyzer,
 }
 impl Clone for MultibandCompressor {
     fn clone(&self) -> Self {
@@ -161,6 +158,7 @@ impl Clone for MultibandCompressor {
             bypass: self.bypass,
             fade_frames: self.fade_frames,
             monitor: self.monitor.clone(),
+            spectrum: self.spectrum.clone(),
         }
     }
 }
@@ -216,6 +214,7 @@ impl MultibandCompressor {
             bypass: Ramp::new(f32::from(s.enabled)),
             fade_frames: (c.sample_rate_hz / 200).max(1),
             monitor: LevelMonitor::new(c.sample_rate_hz, s.enabled),
+            spectrum: daw_spectrum::SpectrumAnalyzer::new(c.sample_rate_hz, s.enabled),
         }
     }
     /// Prepare every plugin slot before activation. Presence is separate from band power.
@@ -319,6 +318,7 @@ impl MultibandCompressor {
             r.set(v, self.fade_frames);
         }
         self.bypass.set(f32::from(enabled), self.fade_frames);
+        self.spectrum.set_enabled(enabled);
         self.monitor.set_enabled(enabled);
         for (b, present) in self.bands.iter_mut().zip(&self.present) {
             b.destination
@@ -329,6 +329,9 @@ impl MultibandCompressor {
                 flag.store(false, Ordering::Relaxed);
             }
         }
+    }
+    pub fn set_spectrum_meter(&mut self, meter: Arc<daw_unit_core::SpectrumMeter>) {
+        self.spectrum.attach(meter);
     }
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
         self.monitor.attach_peak(meter);
@@ -343,7 +346,7 @@ impl MultibandCompressor {
         meter: Arc<daw_unit_core::BandMeter<3>>,
     ) {
         if let Some(b) = self.bands.iter_mut().find(|b| b.destination.id == id) {
-            b.destination.monitor.attach(meter, [0.0; 3]);
+            b.destination.monitor.attach_peak_prepared(meter);
         }
     }
     pub fn set_band_reduction_meter(
@@ -372,6 +375,7 @@ impl MultibandCompressor {
         {
             return false;
         }
+        self.spectrum.set_enabled(s.enabled);
         self.monitor.set_enabled(s.enabled);
         for band in &mut self.bands {
             band.retarget_controls(&s.modulations);
@@ -405,6 +409,7 @@ impl MultibandCompressor {
             r.set(v, self.fade_frames);
         }
         self.bypass.set(f32::from(s.enabled), self.fade_frames);
+        self.spectrum.set_enabled(s.enabled);
         self.monitor.set_enabled(s.enabled);
         for b in &mut self.bands {
             b.destination.monitor.set_enabled(s.enabled);
@@ -417,6 +422,12 @@ impl MultibandCompressor {
         true
     }
     pub fn inherit(&mut self, previous: &mut Self) {
+        let enabled = self.spectrum.is_enabled();
+        if self.spectrum.is_bound() {
+            previous.spectrum.retarget(&mut self.spectrum);
+        }
+        std::mem::swap(&mut self.spectrum, &mut previous.spectrum);
+        self.spectrum.set_enabled(enabled);
         for next in &mut self.bands {
             if let Some(old) = previous
                 .bands
@@ -583,6 +594,7 @@ impl MultibandCompressor {
             }
         });
         self.monitor.sample_output(out);
+        self.spectrum.sample(out);
         out
     }
     pub fn band_parameters(&self, id: ModulationTargetId) -> Option<[f32; 7]> {
@@ -612,13 +624,14 @@ impl EffectUnit for MultibandCompressor {
         Self::LATENCY_FRAMES
     }
     fn reset(&mut self) {
+        self.spectrum.reset();
         self.monitor.reset();
         self.solo_mix.reset();
         self.bypass.reset();
         for b in &mut self.bands {
             b.reset_routes();
             b.destination.compressor.reset();
-            b.destination.monitor.publish([0.0; 3]);
+            b.destination.monitor.reset();
             b.destination.audible.reset();
         }
         self.output.reset_routes();
@@ -647,6 +660,7 @@ impl EffectUnit for MultibandCompressor {
                 .map(RoutedDestination::heap_bytes)
                 .sum::<u64>()
             + self.output.heap_bytes()
+            + self.spectrum.heap_bytes()
             + daw_unit_core::memory::vec_bytes(&self.frequencies)
             + daw_unit_core::memory::vec_bytes(&self.splits)
             + daw_unit_core::memory::vec_bytes(&self.compensation)

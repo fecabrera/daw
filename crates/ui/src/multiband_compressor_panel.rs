@@ -9,6 +9,8 @@ pub(super) struct Bounds {
     pub header: Rect,
     pub power: Rect,
     pub solo_changed: bool,
+    pub crossover_preview: Option<(Id, f32)>,
+    pub threshold_preview: Option<(Id, f32)>,
 }
 #[allow(clippy::too_many_arguments)]
 pub(super) fn show<'a>(
@@ -21,6 +23,7 @@ pub(super) fn show<'a>(
     level: meters::OutputLevel<'a>,
     levels: impl Fn(Id) -> meters::OutputLevel<'a>,
     reductions: impl Fn(Id) -> meters::GainReduction<'a>,
+    spectrum: Option<daw_unit_core::SpectrumReading>,
 ) -> (Bounds, egui::Response) {
     let (effect, solos) = audition;
     let mut selected: Vec<_> = settings
@@ -114,6 +117,8 @@ pub(super) fn show<'a>(
                             settings,
                             (compact, crate::envelope_panel::body_height(compact)),
                             daw_unit_ui::multiband_compressor::Controls {
+                                live_graph_edits: false,
+                                spectrum: spectrum.as_ref(),
                                 solos: &mut selected,
                                 band_markers: &markers,
                                 output_markers: &output_markers,
@@ -215,6 +220,8 @@ pub(super) fn show<'a>(
     settings.enabled = enabled;
     settings.collapsed = collapsed;
     crate::modulation_panel::toggle(ui, &result, collapsed, &mut settings.modulation_open);
+    let crossover_preview = body.crossover_preview;
+    let threshold_preview = body.threshold_preview;
     (
         Bounds {
             #[cfg(test)]
@@ -223,6 +230,8 @@ pub(super) fn show<'a>(
             header: result.header.rect,
             power: result.power.rect,
             solo_changed,
+            crossover_preview,
+            threshold_preview,
         },
         result.header,
     )

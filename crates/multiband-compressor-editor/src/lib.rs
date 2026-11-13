@@ -51,6 +51,8 @@ fn paint_reference(ui: &mut egui::Ui, s: &mut daw_drive_plugin::Settings, model:
                 &mut s.core,
                 (false, unit_control_height()),
                 shared::Controls {
+                    live_graph_edits: true,
+                    spectrum: None,
                     solos: &mut solos,
                     band_markers: &[],
                     output_markers: &[None, None],
@@ -349,5 +351,255 @@ mod band_menu_tests {
                 .changed()
         );
         assert!(!model.output_meter.solos[0].load(std::sync::atomic::Ordering::Relaxed));
+    }
+}
+
+#[cfg(test)]
+mod crossover_gesture_tests {
+    use super::*;
+    use daw_drive_plugin::Parameter as P;
+    fn pointer(pos: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        }
+    }
+    fn draw(ctx: &egui::Context, editor: &mut Editor, events: Vec<egui::Event>) -> Vec<egui::Pos2> {
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, body::SIZE)),
+                focused: true,
+                events,
+                ..Default::default()
+            },
+            |ui| editor.show(ui),
+        );
+        let color = daw_unit_ui::theme::palette(ctx)
+            .secondary
+            .gamma_multiply(0.3);
+        let markers = out
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::LineSegment { points, stroke }
+                    if points[0].x == points[1].x
+                        && (points[1].y - points[0].y).abs() > 100.0
+                        && stroke.color == color =>
+                {
+                    Some(points[0] + (points[1] - points[0]) * 0.5)
+                }
+                _ => None,
+            })
+            .collect();
+        out.textures_delta.clear();
+        markers
+    }
+    fn drain(model: &Model) -> Vec<Edit> {
+        let mut edits = Vec::new();
+        while let Some(e) = model.pop() {
+            edits.push(e);
+        }
+        edits
+    }
+    #[test]
+    fn crossover_graph_uses_one_frequency_gesture_and_balances_cancel_and_queue_retries() {
+        for cancel in [false, true] {
+            for blocked in [false, true] {
+                if blocked && !cancel {
+                    continue;
+                }
+                let ctx = egui::Context::default();
+                daw_unit_ui::fonts::configure(&ctx);
+                daw_unit_ui::theme::configure(&ctx);
+                let model = std::sync::Arc::new(Model::default());
+                let mut editor = Editor::new(model.clone(), || {});
+                let markers = draw(&ctx, &mut editor, vec![]);
+                assert_eq!(markers.len(), 2);
+                assert!(drain(&model).is_empty());
+                let start = markers[0];
+                let end = start + egui::vec2(20.0, 0.0);
+                draw(
+                    &ctx,
+                    &mut editor,
+                    vec![egui::Event::PointerMoved(start), pointer(start, true)],
+                );
+                draw(&ctx, &mut editor, vec![egui::Event::PointerMoved(end)]);
+                let mut edits = drain(&model);
+                assert_eq!(edits.first(), Some(&Edit::Begin(P::Band1Frequency)));
+                assert!(
+                    edits
+                        .iter()
+                        .any(|e| matches!(e,Edit::Value(P::Band1Frequency,v) if *v>200.0))
+                );
+                if blocked {
+                    while model.push(&[Edit::Presentation(
+                        daw_drive_plugin::PluginState::default().presentation(),
+                    )]) {}
+                }
+                if cancel {
+                    draw(
+                        &ctx,
+                        &mut editor,
+                        vec![egui::Event::Key {
+                            key: egui::Key::Escape,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: Default::default(),
+                        }],
+                    );
+                    if blocked {
+                        drain(&model);
+                        draw(&ctx, &mut editor, vec![]);
+                    }
+                }
+                draw(&ctx, &mut editor, vec![pointer(end, false)]);
+                edits.extend(drain(&model));
+                assert_eq!(
+                    edits.iter().filter(|e| matches!(e, Edit::Begin(_))).count(),
+                    1
+                );
+                assert_eq!(
+                    edits.iter().filter(|e| matches!(e, Edit::End(_))).count(),
+                    1
+                );
+                assert!(edits.iter().all(|e| matches!(
+                    e,
+                    Edit::Begin(P::Band1Frequency)
+                        | Edit::Value(P::Band1Frequency, _)
+                        | Edit::End(P::Band1Frequency)
+                )));
+                if cancel {
+                    assert!(edits.contains(&Edit::Value(P::Band1Frequency, 200.0)));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod threshold_gesture_tests {
+    use super::*;
+    use daw_drive_plugin::Parameter as P;
+    fn pointer(pos: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        }
+    }
+    fn draw(ctx: &egui::Context, editor: &mut Editor, events: Vec<egui::Event>) -> Vec<egui::Pos2> {
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, body::SIZE)),
+                focused: true,
+                events,
+                ..Default::default()
+            },
+            |ui| editor.show(ui),
+        );
+        let color = daw_unit_ui::theme::palette(ctx)
+            .secondary
+            .gamma_multiply(0.3);
+        let markers = out
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::LineSegment { points, stroke }
+                    if points[0].y == points[1].y
+                        && (points[1].x - points[0].x).abs() > 30.0
+                        && stroke.color == color =>
+                {
+                    Some(points[0] + (points[1] - points[0]) * 0.5)
+                }
+                _ => None,
+            })
+            .collect();
+        out.textures_delta.clear();
+        markers
+    }
+    fn drain(model: &Model) -> Vec<Edit> {
+        let mut edits = Vec::new();
+        while let Some(e) = model.pop() {
+            edits.push(e);
+        }
+        edits
+    }
+    #[test]
+    fn threshold_graph_uses_one_threshold_gesture_and_balances_cancel_and_queue_retries() {
+        for cancel in [false, true] {
+            for blocked in [false, true] {
+                if blocked && !cancel {
+                    continue;
+                }
+                let ctx = egui::Context::default();
+                daw_unit_ui::fonts::configure(&ctx);
+                daw_unit_ui::theme::configure(&ctx);
+                let model = std::sync::Arc::new(Model::default());
+                let mut editor = Editor::new(model.clone(), || {});
+                let markers = draw(&ctx, &mut editor, vec![]);
+                assert_eq!(markers.len(), 3);
+                assert!(drain(&model).is_empty());
+                let start = markers[0];
+                let end = start + egui::vec2(0.0, -15.0);
+                draw(
+                    &ctx,
+                    &mut editor,
+                    vec![egui::Event::PointerMoved(start), pointer(start, true)],
+                );
+                draw(&ctx, &mut editor, vec![egui::Event::PointerMoved(end)]);
+                let mut edits = drain(&model);
+                assert_eq!(edits.first(), Some(&Edit::Begin(P::Band1Threshold)));
+                assert!(
+                    edits
+                        .iter()
+                        .any(|e| matches!(e,Edit::Value(P::Band1Threshold,v) if *v > -18.0))
+                );
+                if blocked {
+                    while model.push(&[Edit::Presentation(
+                        daw_drive_plugin::PluginState::default().presentation(),
+                    )]) {}
+                }
+                if cancel {
+                    draw(
+                        &ctx,
+                        &mut editor,
+                        vec![egui::Event::Key {
+                            key: egui::Key::Escape,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: Default::default(),
+                        }],
+                    );
+                    if blocked {
+                        drain(&model);
+                        draw(&ctx, &mut editor, vec![]);
+                    }
+                }
+                draw(&ctx, &mut editor, vec![pointer(end, false)]);
+                edits.extend(drain(&model));
+                assert_eq!(
+                    edits.iter().filter(|e| matches!(e, Edit::Begin(_))).count(),
+                    1
+                );
+                assert_eq!(
+                    edits.iter().filter(|e| matches!(e, Edit::End(_))).count(),
+                    1
+                );
+                assert!(edits.iter().all(|e| matches!(
+                    e,
+                    Edit::Begin(P::Band1Threshold)
+                        | Edit::Value(P::Band1Threshold, _)
+                        | Edit::End(P::Band1Threshold)
+                )));
+                if cancel {
+                    assert!(edits.contains(&Edit::Value(P::Band1Threshold, -18.0)));
+                }
+            }
+        }
     }
 }

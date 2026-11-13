@@ -175,19 +175,74 @@ fn band_level_holds_capture_between_ui_reads_and_wire_resets_leave_reduction_and
     p.process_sample([0.8, -0.9]);
     meter.reductions[0].store(6.0);
     p.process_sample([0.0; 2]);
-    assert_eq!(meter.eq_bands[0].readings()[0], 0.0);
+    assert!(meter.eq_bands[0].readings()[0] > 0.89);
     assert_eq!(meter.eq_bands[0].boost_peaks()[0].peak(), 0.9);
     let mirror = daw_multiband_compressor_plugin::OutputMeter::default();
     let values = daw_multiband_compressor_plugin::meter_values(&meter);
-    assert_eq!(values.len(), 269);
+    assert_eq!(values.len(), 796);
     daw_multiband_compressor_plugin::receive_meter(&mirror, values.map(|v| v as f32));
     assert_eq!(mirror.eq_bands[0].boost_peaks()[0].peak(), 0.9);
     assert!(mirror.reset_band_level_peak(0));
-    assert_eq!(mirror.eq_bands[0].readings()[0], 0.0);
+    assert!(mirror.eq_bands[0].readings()[0] > 0.89);
     assert_eq!(mirror.eq_bands[0].boost_peaks()[0].peak(), 0.0);
     assert_eq!(mirror.reductions[0].peak(), 6.0);
     assert_eq!(mirror.boost_peaks()[0].peak(), 0.9);
     assert!(!mirror.reset_band_level_peak(64));
     p.set(P::Bypass, 1.0).unwrap();
     assert_eq!(meter.eq_bands[0].boost_peaks()[0].peak(), 0.0);
+}
+
+#[test]
+fn spectrum_is_pcm_neutral_bounded_and_coherent_through_plugin_telemetry() {
+    use daw_multiband_compressor_plugin as plugin;
+    use daw_unit_core::{BandAudition, SpectrumCache};
+    for rate in SUPPORTED_RATES {
+        let state = PluginState::default();
+        let meter = Arc::new(plugin::OutputMeter::default());
+        let mirror = plugin::OutputMeter::default();
+        let mut actual = Processor::new(rate as f64, 1, 512, state).unwrap();
+        let mut reference = Processor::new(rate as f64, 1, 512, state).unwrap();
+        actual.set_output_meter(meter.clone());
+        assert_eq!(plugin::meter_values(&meter)[269], rate as f64);
+        OPERATIONS.with(|n| n.set(0));
+        TRACK.with(|t| t.set(true));
+        let mut equal = true;
+        for i in 0..rate / 4 {
+            let x = (i as f32 * std::f32::consts::TAU * 80.0 / rate as f32).sin() * 0.5;
+            equal &= actual.process_sample([x, -x]) == reference.process_sample([x, -x]);
+        }
+        TRACK.with(|t| t.set(false));
+        assert!(equal);
+        assert_eq!(OPERATIONS.with(Cell::get), 0);
+        let frame = meter.spectrum.reading();
+        assert_eq!(frame.valid_branches, 1);
+        assert!(frame.magnitudes.iter().any(|v| *v > 0.01));
+        plugin::receive_meter(&mirror, plugin::meter_values(&meter).map(|v| v as f32));
+        assert_eq!(mirror.spectrum.reading(), frame);
+        let mut cache = SpectrumCache::default();
+        assert!(cache.read(&mirror.spectrum).is_some());
+        let before = plugin::meter_values(&mirror);
+        for (index, value) in [
+            (270, -1.0),
+            (782, 1.0),
+            (783, 2.0),
+            (269, 12345.0),
+            (790, f32::NAN),
+        ] {
+            let mut malformed = before.map(|v| v as f32);
+            malformed[index] = value;
+            plugin::receive_meter(&mirror, malformed);
+            assert_eq!(plugin::meter_values(&mirror), before);
+        }
+        actual.set(P::Bypass, 1.0).unwrap();
+        assert_eq!(meter.spectrum.reading().valid_branches, 0);
+        actual.set(P::Bypass, 0.0).unwrap();
+        for _ in 0..rate / 4 {
+            actual.process_sample([0.1, -0.1]);
+        }
+        assert_eq!(meter.spectrum.reading().valid_branches, 1);
+        actual.reset();
+        assert_eq!(meter.spectrum.reading().valid_branches, 0);
+        meter.clear_spectrum();
+    }
 }

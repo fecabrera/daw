@@ -480,8 +480,10 @@ mod audition_tests {
                 *values.get_mut(77 + index).unwrap() = 3.0;
                 *values.get_mut(141 + index).unwrap() = 6.0;
             }
-            if daw_drive_plugin::METER_VALUES == 668 {
-                *values.get_mut(141).unwrap() = 48_000.0;
+            if matches!(daw_drive_plugin::METER_VALUES, 668 | 796) {
+                *values
+                    .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(527))
+                    .unwrap() = 48_000.0;
                 *values
                     .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(14))
                     .unwrap() = 2.0;
@@ -513,8 +515,10 @@ mod audition_tests {
                     *values.get_mut(141 + index).unwrap() = 6.0;
                 }
             }
-            if daw_drive_plugin::METER_VALUES == 668 {
-                *values.get_mut(141).unwrap() = 48_000.0;
+            if matches!(daw_drive_plugin::METER_VALUES, 668 | 796) {
+                *values
+                    .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(527))
+                    .unwrap() = 48_000.0;
                 *values
                     .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(14))
                     .unwrap() = 2.0;

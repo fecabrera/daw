@@ -4,7 +4,7 @@ use daw_unit_core::{MeterStorage, spectrum_frequency};
 fn preparing_repeated_updates_never_clears_the_visible_spectrum() {
     for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
         let meter = Arc::new(SpectrumMeter::default());
-        let mut current = Spectrum::new(rate, true);
+        let mut current = SpectrumAnalyzer::new(rate, true);
         current.attach(meter.clone());
         for i in 0..rate as usize * 2 {
             let v = (std::f32::consts::TAU * 1000.0 * i as f32 / rate as f32).sin() * 0.5;
@@ -13,7 +13,7 @@ fn preparing_repeated_updates_never_clears_the_visible_spectrum() {
         let before = meter.reading();
         assert!(before.magnitudes.iter().any(|v| *v > 0.3));
         for _ in 0..20 {
-            let mut prepared = Spectrum::new(rate, true);
+            let mut prepared = SpectrumAnalyzer::new(rate, true);
             prepared.attach(meter.clone());
             assert_eq!(meter.reading().magnitudes, before.magnitudes);
             current.retarget(&mut prepared);
@@ -27,7 +27,7 @@ fn preparing_repeated_updates_never_clears_the_visible_spectrum() {
 fn spectrum_tracks_tones_at_every_rate_without_stereo_cancellation_and_clears_bypass() {
     for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
         for hz in [80.0, 1000.0, 12000.0] {
-            let mut spectrum = Spectrum::new(rate, true);
+            let mut spectrum = SpectrumAnalyzer::new(rate, true);
             let meter = Arc::new(SpectrumMeter::default());
             spectrum.attach(meter.clone());
             for i in 0..rate as usize * 2 {
@@ -75,7 +75,7 @@ fn peak(reading: &SpectrumReading, low: f32, high: f32) -> f32 {
         .fold(0.0, f32::max)
 }
 fn signal(rate: u32, tones: &[(f64, f64)], seconds: usize) -> SpectrumReading {
-    let mut analyzer = Spectrum::new(rate, true);
+    let mut analyzer = SpectrumAnalyzer::new(rate, true);
     let meter = Arc::new(SpectrumMeter::default());
     analyzer.attach(meter.clone());
     for i in 0..rate as usize * seconds {
@@ -122,8 +122,8 @@ fn resolved_pairs_have_measured_valleys_at_all_rates_and_phases() {
 #[test]
 fn cold_readiness_scheduler_memory_and_release_meet_the_bounds() {
     for rate in RATES {
-        let mut s = Spectrum::new(rate, true);
-        assert!(s.heap_bytes() + (std::mem::size_of::<Spectrum>() as u64) < 600 * 1024);
+        let mut s = SpectrumAnalyzer::new(rate, true);
+        assert!(s.heap_bytes() + (std::mem::size_of::<SpectrumAnalyzer>() as u64) < 600 * 1024);
         let meter = Arc::new(SpectrumMeter::default());
         s.attach(meter.clone());
         let mut upper = 0;
@@ -173,7 +173,7 @@ fn cold_readiness_scheduler_memory_and_release_meet_the_bounds() {
 }
 #[test]
 fn compatible_retarget_preserves_pending_jobs_and_next_publication_exactly() {
-    let mut current = Spectrum::new(48000, true);
+    let mut current = SpectrumAnalyzer::new(48000, true);
     let meter = Arc::new(SpectrumMeter::default());
     current.attach(meter.clone());
     for i in 0..40001 {
@@ -183,7 +183,7 @@ fn compatible_retarget_preserves_pending_jobs_and_next_publication_exactly() {
     let mut reference = current.clone();
     reference.attach(Arc::new(SpectrumMeter::default()));
     reference.active = true;
-    let mut prepared = Spectrum::new(48000, true);
+    let mut prepared = SpectrumAnalyzer::new(48000, true);
     prepared.attach(meter);
     current.retarget(&mut prepared);
     for i in 0..12000 {
@@ -226,7 +226,7 @@ fn analyzer_cpu_and_32_frame_tails() {
         for count in [1, 8, 32] {
             let mut analyzers: Vec<_> = (0..count)
                 .map(|_| {
-                    let mut s = Spectrum::new(rate, true);
+                    let mut s = SpectrumAnalyzer::new(rate, true);
                     s.attach(Arc::new(SpectrumMeter::default()));
                     s
                 })
@@ -264,7 +264,7 @@ fn analyzer_cpu_and_32_frame_tails() {
 fn warmed_onsets_remain_responsive_and_resolved_stereo_tones_remain_distinct() {
     for rate in RATES {
         for hz in [80.0, 1000.0] {
-            let mut s = Spectrum::new(rate, true);
+            let mut s = SpectrumAnalyzer::new(rate, true);
             s.attach(Arc::new(SpectrumMeter::default()));
             for _ in 0..rate {
                 s.sample([0.0; 2]);
@@ -284,7 +284,7 @@ fn warmed_onsets_remain_responsive_and_resolved_stereo_tones_remain_distinct() {
             // Reserve 35 ms for ordinary display easing on top of producer age.
             assert!(seconds + 0.035 <= 0.150, "{rate} {hz}: {seconds}");
         }
-        let mut s = Spectrum::new(rate, true);
+        let mut s = SpectrumAnalyzer::new(rate, true);
         s.attach(Arc::new(SpectrumMeter::default()));
         for i in 0..rate {
             let phase = std::f64::consts::TAU * f64::from(i) / f64::from(rate);
@@ -305,7 +305,7 @@ fn warmed_onsets_remain_responsive_and_resolved_stereo_tones_remain_distinct() {
 fn bass_keeps_the_fast_resolution_without_a_later_handoff() {
     for rate in RATES {
         for hz in [20.3, 40.0, 80.0, 240.0, 317.0] {
-            let mut s = Spectrum::new(rate, true);
+            let mut s = SpectrumAnalyzer::new(rate, true);
             s.attach(Arc::new(SpectrumMeter::default()));
             let mut early_peak = 0.0;
             for frame in 0..rate * 2 {

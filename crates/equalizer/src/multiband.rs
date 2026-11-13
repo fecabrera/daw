@@ -495,7 +495,7 @@ impl ModulationDestination for Output {
 pub struct MultibandEq {
     audition_allowed: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     output_monitor: daw_unit_core::LevelMonitor<3>,
-    spectrum: crate::spectrum::Spectrum,
+    spectrum: daw_spectrum::SpectrumAnalyzer,
     bands: Vec<RoutedDestination<Band>>,
     output: RoutedDestination<Output>,
     audition: Ramp<1>,
@@ -521,7 +521,7 @@ impl MultibandEq {
         Self {
             audition_allowed: None,
             output_monitor: daw_unit_core::LevelMonitor::new(c.sample_rate_hz, s.enabled),
-            spectrum: crate::spectrum::Spectrum::new(c.sample_rate_hz, s.enabled),
+            spectrum: daw_spectrum::SpectrumAnalyzer::new(c.sample_rate_hz, s.enabled),
             bands: s
                 .bands
                 .iter()

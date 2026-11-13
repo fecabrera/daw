@@ -5742,23 +5742,37 @@ fn oscillator_cents_width_modulation_has_stereo_live_export_seek_and_allocation_
 }
 
 #[test]
-fn multiband_eq_spectrum_is_display_only_allocation_free_and_scoped_to_every_bus() {
+fn multiband_effect_spectrum_is_display_only_allocation_free_and_scoped_to_every_bus() {
     use std::sync::Arc;
     for rate in SAMPLE_RATES {
-        for (owner, shaped) in ["track", "layer", "main", "master"]
+        for (owner, shaped, compressor) in ["track", "layer", "main", "master"]
             .into_iter()
-            .flat_map(|owner| [false, true].map(|shaped| (owner, shaped)))
+            .flat_map(|owner| {
+                [false, true].into_iter().flat_map(move |shaped| {
+                    [false, true].map(|compressor| (owner, shaped, compressor))
+                })
+            })
         {
             let mut p = plan(Waveform::Sine, rate);
-            let mut effect = EffectInstance::multiband_equalizer();
+            let mut effect = if compressor {
+                EffectInstance::multiband_compressor()
+            } else {
+                EffectInstance::multiband_equalizer()
+            };
             if shaped {
-                let EffectSettings::MultibandEq(settings) = &mut effect.unit else {
-                    unreachable!()
-                };
-                settings.bands[0].frequency_hz = 90.0;
-                settings.bands[0].gain_db = 9.0;
-                settings.bands[0].q = 1.6;
-                settings.output_gain_db = -3.0;
+                match &mut effect.unit {
+                    EffectSettings::MultibandEq(settings) => {
+                        settings.bands[0].frequency_hz = 90.0;
+                        settings.bands[0].gain_db = 9.0;
+                        settings.bands[0].q = 1.6;
+                        settings.output_gain_db = -3.0;
+                    }
+                    EffectSettings::MultibandCompressor(settings) => {
+                        settings.bands[0].threshold_db = -36.0;
+                        settings.level_db = -3.0;
+                    }
+                    _ => unreachable!(),
+                }
             }
             let id = effect.id;
             match owner {

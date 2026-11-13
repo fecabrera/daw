@@ -316,6 +316,7 @@ pub struct LevelMonitor<const N: usize> {
     release: f32,
     meter: UnitMeter<[AtomicU32; N]>,
     peak_meter: UnitMeter<BandMeter<N>>,
+    peak_pending: bool,
 }
 impl<const N: usize> LevelMonitor<N> {
     pub fn new(sample_rate_hz: u32, enabled: bool) -> Self {
@@ -324,6 +325,7 @@ impl<const N: usize> LevelMonitor<N> {
             release: (-1.0 / (LEVEL_METER_RELEASE_SECONDS * sample_rate_hz as f32)).exp(),
             meter: UnitMeter::new(enabled),
             peak_meter: UnitMeter::new(enabled),
+            peak_pending: false,
         }
     }
     pub fn attach(&mut self, handle: Arc<[AtomicU32; N]>) {
@@ -331,6 +333,13 @@ impl<const N: usize> LevelMonitor<N> {
     }
     pub fn attach_peak(&mut self, handle: Arc<BandMeter<N>>) {
         self.peak_meter.attach(handle, self.peaks);
+        self.peak_pending = false;
+    }
+    /// Control/worker binding only. Preserve the active producer's live readings;
+    /// samples or serialized inheritance publish the prepared instance's state.
+    pub fn attach_peak_prepared(&mut self, handle: Arc<BandMeter<N>>) {
+        self.peak_meter.attach_prepared(handle);
+        self.peak_pending = true;
     }
     pub fn is_connected(&self) -> bool {
         self.peak_meter.is_connected() || self.meter.is_connected()
@@ -339,6 +348,7 @@ impl<const N: usize> LevelMonitor<N> {
     /// Old handles stay in `prepared` for retirement; this never drops their final owners.
     pub fn retarget(&mut self, prepared: &mut Self) {
         let enabled = prepared.is_enabled();
+        self.peak_pending = false;
         std::mem::swap(&mut self.meter.handle, &mut prepared.meter.handle);
         std::mem::swap(&mut self.peak_meter.handle, &mut prepared.peak_meter.handle);
         self.set_enabled(enabled);
@@ -372,6 +382,14 @@ impl<const N: usize> LevelMonitor<N> {
     }
     #[inline]
     pub fn sample(&mut self, levels: [f32; N]) {
+        if self.peak_pending {
+            self.peak_pending = false;
+            // A newly activated disabled processor must clear stale values,
+            // but worker attachment must leave the previous producer untouched.
+            if !self.is_enabled() {
+                self.peak_meter.clear();
+            }
+        }
         if !self.is_connected() {
             return;
         }

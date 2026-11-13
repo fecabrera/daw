@@ -5,6 +5,179 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Multiband Compressor crossover selection color — 2026-11-13
+
+Crossover lines now share the threshold lines' 30% secondary gray and use 65%
+accent only when selected and the unit is on. One UI selection stores stable band
+identity plus control kind. Selecting a crossover clears the threshold highlight
+and conversely; selection persists after release without editing settings.
+All interactions resolve before either line type is painted, preventing a stale
+accent in the press frame when moving selection between controls.
+
+Focused unit-ui and compressor-editor debug suites pass:
+`cargo test -p daw-unit-ui -p daw-multiband-compressor-editor --offline`.
+The appearance regression covers both crossover lines, all threshold handles,
+selection switching in both directions, press/release/persistence and unchanged
+settings, across Dark/Light/Mist themes and three display scales. Existing
+crossover/threshold gestures, limits, cancellation and host queue retry checks pass.
+
+Final full workspace checks pass separately in debug
+(`cargo test --workspace --offline`) and release
+(`cargo test --workspace --release --offline`). Formatting, strict
+workspace/all-target Clippy, changed-document local links and staged/unstaged
+diff checks pass. The native macOS debug desktop executable and compressor/EQ
+CLAP/VST3 development libraries build offline.
+
+Native visual/pointer/device and external-host checks remain unverified.
+
+## Multiband Compressor threshold handle appearance — 2026-11-13
+
+Threshold segments now use EQ's unselected band-line gray. Each has a centered,
+unnumbered round handle painted by the same helper as EQ. UI selection retains
+stable band identity after release; only the selected enabled handle/segment
+uses the accent color. Selection does not change settings. The hit area includes
+the full handle while preserving crossover hits at intersections.
+
+Focused debug unit-ui and compressor-editor package suites pass:
+`cargo test -p daw-unit-ui -p daw-multiband-compressor-editor --offline`.
+Coverage includes Dark/Light/Mist themes, 1×/1.25×/2× scales, handle shape/color,
+absence of numbers, selected/unselected lines, release persistence and unchanged
+settings. A press-frame regression first reproduced both the previous and new
+handles using the accent color. Painting after selection resolution fixes it;
+the same regression now passes. Existing drag, cancellation, host gesture and
+queue-retry tests also pass. Response footer alignment remains covered.
+An earlier release run started before the appearance change used the former
+accent-color marker expectation and failed its marker-count assertion. The
+fixture now finds the unselected gray lines; the focused debug suite and
+`cargo test -p daw-multiband-compressor-editor --release --offline threshold_gesture`
+pass with that expectation. Final workspace validation uses frozen updated sources.
+
+Final full workspace checks pass separately in debug
+(`cargo test --workspace --offline`) and release
+(`cargo test --workspace --release --offline`). Formatting, strict
+workspace/all-target Clippy, changed-document local links and staged/unstaged
+diff checks pass. The native macOS debug desktop executable and compressor/EQ
+CLAP/VST3 development libraries build offline. The full runs include the footer
+alignment check and the final press-frame selection regression. No DSP behavior
+or saved schema changes are introduced by this appearance correction.
+
+Native visual/pointer/device and external-host checks remain unverified.
+
+## Multiband Compressor Response footer alignment — 2026-11-13
+
+The Response strip now reuses the compressor's footer spacing and 18-point row.
+Its label aligns with Split, all band labels and Out instead of following the
+chart's height. The shared DAW/standalone body retains the chart geometry.
+
+The focused egui check passes across Dark, Light and Mist themes at 1×, 1.25×
+and 2× display scales, including compact/expanded transitions and label-center
+alignment against every other strip. Command:
+`cargo test -p daw-unit-ui --offline spectrum_tests`.
+
+Native visual checks remain unverified.
+
+## Multiband Compressor threshold graph dragging — 2026-11-13
+
+Each band now has a horizontal threshold segment within its displayed frequency
+span. Vertical drags edit the existing Threshold parameter, bounded to −60…0
+dBFS. The shared graph draft keeps the Threshold knob synchronized. Crossover
+hits remain available at intersections. Shift, cancellation, worker previews and
+one release-only DAW edit follow the crossover gesture lifecycle.
+
+Focused debug checks pass for both host modes, upper/lower limits, band identity,
+other-band preservation, press stability, Shift changes without jumps,
+Escape/focus/disabled/compact/external-change cancellation and crossover
+intersections. DAW track/Master previews preserve project/history while held and
+support one-step Undo/Redo. Standalone Threshold gestures keep balanced
+Begin/Value/End and retry cancellation after a full editor queue. Commands:
+`cargo test -p daw-unit-ui --offline compressor_graph` and
+`cargo test -p daw-unit-ui -p daw-ui -p daw-multiband-compressor-editor --offline threshold`.
+
+The final shared-body debug and release suites pass for `daw-unit-ui`, `daw-ui`,
+`daw-multiband-compressor-editor` and `daw-multiband-eq-editor`.
+Formatting, strict workspace/all-target Clippy, changed-document local links and
+staged/unstaged diff checks pass. The native macOS debug desktop executable and
+CLI/compressor/EQ CLAP/VST3 development libraries build offline. The CLI smoke
+check passes. Full offline workspace tests pass separately in debug
+(`cargo test --workspace --offline`) and release
+(`cargo test --workspace --release --offline`). The final shared-body suites
+include the final narrow-band line inset. These builds and automated tests do
+not establish native pointer, device or external-host behavior.
+
+Native pointer/device and external-host checks remain unverified.
+
+## Multiband Compressor crossover graph dragging — 2026-11-13
+
+Crossover markers now edit frequency. This supersedes the initial read-only
+marker behavior below. The shared body uses logarithmic horizontal movement,
+neighbor/20 Hz/1 Hz-gap bounds, Shift fine control and stable band identity.
+The DAW stages live audio plans through the existing EQ graph preview worker,
+keeps project/history unchanged while held and commits one edit on release.
+Plugins use bounded live Frequency gestures and cancellation rollback, including
+retry after a full editor queue. Split displays the held draft value.
+
+Focused egui tests pass for press stability, fine mode, both host modes,
+neighbor clamping, individually grabbable 1 Hz-spaced lines,
+Escape/focus/disabled/compact/external-change cancellation;
+DAW track/Master atomic previews and Undo/Redo; plugin Begin/Value/End and queue
+retry; and the unchanged EQ preview flow. Commands:
+`cargo test -p daw-unit-ui --offline crossover_drag`,
+`cargo test -p daw-ui --offline graph_preview` and
+`cargo test -p daw-multiband-compressor-editor --offline crossover_gesture`.
+
+Native pointer/device and external-host checks remain unverified.
+
+## Multiband Compressor band-level release — 2026-11-13
+
+The band rails previously published instantaneous waveform samples, causing
+troughs to blank readings between peaks. Each band now uses the shared
+`LevelMonitor<3>` for linked/L/R instant attack and 300 ms release. Raw samples
+still drive held peaks. Separate gain-reduction telemetry and audio are unchanged.
+No UI smoothing, parameter or persistent-state change is added.
+
+Six-rate regressions pass for 300 ms decay, alternating buffers, linked/L/R
+levels, raw held peaks without release re-latching, inherited release history,
+reset, compression bypass and whole-unit power. A worker-binding regression first
+reproduced an active rail dropping from 0.18393616 to zero during preparation.
+Band binding now uses the shared non-publishing prepared attachment and retains
+that reading through compatible inheritance. Plugin contract/editor/CLAP/VST3
+checks pass. Commands include the portable compressor `--test spectrum` and
+compressor product package suites.
+
+Native visual/device and external-host checks remain unverified.
+
+## Multiband Compressor live output spectrum — 2026-11-13
+
+The expanded compressor now shares EQ's live spectrum with read-only crossover
+markers, a dBFS axis and the Response footer. Compact/collapsed and power masking
+remain shared. The prepared full-range analyzer and coherent telemetry codec are
+extracted unchanged into the portable `daw-spectrum` crate. EQ retains its wire
+layout and signal behavior. Compressor VST3 adds a 796-value schema-2 message with
+an intact 269-value v1 scalar/band fallback; CLAP shares prepared handles.
+
+Focused tests pass: analyzer signal/scheduler/history matrix; EQ and compressor
+plugin contracts; compressor editor parity/gestures; actual VST3 factory transport,
+legacy/stopped masking and malformed frames; six-rate monitored/unmonitored exact
+PCM and callback heap guards on track/layer/Main/Master; transport/seek/cancelled
+preparation with latent chains; five-scope handle discovery/binding; compressor
+state inheritance; and graph themes/scales, crossover positions and compact mode.
+Commands include selected `daw-spectrum`, plugin/editor/VST3 package suites,
+`daw-unit-ui spectrum_tests`, engine `multiband_effect_spectrum` and
+`effect_spectrum_readiness`, output `every_spectrum_scope`, and portable compressor
+`--test spectrum`.
+
+Full offline debug/release workspace tests pass, including a clean final release
+pass after correcting constant-offset arithmetic in shared VST3 test fixtures.
+Strict workspace/all-target Clippy, formatting, changed-document links and diff
+checks pass. Desktop debug executable, CLI and both EQ/compressor CLAP/VST3 library
+builds pass; `python3 tools/check_cli.py` passes. Final source hashes stayed stable
+through the final verification. Commands use the standard repository workspace
+checks, `tools/build_desktop.py debug macos`, and Cargo builds of the affected
+products. No native external-host or GPU presentation timing is inferred.
+
+Native UI/device, representative external CLAP/VST3 hosts and Windows/Linux
+checks remain unverified.
+
 ## Multiband EQ permanent full-range fast spectrum — 2026-11-13
 
 The user selected permanent preview resolution. One full-range FFT now serves

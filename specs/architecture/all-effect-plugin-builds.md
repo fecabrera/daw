@@ -146,16 +146,17 @@ uses bounded pitch regeneration and a contractive eight-line late tank.
 
 ## Spectrum wire compatibility
 
-Multiband EQ schema 2 uses `daw.output-meter.request.v2` and
-`daw.output-meter.reading.v2`, with a required `value-count` integer of 668.
+Multiband EQ and Multiband Compressor spectrum schema 2 use `daw.output-meter.request.v2` and
+`daw.output-meter.reading.v2`, with required exact `value-count` integers of 668
+and 796 respectively. Their common 527-value suffix uses `daw-spectrum::telemetry`.
 The controller tries v2 first and falls back to v1 when unsupported. V1 requests
-receive only 206 exposed attributes and zero spectrum. New controllers accept
-the original 142-value scalar/rate prefix, mask legacy spectrum and mark it
-unavailable. Other products retain their existing v1 messages and payload sizes.
+receive 206 EQ attributes or all 269 compressor scalar/band values. New controllers
+retain these scalar prefixes and mask unavailable legacy spectrum. Other products
+retain their existing v1 messages and payload sizes.
 Shared adapter code must not require EQ-only symbols from other product crates.
 
 The [effect contract](../effects/multiband-eq.md#response-graph-and-live-spectrum)
-defines all 668 offsets. Four exact unsigned 16-bit words encode each u64 clock
+defines all EQ offsets; the [compressor contract](../effects/multiband-compressor.md#live-output-spectrum-and-crossover-markers) defines its 796-value layout. Four exact unsigned 16-bit words encode each u64 clock
 or generation. Reject unsupported schemas, lengths, flags, rates, nonfinite
 values, invalid words and impossible ready clocks before applying the frame.
 Stopped transport masks magnitudes/readiness/clocks while retaining scalar held

@@ -13,6 +13,14 @@ const GAP: f32 = 3.0;
 pub struct Bounds {
     pub rect: Rect,
     pub ranges: Rect,
+    pub graph: Rect,
+    pub plot: Rect,
+    pub crossover_markers: Vec<Rect>,
+    pub crossover_preview: Option<(daw_unit_core::ModulationTargetId, f32)>,
+    pub crossover_edits: Vec<(daw_unit_core::ModulationTargetId, Response)>,
+    pub threshold_markers: Vec<Rect>,
+    pub threshold_preview: Option<(daw_unit_core::ModulationTargetId, f32)>,
+    pub threshold_edits: Vec<(daw_unit_core::ModulationTargetId, Response)>,
     pub crossovers: Vec<Rect>,
     pub bands: Vec<Rect>,
     pub band_responses: Vec<Response>,
@@ -31,6 +39,14 @@ impl Default for Bounds {
         Self {
             rect: Rect::NOTHING,
             ranges: Rect::NOTHING,
+            graph: Rect::NOTHING,
+            plot: Rect::NOTHING,
+            crossover_markers: Vec::new(),
+            crossover_preview: None,
+            crossover_edits: Vec::new(),
+            threshold_markers: Vec::new(),
+            threshold_preview: None,
+            threshold_edits: Vec::new(),
             crossovers: Vec::new(),
             bands: Vec::new(),
             band_responses: Vec::new(),
@@ -47,6 +63,9 @@ impl Default for Bounds {
     }
 }
 pub struct Controls<'a> {
+    /// Plugins publish live gestures; DAW hosts stage plans and commit on release.
+    pub live_graph_edits: bool,
+    pub spectrum: Option<&'a daw_unit_core::SpectrumReading>,
     pub solos: &'a mut [bool],
     pub band_markers: &'a [[Option<ModulationMarker>; 6]],
     pub output_markers: &'a [Option<ModulationMarker>; 2],
@@ -55,7 +74,7 @@ pub struct Controls<'a> {
     pub reductions: &'a [meters::GainReduction<'a>],
     pub add_enabled: bool,
 }
-fn footer_space(ui: &mut Ui, start: f32, height: f32) {
+pub(crate) fn footer_space(ui: &mut Ui, start: f32, height: f32) {
     ui.add_space((height - 18.0 - (ui.cursor().top() - start)).max(0.0));
 }
 
@@ -92,13 +111,20 @@ fn ranges(
                                 .named("Crossover")
                                 .reset_to(reset)
                                 .display_scale(SIZE / knobs::CHOICE_SIZE);
+                            let mut value = bounds
+                                .crossover_preview
+                                .filter(|(id, _)| *id == s.bands[i].id)
+                                .map_or(s.bands[i].upper_hz, |(_, hz)| hz);
                             let response = ui
                                 .push_id(s.bands[i].id, |ui| {
-                                    knobs::row(ui, &mut s.bands[i].upper_hz, SIZE, |ui, v| {
+                                    knobs::row(ui, &mut value, SIZE, |ui, v| {
                                         ui.add(Knob::new(v, spec))
                                     })
                                 })
                                 .inner;
+                            if response.changed() {
+                                s.bands[i].upper_hz = value.clamp(min, max);
+                            }
                             s.bands[i].upper_hz = s.bands[i].upper_hz.clamp(min, max);
                             bounds.crossovers.push(response.rect);
                             response.on_hover_text(format!(
@@ -118,6 +144,7 @@ fn ranges(
         .rect;
 }
 struct BandControls<'a> {
+    threshold_preview: Option<f32>,
     markers: &'a [Option<ModulationMarker>; 6],
     open: &'a mut bool,
     solo: &'a mut bool,
@@ -222,10 +249,19 @@ fn band(
                                     if target == 5 {
                                         spec = spec.named("Makeup");
                                     }
-                                    ui.add(
-                                        Knob::new(value, spec)
+                                    let mut shown = if target == 0 {
+                                        c.threshold_preview.unwrap_or(*value)
+                                    } else {
+                                        *value
+                                    };
+                                    let response = ui.add(
+                                        Knob::new(&mut shown, spec)
                                             .modulated(c.markers[target].as_ref(), c.open),
-                                    )
+                                    );
+                                    if response.changed() {
+                                        *value = shown;
+                                    }
+                                    response
                                 });
                                 if row < 3 {
                                     let target = match (row, column) {
@@ -381,6 +417,10 @@ pub fn show(
     let mut remove = None;
     b.rect = ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
+        let graph = crate::compressor_graph::show(ui,s,dimensions,c.spectrum,c.live_graph_edits);
+        b.graph=graph.section;b.plot=graph.plot;b.crossover_markers=graph.markers;
+        b.crossover_preview=graph.preview;b.crossover_edits=graph.edits;
+        b.threshold_markers=graph.thresholds; b.threshold_preview=graph.threshold_preview; b.threshold_edits=graph.threshold_edits;
         ranges(ui, s, dimensions, &mut b);
         let order:Vec<_>=if s.presentation.is_empty() {(0..s.bands.len()).collect()}else{s.presentation.iter().filter_map(|id|s.bands.iter().position(|b|b.id==*id)).collect()};
         for i in order {
@@ -389,6 +429,7 @@ pub fn show(
             let mut unused = false;
             let empty = std::array::from_fn(|_| None);
             let controls = BandControls {
+                threshold_preview: b.threshold_preview.filter(|(id,_)| *id == s.bands[i].id).map(|(_,db)|db),
                 markers: c.band_markers.get(i).unwrap_or(&empty), open: &mut s.modulation_open,
                 solo: c.solos.get_mut(i).unwrap_or(&mut unused), removable: s.bands.len() > 1,
                 reduction:c.reductions.get(i).copied().unwrap_or(0.0.into()),
@@ -412,4 +453,101 @@ pub fn show(
         s.remove_band(id);
     }
     b
+}
+
+#[cfg(test)]
+mod spectrum_tests {
+    use super::*;
+    #[test]
+    fn graph_and_markers_follow_crossovers_without_editing_or_changing_band_indices() {
+        for (mode, palette) in [
+            (egui::Theme::Dark, crate::theme::LIGHT),
+            (egui::Theme::Light, crate::theme::LIGHT),
+            (egui::Theme::Light, crate::theme::MIST),
+        ] {
+            for scale in [1.0, 1.25, 2.0] {
+                let ctx = egui::Context::default();
+                crate::theme::configure(&ctx);
+                crate::fonts::configure(&ctx);
+                crate::theme::apply(&ctx, mode, palette, crate::theme::ACCENT);
+                ctx.set_pixels_per_point(scale);
+                let mut s = MultibandCompressorSettings::default();
+                let reading = daw_unit_core::SpectrumReading {
+                    magnitudes: [0.1; 512],
+                    valid_branches: 1,
+                    ..Default::default()
+                };
+                for compact in [false, true, false] {
+                    let before = s.clone();
+                    let mut bounds = Bounds::default();
+                    let mut solos = vec![false; s.bands.len()];
+                    let mut out = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                Vec2::new(1500.0, 500.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            bounds = show(
+                                ui,
+                                &mut s,
+                                (compact, panels::unit_control_height()),
+                                Controls {
+                                    live_graph_edits: false,
+                                    spectrum: Some(&reading),
+                                    solos: &mut solos,
+                                    band_markers: &[],
+                                    output_markers: &[None, None],
+                                    level: 0.0.into(),
+                                    levels: &[],
+                                    reductions: &[],
+                                    add_enabled: true,
+                                },
+                            );
+                        },
+                    );
+                    out.textures_delta.clear();
+                    assert_eq!(s, before);
+                    assert_eq!(bounds.crossover_markers.len(), if compact { 0 } else { 2 });
+                    if compact {
+                        assert_eq!(bounds.graph, Rect::NOTHING);
+                    } else {
+                        assert!(bounds.graph.right() <= bounds.ranges.left());
+                        assert!(bounds.graph.contains_rect(bounds.plot));
+                        for (i, marker) in bounds.crossover_markers.iter().enumerate() {
+                            assert!(
+                                (marker.center().x
+                                    - crate::spectrum_graph::frequency_x(
+                                        bounds.plot,
+                                        s.bands[i].upper_hz
+                                    ))
+                                .abs()
+                                    < 0.01
+                            );
+                        }
+                        let label_y = |name: &str| {
+                            out.shapes
+                                .iter()
+                                .find_map(|p| match &p.shape {
+                                    egui::Shape::Text(t) if t.galley.text() == name => {
+                                        Some(t.pos.y + t.galley.size().y * 0.5)
+                                    }
+                                    _ => None,
+                                })
+                                .unwrap()
+                        };
+                        for name in ["Split", "Out", "Band 1", "Band 2", "Band 3"] {
+                            assert!(
+                                (label_y("Response") - label_y(name)).abs() < 0.01,
+                                "Response and {name} footers differ"
+                            );
+                        }
+                    }
+                    s.bands[0].upper_hz = 400.0;
+                }
+            }
+        }
+    }
 }

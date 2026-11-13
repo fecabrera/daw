@@ -1,0 +1,10 @@
+[package]
+name = "daw-spectrum"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+description = "Prepared bounded live stereo spectrum analysis and coherent telemetry"
+
+[dependencies]
+daw-unit-core.workspace = true
