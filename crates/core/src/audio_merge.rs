@@ -91,7 +91,7 @@ impl Project {
         merged.channels = ClipChannels::default();
         merged.transpose = 0;
         merged.muted = false;
-        next.validate()?;
+        next.prepare_compound_routing()?;
         Ok((next, id))
     }
 }

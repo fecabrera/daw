@@ -1764,7 +1764,7 @@ mod tests {
         assert_eq!(plan.sample_at(1000), [0.0, -0.25]);
     }
 
-    fn plan() -> RenderPlan {
+    pub(super) fn plan() -> RenderPlan {
         use daw_core::{Asset, Clip, Source, SourceMetadata};
         use std::sync::Arc;
         let mut project = Project::default();

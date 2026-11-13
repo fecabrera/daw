@@ -5,6 +5,36 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Compound routing and crossfade staging fixes — 2026-11-13
+
+Audio Merge preserves captured Pre sends and historical sidechain providers in
+version 2 companion compound recipes. Shared preparation handles member and wrapper
+edits; main-source extraction excludes auxiliary routing. Manifest loading repairs
+legacy recipes with deterministic private IDs. Metadata admission precedes recipe
+cloning, and source validation includes routing dependency edges. Captured file
+sources keep version 1; older readers reject the new compound capability.
+
+Disk crossfade preflight now stages the continuation stereo value as well as the
+primary value. Callback consumption uses those staged values if a cache slot is
+invalidated after readiness. Missing data retains the existing hold path without
+callback allocation or locking.
+
+Three new project Bounce regressions pass: silent-fader Pre sends, nested and mixed
+mono/stereo recipes with live nonlinear effects and latency, gaps, old-ID Pre/Post
+sidechains, multiple providers with absent members, wrapper gain/channels/crops/
+repeats/pitch/stretch, full-source seams, source-only extraction, re-bounce, Undo/Redo,
+save/reopen, deterministic legacy inspection and feedback/source-cycle rejection. The new engine regression passes for both crossfade
+directions after replacing the successfully preflighted caches with empty readers.
+Mixed-recipe checks also compare looping against an unfolded reference and cropped
+prepared activity against ordinary post-effect audio.
+
+`cargo test --workspace --offline` and `cargo test --workspace --release --offline`
+passed on the final source. Strict workspace/all-target Clippy, formatting, CLI
+build/smoke checks, changed-document links, diff checks and the macOS arm64 debug
+desktop executable build passed. Final source hashes stayed unchanged throughout
+this verification. Native device/listening and Windows/Linux checks remain open.
+The ONNX shape-inference issue is deliberately unchanged.
+
 ## Review skill reviewer stances — 2026-11-13
 
 The DAW review skill accepts separate adversarial/neutral counts or per-reviewer

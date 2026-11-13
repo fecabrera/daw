@@ -149,6 +149,26 @@ impl CompoundLayout {
             members,
         })
     }
+    /// Authored activity, independent of decoded availability or sample energy.
+    /// Historical Pre overrides must not replace ordinary post-effect audio.
+    pub fn active_at(&mut self, frame: u64) -> bool {
+        let Some(index) = self.ranges.at(frame) else {
+            return false;
+        };
+        let member = &mut self.members[index];
+        if member.clip.muted {
+            return false;
+        }
+        member.child.as_mut().is_none_or(|child| {
+            let position = member.clip.source_frame(frame - member.clip.start_frame);
+            child.active_at(
+                member
+                    .clip
+                    .stretch
+                    .map_or(position, |s| s.original_frame(position)),
+            )
+        })
+    }
     pub fn at_continued(&mut self, frame: i128) -> Option<bool> {
         let last = self.members.last()?.clip.end().checked_sub(1)?;
         self.at(frame.clamp(0, i128::from(last)) as u64)

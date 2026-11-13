@@ -79,7 +79,11 @@ impl Project {
         let mut marks = HashMap::new();
         let mut depths: HashMap<Id, usize> = HashMap::new();
         let mut bytes = 0u64;
-        for root in self.assets.iter().filter(|a| a.compound_audio.is_some()) {
+        for root in self
+            .assets
+            .iter()
+            .filter(|a| a.compound_audio.is_some() || a.rendered_audio.is_some())
+        {
             if marks.get(&root.id) == Some(&2) {
                 continue;
             }
@@ -112,22 +116,29 @@ impl Project {
                 let asset = assets
                     .get(&id)
                     .ok_or_else(|| Error("Compound dependency is missing".into()))?;
-                let Some(source) = &asset.compound_audio else {
-                    depths.insert(id, 0);
-                    marks.insert(id, 2);
-                    continue;
-                };
                 bytes = bytes
                     .checked_add(
-                        source
-                            .metadata_bytes()
+                        asset
+                            .compound_audio
+                            .as_ref()
+                            .map_or(Some(0), |source| source.metadata_bytes())
                             .ok_or_else(|| Error("Compound metadata overflow".into()))?,
                     )
                     .filter(|n| *n <= COMPOUND_METADATA_LIMIT)
                     .ok_or_else(|| Error("Compound metadata admission exceeded".into()))?;
                 marks.insert(id, 1);
                 stack.push((id, true));
-                stack.extend(source.members.iter().rev().map(|m| (m.asset_id, false)));
+                if let Some(source) = &asset.compound_audio {
+                    stack.extend(source.members.iter().rev().map(|m| (m.asset_id, false)));
+                }
+                if let Some(source) = &asset.rendered_audio {
+                    stack.extend(
+                        source
+                            .dependencies()
+                            .filter(|child| *child != id)
+                            .map(|child| (child, false)),
+                    );
+                }
             }
         }
         Ok(())

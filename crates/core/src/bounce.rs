@@ -223,9 +223,13 @@ impl Project {
                 }
                 continue;
             };
-            if source.version != 1
-                || a.source.kind != "rendered_audio"
-                || a.compound_audio.is_some()
+            let file = source.version == 1
+                && a.source.kind == "rendered_audio"
+                && a.compound_audio.is_none();
+            let compound = source.version == 2
+                && a.source.kind == "compound_audio"
+                && a.compound_audio.is_some();
+            if !(file || compound)
                 || a.midi_pattern.is_some()
                 || a.beat_pattern.is_some()
                 || a.source_metadata.channels != 2
@@ -252,7 +256,10 @@ impl Project {
                     .iter()
                     .find(|l| l.id == id)
                     .ok_or_else(|| Error("Missing rendered audio dependency".into()))?;
-                if id != a.id && (leaf.rendered_audio.is_some() || !leaf.is_file_audio())
+                if id != a.id
+                    && (leaf.rendered_audio.is_some()
+                        || !leaf.is_audio()
+                        || (file && !leaf.is_file_audio()))
                     || leaf.decoded_frame_count != a.decoded_frame_count
                     || leaf.source_metadata != a.source_metadata
                 {

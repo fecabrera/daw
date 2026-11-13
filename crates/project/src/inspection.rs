@@ -20,6 +20,6 @@ pub(crate) fn load_manifest(folder: &Path) -> Result<(Project, Option<u32>)> {
     if previous_revision.is_some() {
         project.stretch_engine = daw_core::StretchEngine::INTEGRATED;
     }
-    project.validate().map_err(error)?;
+    project.prepare_compound_routing().map_err(error)?;
     Ok((project, previous_revision))
 }

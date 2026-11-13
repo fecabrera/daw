@@ -66,6 +66,31 @@ loop pins and staged PCM; the unused candidate retires with the old renderer.
 Checkpoint compatibility still requires the complete
 processing model and prepared owner identities to match.
 
+Compounds containing rendered members carry `RenderedAudio` capability version 2.
+Their Pre-send, raw-provider and Post-provider assets are companion compound
+recipes on the same source clock, without their own routing capability. Each
+recipe keeps member edits, gaps, boundary geometry and wrapper clocks; it selects
+the corresponding captured leaf at each nested source. Pre recipes mark ordinary
+members inactive so those spans keep the current track’s post-effect Pre stage.
+Compiled source/layout activity follows crops, repeats and transformed wrapper
+clocks without depending on sample energy or decoded availability. A member absent
+from a historical provider keeps its geometry at silent gain. Provider identity unions also participate in
+core feedback checks. Main-source extraction never mixes these auxiliary recipes.
+
+Core constructs the companion recipes transactionally and admits their metadata
+before cloning each recipe. Shared worker preparation discovers transforms in
+both arranged clips and immutable members, including auxiliary compounds. Normal
+source schedules handle repeats, crops, stretch, pitch and full-source baked seams.
+The combined source DAG includes compound and routing dependencies; self-Post file
+references remain allowed, but other cycles are rejected. Captured file leaves
+may retain delegated envelopes inside companion members.
+
+Manifest loading upgrades older compounds that contain rendered members before
+publishing the editor model. Derived private IDs are deterministic; read-only
+inspection and opening agree, and repeated upgrades add no assets. Saving retains
+the companion recipes. Older readers reject version 2 rather than silently lose
+the feeds. File-based Bounce sources retain capability version 1.
+
 ## Preparation, consumers and storage
 
 Project preparation discovers transforms in visible clips, all recipe members

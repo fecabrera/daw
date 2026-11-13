@@ -66,13 +66,31 @@ pub(super) struct AudioTrack {
     transitions: Vec<Transition>,
     transition_ranges: Ranges,
     staged: Option<(usize, u64, [f32; 2])>,
+    staged_continuation: Option<(usize, u64, [f32; 2])>,
     loop_pin: Option<(u64, Option<(usize, u64)>)>,
     readers: Vec<daw_media::FrameReader>,
     reader_indices: Vec<Option<usize>>,
 }
 impl AudioTrack {
     pub fn active_at(&mut self, frame: u64) -> bool {
-        self.ranges.at(frame).is_some_and(|i| !self.clips[i].muted)
+        let Some(index) = self.ranges.at(frame) else {
+            return false;
+        };
+        let clip = &self.clips[index];
+        if clip.muted {
+            return false;
+        }
+        let position = clip.source_frame(frame - clip.start_frame);
+        if let Some(source) = &mut self.compounds[index] {
+            source.active_at(position)
+        } else if let Some(layout) = &mut self.layouts[index] {
+            layout.active_at(
+                clip.stretch
+                    .map_or(position, |s| s.original_frame(position)),
+            )
+        } else {
+            true
+        }
     }
     pub fn same_source(&self, other: &Self) -> bool {
         self.compile_error.is_none()
@@ -444,6 +462,7 @@ impl AudioTrack {
             readers,
             reader_indices,
             staged: None,
+            staged_continuation: None,
             loop_pin: None,
             ranges: Ranges::new(track.clips.iter().map(|c| (c.start_frame, c.end()))),
             audio: track
@@ -642,6 +661,7 @@ impl AudioTrack {
         frame: u64,
         loop_start: Option<u64>,
     ) -> bool {
+        self.staged_continuation = None;
         let primary = self.ready_primary(frame, loop_start);
         let clips = &self.clips;
         if let Some(i) = self.transition_ranges.at(frame) {
@@ -660,7 +680,11 @@ impl AudioTrack {
             } else {
                 self.reader_indices[t.owner]
             } {
-                return self.readers[reader].ready(position, None) && primary;
+                let ready = self.readers[reader].ready(position, None);
+                self.staged_continuation = self.readers[reader]
+                    .try_live_sample(position)
+                    .map(|value| (i, position, value));
+                return ready && self.staged_continuation.is_some() && primary;
             }
         }
         primary
@@ -696,7 +720,12 @@ impl AudioTrack {
                 };
                 let extra = if let Some(reader) = reader {
                     if realtime {
-                        self.readers[reader].live_sample(position)
+                        self.staged_continuation
+                            .filter(|(transition, p, _)| *transition == i && *p == position)
+                            .map_or_else(
+                                || self.readers[reader].live_sample(position),
+                                |(_, _, value)| value,
+                            )
                     } else {
                         self.readers[reader].sample(position).unwrap_or_default()
                     }
@@ -898,6 +927,60 @@ fn repeat_fade(baked: bool, clip: &daw_core::Clip, position: u64, rate: u32) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn crossfade_continuation_is_staged_before_cache_invalidation() {
+        for left in [false, true] {
+            let mut plan = crate::tests::plan();
+            let id = plan.project.assets[0].id;
+            let audio = &plan.audio[&id];
+            let mut writer = daw_media::DiskAudioWriter::new(audio.frame_count()).unwrap();
+            writer.write(&audio.samples).unwrap();
+            let disk = writer
+                .finish(audio.sample_rate_hz, audio.metadata.clone())
+                .unwrap();
+            plan.audio.insert(id, disk.clone());
+            let mut first = plan.project.tracks[0].clips[0].clone();
+            first.length_frames = 1000;
+            let mut second = first.clone();
+            second.id = daw_core::Id::new_v4();
+            second.start_frame = 1000;
+            second.source_offset_frame = 1000;
+            let fade = daw_core::ClipFade {
+                length_frames: 200,
+                crossfade: true,
+                ..Default::default()
+            };
+            if left {
+                second.fades.fade_in = fade;
+            } else {
+                first.fades.fade_out = fade;
+            }
+            plan.project.tracks[0].clips = vec![first, second];
+            let mut source = AudioTrack::new(&plan, &plan.project.tracks[0]);
+            source.prepare_streaming().unwrap();
+            let frame = if left { 900 } else { 1100 };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            while !source.ready(&[], frame, None) {
+                assert!(std::time::Instant::now() < deadline);
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            let mut reference = source.clone();
+            let expected = reference.sample(&[], frame, false);
+            // Replace each cache with an empty one after successful preflight.
+            // This deterministically models eviction before callback consumption.
+            for reader in &mut source.readers {
+                *reader = daw_media::FrameReader::new(&disk);
+            }
+            assert!(
+                source
+                    .readers
+                    .iter()
+                    .all(|reader| reader.try_live_sample(0).is_none())
+            );
+            assert_eq!(source.sample(&[], frame, true), expected);
+            assert!(!source.ready(&[], frame + 1, None));
+        }
+    }
     #[test]
     fn unsorted_ranges_support_gaps_exclusive_ends_and_arbitrary_seeks() {
         let ranges = [(30, 40), (10, 20), (20, 25)];

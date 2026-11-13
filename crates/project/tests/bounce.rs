@@ -914,3 +914,281 @@ fn sampler_granulizer_and_noise_keep_source_layer_and_output_processing() {
         assert_close(&expected, &render(&next, frames));
     }
 }
+
+#[test]
+fn merge_keeps_captured_pre_sends_through_nested_mixed_recipes_and_storage() {
+    let fixture = Fixture::new();
+    let mut s = fixture.session();
+    let ret = s.project.add_return_track().unwrap();
+    s.project.tracks[0].gain_db = daw_core::SILENT_GAIN_DB;
+    let mut send = TrackSend::new(ret);
+    send.tap = SendTap::PreFader;
+    send.gain_db = 0.0;
+    s.project.tracks[0].sends.push(send);
+    let bounced = s
+        .bounce(&tracks(&s), &BounceProgress::default())
+        .unwrap()
+        .session;
+    let expected = render(&bounced, 8000);
+    assert!(expected.iter().flatten().any(|s| s.abs() > 0.01));
+    let id = bounced.project.tracks[1].clips[0].id;
+    let (mut merged, id) = bounced.merged_audio_clips(&[id], &|| false).unwrap();
+    assert_close(&expected, &render(&merged, 8000));
+    let mut history = SessionHistory::new(&bounced, false).unwrap();
+    history.record(&merged).unwrap();
+    let undone = history.undo(&merged).unwrap();
+    assert_close(&expected, &render(&undone, 8000));
+    assert_close(&expected, &render(&history.redo(&undone).unwrap(), 8000));
+    let extracted = merged
+        .render_clip_source(&merged.project.tracks[1].clips[0], &|| false)
+        .unwrap();
+    assert!(extracted.samples.iter().flatten().all(|v| *v == 0.0));
+    let mut copy = merged.project.tracks[1].clips[0].clone();
+    copy.id = Id::new_v4();
+    copy.start_frame = 6000;
+    merged.project.tracks[1].clips.push(copy.clone());
+    // An ordinary source member must retain the live Pre send alongside capture.
+    let mono_path = fixture.0.join("mono.wav");
+    let mut writer = hound::WavWriter::create(
+        &mono_path,
+        hound::WavSpec {
+            channels: 1,
+            sample_rate: 48000,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        },
+    )
+    .unwrap();
+    for _ in 0..2400 {
+        writer.write_sample(0.1f32).unwrap();
+    }
+    writer.finalize().unwrap();
+    let output = merged.project.tracks[1].id;
+    let ordinary = merged.import(&mono_path, Some(output), 11000).unwrap();
+    merged.project.tracks[1].pan = -0.4;
+    let mut effect = daw_core::EffectInstance::drive();
+    let daw_core::EffectSettings::Drive(settings) = &mut effect.unit else {
+        unreachable!()
+    };
+    settings.gain = 0.8;
+    merged.project.tracks[1].effects.push(effect);
+    merged.project.tracks[1]
+        .effects
+        .push(daw_core::EffectInstance::limiter());
+    let expected = render(&merged, 16000);
+    let (mut nested, _) = merged
+        .merged_audio_clips(&[id, copy.id, ordinary], &|| false)
+        .unwrap();
+    assert_close(&expected, &render(&nested, 16000));
+    let rebounced = nested
+        .bounce(
+            &BounceRequest {
+                mode: BounceMode::Tracks,
+                ids: vec![output],
+            },
+            &BounceProgress::default(),
+        )
+        .unwrap()
+        .session;
+    assert_close(&expected, &render(&rebounced, 16000));
+    let mut repeated = nested.clone();
+    let clip = &mut repeated.project.tracks[1].clips[0];
+    let cycle_frames = clip.length_frames;
+    clip.repeat = Some(daw_core::ClipLoop {
+        length_frames: cycle_frames,
+        phase_frame: 0,
+    });
+    clip.length_frames *= 2;
+    repeated.prepare_stretches().unwrap();
+    let mut unfolded = merged.clone();
+    let mut second_cycle = unfolded.project.tracks[1].clips.clone();
+    for clip in &mut second_cycle {
+        clip.id = Id::new_v4();
+        clip.start_frame += cycle_frames;
+    }
+    unfolded.project.tracks[1].clips.extend(second_cycle);
+    assert_close(&render(&unfolded, 30000), &render(&repeated, 30000));
+    let mut crop = nested.clone();
+    let clip = &mut crop.project.tracks[1].clips[0];
+    clip.start_frame += 9000;
+    clip.source_offset_frame += 9000;
+    clip.length_frames -= 9000;
+    clip.fades.fade_in.inherit_source = false;
+    crop.prepare_stretches().unwrap();
+    let mut ordinary_only = merged.clone();
+    ordinary_only.project.tracks[1]
+        .clips
+        .retain(|c| c.id == ordinary);
+    assert_close(&render(&ordinary_only, 16000), &render(&crop, 16000));
+    nested.save(&fixture.0.join("merged")).unwrap();
+    let reopened = Session::open(&fixture.0.join("merged")).unwrap();
+    assert_close(&expected, &render(&reopened, 16000));
+    // Legacy recipes are repaired deterministically without touching recordings.
+    let mut legacy = nested.project.clone();
+    for asset in &mut legacy.assets {
+        if asset.compound_audio.is_some() {
+            asset.rendered_audio = None;
+        }
+    }
+    // Remove only generated companion recipes; original member references remain.
+    let main = nested.project.tracks[1].clips[0].asset_id;
+    let mut needed = std::collections::HashSet::new();
+    let mut pending = vec![main];
+    while let Some(id) = pending.pop() {
+        if !needed.insert(id) {
+            continue;
+        }
+        if let Some(source) = legacy
+            .audio_asset(id)
+            .and_then(|a| a.compound_audio.as_ref())
+        {
+            pending.extend(source.members.iter().map(|c| c.asset_id));
+        }
+    }
+    legacy
+        .assets
+        .retain(|a| a.compound_audio.is_none() || needed.contains(&a.id));
+    fs::write(
+        fixture.0.join("merged/project.json"),
+        serde_json::to_vec_pretty(&legacy).unwrap(),
+    )
+    .unwrap();
+    let inspected = daw_project::inspect_project(&fixture.0.join("merged")).unwrap();
+    let repaired = Session::open(&fixture.0.join("merged")).unwrap();
+    assert_eq!(inspected, repaired.project);
+    assert_close(&expected, &render(&repaired, 16000));
+}
+
+#[test]
+fn merged_capture_preserves_old_sidechain_feeds_and_shared_clip_edits() {
+    for tap in [
+        daw_unit_core::SidechainTap::PreFader,
+        daw_unit_core::SidechainTap::PostFader,
+    ] {
+        let fixture = Fixture::new();
+        let mut s = fixture.session();
+        let source = s.project.tracks[0].id;
+        let destination = s.project.add_track().unwrap();
+        let mut clip = s.project.tracks[0].clips[0].clone();
+        clip.id = Id::new_v4();
+        s.project.tracks[1].clips.push(clip);
+        sidechain(&mut s, source, destination, tap);
+        let bounced = s
+            .bounce(&tracks(&s), &BounceProgress::default())
+            .unwrap()
+            .session;
+        let id = bounced.project.tracks[1].clips[0].id;
+        let (merged, _) = bounced.merged_audio_clips(&[id], &|| false).unwrap();
+        for mode in 0..5 {
+            let mut reference = bounced.clone();
+            let mut actual = merged.clone();
+            for session in [&mut reference, &mut actual] {
+                let clip = &mut session.project.tracks[1].clips[0];
+                clip.gain_db = -6.0;
+                clip.channels.swapped = true;
+                match mode {
+                    0 => {
+                        clip.source_offset_frame = 300;
+                        clip.length_frames = 1200;
+                    }
+                    1 => {
+                        clip.repeat = Some(daw_core::ClipLoop {
+                            length_frames: 700,
+                            phase_frame: 110,
+                        });
+                        clip.length_frames = 2100;
+                    }
+                    2 => {
+                        clip.transpose = 3;
+                    }
+                    3 => {
+                        clip.stretch = daw_core::ClipStretch::new(1, 2);
+                        clip.length_frames *= 2;
+                    }
+                    _ => {
+                        clip.repeat = Some(daw_core::ClipLoop {
+                            length_frames: clip.length_frames,
+                            phase_frame: 0,
+                        });
+                        clip.length_frames *= 2;
+                    }
+                }
+                session.prepare_stretches().unwrap();
+            }
+            assert_close(&render(&reference, 10000), &render(&actual, 10000));
+        }
+    }
+}
+
+#[test]
+fn merged_provider_union_keeps_absent_members_silent_and_rejects_feedback() {
+    for tap in [
+        daw_unit_core::SidechainTap::PreFader,
+        daw_unit_core::SidechainTap::PostFader,
+    ] {
+        let fixture = Fixture::new();
+        let mut s = fixture.session();
+        let a = s.project.tracks[0].id;
+        let b = s.project.add_track().unwrap();
+        let mut clip = s.project.tracks[0].clips[0].clone();
+        clip.id = Id::new_v4();
+        s.project.tracks[1].clips.push(clip.clone());
+        s.project.tracks[1].gain_db = -9.0;
+        let destination = s.project.add_track().unwrap();
+        clip.id = Id::new_v4();
+        s.project.tracks[2].clips.push(clip);
+        sidechain(&mut s, a, destination, tap);
+        sidechain(&mut s, b, destination, tap);
+        let mut bounced = s
+            .bounce(
+                &BounceRequest {
+                    mode: BounceMode::Tracks,
+                    ids: vec![a, b],
+                },
+                &BounceProgress::default(),
+            )
+            .unwrap()
+            .session;
+        let mut second = bounced.project.tracks[3].clips.remove(0);
+        second.start_frame = 6000;
+        let ids = vec![bounced.project.tracks[1].clips[0].id, second.id];
+        bounced.project.tracks[1].clips.push(second);
+        bounced.project.validate().unwrap();
+        let expected = render(&bounced, 10000);
+        let (merged, _) = bounced.merged_audio_clips(&ids, &|| false).unwrap();
+        assert_close(&expected, &render(&merged, 10000));
+        assert_eq!(
+            merged.project.rendered_providers(&merged.project.tracks[1]),
+            {
+                let mut ids = vec![a, b];
+                ids.sort_unstable();
+                ids
+            }
+        );
+        let mut feedback = merged.clone();
+        let output = feedback.project.tracks[1].id;
+        sidechain(&mut feedback, destination, output, tap);
+        assert!(feedback.project.validate().is_err());
+        // Include routing dependency edges in source-DAG validation as well.
+        let mut cycle = merged.project.clone();
+        let main = cycle.tracks[1].clips[0].asset_id;
+        let aux = cycle
+            .audio_asset(main)
+            .unwrap()
+            .rendered_audio
+            .as_ref()
+            .unwrap()
+            .pre_send_asset;
+        let member = &mut cycle
+            .assets
+            .iter_mut()
+            .find(|asset| asset.id == aux)
+            .unwrap()
+            .compound_audio
+            .as_mut()
+            .unwrap()
+            .members[0];
+        member.asset_id = main;
+        assert!(cycle.validate().unwrap_err().0.contains("cycle"));
+    }
+}

@@ -7,6 +7,7 @@ mod display;
 pub use display::{ProjectDisplay, TrackHeight};
 mod clip_channels;
 mod compound_audio;
+mod compound_routing;
 mod merge;
 pub use compound_audio::{
     COMPOUND_AUDIO_VERSION, COMPOUND_METADATA_LIMIT, CompiledAudioEnvelope, CompiledAudioTrack,
@@ -719,6 +720,12 @@ impl Project {
         let invalid = |s: &str| Error(s.into());
         if a.compound_audio.is_none()
             && a.rendered_audio.is_none()
+            && !self.assets.iter().any(|owner| {
+                owner
+                    .rendered_audio
+                    .as_ref()
+                    .is_some_and(|r| r.dependencies().any(|id| id == a.id))
+            })
             && (c.fades.fade_in.inherit_source || c.fades.fade_out.inherit_source)
         {
             return Err(invalid(

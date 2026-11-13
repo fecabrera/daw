@@ -129,7 +129,9 @@ and Linux for the same command. It works in Timeline and Editor.
 Clips can touch or have gaps. The result keeps their outer bounds, silent gaps,
 gain, fades, stretch, transpose, channel settings and enabled states. Settings
 can differ between clips. Select intervening clips too; Merge cannot cover an
-unselected clip. Track effects, mixing and routing remain live.
+unselected clip. Track effects, mixing and routing remain live. Merged bounced
+clips retain their captured Pre sends and sidechain feeds through further merges
+and clip edits.
 
 The result keeps the first clip's name and color and becomes the selected clip.
 Undo restores the original clips in one step. You can also consolidate one

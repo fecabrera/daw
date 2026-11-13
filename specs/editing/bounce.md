@@ -45,6 +45,13 @@ retain one clock. Copying a clip duplicates its contribution through the new cli
 identity. Re-bounce captures and flattens earlier provider feeds; disabling the old
 clips removes their old contribution.
 
+Audio Merge retains this capability through the version 2 companion recipes
+described in [Audio Merge](audio-merge.md#prepared-source-evaluation). Version 1
+remains the file-bundle contract. Main extraction stays independent of auxiliary
+routing. Compiled activity selects the historical Pre override only for captured
+members; ordinary mixed members retain current track effects and mono/stereo pan.
+Captured stereo leaves retain their baked original pan.
+
 ## Shared capture and routing
 
 `daw-engine::BounceCapture` owns independent reference and isolated renderers.
