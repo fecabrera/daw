@@ -314,31 +314,19 @@ fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_outpu
 }
 
 #[test]
-fn editor_without_active_clip_shows_patterns_and_selects_the_edited_clip() {
-    let (mut app, ctx, _, row, clip) = setup();
+fn editor_without_active_clip_keeps_headers_but_shows_no_pattern_cells() {
+    let (mut app, ctx, _, row, _) = setup();
     app.selected_clip = None;
     app.selected_clips.clear();
     let before = app.session.project.clone();
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-    assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Create beat pattern")));
-    assert!(!app.beat_ui.steps.is_empty());
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.beat_ui.steps.is_empty());
+    assert!(app.beat_ui.clip_steps.is_empty());
+    assert!(app.beat_ui.disabled_steps.is_empty());
     assert!(app.beat_ui.headers.contains_key(&row));
-    let step = app
-        .beat_ui
-        .steps
-        .values()
-        .find(|rect| {
-            rect.left() >= app.midi_editor.content.ruler.left()
-                && rect.right() <= app.midi_editor.content.ruler.right()
-        })
-        .unwrap()
-        .center();
-    app.dirty = false;
-    click(&mut app, &ctx, step);
-    assert_eq!(app.selected_clip, Some(clip));
-    assert!(app.dirty);
-    assert_ne!(app.session.project, before);
+    assert_eq!(app.session.project, before);
 }
+
 #[test]
 fn beat_creation_uses_the_same_action_and_dynamic_pattern_label() {
     let mut app = DawUi::default();
@@ -771,48 +759,49 @@ fn compact_beat_steps_share_the_lower_rulers_time_mapping() {
         assert!(options.height() <= toolbars::CONTROL_HEIGHT);
         let first = app.beat_ui.steps[&(row, 0)];
         let next = app.beat_ui.steps[&(row, daw_core::MIDI_TICKS_PER_BEAT / 4)];
-        assert!((first.left() - ruler.left() - 4.0).abs() < 0.1);
-        assert!((first.top() - ruler.bottom() - 3.0).abs() < 0.1);
-        assert!(first.height() <= 26.0, "step lanes must remain thin");
+        assert!((first.left() - ruler.left() - 3.0).abs() < 0.1);
+        assert!((first.top() - ruler.bottom() - 2.0).abs() < 0.1);
+        assert!(first.height() <= 28.0, "step lanes must remain thin");
         let clock = app.midi_editor.content.timeline(&app.session.project);
         let expected = clock.pixels_for_frames(i128::from(
             app.session
                 .project
                 .midi_frame(daw_core::MIDI_TICKS_PER_BEAT / 4),
         )) as f32;
-        assert!((next.left() - first.left() - expected).abs() < 0.1);
+        assert!((next.left() - first.left() + 2.0 - expected).abs() < 0.1);
     }
 }
 
 #[test]
-fn beat_ruler_and_steps_retain_trimmed_and_stretched_clip_mapping() {
+fn beat_source_grid_is_independent_of_clip_position_trim_stretch_and_repeat() {
     let (mut app, ctx, _, row, _) = setup();
-    let step_ticks = daw_core::MIDI_TICKS_PER_BEAT / 4;
-    let offset = app.session.project.midi_frame(step_ticks);
+    let original = app.beat_ui.steps.clone();
+    let fit = app.midi_editor.content.fit_zoom;
     let clip = &mut app.session.project.tracks[0].clips[0];
-    clip.source_offset_frame = offset;
-    clip.length_frames -= offset;
-    frame(&mut app, &ctx, vec![]);
-    assert!(!app.beat_ui.steps.contains_key(&(row, 0)));
-    let first = app.beat_ui.steps[&(row, step_ticks)];
-    assert!((first.left() - app.midi_editor.content.ruler.left() - 4.0).abs() < 0.1);
-    let clip = &mut app.session.project.tracks[0].clips[0];
-    clip.source_offset_frame *= 2;
-    clip.length_frames *= 2;
-    clip.stretch = Some(daw_core::ClipStretch {
-        source_frames: 1,
-        output_frames: 2,
+    clip.start_frame = 240000;
+    clip.source_offset_frame = 12000;
+    clip.length_frames = 360000;
+    clip.repeat = Some(daw_core::ClipLoop {
+        length_frames: 96000,
+        phase_frame: 12000,
     });
+    clip.stretch = Some(daw_core::ClipStretch::new(1, 2).unwrap());
+    app.session.project.validate().unwrap();
+    let before = app.session.project.clone();
     frame(&mut app, &ctx, vec![]);
-    let first = app.beat_ui.steps[&(row, step_ticks)];
-    let next = app.beat_ui.steps[&(row, step_ticks * 2)];
-    assert!((first.left() - app.midi_editor.content.ruler.left() - 4.0).abs() < 0.1);
-    let expected = app
-        .midi_editor
-        .content
-        .timeline(&app.session.project)
-        .pixels_for_frames(i128::from(offset * 2)) as f32;
-    assert!((next.left() - first.left() - expected).abs() < 0.1);
+    assert_eq!(app.beat_ui.steps, original);
+    assert_eq!(app.midi_editor.content.fit_zoom, fit);
+    assert_eq!(app.midi_editor.content.start, 0.0);
+    assert_eq!(
+        app.beat_ui
+            .steps
+            .keys()
+            .filter(|(id, _)| *id == row)
+            .count(),
+        16
+    );
+    assert!(app.beat_ui.repeated_steps.is_empty());
+    assert_eq!(app.session.project, before);
 }
 
 #[test]
@@ -970,27 +959,14 @@ fn subtrack_layer_view_keeps_the_real_parent_track_and_local_source_scope() {
 }
 
 #[test]
-fn empty_beat_track_keeps_disabled_steps_visible_after_scrolling() {
+fn empty_beat_track_has_no_placeholder_pattern_and_keeps_mix_controls() {
     let (mut app, ctx, track, row, _) = setup();
     app.session.project.tracks[0].clips.clear();
     app.selected_clip = None;
     app.selected_clips.clear();
-    app.midi_editor.content.fitted = false;
-    app.midi_editor.content.scroll = 10.0;
-    let before = app.session.project.clone();
     frame(&mut app, &ctx, vec![]);
-    let ruler = app.midi_editor.content.ruler;
-    let point = app
-        .beat_ui
-        .steps
-        .values()
-        .find(|rect| rect.left() >= ruler.left() && rect.right() <= ruler.right())
-        .unwrap()
-        .center();
-    click(&mut app, &ctx, point);
-    assert!(!app.beat_ui.steps.is_empty());
-    assert_eq!(app.session.project, before);
-    assert_eq!(app.selected_clip, None);
+    assert!(app.beat_ui.steps.is_empty());
+    assert!(app.beat_ui.disabled_steps.is_empty());
     let mute = app.beat_ui.mix_bounds[&row][0].center();
     click(&mut app, &ctx, mute);
     assert!(app.session.project.beat(track).unwrap().subtracks[0].muted);
@@ -1147,7 +1123,7 @@ fn editor_subtrack_selection_uses_background_without_outline() {
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let step = app.beat_ui.steps[&(row, 0)];
         let rect = Rect::from_min_size(
-            Pos2::new(app.midi_editor.panel_bounds.left(), step.top() - 3.0),
+            Pos2::new(app.midi_editor.panel_bounds.left(), step.top() - 2.0),
             Vec2::new(TRACK_WIDTH, 32.0),
         );
         assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))));
@@ -1362,7 +1338,7 @@ fn editor_subtrack_headers_live_in_the_left_panel_and_share_the_instrument_plus(
             .iter()
             .all(|r| panel.contains_rect(*r))
     );
-    assert!((app.beat_ui.steps[&(row, 0)].left() - ruler.left() - 4.0).abs() < 0.1);
+    assert!((app.beat_ui.steps[&(row, 0)].left() - ruler.left() - 3.0).abs() < 0.1);
     assert!(!shapes.iter().any(
         |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Add beat subtrack")
     ));
@@ -1457,149 +1433,52 @@ fn editor_left_headers_and_steps_scroll_together_without_project_changes() {
 }
 
 #[test]
-fn selected_beat_patterns_keep_disabled_steps_beyond_their_end() {
+fn selected_beat_pattern_has_no_cells_beyond_the_source_and_no_phantom_edits() {
     let (mut app, ctx, _, row, clip) = setup();
-    app.midi_editor.content.fitted = false;
-    app.midi_editor.content.zoom *= 0.5;
-    frame(&mut app, &ctx, vec![]);
-    let ruler = app.midi_editor.content.ruler;
-    let disabled = app
-        .beat_ui
-        .disabled_steps
-        .iter()
-        .find(|(id, rect)| {
-            *id == row && rect.left() >= ruler.left() && rect.right() <= ruler.right()
-        })
-        .expect("disabled cells beyond the one-bar pattern")
-        .1
-        .center();
+    assert!(app.beat_ui.disabled_steps.is_empty());
+    assert_eq!(app.beat_ui.steps.len(), 16);
     let before = app.session.project.clone();
-    app.dirty = false;
-    click(&mut app, &ctx, disabled);
+    let ruler = app.midi_editor.content.ruler;
+    let point = Pos2::new(
+        ruler.right() - 0.25,
+        app.beat_ui.steps[&(row, 0)].center().y + 32.0,
+    );
+    click(&mut app, &ctx, point);
     assert_eq!(app.session.project, before);
     assert_eq!(app.selected_clip, Some(clip));
-    assert!(!app.dirty);
-    let end_frame = app.session.project.tracks[0].clips[0].end();
-    let edge = app.midi_editor.content.ruler.left()
-        + app
-            .midi_editor
-            .content
-            .timeline(&app.session.project)
-            .pixel_at_frame(end_frame) as f32;
-    let boundary = Pos2::new(edge + 0.5, app.beat_ui.steps[&(row, 0)].center().y);
-    click(&mut app, &ctx, boundary);
-    assert_eq!(
-        app.session.project, before,
-        "disabled space must not activate the nearest active step through its hit radius"
-    );
-    let active = app.beat_ui.steps[&(row, 0)].center();
-    click(&mut app, &ctx, active);
-    let asset = app.session.project.tracks[0].clips[0].asset_id;
-    assert_eq!(
-        app.session
-            .project
-            .assets
-            .iter()
-            .find(|a| a.id == asset)
-            .unwrap()
-            .beat_pattern
-            .as_ref()
-            .unwrap()
-            .pattern
-            .steps
-            .len(),
-        1
-    );
 }
 
 #[test]
-fn beat_editor_shows_all_patterns_and_keeps_only_gaps_disabled() {
+fn beat_editor_shows_only_the_selected_source_and_preserves_other_clips_when_editing() {
     let (mut app, ctx, track, row, clip) = setup();
-    let duration = app.session.project.tracks[0].clips[0].length_frames;
-    app.session.project.tracks[0].clips[0].start_frame = duration;
-    let other = app
-        .session
+    let other = app.session.project.add_beat_pattern(track, 192000).unwrap();
+    app.session
         .project
-        .add_beat_pattern(track, duration * 3)
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id: other,
+            pattern: BeatPattern::default()
+                .with_grid(1, daw_core::BeatResolution::Eighth)
+                .unwrap(),
+        })
         .unwrap();
-    let asset = app.session.project.tracks[0]
-        .clips
-        .iter()
-        .find(|c| c.id == other)
-        .unwrap()
-        .asset_id;
-    let pattern = app
-        .session
-        .project
-        .assets
-        .iter()
-        .find(|a| a.id == asset)
-        .unwrap()
-        .beat_pattern
-        .as_ref()
-        .unwrap()
-        .pattern
-        .with_grid(1, daw_core::BeatResolution::Eighth)
-        .unwrap()
-        .with_step(row, 0, Some(80))
-        .unwrap();
-    app.edit(Edit::ReplaceBeatPattern {
-        clip_id: other,
-        pattern,
-    });
-    app.session.project.validate().unwrap();
-    app.midi_editor.content.fitted = false;
-    app.midi_editor.content.zoom *= 0.25;
-    app.midi_editor.content.scroll = 0.0;
     frame(&mut app, &ctx, vec![]);
-    assert!(app.beat_ui.clip_steps.contains_key(&(clip, row, 0)));
-    let first_width = app.beat_ui.clip_steps[&(clip, row, 240)].center().x
-        - app.beat_ui.clip_steps[&(clip, row, 0)].center().x;
-    let other_width = app.beat_ui.clip_steps[&(other, row, 480)].center().x
-        - app.beat_ui.clip_steps[&(other, row, 0)].center().x;
-    assert!(
-        (other_width - first_width * 2.0).abs() < 1.1,
-        "each pattern uses its own subdivision: {first_width} vs {other_width}"
-    );
-    let point = app.beat_ui.clip_steps[&(other, row, 0)].center();
-    let original = app.session.project.clone();
-    let original_asset = original.tracks[0].clips[0].asset_id;
+    assert_eq!(app.beat_ui.clip_steps.len(), 16);
+    assert!(app.beat_ui.clip_steps.keys().all(|(id, _, _)| *id == clip));
     let builds = app.beat_ui.step_index.builds;
     frame(&mut app, &ctx, vec![]);
-    assert_eq!(
-        app.beat_ui.step_index.builds, builds,
-        "all sources reuse their indices"
-    );
+    assert_eq!(app.beat_ui.step_index.builds, builds);
+    app.select_clip(other, track, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.beat_ui.clip_steps.len(), 8);
+    assert!(app.beat_ui.clip_steps.keys().all(|(id, _, _)| *id == other));
+    let before = app.session.project.clone();
+    let point = app.beat_ui.clip_steps[&(other, row, 0)].center();
     click(&mut app, &ctx, point);
-    assert_eq!(app.selected_clip, Some(other));
     assert_eq!(
         app.session.project.tracks[0].clips[0],
-        original.tracks[0].clips[0]
+        before.tracks[0].clips[0]
     );
-    assert_eq!(
-        app.session
-            .project
-            .assets
-            .iter()
-            .find(|a| a.id == original_asset),
-        original.assets.iter().find(|a| a.id == original_asset)
-    );
-    let gap = app
-        .beat_ui
-        .disabled_steps
-        .iter()
-        .find(|(id, rect)| *id == row && rect.left() >= app.midi_editor.content.ruler.left())
-        .unwrap()
-        .1
-        .center();
-    let before = app.session.project.clone();
-    click(&mut app, &ctx, gap);
-    assert_eq!(app.session.project, before);
-    app.selected_clip = None;
-    app.selected_clips.clear();
-    frame(&mut app, &ctx, vec![]);
-    assert!(app.beat_ui.clip_steps.contains_key(&(clip, row, 0)));
-    assert!(app.beat_ui.clip_steps.contains_key(&(other, row, 0)));
+    assert!(app.dirty);
 }
 
 #[test]
@@ -1632,14 +1511,16 @@ fn beat_editor_shared_audition_button_previews_only_enabled_steps() {
     app.selected_clip = None;
     frame(&mut app, &ctx, vec![]);
     click(&mut app, &ctx, audition.center());
-    let disabled = app.beat_ui.disabled_steps[0].1.center();
-    click(&mut app, &ctx, disabled);
+    assert!(app.beat_ui.steps.is_empty());
     assert_eq!(app.chords.audition.beat_requests.len(), 1);
 }
 
 #[test]
 fn beat_editor_scrollbar_pans_only_the_step_viewport_without_edits() {
     let (mut app, ctx, track, row, clip) = setup();
+    app.midi_editor.content.fitted = false;
+    app.midi_editor.content.zoom *= 4.0;
+    frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     let before = app.session.project.clone();
     let overview = (app.zoom, app.scroll);
@@ -1668,8 +1549,8 @@ fn beat_editor_scrollbar_pans_only_the_step_viewport_without_edits() {
     app.selected_clip = None;
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.midi_editor.content.scrollbar_bounds, bounds);
-    assert!(app.midi_editor.content.scroll > 0.0);
-    assert!(!app.beat_ui.disabled_steps.is_empty());
+    assert!(app.beat_ui.steps.is_empty());
+    assert!(app.beat_ui.disabled_steps.is_empty());
 }
 
 #[test]
@@ -1931,7 +1812,7 @@ fn beat_length_monitor_reuses_transport_drag_sections_and_commits_on_release() {
 }
 
 #[test]
-fn subdivision_measures_stretched_step_duration_against_one_bar_and_ignores_clip_length() {
+fn subdivision_measures_source_step_duration_and_ignores_clip_mapping() {
     fn shown(app: &mut DawUi, ctx: &egui::Context) -> String {
         let shapes = frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0));
         let bounds = app.beat_ui.subdivision_bounds.unwrap();
@@ -1963,13 +1844,13 @@ fn subdivision_measures_stretched_step_duration_against_one_bar_and_ignores_clip
         .unwrap();
     app.midi_editor.content.fitted = false;
     app.midi_editor.content.zoom = 480.0;
-    assert_eq!(shown(&mut app, &ctx), "1/16");
+    assert_eq!(shown(&mut app, &ctx), "1/8");
     let measured_beats = |app: &DawUi| {
         let a = app.beat_ui.steps[&(row, 0)];
-        let b = app.beat_ui.steps[&(row, 480)];
+        let b = app.beat_ui.steps[&(row, 960)];
         f64::from(b.left() - a.left()) / f64::from(app.midi_editor.content.zoom) * 2.0
     };
-    assert!((measured_beats(&app) - 0.25).abs() < 1e-6);
+    assert!((measured_beats(&app) - 1.0).abs() < 1e-6);
     let clip = app.session.project.tracks[0].clips[0].clone();
     let stretched = clip.stretched_to(clip.start_frame, 192_000).unwrap();
     app.session.project = app
@@ -1978,7 +1859,7 @@ fn subdivision_measures_stretched_step_duration_against_one_bar_and_ignores_clip
         .stretched_clips(&[stretched], daw_core::ClipEdge::Right)
         .unwrap();
     assert_eq!(shown(&mut app, &ctx), "1/8");
-    assert!((measured_beats(&app) - 0.5).abs() < 1e-6);
+    assert!((measured_beats(&app) - 1.0).abs() < 1e-6);
     let mut clip = app.session.project.tracks[0].clips[0].clone();
     clip.length_frames = 96_000;
     app.session.project = app
@@ -2015,30 +1896,13 @@ fn subdivision_measures_stretched_step_duration_against_one_bar_and_ignores_clip
         .project
         .stretched_clips(&[stretched], daw_core::ClipEdge::Right)
         .unwrap();
-    assert_eq!(shown(&mut app, &ctx), "3/16");
-    assert!((measured_beats(&app) - 0.75).abs() < 1e-6);
-    app.midi_editor.content.zoom = 120.0;
-    shown(&mut app, &ctx);
-    let active = app.beat_ui.steps[&(row, 0)];
-    let disabled = app
-        .beat_ui
-        .disabled_steps
-        .iter()
-        .find(|(id, r)| {
-            *id == row
-                && r.left() > active.left() + 400.0
-                && r.right() < app.midi_editor.content.ruler.right()
-        })
-        .unwrap()
-        .1;
-    assert!(
-        (disabled.width() - active.width()).abs() < 0.1,
-        "disabled grid uses the same stretched step length"
-    );
+    assert_eq!(shown(&mut app, &ctx), "1/8");
+    assert!((measured_beats(&app) - 1.0).abs() < 1e-6);
+    assert!(app.beat_ui.disabled_steps.is_empty());
 }
 
 #[test]
-fn subdivision_choices_show_audible_bar_fractions_and_edit_the_source_grid_once() {
+fn subdivision_choices_show_source_bar_fractions_and_edit_the_source_grid_once() {
     let (mut app, ctx, _, row, id) = setup();
     let pattern = BeatPattern::default()
         .with_grid(1, daw_core::BeatResolution::ThirtySecond)
@@ -2073,12 +1937,12 @@ fn subdivision_choices_show_audible_bar_fractions_and_edit_the_source_grid_once(
         .beat_ui
         .subdivision_items
         .iter()
-        .zip(["1/2", "1/4", "1/8", "1/16"])
+        .zip(["1/4", "1/8", "1/16", "1/32"])
     {
         assert!(
             shapes.iter().any(|s| matches!(&s.shape,
             egui::Shape::Text(t) if bounds.contains(t.pos) && t.galley.text() == expected)),
-            "stretched popup choice must show {expected} of one bar"
+            "source popup choice must show {expected} of one bar"
         );
     }
     let choice = app
@@ -2168,7 +2032,7 @@ fn subtrack_preview_step_works_without_selected_or_existing_patterns_and_respect
         assert_eq!(app.selected_clip, None);
         assert_eq!(app.session.project, before);
         assert!(!app.dirty);
-        assert!(!app.beat_ui.disabled_steps.is_empty());
+        assert!(app.beat_ui.disabled_steps.is_empty());
         app.settings_open = true;
         frame(&mut app, &ctx, vec![]);
         click(&mut app, &ctx, preview.center());
@@ -2178,7 +2042,7 @@ fn subtrack_preview_step_works_without_selected_or_existing_patterns_and_respect
 }
 
 #[test]
-fn preview_steps_share_row_geometry_and_four_point_insets_with_a_fixed_grid_separator() {
+fn preview_steps_share_compact_tile_geometry_with_a_fixed_grid_separator() {
     for color in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -2223,8 +2087,8 @@ fn preview_steps_share_row_geometry_and_four_point_insets_with_a_fixed_grid_sepa
             "audition button has no visible dot"
         );
         assert!((preview.center().y - app.beat_ui.headers[&row].center().y).abs() < 0.1);
-        assert!((first.left() - ruler.left() - 4.0).abs() < 0.1);
-        assert!((next.left() - first.right() - 8.0).abs() < 0.1);
+        assert!((first.left() - ruler.left() - 3.0).abs() < 0.1);
+        assert!((next.left() - first.right() - 2.0).abs() < 0.1);
         assert!(
             shapes.iter().any(|s| matches!(&s.shape,
                 egui::Shape::LineSegment { points, stroke }
@@ -3681,111 +3545,57 @@ fn timeline_subtrack_mix_shortcuts_retain_input_guards_and_mixer_parent_scope() 
 }
 
 #[test]
-fn beat_repetitions_dim_saved_hit_colors_and_reject_edits_after_scrolling() {
+fn full_source_shows_trimmed_steps_once_and_edits_preserve_clip_mapping() {
     for theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
         settings::ColorTheme::Mist,
     ] {
-        for phase in [0, 12_000] {
-            let (mut app, ctx, _, row, clip_id) = setup();
-            app.set_settings(
-                &ctx,
-                settings::AppSettings {
-                    theme,
-                    ..Default::default()
-                },
-            );
-            let asset = app.session.project.tracks[0].clips[0].asset_id;
-            let pattern = app
-                .session
-                .project
-                .assets
-                .iter()
-                .find(|a| a.id == asset)
-                .unwrap()
-                .beat_pattern
-                .as_ref()
-                .unwrap()
-                .pattern
-                .with_step(row, 960, Some(100))
-                .unwrap();
-            app.edit(Edit::ReplaceBeatPattern { clip_id, pattern });
-            let clip = &mut app.session.project.tracks[0].clips[0];
-            clip.stretch = Some(daw_core::ClipStretch::new(1, 2).unwrap());
-            clip.repeat = Some(daw_core::ClipLoop {
-                length_frames: 192_000,
-                phase_frame: phase,
-            });
-            clip.length_frames = 480_000;
-            app.session.project.validate().unwrap();
-            app.midi_editor.content.fitted = false;
-            app.midi_editor.content.zoom = 80.0;
-            app.midi_editor.content.scroll = 0.0;
-            let painted = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let repeated = app
-                .beat_ui
-                .repeated_steps
-                .iter()
-                .find(|(_, id, tick, _)| *id == row && *tick == 960)
-                .unwrap()
-                .3;
-            assert!(
-                painted
-                    .iter()
-                    .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
-                if r.rect.contains(repeated.center()) && r.rect.width() <= repeated.width() + 1.0
-                && r.fill.a() > 0 && r.fill.r().max(r.fill.g()).max(r.fill.b())
-                    .saturating_sub(r.fill.r().min(r.fill.g()).min(r.fill.b())) > 5)),
-                "saved repeated hit retains the original accent hue"
-            );
-            let before = app.session.project.clone();
-            app.dirty = false;
-            click(&mut app, &ctx, repeated.center());
-            for pressed in [true, false] {
-                frame(
-                    &mut app,
-                    &ctx,
-                    vec![
-                        egui::Event::PointerMoved(repeated.center()),
-                        egui::Event::PointerButton {
-                            pos: repeated.center(),
-                            button: egui::PointerButton::Secondary,
-                            pressed,
-                            modifiers: Default::default(),
-                        },
-                    ],
-                );
-            }
-            assert!(!egui::Popup::is_any_open(&ctx));
-            assert_eq!(app.session.project, before);
-            assert!(!app.dirty);
-            let original = app.beat_ui.clip_steps[&(clip_id, row, 960)].center();
-            click(&mut app, &ctx, original);
-            assert_ne!(
-                app.session.project, before,
-                "the source cycle remains editable"
-            );
-            app.midi_editor.content.scroll = 4.0;
-            frame(&mut app, &ctx, vec![]);
-            assert!(
-                app.beat_ui.clip_steps.is_empty(),
-                "scrolling cannot promote a repeat to the original"
-            );
-            let repeated = app
-                .beat_ui
-                .repeated_steps
-                .iter()
-                .find(|(_, id, _, rect)| {
-                    *id == row && rect.left() >= app.midi_editor.content.ruler.left()
-                })
-                .unwrap()
-                .3
-                .center();
-            let before = app.session.project.clone();
-            click(&mut app, &ctx, repeated);
-            assert_eq!(app.session.project, before);
-        }
+        let (mut app, ctx, track, row, clip_id) = setup();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme,
+                ..Default::default()
+            },
+        );
+        let pattern = BeatPattern::default()
+            .with_step(row, 0, Some(71))
+            .unwrap()
+            .with_step(row, 3360, Some(91))
+            .unwrap();
+        app.session
+            .project
+            .edit(Edit::ReplaceBeatPattern { clip_id, pattern })
+            .unwrap();
+        let clip = &mut app.session.project.tracks[0].clips[0];
+        clip.source_offset_frame = 24000;
+        clip.length_frames = 48000;
+        clip.start_frame = 192000;
+        app.session.project.validate().unwrap();
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.beat_ui.clip_steps.len(), 16);
+        assert!(app.beat_ui.clip_steps.contains_key(&(clip_id, row, 0)));
+        assert!(app.beat_ui.clip_steps.contains_key(&(clip_id, row, 3360)));
+        let before = app.session.project.tracks[0].clips[0].clone();
+        let point = app.beat_ui.clip_steps[&(clip_id, row, 0)].center();
+        click(&mut app, &ctx, point);
+        let after = &app.session.project.tracks[0].clips[0];
+        assert_eq!(
+            (
+                after.start_frame,
+                after.source_offset_frame,
+                after.length_frames
+            ),
+            (
+                before.start_frame,
+                before.source_offset_frame,
+                before.length_frames
+            )
+        );
+        assert_ne!(after.asset_id, before.asset_id);
+        assert_eq!(app.selected_track, Some(track));
+        assert!(app.beat_ui.repeated_steps.is_empty());
     }
 }
 
@@ -3862,7 +3672,7 @@ fn beat_trimming_hides_steps_and_expansion_restores_them_in_both_views() {
             assert_eq!(cropped.tracks[0].clips[0].length_frames, 72_000);
             if view == ViewMode::Edit {
                 assert!(
-                    !app.beat_ui
+                    app.beat_ui
                         .clip_steps
                         .contains_key(&(clip_id, row, hidden_tick))
                 );
@@ -3882,5 +3692,79 @@ fn beat_trimming_hides_steps_and_expansion_restores_them_in_both_views() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn beat_groups_have_empty_gutters_no_dots_and_follow_the_time_signature() {
+    for denominator in [4, 8] {
+        let (mut app, ctx, _, row, _) = setup();
+        app.session.project.time_signature = daw_core::TimeSignature {
+            numerator: 4,
+            denominator,
+        };
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let beat_ticks = daw_core::MIDI_TICKS_PER_BEAT * 4 / u32::from(denominator);
+        let previous = app.beat_ui.steps[&(row, beat_ticks - 240)];
+        let next = app.beat_ui.steps[&(row, beat_ticks)];
+        assert!((next.left() - previous.right() - 6.0).abs() < 0.1);
+        let first = app.beat_ui.steps[&(row, 0)];
+        let second = app.beat_ui.steps[&(row, 240)];
+        assert!((second.left() - first.right() - 2.0).abs() < 0.1);
+        assert!(
+            !shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Text(t)
+            if t.galley.text() == "·" && t.pos.x >= app.midi_editor.content.ruler.left()
+                && t.pos.y > app.midi_editor.content.ruler.bottom()))
+        );
+        let before = app.session.project.clone();
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new((previous.right() + next.left()) * 0.5, next.center().y),
+        );
+        assert_eq!(
+            app.session.project, before,
+            "beat gutter must not activate either tile"
+        );
+        let ruler = app.midi_editor.content.ruler;
+        click(&mut app, &ctx, ruler.center());
+        assert_eq!(
+            app.session.project, before,
+            "source ruler must not seek or change project loop"
+        );
+    }
+}
+
+#[test]
+fn fitted_dense_source_tiles_stay_inside_their_own_time_cells() {
+    let (mut app, ctx, _, row, clip_id) = setup();
+    app.session
+        .project
+        .edit(Edit::ReplaceBeatPattern {
+            clip_id,
+            pattern: BeatPattern::default()
+                .with_grid(16, daw_core::BeatResolution::ThirtySecond)
+                .unwrap(),
+        })
+        .unwrap();
+    app.midi_editor.content.fitted = true;
+    frame(&mut app, &ctx, vec![]);
+    let mut tiles: Vec<_> = app
+        .beat_ui
+        .steps
+        .iter()
+        .filter(|((id, _), _)| *id == row)
+        .map(|((_, tick), rect)| (*tick, *rect))
+        .collect();
+    assert_eq!(tiles.len(), 512, "fit shows the complete dense source");
+    tiles.sort_by_key(|(tick, _)| *tick);
+    for pair in tiles.windows(2) {
+        assert!(
+            pair[0].1.right() <= pair[1].1.left(),
+            "dense tiles overlap: {:?}",
+            pair
+        );
     }
 }

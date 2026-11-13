@@ -25,14 +25,12 @@ pub(super) fn visible_slots(
     first..last.max(first)
 }
 
-/// A visible source cell. Repetitions retain content but cannot edit the source.
+/// A visible cell in the selected full source pattern.
 pub(super) struct Cell {
-    pub clip_index: Option<usize>,
     pub tick: u32,
     pub start_frame: u64,
     pub end_frame: u64,
     pub step_ticks: u32,
-    pub editable: bool,
 }
 
 #[derive(Default)]

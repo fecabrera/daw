@@ -158,10 +158,6 @@ impl Timeline {
         self
     }
 
-    pub fn quarter_beats(&self, frame: u64) -> f64 {
-        self.beats(frame) * 4.0 / f64::from(self.signature.denominator)
-    }
-
     pub fn beats(&self, frame: u64) -> f64 {
         (frame as f64 / f64::from(self.sample_rate_hz)) * self.beats_per_second
     }

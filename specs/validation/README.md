@@ -5,6 +5,47 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Beat source-pattern view and beat gutters — 2026-11-13
+
+The lower beat editor now shows the selected clip’s complete source pattern once,
+including trimmed steps. It uses a bounded source viewport and source-bar ruler;
+project seeking/loop selection remains on the upper ruler. Other clips, loop
+repetitions and placeholder cells are omitted. With no selected clip, retain
+subtrack controls/audition and show a selection prompt. Source subdivision captions
+ignore clip stretch; Clip length remains the visible-clip duration control.
+
+Two-point gaps remain within beats, and six-point gutters separate source beats
+according to the project time signature. Beat-start dots are removed. Gutter clicks
+cannot activate a nearby tile. Existing colors, rows and editing transactions remain.
+
+All 69 focused beat checks passed (three explicit performance probes ignored).
+Coverage includes source selection, trims/stretch/position/repeats, editing trimmed
+hits without changing clip ranges, other-clip isolation, source subdivision,
+source-only pan, beat gutters in quarter/eighth-note meters, dot removal,
+read-only source-ruler input and all 512 tiles of a dense fitted source without
+overlap. Full debug/release workspace suites passed. After the dense-tile
+correction, both complete UI suites passed (1,009 tests each; three performance
+probes ignored). Strict workspace/all-target Clippy, formatting, documentation
+links, diff checks and the macOS arm64 debug desktop executable build passed.
+Native visual and Windows/Linux checks remain open. This supersedes the earlier
+all-clip/repeated-cell presentation requirements, not their historical validation.
+
+## Beat step tile spacing — 2026-11-13
+
+Beat steps now fill more of their time cells with one-point horizontal and
+two-point vertical insets and two-point corner radii. Adjacent cells have a
+two-point horizontal gap. The standalone audition cell uses the same height and
+corners while retaining its 16-point width. Shared button colors, state fills,
+repeat dimming, row height, musical timing and editing behavior are unchanged.
+
+The 67 focused beat-editor checks passed (three explicit performance checks
+remain ignored), including Dark/Light/Mist geometry, ruler mapping, fixed
+headers/gutter, disabled repeats and interactions. Existing geometry expectations
+now use the narrower insets. Full debug and release workspace tests, strict
+workspace/all-target Clippy, formatting, relative documentation links and diff
+checks passed. The macOS arm64 debug desktop executable build passed. Native
+visual and Windows/Linux checks remain open.
+
 ## Multiband EQ measured spectrum resolution — 2026-11-13
 
 The spectrum now uses 512 measured log cells, overlapping upper analysis and a

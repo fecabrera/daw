@@ -10,7 +10,17 @@ Use beat tracks to build rhythms from independently configured instruments. Mixe
 4. Switch to Instrument, open **Tracks**, and select the subtrack. Add Oscillator, Sampler or Granulizer to its layer through the shared component catalog. Each subtrack is an instrument; there is no audio/MIDI type choice.
 5. Return to Editor and click steps to enable or disable them. Turn on the headphones button above the step rows to hear each step you enable. Press Play to hear the pattern.
 
-Editor keeps the selected track's clip overview above the step rows. The step grid shows every clip on that track, even with no clip selected. Each clip uses its own pattern and subdivision. Click a step in a clip’s first cycle to select and edit that clip without moving the viewport. Later cycles show the same hits in a dimmer version of their original color and are read-only. Edit the first cycle to update its repetitions. Empty disabled steps fill the gaps between clips. Subtrack controls remain available without a selected clip; double-click empty space in the track overview to create a pattern.
+Select a beat clip in the track overview to edit its source pattern below. The
+grid shows that complete pattern once, including steps outside the clip’s trimmed
+range. Other clips, loop repetitions and empty cells beyond the source are not
+shown. With no clip selected, subtrack controls and audition buttons remain
+available; select a clip to show its steps. Double-click empty space in the track
+overview to create a pattern.
+
+The lower ruler shows source bars starting at 1.1. Fit and zoom apply to the full
+source, independently of clip position, trim, stretch and loops. Use the upper
+ruler to seek or select a project loop. Wider gaps separate beats according to the
+project time signature; steps have no beat-start dots. Colors remain unchanged.
 
 Click the standalone step in the gutter before a subtrack’s pattern steps to
 preview that instrument. It works with automatic audition off and without a
@@ -20,9 +30,18 @@ not cut the sound at the step boundary. A new preview or Escape stops it.
 
 ## Grid and hit controls
 
-Patterns share one grid across all subtracks. **Length** uses the transport’s musical-position display, with duration counts starting at zero: `0001.00` means one bar and `0000.02` means two beats. It follows the project time signature, trimming, stretching and repetitions. Drag the bar or beat section up or down to adjust it; hold Shift for slower adjustment. Release to apply, or press Escape to cancel. The tooltip shows the exact duration in seconds and samples, including fractions smaller than one beat.
+Patterns share one grid across all subtracks. **Clip length** uses the transport’s musical-position display, with duration counts starting at zero: `0001.00` means one bar and `0000.02` means two beats. It follows the project time signature, trimming, stretching and repetitions. Drag the bar or beat section up or down to adjust it; hold Shift for slower adjustment. Release to apply, or press Escape to cancel. The tooltip shows the exact duration in seconds and samples, including fractions smaller than one beat.
 
-Unlooped sources support up to 16 bars before stretch; stretched and looped clips can show larger lengths. **Subdivision** shows each step’s length relative to the current time signature. In 4/4 with no stretch, the choices are 1/4, 1/8, 1/16 and 1/32 bar. New sources retain a four-quarter-note span with sixteenth-note steps. Changing the time signature updates the displayed length and fractions without moving hits. Stretching updates these values; for example, doubling a 1/16-bar step makes it 1/8 bar. Trimming or changing pattern length does not change the step duration. Unusual stretch ratios can show a decimal bar value. Trimming or choosing a coarser grid keeps hidden steps silent. Expanding the range or restoring the resolution reveals their original positions and velocities.
+Unlooped sources support up to 16 bars before stretch; stretched and looped clips
+can have longer visible durations. **Subdivision** shows each source step’s length
+relative to the current time signature. In 4/4 the choices are 1/4, 1/8, 1/16 and
+1/32 bar. Clip stretch does not change the source grid or these captions. New
+sources have a four-quarter-note span with sixteenth-note steps. Changing the
+time signature updates beat grouping and fractions without moving hits. Steps
+outside a clip trim remain editable in the full source grid, but stay silent
+until included in playback. A shorter source length or coarser subdivision keeps
+hidden steps stored; expanding the source or restoring the finer subdivision
+reveals their original positions and velocities.
 
 An enabled step starts at velocity 100. Right-click it to change velocity from 1 to 127. Drag the value, or click it, type a number and press Enter. The menu stays open while you edit. Right-click a subtrack header to set **Trigger pitch**. Its right-aligned value shows a note such as C4 or D3#. Drag to change it in semitones, or click and type a note; D#3 is also accepted. The range is C-1 to G9 (MIDI 0–127), and the default is C4 (60). Enter accepts a typed note; Escape cancels it. Invalid notes retain the current pitch. Every hit on that subtrack uses this pitch, plus any clip transpose.
 
@@ -67,10 +86,11 @@ oversized result and leaves the clips unchanged.
 
 ## Trim and restore beat steps
 
-Trimming either clip edge hides steps outside the visible range. It retains their
-positions, lane assignments and velocities. Drag the edge back to restore them,
-including after saving and reopening. This works in Timeline and Editor, and
-Undo/Redo restores the previous range without changing the stored steps.
+Trimming either clip edge excludes steps outside that range from playback and
+the clip overview. The full source grid still shows and edits those steps.
+Their positions, lane assignments and velocities remain stored. Drag the clip
+edge back to include them in playback, including after saving and reopening.
+Undo/Redo restores the previous clip range without changing the stored steps.
 
 Steps hidden by a shorter source length or coarser subdivision also stay stored.
 Expand the range or restore the finer subdivision to reveal them. Use **Merge**
@@ -84,7 +104,7 @@ cancels. The opposite edge stays fixed. Extending beyond the saved source grows
 that clip’s pattern, up to 16 bars, and leaves other clips unchanged. Existing
 hits keep their timing. Previously hidden hits can become visible in the added
 range. Shortening keeps the pattern content available for later extension.
-The clip can end partway through a bar; **Length** follows its visible duration.
+The clip can end partway through a bar; **Clip length** follows its visible duration.
 
 Drag a clip header’s edge to extend repetitions. Looped clips retain their
 existing body-trim behavior. Resize previews include any neighboring clips that
@@ -94,8 +114,9 @@ will be trimmed or removed. Undo restores the complete change.
 
 Selected subtracks use the same header and lane colors as selected Timeline
 tracks and Instrument layers in Dark, Light and Mist. Each selected subtrack is
-highlighted without a selection outline, including when several are selected. Step buttons keep their own
-on/off and hover colors. Dividers separate subtrack rows across both headers and the step grid. The separator below the ruler also spans the headers to the left toolbar. Subtrack Mute and Solo use the shared joined M / S
+highlighted without a selection outline, including when several are selected. Steps
+use closely spaced rectangular tiles with small rounded corners. They keep their
+existing on/off and hover colors. Dividers separate subtrack rows across both headers and the step grid. The separator below the ruler also spans the headers to the left toolbar. Subtrack Mute and Solo use the shared joined M / S
 button group; each button remains independent.
 
 Editor and Instrument share the same names, order, selection and mix controls. Timeline also exposes these mix controls in expandable child rows under the beat parent. Its child lanes stay empty; beat hits remain in Editor. Projects save each Timeline beat folder’s open/closed state. The **Tracks** panel in both views lists subtracks below their beat parent. Its right-pinned Mute, Solo, Pan and Gain controls change the corresponding track or subtrack without selecting it.

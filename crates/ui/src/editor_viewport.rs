@@ -142,6 +142,29 @@ impl EditorViewport {
         self.clamp_to_content(width);
     }
 
+    /// A beat pattern uses its own source clock, never the arrangement extent.
+    fn prepare_pattern(&mut self, pattern: Option<(Id, u64)>, width: f32, rate: u32) {
+        let Some((id, frames)) = pattern else {
+            *self = Self::default();
+            return;
+        };
+        if self.clip != Some(id) {
+            self.fitted = true;
+        }
+        self.clip = Some(id);
+        self.retain_on_selection = false;
+        self.start = 0.0;
+        self.end = frames.max(1) as f64 / f64::from(rate);
+        self.fit_zoom = (f64::from(width.max(1.0)) / self.end) as f32;
+        self.minimum_zoom = self.fit_zoom;
+        self.maximum_zoom = (self.fit_zoom * 128.0).max(self.zoom);
+        if self.fitted {
+            self.zoom = self.fit_zoom;
+            self.scroll = 0.0;
+        }
+        self.clamp_to_content(width);
+    }
+
     fn clamp_to_content(&mut self, width: f32) {
         self.zoom = self.zoom.clamp(self.minimum_zoom, self.maximum_zoom);
         self.scroll = self.scroll.clamp(
@@ -190,16 +213,41 @@ impl DawUi {
         };
         let label_width = track_overview::LABEL_WIDTH;
         let width = (ui.available_width() - label_width - scrollbar).max(1.0);
-        self.midi_editor.content.prepare(
-            clip,
-            width,
-            self.session.project.sample_rate_hz,
-            track.clips.iter().map(Clip::end).max().unwrap_or(0),
-            !midi,
-        );
+        if track.kind == daw_core::TrackKind::Beat {
+            let source = clip.and_then(|clip| {
+                self.session
+                    .project
+                    .assets
+                    .iter()
+                    .find(|a| a.id == clip.asset_id)
+                    .and_then(|a| a.beat_pattern.as_ref())
+                    .map(|source| {
+                        (
+                            clip.id,
+                            self.session
+                                .project
+                                .midi_frame(source.pattern.length_ticks()),
+                        )
+                    })
+            });
+            self.midi_editor.content.prepare_pattern(
+                source,
+                width,
+                self.session.project.sample_rate_hz,
+            );
+        } else {
+            self.midi_editor.content.prepare(
+                clip,
+                width,
+                self.session.project.sample_rate_hz,
+                track.clips.iter().map(Clip::end).max().unwrap_or(0),
+                !midi,
+            );
+        }
         let toolbar = rows::fixed(ui, toolbars::HEIGHT, |ui| {
             toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
-                let enabled = (clip.is_some() || (!midi && !track.clips.is_empty()))
+                let enabled = (clip.is_some()
+                    || (track.kind == daw_core::TrackKind::Audio && !track.clips.is_empty()))
                     && self.editing_enabled()
                     && !self.midi_editor.dragging();
                 if track.kind == daw_core::TrackKind::Audio {
@@ -255,6 +303,7 @@ impl DawUi {
             ui,
             scrollbar,
             midi || track.kind == daw_core::TrackKind::Beat,
+            track.kind == daw_core::TrackKind::Beat,
             label_width,
         );
     }
@@ -264,6 +313,7 @@ impl DawUi {
         ui: &mut egui::Ui,
         scrollbar: f32,
         midi: bool,
+        beat: bool,
         label_width: f32,
     ) {
         let (row, _) = ui.allocate_exact_size(
@@ -308,7 +358,23 @@ impl DawUi {
                 },
             );
         }
-        self.time_ruler_at(ui, rect, ui.id().with("editor-content-ruler"));
+        if beat {
+            // Source bars are independent of project seeking and loop selection.
+            let labels =
+                Rect::from_min_max(rect.min, Pos2::new(rect.right(), rect.bottom() - 20.0));
+            let painter = ui.painter_at(rect);
+            let colors = theme::palette(ui.ctx());
+            painter.rect_filled(rect, 0.0, colors.background);
+            painter.rect_filled(labels, 0.0, colors.panel);
+            self.musical_timeline()
+                .paint_ruler_ticks(&painter, rect, labels, [0, 0], false);
+            ui.interact(rect, ui.id().with("beat-source-ruler"), Sense::hover())
+                .on_hover_text(
+                    "Pattern source bars. Use the upper ruler to seek or select a project loop.",
+                );
+        } else {
+            self.time_ruler_at(ui, rect, ui.id().with("editor-content-ruler"));
+        }
         let palette = theme::palette(ui.ctx());
         ui.painter().hline(
             row.x_range(),

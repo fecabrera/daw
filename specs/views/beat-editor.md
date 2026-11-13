@@ -2,7 +2,7 @@
 
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/views/beat-editor.md).
 
-Status: Beat MVP implemented across the project model, storage, renderer, CLI and both views; native platform acceptance remains open. Last updated: 2026-10-31.
+Status: Beat MVP implemented across the project model, storage, renderer, CLI and both views; native platform acceptance remains open. Last updated: 2026-11-13.
 
 The beat editor is the lower editor for beat clips in Editor. It shows one step row per beat subtrack. Instrument opens the selected subtrack’s Layers page with source layers, local LFO, Envelope and Output. Selecting the beat parent opens only final Output. The shared Tracks panel lists subtracks as children of their parent. Both views share subtrack creation, single/group selection, deletion, rename, reorder, gain and pan. Mixer controls the parent beat track.
 
@@ -35,7 +35,7 @@ The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, sh
 | B21 | The Beat MVP includes simple lane-stop connections. If connected lanes trigger together, the stopping lane wins. | Stop or suppress the target lane's hit and play the stopping lane's hit. |
 | B22 | Open a beat clip from Timeline in Editor using the beat pattern editor, and retain its clip/subtrack selection when switching to Instrument. Keep the same instrument identity when its layer sources change. | No audio/MIDI subtrack creation or conversion command. |
 | B23 | Editor and Instrument share subtrack gain, pan, mute and solo; Instrument provides serial subtrack effects. Sum lanes through serial track-level effects. | Defer parallel audio paths, shared-effect sends, and audio sidechains. |
-| B24 | Default to one bar and four steps per beat. Retain 1–16 source bars and unstretched steps of 1/4, 1/8, 1/16 or 1/32 bar. | Apply one grid to all lanes; captions measure audible bar fractions after stretch. Saved source enum values remain compatible. |
+| B24 | Default to one bar and four steps per beat. Retain 1–16 source bars and unstretched steps of 1/4, 1/8, 1/16 or 1/32 bar. | Apply one grid to all lanes; captions measure source bar fractions independently of clip stretch. Saved source enum values remain compatible. |
 | B25 | Place the beat pattern editor inside the shared Editor view, alongside audio and MIDI pattern editors chosen by clip type. | Replace the earlier standalone Beat view; preserve the accepted beat-editing and processing rules. |
 | B26 | Give each beat track one beat instrument containing all its lanes. | Each subtrack instrument retains its own source layers, controls, effects, and voice state. Combine lanes into one output bus before parent-track effects and gain/pan. |
 | B27 | Add beat track appears in the menubar/application Track menu, Tracks Plus dropdown and creation context menus. | Share one command, label and guard path with the existing Add actions. |
@@ -75,7 +75,7 @@ Accepted on 2026-10-11 through B19–B24, with navigation revised by B25. This i
 
 | Area | Initial behavior | Deferred work |
 | --- | --- | --- |
-| Pattern grid | 1–16 source bars; unstretched steps of 1/4, 1/8, 1/16 or 1/32 bar. Default one bar at 1/16 bar. All lanes share the grid. Display includes stretch. | Wider source grids. |
+| Pattern grid | 1–16 source bars; unstretched steps of 1/4, 1/8, 1/16 or 1/32 bar. Default one bar at 1/16 bar. All lanes share the source grid. Display ignores clip stretch. | Wider source grids. |
 | Step controls | On/off and per-step velocity; one trigger-pitch setting per subtrack. | Per-step pitch, swing, probability, repeated hits. |
 | Playback | Steps trigger instruments and send note-off after one step. Source trigger modes, envelopes and Amplitude determine audible duration. New triggers replace the current voice. | Customizable trigger-duration modes and subtrack polyphony. |
 | Lane stops | Simple directional stop connections, with a short fade. The stopping lane wins when connected lanes trigger together. | More advanced trigger-control rules. |
@@ -208,7 +208,11 @@ Instrument and Editor share the [Tracks hierarchy](instrument-tracks.md). Beat p
 
 Selecting the beat parent shows only its final Output and targets that bus for compatible catalog units. There are no kit-wide source, LFO or Envelope rows or Add layer action. The parent remains the selected real project track for effects and arrangement. Source/sample navigation must select the matching subtrack owner when opening a nested instrument. Parent disclosure is independent of Output collapse and does not change audio/history.
 
-Beat patterns use the shared Timeline/Editor overview double-click creation gesture. Retain subtrack controls without an active pattern. Show all clips on the displayed track using their own sources and grids. Use a disabled quarter-beat grid in gaps when no clip is selected; bound placeholder painting to 2048 cells per row. Selecting a pattern restores its saved grid controls.
+Beat patterns use the shared Timeline/Editor overview double-click creation
+gesture. Retain subtrack controls without an active pattern, but show no source
+cells until a clip is selected. The overview retains all clips; the lower grid
+shows only the selected full source. Selecting a clip restores its source grid
+controls and fits that source, independently of clip trims and loops.
 
 Selected Editor subtrack rows reuse the track/layer selection palette through
 selected_track_background and selected_track_header_background. Paint the lane
@@ -277,7 +281,7 @@ vertical ScrollArea spans that column and the right step canvas; do not maintain
 separate scroll positions. Remove the old advice block. Retain the shared
 `track_overview::LABEL_WIDTH` gutter (52 points) between the panel and steps,
 matching MIDI and Audio. Offset both ruler and cells by that width and exclude
-it from fit/zoom and placeholder viewport calculations. Reuse the MIDI ruler
+it from source fit/zoom and viewport calculations. Reuse the MIDI ruler
 headphones button and session audition toggle in this gutter. Enabling a step
 previews its subtrack at velocity 100, saved trigger pitch plus clip transpose,
 and saved resolution; removing or clicking disabled steps remains silent.
@@ -290,32 +294,30 @@ changes, edits, Escape and existing job/dialog/focus guards cancel stale preview
 Reuse `instrument_lanes_header` for the Beat subtracks title and Plus action so
 button artwork, size, right inset, enablement and tooltip match Instrument.
 
-Show all clips from the displayed beat track in the lower step grid, independent
-of clip selection. Map each through its own source offset, stretch, repeat base,
-phase and resolution. Index immutable steps by asset ID and retain indices while
-those assets remain referenced by the displayed track. Cull offscreen clips,
-rows and slots before widget creation. Clicking a first-cycle cell or changing
-its velocity selects that clip through editor_select_clip, retains both viewport
-transforms, and publishes only that clip’s ReplaceBeatPattern source edit.
+Show only the selected beat clip’s complete source pattern in the lower grid.
+Use source-frame coordinates from tick zero through `BeatPattern::length_ticks`,
+independent of arrangement position, source offset, stretch, loop base or phase.
+Include steps excluded by clip trims; edit them through the existing
+`ReplaceBeatPattern` transaction without changing clip timing or other source users.
+Do not show other clips, loop repetitions or placeholder cells outside the source.
+With no selected clip, show the selection prompt and retain subtrack controls and
+standalone audition. The upper overview still shows the track arrangement.
 
-Only repetition zero accepts edits, keyboard activation, velocity menus or
-automatic audition. Later repetitions retain their saved hit state, use disabled
-buttons with their original selection fill dimmed toward the editor background
-through theme::dimmed_repeat_color, and have no playhead highlight. Derive
-repetition identity from the clip origin and phase, not the first visible cycle.
-A phase-trimmed first cycle ends at start + repeat length - phase. Scrolling must
-never promote a later repetition to an editable cycle. Source edits update all
-repetitions of that clip; other source users retain their content.
+The lower viewport fits the whole source on selection, retains manual source
+zoom/pan during edits, and bounds scrolling to that source. Its ruler uses the
+shared musical tick painter with source bars starting at 1.1, without project
+playhead/loop gestures. Upper-ruler seeking and loop selection keep the project
+clock. Playhead outlines on source cells still resolve the selected clip’s saved
+trim/stretch/repeat mapping during playback. Subdivision captions and beat
+spacing follow source ticks and the project time signature, not clip stretch.
 
-Empty disabled placeholders fill gaps outside every clip. Subtract all clip
-ranges, including partial boundary cells, so placeholders cannot overlap saved
-content. Use the selected stretched step interval, or 1/4 beat without selection.
-Placeholders show no hits, playhead highlights or edit actions. Retain the existing
-placeholder paint bound and preserve content when selecting/deselecting clips.
-
-Pointer edits must stay inside the active cell's allocated time range, with its
-right edge exclusive. Egui's extended hit radius must not allow a click in the
-disabled region to toggle the nearest active step. Preserve keyboard activation.
+Index immutable steps by asset ID, prepare only the selected source and cull
+rows/slots before creating widgets. Source edits update playback repetitions of
+that clip; other users retain their previous content. Keep the selected clip and
+both view transforms during edits. Pointer edits require a point inside the painted
+tile, with its right edge exclusive. Beat gutters and space after the source must
+not activate a nearby step through egui’s extended hit radius. Preserve keyboard
+activation, velocity menus and guarded automatic audition.
 
 The beat lower pane reuses `editor_scrollbar` with the standard
 `editor_content_scrollbar` identity, while the content viewport is active. Pin it
@@ -323,8 +325,8 @@ to the canvas bottom, aligned with the ruler's left gutter. Reserve
 `SCROLLBAR_HEIGHT` below the shared header/step vertical scroll area so row hit
 areas and its vertical scrollbar cannot cover the horizontal control. Horizontal
 scrolling changes only the lower content clock; retain overview zoom/scroll,
-header positions, project/track/clip state and disabled placeholders when no clip
-is selected. Use the shared scrollbar's styling and interaction guards.
+header positions and project/track/clip state. No selected clip means no pattern
+cells. Use the shared scrollbar's styling and interaction guards.
 
 Beat subtrack renaming in Editor and Instrument uses `rows::name_input`, shared
 with track and Instrument layer names. Keep the same font, full available width, standard control
@@ -373,18 +375,15 @@ looped edits to one repeat cycle through the timeline limit. Keep stored source
 grid bars separate from visible clip duration. This supersedes the earlier Bars
 readout.
 
-Subdivision captions and choices measure the audible step duration against the
-current project bar: `(resolution.step_ticks * signature.denominator /
-(4 * signature.numerator * MIDI_TICKS_PER_BEAT)) * clip.stretch`.
-Use the saved stretch ratio, never clip length or pattern bar count. Unstretched
-Quarter/Eighth/Sixteenth/ThirtySecond source grids display 1/4, 1/8, 1/16 and 1/32 bar in 4/4; other signatures change the captions, not the source ticks.
-Keep stored enum values and source ticks unchanged for compatibility. Display
-reduced fractions for compact ratios and up to four decimal bar digits for large
-frame-derived fractions. Menu choices use the same stretched units and still edit
-the underlying source grid once; choosing a grid does not apply another stretch.
-The disabled placeholder grid uses the same exact stretched step interval.
-Active cells retain the existing source trim/repeat/stretch mapping. Trimming and
-source bar-count changes leave subdivision captions unchanged.
+Subdivision captions and choices measure source step duration against the current
+project bar: `resolution.step_ticks * signature.denominator /
+(4 * signature.numerator * MIDI_TICKS_PER_BEAT)`. Ignore clip stretch, visible
+clip length and pattern bar count. Quarter/Eighth/Sixteenth/ThirtySecond display
+1/4, 1/8, 1/16 and 1/32 bar in 4/4; other signatures change captions without
+changing source ticks. Keep the stored enum compatible. Choosing a grid edits the
+underlying source once and preserves dormant off-grid hits. The toolbar’s
+**Clip length** monitor retains its existing visible-clip duration and resize
+transaction, distinct from the full source displayed below.
 
 ## Subtrack audition column and step spacing
 
@@ -392,8 +391,16 @@ Editor places one standalone audition cell per subtrack inside the existing
 52-point gutter, before the time-mapped pattern cells. Its painted button is
 16 points wide, empty (no dot), and centered in that gutter. Reuse `beat_step_button`
 for its normal button appearance, cell height and external insets. All audition,
-active and disabled cells use four-point horizontal and three-point vertical
-insets; adjacent pattern cells therefore have an eight-point horizontal gap.
+source cells use one-point horizontal and two-point vertical insets, with
+two-point corner radii. Normal step gaps are two points; add two points at each
+side of a source beat boundary for six-point beat gutters. Beat boundaries use
+`tick * signature.denominator` modulo `4 * MIDI_TICKS_PER_BEAT`. Cap the additional
+inset at one quarter of available cell width at small zoom, and cap the normal
+horizontal inset at one quarter of cell width. Empty source buttons use zero text
+padding so dense fitted sources cannot expand their hit/paint bounds into adjacent
+cells. Remove beat-start dots.
+Keep row heights, source timing and shared on/off, hover, pressed and focus colors.
+Gutters reduce painted tile width without shifting time boundaries.
 Audition cells scroll vertically with their headers and remain fixed during
 horizontal pan/zoom. Reuse `ControlPanel::row_left_divider` for one full-height
 separator at the pattern grid's left edge, below the ruler and above the scrollbar.

@@ -8,7 +8,17 @@ For beat tracks, the lower editor shows the [beat step grid](beat-editor.md) and
 
 Clips in the track overview and audio editor have a small visual gap between them and stay borderless when selected. At a crossfade, the gap follows the owning clip’s fade endpoint. Selecting a clip uses a lighter shade of its color family in the header. Headers have rounded top corners and square bottom corners.
 
-The lower editor shows every clip on the displayed track, including beat patterns. Looped sections after each clip’s first cycle use dimmer versions of their original colors and are read-only. Edit notes, steps, or audio controls in the first cycle; those source changes also appear in its repetitions. Scrolling to a later cycle does not make it editable. Use the overview above to move, trim, loop or stretch the complete clip.
+For audio and MIDI tracks, the lower editor shows every clip on the displayed
+track. Looped sections after each clip’s first cycle use dimmer versions of their
+original colors and are read-only. Edit notes or audio controls in the first
+cycle; those source changes also appear in its repetitions. Scrolling to a later
+cycle does not make it editable.
+
+For beat tracks, select a clip in the overview to show its complete source pattern
+once, including trimmed steps. Other clips and loop repetitions stay in the
+overview. Beat gaps separate source beats without dots. The lower ruler shows
+source bars; use the upper ruler to seek and select a project loop. Use the
+overview to move, trim, loop or stretch the complete clip.
 
 MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
 
@@ -85,7 +95,7 @@ Previews use velocity 100 and sustain while the mouse button is held. Releasing 
 
 ## Editor zoom and scroll
 
-The track overview and lower editor have independent horizontal viewports. The playback toolbar’s zoom control and the scrollbar below the overview control the overview. **Fit all clips**, immediately left of that zoom control, shows all clips on the displayed track, including gaps between them. It leaves the lower editor’s view unchanged and is disabled when the track has no clips. The **Fit clip** button (outward arrows between two vertical edges), the zoom control immediately to its right above the lower ruler, and the bottom scrollbar control the waveform or piano roll. Pinch or scroll horizontally over the pane you want to change. The selected clip initially fills the lower editor width. Fit clip restores that view; while fitted, resizing the window keeps the clip fitted.
+The track overview and lower editor have independent horizontal viewports. The playback toolbar’s zoom control and the scrollbar below the overview control the overview. **Fit all clips**, immediately left of that zoom control, shows all clips on the displayed track, including gaps between them. It leaves the lower editor’s view unchanged and is disabled when the track has no clips. The **Fit clip** button (outward arrows between two vertical edges), the zoom control immediately to its right above the lower ruler, and the bottom scrollbar control the waveform or piano roll. Pinch or scroll horizontally over the pane you want to change. The selected clip initially fills the lower editor width. Fit clip restores that view; while fitted, resizing the window keeps the clip fitted. For beat tracks, the lower fit/zoom/scroll controls apply to the full source pattern rather than the clip’s visible playback range.
 
 Zoom out in either audio or MIDI content to see other clips on that track. MIDI note selection and group edits across clips keep the working viewport. Single-click a clip in the overview to select it and scroll the lower pane to its start while keeping the current zoom. Double-click it to select and fit the clip. Both rulers control the same project loop. In either ruler’s upper band, drag the loop body to move it, drag an edge to resize it, or drag empty space to select a new range. Click the range to turn looping on or off. Hold Shift to bypass snapping. Escape or loss of window focus cancels a drag. The lower band positions the playhead. The lower ruler uses its own zoom and scroll, and loop gestures keep both viewports unchanged. Zoom, scroll, and Fit clip do not modify the project. Seeking retains the overview ruler’s saved-navigation behavior.
 

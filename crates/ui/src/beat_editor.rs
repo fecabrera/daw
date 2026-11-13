@@ -5,7 +5,7 @@ use daw_core::{BeatEdit, BeatResolution, BeatSubtrack};
 mod timeline;
 pub(super) use timeline::TimelineState;
 
-const STEP_INSETS: Vec2 = Vec2::new(4.0, 3.0);
+const STEP_INSETS: Vec2 = Vec2::new(1.0, 2.0);
 const SUBTRACK_AUDITION_WIDTH: f32 = 16.0;
 
 pub(super) fn trigger_note_name(pitch: u8) -> String {
@@ -730,7 +730,7 @@ impl DawUi {
                         }),
                 )
             };
-            ui.label("Length");
+            ui.label("Clip length");
             let monitor = transport_monitor_control(
                 ui,
                 &musical_time::duration_monitor_at_rate_in_meter(
@@ -776,7 +776,7 @@ impl DawUi {
             let dropdown = menus::Dropdown::from_id_salt(("beat-grid", track.id))
                 .selected_text(resolution_name_in_meter(
                     resolution,
-                    clip.stretch,
+                    None,
                     self.display_time_signature(),
                 ))
                 .show_ui(ui, |ui| {
@@ -784,11 +784,7 @@ impl DawUi {
                         let response = ui.selectable_value(
                             &mut resolution,
                             choice,
-                            resolution_name_in_meter(
-                                choice,
-                                clip.stretch,
-                                self.display_time_signature(),
-                            ),
+                            resolution_name_in_meter(choice, None, self.display_time_signature()),
                         );
                         #[cfg(test)]
                         {
@@ -802,9 +798,9 @@ impl DawUi {
             {
                 self.beat_ui.subdivision_bounds = Some(dropdown.response.rect);
             }
-            dropdown.response.on_hover_text(
-                "Step length as a fraction of the current bar, including clip stretch.",
-            );
+            dropdown
+                .response
+                .on_hover_text("Step length as a fraction of a bar in the pattern source.");
             if resolution != pattern.resolution
                 && let Ok(next) = pattern.with_grid(pattern.bars, resolution)
             {
@@ -894,157 +890,24 @@ impl DawUi {
         .max(1.0);
         let first_frame = clock.frame_at_pixel(0.0).max(0) as u64;
         let last_frame = clock.frame_at_pixel(f64::from(width)).max(0) as u64;
-        // Use the clip's saved source mapping for trims, repeats and stretches.
+        // The lower pane is a source editor: one complete selected pattern,
+        // independent of arrangement position, trims, stretch and repetition.
         let mut cells = Vec::new();
-        for (clip_index, clip) in track.clips.iter().enumerate() {
-            if clip.end() <= first_frame || clip.start_frame >= last_frame {
-                continue;
-            }
-            let Some(pattern) = self
-                .session
-                .project
-                .assets
-                .iter()
-                .find(|a| a.id == clip.asset_id)
-                .and_then(|a| a.beat_pattern.as_ref())
-                .map(|source| &source.pattern)
-            else {
-                continue;
-            };
+        if let (Some(clip), Some(pattern)) = (&active, &pattern) {
             self.beat_ui.step_index.prepare(clip.asset_id, pattern);
-            let clock = self.musical_timeline();
-            let visible = clock.frame_at_pixel(0.0).max(0) as u64;
-            let base = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
-            let first = visible
-                .saturating_sub(clip.start_frame)
-                .saturating_add(clip.repeat.map_or(0, |r| r.phase_frame))
-                / base;
-            let count = clip.repeat.map_or(1, |_| clip.length_frames / base + 2);
-            let visible_frames = clock.frame_delta(f64::from(ui.available_width())).max(0) as u64;
-            let last = count.min(first.saturating_add(visible_frames / base + 3));
-            let repeat_pixels = clock.pixels_for_frames(i128::from(base));
-            let stride = (0.5 / repeat_pixels).ceil().max(1.0) as usize;
-            for repetition in (first..last).step_by(stride) {
-                let step_ticks = pattern.resolution.step_ticks();
-                let phase = clip.repeat.map_or(0, |r| r.phase_frame);
-                let origin = i128::from(clip.start_frame)
-                    - i128::from(clip.source_offset_frame)
-                    - i128::from(phase)
-                    + i128::from(repetition) * i128::from(base);
-                let slots = crate::beat_grid::visible_slots(
-                    pattern.length_ticks() / step_ticks,
-                    i128::from(first_frame)..i128::from(last_frame),
-                    |slot| {
-                        let frame = self.session.project.midi_frame(slot * step_ticks);
-                        origin
-                            + i128::from(
-                                clip.stretch.map_or(frame, |s| s.scale(frame).unwrap_or(0)),
-                            )
-                    },
-                );
-                for slot in slots {
-                    let tick = slot * step_ticks;
-                    let start = self.session.project.midi_frame(tick);
-                    let end = self
-                        .session
-                        .project
-                        .midi_frame(tick + pattern.resolution.step_ticks());
-                    let mut start = clip.stretch.map_or(start, |s| s.scale(start).unwrap_or(0));
-                    let mut end = clip.stretch.map_or(end, |s| s.scale(end).unwrap_or(0));
-                    if clip.repeat.is_some() {
-                        start = start.max(clip.source_offset_frame);
-                        end = end.min(clip.source_offset_frame.saturating_add(base));
-                    }
-                    if end <= start {
-                        continue;
-                    }
-                    let local = i128::from(start)
-                        - i128::from(clip.source_offset_frame)
-                        - i128::from(phase)
-                        + i128::from(repetition) * i128::from(base);
-                    let finish = local + i128::from(end - start);
-                    if finish <= 0 || local >= i128::from(clip.length_frames) {
-                        continue;
-                    }
-                    cells.push(crate::beat_grid::Cell {
-                        clip_index: Some(clip_index),
-                        tick,
-                        start_frame: clip.start_frame + local.max(0) as u64,
-                        end_frame: clip.start_frame
-                            + finish.min(i128::from(clip.length_frames)) as u64,
-                        step_ticks,
-                        editable: repetition == 0,
-                    });
-                }
-            }
-        }
-        // Gaps retain an empty disabled grid. Each clip supplies its own content.
-        let step_ticks = pattern
-            .as_ref()
-            .map_or(BeatResolution::Sixteenth.step_ticks(), |p| {
-                p.resolution.step_ticks()
-            });
-        let resolution = pattern
-            .as_ref()
-            .map_or(BeatResolution::Sixteenth, |p| p.resolution);
-        let (numerator, denominator) =
-            step_length_in_beats(resolution, active.as_ref().and_then(|c| c.stretch));
-        let steps_per_beat = denominator as f64 / numerator as f64;
-        let grid_steps = pattern
-            .as_ref()
-            .map_or(16, |p| p.length_ticks() / step_ticks)
-            .max(1);
-        let first = (clock.quarter_beats(first_frame) * steps_per_beat).floor() as u64;
-        let last =
-            ((clock.quarter_beats(last_frame) * steps_per_beat).ceil() as u64).saturating_add(1);
-        let stride = last.saturating_sub(first).div_ceil(2048).max(1) as usize;
-        let seconds_per_step = 60.0 / f64::from(self.session.project.tempo_bpm) / steps_per_beat;
-        let mut occupied: Vec<_> = track
-            .clips
-            .iter()
-            .map(|clip| (clip.start_frame, clip.end()))
-            .collect();
-        occupied.sort_unstable();
-        for index in (first..last).step_by(stride) {
-            let start = self.session.project.frames(index as f64 * seconds_per_step);
-            let end = self
-                .session
-                .project
-                .frames((index + 1) as f64 * seconds_per_step);
-            if end <= start {
-                continue;
-            }
-            let tick = (index % u64::from(grid_steps)) as u32 * step_ticks;
-            // Subtract every clip, including partial boundary cells. Gaps alone
-            // receive empty placeholders; another clip supplies its own source/grid.
-            let mut cursor = start;
-            for &(clip_start, clip_end) in &occupied {
-                if clip_end <= cursor || clip_start >= end {
-                    continue;
-                }
-                if cursor < clip_start {
-                    cells.push(crate::beat_grid::Cell {
-                        clip_index: None,
-                        tick,
-                        start_frame: cursor,
-                        end_frame: clip_start.min(end),
-                        step_ticks,
-                        editable: false,
-                    });
-                }
-                cursor = cursor.max(clip_end);
-                if cursor >= end {
-                    break;
-                }
-            }
-            if cursor < end {
+            let step_ticks = pattern.resolution.step_ticks();
+            let slots = crate::beat_grid::visible_slots(
+                pattern.length_ticks() / step_ticks,
+                i128::from(first_frame)..i128::from(last_frame),
+                |slot| i128::from(self.session.project.midi_frame(slot * step_ticks)),
+            );
+            for slot in slots {
+                let tick = slot * step_ticks;
                 cells.push(crate::beat_grid::Cell {
-                    clip_index: None,
                     tick,
-                    start_frame: cursor,
-                    end_frame: end,
+                    start_frame: self.session.project.midi_frame(tick),
+                    end_frame: self.session.project.midi_frame(tick + step_ticks),
                     step_ticks,
-                    editable: false,
                 });
             }
         }
@@ -1218,7 +1081,7 @@ impl DawUi {
                         );
                         let preview = ui
                             .add_enabled_ui(self.editing_enabled(), |ui| {
-                                beat_step_button(ui, preview_cell, "", false, None)
+                                beat_step_button(ui, preview_cell, false)
                             })
                             .inner
                             .on_hover_text(format!("Audition {}", row.name));
@@ -1242,24 +1105,19 @@ impl DawUi {
                         );
                         ui.set_clip_rect(grid_clip.intersect(ui.clip_rect()));
                         ui.scope(|ui| {
+                            // Empty tiles need no text padding. The standard button
+                            // margin would make dense, fitted sources overlap.
+                            ui.spacing_mut().button_padding = Vec2::ZERO;
                             for cell_data in &cells {
                                 let crate::beat_grid::Cell {
                                     tick,
                                     start_frame: frame,
                                     end_frame: end,
                                     step_ticks,
-                                    editable: cell_editable,
                                     ..
                                 } = *cell_data;
-                                let cell_clip =
-                                    cell_data.clip_index.map(|index| &track.clips[index]);
+                                let cell_clip = active.as_ref();
                                 ui.scope(|ui| {
-                                    if !cell_editable {
-                                        ui.disable();
-                                        let original = ui.visuals().selection.bg_fill;
-                                        ui.visuals_mut().selection.bg_fill =
-                                            theme::dimmed_repeat_color(ui.ctx(), original);
-                                    }
                                     let timeline = self.musical_timeline();
                                     let left = self.midi_editor.content.left
                                         + timeline.pixel_at_frame(frame) as f32;
@@ -1278,19 +1136,25 @@ impl DawUi {
                                             .get(clip.asset_id, row.id, tick)
                                             .cloned()
                                     });
-                                    let response = beat_step_button(
-                                        ui,
-                                        cell,
-                                        if tick.is_multiple_of(daw_core::MIDI_TICKS_PER_BEAT) {
-                                            "·"
-                                        } else {
-                                            ""
-                                        },
-                                        step.is_some(),
-                                        (!cell_editable && cell_clip.is_some() && step.is_some())
-                                            .then_some(ui.visuals().selection.bg_fill),
+                                    // Separate source beats without moving their time-mapped
+                                    // boundaries. Trimmed cells retain their original grouping.
+                                    let beat_ticks = daw_core::MIDI_TICKS_PER_BEAT * 4;
+                                    let denominator =
+                                        u32::from(self.display_time_signature().denominator);
+                                    let extra = 2.0_f32.min(
+                                        ((cell.width() - 2.0 * STEP_INSETS.x) * 0.25).max(0.0),
                                     );
-                                    if cell_editable && let Some(clip) = cell_clip {
+                                    let mut tile = cell;
+                                    if (tick * denominator).is_multiple_of(beat_ticks) {
+                                        tile.min.x += extra;
+                                    }
+                                    if ((tick + step_ticks) * denominator)
+                                        .is_multiple_of(beat_ticks)
+                                    {
+                                        tile.max.x -= extra;
+                                    }
+                                    let response = beat_step_button(ui, tile, step.is_some());
+                                    if let Some(clip) = cell_clip {
                                         let frame = self.session.project.transport.playhead_frame;
                                         if frame >= clip.start_frame && frame < clip.end() {
                                             let position =
@@ -1328,40 +1192,24 @@ impl DawUi {
                                     #[cfg(test)]
                                     {
                                         if let Some(clip) = cell_clip {
-                                            if cell_editable {
-                                                self.beat_ui
-                                                    .clip_steps
-                                                    .insert((clip.id, row.id, tick), response.rect);
-                                            } else {
-                                                self.beat_ui.repeated_steps.push((
-                                                    clip.id,
-                                                    row.id,
-                                                    tick,
-                                                    response.rect,
-                                                ));
-                                            }
-                                        }
-                                        if cell_editable || track.clips.is_empty() {
                                             self.beat_ui
-                                                .steps
-                                                .insert((row.id, tick), response.rect);
+                                                .clip_steps
+                                                .insert((clip.id, row.id, tick), response.rect);
                                         }
-                                        if !cell_editable {
-                                            self.beat_ui
-                                                .disabled_steps
-                                                .push((row.id, response.rect));
-                                        }
+                                        self.beat_ui.steps.insert((row.id, tick), response.rect);
                                     }
-                                    // Egui's hit radius can reach past the clip end into
-                                    // disabled cells. Only pointer clicks inside this cell edit it.
+                                    // Beat gutters are empty space, even inside egui's
+                                    // extended hit radius. Keyboard activation stays available.
                                     let pointer_inside = ui.input(|i| {
                                         !i.pointer.button_clicked(egui::PointerButton::Primary)
                                             || i.pointer.interact_pos().is_some_and(|p| {
-                                                cell.contains(p) && p.x < cell.right()
+                                                cell.contains(p)
+                                                    && response.rect.contains(p)
+                                                    && p.x < cell.right()
+                                                    && p.x < response.rect.right()
                                             })
                                     });
-                                    if cell_editable
-                                        && response.clicked()
+                                    if response.clicked()
                                         && pointer_inside
                                         && let Some(clip) = cell_clip
                                         && let Some(pattern) = self
@@ -1382,9 +1230,7 @@ impl DawUi {
                                             audition = Some(row.id);
                                         }
                                     }
-                                    if cell_editable
-                                        && let (Some(step), Some(clip)) = (step, cell_clip)
-                                    {
+                                    if let (Some(step), Some(clip)) = (step, cell_clip) {
                                         menus::ContextMenu::new(&response)
                                             .close_behavior(
                                                 egui::PopupCloseBehavior::CloseOnClickOutside,
@@ -1445,6 +1291,15 @@ impl DawUi {
             viewport.max,
         );
         panels::ControlPanel::row_left_divider(ui, grid, viewport);
+        if pattern.is_none() {
+            ui.painter_at(grid).text(
+                grid.min + Vec2::splat(8.0),
+                egui::Align2::LEFT_TOP,
+                "Select a beat clip to edit its pattern",
+                egui::TextStyle::Body.resolve(ui.style()),
+                theme::palette(ui.ctx()).secondary,
+            );
+        }
         if let Some((clip_id, pattern)) = changed_pattern {
             self.editor_select_clip(clip_id, track.id);
             self.edit(Edit::ReplaceBeatPattern { clip_id, pattern });
@@ -1620,19 +1475,12 @@ fn resolution_name_in_meter(
 }
 
 /// Share cell appearance and outer insets between pattern steps and row audition.
-fn beat_step_button(
-    ui: &mut egui::Ui,
-    cell: Rect,
-    label: &str,
-    selected: bool,
-    fill: Option<egui::Color32>,
-) -> egui::Response {
-    let button = egui::Button::new(label).selected(selected);
-    // Disabled button classes otherwise replace the selected fill with grey.
-    let button = if let Some(fill) = fill {
-        button.fill(fill)
-    } else {
-        button
-    };
-    ui.put(cell.shrink2(STEP_INSETS), button)
+fn beat_step_button(ui: &mut egui::Ui, cell: Rect, selected: bool) -> egui::Response {
+    ui.put(
+        cell.shrink2(Vec2::new(
+            STEP_INSETS.x.min(cell.width().max(0.0) * 0.25),
+            STEP_INSETS.y,
+        )),
+        egui::Button::new("").selected(selected).corner_radius(2),
+    )
 }
