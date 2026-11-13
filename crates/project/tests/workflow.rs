@@ -705,6 +705,9 @@ fn export_settings_keep_overwrite_protection_and_float_headroom() {
     session.project.master.gain_db = 24.0;
     let project_folder = fixture.0.join("project");
     session.save(&project_folder).unwrap();
+    // Save can add platform-specific durability notices. Exercise inherited
+    // notices on every platform, including hosts where directory sync succeeds.
+    session.warnings.push("Existing session notice".into());
     let manifest = fs::read(project_folder.join("project.json")).unwrap();
     for settings in [
         ExportSettings::default(),
@@ -747,7 +750,10 @@ fn export_settings_keep_overwrite_protection_and_float_headroom() {
             .export_with_settings(&output, true, settings)
             .unwrap();
         if settings.format == ExportFormat::Wav && settings.wav_codec == WavCodec::Float32 {
-            assert!(warnings.is_empty(), "{warnings:?}");
+            assert_eq!(
+                warnings, session.warnings,
+                "float32 export must preserve existing notices without adding a clipping warning"
+            );
             assert!(
                 hound::WavReader::open(&output)
                     .unwrap()

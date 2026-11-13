@@ -5,6 +5,20 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Float32 export notices on Windows — 2026-11-12
+
+The headroom regression incorrectly required an empty export warning list.
+Windows project saves can add directory-durability notices to the session, which
+export must preserve. The float32 branch now requires the returned notices to
+match the session's existing notices exactly, while retaining its check for PCM
+above unity. Integer/lossy export still must report actual clipping. A seeded
+session notice exercises inheritance on every platform. Production warning and
+file-publication behavior is unchanged.
+
+The targeted regression, complete debug/release workspace suites, strict
+workspace/all-target Clippy, formatting and diff checks passed on macOS. Native
+Windows CI remains to be rerun.
+
 ## Bounce read-ahead test scheduling — 2026-11-12
 
 The intermittent disk-tap allocation test counted callback attempts while
