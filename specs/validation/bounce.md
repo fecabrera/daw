@@ -100,3 +100,22 @@ formatting and the native Apple Silicon executable build passed. Full workspace
 debug (`cargo test --workspace --offline`) and release
 (`cargo test --workspace --release --offline`) follow-up runs passed separately.
 Native listening and UI checks remain open.
+
+## Read-ahead test scheduling follow-up — 2026-11-12
+
+The callback allocation test previously counted 5,000 calls rather than 5,000
+completed frames. An asynchronous read-ahead miss returns temporary silence and
+keeps the playhead still. A fast test loop could finish before the disk worker
+ran, then fail its nonzero-peak assertion.
+
+The test now retries reported buffering with a 15-second deadline. It sleeps for
+one millisecond only in the test harness, with heap counting disabled. Every
+callback attempt, including buffering, must still allocate and deallocate
+nothing. Buffering must leave the playhead unchanged. Every completed frame and
+playhead position must match an independent resident-audio renderer. Read errors
+and timeouts fail the test. This changes no production preparation, callback or
+read-ahead behavior.
+
+All 20 bounce tests passed. The repaired test passed 100 debug and 100 release repetitions with
+eight concurrent test processes in each mode. Broader check results are recorded in the
+[validation index](README.md).

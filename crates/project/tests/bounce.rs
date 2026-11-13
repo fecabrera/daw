@@ -736,6 +736,8 @@ fn captured_disk_taps_use_callback_read_ahead_without_heap_operations() {
         )
         .unwrap()
         .session;
+    let mut resident = daw_engine::Renderer::new(next.plan());
+    resident.play();
     for asset in next
         .project
         .assets
@@ -752,16 +754,37 @@ fn captured_disk_taps_use_callback_read_ahead_without_heap_operations() {
     let mut renderer = daw_engine::Renderer::new(next.plan());
     renderer.prepare_streaming().unwrap();
     renderer.play();
-    HEAP_OPS.with(|count| count.set(0));
-    COUNT_HEAP.with(|enabled| enabled.set(true));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
     let mut peak = 0.0f32;
     for _ in 0..5000 {
-        let frame = renderer.next_sample();
+        let frame = loop {
+            let position = renderer.playhead;
+            HEAP_OPS.with(|count| count.set(0));
+            COUNT_HEAP.with(|enabled| enabled.set(true));
+            let frame = renderer.next_sample();
+            COUNT_HEAP.with(|enabled| enabled.set(false));
+            assert_eq!(HEAP_OPS.with(|count| count.get()), 0);
+            if !renderer.buffering() {
+                break frame;
+            }
+            assert_eq!(renderer.playhead, position);
+            assert!(
+                !renderer.source_failed(),
+                "read-ahead failed: {:?}",
+                renderer.source_error()
+            );
+            assert!(
+                std::time::Instant::now() < deadline,
+                "bounce read-ahead timed out"
+            );
+            // Yield only in the test harness. Every callback attempt, including
+            // buffering, remains covered by the allocation/deallocation guard.
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        };
+        assert_eq!(frame, resident.next_sample());
+        assert_eq!(renderer.playhead, resident.playhead);
         peak = peak.max(frame[0].abs()).max(frame[1].abs());
     }
-    COUNT_HEAP.with(|enabled| enabled.set(false));
-    let operations = HEAP_OPS.with(|count| count.get());
-    assert_eq!(operations, 0);
     assert!(peak > 0.0);
     assert!(renderer.source_error().is_none());
 }

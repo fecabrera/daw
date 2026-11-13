@@ -5,6 +5,17 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Bounce read-ahead test scheduling — 2026-11-12
+
+The intermittent disk-tap allocation test counted callback attempts while
+asynchronous reads could still be buffering. It now counts completed frames,
+waits only in the test harness with a bounded deadline, and checks every
+callback attempt for heap operations. All 5,000 completed frames and playhead
+positions must match a resident renderer. The 20-test bounce suite and 100
+repetitions in each of debug and release across eight concurrent processes
+passed. Full debug and release workspace suites, strict workspace/all-target
+Clippy and formatting passed. Production code is unchanged. See the [Bounce validation follow-up](bounce.md#read-ahead-test-scheduling-follow-up--2026-11-12).
+
 ## Playback meter release — 2026-11-12
 
 Bus meters previously published each callback's raw peak directly to the UI.
