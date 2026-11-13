@@ -309,3 +309,58 @@ fn stopped_startup_publication_keeps_buffered_audition_at_a_different_device_rat
         );
     }
 }
+
+#[test]
+fn incomplete_track_meter_bindings_return_an_error_instead_of_panicking() {
+    let plan = beat_plan().prepare_beats();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        PreparedRenderer::try_new(plan, &HashMap::new())
+    }));
+    assert!(
+        result.is_ok(),
+        "missing bindings must not panic the preparation worker"
+    );
+    let error = result.unwrap().err().expect("missing binding rejected");
+    assert!(error.contains("meter binding"), "{error}");
+}
+
+#[test]
+fn retry_reconciles_active_bindings_with_added_beat_tracks() {
+    let mut plan = beat_plan();
+    let active = Bindings::prepare(&plan.clone().prepare_beats(), &Bindings::default());
+    let added = plan.project.add_beat_track().unwrap();
+    let status = Arc::new(Status::default());
+    let worker = Worker::new(status).unwrap();
+    worker.submit(plan, active.clone(), None);
+    let mut candidate = ready(&worker);
+    let compiled = candidate.renderer.plan.clone();
+    assert!(compiled.project.tracks.iter().any(|t| t.id == added));
+    // AudioOutput::drain supplies the current active bindings when the callback
+    // returns a replacement that missed its activation clock.
+    candidate.bindings = active.clone();
+    worker.reprepare(
+        candidate,
+        Anchor {
+            transport: TransportState {
+                frame: 1200,
+                playing: false,
+                paused: false,
+                playback_start: None,
+            },
+            clock: 0,
+        },
+    );
+    let retried = ready(&worker);
+    assert_eq!(retried.bindings.tracks.len(), compiled.project.tracks.len());
+    assert_eq!(retried.renderer.meters.len(), compiled.project.tracks.len());
+    for (index, track) in compiled.project.tracks.iter().enumerate() {
+        let meter = &retried.bindings.tracks[&track.id];
+        assert!(Arc::ptr_eq(meter, &retried.renderer.meters[index]));
+        if let Some(previous) = active.tracks.get(&track.id) {
+            assert!(Arc::ptr_eq(meter, previous));
+        }
+    }
+    // Retrying must leave the worker available for later edits.
+    worker.submit(compiled, retried.bindings, None);
+    let _ = ready(&worker);
+}

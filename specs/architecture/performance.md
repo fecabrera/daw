@@ -50,6 +50,13 @@ The monotonic clock counts generated project samples independently of seeks, loo
 
 Worker pre-roll and catch-up run before effect meters are bound, so preparation cannot publish analysis levels into active meters. Exact history reconstruction still takes time, and a worker that cannot catch up postpones activation while current audio continues. Initial device creation remains synchronous.
 
+Every retry reconciles telemetry and live-control bindings against the candidate's
+compiled plan on the worker. Active bindings can predate added tracks or generated
+beat rows. Reuse handles for surviving identities, create missing handles, and
+remove obsolete bindings before reconstructing the renderer. Renderer construction
+returns an error for a missing track meter instead of panicking the preparation
+thread. Binding reconciliation never runs in the audio callback.
+
 `engine::TransportCache` retains exact checkpoints before latency priming. Each snapshot owns independent mutable source, envelope, LFO, Macro, route, smoother, filter, delay, and dynamics state; decoded/prepared PCM stays shared. DSP cloning runs only on the worker. `UnitMeter` cloning preserves enable state and detaches publication handles, so snapshots cannot publish into active meters. Cached preparation starts at the closest preceding checkpoint, replays through the existing full renderer, and applies the same latency priming as uncached preparation.
 
 ### Idle coverage and exact reuse

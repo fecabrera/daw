@@ -121,8 +121,13 @@ impl PreparedRenderer {
             .project
             .tracks
             .iter()
-            .map(|t| meters[&t.id].clone())
-            .collect();
+            .map(|t| {
+                meters
+                    .get(&t.id)
+                    .cloned()
+                    .ok_or_else(|| format!("Missing output meter binding for track {}", t.id))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let mut renderer = Renderer::new(plan);
         renderer.prepare_streaming()?;
         let memory =

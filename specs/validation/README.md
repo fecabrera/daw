@@ -5,6 +5,23 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Renderer retry binding reconciliation — 2026-11-13
+
+An incomplete track-meter map reproduced the reported `PreparedRenderer::try_new`
+panic at the unchecked track-ID lookup. A late renderer retry can receive the
+active plan's bindings while its candidate contains added tracks or compiled beat
+rows. The worker now reconciles all bindings with that candidate before rebuilding
+DSP, preserving handles for surviving identities. Missing track meters return a
+preparation error instead of panicking. The audio callback is unchanged.
+
+All 90 `daw-output` tests passed. New regressions cover incomplete-map rejection,
+retrying an added beat track with old active bindings, complete meter ordering,
+handle reuse, and subsequent worker requests. Existing callback heap guards and
+playing/late-replacement tests also pass. `cargo test --workspace --offline` and
+`cargo test --workspace --release --offline` passed. Strict workspace/all-target
+Clippy, formatting, diff checks and the macOS arm64 debug desktop build passed.
+Native playback and Windows/Linux checks remain open.
+
 ## Clip menu bounce separator — 2026-11-13
 
 The shared Clip action groups now separate Split/Merge/Bounce from Stem separation/

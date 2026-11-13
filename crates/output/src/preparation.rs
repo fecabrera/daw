@@ -269,8 +269,11 @@ impl Worker {
                             // Reconstruct unbound DSP so worker pre-roll cannot write active meters.
                             let plan = renderer.plan.clone();
                             drop(renderer);
+                            // Active bindings can predate tracks added by this candidate.
+                            // Reconcile every binding with the candidate before retrying.
+                            let bindings = Bindings::prepare(&plan, &previous);
                             let mut renderer =
-                                match PreparedRenderer::try_new(plan, &previous.tracks) {
+                                match PreparedRenderer::try_new(plan, &bindings.tracks) {
                                     Ok(renderer) => Box::new(renderer),
                                     Err(error) => {
                                         cache = None;
@@ -282,7 +285,7 @@ impl Worker {
                                 };
                             renderer.preparation_lead = lead;
                             renderer.requested_at = requested_at;
-                            (renderer, previous, Some(anchor.transport), Some(anchor))
+                            (renderer, bindings, Some(anchor.transport), Some(anchor))
                         }
                     };
                     renderer.revision = revision;
