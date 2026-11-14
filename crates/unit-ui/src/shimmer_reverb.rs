@@ -96,10 +96,7 @@ fn note(ui: &mut Ui, s: &mut Settings) -> Response {
                     ui.selectable_value(&mut s.note, i as u8, *label);
                 }
             })
-            .response
-            .on_hover_text(
-                "Musical pre-delay. Maximum 8 seconds; slower tempos clamp at that limit.",
-            );
+            .response;
         if before != s.note {
             r.mark_changed();
         }

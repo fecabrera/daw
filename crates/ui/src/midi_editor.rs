@@ -1058,7 +1058,7 @@ impl DawUi {
                 egui::Id::new(("dense-midi-repeats", clip.id)),
                 Sense::hover(),
             )
-            .on_hover_text("Zoom in to edit individual notes.");
+            .on_hover_text("Zoom in to edit notes");
             return;
         }
         for repetition in first..=last {
@@ -1190,7 +1190,7 @@ impl DawUi {
                     );
                 }
                 response.clone().on_hover_text(format!(
-                    "{} · velocity {}",
+                    "Note: {} · Velocity: {}",
                     note_name(note.pitch),
                     note.velocity
                 ));

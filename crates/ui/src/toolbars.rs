@@ -105,7 +105,7 @@ pub fn horizontal_zoom(
             response.widget_info(|| {
                 egui::WidgetInfo::slider(ui.is_enabled(), f64::from(*zoom), "Horizontal zoom")
             });
-            response.on_hover_text("Horizontal zoom: drag left to zoom out, right to zoom in")
+            response.on_hover_text(format!("Horizontal zoom: {:.1}", *zoom))
         })
         .inner;
     ui.add(
@@ -116,7 +116,7 @@ pub fn horizontal_zoom(
             .image()
             .alt_text("Horizontal zoom"),
     )
-    .on_hover_text("Horizontal zoom");
+    .on_hover_text(format!("Horizontal zoom: {:.1}", *zoom));
     response
 }
 
@@ -161,7 +161,7 @@ pub(super) fn track_size(ui: &mut Ui, size: &mut f32) -> egui::Response {
             response.widget_info(|| {
                 egui::WidgetInfo::slider(ui.is_enabled(), f64::from(*size), "Track height")
             });
-            response.on_hover_text(format!("Track height: {label} (1–4)"))
+            response.on_hover_text(format!("Track height: {label}"))
         })
         .inner;
     ui.add(
@@ -172,6 +172,21 @@ pub(super) fn track_size(ui: &mut Ui, size: &mut f32) -> egui::Response {
             .image()
             .alt_text("Track height"),
     )
-    .on_hover_text("Track height");
+    .on_hover_text(format!(
+        "Track height: {}",
+        format!("{size:.2}")
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+    ));
     response
+}
+
+/// Text only: callers retain ownership of action dispatch and keyboard bindings.
+pub fn action_tooltip(
+    ctx: &egui::Context,
+    name: &str,
+    shortcut: Option<egui::KeyboardShortcut>,
+) -> String {
+    let formatted = shortcut.map(|shortcut| format_menu_shortcut(ctx, &shortcut));
+    daw_unit_ui::tooltips::action(name, formatted.as_deref())
 }

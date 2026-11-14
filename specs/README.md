@@ -67,6 +67,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Audio sidechain modulation plan](modulation/audio-sidechain-plan.md): high-priority track/group/Return sources and configurable audio-to-control mapping.
 - [Mixer strip output destinations](views/mixer.md).
 - [View menu panels](views/view-menu.md): shared panel toggles, view availability and checked states.
+- [Tooltip presentation](views/tooltips.md): canonical types, concise formats, accessibility and Details reports. See the [acceptance inventory](acceptance/tooltips.md) for shared editor coverage.
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).
 - [Instrument and Editor project track browser](views/instrument-tracks.md).
 - [Beat editor design](views/beat-editor.md): implemented MVP and native acceptance criteria.

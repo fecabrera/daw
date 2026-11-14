@@ -10,7 +10,7 @@ Right-click an item to open its available actions. Context menus for clips, trac
 
 Standard buttons, joined button groups and dropdowns use filled, rounded surfaces without outlines. Hover highlights the control; active choices retain their active color. Text inputs also have rounded corners without an outline, while the caret and text-selection highlight remain visible. Dividers occupy space between joined buttons and input fields without covering the controls. Frameless toolbar toggles use matching rounded backgrounds when hovered or active. The DAW and independent plugin editors share the standard control appearance.
 
-Knob tooltips show only the parameter name on the left and the current value on the right, on one line. They keep a minimum width and expand for longer values. Hover to see the value, or drag a knob to keep the tooltip visible as the value changes, even when the pointer leaves the knob. Releasing ends the drag tooltip. Drag up or right to increase a value, hold Shift for finer adjustment, use arrow keys for small steps, or double-click to reset.
+See [Tooltips and Details](views/tooltips.md) for hover values, actions and diagnostic reports.
 
 ## Views
 

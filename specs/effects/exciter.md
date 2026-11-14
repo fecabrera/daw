@@ -26,7 +26,7 @@ There is no fixed band-count cap. Plus splits the widest logarithmic interval th
 Use the common lane shell, 90-point strips, margins, full-height dividers, shared knob base, canonical Small dropdown menus and standard output meter/held peak.
 
 1. Ranges: vertically ordered crossover knobs, with scrolling for larger banks and a Ranges footer. Clamp UI edits between neighbors before publishing settings. Frequency is logarithmic; the selector has no modulation.
-2. Each band: Mode dropdown, then 42-point Drive, Mix and Level knobs. The footer contains the shared Power/label pair (`B1`, etc.) beside the shared 22-point `S` toggle. Footer tooltips identify the full range. Retain compact Power/Solo controls. Right-click a knob or Power for the standard Remove band menu; disable removal of the final band. Do not attach a context popup with the ComboBox's popup ID to Mode.
+2. Each band: Mode dropdown, then 42-point Drive, Mix and Level knobs. The footer contains the shared Power/label pair (`B1`, etc.) beside the shared 22-point `S` toggle. Footer hover follows the [canonical tooltip contract](../views/tooltips.md). Retain compact Power/Solo controls. Right-click a knob or Power for the standard Remove band menu; disable removal of the final band. Do not attach a context popup with the ComboBox's popup ID to Mode.
 3. Plus: shared add strip.
 4. Out: shared Level and Dry/Wet knobs, footer and the standard linked-stereo rail with held peak/reset. Retain the meter's bypass masking and lifetime contract.
 

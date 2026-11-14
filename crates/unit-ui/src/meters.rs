@@ -73,9 +73,7 @@ pub fn band_level_rail(ui: &mut Ui, rail: Rect, name: &str, peak: f32, enabled: 
         info.value = db.is_finite().then_some(f64::from(db));
         info
     });
-    response.on_hover_text(format!(
-        "{name} output level: {level} dBFS (display range −60 to 0 dBFS)"
-    ));
+    response.on_hover_text(format!("{name} output level: {level} dBFS"));
 }
 
 pub fn position_for_dbfs(db: f32) -> f32 {
@@ -288,7 +286,13 @@ pub fn unit_gap_level(
             [m.boost_peaks()[1].peak(), m.boost_peaks()[2].peak()]
         }),
     );
-    response.on_hover_text(format!("Stereo output (dBFS). Left: {}, peak {}. Right: {}, peak {}. Click to reset both peaks. Display range −60 to 0 dBFS.", peak_text(values[0]), peak_text(held[0]), peak_text(values[1]), peak_text(held[1])))
+    response.on_hover_text(format!(
+        "L: {} dBFS · Peak: {} dBFS · R: {} dBFS · Peak: {} dBFS",
+        peak_text(values[0]),
+        peak_text(held[0]),
+        peak_text(values[1]),
+        peak_text(held[1])
+    ))
 }
 
 fn output_level(
@@ -390,7 +394,7 @@ fn output_level(
         }
         info
     });
-    response.on_hover_text(format!("{name} level: {level} dBFS. Held peak: {peak} dBFS. Click to reset peak. Display range −60 to 0 dBFS."))
+    response.on_hover_text(format!("{name}: {level} dBFS · Peak: {peak} dBFS"))
 }
 
 #[cfg(test)]
@@ -796,8 +800,13 @@ pub fn gain_change(
     );
     let held = reading.held();
     let boost = reading.held_boost();
-    reading.describe(ui, response, &format!("{name} gain change"), db,
-        format!("{name} compression gain: {db:+.1} dB. Peak reduction: {held:.1} dB. Peak boost: {boost:.1} dB. Click to reset both peaks. Left: reduction; right: boost. Display ±24 dB; before Dry/Wet."))
+    reading.describe(
+        ui,
+        response,
+        &format!("{name} gain change"),
+        db,
+        format!("{name}: {db:+.1} dB · Reduction peak: {held:.1} dB · Boost peak: {boost:.1} dB"),
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -851,9 +860,13 @@ impl<'a> GainReduction<'a> {
         self.reset_on_click(ui, &response);
         let db = self.current();
         let held = self.held();
-        self.describe(ui, response, description, db, format!(
-            "{description}: {db:.1} dB. Peak: {held:.1} dB. Click to reset peak; 0–24 dB display scale."
-        ))
+        self.describe(
+            ui,
+            response,
+            description,
+            db,
+            format!("{description}: {db:.1} dB · Peak: {held:.1} dB"),
+        )
     }
     fn reset_on_click(self, ui: &Ui, response: &Response) {
         if response.clicked_by(egui::PointerButton::Primary)

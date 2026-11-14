@@ -91,7 +91,7 @@ fn name_label(
                     .truncate()
                     .sense(egui::Sense::click_and_drag()),
             )
-            .on_hover_text(format!("{}\nDouble-click to rename macro.", label.text()));
+            .on_hover_text(label.text());
         if response.double_clicked() && ui.is_enabled() && ui.input(|i| i.focused) {
             *edit = Some(NameEdit {
                 layer,
@@ -174,7 +174,7 @@ pub(super) fn unit(
                     }));
                     // Labels and unused space share the release-only reorder lifecycle.
                     let responses = &strip.inner.inner.inner;
-                    let control_press = ui.input(|i| i.pointer.press_origin()).is_some_and(|p| responses[..responses.len().saturating_sub(1)].iter().any(|r| r.rect.contains(p)));
+                    let control_press = ui.input(|i| { if i.pointer.any_down() { i.pointer.press_origin() } else { i.pointer.hover_pos() } }).is_some_and(|p| responses[..responses.len().saturating_sub(1)].iter().any(|r| r.rect.contains(p)));
                     if !control_press && controls.name_edit.is_none() {
                         crate::strip_reorder::arm_items(ui, owner, &strip.response, control.id, &original);
                         if let Some(label) = responses.last() { crate::strip_reorder::arm_items(ui, owner, label, control.id, &original); }

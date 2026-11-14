@@ -139,44 +139,100 @@ impl super::DawUi {
         if audio.is_empty() {
             return;
         }
-        panel.field_row(ui, label_width, |ui| { ui.small("Channels"); }, |ui| {
-            ui.horizontal(|ui| {
-                let group = crate::rows::input_group_with_height(ui, 18.0, |ui| {
-                    let mut right = Rect::NOTHING;
-                    for (left, label) in [(true, "L"), (false, "R")] {
-                        let enabled = |clip: &&Clip| if left { clip.channels.left } else { clip.channels.right };
-                        let selected = audio.iter().all(enabled);
-                        let mixed = audio.iter().any(enabled) && !selected;
-                        let response = ui.scope(|ui| {
-                            crate::rows::input_group_edge(ui, !left);
-                            ui.spacing_mut().button_padding = Vec2::ZERO;
-                            ui.spacing_mut().interact_size = Vec2::splat(18.0);
-                            ui.add_sized(Vec2::splat(18.0), egui::Button::new(egui::RichText::new(label).size(10.0)).selected(selected))
-                        }).inner
-                            .on_hover_text(if mixed { "Mixed selection. Click to enable this channel on selected audio clips." } else if left { "Enable left playback channel" } else { "Enable right playback channel" });
-                        right = response.rect;
-                        if response.clicked() {
-                            for clip in &audio {
-                                let mut channels = clip.channels;
-                                if left { channels.left = !selected; } else { channels.right = !selected; }
-                                if channels != clip.channels { commands.push(Edit::SetClipChannels { clip_id: clip.id, channels }); }
+        panel.field_row(
+            ui,
+            label_width,
+            |ui| {
+                ui.small("Channels");
+            },
+            |ui| {
+                ui.horizontal(|ui| {
+                    let group = crate::rows::input_group_with_height(ui, 18.0, |ui| {
+                        let mut right = Rect::NOTHING;
+                        for (left, label) in [(true, "L"), (false, "R")] {
+                            let enabled = |clip: &&Clip| {
+                                if left {
+                                    clip.channels.left
+                                } else {
+                                    clip.channels.right
+                                }
+                            };
+                            let selected = audio.iter().all(enabled);
+                            let mixed = audio.iter().any(enabled) && !selected;
+                            let response = ui
+                                .scope(|ui| {
+                                    crate::rows::input_group_edge(ui, !left);
+                                    ui.spacing_mut().button_padding = Vec2::ZERO;
+                                    ui.spacing_mut().interact_size = Vec2::splat(18.0);
+                                    ui.add_sized(
+                                        Vec2::splat(18.0),
+                                        egui::Button::new(egui::RichText::new(label).size(10.0))
+                                            .selected(selected),
+                                    )
+                                })
+                                .inner
+                                .on_hover_text(format!(
+                                    "{} channel: {}",
+                                    if left { "Left" } else { "Right" },
+                                    if mixed {
+                                        "Mixed"
+                                    } else if selected {
+                                        "On"
+                                    } else {
+                                        "Off"
+                                    }
+                                ));
+                            right = response.rect;
+                            if response.clicked() {
+                                for clip in &audio {
+                                    let mut channels = clip.channels;
+                                    if left {
+                                        channels.left = !selected;
+                                    } else {
+                                        channels.right = !selected;
+                                    }
+                                    if channels != clip.channels {
+                                        commands.push(Edit::SetClipChannels {
+                                            clip_id: clip.id,
+                                            channels,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        right
+                    });
+                    crate::rows::group_separator(ui, group.response.rect, group.inner.left());
+                    let mut swapped = audio.iter().all(|clip| clip.channels.swapped);
+                    let mixed = audio.iter().any(|clip| clip.channels.swapped) && !swapped;
+                    if ui
+                        .checkbox(&mut swapped, egui::RichText::new("Invert").small())
+                        .on_hover_text(format!(
+                            "Swap channels: {}",
+                            if mixed {
+                                "Mixed"
+                            } else if swapped {
+                                "On"
+                            } else {
+                                "Off"
+                            }
+                        ))
+                        .changed()
+                    {
+                        for clip in &audio {
+                            let mut channels = clip.channels;
+                            channels.swapped = swapped;
+                            if channels != clip.channels {
+                                commands.push(Edit::SetClipChannels {
+                                    clip_id: clip.id,
+                                    channels,
+                                });
                             }
                         }
                     }
-                    right
                 });
-                crate::rows::group_separator(ui, group.response.rect, group.inner.left());
-                let mut swapped = audio.iter().all(|clip| clip.channels.swapped);
-                let mixed = audio.iter().any(|clip| clip.channels.swapped) && !swapped;
-                if ui.checkbox(&mut swapped, egui::RichText::new("Invert").small()).on_hover_text(if mixed { "Mixed selection. Click to swap left and right on all selected audio clips." } else { "Swap left and right audio signals before channel enable controls" }).changed() {
-                    for clip in &audio {
-                        let mut channels = clip.channels;
-                        channels.swapped = swapped;
-                        if channels != clip.channels { commands.push(Edit::SetClipChannels { clip_id: clip.id, channels }); }
-                    }
-                }
-            });
-        });
+            },
+        );
         panel.field_row(
             ui,
             label_width,
@@ -188,11 +244,16 @@ impl super::DawUi {
                 let mixed = audio.iter().any(|clip| clip.channels.inverted) && !selected;
                 if ui
                     .checkbox(&mut selected, egui::RichText::new("Invert").small())
-                    .on_hover_text(if mixed {
-                        "Mixed selection. Click to invert all selected audio clips."
-                    } else {
-                        "Flip the sign of both playback channels"
-                    })
+                    .on_hover_text(format!(
+                        "Invert polarity: {}",
+                        if mixed {
+                            "Mixed"
+                        } else if selected {
+                            "On"
+                        } else {
+                            "Off"
+                        }
+                    ))
                     .changed()
                 {
                     for clip in audio {
@@ -331,177 +392,243 @@ impl super::DawUi {
                     .size()
                     .x;
                 ui.add_enabled_ui(enabled, |ui| {
-                    let name = panel.field_row(
-                        ui,
-                        label_width,
-                        |ui| {
-                            ui.add_enabled_ui(!multiple, |ui| field_label(ui, "Name"));
-                        },
-                        |ui| {
-                            if multiple {
-                                return multiple_clips_value(ui);
-                            }
-                            self.setting_value(
-                                ui,
-                                clip,
-                                &ids,
-                                &mut edit,
-                                Field::Name,
-                                Value {
-                                    display: &clip.name,
-                                    editable: &clip.name,
-                                    tooltip: "Clip name. Double-click to edit.",
-                                    numeric: false,
-                                    sense: Sense::click(),
-                                },
-                            )
-                        },
-                    )
-                    .inner;
-                    let source_row = panel.field_row(
-                        ui,
-                        label_width,
-                        |ui| {
-                            ui.add_enabled_ui(!multiple, |ui| field_label(ui, "Source"));
-                        },
-                        |ui| {
-                            if multiple {
-                                return multiple_clips_value(ui);
-                            }
-                            let (text, tip) = source.clone().unwrap_or_else(|| {
-                                ("Missing source".into(), "Missing source".into())
-                            });
-                            value_label(ui, &text, &tip, false, true, Sense::hover())
-                        },
-                    )
-                    .inner;
-                    let gain = panel.field_row(
-                        ui,
-                        label_width,
-                        |ui| {
-                            field_label(ui, "Gain");
-                        },
-                        |ui| {
-                            let change = self.clip_settings_change.as_ref().filter(|_| multiple)
-                                .and_then(|change| change.label(Field::Gain));
-                            let changing = change.is_some();
-                            let gain_text = change.unwrap_or_else(|| {
-                                if mixed_gain { MULTIPLE_VALUES.into() }
-                                else { format_gain_value(clip.gain_db) }
-                            });
-                            let gain_edit = faders::format_gain(clip.gain_db);
-                            let response = self.setting_value(
-                                ui,
-                                clip,
-                                &ids,
-                                &mut edit,
-                                Field::Gain,
-                                Value {
-                                    display: &gain_text,
-                                    editable: &gain_edit,
-                                    tooltip: "Clip gain (dB): drag up or down in 0.1 dB steps; hold Shift for finer adjustment. Double-click to edit.",
-                                    numeric: !mixed_gain || changing,
-                                    sense: Sense::click_and_drag(),
-                                },
-                            );
-                            if let Some(value) = drag_gain(ui, &response, gain_reference) {
-                                let delta = bounded_delta(
-                                    clips.iter()
-                                        .filter(|clip| !audible_gain || daw_core::linear_gain(clip.gain_db) != 0.0)
-                                        .map(|clip| f64::from(clip.gain_db)),
-                                    f64::from(value) - f64::from(gain_reference),
-                                    f64::from(daw_core::SILENT_GAIN_DB),
-                                    f64::from(daw_core::CLIP_MAX_GAIN_DB),
-                                );
-                                DragChange::add(&mut self.clip_settings_change, clip.id, &ids, Field::Gain, delta);
-                                ui.ctx().request_repaint();
-                                commands.extend(gain_edits(&clips, |current| {
-                                    if audible_gain && daw_core::linear_gain(current) == 0.0 {
-                                        current
-                                    } else {
-                                        clamp_clip_gain((f64::from(current) + delta) as f32)
-                                    }
-                                }));
-                            }
-                            response
-                        },
-                    )
-                    .inner;
-                    let transpose = ui.add_enabled_ui(transpose_enabled, |ui| panel.field_row(
-                        ui,
-                        label_width,
-                        |ui| {
-                            field_label(ui, "Transpose");
-                        },
-                        |ui| {
-                            let current = self.clip_transpose_drag.as_ref()
-                                .map_or(clip.transpose, |drag| drag.value);
-                            let change = self.clip_settings_change.as_ref().filter(|_| multiple)
-                                .and_then(|change| change.label(Field::Transpose));
-                            let changing = change.is_some();
-                            let transpose_text = change.unwrap_or_else(|| {
-                                if mixed_transpose { MULTIPLE_VALUES.into() }
-                                else { format_transpose_value(current) }
-                            });
-                            let transpose_edit = format_transpose(clip.transpose);
-                            let response = self.setting_value(
-                                ui,
-                                clip,
-                                &ids,
-                                &mut edit,
-                                Field::Transpose,
-                                Value {
-                                    display: &transpose_text,
-                                    editable: &transpose_edit,
-                                    tooltip: "Transpose (semitones): drag up or down in 1 semitone steps; hold Shift for finer adjustment. Double-click to edit.",
-                                    numeric: !mixed_transpose || changing,
-                                    sense: Sense::click_and_drag(),
-                                },
-                            );
-                            if contains_audio && drag_enabled && response.drag_started() {
-                                self.clip_transpose_drag = Some(TransposeDrag {
-                                    clip: clip.id,
-                                    clips: ids.clone(),
-                                    value: clip.transpose,
-                                    changed: false,
+                    let name = panel
+                        .field_row(
+                            ui,
+                            label_width,
+                            |ui| {
+                                ui.add_enabled_ui(!multiple, |ui| field_label(ui, "Name"));
+                            },
+                            |ui| {
+                                if multiple {
+                                    return multiple_clips_value(ui);
+                                }
+                                self.setting_value(
+                                    ui,
+                                    clip,
+                                    &ids,
+                                    &mut edit,
+                                    Field::Name,
+                                    Value {
+                                        display: &clip.name,
+                                        editable: &clip.name,
+                                        tooltip: &clip.name,
+                                        numeric: false,
+                                        sense: Sense::click(),
+                                    },
+                                )
+                            },
+                        )
+                        .inner;
+                    let source_row = panel
+                        .field_row(
+                            ui,
+                            label_width,
+                            |ui| {
+                                ui.add_enabled_ui(!multiple, |ui| field_label(ui, "Source"));
+                            },
+                            |ui| {
+                                if multiple {
+                                    return multiple_clips_value(ui);
+                                }
+                                let (text, tip) = source.clone().unwrap_or_else(|| {
+                                    ("Missing source".into(), "Missing source".into())
                                 });
-                            }
-                            if let Some(value) = drag_transpose(ui, &response, current) {
-                                let requested = f64::from(value) - f64::from(clip.transpose);
-                                let delta = bounded_delta(
-                                    clips.iter().map(|clip| f64::from(clip.transpose)),
-                                    requested,
-                                    -f64::from(TRANSPOSE_LIMIT),
-                                    f64::from(TRANSPOSE_LIMIT),
-                                ) as i8;
-                                if f64::from(delta) != requested {
-                                    ui.data_mut(|data| data.remove::<f64>(response.id.with("remainder")));
-                                }
-                                ui.ctx().request_repaint();
-                                if contains_audio {
-                                    if let Some(drag) = &mut self.clip_transpose_drag {
-                                        drag.value = clip.transpose + delta;
-                                        drag.changed = true;
-                                        DragChange::add(&mut self.clip_settings_change, clip.id, &ids,
-                                            Field::Transpose, f64::from(drag.value) - f64::from(current));
+                                value_label(ui, &text, &tip, false, true, Sense::hover())
+                            },
+                        )
+                        .inner;
+                    let gain = panel
+                        .field_row(
+                            ui,
+                            label_width,
+                            |ui| {
+                                field_label(ui, "Gain");
+                            },
+                            |ui| {
+                                let change = self
+                                    .clip_settings_change
+                                    .as_ref()
+                                    .filter(|_| multiple)
+                                    .and_then(|change| change.label(Field::Gain));
+                                let changing = change.is_some();
+                                let gain_text = change.unwrap_or_else(|| {
+                                    if mixed_gain {
+                                        MULTIPLE_VALUES.into()
+                                    } else {
+                                        format_gain_value(clip.gain_db)
                                     }
-                                } else {
-                                    DragChange::add(&mut self.clip_settings_change, clip.id, &ids, Field::Transpose, f64::from(delta));
-                                    commands.extend(transpose_edits(&clips, |current| current + delta));
+                                });
+                                let gain_edit = faders::format_gain(clip.gain_db);
+                                let response = self.setting_value(
+                                    ui,
+                                    clip,
+                                    &ids,
+                                    &mut edit,
+                                    Field::Gain,
+                                    Value {
+                                        display: &gain_text,
+                                        editable: &gain_edit,
+                                        tooltip: &gain_text,
+                                        numeric: !mixed_gain || changing,
+                                        sense: Sense::click_and_drag(),
+                                    },
+                                );
+                                if let Some(value) = drag_gain(ui, &response, gain_reference) {
+                                    let delta = bounded_delta(
+                                        clips
+                                            .iter()
+                                            .filter(|clip| {
+                                                !audible_gain
+                                                    || daw_core::linear_gain(clip.gain_db) != 0.0
+                                            })
+                                            .map(|clip| f64::from(clip.gain_db)),
+                                        f64::from(value) - f64::from(gain_reference),
+                                        f64::from(daw_core::SILENT_GAIN_DB),
+                                        f64::from(daw_core::CLIP_MAX_GAIN_DB),
+                                    );
+                                    DragChange::add(
+                                        &mut self.clip_settings_change,
+                                        clip.id,
+                                        &ids,
+                                        Field::Gain,
+                                        delta,
+                                    );
+                                    ui.ctx().request_repaint();
+                                    commands.extend(gain_edits(&clips, |current| {
+                                        if audible_gain && daw_core::linear_gain(current) == 0.0 {
+                                            current
+                                        } else {
+                                            clamp_clip_gain((f64::from(current) + delta) as f32)
+                                        }
+                                    }));
                                 }
-                            }
-                            if contains_audio && response.drag_stopped()
-                                && let Some(drag) = self.clip_transpose_drag.take().filter(|drag| drag.changed)
-                            {
-                                let delta = drag.value - clip.transpose;
-                                commands.extend(transpose_edits(&clips, |current| current + delta));
-                            }
-                            response
-                        },
-                    )
-                    .inner).inner.on_disabled_hover_text("Wait for project audio before transposing audio clips.");
+                                response
+                            },
+                        )
+                        .inner;
+                    let transpose = ui
+                        .add_enabled_ui(transpose_enabled, |ui| {
+                            panel
+                                .field_row(
+                                    ui,
+                                    label_width,
+                                    |ui| {
+                                        field_label(ui, "Transpose");
+                                    },
+                                    |ui| {
+                                        let current = self
+                                            .clip_transpose_drag
+                                            .as_ref()
+                                            .map_or(clip.transpose, |drag| drag.value);
+                                        let change = self
+                                            .clip_settings_change
+                                            .as_ref()
+                                            .filter(|_| multiple)
+                                            .and_then(|change| change.label(Field::Transpose));
+                                        let changing = change.is_some();
+                                        let transpose_text = change.unwrap_or_else(|| {
+                                            if mixed_transpose {
+                                                MULTIPLE_VALUES.into()
+                                            } else {
+                                                format_transpose_value(current)
+                                            }
+                                        });
+                                        let transpose_edit = format_transpose(clip.transpose);
+                                        let response = self.setting_value(
+                                            ui,
+                                            clip,
+                                            &ids,
+                                            &mut edit,
+                                            Field::Transpose,
+                                            Value {
+                                                display: &transpose_text,
+                                                editable: &transpose_edit,
+                                                tooltip: &transpose_text,
+                                                numeric: !mixed_transpose || changing,
+                                                sense: Sense::click_and_drag(),
+                                            },
+                                        );
+                                        if contains_audio && drag_enabled && response.drag_started()
+                                        {
+                                            self.clip_transpose_drag = Some(TransposeDrag {
+                                                clip: clip.id,
+                                                clips: ids.clone(),
+                                                value: clip.transpose,
+                                                changed: false,
+                                            });
+                                        }
+                                        if let Some(value) = drag_transpose(ui, &response, current)
+                                        {
+                                            let requested =
+                                                f64::from(value) - f64::from(clip.transpose);
+                                            let delta = bounded_delta(
+                                                clips.iter().map(|clip| f64::from(clip.transpose)),
+                                                requested,
+                                                -f64::from(TRANSPOSE_LIMIT),
+                                                f64::from(TRANSPOSE_LIMIT),
+                                            )
+                                                as i8;
+                                            if f64::from(delta) != requested {
+                                                ui.data_mut(|data| {
+                                                    data.remove::<f64>(
+                                                        response.id.with("remainder"),
+                                                    )
+                                                });
+                                            }
+                                            ui.ctx().request_repaint();
+                                            if contains_audio {
+                                                if let Some(drag) = &mut self.clip_transpose_drag {
+                                                    drag.value = clip.transpose + delta;
+                                                    drag.changed = true;
+                                                    DragChange::add(
+                                                        &mut self.clip_settings_change,
+                                                        clip.id,
+                                                        &ids,
+                                                        Field::Transpose,
+                                                        f64::from(drag.value) - f64::from(current),
+                                                    );
+                                                }
+                                            } else {
+                                                DragChange::add(
+                                                    &mut self.clip_settings_change,
+                                                    clip.id,
+                                                    &ids,
+                                                    Field::Transpose,
+                                                    f64::from(delta),
+                                                );
+                                                commands
+                                                    .extend(transpose_edits(&clips, |current| {
+                                                        current + delta
+                                                    }));
+                                            }
+                                        }
+                                        if contains_audio
+                                            && response.drag_stopped()
+                                            && let Some(drag) = self
+                                                .clip_transpose_drag
+                                                .take()
+                                                .filter(|drag| drag.changed)
+                                        {
+                                            let delta = drag.value - clip.transpose;
+                                            commands.extend(transpose_edits(&clips, |current| {
+                                                current + delta
+                                            }));
+                                        }
+                                        response
+                                    },
+                                )
+                                .inner
+                        })
+                        .inner;
                     self.clip_channel_settings(ui, panel, label_width, &clips, &mut commands);
-                    if let Some(audio_clip) = clips.iter().find(|candidate| self.session.project.assets.iter().any(|asset| asset.id == candidate.asset_id && asset.is_audio())) {
+                    if let Some(audio_clip) = clips.iter().find(|candidate| {
+                        self.session
+                            .project
+                            .assets
+                            .iter()
+                            .any(|asset| asset.id == candidate.asset_id && asset.is_audio())
+                    }) {
                         self.clip_fade_settings(ui, audio_clip, panel, label_width, &mut commands);
                     }
                     let finished = if was_editing {
@@ -542,9 +669,8 @@ impl super::DawUi {
                                     commands.extend(transpose_edits(&clips, |_| value));
                                 }
                                 None => {
-                                    error = Some(
-                                        "Transpose must be a whole number from −48 to +48",
-                                    );
+                                    error =
+                                        Some("Transpose must be a whole number from −48 to +48");
                                 }
                             },
                         }
@@ -765,7 +891,7 @@ pub(super) fn setting_number(
                 value_label(
                     ui,
                     &format!("{text}{suffix}"),
-                    "Drag up or down. Hold Shift for finer adjustment. Double-click to edit.",
+                    &format!("{text}{suffix}"),
                     true,
                     false,
                     Sense::click_and_drag(),
@@ -924,23 +1050,14 @@ fn source_label(asset: &Asset) -> (String, String) {
     if let Some(source) = &asset.compound_audio {
         return (
             asset.name.clone(),
-            format!(
-                "Merged audio · {} sections. Original recordings remain required.",
-                source.members.len()
-            ),
+            format!("Merged audio: {} sections", source.members.len()),
         );
     }
     if asset.beat_pattern.is_some() {
-        return (
-            "Beat pattern".into(),
-            "This clip uses a beat pattern".into(),
-        );
+        return ("Beat pattern".into(), "Beat pattern".into());
     }
     if asset.midi_pattern.is_some() {
-        (
-            "MIDI pattern".into(),
-            "This clip uses a MIDI pattern".into(),
-        )
+        ("MIDI pattern".into(), "MIDI pattern".into())
     } else {
         let path = asset.source.path.clone();
         let name = std::path::Path::new(&path)

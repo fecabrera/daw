@@ -34,7 +34,7 @@ Modulation changes retain waveform phase, held notes, and envelope progress. Com
 
 ## Indicators and persistence
 
-Assigned Pitch knobs show the shared status marker, source/amount tooltip, possible-range arc, and click-to-open action. A per-note source is valid for Pitch. Two live dots show the lowest and highest active voice transpose, excluding the MIDI note pitch and including smoothed modulation. When all voices have the same transpose, the dots coincide. The tooltip reports fractional values. Range arcs and dots are limited visually to the base knob scale; the tooltip can report values beyond it. No UI clock estimates the audio value.
+Assigned Pitch knobs show the shared status marker, modulation action tooltip, possible-range arc, and click-to-open action. A per-note source is valid for Pitch. Two live dots show the lowest and highest active voice transpose, excluding the MIDI note pitch and including smoothed modulation. When all voices have the same transpose, the dots coincide. The tooltip reports fractional values. Range arcs and dots are limited visually to the base knob scale; the tooltip can report values beyond it. No UI clock estimates the audio value.
 
 Instrument version 3 saves each oscillator's `id`, layer-owned `oscillator_modulations`, and `oscillator_modulation_open`. A pitch connection adds an optional `target` UUID to the shared route format. Existing non-instance destinations omit that field. Route IDs remain independent of source and target IDs. The settings contract validates supported parameters, finite bounded amounts, unique route IDs, and targets that exist in that layer. Core validates source references in the same instrument. Invalid instrument edits fail as one transaction.
 

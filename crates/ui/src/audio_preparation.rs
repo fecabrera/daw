@@ -10,7 +10,7 @@ impl DawUi {
             preparation.configure_cache(profile, editing);
         }
     }
-    pub(super) fn memory_tooltip(&self, ui: &mut egui::Ui) {
+    pub(super) fn memory_details(&self, ui: &mut egui::Ui) {
         let mib = |bytes: u64| bytes as f64 / (1024.0 * 1024.0);
         ui.label("Estimated memory");
         ui.label(format!(

@@ -51,7 +51,7 @@ Both crossovers, each band's Depth, Input, Output, Attack, and Release, plus Lev
 
 An octave doubles or halves the value. Positive Attack/Release amounts make the response slower; negative amounts make it faster. Modulation stays within each control's range. If modulated crossovers meet, High is raised to keep a 1 Hz gap above Low. The base knobs stay unchanged, and exact Level silence stays silent.
 
-Assignment dots, range arcs, tooltips, and moving values show modulation activity. Power disables a connection, and its context menu removes it. Connections save with the project. Band off still allows Input/Output modulation; Peak/RMS and power remain manual choices. See [modulation](../modulation/README.md) for common connection controls.
+Assignment dots, range arcs and moving values show modulation activity. Power disables a connection, and its context menu removes it. Connections save with the project. Band off still allows Input/Output modulation; Peak/RMS and power remain manual choices. See [modulation](../modulation/README.md) for common connection controls.
 
 ## Limits
 

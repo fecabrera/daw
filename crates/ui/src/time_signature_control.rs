@@ -81,7 +81,7 @@ impl State {
         let monitor = transport_monitor_control(
             ui,
             &format!("{}/{}", preview.numerator, preview.denominator),
-            "Time signature: drag either number; double-click to type a value (1–65535).",
+            "Time signature",
             0,
             Sense::hover(),
         );
@@ -92,11 +92,15 @@ impl State {
                 Sense::click_and_drag(),
             )
             .on_hover_cursor(egui::CursorIcon::ResizeVertical)
-            .on_hover_text(if part == 0 {
-                "Beats per bar"
-            } else {
-                "Beat note value"
-            })
+            .on_hover_text(format!(
+                "{}: {}",
+                if part == 0 {
+                    "Beats per bar"
+                } else {
+                    "Beat note"
+                },
+                number(preview, part)
+            ))
         });
         for (part, response) in responses.iter().enumerate() {
             response.widget_info(|| {

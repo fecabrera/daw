@@ -62,6 +62,10 @@ impl ClipMenuAction {
 }
 
 impl DawUi {
+    pub fn clip_menu_action_tooltip(&self, action: ClipMenuAction, ctx: &egui::Context) -> String {
+        toolbars::action_tooltip(ctx, self.clip_menu_action_label(action), action.shortcut())
+    }
+
     fn menu_clip(&self, target: Option<Id>) -> Option<(Id, &Clip)> {
         let id = target.or(self.selected_clip)?;
         self.session.project.tracks.iter().find_map(|track| {
@@ -255,27 +259,14 @@ impl DawUi {
                 }
                 let response =
                     ui.add_enabled(self.clip_menu_enabled_for(action, target, ui.ctx()), button);
-                let response = if action == ClipMenuAction::Bounce {
-                    response.on_disabled_hover_text(
-                        self.clip_menu_action_disabled_hint(action).unwrap(),
-                    )
-                } else if action == ClipMenuAction::Separate {
-                    let audio_in_timeline = self.view_mode == ViewMode::Timeline
-                        && self.menu_clip(target).is_some_and(|(_, clip)| {
-                            self.session
-                                .project
-                                .assets
-                                .iter()
-                                .any(|asset| asset.id == clip.asset_id && asset.is_audio())
-                        });
-                    response.on_disabled_hover_text(if audio_in_timeline {
-                        self.separation_disabled_hint()
-                    } else {
-                        "Select an audio clip in Timeline"
-                    })
-                } else {
-                    response
-                };
+                let tooltip = toolbars::action_tooltip(
+                    ui.ctx(),
+                    self.clip_menu_label_for(action, target),
+                    action.shortcut(),
+                );
+                let response = response
+                    .on_hover_text(&tooltip)
+                    .on_disabled_hover_text(tooltip);
                 if response.clicked() {
                     self.perform_clip_menu_action_for(action, target, ui.ctx());
                     ui.close();

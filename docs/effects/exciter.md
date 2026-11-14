@@ -23,7 +23,7 @@ Use **Plus** to split the widest frequency range. The new band inherits that ran
 | Power + label | On/Off | On | Bypass that band's excitation and Level while retaining its original audio. |
 | S | Solo | Off | Hear this band while silencing the other bands in this effect. |
 
-The footer identifies bands as **B1**, **B2**, and so on. Hover Power to see the full frequency range. Several bands can be soloed together. Solo works at 0% band Mix and 0% global Dry/Wet, so you can audition the original range too.
+The footer identifies bands as **B1**, **B2**, and so on. Several bands can be soloed together. Solo works at 0% band Mix and 0% global Dry/Wet, so you can audition the original range too.
 
 **Solo affects live project playback only.** It does not change project data, Undo/Redo, or export. Its state clears when you open another project or remove the band.
 

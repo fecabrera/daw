@@ -58,18 +58,6 @@ impl Status {
     }
 }
 impl DawUi {
-    pub(super) fn separation_disabled_hint(&self) -> &'static str {
-        if !daw_project::SEPARATION_AVAILABLE {
-            daw_project::SEPARATION_UNAVAILABLE_REASON
-        } else if self.separation_models.validated.is_configured() {
-            "Finish the current operation before separating stems"
-        } else if daw_project::SeparationModelKind::CoreMl.available() {
-            "Select and validate a CPU or CoreML model in Settings first"
-        } else {
-            "Select and validate a CPU model in Settings first"
-        }
-    }
-
     pub(super) fn separation_enabled(&self) -> bool {
         daw_project::SEPARATION_AVAILABLE
             && self.file_action_enabled(FileAction::Import)

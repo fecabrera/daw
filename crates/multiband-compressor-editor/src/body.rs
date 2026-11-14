@@ -123,7 +123,13 @@ pub fn render(ui: &mut Ui, s: &mut Settings, model: &crate::Model) -> Bounds {
         .collect();
     for (i, (band, r)) in original.iter().zip(&b.band_responses).enumerate() {
         let control = ui
-            .input(|input| input.pointer.press_origin())
+            .input(|input| {
+                if input.pointer.any_down() {
+                    input.pointer.press_origin()
+                } else {
+                    input.pointer.hover_pos()
+                }
+            })
             .is_some_and(|p| {
                 meters::unit_monitor_rail(b.bands[i], PANEL_MARGIN).contains(p)
                     || b.power[i].contains(p)

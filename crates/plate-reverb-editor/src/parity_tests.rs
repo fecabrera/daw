@@ -460,3 +460,5 @@ fn plate_mode_dropdowns_publish_only_their_host_parameter() {
         assert!(matches!(edits[2], Edit::End(p) if p == parameter));
     }
 }
+
+include!("../../filter-editor/src/hover_parity_tests.rs");

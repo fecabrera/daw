@@ -141,8 +141,7 @@ pub fn show(
                                                             );
                                                         }
                                                     })
-                                                    .response
-                                                    .on_hover_text("Clip mode");
+                                                    .response;
                                                 if *value != before {
                                                     response.mark_changed();
                                                 }

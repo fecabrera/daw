@@ -240,3 +240,5 @@ fn all_strip_footers_share_the_standard_bottom_baseline() {
         }
     }
 }
+
+include!("../../filter-editor/src/hover_parity_tests.rs");

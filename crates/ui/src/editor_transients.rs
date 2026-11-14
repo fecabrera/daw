@@ -241,15 +241,17 @@ impl State {
         }
         ctx.request_repaint();
     }
-    pub fn toolbar(&mut self, ui: &mut egui::Ui) {
+    pub fn toolbar(&mut self, ui: &mut egui::Ui, details_enabled: bool) -> Option<String> {
+        let mut details = None;
         let response = ui
             .checkbox(
                 &mut self.enabled,
                 egui::RichText::new("Show transients").small(),
             )
-            .on_hover_text(
-                "Show detected attacks in the audio waveform. Analysis runs in the background.",
-            );
+            .on_hover_text(format!(
+                "Show transients: {}",
+                if self.enabled { "On" } else { "Off" }
+            ));
         #[cfg(test)]
         {
             self.toggle_bounds = Some(response.rect);
@@ -263,9 +265,8 @@ impl State {
         }
         if self.enabled {
             if self.capacity_limited {
-                ui.small("Transient cache full").on_hover_text(
-                    "Up to 32 visible sources retain transient results. Zoom in or scroll to analyze other sources.",
-                );
+                ui.small("Transient cache full")
+                    .on_hover_text("Transient cache full");
             }
             if self.job.is_some() {
                 ui.spinner().on_hover_text("Analyzing transients");
@@ -275,9 +276,16 @@ impl State {
                 .iter()
                 .find_map(|entry| entry.result.as_ref().err())
             {
-                ui.small("Some sources unavailable").on_hover_text(error);
+                ui.small("Some sources unavailable")
+                    .on_hover_text("Transient analysis failed");
+                if crate::diagnostic_details::button(ui, details_enabled, "Show transient details")
+                    .clicked()
+                {
+                    details = Some(error.clone());
+                }
             }
         }
+        details
     }
     #[cfg(test)]
     pub(super) fn seed(&mut self, project: Id, audio: &AudioData, markers: Vec<u64>) {
@@ -441,6 +449,65 @@ mod tests {
         }
         assert!(marker_in_window(&[110], &clip, 0, 105, None));
         assert!(!marker_in_window(&[140], &clip, 0, 105, None));
+    }
+    #[test]
+    fn failed_analysis_details_action_returns_the_complete_retained_error() {
+        let ctx = egui::Context::default();
+        fonts::configure(&ctx);
+        theme::configure(&ctx);
+        let audio = audio();
+        let error = "Worker failed\nComplete diagnostic data";
+        let mut state = State::default();
+        state.enabled = true;
+        state.insert(Entry {
+            identity: Identity::of(&audio),
+            result: Err(error.into()),
+            visible: true,
+        });
+        let mut selected = None;
+        let mut draw = |events| {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |ui| selected = state.toolbar(ui, true),
+            );
+            out.textures_delta.clear();
+            out.shapes
+        };
+        let shapes = draw(vec![]);
+        assert!(
+            !shapes
+                .iter()
+                .any(|s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()==error))
+        );
+        let point = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == "Details" => {
+                    Some(t.pos + t.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .unwrap();
+        for pressed in [true, false] {
+            draw(vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: Default::default(),
+                },
+            ]);
+        }
+        assert_eq!(selected.as_deref(), Some(error));
+        assert_eq!(
+            state.entries.front().unwrap().result.as_ref().unwrap_err(),
+            error
+        );
     }
     fn audio() -> AudioData {
         AudioData {

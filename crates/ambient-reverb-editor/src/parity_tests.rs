@@ -427,3 +427,5 @@ fn lowpass_uses_its_own_strip_and_power_and_slope() {
         });
     }
 }
+
+include!("../../filter-editor/src/hover_parity_tests.rs");

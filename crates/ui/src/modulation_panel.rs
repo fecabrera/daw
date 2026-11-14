@@ -190,11 +190,6 @@ fn source_picker_with_audio(
             });
         })
         .response
-        .on_hover_text(if scope == ModulationScope::PerNote {
-            "Modulation source"
-        } else {
-            "Shared modulation source. Per-note sources cannot feed this unit."
-        })
 }
 fn destination_picker<'a>(
     ui: &mut Ui,
@@ -245,7 +240,6 @@ fn destination_picker<'a>(
             }
         })
         .response
-        .on_hover_text("Destination parameter")
 }
 /// Filter through the shared graph rules before opening a provider's source picker.
 pub(super) fn provider_sources(
@@ -505,29 +499,13 @@ pub(super) fn targeted_body_with_sources<'a>(
 /// Keep the label and dropdown inside the same standard control row.
 pub(super) use daw_unit_ui::rows::selector_row;
 
-/// Apply destination-owned limits to both the possible-range arc and its tooltip.
+/// Apply destination-owned limits without deriving numeric data from hover text.
 pub(super) fn bound_marker(
     marker: &mut knobs::ModulationMarker,
     bounds: [f32; 2],
-    format: impl Fn(f32) -> String,
+    _format: impl Fn(f32) -> String,
 ) {
     marker.range = marker.range.map(|v| v.clamp(bounds[0], bounds[1]));
-    marker.tooltip = marker
-        .tooltip
-        .lines()
-        .map(|line| {
-            if line.starts_with("Range: ") {
-                format!(
-                    "Range: {} to {}",
-                    format(marker.range[0]),
-                    format(marker.range[1])
-                )
-            } else {
-                line.to_owned()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
 }
 
 /// Summarize assigned routes without evaluating or advancing an envelope in the UI.
@@ -551,7 +529,6 @@ pub(super) fn marker(
         daw_unit_core::ModulationBehavior,
         f32,
     )> = Vec::new();
-    let mut lines = vec![format!("{} modulation", parameter.label())];
     for route in routes.iter().filter(|r| r.parameter == parameter) {
         assigned = true;
         let source = route
@@ -580,11 +557,6 @@ pub(super) fn marker(
         } else {
             "active"
         };
-        lines.push(format!(
-            "{}: {} ({reason})",
-            source.map_or("None / unavailable", |s| s.label.as_str()),
-            crate::parameter_knobs::format_amount(parameter, route.amount)
-        ));
         if reason != "active" {
             continue;
         }
@@ -627,10 +599,6 @@ pub(super) fn marker(
     if let Some((on, depth)) = lfo.filter(|(_, depth)| *depth > 0.0) {
         assigned = true;
         let running = on && enabled;
-        lines.push(format!(
-            "Internal LFO: ±{depth:.2} oct ({})",
-            if running { "active" } else { "off" }
-        ));
         if running {
             active = true;
             offsets[0] -= depth;
@@ -812,195 +780,11 @@ pub(super) fn marker(
             })
         }
     };
-    lines.push("Outer arc: possible held-note range, limited to the knob scale. Pointer and readout: base value.".into());
-    if parameter == ModulationParameter::Amplitude {
-        lines.push("Moving dot: highest active voice gain, including note gate and bypass smoothing; voice sum excluded.".into());
-    } else if parameter == ModulationParameter::Pitch {
-        lines.push(
-            "Moving dots: lowest and highest active voice transpose, excluding MIDI note pitch."
-                .into(),
-        );
-    } else if matches!(
-        parameter,
-        ModulationParameter::SamplerGain | ModulationParameter::OscillatorGain
-    ) {
-        lines.push("Moving dots: lowest and highest active source gain, including power/base smoothing; velocity, boundary fades, and Amplitude excluded.".into());
-    } else if parameter == ModulationParameter::Frequency {
-        lines.push("Moving dot: processed value; Frequency shows both stereo channels.".into());
-    } else {
-        lines.push("Moving dot: processed value.".into());
-    }
-    if matches!(
-        parameter,
-        ModulationParameter::OttLowFrequency | ModulationParameter::OttHighFrequency
-    ) {
-        lines.push(
-            "Crossovers retain a 1 Hz gap; High is raised when modulated boundaries meet.".into(),
-        );
-    }
-    if matches!(
-        parameter,
-        ModulationParameter::StereoSpreadLowerFrequency
-            | ModulationParameter::StereoSpreadUpperFrequency
-    ) {
-        lines.push("Frequencies retain a 1 Hz gap; Lower is limited below Upper when modulated boundaries meet.".into());
-    }
-    let format_value = |value: f32| match parameter {
-        ModulationParameter::ShimmerPreDelay => format!("{value:.1} ms"),
-        ModulationParameter::ShimmerSize
-        | ModulationParameter::ShimmerVowel
-        | ModulationParameter::ShimmerVowelAmount
-        | ModulationParameter::ShimmerAmount1
-        | ModulationParameter::ShimmerAmount2
-        | ModulationParameter::ShimmerRate
-        | ModulationParameter::ShimmerDepth
-        | ModulationParameter::ShimmerLowDamp
-        | ModulationParameter::ShimmerHighDamp => format!("{:.0}%", value * 100.0),
-        ModulationParameter::GrainSize => format!("{value:.1} ms"),
-        ModulationParameter::GrainOverlap | ModulationParameter::GrainSpeed => {
-            format!("{value:.2}×")
-        }
-        ModulationParameter::GrainPitch | ModulationParameter::GrainPitchJitter => {
-            format!("{value:.1} st")
-        }
-        ModulationParameter::GrainPosition
-        | ModulationParameter::GrainPositionJitter
-        | ModulationParameter::GrainPan => format!("{:.0}%", value * 100.0),
-        ModulationParameter::EnvelopeSustain
-        | ModulationParameter::EnvelopeAttackCurve
-        | ModulationParameter::EnvelopeDecayCurve
-        | ModulationParameter::EnvelopeReleaseCurve
-        | ModulationParameter::EnvelopeAttackNote
-        | ModulationParameter::EnvelopeDecayNote => format!("{:.0}%", value * 100.0),
-        ModulationParameter::EnvelopeAttack
-        | ModulationParameter::EnvelopeDecay
-        | ModulationParameter::EnvelopeRelease => knobs::format_time(value),
-        ModulationParameter::SaturatorDrive | ModulationParameter::BitcrusherDrive => {
-            format!("{value:.1} dB")
-        }
-        ModulationParameter::PlatePreDelay => format!("{:.2} ms", value),
-        ModulationParameter::PlateDecay => format!("{:.2} s", value),
-        ModulationParameter::PlateHighPass => format!("{:.2} Hz", value),
-        ModulationParameter::PlateLowPass => format!("{:.2} Hz", value),
-        ModulationParameter::PlateDrive => format!("{:.0}%", value / 12.0 * 100.0),
-        ModulationParameter::ReverbWidth => format!("{:.2} %", value * 100.0),
-        ModulationParameter::AmbientDecay => format!("{:.2} s", value),
-        ModulationParameter::AmbientBloom => format!("{:.2} %", value * 100.0),
-        ModulationParameter::AmbientTone => knobs::format_frequency(20.0 + 100.0 * value),
-        ModulationParameter::AmbientMotion => format!("{:.2} %", value * 100.0),
-        ModulationParameter::ChorusDelay => format!("{value:.1} ms"),
-        ModulationParameter::ChorusRate => format!("{value:.2} Hz"),
-        ModulationParameter::ChorusPhase => format!("{value:.0}°"),
-        ModulationParameter::ChorusDepth
-        | ModulationParameter::ChorusFeedback
-        | ModulationParameter::ChorusWidth => format!("{:.0}%", value * 100.0),
-        ModulationParameter::BitcrusherResolution => format!("{value:.0} bit"),
-        ModulationParameter::BitcrusherDownsampling => format!("{value:.0}×"),
-        ModulationParameter::AutoFilterStrength => format!("{value:.1} oct"),
-        ModulationParameter::AutoFilterSyncPhase
-        | ModulationParameter::AutoFilterStereoPhase
-        | ModulationParameter::DirectionMixerDirection => format!("{value:.0}°"),
-        ModulationParameter::DirectionMixerSpread => format!("{value:.2}"),
-        ModulationParameter::OttLowRelease
-        | ModulationParameter::OttMidRelease
-        | ModulationParameter::OttHighRelease => format!("{value:.1} ms"),
-        ModulationParameter::LimiterInput | ModulationParameter::LimiterCeiling => {
-            format!("{value:.1} dB")
-        }
-        ModulationParameter::LimiterRelease | ModulationParameter::LimiterLookahead => {
-            format!("{value:.1} ms")
-        }
-        ModulationParameter::HarmonicInput | ModulationParameter::HarmonicLimit => {
-            format!("{value:.1} dB")
-        }
-        ModulationParameter::HarmonicDrive | ModulationParameter::HarmonicPush => {
-            format!("{:.0}%", value * 100.0)
-        }
-        ModulationParameter::CompressorThreshold => format!("{value:.1} dBFS"),
-        ModulationParameter::CompressorRatio => format!("{value:.1}:1"),
-        ModulationParameter::CompressorKnee => format!("{value:.1} dB"),
-        ModulationParameter::OttLowAttack
-        | ModulationParameter::OttMidAttack
-        | ModulationParameter::OttHighAttack
-        | ModulationParameter::CompressorAttack
-        | ModulationParameter::CompressorRelease => {
-            format!("{value:.1} ms")
-        }
-        ModulationParameter::OscillatorCents => format!("{value:+.1} cents"),
-        ModulationParameter::OscillatorWidth => format!("{value:.0}%"),
-        ModulationParameter::Pitch => format!("{value:+.2} semitones"),
-        ModulationParameter::StereoSpreadLowerFrequency
-        | ModulationParameter::StereoSpreadUpperFrequency
-        | ModulationParameter::OttLowFrequency
-        | ModulationParameter::OttHighFrequency
-        | ModulationParameter::Frequency
-        | ModulationParameter::ColorFrequency
-        | ModulationParameter::EqBandFrequency
-        | ModulationParameter::EqLowFrequency
-        | ModulationParameter::EqHighFrequency => knobs::format_frequency(value),
-        ModulationParameter::LfoRate => format!("{value:.2} Hz"),
-        ModulationParameter::Resonance
-        | ModulationParameter::EqBandQ
-        | ModulationParameter::EqLowQ
-        | ModulationParameter::EqHighQ => format!("Q {value:.2}"),
-        ModulationParameter::OttLowInput
-        | ModulationParameter::OttMidInput
-        | ModulationParameter::OttHighInput
-        | ModulationParameter::OttLowOutput
-        | ModulationParameter::OttMidOutput
-        | ModulationParameter::OttHighOutput
-        | ModulationParameter::EqBandGain
-        | ModulationParameter::EqLowGain
-        | ModulationParameter::EqMidGain
-        | ModulationParameter::EqHighGain => format!("{value:.1} dB"),
-        ModulationParameter::Amplitude
-        | ModulationParameter::DriveInput
-        | ModulationParameter::OscillatorGain
-        | ModulationParameter::SamplerGain
-        | ModulationParameter::NoiseLevel
-        | ModulationParameter::Level
-        | ModulationParameter::Volume => {
-            if value <= daw_core::SILENT_GAIN_DB {
-                "−∞ dB".into()
-            } else {
-                format!("{value:.1} dB")
-            }
-        }
-        ModulationParameter::NoiseColor
-        | ModulationParameter::NoiseWidth
-        | ModulationParameter::StereoSpreadLowerIntensity
-        | ModulationParameter::StereoSpreadUpperIntensity
-        | ModulationParameter::OttLowDepth
-        | ModulationParameter::OttMidDepth
-        | ModulationParameter::OttHighDepth
-        | ModulationParameter::MacroValue
-        | ModulationParameter::LfoDepth
-        | ModulationParameter::DryWet
-        | ModulationParameter::DriveGain
-        | ModulationParameter::Tone
-        | ModulationParameter::ColorStrength
-        | ModulationParameter::CompressorCurve => format!("{:.0}%", value * 100.0),
-    };
-    lines.push(format!(
-        "Range: {} to {}",
-        format_value(range[0]),
-        format_value(range[1])
-    ));
-    if let Some(value) = live[0] {
-        lines.push(format!(
-            "Current: {}{}",
-            format_value(value),
-            live[1].map_or(String::new(), |right| format!(" / {}", format_value(right)))
-        ));
-    } else {
-        lines.push("Live values appear during playback.".into());
-    }
-    lines.push("Click to open modulation controls.".into());
     Some(knobs::ModulationMarker {
         active,
         range,
         live,
-        tooltip: lines.join("\n"),
+        tooltip: format!("Show modulation: {}", parameter.label()),
     })
 }
 
@@ -1228,7 +1012,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(m.range, [125.0, 4000.0]);
-        assert!(m.active && m.tooltip.contains("-2.00 oct") && m.tooltip.contains("Internal LFO"));
+        assert!(m.active);
+        assert_eq!(m.tooltip, "Show modulation: Frequency");
         assert_eq!(m.live, [Some(900.0), Some(1100.0)]);
         let cancelled = [
             route(&sources[0], Frequency, -2.0),
@@ -1316,15 +1101,13 @@ mod tests {
                 )
                 .unwrap()
                 .tooltip;
-                assert!(
-                    tooltip.contains(&crate::parameter_knobs::format_amount(parameter, amount))
-                );
+                assert_eq!(tooltip, format!("Show modulation: {}", parameter.label()));
                 assert!(!tooltip.contains("oct"));
             }
         }
     }
     #[test]
-    fn marker_status_and_tooltip_distinguish_inactive_assignments() {
+    fn marker_status_preserves_inactive_ranges_with_action_only_hover() {
         let mut sources = [source(EnvelopeMode::Legato)];
         let mut connection = route(&sources[0], ModulationParameter::Frequency, 1.0);
         for reason in [
@@ -1354,7 +1137,7 @@ mod tests {
             )
             .unwrap();
             assert!(!m.active);
-            assert!(m.tooltip.contains(reason), "{}", m.tooltip);
+            assert_eq!(m.tooltip, "Show modulation: Frequency");
             assert_eq!(m.range, [1000.0; 2]);
         }
         assert!(

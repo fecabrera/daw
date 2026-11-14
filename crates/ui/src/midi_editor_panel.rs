@@ -97,51 +97,102 @@ impl DawUi {
         } else if !beat {
             self.clear_clip_settings_edits();
             egui::ScrollArea::vertical()
-            .id_salt("editor-options-scroll")
-            .auto_shrink([false, false])
-            .show(&mut child, |ui| {
-                panel.padded_body(ui, |ui| {
-                    ui.add_space(8.0);
-                    ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
-                    ui.add_enabled_ui(midi && !self.midi_editor.editing_note(), |ui| {
-                        panel.field_row(ui, 45.0, |ui| { ui.label("Root"); }, |ui| {
-                            const ROOTS: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-                            let response = crate::menus::Dropdown::from_id_salt("scale-root")
-                                .selected_text(options.root.map_or("Off", |root| ROOTS[usize::from(root)]))
-                                .width(ui.available_width()).show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut options.root, None, "Off");
-                                    for (root, name) in ROOTS.iter().enumerate() {
-                                        ui.selectable_value(&mut options.root, Some(root as u8), *name);
+                .id_salt("editor-options-scroll")
+                .auto_shrink([false, false])
+                .show(&mut child, |ui| {
+                    panel.padded_body(ui, |ui| {
+                        ui.add_space(8.0);
+                        ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
+                        ui.add_enabled_ui(midi && !self.midi_editor.editing_note(), |ui| {
+                            panel.field_row(
+                                ui,
+                                45.0,
+                                |ui| {
+                                    ui.label("Root");
+                                },
+                                |ui| {
+                                    const ROOTS: [&str; 12] = [
+                                        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#",
+                                        "B",
+                                    ];
+                                    let response =
+                                        crate::menus::Dropdown::from_id_salt("scale-root")
+                                            .selected_text(
+                                                options
+                                                    .root
+                                                    .map_or("Off", |root| ROOTS[usize::from(root)]),
+                                            )
+                                            .width(ui.available_width())
+                                            .show_ui(ui, |ui| {
+                                                ui.selectable_value(&mut options.root, None, "Off");
+                                                for (root, name) in ROOTS.iter().enumerate() {
+                                                    ui.selectable_value(
+                                                        &mut options.root,
+                                                        Some(root as u8),
+                                                        *name,
+                                                    );
+                                                }
+                                            })
+                                            .response;
+                                    #[cfg(test)]
+                                    {
+                                        self.midi_editor.scale_root_bounds = response.rect;
                                     }
-                                }).response;
-                            #[cfg(test)] { self.midi_editor.scale_root_bounds = response.rect; }
-                            #[cfg(not(test))] let _ = response;
-                        });
-                        ui.add_enabled_ui(options.root.is_some(), |ui| {
-                            panel.field_row(ui, 45.0, |ui| { ui.label("Scale"); }, |ui| {
-                                let response = crate::menus::Dropdown::from_id_salt("scale-mode")
-                                    .selected_text(options.scale.name()).width(ui.available_width())
-                                    .show_ui(ui, |ui| {
-                                        for scale in Scale::ALL {
-                                            ui.selectable_value(&mut options.scale, scale, scale.name());
+                                    #[cfg(not(test))]
+                                    let _ = response;
+                                },
+                            );
+                            ui.add_enabled_ui(options.root.is_some(), |ui| {
+                                panel.field_row(
+                                    ui,
+                                    45.0,
+                                    |ui| {
+                                        ui.label("Scale");
+                                    },
+                                    |ui| {
+                                        let response =
+                                            crate::menus::Dropdown::from_id_salt("scale-mode")
+                                                .selected_text(options.scale.name())
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for scale in Scale::ALL {
+                                                        ui.selectable_value(
+                                                            &mut options.scale,
+                                                            scale,
+                                                            scale.name(),
+                                                        );
+                                                    }
+                                                })
+                                                .response;
+                                        #[cfg(test)]
+                                        {
+                                            self.midi_editor.scale_mode_bounds = response.rect;
                                         }
-                                    }).response;
-                                #[cfg(test)] { self.midi_editor.scale_mode_bounds = response.rect; }
-                                #[cfg(not(test))] let _ = response;
-                            });
-                            rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                                let response = ui.checkbox(&mut options.snap, "Snap to scale")
-                                    .on_hover_text("Snap drawn notes and pitch moves. Group moves keep their intervals. Hold Shift to bypass.");
-                                #[cfg(test)] { self.midi_editor.scale_snap_bounds = response.rect; }
-                                #[cfg(not(test))] let _ = response;
+                                        #[cfg(not(test))]
+                                        let _ = response;
+                                    },
+                                );
+                                rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
+                                    let response = ui
+                                        .checkbox(&mut options.snap, "Snap to scale")
+                                        .on_hover_text(format!(
+                                            "Snap to scale: {}",
+                                            if options.snap { "On" } else { "Off" }
+                                        ));
+                                    #[cfg(test)]
+                                    {
+                                        self.midi_editor.scale_snap_bounds = response.rect;
+                                    }
+                                    #[cfg(not(test))]
+                                    let _ = response;
+                                });
                             });
                         });
+                        if let Some(track_id) = track_id {
+                            self.midi_velocity_row(ui, &panel, track_id);
+                        }
                     });
-                    if let Some(track_id) = track_id {
-                        self.midi_velocity_row(ui, &panel, track_id);
-                    }
                 });
-            });
         }
         if options != original
             && let Some(track_id) = track_id
@@ -220,7 +271,8 @@ impl DawUi {
                                         .insert(egui::TextStyle::Body, font);
                                     ui.style_mut().drag_value_text_style = egui::TextStyle::Small;
                                     ui.spacing_mut().interact_size = Vec2::new(32.0, 14.0);
-                                    ui.spacing_mut().slider_rail_height = toolbars::SLIDER_RAIL_HEIGHT;
+                                    ui.spacing_mut().slider_rail_height =
+                                        toolbars::SLIDER_RAIL_HEIGHT;
                                     // Reserve the value input and its standard gap so the
                                     // complete control stays inside the panel's right inset.
                                     ui.spacing_mut().slider_width = (ui.available_width()
@@ -232,7 +284,7 @@ impl DawUi {
                                             .trailing_fill(false)
                                             .handle_shape(egui::style::HandleShape::Circle),
                                     )
-                                    .on_hover_text("Adjust selected note velocities together, preserving their differences")
+                                    .on_hover_text(format!("Velocity: {velocity}"))
                                 })
                                 .inner
                             },

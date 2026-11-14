@@ -366,11 +366,7 @@ impl DawUi {
         response
             .clone()
             .on_hover_cursor(egui::CursorIcon::Grab)
-            .on_hover_text(if cfg!(target_os = "macos") {
-                "Drag to reorder or move this component. Hold Option to duplicate. Sources stay first."
-            } else {
-                "Drag to reorder or move this component. Hold Ctrl to duplicate. Sources stay first."
-            });
+            .on_hover_text("Move or copy unit");
         if self.strip_dragging
             || crate::strip_reorder::dragging(ui.ctx())
             || self.component_drag.is_some()

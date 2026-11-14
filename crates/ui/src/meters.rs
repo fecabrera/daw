@@ -24,13 +24,8 @@ fn level_rail(rect: Rect) -> Rect {
 /// Read the held stereo peak; clicking resets monitoring without changing gain.
 pub fn peak_level(ui: &mut Ui, meter: &daw_output::StereoMeter) -> Response {
     let mut text = peak_text(meter.held_peak());
-    let response = crate::numeric_field(
-        ui,
-        &mut text,
-        "Held peak level (dBFS). Click to reset peak and stereo clipping.",
-        false,
-    )
-    .interact(Sense::click());
+    let response =
+        crate::numeric_field(ui, &mut text, "Peak (dBFS)", false).interact(Sense::click());
     reset_on_click(ui, Some(meter), [response.clicked(), false]);
     response.widget_info(|| {
         egui::WidgetInfo::labeled(
@@ -84,7 +79,11 @@ fn held_channel_controls(ui: &mut Ui, channels: [Response; 2], held: [f32; 2]) -
     let gap = Rect::from_min_max(channels[0].rect.right_top(), channels[1].rect.left_bottom());
     let gap = ui
         .interact(gap, ui.id().with("stereo_peak_reset_gap"), Sense::click())
-        .on_hover_text("Click to reset peak and stereo clipping.");
+        .on_hover_text(format!(
+            "L peak: {} dBFS · R peak: {} dBFS",
+            peak_text(held[0]),
+            peak_text(held[1])
+        ));
     [
         channels[0].clicked() || gap.clicked(),
         channels[1].clicked(),
@@ -287,11 +286,10 @@ fn channel_with_inset(
         let warning = Rect::from_min_size(rail.min, Vec2::new(rail.width(), 3.0));
         painter.rect_filled(warning, 1.0, theme::palette(ui.ctx()).error);
     }
-    response.on_hover_text(if clipped {
-        format!("{label}: {level}. Clipping detected. Click to reset peak and stereo clipping.")
-    } else {
-        format!("{label}: {level}")
-    })
+    response.on_hover_text(format!(
+        "{label}: {level}{}",
+        if clipped { " · Clipping" } else { "" }
+    ))
 }
 
 #[cfg(test)]

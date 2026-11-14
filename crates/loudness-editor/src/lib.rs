@@ -33,3 +33,19 @@ fn paint_reference(ui: &mut egui::Ui, s: &mut daw_unit_core::LoudnessSettings, m
         .with_reset_request(&model.output_reset),
     );
 }
+
+#[cfg(test)]
+fn probe_controls(
+    ui: &mut egui::Ui,
+    settings: &mut daw_unit_core::LoudnessSettings,
+) -> Vec<(daw_drive_plugin::Parameter, egui::Rect)> {
+    let b = show_body(ui, settings, &Model::default());
+    b.controls
+        .iter()
+        .enumerate()
+        .filter_map(|(i, r)| {
+            r.as_ref()
+                .map(|r| (daw_drive_plugin::Parameter::ALL[i + 1], r.rect))
+        })
+        .collect()
+}

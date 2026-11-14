@@ -331,7 +331,7 @@ impl DawUi {
                                 bounds.root_group = group;
                                 if let Some(g) = &mut s.granulizer {
                                     bounds.trigger = trigger(ui, &mut s.trigger);
-                                    bounds.loop_toggle = ui.checkbox(&mut g.looping, "Loop").on_hover_text("Wrap scan and grain reads inside the selected region").rect;
+                                    bounds.loop_toggle = ui.checkbox(&mut g.looping, "Loop").on_hover_text(format!("Loop: {}", if g.looping { "On" } else { "Off" })).rect;
                                 } else {
                                 let (group, value, unit) = duration(
                                     ui,
@@ -588,14 +588,18 @@ fn root_note(ui: &mut egui::Ui, note: &mut u8) -> (Rect, Rect, Rect) {
         small_input_text(ui);
         let sharp = matches!(*note % 12, 1 | 3 | 6 | 8 | 10);
         let (response, preview) = staged_input(ui, "root-note-draft", note, |ui, value| {
-            ui.add_sized([NUMERIC_WIDTH, ui.spacing().interact_size.y],
-            egui::DragValue::new(value)
-                .speed(0.1)
-                .range(0..=127)
-                .custom_formatter(|value, _| daw_unit_core::note_name(value as u8).replace('#', ""))
-                .custom_parser(|text| daw_unit_core::natural_note(text, sharp).map(f64::from))
-                .update_while_editing(false),
-        ).on_hover_text("Sample root note (C−1 to G9). Drag in semitone steps; Shift for fine control. Click to type a natural note and octave. All MIDI notes play relative to this root; duration stays unchanged.")
+            ui.add_sized(
+                [NUMERIC_WIDTH, ui.spacing().interact_size.y],
+                egui::DragValue::new(value)
+                    .speed(0.1)
+                    .range(0..=127)
+                    .custom_formatter(|value, _| {
+                        daw_unit_core::note_name(value as u8).replace('#', "")
+                    })
+                    .custom_parser(|text| daw_unit_core::natural_note(text, sharp).map(f64::from))
+                    .update_while_editing(false),
+            )
+            .on_hover_text(format!("Root note: {}", daw_unit_core::note_name(*value)))
         });
         // The toggle follows the preview during a drag, including accidental crossings.
         let sharp = matches!(preview % 12, 1 | 3 | 6 | 8 | 10);
@@ -606,7 +610,7 @@ fn root_note(ui: &mut egui::Ui, note: &mut u8) -> (Rect, Rect, Rect) {
                 daw_unit_core::natural_note(&natural, true).is_some() && ui.input(|i| i.focused),
                 egui::Button::new(egui::RichText::new("#").small()).selected(sharp),
             )
-            .on_hover_text("Sharp modifier");
+            .on_hover_text(format!("Sharp: {}", if sharp { "On" } else { "Off" }));
         if toggle.clicked() {
             *note = daw_unit_core::natural_note(&natural, !sharp).unwrap();
         }
@@ -689,10 +693,19 @@ fn trigger(ui: &mut egui::Ui, value: &mut SamplerTrigger) -> Rect {
     } else {
         "Gate"
     };
-    choice_dropdown(ui, "trigger-mode", "Sample trigger mode", value, selected,
-        &[(SamplerTrigger::OneShot, "One-shot"), (SamplerTrigger::Gate, "Gate")], 76.0)
-        .on_hover_text("Trigger mode: One-shot continues after note-off; Gate follows the note gate and Amplitude release.")
-        .rect
+    choice_dropdown(
+        ui,
+        "trigger-mode",
+        "Sample trigger mode",
+        value,
+        selected,
+        &[
+            (SamplerTrigger::OneShot, "One-shot"),
+            (SamplerTrigger::Gate, "Gate"),
+        ],
+        76.0,
+    )
+    .rect
 }
 fn duration(
     ui: &mut egui::Ui,
@@ -707,89 +720,88 @@ fn duration(
     };
     let previous_mode = s.mode;
     let previous_frames = s.output_frames(rate, tempo);
-    let group =
-        rows::input_group(ui, |ui| {
-            rows::input_group_edge(ui, false);
-            small_input_text(ui);
-            ui.spacing_mut().button_padding.x = 6.0;
-            let height = ui.spacing().interact_size.y;
-            let border = (toolbars::CONTROL_HEIGHT - height) * 0.5;
-            let value_width = DURATION_INPUT_WIDTH - DURATION_UNIT_WIDTH - 2.0 * border;
-            let response =
-                if s.mode == SamplerMode::Bars {
-                    staged_input(ui, "bars-draft", &mut s.bars, |ui, value| {
-                        duration_value(ui, value_width, height, value.to_string(),
+    let group = rows::input_group(ui, |ui| {
+        rows::input_group_edge(ui, false);
+        small_input_text(ui);
+        ui.spacing_mut().button_padding.x = 6.0;
+        let height = ui.spacing().interact_size.y;
+        let border = (toolbars::CONTROL_HEIGHT - height) * 0.5;
+        let value_width = DURATION_INPUT_WIDTH - DURATION_UNIT_WIDTH - 2.0 * border;
+        let response = if s.mode == SamplerMode::Bars {
+            staged_input(ui, "bars-draft", &mut s.bars, |ui, value| {
+                duration_value(
+                    ui,
+                    value_width,
+                    height,
+                    value.to_string(),
                     egui::DragValue::new(value)
                         .speed(0.1)
                         .range(1..=u32::MAX)
                         .update_while_editing(false),
                 )
-                .on_hover_text(
-                    "Drag in whole-bar steps, minimum 1 bar. Click to type a whole-bar duration.",
-                )
-                    })
-                    .0
-                } else if s.mode == SamplerMode::Off {
-                    let mut original_ms =
-                        (s.end_frame - s.start_frame) as f64 * 1000.0 / f64::from(rate);
-                    ui.add_enabled_ui(false, |ui| {
-                duration_value(ui, value_width, height,
+                .on_hover_text(format!("Duration: {} bars", *value))
+            })
+            .0
+        } else if s.mode == SamplerMode::Off {
+            let mut original_ms = (s.end_frame - s.start_frame) as f64 * 1000.0 / f64::from(rate);
+            ui.add_enabled_ui(false, |ui| {
+                duration_value(
+                    ui,
+                    value_width,
+                    height,
                     egui::emath::format_with_decimals_in_range(original_ms, 0..=2),
-                    egui::DragValue::new(&mut original_ms))
+                    egui::DragValue::new(&mut original_ms),
+                )
             })
             .inner
-            .on_hover_text(
-                "Original selected duration in milliseconds. Select Time or Bars to change it.",
-            )
-                } else {
-                    staged_input(ui, "time-draft", &mut s.time_ms, |ui, value| {
-                        duration_value(ui, value_width, height,
+            .on_hover_text(format!("Original duration: {original_ms:.2} ms"))
+        } else {
+            staged_input(ui, "time-draft", &mut s.time_ms, |ui, value| {
+                duration_value(
+                    ui,
+                    value_width,
+                    height,
                     egui::emath::format_with_decimals_in_range(*value, 0..=2),
                     egui::DragValue::new(value)
                         .speed(1.0)
                         .range(0.000001..=1e12)
                         .update_while_editing(false),
                 )
-                .on_hover_text(
-                    "Drag to adjust; Shift for fine adjustment. Click to type milliseconds.",
-                )
-                    })
-                    .0
-                };
-            rows::input_group_edge(ui, true);
-            let label = choice_dropdown(
-                ui,
-                "stretch-mode",
-                "Sample duration mode",
-                &mut s.mode,
-                unit,
-                &[
-                    (SamplerMode::Off, "Off"),
-                    (SamplerMode::Time, "Time (ms)"),
-                    (SamplerMode::Bars, "Bars"),
-                ],
-                DURATION_UNIT_WIDTH,
-            )
-            .on_hover_text("Stretch mode: Off, Time (ms), or Bars");
-            if s.mode != previous_mode
-                && let Some(frames) = previous_frames
-            {
-                s.set_duration_from_frames(frames, rate, tempo);
-            }
-            response.widget_info(|| {
-                let value = match previous_mode {
-                    SamplerMode::Bars => f64::from(s.bars),
-                    SamplerMode::Time => s.time_ms,
-                    SamplerMode::Off => {
-                        (s.end_frame - s.start_frame) as f64 * 1000.0 / f64::from(rate)
-                    }
-                };
-                let mut info = egui::WidgetInfo::drag_value(response.enabled(), value);
-                info.label = Some(format!("Sample duration ({unit})"));
-                info
-            });
-            (response, label)
+                .on_hover_text(format!("Duration: {:.2} ms", *value))
+            })
+            .0
+        };
+        rows::input_group_edge(ui, true);
+        let label = choice_dropdown(
+            ui,
+            "stretch-mode",
+            "Sample duration mode",
+            &mut s.mode,
+            unit,
+            &[
+                (SamplerMode::Off, "Off"),
+                (SamplerMode::Time, "Time (ms)"),
+                (SamplerMode::Bars, "Bars"),
+            ],
+            DURATION_UNIT_WIDTH,
+        );
+        if s.mode != previous_mode
+            && let Some(frames) = previous_frames
+        {
+            s.set_duration_from_frames(frames, rate, tempo);
+        }
+        response.widget_info(|| {
+            let value = match previous_mode {
+                SamplerMode::Bars => f64::from(s.bars),
+                SamplerMode::Time => s.time_ms,
+                SamplerMode::Off => (s.end_frame - s.start_frame) as f64 * 1000.0 / f64::from(rate),
+            };
+            let mut info = egui::WidgetInfo::drag_value(response.enabled(), value);
+            info.label = Some(format!("Sample duration ({unit})"));
+            info
         });
+        (response, label)
+    });
     let (response, label) = group.inner;
     rows::group_separator(ui, group.response.rect, label.rect.left());
     (group.response.rect, response.rect, label.rect)
@@ -847,7 +859,12 @@ fn selection(
 ) -> [u64; 2] {
     let length = s.input.as_ref().unwrap().length_frames;
     let id = ui.make_persistent_id("sample-selection");
-    let response = ui.interact(bar, id, Sense::click_and_drag()).on_hover_text("Drag the selection edges or body. Drag outside to select a new region. Shift bypasses snapping.");
+    let response = ui
+        .interact(bar, id, Sense::click_and_drag())
+        .on_hover_text(format!(
+            "Sample selection: {}–{} frames",
+            s.start_frame, s.end_frame
+        ));
     let at = |x: f32| {
         (((x - bar.left()) / bar.width()).clamp(0.0, 1.0) as f64 * length as f64).round() as u64
     };

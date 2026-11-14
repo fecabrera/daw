@@ -284,6 +284,7 @@ pub struct Knob<'a> {
     value: &'a mut f32,
     spec: KnobSpec,
     modulation: Option<(&'a ModulationMarker, &'a mut bool)>,
+    tooltip_name: Option<&'a str>,
 }
 impl<'a> Knob<'a> {
     pub fn new(value: &'a mut f32, spec: KnobSpec) -> Self {
@@ -291,10 +292,16 @@ impl<'a> Knob<'a> {
             value,
             spec,
             modulation: None,
+            tooltip_name: None,
         }
     }
 }
 impl<'a> Knob<'a> {
+    /// Add local identity to hover without changing the parameter's accessible name.
+    pub fn tooltip_name(mut self, name: &'a str) -> Self {
+        self.tooltip_name = Some(name);
+        self
+    }
     pub fn modulated(mut self, marker: Option<&'a ModulationMarker>, open: &'a mut bool) -> Self {
         self.modulation = marker.map(|m| (m, open));
         self
@@ -302,7 +309,13 @@ impl<'a> Knob<'a> {
 }
 impl Widget for Knob<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let response = base_knob(ui, self.value, self.spec, self.modulation);
+        let response = base_knob(
+            ui,
+            self.value,
+            self.spec,
+            self.modulation,
+            self.tooltip_name,
+        );
         crate::control_capture::record(ui, &response);
         response
     }
@@ -360,10 +373,15 @@ pub fn send_gain(ui: &mut Ui, value: &mut f32) -> Response {
 
 /// Compact send controls retain the shared gain scale and silence reset.
 pub fn send_gain_scaled(ui: &mut Ui, value: &mut f32, scale: f32) -> Response {
+    send_gain_scaled_named(ui, value, scale, "Send level")
+}
+
+/// Retain return identity in send hover without duplicating the shared tooltip.
+pub fn send_gain_scaled_named(ui: &mut Ui, value: &mut f32, scale: f32, name: &str) -> Response {
     let mut spec = gain_spec();
     spec.name = "Send level";
     spec.reset = daw_unit_core::SILENT_GAIN_DB;
-    ui.add(Knob::new(value, spec.display_scale(scale)))
+    ui.add(Knob::new(value, spec.display_scale(scale)).tooltip_name(name))
 }
 
 /// Scale the gain control while retaining its shared scale, reset and input behavior.
@@ -639,6 +657,7 @@ fn base_knob(
     value: &mut f32,
     spec: KnobSpec,
     mut modulation: Option<(&ModulationMarker, &mut bool)>,
+    tooltip_name: Option<&str>,
 ) -> Response {
     let natural_size = if spec.diagram.is_some()
         || spec.value_label.is_some()
@@ -673,7 +692,7 @@ fn base_knob(
             )
         });
         response
-            .on_hover_text(&marker.tooltip)
+            .on_hover_text(format!("Show modulation: {}", spec.name))
             .on_hover_cursor(egui::CursorIcon::PointingHand)
     });
     if marker_response.as_ref().is_some_and(|r| r.clicked())
@@ -1006,7 +1025,11 @@ fn base_knob(
     }
     let tooltip_value = (spec.format)(*value);
     let tooltip_ui = |ui: &mut Ui| {
-        let [name, value] = [format!("{}:", spec.name), tooltip_value].map(|text| {
+        let [name, value] = [
+            format!("{}:", tooltip_name.unwrap_or(spec.name)),
+            tooltip_value,
+        ]
+        .map(|text| {
             egui::WidgetText::from(text).into_galley(
                 ui,
                 Some(egui::TextWrapMode::Extend),

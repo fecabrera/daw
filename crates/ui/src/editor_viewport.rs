@@ -251,7 +251,13 @@ impl DawUi {
                     && self.editing_enabled()
                     && !self.midi_editor.dragging();
                 if track.kind == daw_core::TrackKind::Audio {
-                    self.editor_transients.toolbar(ui);
+                    let details_enabled = self.edit_shortcuts_available(ui.ctx())
+                        && !ui.ctx().text_edit_focused()
+                        && self.track_name_edit.is_none();
+                    if let Some(message) = self.editor_transients.toolbar(ui, details_enabled) {
+                        self.diagnostic_details =
+                            Some(crate::diagnostic_details::Report::Transients(message));
+                    }
                 } else {
                     self.editor_transients.cancel();
                 }
@@ -369,9 +375,7 @@ impl DawUi {
             self.musical_timeline()
                 .paint_ruler_ticks(&painter, rect, labels, [0, 0], false);
             ui.interact(rect, ui.id().with("beat-source-ruler"), Sense::hover())
-                .on_hover_text(
-                    "Pattern source bars. Use the upper ruler to seek or select a project loop.",
-                );
+                .on_hover_text("Select audio range");
         } else {
             self.time_ruler_at(ui, rect, ui.id().with("editor-content-ruler"));
         }

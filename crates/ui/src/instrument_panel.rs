@@ -486,7 +486,7 @@ impl DawUi {
                                                 let icon = icons::header_icon(ui, icons::Lucide::AudioWaveform, Sense::click_and_drag());
                                                 icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument layer"));
                                                 self.start_layer_drag(ui, &icon, layer.id);
-                                                let icon = icon.on_hover_text("Instrument layer\nDrag to reorder.").on_hover_cursor(egui::CursorIcon::Grab);
+                                                let icon = icon.on_hover_text("Move layer").on_hover_cursor(egui::CursorIcon::Grab);
                                                 let name = ui
                                                     .allocate_ui_with_layout(
                                                         Vec2::new(
@@ -1052,10 +1052,7 @@ impl DawUi {
                 .sense(Sense::click_and_drag()),
             );
             let response = response
-                .on_hover_text(format!(
-                    "{}\nDrag to reorder. Double-click to rename layer.",
-                    layer.name
-                ))
+                .on_hover_text(&layer.name)
                 .on_hover_cursor(egui::CursorIcon::Grab);
             if response.double_clicked()
                 && !ui.input(|input| input.modifiers.shift)

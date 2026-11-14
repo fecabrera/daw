@@ -154,7 +154,7 @@ Results are cached for up to 32 sources. Visible results remain stable. When all
 cache entries are visible, **Transient cache full** indicates that other sources
 are deferred. Zoom in or scroll to free cache entries for those sources.
 If a source exceeds the 128 MiB analysis memory
-limit or cannot be analyzed, a small status label provides details in its tooltip;
+limit or cannot be analyzed, a short status label and its **Details** action provide the complete error;
 editing and playback remain available. Toggle the option off and on to retry a
 failed analysis. Original recordings remain unchanged.
 

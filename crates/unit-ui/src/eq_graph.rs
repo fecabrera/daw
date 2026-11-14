@@ -134,8 +134,29 @@ pub fn show(
             );
             let rect = Rect::from_center_size(node, Vec2::splat((node_radius(i) + 3.0) * 2.0));
             bounds.nodes.push(rect);
-            let response=ui.interact(rect,ui.id().with(("eq-point",b.id)),Sense::click_and_drag()).on_hover_cursor(egui::CursorIcon::Grab)
-                .on_hover_text(format!("Band {} · {}\nDrag: Frequency{}. {}-drag: Q only (up/right increases; down/left decreases). Change the modifier during the drag to switch modes. Shift: fine. Live audio preview; release commits; Escape cancels.",i+1,b.mode.label(),if b.mode.uses_gain(){" / Gain"}else{""},if cfg!(target_os="macos"){"Command"}else{"Ctrl"}));
+            let shown = drag
+                .as_ref()
+                .filter(|d| d.id == b.id)
+                .map_or(b, |d| &d.preview);
+            let gain = if shown.mode.uses_gain() {
+                format!(" · Gain: {:+.1} dB", shown.gain_db)
+            } else {
+                String::new()
+            };
+            let response = ui
+                .interact(
+                    rect,
+                    ui.id().with(("eq-point", b.id)),
+                    Sense::click_and_drag(),
+                )
+                .on_hover_cursor(egui::CursorIcon::Grab)
+                .on_hover_text(format!(
+                    "Band {} · Frequency: {}{} · Q: {:.2}",
+                    i + 1,
+                    crate::knobs::format_frequency(shown.frequency_hz),
+                    gain,
+                    shown.q
+                ));
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(
                     egui::WidgetType::DragValue,

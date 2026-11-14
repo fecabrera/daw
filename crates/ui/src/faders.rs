@@ -110,10 +110,7 @@ pub fn gain(ui: &mut Ui, value: &mut f32, height: f32) -> Response {
     if height >= 120.0 {
         paint_scale(ui, &response, height);
     }
-    response.on_hover_text(format!(
-        "Gain: {} dB. Hold Shift for fine adjustment. Double-click to reset.",
-        format_gain(*value)
-    ))
+    response.on_hover_text(format!("Gain: {} dB", format_gain(*value)))
 }
 
 fn paint_scale(ui: &Ui, response: &Response, height: f32) {

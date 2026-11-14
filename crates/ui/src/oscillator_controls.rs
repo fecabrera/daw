@@ -44,8 +44,7 @@ pub(super) fn unison(
                         ui.selectable_value(&mut settings.unison, mode, mode.name());
                     }
                 })
-                .response
-                .on_hover_text("Unison voices: Off, 2, 4 or 8");
+                .response;
             rows::input_group_edge(ui, true);
             let detune = ui
                 .add_enabled_ui(settings.unison != daw_core::OscillatorUnison::Off, |ui| {
@@ -62,7 +61,6 @@ pub(super) fn unison(
                                 .max_decimals(1)
                                 .update_while_editing(false),
                         )
-                        .on_hover_text("Unison detune in cents (0–100). Drag or click to type.")
                     })
                     .0
                 })

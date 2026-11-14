@@ -118,9 +118,7 @@ pub(super) fn source_menu(
                     let response = if choice.available {
                         response
                     } else {
-                        response.on_hover_text(
-                            "This source would create an audio/control feedback cycle",
-                        )
+                        response.on_hover_text("Feedback cycle")
                     };
                     if response.clicked() {
                         *source = None;
@@ -476,7 +474,7 @@ fn transfer_preview(ui: &mut Ui, s: &AudioSidechain, live: Option<[f32; 2]>) {
         );
     }
     response.on_hover_text(format!(
-        "Audio-to-control mapping: {:.1} to {:.1} dBFS",
+        "Input range: {:.1}–{:.1} dBFS",
         s.lower_db, s.upper_db
     ));
 }

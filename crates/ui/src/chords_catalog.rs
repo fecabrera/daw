@@ -150,7 +150,6 @@ impl DawUi {
                                 }
                             })
                             .response
-                            .on_hover_text("Filter chords by root note")
                     })
                     .inner;
                 #[cfg(test)]

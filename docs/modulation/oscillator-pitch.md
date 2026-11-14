@@ -18,7 +18,7 @@ Add more connections for other oscillators or combine sources on one Pitch contr
 
 ## Read pitch movement
 
-The range arc shows possible movement. Two live dots show the lowest and highest active voice transpose; they coincide when all voices have the same value. Hover for fractional values and values beyond the visible knob range. The ordinary pointer keeps the base Pitch.
+The range arc shows possible movement. Two live dots show the lowest and highest active voice transpose; they coincide when all voices have the same value. The ordinary pointer keeps the base Pitch.
 
 Pitch modulation does not set note length or amplitude. Use [Amplitude and Envelope](../instruments/amplitude.md) for those controls. See [modulation](README.md) for connection editing.
 

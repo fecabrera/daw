@@ -416,10 +416,7 @@ impl DawUi {
                     None,
                 )
                 .0
-                .on_hover_text(format!(
-                    "{}\nDrag to reorder. Double-click the name to edit.",
-                    row.name
-                ))
+                .on_hover_text(&row.name)
                 .on_hover_cursor(egui::CursorIcon::Grab)
             });
         #[cfg(test)]
@@ -528,9 +525,7 @@ impl DawUi {
                             .custom_parser(parse_trigger_note)
                             .update_while_editing(false),
                     )
-                    .on_hover_text(
-                        "Trigger pitch: drag in semitones or type a note, such as C4 or D3#",
-                    )
+                    .on_hover_text(format!("Trigger pitch: {}", trigger_note_name(pitch)))
                 });
                 #[cfg(test)]
                 {
@@ -798,9 +793,7 @@ impl DawUi {
             {
                 self.beat_ui.subdivision_bounds = Some(dropdown.response.rect);
             }
-            dropdown
-                .response
-                .on_hover_text("Step length as a fraction of a bar in the pattern source.");
+            let _ = dropdown;
             if resolution != pattern.resolution
                 && let Ok(next) = pattern.with_grid(pattern.bars, resolution)
             {

@@ -237,5 +237,4 @@ fn restart_mode(ui: &mut Ui, restart: &mut LfoRestart) -> egui::Response {
             }
         })
         .response
-        .on_hover_text("Transport follows project time. Retrigger restarts on every note. Legato restarts on the first note of a phrase. All modes provide a shared signal.")
 }

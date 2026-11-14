@@ -295,21 +295,17 @@ impl DawUi {
                 if let Some(lane) = settings.modulation_lane_kind(owner)
                     && !entry.can_add(&settings, owner)
                 {
-                    response.clone().on_hover_text(format!(
-                        "The {} lane accepts only {} units.",
-                        lane.name(),
-                        lane.name()
-                    ));
-                } else if !entry.can_add(&settings, owner) && !entry.source {
-                    response.clone().on_hover_text(match entry.provider_lane {
-                        Some(ModulationLaneKind::Lfo) => "Add LFOs to the LFO lane.",
-                        Some(ModulationLaneKind::Envelope) => "Add envelopes to the Envelope lane.",
-                        None => "This component is not supported by the selected lane.",
-                    });
-                } else if entry.source && !entry.can_add(&settings, owner) {
                     response
                         .clone()
-                        .on_hover_text("Sources can be added to regular instrument layers only.");
+                        .on_hover_text(format!("{} units only", lane.name()));
+                } else if !entry.can_add(&settings, owner) && !entry.source {
+                    response.clone().on_hover_text(match entry.provider_lane {
+                        Some(ModulationLaneKind::Lfo) => "Requires the LFO lane",
+                        Some(ModulationLaneKind::Envelope) => "Requires the Envelope lane",
+                        None => "Unsupported lane",
+                    });
+                } else if entry.source && !entry.can_add(&settings, owner) {
+                    response.clone().on_hover_text("Requires a regular layer");
                 }
             }
         }
@@ -322,9 +318,7 @@ impl DawUi {
             for (index, response) in &output.rows {
                 let entry = ENTRIES[*index];
                 if !entry.supports_main() && entry.provider_lane.is_none() {
-                    response.clone().on_hover_text(
-                        "This component requires a regular layer. Drag it onto a regular layer.",
-                    );
+                    response.clone().on_hover_text("Requires a regular layer");
                 }
             }
         }

@@ -85,12 +85,12 @@ fn arm_items(
     response: &Response,
     unit: Id,
     original: impl FnOnce() -> Arc<dyn Any + Send + Sync>,
-    tooltip: &str,
+    _tooltip: &str,
 ) {
     response
         .clone()
         .on_hover_cursor(egui::CursorIcon::Grab)
-        .on_hover_text(tooltip);
+        .on_hover_text("Reorder strips");
     if dragging(ui.ctx()) {
         return;
     }

@@ -26,8 +26,11 @@ impl DawUi {
                                 .map_or("Return", |track| track.name.as_str());
                             ui.push_id(send.id, |ui| {
                                 ui.add_enabled_ui(send.enabled, |ui| {
-                                    let response = knobs::header_send_gain(ui, &mut send.gain_db)
-                                        .on_hover_text(format!("Send to {name}"));
+                                    let response = knobs::header_send_gain(
+                                        ui,
+                                        &mut send.gain_db,
+                                        &format!("Send to {name}"),
+                                    );
                                     #[cfg(test)]
                                     positions.push((send.id, response.rect));
                                     #[cfg(not(test))]
@@ -391,15 +394,17 @@ fn send_row(
                             } else {
                                 theme::palette(ui.ctx()).secondary
                             };
-                            let power = ui
-                                .add_sized(
-                                    Vec2::splat(height),
-                                    egui::Button::image(
-                                        icons::Lucide::Power.size(12.0).color(color).image(),
-                                    )
-                                    .selected(send.enabled),
+                            let power = ui.add_sized(
+                                Vec2::splat(height),
+                                egui::Button::image(
+                                    icons::Lucide::Power.size(12.0).color(color).image(),
                                 )
-                                .on_hover_text(format!("Send to {name}"));
+                                .selected(send.enabled),
+                            );
+                            let power = power.on_hover_text(format!(
+                                "{} send to {name}",
+                                if send.enabled { "Disable" } else { "Enable" }
+                            ));
                             power.widget_info(|| {
                                 egui::WidgetInfo::selected(
                                     egui::WidgetType::Button,

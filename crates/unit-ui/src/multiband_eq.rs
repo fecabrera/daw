@@ -37,7 +37,7 @@ pub fn band_controls(
                     response.mark_changed();
                 }
                 crate::control_capture::record(ui, &response);
-                response.on_hover_text(format!("Band mode: {}", band.mode.label()))
+                response
             })
             .inner
         } else {
@@ -142,8 +142,7 @@ pub fn band(
                                     )
                                 },
                             )
-                            .inner
-                            .on_hover_text("Off bypasses this band. Right-click for band actions.");
+                            .inner;
                         if response.clicked() {
                             band.enabled = !band.enabled;
                         }

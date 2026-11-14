@@ -157,15 +157,23 @@ pub fn modulated_rate_with_spec(
             m.live = m.live.map(|v| v.map(to_position));
             m
         });
-        let response = ui.add(Knob::new(
-            &mut position,
-            KnobSpec::new("LFO note duration", 0.0..=f32::from(NoteRate::COUNT - 1), 13.0, 1.0)
+        let response = ui.add(
+            Knob::new(
+                &mut position,
+                KnobSpec::new(
+                    "LFO note duration",
+                    0.0..=f32::from(NoteRate::COUNT - 1),
+                    13.0,
+                    1.0,
+                )
                 .stepped(1.0)
-                    .reference_values(&[1.0,4.0,7.0,10.0,13.0,16.0,19.0,22.0,25.0])
+                .reference_values(&[1.0, 4.0, 7.0, 10.0, 13.0, 16.0, 19.0, 22.0, 25.0])
                 .value_label(note_label)
                 .format(note_label)
                 .endpoint_labels("4b D", "1/64 T"),
-        ).modulated(marker.as_ref(), modulation.open)).on_hover_text("D = dotted; T = triplet. Bounded from dotted 4 bars to triplet 1/64, slowest to fastest. Note rates follow project tempo and transport.");
+            )
+            .modulated(marker.as_ref(), modulation.open),
+        );
         if response.changed() {
             *note =
                 NOTE_RATES[position.round().clamp(0.0, f32::from(NoteRate::COUNT - 1)) as usize];

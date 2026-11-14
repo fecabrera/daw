@@ -92,17 +92,16 @@ fn ranges(ui: &mut Ui, s: &mut ExciterSettings, dimensions: (bool, f32), bounds:
                             let response = ui
                                 .push_id(s.bands[i].id, |ui| {
                                     knobs::row(ui, &mut s.bands[i].upper_hz, SIZE, |ui, v| {
-                                        ui.add(Knob::new(v, spec))
+                                        ui.add(Knob::new(v, spec).tooltip_name(&format!(
+                                            "Crossover {}–{}",
+                                            i + 1,
+                                            i + 2
+                                        )))
                                     })
                                 })
                                 .inner;
                             s.bands[i].upper_hz = s.bands[i].upper_hz.clamp(min, max);
                             bounds.crossovers.push(response.rect);
-                            response.on_hover_text(format!(
-                                "Boundary between bands {} and {}",
-                                i + 1,
-                                i + 2
-                            ));
                         }
                     });
                 footer_space(ui, start, height);
@@ -119,7 +118,6 @@ struct BandControls<'a> {
     open: &'a mut bool,
     solo: &'a mut bool,
     removable: bool,
-    tooltip: String,
 }
 struct BandBounds {
     response: Option<Response>,
@@ -172,8 +170,7 @@ fn band(
                                     ui.selectable_value(&mut s.mode, value, value.label());
                                 }
                             })
-                            .response
-                            .on_hover_text("Saturation mode");
+                            .response;
                         b.mode = mode.rect;
                         for (row, target) in [0, 2, 1].into_iter().enumerate() {
                             let mut spec = parameter_knobs::destination(P::SATURATOR[target])
@@ -215,12 +212,11 @@ fn band(
                                         s.enabled = !s.enabled;
                                     }
                                     remove_menu(&response, &mut b.remove, c.removable);
-                                    response.on_hover_text(&c.tooltip).rect
+                                    response.rect
                                 },
                             )
                             .inner;
-                        let response = rows::square_toggle(ui, "S", *c.solo)
-                            .on_hover_text("Solo this band for listening. Export is unchanged.");
+                        let response = rows::square_toggle(ui, "S", *c.solo);
                         response.widget_info(|| {
                             egui::WidgetInfo::selected(
                                 egui::WidgetType::Button,
@@ -289,32 +285,41 @@ pub fn show(
 ) -> Bounds {
     let mut b = Bounds::default();
     let mut remove = None;
-    b.rect = ui.horizontal_top(|ui| {
-        ui.spacing_mut().item_spacing = Vec2::ZERO;
-        ranges(ui, s, dimensions, &mut b);
-        for i in 0..s.bands.len() {
-            let lower = if i == 0 { 0.0 } else { s.bands[i - 1].upper_hz };
-            let upper = if i + 1 == s.bands.len() { "Nyquist".into() } else { knobs::format_frequency(s.bands[i].upper_hz) };
-            let mut unused = false;
-            let empty = std::array::from_fn(|_| None);
-            let controls = BandControls {
-                markers: c.band_markers.get(i).unwrap_or(&empty), open: &mut s.modulation_open,
-                solo: c.solos.get_mut(i).unwrap_or(&mut unused), removable: s.bands.len() > 1,
-                tooltip: format!("Band {}: {}–{}\nOff bypasses excitation and Level. Right-click a band control to remove it.", i + 1, knobs::format_frequency(lower), upper),
-            };
-            let band = band(ui, &mut s.bands[i], i, dimensions, controls);
-            if band.remove { remove = Some(s.bands[i].id); }
+    b.rect = ui
+        .horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::ZERO;
+            ranges(ui, s, dimensions, &mut b);
+            for i in 0..s.bands.len() {
+                let mut unused = false;
+                let empty = std::array::from_fn(|_| None);
+                let controls = BandControls {
+                    markers: c.band_markers.get(i).unwrap_or(&empty),
+                    open: &mut s.modulation_open,
+                    solo: c.solos.get_mut(i).unwrap_or(&mut unused),
+                    removable: s.bands.len() > 1,
+                };
+                let band = band(ui, &mut s.bands[i], i, dimensions, controls);
+                if band.remove {
+                    remove = Some(s.bands[i].id);
+                }
 
-            b.band_responses.push(band.response.unwrap());
-            b.bands.push(band.section); b.modes.push(band.mode); b.knobs.push(band.knobs);
-            b.power.push(band.power); b.solo.push(band.solo);
-        }
-        let add = panels::unit_add_strip(ui, dimensions.1, "Add exciter band");
-        b.add = add.inner.rect;
+                b.band_responses.push(band.response.unwrap());
+                b.bands.push(band.section);
+                b.modes.push(band.mode);
+                b.knobs.push(band.knobs);
+                b.power.push(band.power);
+                b.solo.push(band.solo);
+            }
+            let add = panels::unit_add_strip(ui, dimensions.1, "Add exciter band");
+            b.add = add.inner.rect;
 
-        if add.inner.clicked() { s.add_band(); }
-        output(ui, s, dimensions, c.output_markers, c.level, &mut b);
-    }).response.rect;
+            if add.inner.clicked() {
+                s.add_band();
+            }
+            output(ui, s, dimensions, c.output_markers, c.level, &mut b);
+        })
+        .response
+        .rect;
     if let Some(id) = remove {
         s.remove_band(id);
     }

@@ -24,8 +24,7 @@ pub(crate) fn switch(
                     ui.selectable_value(value, false, choices[0]);
                     ui.selectable_value(value, true, choices[1]);
                 })
-                .response
-                .on_hover_text(label);
+                .response;
             if before != *value {
                 response.mark_changed();
             }
@@ -43,7 +42,7 @@ pub(crate) fn filter_slope(
     ui: &mut Ui,
     value: &mut daw_unit_core::ReverbFilterSlope,
     enabled: bool,
-    tooltip: &'static str,
+    _tooltip: &'static str,
 ) -> Response {
     ui.add_enabled_ui(enabled, |ui| {
         rows::selector_row(ui, "Slope", |ui| {
@@ -58,8 +57,7 @@ pub(crate) fn filter_slope(
                         ui.selectable_value(value, slope, slope.label());
                     }
                 })
-                .response
-                .on_hover_text(tooltip);
+                .response;
             if before != *value {
                 response.mark_changed();
             }
@@ -91,8 +89,7 @@ pub(crate) fn plate_drive_mode(
                         ui.selectable_value(value, mode, mode.label());
                     }
                 })
-                .response
-                .on_hover_text("Drive mode");
+                .response;
             if before != *value {
                 response.mark_changed();
             }

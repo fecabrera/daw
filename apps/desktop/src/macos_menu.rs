@@ -495,17 +495,15 @@ impl NativeMenu {
     pub fn update_enabled(&self, ui: &DawUi, ctx: &egui::Context) {
         for (action, item) in &self.items {
             if let MenuAction::File(action) = action {
-                let hint = ui
-                    .file_action_disabled_hint(*action)
-                    .map(NSString::from_str);
-                item.setToolTip(hint.as_deref());
+                item.setToolTip(Some(&NSString::from_str(
+                    &ui.file_action_tooltip(*action, ctx),
+                )));
             }
             if let MenuAction::ClipMenu(action) = action {
                 item.setTitle(&NSString::from_str(ui.clip_menu_action_label(*action)));
-                let hint = ui
-                    .clip_menu_action_disabled_hint(*action)
-                    .map(NSString::from_str);
-                item.setToolTip(hint.as_deref());
+                item.setToolTip(Some(&NSString::from_str(
+                    &ui.clip_menu_action_tooltip(*action, ctx),
+                )));
             }
             if let MenuAction::Track(action) = action {
                 item.setTitle(&NSString::from_str(ui.track_action_label(*action)));

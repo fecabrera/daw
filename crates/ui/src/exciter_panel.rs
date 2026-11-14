@@ -167,7 +167,13 @@ pub(super) fn show(
     let mut slots = Vec::new();
     for (i, (band, response)) in original.iter().zip(&body.band_responses).enumerate() {
         let control = ui
-            .input(|input| input.pointer.press_origin())
+            .input(|input| {
+                if input.pointer.any_down() {
+                    input.pointer.press_origin()
+                } else {
+                    input.pointer.hover_pos()
+                }
+            })
             .is_some_and(|p| {
                 body.power[i].contains(p)
                     || body.solo[i].contains(p)

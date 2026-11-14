@@ -5,6 +5,51 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Concise tooltips and explicit Details reports — 2026-11-14
+
+The app and shared plugin bodies follow the [canonical tooltip contract](../views/tooltips.md).
+The [acceptance inventory](../acceptance/tooltips.md) records producers, helper
+callers and coverage. `AGENTS.md` links to that contract; it does not duplicate
+the type definitions. The user guide stays in `docs/views/tooltips.md`.
+
+Memory accounting and complete transient-analysis errors are available through
+explicit Details actions. Headless tests cover activation, complete retained
+content, Close/Escape, modal/focus guards and unchanged project/job state.
+All 20 effect-editor hover-parity cases passed in debug across three themes and
+two scales. Hovering does not send host gestures. Those cases caught a parent
+reorder hint overlapping band controls; the native and DAW strip adapters now
+exclude child controls during hover as well as on press. Existing gesture tests
+remain in place. Shared knob checks retain current-value formatting, drag
+lifecycle, independent accessible identity and keyboard editing. Modulation tests
+retain numeric bounds, correlated routes and live/active state independently of
+hover text.
+
+Completed local macOS checks:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `cargo test --workspace --offline`: PASS, 3,021 passed and 22 existing manual
+  or performance cases ignored, including doctests. Debug assertions and overflow
+  checks remain enabled.
+- Changed Markdown file links and working/index whitespace checks: PASS.
+
+- `cargo test --workspace --release --offline`: PASS, 3,021 passed and 22 existing
+  manual or performance cases ignored, including doctests. All 20 hover-parity
+  cases passed in release as well.
+
+- All 40 concrete CLAP/VST3 format libraries (20 products): debug build PASS.
+- `CARGO_NET_OFFLINE=true ORT_LIB_PATH=<cached native library> python3
+  tools/build_desktop.py debug macos`: PASS; the native executable was rebuilt.
+  App/DMG and plugin bundles were not packaged. Packaging requires a clean
+  committed snapshot; the requested changes remain uncommitted.
+
+Logs and the detailed source ledger are in ignored
+`work/tooltips-implementation-20261114/`. Native pointer/focus behavior, native menu
+hover, screen-reader output, actual CLAP/VST3 host windows, Windows and Linux
+checks remain unverified. No listening or device acceptance is claimed. No CLI
+smoke run is required for this UI-only change; shared processing and CLI behavior
+are unchanged.
+
 ## Fractional Timeline track heights — 2026-11-14
 
 Track height now ranges from 1 to 3 in 0.01 steps. Whole-number labels replace

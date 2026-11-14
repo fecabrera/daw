@@ -276,10 +276,7 @@ impl DawUi {
                                             );
                                             name_text = text.unwrap_or(Rect::NOTHING);
                                             response
-                                                .on_hover_text(format!(
-                                                    "{}\nDouble-click the name to edit.",
-                                                    row.name
-                                                ))
+                                                .on_hover_text(&row.name)
                                                 .on_hover_cursor(egui::CursorIcon::PointingHand)
                                         }),
                                 );

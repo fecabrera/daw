@@ -251,13 +251,9 @@ fn model_row(
                     || "Not selected".into(),
                     |n| n.to_string_lossy().into_owned(),
                 ))
-                .on_hover_text(path.map_or_else(
-                    || {
-                        "Choose a local HTDemucs ONNX model to validate. No models are downloaded."
-                            .into()
-                    },
-                    |p| format!("Validated model: {}", p.display()),
-                ));
+                .on_hover_text(
+                    path.map_or_else(|| "Choose model".into(), |p| p.display().to_string()),
+                );
                 if ui.button("Choose…").clicked()
                     && let Some(selected) = rfd::FileDialog::new()
                         .add_filter("ONNX model", &["onnx"])
@@ -286,11 +282,14 @@ fn model_row(
             |_| {},
             |ui| {
                 ui.vertical(|ui| {
-                let summary = format!("{} stems · 44.1 kHz · Stereo · {:.1} MB", info.stems.names().len(), info.file_size_bytes as f64 / 1_000_000.0);
-                crate::rows::advice(ui, summary)
-                    .on_hover_text("Stem names and audio format follow the validated HTDemucs contract. File size is shown in decimal megabytes.");
-                crate::rows::advice(ui, info.stems.description());
-            });
+                    let summary = format!(
+                        "{} stems · 44.1 kHz · Stereo · {:.1} MB",
+                        info.stems.names().len(),
+                        info.file_size_bytes as f64 / 1_000_000.0
+                    );
+                    crate::rows::advice(ui, summary).on_hover_text("Model information");
+                    crate::rows::advice(ui, info.stems.description());
+                });
             },
         );
     }
@@ -462,16 +461,10 @@ pub fn show(
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
                             for profile in CacheProfile::ALL {
-                                let hint = match profile {
-                                    CacheProfile::Light => "32 MiB of checkpoints. Lower background load; builds while stopped or paused.",
-                                    CacheProfile::Balanced => "128 MiB of checkpoints. Moderate background work, including during playback.",
-                                    CacheProfile::Responsive => "256 MiB of checkpoints. More background work for faster cache coverage.",
-                                };
                                 ui.selectable_value(&mut settings.seek_cache, profile, profile.name())
-                                    .on_hover_text(hint);
+                                    .on_hover_text(profile.name());
                             }
-                        })
-                        .response.on_hover_text("Prepares exact seek history. Profiles change CPU and memory use; sound stays the same.");
+                        });
                 },
             );
             ui.separator();
@@ -505,16 +498,10 @@ pub fn show(
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
                             for mode in daw_core::MidiNoteSplit::ALL {
-                                let hint = match mode {
-                                    daw_core::MidiNoteSplit::Split => "A note that crosses the playhead becomes two notes.",
-                                    daw_core::MidiNoteSplit::PreserveFirst => "A note that crosses the playhead stays on the first clip.",
-                                };
                                 ui.selectable_value(&mut settings.midi_note_split, mode, mode.name())
-                                    .on_hover_text(hint);
+                                    .on_hover_text(mode.name());
                             }
-                        })
-                        .response
-                        .on_hover_text("Applies when you split MIDI clips. Audio clips are unchanged. This choice stays on this computer.");
+                        });
                 },
             );
             ui.separator();

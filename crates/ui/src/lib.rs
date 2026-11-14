@@ -17,6 +17,7 @@ mod clip_fades;
 mod clip_lane;
 mod clip_marquee;
 mod clip_menu;
+mod diagnostic_details;
 mod normalize;
 mod unit_output_meter;
 mod unit_power;
@@ -222,7 +223,7 @@ fn numeric_field(
             .desired_width(NUMERIC_WIDTH)
             .interactive(editable),
     )
-    .on_hover_text(tooltip)
+    .on_hover_text(daw_unit_ui::tooltips::parameter(tooltip, text.as_str()))
 }
 
 fn numeric_input(ui: &mut egui::Ui, text: &mut String, tooltip: &str) -> egui::Response {
@@ -278,6 +279,7 @@ fn transport_time_at_rate(frame: u64, sample_rate_hz: u32) -> String {
 struct MonitorResponse {
     response: egui::Response,
     digit_bounds: Vec<Rect>,
+    text: String,
 }
 
 fn transport_monitor_control(
@@ -317,7 +319,7 @@ fn transport_monitor_control(
         ui.allocate_exact_size(Vec2::new(field_width, ui.spacing().interact_size.y), sense);
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), text));
-    let response = response.on_hover_text(tooltip);
+    let response = response.on_hover_text(daw_unit_ui::tooltips::parameter(tooltip, text));
     let painter = ui.painter().with_clip_rect(rect);
     let mut x = rect.left()
         + f32::from(theme::TOOLBAR_PADDING)
@@ -367,6 +369,7 @@ fn transport_monitor_control(
     MonitorResponse {
         response,
         digit_bounds,
+        text: text.to_owned(),
     }
 }
 
@@ -696,11 +699,7 @@ fn musical_sections(
             Sense::drag(),
         )
         .on_hover_cursor(egui::CursorIcon::ResizeVertical)
-        .on_hover_text(if index == 0 {
-            "Drag up or down by bars. Hold Shift for slower adjustment."
-        } else {
-            "Drag up or down by beats. Beats carry across bars. Hold Shift for slower adjustment."
-        })
+        .on_hover_text(monitor.text.as_str())
     })
 }
 
@@ -922,6 +921,7 @@ pub struct DawUi {
     mixer_faders: HashMap<Option<Id>, Rect>,
     settings: settings::AppSettings,
     settings_open: bool,
+    diagnostic_details: Option<diagnostic_details::Report>,
     audio_settings: Option<audio_settings::AudioDialog>,
     audio_devices: audio_settings::DevicesState,
     separation_models: separation_models::State,
@@ -1080,6 +1080,7 @@ impl Default for DawUi {
             mixer_faders: HashMap::new(),
             settings: settings::AppSettings::default(),
             settings_open: false,
+            diagnostic_details: None,
             audio_settings: None,
             audio_devices: Default::default(),
             separation_models: Default::default(),
@@ -2546,7 +2547,8 @@ impl DawUi {
                         && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
-                        && !self.settings_open,
+                        && !self.settings_open
+                        && self.diagnostic_details.is_none(),
                     |ui| self.toolbar(ui),
                 );
             });
@@ -2603,7 +2605,21 @@ impl DawUi {
                     self.session.project.sample_rate_hz as f32 / 1000.0,
                     self.session.project.buffer_size_frames
                 ))
-                .on_hover_ui(|ui| self.memory_tooltip(ui));
+                .on_hover_text(format!(
+                    "Estimated audio memory: {:.1} MiB",
+                    daw_media::audio_memory_bytes() as f64 / (1024.0 * 1024.0)
+                ));
+                if diagnostic_details::button(
+                    ui,
+                    self.edit_shortcuts_available(ui.ctx())
+                        && !ui.ctx().text_edit_focused()
+                        && self.track_name_edit.is_none(),
+                    "Show memory details",
+                )
+                .clicked()
+                {
+                    self.diagnostic_details = Some(diagnostic_details::Report::Memory);
+                }
                 if let Some(output) = &self.output {
                     ui.separator();
                     ui.label(&output.description);
@@ -2621,7 +2637,8 @@ impl DawUi {
                             && self.collection_status.is_none()
                             && self.project_name_dialog.is_none()
                             && self.project_settings.is_none()
-                            && !self.settings_open,
+                            && !self.settings_open
+                            && self.diagnostic_details.is_none(),
                         |ui| self.selection_control(ui),
                     );
                     ui.label("Selection");
@@ -2649,7 +2666,8 @@ impl DawUi {
                         && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
-                        && !self.settings_open,
+                        && !self.settings_open
+                        && self.diagnostic_details.is_none(),
                     |ui| self.workspace(ui),
                 );
             });
@@ -2747,6 +2765,7 @@ impl DawUi {
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
             && !self.settings_open
+            && self.diagnostic_details.is_none()
         {
             let sampler_file = ctx
                 .input(|i| i.pointer.latest_pos())
@@ -2871,11 +2890,9 @@ impl DawUi {
                 button = button.shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &shortcut));
             }
             let response = ui.add_enabled(self.file_action_enabled(action), button);
-            let response = if let Some(hint) = self.file_action_disabled_hint(action) {
-                response.on_disabled_hover_text(hint)
-            } else {
-                response
-            };
+            let response = response
+                .on_hover_text(self.file_action_tooltip(action, ui.ctx()))
+                .on_disabled_hover_text(self.file_action_tooltip(action, ui.ctx()));
             if response.clicked() {
                 ui.close();
                 self.perform_file_action(action);
@@ -2897,6 +2914,10 @@ impl DawUi {
                 ui.close();
             }
         }
+    }
+
+    pub fn file_action_tooltip(&self, action: FileAction, ctx: &egui::Context) -> String {
+        toolbars::action_tooltip(ctx, action.label(), action.shortcut())
     }
 
     pub fn file_action_disabled_hint(&self, action: FileAction) -> Option<&'static str> {
@@ -2973,6 +2994,7 @@ impl DawUi {
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
             && !self.settings_open
+            && self.diagnostic_details.is_none()
             && self.error.is_none()
     }
 
@@ -3077,7 +3099,7 @@ impl DawUi {
             let response = transport_monitor_control(
                 ui,
                 &format!("{previous}bpm"),
-                "Tempo (BPM): drag up or down to adjust; hold Shift for fine adjustment. Double-click to edit.",
+                "Tempo",
                 3,
                 Sense::click_and_drag(),
             )
@@ -3133,10 +3155,7 @@ impl DawUi {
             );
             ui.interact(bounds, monitor.response.id.with(index), Sense::drag())
                 .on_hover_cursor(egui::CursorIcon::ResizeVertical)
-                .on_hover_text(format!(
-                    "Drag up or down by {}. Hold Shift for slower adjustment.",
-                    ["hours", "minutes", "seconds"][index],
-                ))
+                .on_hover_text(monitor.text.as_str())
         });
         #[cfg(test)]
         {
@@ -3209,13 +3228,7 @@ impl DawUi {
                 signature
             ),
         );
-        let monitor = transport_monitor_control(
-            ui,
-            &text,
-            "Selection range in bars and beats",
-            0,
-            Sense::hover(),
-        );
+        let monitor = transport_monitor_control(ui, &text, "Selection", 0, Sense::hover());
         for endpoint in 0..2 {
             let responses = musical_sections(ui, &monitor, endpoint * 2);
             #[cfg(test)]
@@ -4229,15 +4242,13 @@ impl DawUi {
         let scroll = self.view_scroll();
         let labels = Rect::from_min_max(rect.min, Pos2::new(rect.right(), rect.bottom() - 20.0));
         let ticks = Rect::from_min_max(labels.left_bottom(), rect.max);
-        let selection_response = ui.interact(
-        labels, id.with("selection"), Sense::click_and_drag(),
-    ).on_hover_text("Click the loop range to toggle looping. Drag empty space to select a loop range. Drag its edges to resize or its body to move. Hold Shift to bypass snapping.");
+        let selection_response = ui
+            .interact(labels, id.with("selection"), Sense::click_and_drag())
+            .on_hover_text("Loop range");
         let playhead_response = ui
             .interact(ticks, id.with("playhead"), Sense::click_and_drag())
             .on_hover_cursor(egui::CursorIcon::PointingHand)
-            .on_hover_text(
-                "Click or drag to position the playhead. Hold Shift to bypass snapping.",
-            );
+            .on_hover_text("Position playhead");
         self.ruler_interaction(ui, rect, &selection_response, &playhead_response);
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
@@ -4403,7 +4414,7 @@ impl DawUi {
                 if timeline {
                     self.start_track_drag(ui, &response, track.id);
                     response
-                        .on_hover_text(format!("{label}\nDrag to reorder."))
+                        .on_hover_text(label)
                         .on_hover_cursor(egui::CursorIcon::Grab);
                 } else {
                     response.on_hover_text(label);
@@ -4489,13 +4500,7 @@ impl DawUi {
                 mixer_colors,
             );
             let response = response
-                .on_hover_text(if inspector {
-                    track.name.clone()
-                } else if reorder {
-                    format!("{}\nDrag to reorder. Double-click the name to edit or empty space to select all clips.", track.name)
-                } else {
-                    format!("{}\nDouble-click the name to edit or empty space to select all clips.", track.name)
-                })
+                .on_hover_text(&track.name)
                 .on_hover_cursor(if reorder {
                     egui::CursorIcon::Grab
                 } else {
@@ -4784,10 +4789,7 @@ impl DawUi {
                                             (&mut gain, &mut pan),
                                             &mut mute,
                                             &mut solo,
-                                            [
-                                                "Mute (M toggles selected tracks)",
-                                                "Solo (S toggles selected tracks)",
-                                            ],
+                                            ["Mute", "Solo"],
                                             self.track_rows_collapsed(),
                                         );
                                         let updated = gain != track.gain_db
@@ -5972,6 +5974,9 @@ impl DawUi {
         }
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
+        if self.show_diagnostic_details(ctx) {
+            return;
+        }
         if let Some(mut draft) = self.project_settings.take() {
             match draft.show(ctx) {
                 Some(project_settings::Action::Apply(values)) => {

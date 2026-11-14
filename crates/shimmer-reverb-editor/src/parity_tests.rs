@@ -334,3 +334,5 @@ fn dropdowns_publish_balanced_gestures_for_mode_note_and_warm() {
         );
     }
 }
+
+include!("../../filter-editor/src/hover_parity_tests.rs");

@@ -232,12 +232,20 @@ fn body<'a>(
             .inner;
         for (index, (band, response)) in original.iter().zip(&shared.band_responses).enumerate() {
             // Click-only Power can pass drag sensing to its parent, as in Oscillator.
-            let control_press = ui.input(|i| i.pointer.press_origin()).is_some_and(|p| {
-                shared.meters.get(index).is_some_and(|r| r.contains(p))
-                    || shared.solo[index].contains(p)
-                    || shared.power[index].contains(p)
-                    || shared.knobs[index].iter().any(|r| r.contains(p))
-            });
+            let control_press = ui
+                .input(|i| {
+                    if i.pointer.any_down() {
+                        i.pointer.press_origin()
+                    } else {
+                        i.pointer.hover_pos()
+                    }
+                })
+                .is_some_and(|p| {
+                    shared.meters.get(index).is_some_and(|r| r.contains(p))
+                        || shared.solo[index].contains(p)
+                        || shared.power[index].contains(p)
+                        || shared.knobs[index].iter().any(|r| r.contains(p))
+                });
             if !control_press {
                 crate::strip_reorder::arm_bands(ui, owner, response, band.id, &original);
             }

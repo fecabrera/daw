@@ -47,3 +47,5 @@ pub mod drag;
 pub mod strip_reorder;
 
 pub mod loudness;
+
+pub mod tooltips;

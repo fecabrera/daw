@@ -709,10 +709,7 @@ impl PanelStyle {
             inner: result.inner,
             modulation_header,
             response: result.response,
-            header: header.on_hover_text(format!(
-                "Drag to move {name}; double-click to {}",
-                action.to_lowercase()
-            )),
+            header: header.on_hover_text(name),
             power: power.on_hover_text(format!(
                 "{} {name}",
                 if *enabled { "Turn off" } else { "Turn on" }

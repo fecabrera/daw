@@ -255,7 +255,11 @@ impl DawUi {
                         .min_size(Vec2::new(0.0, toolbars::CONTROL_HEIGHT)),
                     )
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
-                    .on_hover_text(format!("Show {label} view"));
+                    .on_hover_text(crate::toolbars::action_tooltip(
+                        ui.ctx(),
+                        &format!("Show {label}"),
+                        Some(mode.shortcut()),
+                    ));
                 if mode == ViewMode::Instrument
                     && ui.input(|i| {
                         i.pointer

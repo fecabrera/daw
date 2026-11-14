@@ -177,12 +177,20 @@ pub fn render_visual(
         .map(|(slot, r)| (egui::Id::new(*slot), r.rect))
         .collect();
     for (local, response) in b.band_responses.iter().enumerate() {
-        let control = ui.input(|i| i.pointer.press_origin()).is_some_and(|p| {
-            b.meters.get(local).is_some_and(|r| r.contains(p))
-                || b.solo[local].contains(p)
-                || b.power[local].contains(p)
-                || b.knobs[local].iter().any(|r| r.contains(p))
-        });
+        let control = ui
+            .input(|i| {
+                if i.pointer.any_down() {
+                    i.pointer.press_origin()
+                } else {
+                    i.pointer.hover_pos()
+                }
+            })
+            .is_some_and(|p| {
+                b.meters.get(local).is_some_and(|r| r.contains(p))
+                    || b.solo[local].contains(p)
+                    || b.power[local].contains(p)
+                    || b.knobs[local].iter().any(|r| r.contains(p))
+            });
         if !control {
             daw_unit_ui::strip_reorder::arm(
                 ui,

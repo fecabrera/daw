@@ -53,8 +53,7 @@ fn selector(ui: &mut Ui, label: &str, value: &mut u8, choices: &[&str]) -> Respo
                     ui.selectable_value(value, i as u8, *label);
                 }
             })
-            .response
-            .on_hover_text(label);
+            .response;
 
         if before != *value {
             r.mark_changed();
@@ -179,9 +178,7 @@ fn history(ui: &mut Ui, settings: &Settings, values: &[f32]) {
         font,
         palette.secondary,
     );
-    response.on_hover_text(
-        "Rolling three-minute history. One point per second. Target is a display reference.",
-    );
+    response.on_hover_text("Loudness history");
 }
 fn output_row(
     ui: &mut Ui,
@@ -206,9 +203,9 @@ fn output_row(
                     .color(color),
             )
             .on_hover_text(if incomplete {
-                "An observation was lost or invalid. Reset and measure again."
+                "Measurement incomplete"
             } else {
-                "Measured audio duration"
+                "Measured duration"
             });
             ui.label(
                 RichText::new(format!("{}:{:02}", seconds / 60, seconds % 60))

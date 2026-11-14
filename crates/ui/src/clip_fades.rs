@@ -950,9 +950,17 @@ impl DawUi {
                     )
                 });
                 response.on_hover_text(if shape {
-                    "Drag the midpoint horizontally and vertically to shape the fade"
+                    format!(
+                        "Fade midpoint: {:.0}% · Level: {:.0}%",
+                        visual_position(fade) * 100.0,
+                        visual_level(fade) * 100.0
+                    )
                 } else {
-                    "Drag inward to fade; outward to crossfade adjacent audio"
+                    format!(
+                        "Fade duration: {:.1} ms",
+                        fade.length_frames as f64 * 1000.0
+                            / f64::from(self.session.project.sample_rate_hz)
+                    )
                 });
                 if ui.input(|i| i.pointer.primary_pressed()) {
                     let origin = pointer.unwrap();
@@ -1141,9 +1149,7 @@ impl DawUi {
                             )
                         })
                         .inner
-                        .on_hover_text(
-                            "Midpoint position from the clip edge to the duration handle",
-                        )
+                        .on_hover_text(format!("Midpoint: {position:.0}%"))
                     },
                 )
                 .inner

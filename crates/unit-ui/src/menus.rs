@@ -162,6 +162,7 @@ impl ContextMenu {
 pub struct Dropdown {
     combo_box: ComboBox,
     small_items: bool,
+    current_value: String,
 }
 impl Dropdown {
     /// Open an action dropdown from a custom button without changing its geometry.
@@ -183,6 +184,7 @@ impl Dropdown {
         Self {
             combo_box: ComboBox::from_id_salt(id),
             small_items: false,
+            current_value: String::new(),
         }
     }
     /// Use Small text for unit popup items; the collapsed caption remains unchanged.
@@ -191,6 +193,8 @@ impl Dropdown {
         self
     }
     pub fn selected_text(mut self, text: impl Into<WidgetText>) -> Self {
+        let text = text.into();
+        self.current_value = text.text().to_owned();
         self.combo_box = self.combo_box.selected_text(text);
         self
     }
@@ -220,9 +224,17 @@ impl Dropdown {
         } else {
             popup_style
         };
-        self.combo_box
+        let mut result = self
+            .combo_box
             .popup_style(style.into())
-            .show_ui(ui, |ui| layout(ui, ui.available_width(), content))
+            .show_ui(ui, |ui| layout(ui, ui.available_width(), content));
+        if !self.current_value.is_empty() {
+            result.response = result
+                .response
+                .on_hover_text(&self.current_value)
+                .on_disabled_hover_text(self.current_value);
+        }
+        result
     }
 }
 

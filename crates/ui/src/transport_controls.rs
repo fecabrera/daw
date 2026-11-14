@@ -77,10 +77,14 @@ pub(super) fn show(
     let foreground = egui::Color32::WHITE;
     let play = ui
         .add_enabled_ui(can_play, |ui| {
-            icons::toggle_with_surface(
+            icons::toggle_with_surface_tooltip(
                 ui,
                 icons::Lucide::Play,
                 if playing { "Pause" } else { "Play" },
+                &daw_unit_ui::tooltips::action(
+                    if playing { "Pause" } else { "Play" },
+                    Some("Space"),
+                ),
                 playing,
                 size,
                 (PLAY_FILL, foreground),

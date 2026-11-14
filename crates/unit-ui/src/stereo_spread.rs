@@ -57,9 +57,7 @@ pub fn show(
                                                     s.order = order as u8;
                                                 }
                                                 bounds.controls[4] = response.rect;
-                                                return response.on_hover_text(
-                                                    "Order: number of alternating frequency bands.",
-                                                );
+                                                return response;
                                             }
                                             let (index, control, value) = match (column, row) {
                                                 (0, 0) => (0, 0, &mut s.lower_intensity),

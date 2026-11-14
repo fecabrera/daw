@@ -141,7 +141,11 @@ pub fn band_solo(ui: &mut egui::Ui, label: &str, selected: &mut bool) -> egui::R
             )
         })
         .inner
-        .on_hover_text("Audition this frequency region without changing saved settings.");
+        .on_hover_text(if *selected {
+            "Stop band audition"
+        } else {
+            "Audition band"
+        });
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), *selected, label)
     });

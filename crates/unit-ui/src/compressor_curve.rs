@@ -276,21 +276,8 @@ pub fn show(
                 control_capture::record(
                     ui,
                     &response.clone().on_hover_text(format!(
-                        concat!(
-                            "Drag left/right: Threshold. Up/down: lower/higher Ratio.\n",
-                            "{}: Ratio only. {}: Threshold only. Both: hold values.\n",
-                            "Switch modifiers while dragging. Shift: fine. Escape cancels."
-                        ),
-                        if cfg!(target_os = "macos") {
-                            "Command"
-                        } else {
-                            "Ctrl"
-                        },
-                        if cfg!(target_os = "macos") {
-                            "Option"
-                        } else {
-                            "Alt"
-                        }
+                        "Threshold: {:.1} dBFS · Ratio: {:.1}:1",
+                        view[0], view[1]
                     )),
                 );
                 if drag.as_ref().is_some_and(|d| !d.cancelled)
@@ -304,8 +291,7 @@ pub fn show(
                         .max(0.0),
                 );
                 rows::centered(ui, layout::COMPACT_BUTTON_SIZE, |ui| {
-                    rows::unit_label(ui, "Curve")
-                        .on_hover_text("Input → output in dBFS, before Dry/Wet and Level.")
+                    rows::unit_label(ui, "Curve").on_hover_text("Input/output curve")
                 });
             },
         )

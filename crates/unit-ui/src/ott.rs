@@ -125,39 +125,80 @@ pub fn show(
         meters: [Rect::NOTHING; 3],
     };
     ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-            for (section, name) in ["Low", "Mid", "High", "Out"].into_iter().enumerate() {
-                let rect = ui.push_id(section, |ui| crate::layout::unit_strip_frame(ui).inner_margin(PANEL_MARGIN).show(ui, |ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        let width = panels::unit_columns_width(if section < 3 { 2 } else { 1 });
-                        ui.set_width(width - 2.0 * f32::from(PANEL_MARGIN));
-                        ui.set_min_height(body_height);
-                        if !compact {
-                            panels::unit_columns(ui, if section < 3 { 2 } else { 1 }, |ui, column| {
-                                for index in 0..3 { bounds.controls[section][column][index] = row(ui, settings, section, column, index, markers); }
+        ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+        for (section, name) in ["Low", "Mid", "High", "Out"].into_iter().enumerate() {
+            let rect = ui
+                .push_id(section, |ui| {
+                    crate::layout::unit_strip_frame(ui)
+                        .inner_margin(PANEL_MARGIN)
+                        .show(ui, |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                let width =
+                                    panels::unit_columns_width(if section < 3 { 2 } else { 1 });
+                                ui.set_width(width - 2.0 * f32::from(PANEL_MARGIN));
+                                ui.set_min_height(body_height);
+                                if !compact {
+                                    panels::unit_columns(
+                                        ui,
+                                        if section < 3 { 2 } else { 1 },
+                                        |ui, column| {
+                                            for index in 0..3 {
+                                                bounds.controls[section][column][index] = row(
+                                                    ui, settings, section, column, index, markers,
+                                                );
+                                            }
+                                        },
+                                    );
+                                }
+                                rows::centered(
+                                    ui,
+                                    if compact {
+                                        body_height
+                                    } else {
+                                        icons::COMPACT_BUTTON_SIZE
+                                    },
+                                    |ui| {
+                                        if section < 3 {
+                                            let response = rows::power_label(
+                                                ui,
+                                                name,
+                                                "Toggle band compression",
+                                                settings.bands[section].enabled,
+                                            );
+                                            bounds.bands[section] = response.rect;
+                                            if response.clicked() {
+                                                settings.bands[section].enabled =
+                                                    !settings.bands[section].enabled;
+                                            }
+                                        } else {
+                                            rows::unit_label(ui, name);
+                                        }
+                                    },
+                                );
                             });
-                        }
-                        rows::centered(ui, if compact { body_height } else { icons::COMPACT_BUTTON_SIZE }, |ui| {
-                            if section < 3 {
-                                let response = rows::power_label(ui, name, "Toggle band compression", settings.bands[section].enabled).on_hover_text("Off bypasses compression; band input/output gains remain active.");
-                                bounds.bands[section] = response.rect;
-                                if response.clicked() { settings.bands[section].enabled = !settings.bands[section].enabled; }
-                            } else { rows::unit_label(ui, name); }
-                        });
-                    });
-                })).inner.response.rect;
-                bounds.sections[section] = rect;
-                    if !compact && section == 3 {
-                        bounds.output_meter = meters::effect_output_level(ui, rect, PANEL_MARGIN, level, settings.enabled);
-                    }
-
-                if !compact && section < 3 {
-                    let rail = meters::unit_monitor_rail(rect, PANEL_MARGIN);
-                    bounds.meters[section] = rail;
-                    meters::gain_change(ui, rail, name, gains.band(section), settings.bands[section].enabled);
-                }
+                        })
+                })
+                .inner
+                .response
+                .rect;
+            bounds.sections[section] = rect;
+            if !compact && section == 3 {
+                bounds.output_meter =
+                    meters::effect_output_level(ui, rect, PANEL_MARGIN, level, settings.enabled);
             }
 
-        });
+            if !compact && section < 3 {
+                let rail = meters::unit_monitor_rail(rect, PANEL_MARGIN);
+                bounds.meters[section] = rail;
+                meters::gain_change(
+                    ui,
+                    rail,
+                    name,
+                    gains.band(section),
+                    settings.bands[section].enabled,
+                );
+            }
+        }
+    });
     bounds
 }

@@ -76,7 +76,7 @@ configuration is fixed; future configurable presets must join cache identity.
 A project change cancels the job and clears entries. Generation/cancellation
 checks discard late results. Failed analysis is cached to prevent automatic
 retry loops. Show a spinner while working and a small unavailable label with an
-error tooltip for cached failures. Toggling off/on clears failures for retry.
+Details action for complete cached failures. Toggling off/on clears failures for retry.
 Before requesting work, mark all cached sources visible in the lower viewport.
 Evict only non-visible entries. If all 32 entries remain visible, defer other
 sources and show a cache-full status with a zoom/scroll explanation. This keeps

@@ -313,9 +313,7 @@ fn timing(ui: &mut Ui, timing: &mut EnvelopeTiming) -> egui::Response {
     let spec = knobs::KnobSpec::new("Envelope timing", 0.0..=1.0, 0.0, 1.0)
         .two_way_labels("Time", "Note")
         .format(|v| EnvelopeTiming::ALL[v.round() as usize].label().into());
-    crate::lfo_controls::choice(ui, timing, &EnvelopeTiming::ALL, spec).on_hover_text(
-        "Time: Attack and Decay use milliseconds. Note: use percentages of the triggering note's duration. Release always uses milliseconds.",
-    )
+    crate::lfo_controls::choice(ui, timing, &EnvelopeTiming::ALL, spec)
 }
 fn note_mode(
     ui: &mut Ui,
@@ -323,21 +321,23 @@ fn note_mode(
     shared_only: bool,
     local_inputs: bool,
 ) -> egui::Response {
-    crate::menus::Dropdown::from_id_salt("envelope-mode").small_items()
-            .selected_text(egui::RichText::new(mode.label()).size(panels::HEADER_FONT_SIZE))
-            .width(ui.available_width())
-            .truncate()
-            .show_ui(ui, |ui| {
-                for choice in EnvelopeMode::ALL {
-                    ui.add_enabled_ui((!shared_only || choice != EnvelopeMode::PerNote) && (!local_inputs || choice == EnvelopeMode::PerNote), |ui| {
-                        ui.selectable_value(mode, choice, choice.label())
-                    }).inner.on_disabled_hover_text(
-                        "Per note is unavailable on Output or when shared destinations use this Envelope. Shared modes cannot consume Per note inputs.",
-                    );
-                }
-            }).response.on_hover_text(
-        "Per note: independent envelope and duration. Retrigger: restart for every note using its length. Legato: keep the first held note's envelope and duration until the last note ends.",
-    )
+    crate::menus::Dropdown::from_id_salt("envelope-mode")
+        .small_items()
+        .selected_text(egui::RichText::new(mode.label()).size(panels::HEADER_FONT_SIZE))
+        .width(ui.available_width())
+        .truncate()
+        .show_ui(ui, |ui| {
+            for choice in EnvelopeMode::ALL {
+                ui.add_enabled_ui(
+                    (!shared_only || choice != EnvelopeMode::PerNote)
+                        && (!local_inputs || choice == EnvelopeMode::PerNote),
+                    |ui| ui.selectable_value(mode, choice, choice.label()),
+                )
+                .inner
+                .on_disabled_hover_text(choice.label());
+            }
+        })
+        .response
 }
 
 #[cfg(test)]

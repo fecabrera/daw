@@ -159,7 +159,7 @@ pub fn reorder_grip(ui: &mut Ui, item: &str) -> Response {
         egui::CursorIcon::Grab
     };
     response
-        .on_hover_text(format!("Drag to reorder {item}"))
+        .on_hover_text(format!("Reorder {item}"))
         .on_hover_cursor(cursor)
 }
 
@@ -327,6 +327,29 @@ pub(super) fn toggle_with_surface(
     active_colors: (Color32, Color32),
     surface_style: ToggleSurface,
 ) -> Response {
+    toggle_with_surface_tooltip(
+        ui,
+        icon,
+        name,
+        name,
+        selected,
+        size,
+        active_colors,
+        surface_style,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn toggle_with_surface_tooltip(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    tooltip: &str,
+    selected: bool,
+    size: Vec2,
+    active_colors: (Color32, Color32),
+    surface_style: ToggleSurface,
+) -> Response {
     let ToggleSurface {
         idle,
         hovered: (hover_fill, hover_foreground),
@@ -361,7 +384,7 @@ pub(super) fn toggle_with_surface(
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, name)
     });
     response
-        .on_hover_text(name)
+        .on_hover_text(tooltip)
         .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 

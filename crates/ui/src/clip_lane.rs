@@ -108,50 +108,25 @@ impl DawUi {
             {
                 ClipDragMode::StretchLeft | ClipDragMode::StretchRight => {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                    response.clone().on_hover_text("Drag to stretch selected clips without changing pitch. Hold Shift to bypass snapping.");
+                    response.clone().on_hover_text("Stretch clips");
                 }
                 ClipDragMode::LoopLeft | ClipDragMode::LoopRight => {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                    response
-                            .clone()
-                            .on_hover_text(if cfg!(target_os = "macos") {
-                                "Drag to loop selected clips. Hold Option to stretch. Hold Shift to bypass snapping."
-                            } else {
-                                "Drag to loop selected clips. Hold Ctrl to stretch. Hold Shift to bypass snapping."
-                            });
+                    response.clone().on_hover_text("Loop clips");
                 }
                 ClipDragMode::TrimLeft | ClipDragMode::TrimRight => {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                    response
-                            .clone()
-                            .on_hover_text(if self.at_trim_boundary(clip, ClipDragMode::at(block, pos), block, pos) {
-                                "Drag the dividing line to trim one clip and extend the other. Hold Shift to bypass snapping."
-                            } else if cfg!(target_os = "macos") {
-                                "Drag to trim selected clips. Hold Option to stretch. Hold Shift to bypass snapping."
-                            } else {
-                                "Drag to trim selected clips. Hold Ctrl to stretch. Hold Shift to bypass snapping."
-                            });
+                    response.clone().on_hover_text(
+                        if self.at_trim_boundary(clip, ClipDragMode::at(block, pos), block, pos) {
+                            "Move clip boundary"
+                        } else {
+                            "Trim clips"
+                        },
+                    );
                 }
                 ClipDragMode::Move => {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                    let frame = self.ruler_frame(lane, pos);
-                    response.clone().on_hover_text(
-                        if self
-                            .portion
-                            .as_ref()
-                            .is_some_and(|portion| portion.contains(track_id, frame))
-                        {
-                            if cfg!(target_os = "macos") {
-                                "Drag to move the selection. Hold Option to duplicate. Hold Shift to bypass snapping."
-                            } else {
-                                "Drag to move the selection. Hold Ctrl to duplicate. Hold Shift to bypass snapping."
-                            }
-                        } else if cfg!(target_os = "macos") {
-                            "Drag to move clip. Hold Option to duplicate. Hold Shift to bypass snapping."
-                        } else {
-                            "Drag to move clip. Hold Ctrl to duplicate. Hold Shift to bypass snapping."
-                        },
-                    );
+                    response.clone().on_hover_text("Move clips or selection");
                 }
                 ClipDragMode::Body | ClipDragMode::Fade { .. } => {}
             }

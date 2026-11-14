@@ -88,7 +88,7 @@ Amounts retain their existing stored units, bounds, and routing meaning. Zero re
 
 | Target | Saved amount range | Shared style and interaction |
 | --- | --- | --- |
-| Envelope Attack / Decay / Release Time | ±6 logarithmic octaves; displayed ×1/64 to ×64 | Reuse the shared octave adapter and native time scale without changing interaction. Display `2^amount` in readouts, tooltips, and assignment markers; zero/reset displays ×1. |
+| Envelope Attack / Decay / Release Time | ±6 logarithmic octaves; displayed ×1/64 to ×64 | Reuse the shared octave adapter and native time scale without changing interaction. Display `2^amount` in readouts and parameter tooltips; zero/reset displays ×1. |
 | Saturator Drive | ±36 dB | Reuse the centered −36..+36 dB input knob, 6 dB reference marks, 0.1 dB steps, and neutral-zero reset. |
 | Limiter Input / Ceiling | ±24 dB | Reuse the native linear dB scales and 0.1 dB steps; Input retains its 6 dB reference marks. |
 | Limiter Release | ±6 octaves of duration | Reuse the native logarithmic duration scale through the shared octave adapter, with 1/24-octave keyboard steps. |

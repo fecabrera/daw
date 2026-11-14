@@ -26,7 +26,7 @@ Amount uses the destination's units. Pitch uses semitones, level uses dB, and fr
 
 ## Read the indicators
 
-Assigned knobs have a status dot. Filled means active; hollow means inactive. Hover to see sources, amounts, and inactive reasons. Click the dot to open connections. The outer range arc shows possible movement, and live dots show processed values during playback. The main pointer and readout keep the base setting.
+Assigned knobs have a status dot. Filled means active; hollow means inactive. Click the dot to open connections and inspect their sources, amounts and state. The outer range arc shows possible movement, and live dots show processed values during playback. The main pointer and readout keep the base setting.
 
 ## Destination examples
 

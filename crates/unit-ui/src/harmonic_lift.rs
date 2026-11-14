@@ -89,8 +89,7 @@ pub fn show(
                                         "HQ 2×",
                                     );
                                 })
-                                .response
-                                .on_hover_text("Processing quality");
+                                .response;
                             crate::control_capture::record(ui, &response);
                             b.controls[1] = response.rect;
                         } else if column < 7 {

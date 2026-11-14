@@ -264,3 +264,5 @@ fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
 fn new_plugin_defaults_match_builtin_defaults() {
     super::assert_builtin_defaults();
 }
+
+include!("../../filter-editor/src/hover_parity_tests.rs");

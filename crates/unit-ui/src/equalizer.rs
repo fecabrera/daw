@@ -73,35 +73,64 @@ pub fn show(
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
 
         for (index, name) in ["Low", "Mid", "High"].into_iter().enumerate() {
-            let strip = ui.push_id(index, |ui| {
-                crate::layout::unit_strip_frame(ui).inner_margin(margin).show(ui, |ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
-                        ui.set_min_height(body_height);
-                        let band = &mut settings.bands[index];
-                        if !compact { bounds.knobs[index] = controls(ui, band, index, markers, &mut settings.modulation_open); }
-                        rows::centered(ui, if compact { body_height } else { icons::COMPACT_BUTTON_SIZE }, |ui| {
-                            let response = rows::power_label(ui, name, &format!("Toggle {name} band cut"), band.enabled);
-                            let response = response.on_hover_text(if index == 1 {
-                                "Mid shelf uses Low/High frequency boundaries and Q slopes. Off cuts this middle range; saved gain is retained.".into()
-                            } else {
-                                format!("{name}: off cuts this range using frequency and Q; saved gain is retained.")
+            let strip = ui
+                .push_id(index, |ui| {
+                    crate::layout::unit_strip_frame(ui)
+                        .inner_margin(margin)
+                        .show(ui, |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
+                                ui.set_min_height(body_height);
+                                let band = &mut settings.bands[index];
+                                if !compact {
+                                    bounds.knobs[index] = controls(
+                                        ui,
+                                        band,
+                                        index,
+                                        markers,
+                                        &mut settings.modulation_open,
+                                    );
+                                }
+                                rows::centered(
+                                    ui,
+                                    if compact {
+                                        body_height
+                                    } else {
+                                        icons::COMPACT_BUTTON_SIZE
+                                    },
+                                    |ui| {
+                                        let response = rows::power_label(
+                                            ui,
+                                            name,
+                                            &format!("Toggle {name} band cut"),
+                                            band.enabled,
+                                        );
+
+                                        bounds.bands[index] = response.rect;
+                                        if response.clicked() {
+                                            band.enabled = !band.enabled;
+                                        }
+                                    },
+                                );
                             });
-                            bounds.bands[index] = response.rect;
-                            if response.clicked() { band.enabled = !band.enabled; }
-                        });
-                    });
+                        })
                 })
-            }).inner.response.rect;
+                .inner
+                .response
+                .rect;
             bounds.sections[index] = strip;
             if !compact {
                 let rail = meters::unit_monitor_rail(strip, margin);
                 bounds.meters[index] = rail;
-                meters::band_level_rail(ui, rail, name, levels[index], settings.bands[index].enabled);
+                meters::band_level_rail(
+                    ui,
+                    rail,
+                    name,
+                    levels[index],
+                    settings.bands[index].enabled,
+                );
             }
-
         }
-
     });
 
     bounds

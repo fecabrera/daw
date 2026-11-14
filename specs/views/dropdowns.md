@@ -1,6 +1,8 @@
 # Dropdowns and catalog list spacing
 
-This is the canonical dropdown presentation for the DAW and independent plugin editors. It supersedes selector-specific popup styling. Collapsed selectors retain their existing size, captions, tooltips and enabled behavior.
+Tooltip content follows the [canonical tooltip contract](tooltips.md).
+
+This is the canonical dropdown presentation for the DAW and independent plugin editors. It supersedes selector-specific popup styling. Collapsed selectors retain their existing size, captions and enabled behavior.
 
 ## Default framed control surfaces
 

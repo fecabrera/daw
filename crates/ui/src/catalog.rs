@@ -211,7 +211,7 @@ impl Catalog {
         interaction: Interaction,
         actions: impl FnOnce(&mut Ui) -> egui::Rect,
     ) -> Output {
-        let (title, noun) = labels;
+        let (title, _noun) = labels;
         self.begin_frame(ui, bounds);
         let header = panel.header(ui, title, actions);
         crate::panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
@@ -241,56 +241,82 @@ impl Catalog {
         let scroll = egui::ScrollArea::vertical()
             .id_salt(("catalog-rows", title))
             .max_height((bounds.bottom() - header.response.rect.bottom()).max(0.0))
-            .show(ui, |ui| panel.catalog_body(ui, |ui| {
-                for row in self.visible_rows() {
-                    // Scope IDs by identity so collapsing an earlier folder cannot move focus.
-                    let response = ui.push_id(match row {
-                        Row::Folder(index) => ("catalog-folder", index),
-                        Row::Entry(index) => ("catalog-entry", index),
-                    }, |ui| match row {
-                        Row::Folder(index) => ui.add_enabled_ui(interaction.clear_on_empty, |ui| {
-                            panel.catalog_folder(ui, self.folders[index].name, self.folders[index].open)
-                        }).inner,
-                        Row::Entry(index) => {
-                            let (type_id, name) = self.entries[index];
-                            ui.add_enabled_ui(interaction.rows_enabled, |ui| {
-                                panel.catalog_item(ui, name, self.selection.contains(type_id), !self.folders.is_empty())
-                                    .on_hover_text(format!("Double-click to add {name}. Enter adds selected {noun}. Shift+click toggles selection."))
-                            }).inner
+            .show(ui, |ui| {
+                panel.catalog_body(ui, |ui| {
+                    for row in self.visible_rows() {
+                        // Scope IDs by identity so collapsing an earlier folder cannot move focus.
+                        let response = ui
+                            .push_id(
+                                match row {
+                                    Row::Folder(index) => ("catalog-folder", index),
+                                    Row::Entry(index) => ("catalog-entry", index),
+                                },
+                                |ui| match row {
+                                    Row::Folder(index) => {
+                                        ui.add_enabled_ui(interaction.clear_on_empty, |ui| {
+                                            panel.catalog_folder(
+                                                ui,
+                                                self.folders[index].name,
+                                                self.folders[index].open,
+                                            )
+                                        })
+                                        .inner
+                                    }
+                                    Row::Entry(index) => {
+                                        let (type_id, name) = self.entries[index];
+                                        ui.add_enabled_ui(interaction.rows_enabled, |ui| {
+                                            panel
+                                                .catalog_item(
+                                                    ui,
+                                                    name,
+                                                    self.selection.contains(type_id),
+                                                    !self.folders.is_empty(),
+                                                )
+                                                .on_hover_text(name)
+                                        })
+                                        .inner
+                                    }
+                                },
+                            )
+                            .inner;
+                        let clicked = response.clicked()
+                            && ui.rect_contains_pointer(response.rect)
+                            && ui.input(|input| {
+                                input.pointer.button_clicked(egui::PointerButton::Primary)
+                            });
+                        if clicked {
+                            match row {
+                                Row::Folder(index) => {
+                                    self.set_folder_open(index, !self.folders[index].open);
+                                    ui.ctx().request_repaint();
+                                }
+                                Row::Entry(index) => {
+                                    self.click(index, ui.input(|input| input.modifiers.shift))
+                                }
+                            }
+                            self.focus_row(ui, &response);
                         }
-                    }).inner;
-                    let clicked = response.clicked()
-                        && ui.rect_contains_pointer(response.rect)
-                        && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary));
-                    if clicked {
+                        if action == Action::Move && self.cursor == row {
+                            self.focus_row(ui, &response);
+                            response.scroll_to_me(None);
+                        }
                         match row {
-                            Row::Folder(index) => {
-                                self.set_folder_open(index, !self.folders[index].open);
-                                ui.ctx().request_repaint();
+                            Row::Folder(index) => output.folders.push((index, response)),
+                            Row::Entry(index) => {
+                                if (clicked || (action == Action::Move && self.cursor == row))
+                                    && self.selection.contains(self.entries[index].0)
+                                {
+                                    output.selected_entry = Some(index);
+                                }
+                                if clicked && response.double_clicked() {
+                                    output.double_clicked = Some(index);
+                                }
+                                output.rows.push((index, response));
                             }
-                            Row::Entry(index) => self.click(index, ui.input(|input| input.modifiers.shift)),
-                        }
-                        self.focus_row(ui, &response);
-                    }
-                    if action == Action::Move && self.cursor == row {
-                        self.focus_row(ui, &response);
-                        response.scroll_to_me(None);
-                    }
-                    match row {
-                        Row::Folder(index) => output.folders.push((index, response)),
-                        Row::Entry(index) => {
-                            if (clicked || (action == Action::Move && self.cursor == row))
-                                && self.selection.contains(self.entries[index].0) {
-                                output.selected_entry = Some(index);
-                            }
-                            if clicked && response.double_clicked() {
-                                output.double_clicked = Some(index);
-                            }
-                            output.rows.push((index, response));
                         }
                     }
-                }
-            }));
+                })
+            });
         // Include folders in the occupied area; clicking one must not clear other selections.
         let bottom = output
             .rows

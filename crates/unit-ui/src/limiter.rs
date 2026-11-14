@@ -35,30 +35,65 @@ fn row(
             _ => None,
         };
         if let Some((index, value)) = target {
-            return ui.add(Knob::new(value, parameter_knobs::destination(Parameter::LIMITER[index]))
-                .modulated(markers[index].as_ref(), &mut s.modulation_open));
+            return ui.add(
+                Knob::new(
+                    value,
+                    parameter_knobs::destination(Parameter::LIMITER[index]),
+                )
+                .modulated(markers[index].as_ref(), &mut s.modulation_open),
+            );
         }
         match (column, row) {
             (1, 1) => {
                 let mut value = f32::from(s.mode == LimiterMode::TruePeak);
-                let response = ui.add(Knob::new(&mut value,
+                let response = ui.add(Knob::new(
+                    &mut value,
                     KnobSpec::new("Limiter mode", 0.0..=1.0, 0.0, 1.0)
                         .two_way_labels("Peak", "True")
-                        .format(|v| if v == 0.0 { "Peak".into() } else { "True Peak".into() })));
-                if response.changed() { s.mode = if value == 0.0 { LimiterMode::Peak } else { LimiterMode::TruePeak }; }
-                response.on_hover_text("Peak: sample ceiling. True Peak: eight-times oversampled reconstruction guard.")
+                        .format(|v| {
+                            if v == 0.0 {
+                                "Peak".into()
+                            } else {
+                                "True Peak".into()
+                            }
+                        }),
+                ));
+                if response.changed() {
+                    s.mode = if value == 0.0 {
+                        LimiterMode::Peak
+                    } else {
+                        LimiterMode::TruePeak
+                    };
+                }
+                response
             }
             (1, 2) => {
                 let mut value = f32::from(s.routing == LimiterRouting::MidSide);
-                let response = ui.add(Knob::new(&mut value,
-                    KnobSpec::new("Routing", 0.0..=1.0, 0.0, 1.0).two_way_labels("L/R", "M/S")
-                        .format(|v| if v == 0.0 { "Linked left/right".into() } else { "Independent mid/side".into() })));
-                if response.changed() { s.routing = if value == 0.0 { LimiterRouting::LeftRight } else { LimiterRouting::MidSide }; }
-                response.on_hover_text("L/R: linked stereo limiting. M/S: independent Mid/Side limiting, then a linked output ceiling.")
+                let response = ui.add(Knob::new(
+                    &mut value,
+                    KnobSpec::new("Routing", 0.0..=1.0, 0.0, 1.0)
+                        .two_way_labels("L/R", "M/S")
+                        .format(|v| {
+                            if v == 0.0 {
+                                "Linked left/right".into()
+                            } else {
+                                "Independent mid/side".into()
+                            }
+                        }),
+                ));
+                if response.changed() {
+                    s.routing = if value == 0.0 {
+                        LimiterRouting::LeftRight
+                    } else {
+                        LimiterRouting::MidSide
+                    };
+                }
+                response
             }
             _ => unreachable!(),
         }
-    }).rect
+    })
+    .rect
 }
 
 pub fn show(

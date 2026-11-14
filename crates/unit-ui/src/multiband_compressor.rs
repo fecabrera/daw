@@ -118,7 +118,11 @@ fn ranges(
                             let response = ui
                                 .push_id(s.bands[i].id, |ui| {
                                     knobs::row(ui, &mut value, SIZE, |ui, v| {
-                                        ui.add(Knob::new(v, spec))
+                                        ui.add(Knob::new(v, spec).tooltip_name(&format!(
+                                            "Crossover {}–{}",
+                                            i + 1,
+                                            i + 2
+                                        )))
                                     })
                                 })
                                 .inner;
@@ -127,11 +131,6 @@ fn ranges(
                             }
                             s.bands[i].upper_hz = s.bands[i].upper_hz.clamp(min, max);
                             bounds.crossovers.push(response.rect);
-                            response.on_hover_text(format!(
-                                "Boundary between bands {} and {}",
-                                i + 1,
-                                i + 2
-                            ));
                         }
                     });
                 footer_space(ui, start, height);
@@ -149,7 +148,6 @@ struct BandControls<'a> {
     open: &'a mut bool,
     solo: &'a mut bool,
     removable: bool,
-    tooltip: String,
     reduction: meters::GainReduction<'a>,
     level: meters::OutputLevel<'a>,
     enabled: bool,
@@ -315,7 +313,7 @@ fn band(
                                         c.removable,
                                         c.enabled,
                                     );
-                                    response.on_hover_text(&c.tooltip).rect
+                                    response.rect
                                 },
                             )
                             .inner;
@@ -415,40 +413,71 @@ pub fn show(
 ) -> Bounds {
     let mut b = Bounds::default();
     let mut remove = None;
-    b.rect = ui.horizontal_top(|ui| {
-        ui.spacing_mut().item_spacing = Vec2::ZERO;
-        let graph = crate::compressor_graph::show(ui,s,dimensions,c.spectrum,c.live_graph_edits);
-        b.graph=graph.section;b.plot=graph.plot;b.crossover_markers=graph.markers;
-        b.crossover_preview=graph.preview;b.crossover_edits=graph.edits;
-        b.threshold_markers=graph.thresholds; b.threshold_preview=graph.threshold_preview; b.threshold_edits=graph.threshold_edits;
-        ranges(ui, s, dimensions, &mut b);
-        let order:Vec<_>=if s.presentation.is_empty() {(0..s.bands.len()).collect()}else{s.presentation.iter().filter_map(|id|s.bands.iter().position(|b|b.id==*id)).collect()};
-        for i in order {
-            let lower = if i == 0 { 0.0 } else { s.bands[i - 1].upper_hz };
-            let upper = if i + 1 == s.bands.len() { "Nyquist".into() } else { knobs::format_frequency(s.bands[i].upper_hz) };
-            let mut unused = false;
-            let empty = std::array::from_fn(|_| None);
-            let controls = BandControls {
-                threshold_preview: b.threshold_preview.filter(|(id,_)| *id == s.bands[i].id).map(|(_,db)|db),
-                markers: c.band_markers.get(i).unwrap_or(&empty), open: &mut s.modulation_open,
-                solo: c.solos.get_mut(i).unwrap_or(&mut unused), removable: s.bands.len() > 1,
-                reduction:c.reductions.get(i).copied().unwrap_or(0.0.into()),
-                level:c.levels.get(i).copied().unwrap_or(0.0.into()),enabled:s.enabled,
-                tooltip: format!("Band {}: {}–{}\nOff bypasses compression and Makeup. Right-click for band power, Solo and removal.", i + 1, knobs::format_frequency(lower), upper),
+    b.rect = ui
+        .horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::ZERO;
+            let graph =
+                crate::compressor_graph::show(ui, s, dimensions, c.spectrum, c.live_graph_edits);
+            b.graph = graph.section;
+            b.plot = graph.plot;
+            b.crossover_markers = graph.markers;
+            b.crossover_preview = graph.preview;
+            b.crossover_edits = graph.edits;
+            b.threshold_markers = graph.thresholds;
+            b.threshold_preview = graph.threshold_preview;
+            b.threshold_edits = graph.threshold_edits;
+            ranges(ui, s, dimensions, &mut b);
+            let order: Vec<_> = if s.presentation.is_empty() {
+                (0..s.bands.len()).collect()
+            } else {
+                s.presentation
+                    .iter()
+                    .filter_map(|id| s.bands.iter().position(|b| b.id == *id))
+                    .collect()
             };
-            let band = band(ui, &mut s.bands[i], i, dimensions, controls);
-            if band.remove { remove = Some(s.bands[i].id); }
+            for i in order {
+                let mut unused = false;
+                let empty = std::array::from_fn(|_| None);
+                let controls = BandControls {
+                    threshold_preview: b
+                        .threshold_preview
+                        .filter(|(id, _)| *id == s.bands[i].id)
+                        .map(|(_, db)| db),
+                    markers: c.band_markers.get(i).unwrap_or(&empty),
+                    open: &mut s.modulation_open,
+                    solo: c.solos.get_mut(i).unwrap_or(&mut unused),
+                    removable: s.bands.len() > 1,
+                    reduction: c.reductions.get(i).copied().unwrap_or(0.0.into()),
+                    level: c.levels.get(i).copied().unwrap_or(0.0.into()),
+                    enabled: s.enabled,
+                };
+                let band = band(ui, &mut s.bands[i], i, dimensions, controls);
+                if band.remove {
+                    remove = Some(s.bands[i].id);
+                }
 
-            b.band_responses.push(band.response.unwrap());
-            b.bands.push(band.section); b.modes.push(band.mode); b.reductions.push(band.reduction); b.knobs.push(band.knobs);
-            b.power.push(band.power); b.solo.push(band.solo);
-        }
-        let add = ui.add_enabled_ui(c.add_enabled,|ui|panels::unit_add_strip(ui, dimensions.1, "Add compressor band")).inner;
-        b.add = add.inner.rect;
+                b.band_responses.push(band.response.unwrap());
+                b.bands.push(band.section);
+                b.modes.push(band.mode);
+                b.reductions.push(band.reduction);
+                b.knobs.push(band.knobs);
+                b.power.push(band.power);
+                b.solo.push(band.solo);
+            }
+            let add = ui
+                .add_enabled_ui(c.add_enabled, |ui| {
+                    panels::unit_add_strip(ui, dimensions.1, "Add compressor band")
+                })
+                .inner;
+            b.add = add.inner.rect;
 
-        if add.inner.clicked() { s.add_band(); }
-        output(ui, s, dimensions, c.output_markers, c.level, &mut b);
-    }).response.rect;
+            if add.inner.clicked() {
+                s.add_band();
+            }
+            output(ui, s, dimensions, c.output_markers, c.level, &mut b);
+        })
+        .response
+        .rect;
     if let Some(id) = remove {
         s.remove_band(id);
     }

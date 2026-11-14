@@ -136,8 +136,7 @@ impl DawUi {
                                                                 }
                                                             }
                                                         })
-                                                        .response
-                                                        .on_hover_text("Noise type");
+                                                        .response;
                                                     if before != *kind {
                                                         response.mark_changed();
                                                     }
@@ -284,5 +283,6 @@ fn spectrum(ui: &mut Ui, rect: Rect, noise: &NoiseSettings) {
             },
         ),
     ));
-    ui.interact(rect, ui.id().with("noise-spectrum"), Sense::hover()).on_hover_text("Approximate spectral balance · 20 Hz–20 kHz · fixed relative scale. Type and base Color only; excludes Level, modulation and effects.");
+    ui.interact(rect, ui.id().with("noise-spectrum"), Sense::hover())
+        .on_hover_text("Noise spectrum (approx.)");
 }

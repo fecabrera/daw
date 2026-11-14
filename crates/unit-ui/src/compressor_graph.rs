@@ -338,18 +338,14 @@ pub(crate) fn show(
                         bounds
                             .thresholds
                             .push(Rect::from_x_y_ranges(left..=right, y - 4.0..=y + 4.0));
-                        format!(
-                            "Band {} threshold: {:.1} dBFS\nDrag vertically. Shift: fine. Escape cancels.",
-                            index + 1,
-                            drawn
-                        )
+                        format!("Band {} threshold: {:.1} dBFS", index + 1, drawn)
                     } else {
                         let x = graph::frequency_x(plot, drawn);
                         bounds
                             .markers
                             .push(Rect::from_x_y_ranges(x - 4.0..=x + 4.0, plot.y_range()));
                         format!(
-                            "Crossover {}: {}\nDrag horizontally. Shift: fine. Escape cancels.",
+                            "Crossover {}: {}",
                             index + 1,
                             crate::knobs::format_frequency(drawn)
                         )

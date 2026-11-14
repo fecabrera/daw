@@ -44,8 +44,8 @@ pub(super) fn show(ui: &mut Ui, waveform: &mut Waveform, enabled: bool) -> Respo
         palette.secondary
     };
     painter.add(egui::Shape::line(points, Stroke::new(1.0, color)));
-    ui.interact(graph, response.id.with("preview"), Sense::hover()).on_hover_text(
-        "One oscillator cycle (0–100% phase). Pitch changes its duration, not its shape. This preview excludes gain, modulation and downstream processing.");
+    ui.interact(graph, response.id.with("preview"), Sense::hover())
+        .on_hover_text("Waveform");
     let before = *waveform;
     let input = crate::oscillator_controls::input_bounds(rect);
     let mut selector = ui.new_child(
