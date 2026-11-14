@@ -309,18 +309,42 @@ fn band_meters(
             );
             group
                 .into_iter()
+                .map(|key| {
+                    (
+                        key,
+                        matches!(effect.unit, daw_core::EffectSettings::Compressor(_)),
+                    )
+                })
                 .chain(
                     effect
                         .unit
                         .band_ids()
                         .filter(move |_| individual)
-                        .map(move |band| ModulationTarget::EffectBand {
-                            effect: effect.id,
-                            band,
+                        .map(move |band| {
+                            (
+                                ModulationTarget::EffectBand {
+                                    effect: effect.id,
+                                    band,
+                                },
+                                false,
+                            )
                         }),
                 )
         })
-        .map(|key| (key, previous.get(&key).cloned().unwrap_or_default()))
+        .map(|(key, compressor)| {
+            let meter = previous
+                .get(&key)
+                .filter(|meter| !compressor || meter.history().is_some())
+                .cloned()
+                .unwrap_or_else(|| {
+                    if compressor {
+                        Arc::new(daw_unit_core::BandMeter::with_history())
+                    } else {
+                        Arc::default()
+                    }
+                });
+            (key, meter)
+        })
         .collect()
 }
 fn bind_band_meters(
@@ -1023,6 +1047,13 @@ impl AudioOutput {
         self.effect_meters.get(&id).map(AsRef::as_ref)
     }
     /// Detector input envelope for the compressor transfer-curve marker.
+    /// Audio-clocked sweep remains available while paused or the panel is hidden.
+    pub fn compressor_history(&self, id: Id) -> Option<daw_unit_core::LevelHistoryReading> {
+        self.band_meters
+            .get(&ModulationTarget::Effect(id))?
+            .history()?
+            .reading()
+    }
     pub fn compressor_detector_level(&self, id: Id) -> f32 {
         self.band_monitor_values(id)[0]
     }
@@ -2366,11 +2397,15 @@ mod gain_reduction_meter_tests {
                 for id in [layer, main] {
                     let key = ModulationTarget::Effect(id);
                     let reading = bands[&key].readings();
+                    let history = bands[&key].history().unwrap().reading().unwrap();
+                    assert!(history.count > 0);
+                    assert!(history.bins[..history.count].iter().any(|bin| bin[0] > 0.0));
                     assert!(reading[0] > 0.0);
                     assert!(Arc::ptr_eq(&band_meters(&plan, &bands)[&key], &bands[&key]));
                     let mut prepared = Renderer::new(plan.clone());
                     bind_band_meters(&mut prepared, &bands);
                     assert_eq!(bands[&key].readings(), reading);
+                    assert_eq!(bands[&key].history().unwrap().reading().unwrap(), history);
                 }
             }
             if kind == 2 {

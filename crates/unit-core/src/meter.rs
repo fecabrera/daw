@@ -106,6 +106,7 @@ impl MeterStorage for PeakMeter {
 /// Signed band readings with independent reduction and boost holds.
 pub struct BandMeter<const N: usize> {
     current: Arc<[AtomicU32; N]>,
+    history: Option<Arc<crate::LevelHistory>>,
     reductions: [PeakHold; N],
     boosts: [PeakHold; N],
 }
@@ -118,8 +119,26 @@ impl<const N: usize> BandMeter<N> {
     pub fn new(current: Arc<[AtomicU32; N]>) -> Self {
         Self {
             current,
+            history: None,
             reductions: std::array::from_fn(|_| PeakHold::default()),
             boosts: std::array::from_fn(|_| PeakHold::default()),
+        }
+    }
+    /// Optional bounded history storage, allocated only by consumers that need it.
+    pub fn with_history() -> Self {
+        Self {
+            history: Some(Arc::new(crate::LevelHistory::default())),
+            ..Self::default()
+        }
+    }
+    pub fn history(&self) -> Option<&Arc<crate::LevelHistory>> {
+        self.history.as_ref()
+    }
+    /// Stop masks live readings without discarding the frozen history.
+    pub fn clear_levels(&self) {
+        self.initialize(Self::ZERO);
+        for peak in self.reductions.iter().chain(&self.boosts) {
+            peak.reset_peak();
         }
     }
     #[inline]
@@ -156,9 +175,9 @@ impl<const N: usize> MeterStorage for BandMeter<N> {
         }
     }
     fn clear(&self) {
-        self.initialize(Self::ZERO);
-        for peak in self.reductions.iter().chain(&self.boosts) {
-            peak.reset_peak();
+        self.clear_levels();
+        if let Some(history) = &self.history {
+            history.clear();
         }
     }
 }

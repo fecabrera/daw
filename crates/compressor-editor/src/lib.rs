@@ -23,6 +23,7 @@ fn show_body(
         )
         .for_unit(settings.enabled),
         daw_unit_ui::meters::unit_reading(settings.enabled, model.output_meter.bands.readings()[0]),
+        model.output_meter.bands.history().and_then(|h| h.reading()),
     )
 }
 fn paint_extra(
@@ -81,6 +82,7 @@ fn paint_reference(
                 graph: daw_unit_ui::compressor_curve::Input {
                     live_edits: true,
                     detector_level: daw_unit_ui::meters::unit_reading(settings.enabled, levels[0]),
+                    history: model.output_meter.bands.history().and_then(|h| h.reading()),
                 },
             },
         )

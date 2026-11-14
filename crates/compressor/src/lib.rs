@@ -68,6 +68,7 @@ pub struct Compressor {
     reduction_db: f64,
     output_monitor: LevelMonitor<3>,
     curve_monitor: LevelMonitor<3>,
+    history: daw_unit_core::LevelHistoryWriter,
     meter: UnitMeter<PeakMeter>,
     external: daw_unit_core::ModulationSmoother<8>,
     effective: [f32; 10],
@@ -91,6 +92,10 @@ impl Compressor {
             reduction_db: 0.0,
             output_monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
             curve_monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
+            history: daw_unit_core::LevelHistoryWriter::new(
+                context.sample_rate_hz,
+                settings.enabled,
+            ),
             meter: UnitMeter::new(settings.enabled),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: Self::values(settings),
@@ -117,6 +122,7 @@ impl Compressor {
         self.meter.set_enabled(settings.enabled);
         self.output_monitor.set_enabled(settings.enabled);
         self.curve_monitor.set_enabled(settings.enabled);
+        self.history.set_enabled(settings.enabled);
         for (parameter, target) in self.parameters.iter_mut().zip(Self::values(settings)) {
             parameter.retarget(target, self.fade_frames);
         }
@@ -126,6 +132,7 @@ impl Compressor {
         self.meter.set_enabled(enabled);
         self.output_monitor.set_enabled(enabled);
         self.curve_monitor.set_enabled(enabled);
+        self.history.set_enabled(enabled);
     }
     /// Optional lock-free monitoring handle. Attach on a control thread.
     pub fn set_gain_reduction_meter(&mut self, meter: Arc<AtomicU32>) {
@@ -155,6 +162,9 @@ impl Compressor {
     /// Prepared input-envelope monitor: linked detector amplitude in cell zero.
     /// Binding must not overwrite a handle owned by the active renderer.
     pub fn set_curve_meter(&mut self, meter: Arc<BandMeter<3>>) {
+        if let Some(history) = meter.history() {
+            self.history.attach_prepared(history.clone());
+        }
         self.curve_monitor.attach_peak_prepared(meter);
     }
     fn publish(&self) {
@@ -184,6 +194,7 @@ impl EffectUnit for Compressor {
         self.configure([self.effective[3], self.effective[4]]);
         self.output_monitor.reset();
         self.curve_monitor.reset();
+        self.history.reset();
         self.publish();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
@@ -226,6 +237,7 @@ impl Compressor {
         self.publish();
         self.output_monitor.sample_output(output);
         self.curve_monitor.sample([detected, 0.0, 0.0]);
+        self.history.sample(peak, self.gain_reduction_db());
         output
     }
 }

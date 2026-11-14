@@ -1,4 +1,9 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+mod level_history;
+pub use level_history::{
+    LEVEL_HISTORY_BINS, LEVEL_HISTORY_SECONDS, LevelHistory, LevelHistoryReading,
+    LevelHistoryWriter,
+};
 mod spectrum;
 pub use spectrum::{
     FrequencyResponse, SPECTRUM_BASS_READY, SPECTRUM_BINS, SPECTRUM_UPPER_READY, SpectrumCache,

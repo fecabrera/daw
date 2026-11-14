@@ -172,3 +172,12 @@ values, invalid words and impossible ready clocks before applying the frame.
 Stopped transport masks magnitudes/readiness/clocks while retaining scalar held
 peaks. CLAP uses the same coherent portable frame directly; transient telemetry
 never changes parameter IDs, product identities or persistent state bytes.
+
+
+## Regular Compressor history telemetry
+
+Regular Compressor appends its four-second history through the existing schema-2
+meter connection. Schema-1 retains the original thirteen scalar fields. The
+[Compressor contract](../effects/compressor.md#rolling-input-and-gain-reduction-history--2026-11-14)
+defines the 415-value payload, validation and stop behavior. This extension does
+not change plugin parameter/state identities or spectrum layouts.

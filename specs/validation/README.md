@@ -5,6 +5,58 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Compressor rolling history — 2026-11-14
+
+The [Compressor contract](../effects/compressor.md#rolling-input-and-gain-reduction-history--2026-11-14)
+defines a four-second input/reduction history behind the shared interactive curve.
+Its optional prepared ring captures 200 audio-clocked bins. The newest point
+stays at the right edge while older data scrolls left. Input uses theme-secondary
+shading; reduction descends from the top.
+Capture continues while hidden, pause holds it, and bypass/reset clears it.
+No saved parameter, state identity, latency or audio processing formula changed.
+
+Focused tests passed for exact four-second timing at all six project rates,
+transient-peak retention, wraparound, detached clones, non-publishing preparation,
+bypass/reset, nonfinite samples, coherent concurrent snapshots, exact monitored
+versus unmonitored PCM and telemetry round-trip. Existing graph gestures run with
+history present. Additional tests cover background paint order/bypass masking,
+shared layer/Main bindings, old/new VST3 telemetry, and newest-point right
+alignment during startup and ring wrap. The VST3 extension retains
+the thirteen legacy scalar fields; full history data uses schema 2.
+The first full run caught a shared source include extending Harmonic Lift's base
+payload. A compressor-only adapter now wraps the unchanged common module.
+Harmonic Lift's existing 25-value regression passes with the isolated extension.
+Native use exposed an empty history mesh before audio capture, causing wgpu's
+zero-sized buffer-slice panic. The painter now skips zero/one-bin draws. A
+regression tessellates idle, first-bin, two-bin and full-history frames and checks
+that every resulting GPU mesh has vertices and indices.
+
+Completed local macOS checks:
+
+- `cargo test --workspace --offline`: PASS, 3,047 passed and 22 existing manual
+  or performance cases ignored, including doctests. Debug assertions and overflow
+  checks remain enabled. This run compiled before the idle-mesh guard was added.
+- `cargo test -p daw-unit-ui -p daw-compressor-editor --offline`: PASS, 79 cases
+  against the final idle guard, including interaction/parity and GPU tessellation.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS after
+  the idle fix. `cargo fmt --all --check`: PASS.
+
+- `cargo test --workspace --release --offline`: PASS, 3,048 passed and 22 existing
+  cases ignored, including doctests and the final startup GPU regression.
+
+- Debug builds of all 40 concrete CLAP/VST3 libraries: PASS.
+- `cargo build -p daw-cli --offline` and `python3 tools/check_cli.py`: PASS.
+  Smoke coverage includes compound audio, collection, track inspection, imports,
+  codecs, repeatability, missing sources, group buses, overwrite and exit codes.
+- `CARGO_NET_OFFLINE=true ORT_LIB_PATH=<cached native library> python3
+  tools/build_desktop.py debug macos`: PASS. The native executable was rebuilt.
+- Changed Markdown file links and working/index whitespace checks: PASS.
+
+Logs remain in ignored `work/compressor-history/`. Native pointer/host windows,
+listening/device checks, Windows and Linux runtime checks remain unverified.
+App/DMG and plugin bundles were not packaged: packaging requires a clean committed
+snapshot, and these changes remain uncommitted.
+
 ## Concise tooltips and explicit Details reports — 2026-11-14
 
 The app and shared plugin bodies follow the [canonical tooltip contract](../views/tooltips.md).

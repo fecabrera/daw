@@ -36,6 +36,17 @@ The small accent dot follows the detected input on this curve. The vertical gain
 meter on the graph's right shows the actual compression, including Attack and Release. The dot uses a
 smooth level release so individual waveform cycles do not make it flash.
 
+Behind the curve, a subtle shaded area shows the linked input level. A thin gray
+line shows actual gain reduction, growing downward from the top; its full height
+represents 24 dB. The graph keeps the latest four seconds. The newest point stays
+at the right edge while older data scrolls left. During startup, uncollected time
+stays empty on the left. The curve, axes and round handle stay above the history
+and work as before.
+
+The history follows processed audio, including while the graph is hidden. Pause
+holds it. A processor reset clears it; the DAW resets it on seek or Stop. Turning
+the unit off clears and hides the history. It is temporary and is not saved.
+
 The round handle sits at the knee midpoint. With a hard knee it sits at the
 corner; vertical dragging changes Ratio while the handle stays at that corner.
 Drag the round handle left/right to lower/raise Threshold. Drag up to lower Ratio

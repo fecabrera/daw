@@ -675,7 +675,7 @@ mod tests {
                                             12.0,
                                             &[],
                                             None,
-                                            (OutputLevel::new(0.0, None), 0.0),
+                                            (OutputLevel::new(0.0, None), 0.0, None),
                                         )
                                         .0
                                         .graph

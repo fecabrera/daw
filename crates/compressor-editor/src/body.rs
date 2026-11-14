@@ -20,7 +20,7 @@ pub fn show(
     _: &[Option<ModulationMarker>; P::COUNT - 1],
     level: meters::OutputLevel<'_>,
 ) -> Bounds {
-    render(ui, settings, level, 0.0.into(), 0.0)
+    render(ui, settings, level, 0.0.into(), 0.0, None)
 }
 pub fn render(
     ui: &mut Ui,
@@ -28,6 +28,7 @@ pub fn render(
     level: meters::OutputLevel<'_>,
     reduction: meters::GainReduction<'_>,
     detector_level: f32,
+    history: Option<daw_unit_core::LevelHistoryReading>,
 ) -> Bounds {
     let before = PluginState::from_settings(settings).ok();
     let (b, captured) = control_capture::scope(ui, |ui| {
@@ -43,6 +44,7 @@ pub fn render(
                 graph: daw_unit_ui::compressor_curve::Input {
                     live_edits: true,
                     detector_level,
+                    history,
                 },
             },
         )

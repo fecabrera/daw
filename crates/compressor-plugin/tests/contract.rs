@@ -16,7 +16,7 @@ fn curve_detector_uses_existing_telemetry_and_stop_hook_preserves_output_and_red
     }
     assert!(meter.bands.readings()[0] > 0.49);
     let values = plugin::meter_values(&meter);
-    assert_eq!(values.len(), 13);
+    assert_eq!(values.len(), plugin::METER_VALUES);
     assert_eq!(values[4] as f32, meter.bands.readings()[0]);
     let received = plugin::OutputMeter::default();
     plugin::receive_meter(&received, values.map(|v| v as f32));
@@ -74,4 +74,36 @@ fn curve_state_migrates_v1_and_preserves_parameter_ids_and_atomic_restore() {
         assert!(current.restore(&corrupt).is_err());
         assert_eq!(current, state);
     }
+}
+
+#[test]
+fn input_history_round_trips_and_bypass_clears_without_changing_audio() {
+    use daw_unit_core::BandAudition;
+    let monitor = std::sync::Arc::new(plugin::OutputMeter::default());
+    let state = plugin::PluginState::default();
+    let mut watched = plugin::Processor::new(48000.0, 1, 512, state).unwrap();
+    let mut plain = plugin::Processor::new(48000.0, 1, 512, state).unwrap();
+    watched.set_output_meter(monitor.clone());
+    for i in 0..48000 {
+        let level = if i % 960 == 0 { 0.9 } else { 0.3 };
+        assert_eq!(
+            watched.process_sample([level, -level]),
+            plain.process_sample([level, -level])
+        );
+    }
+    let history = monitor.bands.history().unwrap().reading().unwrap();
+    assert_eq!(history.count, 50);
+    assert!(history.bins[..50].iter().all(|b| b[0] == 0.9 && b[1] > 0.0));
+    let received = plugin::OutputMeter::default();
+    plugin::receive_meter(&received, plugin::meter_values(&monitor).map(|v| v as f32));
+    assert_eq!(
+        received.bands.history().unwrap().reading().unwrap(),
+        history
+    );
+    monitor.clear_live_preview();
+    assert_eq!(monitor.bands.history().unwrap().reading().unwrap(), history);
+    let mut off = watched.state();
+    off.set(plugin::Parameter::Bypass, 1.0).unwrap();
+    watched.apply_parameter(plugin::Parameter::Bypass, &off);
+    assert_eq!(monitor.bands.history().unwrap().reading().unwrap().count, 0);
 }

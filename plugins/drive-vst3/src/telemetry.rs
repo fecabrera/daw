@@ -1,14 +1,28 @@
 //! Main-thread meter messages through the host's component/controller connection.
 //! Audio only publishes atomics; no GUI pointers or SDK calls cross processing.
 use daw_drive_plugin::METER_VALUES;
-// EQ v1 has a scalar/rate prefix plus legacy bins; compressor v1 has 269 scalar/band values.
-// Extended snapshots append their spectrum metadata in the final fourteen slots.
-const LEGACY_VALUES: usize = if METER_VALUES == 796 { 269 } else { 206 };
-const LEGACY_PREFIX: usize = if METER_VALUES == 796 { 269 } else { 142 };
+// EQ and Multiband Compressor v2 append spectrum metadata. Regular Compressor v2
+// appends its rolling history after the original thirteen scalar readings.
+const HISTORY: bool = METER_VALUES == 415;
+const SPECTRUM: bool = METER_VALUES == 668 || METER_VALUES == 796;
+const LEGACY_VALUES: usize = if HISTORY {
+    13
+} else if METER_VALUES == 796 {
+    269
+} else {
+    206
+};
+const LEGACY_PREFIX: usize = if HISTORY {
+    13
+} else if METER_VALUES == 796 {
+    269
+} else {
+    142
+};
 const SPECTRUM_RATE: usize = if METER_VALUES == 796 { 269 } else { 141 };
-// Exact EQ and Multiband Compressor schema-2 sizes, never a threshold.
+// Exact spectrum/history schema-2 sizes, never a threshold.
 // Other products retain their full v1 payloads.
-const EXTENDED: bool = METER_VALUES == 668 || METER_VALUES == 796;
+const EXTENDED: bool = SPECTRUM || HISTORY;
 use daw_plugin_vst3::{
     boundary,
     sys::{
@@ -305,12 +319,14 @@ pub unsafe fn read(message: *mut IMessage) -> Option<(Kind, [f32; METER_VALUES])
     if EXTENDED && kind == Kind::Reading {
         let prefix = LEGACY_PREFIX.min(METER_VALUES);
         values[prefix..].fill(0.0);
-        let schema = METER_VALUES.saturating_sub(14);
-        values[schema] = 2.0;
-        if let Some(rate) = values.get_mut(SPECTRUM_RATE)
-            && ![44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0].contains(rate)
-        {
-            *rate = 48000.0;
+        if SPECTRUM {
+            let schema = METER_VALUES.saturating_sub(14);
+            values[schema] = 2.0;
+            if let Some(rate) = values.get_mut(SPECTRUM_RATE)
+                && ![44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0].contains(rate)
+            {
+                *rate = 48000.0;
+            }
         }
     }
     Some((kind, values))
@@ -395,7 +411,11 @@ fn attribute_key(index: usize) -> &'static CStr {
 
 pub(crate) fn mask_stopped(values: &mut [f64; METER_VALUES]) {
     values[0] = 0.0;
-    if EXTENDED {
+    if HISTORY {
+        *values.get_mut(2).unwrap() = 0.0;
+        *values.get_mut(4).unwrap() = 0.0;
+    }
+    if SPECTRUM {
         let first = (SPECTRUM_RATE + 1).min(METER_VALUES);
         let schema = METER_VALUES.saturating_sub(14);
         values[first..schema].fill(0.0);
@@ -438,10 +458,41 @@ mod extended_tests {
 
 #[cfg(test)]
 mod compatibility_tests {
+    #[test]
+    fn history_schema_two_retains_full_history_and_legacy_readings_have_no_history() {
+        if !HISTORY {
+            return;
+        }
+        let values = std::array::from_fn(|i| Cell::new(i as f64));
+        let attributes = ComWrapper::new(Attributes::complete(values))
+            .to_com_ptr::<IAttributeList>()
+            .unwrap();
+        let message = ComWrapper::new(Message {
+            kind: Cell::new(Some(Kind::ReadingV2)),
+            attributes,
+        })
+        .to_com_ptr::<IMessage>()
+        .unwrap();
+        // SAFETY: both COM objects are owned for the entire synchronous call.
+        unsafe {
+            let (_, values) = read(message.as_ptr()).unwrap();
+            assert_eq!(*values.get(414).unwrap(), 414.0);
+            message.setMessageID(Kind::Reading.id().as_ptr());
+            let (_, values) = read(message.as_ptr()).unwrap();
+            assert_eq!(*values.get(12).unwrap(), 12.0);
+            assert!(values.get(13..).unwrap().iter().all(|v| *v == 0.0));
+        }
+        let mut stopped = std::array::from_fn(|i| i as f64);
+        mask_stopped(&mut stopped);
+        assert_eq!(*stopped.get(2).unwrap(), 0.0);
+        assert_eq!(*stopped.get(14).unwrap(), 14.0);
+        assert_eq!(*stopped.get(414).unwrap(), 414.0);
+    }
+
     use super::*;
     #[test]
     fn schema_two_requires_exact_count_and_legacy_spectrum_is_masked() {
-        if !EXTENDED {
+        if !SPECTRUM {
             return;
         }
         for length in [LEGACY_VALUES, METER_VALUES - 1, METER_VALUES] {

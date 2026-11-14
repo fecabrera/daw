@@ -134,7 +134,7 @@ DAW discovery reuses stable effect group `BandMeter<3>` bindings across all effe
 owners. The output getter masks paused/stopped readings; power masking hides stale
 values immediately. Plugin telemetry reuses the previously unused group in the
 existing 13-value message: value 4 carries detector amplitude (with its existing
-held cell at 10). The meter message length stays unchanged. Parameter and state changes are specified below.
+held cell at 10). The original thirteen scalar fields retain their meanings; the history extension is specified below.
 Old senders supply zero and show no point; old editors ignore these unused cells.
 The shared `BandAudition::clear_live_preview` stop hook defaults to no-op; Compressor
 clears only its curve cells. CLAP invokes it on serialized processing stop; VST3
@@ -185,5 +185,46 @@ The native parameter ID is 109; Detection keeps 108 and all earlier IDs stay
 unchanged. Append Curve to the fixed state payload. The plugin envelope is v2
 (96 bytes); accept the known v1 88-byte envelope with Curve zero. Reject malformed,
 future or out-of-range states before publication. Project settings remain v1.
-The meter wire format stays at 13 values. This change does not add a Curve
-control or modulation destination to Multiband Compressor.
+Curve adds no meter fields. The history extension below retains the original
+thirteen fields. Curve is not a control or modulation destination in Multiband
+Compressor.
+
+## Rolling input and gain-reduction history — 2026-11-14
+
+The shared Curve body paints an input-level area and a gain-reduction line behind
+the existing grid, transfer curve, detector dot and handle. Retain the strip width,
+axes, GR rail, footer, input capture and atomic Threshold/Ratio gestures. History
+adds no interaction regions. Use theme secondary gray: 16% for input shading,
+55% for the reduction line. Input height follows the
+existing −72…+12 dBFS scale. Reduction descends from zero at the top to 24 dB at
+the bottom, independently of the output axis; clamp only its painted height.
+
+`unit-core::LevelHistoryWriter` aggregates linked raw input sample peaks and maximum
+actual applied reduction into 200 bins of 20 ms each. The audio clock defines a
+rolling four-second window at every supported project rate. The ring replaces
+its oldest bin internally. Paint bins in chronological order, with the newest
+point always at the right edge, including during warm-up. Leave uncollected time
+empty on the left. Join adjacent times across ring wrap; there is no sweep head.
+With fewer than two bins, emit no history primitives. Never submit an empty
+vertex/index mesh to the GPU renderer.
+Pause retains the snapshot; processor reset clears it. Hidden/collapsed graphs
+continue capture. Bypass clears the history and masks stale UI data immediately.
+Compatible edits retain capture phase and existing history with the processor.
+
+Only compressor group `BandMeter` bindings allocate optional `LevelHistory`
+storage, on a control thread. The writer uses `UnitMeter` for bypass, detached DSP
+clones, prepared non-publishing attachment and retirement. Publication touches one
+bin at 50 Hz. Atomic snapshots make at most two attempts and cannot mix bin
+pairs. Processing never allocates, locks, waits, performs I/O or destroys final
+owners. Monitoring leaves PCM, latency, modulation and persisted state unchanged.
+The UI consumes snapshots on the existing host repaint cadence.
+
+The compressor-only `meter_history` adapter wraps the shared thirteen-field base
+without extending other products. DAW bindings reuse stable effect IDs for track,
+layer, Main, group, Return and Master owners. CLAP shares prepared storage. VST3 uses schema-2 telemetry with
+415 values: the original thirteen scalars, next position, valid count, and 200
+input/reduction pairs. Schema-1 retains exactly thirteen fields and clears the
+unavailable history on receipt. Validate complete finite, nonnegative payloads
+and bounded integer metadata. Stop masks current detector/reduction readings
+while preserving history and held output/reduction peaks. No host automation or
+state parameters are added.

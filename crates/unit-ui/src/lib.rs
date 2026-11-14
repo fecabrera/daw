@@ -49,3 +49,5 @@ pub mod strip_reorder;
 pub mod loudness;
 
 pub mod tooltips;
+
+mod compressor_history;

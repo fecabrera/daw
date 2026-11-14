@@ -19,6 +19,7 @@ pub struct Input {
     pub live_edits: bool,
     /// Actual detector input amplitude with the shared level release.
     pub detector_level: f32,
+    pub history: Option<daw_unit_core::LevelHistoryReading>,
 }
 pub struct Bounds {
     pub section: Rect,
@@ -131,6 +132,11 @@ pub fn show(
                     bounds.reduction_meter,
                     reduction.for_unit(s.enabled),
                 );
+                if s.enabled
+                    && let Some(history) = input.history.as_ref()
+                {
+                    crate::compressor_history::paint(ui, plot, history);
+                }
                 let grid = egui::Stroke::new(1.0, palette.secondary.gamma_multiply(0.12));
                 for db in [-72.0, -60.0, -48.0, -36.0, -24.0, -12.0, 0.0, 12.0] {
                     let pos = point(plot, db, db);
@@ -351,6 +357,11 @@ mod tests {
                             Input {
                                 live_edits: live,
                                 detector_level: 0.5,
+                                history: Some(daw_unit_core::LevelHistoryReading {
+                                    count: daw_unit_core::LEVEL_HISTORY_BINS,
+                                    position: 70,
+                                    bins: [[0.5, 6.0]; daw_unit_core::LEVEL_HISTORY_BINS],
+                                }),
                             },
                             0.0.into(),
                         )
@@ -366,6 +377,33 @@ mod tests {
         });
         out.textures_delta.clear();
         b
+    }
+    #[test]
+    fn history_is_painted_behind_the_handle_and_bypass_masks_it() {
+        let ctx = context();
+        let mut settings = CompressorSettings::default();
+        let bounds = draw(&ctx, &mut settings, vec![], false, true, true, false);
+        let shapes = ctx
+            .data(|d| {
+                d.get_temp::<Vec<egui::epaint::ClippedShape>>(egui::Id::new(
+                    "compressor-curve-shapes-test",
+                ))
+            })
+            .unwrap();
+        let area = shapes.iter().position(|s| matches!(&s.shape, egui::Shape::Mesh(m) if m.vertices.len() == 2 * daw_unit_core::LEVEL_HISTORY_BINS)).unwrap();
+        let handle = shapes.iter().position(|s| matches!(&s.shape, egui::Shape::Circle(c) if c.center == bounds.handle.center() && c.radius == 5.5)).unwrap();
+        assert!(area < handle);
+        settings.enabled = false;
+        let off = draw(&ctx, &mut settings, vec![], false, true, true, false);
+        assert_eq!(off.handle, bounds.handle);
+        let shapes = ctx
+            .data(|d| {
+                d.get_temp::<Vec<egui::epaint::ClippedShape>>(egui::Id::new(
+                    "compressor-curve-shapes-test",
+                ))
+            })
+            .unwrap();
+        assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Mesh(m) if m.vertices.len() == 2 * daw_unit_core::LEVEL_HISTORY_BINS)));
     }
     #[test]
     fn curve_drag_previews_both_controls_and_commits_or_cancels_as_one_draft() {
@@ -574,6 +612,11 @@ mod tests {
                                     graph: Input {
                                         live_edits: false,
                                         detector_level: 0.5,
+                                        history: Some(daw_unit_core::LevelHistoryReading {
+                                            count: daw_unit_core::LEVEL_HISTORY_BINS,
+                                            position: 70,
+                                            bins: [[0.5, 6.0]; daw_unit_core::LEVEL_HISTORY_BINS],
+                                        }),
                                     },
                                 },
                             ));

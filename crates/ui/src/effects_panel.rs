@@ -1520,6 +1520,9 @@ impl DawUi {
                                                 self.output.as_ref().map_or(0.0, |o| {
                                                     o.compressor_detector_level(effect.id)
                                                 }),
+                                                self.output
+                                                    .as_ref()
+                                                    .and_then(|o| o.compressor_history(effect.id)),
                                             ),
                                         );
                                         if !self.background_media.required
