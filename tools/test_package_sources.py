@@ -15,12 +15,14 @@ import package_sources as sources
 
 
 @contextmanager
-def fixture():
+def fixture(line_ending=b'\n'):
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         subprocess.run(['git', 'init', '-q', str(root)], check=True)
         for name, value in [('user.name', 'Source fixture'), ('user.email', 'fixture@example.invalid')]:
             subprocess.run(['git', '-C', str(root), 'config', name, value], check=True)
+        # Explicit bytes below must reach the commit unchanged on every host.
+        subprocess.run(['git', '-C', str(root), 'config', 'core.autocrlf', 'false'], check=True)
         entries=[e for e in json.loads((sources.ROOT/'tools/runtime_notices.json').read_text())['notices']
                  if e['component'] in ('valuable-0.1.1', 'realfft-3.5.0', 'accesskit-0.24.1-chromium')]
         entries.sort(key=lambda e: e['component'] != 'valuable-0.1.1')
@@ -29,11 +31,11 @@ def fixture():
         for entry in entries:
             notice=root/entry['notice']; notice.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(sources.ROOT/entry['notice'],notice)
-        (root/'Cargo.lock').write_text('exact locked sources\n')
+        (root/'Cargo.lock').write_bytes(b'exact locked sources' + line_ending)
         (root/'.cargo').mkdir()
         (root/'.cargo/config.toml').write_text('[build]\njobs = 2\n')
         (root/'vendor/charon-audio').mkdir(parents=True)
-        (root/'vendor/charon-audio/DAW-PATCH.md').write_text('local patch\n')
+        (root/'vendor/charon-audio/DAW-PATCH.md').write_bytes(b'local patch' + line_ending)
         subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
         subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'fixture'], check=True)
         binary = root/'daw-desktop'
@@ -45,7 +47,12 @@ def fixture():
 
 class SourcePackages(unittest.TestCase):
     def test_source_archive_contains_exact_patch_lock_and_relocatable_vendor(self):
-        with fixture() as (root, binary, revision):
+        for line_ending in (b'\n', b'\r\n'):
+            with self.subTest(line_ending=line_ending):
+                self._assert_source_archive(line_ending)
+
+    def _assert_source_archive(self, line_ending):
+        with fixture(line_ending) as (root, binary, revision):
             check_output = subprocess.check_output
             def command(args, **kwargs):
                 if args[:2] == ['cargo', 'vendor']:
@@ -64,8 +71,8 @@ class SourcePackages(unittest.TestCase):
             with patch.object(sources.subprocess, 'check_output', side_effect=command):
                 sources.bundle(destination, binary, revision, 'release')
             with zipfile.ZipFile(destination/'DAW-source.zip') as archive:
-                self.assertEqual(archive.read('DAW/Cargo.lock'), b'exact locked sources\n')
-                self.assertEqual(archive.read('DAW/vendor/charon-audio/DAW-PATCH.md'), b'local patch\n')
+                self.assertEqual(archive.read('DAW/Cargo.lock'), b'exact locked sources' + line_ending)
+                self.assertEqual(archive.read('DAW/vendor/charon-audio/DAW-PATCH.md'), b'local patch' + line_ending)
                 self.assertEqual(archive.read('DAW/cargo-vendor/dependency-1.0/LICENSE'), b'upstream grant')
                 self.assertEqual(archive.getinfo('DAW/cargo-vendor/dependency-1.0/LICENSE').date_time[0],1980)
                 config = archive.read('DAW/.cargo/config.toml').decode()

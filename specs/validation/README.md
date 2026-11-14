@@ -5,6 +5,31 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Source-package fixture line endings — 2026-11-14
+
+The Windows CI source-archive test expected LF bytes after `Path.write_text()`
+had created CRLF fixture files. The production packager correctly retained those
+committed bytes. The fixture now writes lock/patch bytes explicitly, disables
+Git checkout conversion only in its temporary repository, and checks both LF and
+CRLF archives without normalizing their contents. No production packaging or
+repository-wide line-ending policy changed.
+
+Executed on macOS arm64:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `cargo test --workspace --offline` with macOS audio-service access: PASS,
+  3,456 passed and 22 intentionally ignored.
+- `cargo test --workspace --release --offline` with macOS audio-service access:
+  PASS, 3,456 passed and 22 intentionally ignored.
+- `python3 -m unittest discover -s tools -p 'test_*packag*.py' -v`: PASS,
+  29 tests, including native macOS packaging checks.
+- `python3 -m unittest discover -s tools -p 'test_package_sources.py' -v`:
+  PASS, 3 tests; the archive case covers LF and CRLF lock/patch inputs.
+
+Remaining check: rerun the reported Windows CI packaging job. Local byte-level
+coverage does not establish native Windows execution.
+
 ## 3-band EQ live Response graph — 2026-11-14
 
 The DAW and CLAP/VST3/AUv2 editors share the Multiband EQ graph renderer for
