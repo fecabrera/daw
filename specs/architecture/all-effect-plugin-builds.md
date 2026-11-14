@@ -78,7 +78,34 @@ Standalone Multiband EQ uses the shared release-only strip gesture lifecycle. It
 
 ## Packaging, CI, and checks
 
-The manifest-discovered packager requires no product allowlist. `--units all` selects every manifest-registered product. Test fixture libraries cover all products on each supported archive layout and retain transactional publication after later-unit/signing failures.
+The manifest-discovered `tools/package_plugins.py` requires no product allowlist.
+`--units all` selects every manifest-registered product. `--api` accepts comma-separated
+`clap`, `vst3` and `all` tokens, trims whitespace, rejects unknown/empty tokens and
+deduplicates selections in canonical CLAP/VST3 order. Omission selects both APIs.
+
+Every invocation first builds exactly the selected format packages from source,
+using each Cargo manifest's declared package name. Use one `cargo build --locked
+--lib` invocation with explicit workspace manifest, target and target directory.
+Resolve relative target/output paths before changing the build working directory.
+Omitting `--release` builds/reads `debug`; the flag builds/reads `release`. Build
+failure must stop before staging, including when stale libraries exist. Read the
+library basename from the declared lib name or Cargo package-name fallback.
+
+Debug bundle/binary names append `-debug` before their extension; bare macOS
+executables use the suffixed stem. Match `CFBundleExecutable` and install names to
+the actual executable. Preserve public identities, manifest product names and
+resource/signature rules. Append `-debug` before ZIP and checksum extensions too.
+Release names stay unchanged. Record the selected profile in `build.json`.
+Single-API checksum filenames include the API so they cannot replace a previous
+full-format checksum file. Unselected artifacts remain unchanged.
+
+Stage every selected unit/API before publication. Fixture libraries cover all
+products on each supported archive layout and preserve existing archives on
+build, later-unit or signing failures. Native macOS checks retain ad-hoc signing,
+relocation, resource seals and ZIP executable modes. CI explicitly passes
+`--release --api all`, retaining its existing release artifact globs and its
+separate build step needed before ABI tests; the packager's repeat build is
+incremental.
 
 The plugin workflow runs registered products across three platforms (one job per product and platform), with both formats, typed model/editor and ABI tests, packaging, separate artifacts, checksums, and logs. Existing library-path environment variables retain `DRIVE_*` names for shared host tests.
 

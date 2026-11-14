@@ -46,7 +46,7 @@ Output meters reuse the [standard Out-strip contract](modular-audio-units.md#sta
 
 ## Packaging and CI
 
-`tools/package_plugins.py --units saturator,bitcrusher` packages both new products; `--units all` discovers all fifteen registered effect plugins. No per-product packager allowlist is used. Build both native format libraries for every selected unit first. Keep per-product ZIPs, checksums, manifests, licenses, native layouts and macOS ad-hoc resource signatures. Staging/signing failure must preserve every selected product's prior artifacts.
+`tools/package_plugins.py --units saturator,bitcrusher` builds and packages both products; `--units all` discovers every registered effect plugin. Build profile and API selection follow the [shared packaging contract](all-effect-plugin-builds.md#packaging-ci-and-checks). No per-product packager allowlist is used. Keep per-product ZIPs, checksums, manifests, licenses, native layouts and macOS ad-hoc resource signatures. Staging/signing failure must preserve every selected product's prior artifacts.
 
 `plugins.yml` has fifteen unit entries across Windows x64, macOS arm64 and Linux x64: 45 independent jobs. Each builds both formats, tests the typed contracts/editors and native libraries, then packages/uploads separate previews, checksums and logs. Shared host-test library environment names retain the existing `DRIVE_*` spelling because the harness is reused. Native runs supply the selected unit's library paths.
 

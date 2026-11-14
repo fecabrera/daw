@@ -101,7 +101,7 @@ jobs:
 
       - name: Package plugin previews
         id: plugin_package
-        run: python tools/package_plugins.py --units '${{ matrix.unit.slug }}' --output-dir 'target/plugin-artifacts/${{ matrix.unit.slug }}' --target '${{ matrix.target }}' 2>&1 | tee work/ci-logs/plugin-package.log
+        run: python tools/package_plugins.py --release --api all --units '${{ matrix.unit.slug }}' --output-dir 'target/plugin-artifacts/${{ matrix.unit.slug }}' --target '${{ matrix.target }}' 2>&1 | tee work/ci-logs/plugin-package.log
 
       # ZIPs retain bundle structure and executable modes after artifact download.
       - name: Upload CLAP preview

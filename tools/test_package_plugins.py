@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import plistlib
 import shutil
@@ -14,7 +15,33 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-from package_plugins import ROOT, TARGETS, finalize_macos_bundle, package, select_units, available_units
+from package_plugins import (ROOT, TARGETS, finalize_macos_bundle, package as build_and_package,
+                             select_units, available_units, select_apis, build_plugins)
+
+
+def package(*args, **kwargs):
+    """Legacy layout fixtures supply prebuilt release bytes, not Cargo projects."""
+    kwargs.setdefault("release", True)
+    with patch("package_plugins.build_plugins"):
+        return build_and_package(*args, **kwargs)
+
+
+def fake_cargo(base):
+    """A child-process fixture keeps CLI tests independent of native toolchains."""
+    directory = base / "fake-bin"
+    directory.mkdir()
+    log = base / "cargo-calls.jsonl"
+    script = directory / "cargo_fixture.py"
+    script.write_text("import json,sys\nfrom pathlib import Path\n"
+                      f"with Path({str(log)!r}).open('a') as output: output.write(json.dumps(sys.argv[1:])+'\\n')\n")
+    if sys.platform == "win32":
+        (directory / "cargo.bat").write_text(f'@"{sys.executable}" "{script}" %*\n')
+    else:
+        command = directory / "cargo"
+        command.write_text(f'#!{sys.executable}\n' + script.read_text())
+        command.chmod(0o755)
+    return dict(os.environ, PATH=str(directory) + os.pathsep + os.environ.get("PATH", "")), log
+
 
 
 class PackagingTests(unittest.TestCase):
@@ -291,15 +318,16 @@ class PackagingTests(unittest.TestCase):
             for unit in (slug.replace("-","_") for slug in select_units("all")):
                 for fmt in ("clap", "vst3"):
                     (release / f"libdaw_{unit}_{fmt}.so").write_bytes(b"fixture")
-            command = [sys.executable, str(ROOT / "tools/package_plugins.py"), "--target", target,
+            env, calls = fake_cargo(base)
+            command = [sys.executable, str(ROOT / "tools/package_plugins.py"), "--release", "--target", target,
                        "--target-dir", str(base / "target")]
             for selection in ("drive,drive-v2", "saturator,bitcrusher", "all"):
                 output = base / selection
-                result = subprocess.run(command + ["--units", selection, "--output-dir", str(output)], capture_output=True, text=True)
+                result = subprocess.run(command + ["--units", selection, "--output-dir", str(output)], capture_output=True, text=True, env=env)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(len(list(output.glob("*.zip"))), 2 * len(select_units(selection)))
             output = base / "invalid"
-            result = subprocess.run(command + ["--units", "drive,unknown", "--output-dir", str(output)], capture_output=True, text=True)
+            result = subprocess.run(command + ["--units", "drive,unknown", "--output-dir", str(output)], capture_output=True, text=True, env=env)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unknown units", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
@@ -386,6 +414,147 @@ class PackagingTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 package(target, base / "target", output, units="drive")
             self.assertEqual({path.name: path.read_bytes() for path in output.iterdir()}, previous)
+
+
+class SourceBuildPackagingTests(unittest.TestCase):
+    def test_api_lists_normalize_deduplicate_and_reject_invalid_values(self):
+        for value in ("all", "clap,vst3", "vst3, clap,clap", "all,clap"):
+            self.assertEqual(select_apis(value), ["clap", "vst3"])
+        self.assertEqual(select_apis("vst3"), ["vst3"])
+        for value in ("", "clap,", ",clap", "CLAP", "au", "all,unknown"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                select_apis(value)
+
+    def test_cargo_build_uses_manifest_package_names_and_explicit_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "source tree"
+            for api in ("clap", "vst3"):
+                manifest = root / f"plugins/example-{api}/Cargo.toml"
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text(f'[package]\nname = "custom-{api}"\n')
+            for release in (False, True):
+                with patch("package_plugins.subprocess.run") as run:
+                    build_plugins("aarch64-apple-darwin", root / "cache", ["example"], ["vst3"], root, release=release)
+                command = run.call_args.args[0]
+                self.assertEqual(command[command.index("--target") + 1], "aarch64-apple-darwin")
+                self.assertEqual(command[command.index("--target-dir") + 1], str(root / "cache"))
+                self.assertEqual(command[command.index("--manifest-path") + 1], str(root / "Cargo.toml"))
+                self.assertIn("--locked", command)
+                self.assertIn("--lib", command)
+                self.assertEqual("--release" in command, release)
+                self.assertEqual(command[-2:], ["-p", "custom-vst3"])
+                self.assertNotIn("custom-clap", command)
+                self.assertEqual(run.call_args.kwargs, {"cwd": root, "check": True})
+
+    def test_debug_and_release_coexist_with_consistent_bundle_and_archive_names(self):
+        for target, (system, _, pattern) in TARGETS.items():
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                output = base / "artifacts"
+                for release, profile, suffix in ((True, "release", ""), (False, "debug", "-debug")):
+                    libraries = base / "cache" / target / profile
+                    libraries.mkdir(parents=True)
+                    for api in ("clap", "vst3"):
+                        (libraries / pattern.format(f"daw_drive_{api}")).write_bytes(f"{profile}:{api}".encode())
+                    with patch("package_plugins.build_plugins") as build, patch("package_plugins.finalize_macos_bundle"), contextlib.redirect_stdout(io.StringIO()):
+                        build_and_package(target, base / "cache", output, units="drive", release=release)
+                    self.assertEqual(build.call_args.kwargs, {"release": release})
+                    archives = sorted(p for p in output.glob("*.zip") if p.name.endswith("-debug.zip") == (not release))
+                    self.assertEqual(len(archives), 2)
+                    for archive in archives:
+                        with zipfile.ZipFile(archive) as zipped:
+                            metadata = json.loads(zipped.read("build.json"))
+                            api = metadata["format"]
+                            self.assertEqual(metadata["profile"], profile)
+                            name = f"Drive{suffix}"
+                            if system == "macos":
+                                binary = f"{name}.{api}/Contents/MacOS/{name}"
+                                plist = plistlib.loads(zipped.read(f"{name}.{api}/Contents/Info.plist"))
+                                self.assertEqual(plist["CFBundleExecutable"], name)
+                                self.assertEqual(plist["CFBundleName"], "Drive")
+                                self.assertEqual(plist["CFBundleIdentifier"], "io.github.fecabrera.daw.drive" + (".vst3" if api == "vst3" else ""))
+                            elif api == "clap":
+                                binary = f"{name}.clap"
+                            elif system == "windows":
+                                binary = f"{name}.vst3/Contents/x86_64-win/{name}.vst3"
+                            else:
+                                binary = f"{name}.vst3/Contents/x86_64-linux/{name}.so"
+                            self.assertEqual(zipped.read(binary), f"{profile}:{api}".encode())
+                            self.assertIn(f"Copy {name}.{api}", zipped.read("README.txt").decode())
+                    checksum = next(output.glob(f"*SHA256SUMS{suffix}.txt")).read_text()
+                    self.assertEqual(len(checksum.splitlines()), 2)
+                    for archive in archives:
+                        self.assertIn(hashlib.sha256(archive.read_bytes()).hexdigest() + "  " + archive.name, checksum)
+                self.assertEqual(len(list(output.glob("*.zip"))), 4)
+                self.assertEqual(len(list(output.glob("*.txt"))), 2)
+
+    def test_subset_builds_need_only_selected_library_and_keep_other_artifacts(self):
+        target = "x86_64-unknown-linux-gnu"
+        for api in ("clap", "vst3"):
+            with self.subTest(api=api), tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                library = base / "cache" / target / "debug" / f"libdaw_drive_{api}.so"
+                library.parent.mkdir(parents=True)
+                library.write_bytes(b"chosen format")
+                output = base / "artifacts"
+                output.mkdir()
+                (output / "other.zip").write_bytes(b"unchanged")
+                full_checksums = output / "Drive-0.1.0-linux-x64-SHA256SUMS-debug.txt"
+                full_checksums.write_bytes(b"previous full-format checksums")
+                with patch("package_plugins.build_plugins") as build, contextlib.redirect_stdout(io.StringIO()):
+                    build_and_package(target, base / "cache", output, units="drive", api=api)
+                self.assertEqual(build.call_args.args[3], [api])
+                self.assertEqual(build.call_args.kwargs, {"release": False})
+                self.assertEqual((output / "other.zip").read_bytes(), b"unchanged")
+                self.assertEqual(full_checksums.read_bytes(), b"previous full-format checksums")
+                self.assertTrue((output / f"Drive-0.1.0-linux-x64-{api}-debug.zip").is_file())
+                self.assertTrue((output / f"Drive-0.1.0-linux-x64-{api}-SHA256SUMS-debug.txt").is_file())
+                self.assertEqual(len(list(output.glob("*.zip"))), 2)
+
+    def test_failed_source_build_does_not_package_stale_binaries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            output = base / "artifacts"
+            output.mkdir()
+            archive = output / "previous.zip"
+            archive.write_bytes(b"previous")
+            stale = base / "cache/x86_64-unknown-linux-gnu/debug"
+            stale.mkdir(parents=True)
+            for api in ("clap", "vst3"):
+                (stale / f"libdaw_drive_{api}.so").write_bytes(b"stale library")
+            with patch("package_plugins.build_plugins", side_effect=subprocess.CalledProcessError(1, ["cargo"])), patch("package_plugins.stage_unit") as stage:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    build_and_package("x86_64-unknown-linux-gnu", base / "cache", output, units="drive")
+            stage.assert_not_called()
+            self.assertEqual({p.name: p.read_bytes() for p in output.iterdir()}, {"previous.zip": b"previous"})
+
+    def test_default_debug_cli_filters_cargo_and_resolves_relative_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            target = "x86_64-unknown-linux-gnu"
+            library = base / "cache" / target / "debug" / "libdaw_drive_clap.so"
+            library.parent.mkdir(parents=True)
+            library.write_bytes(b"debug source build")
+            env, calls = fake_cargo(base)
+            command = [sys.executable, str(ROOT / "tools/package_plugins.py"), "--units", "drive", "--api", "clap",
+                       "--target", target, "--target-dir", "cache", "--output-dir", "output"]
+            result = subprocess.run(command, cwd=base, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            cargo = json.loads(calls.read_text().strip())
+            self.assertNotIn("--release", cargo)
+            self.assertEqual(cargo[-2:], ["-p", "daw-drive-clap"])
+            self.assertNotIn("daw-drive-vst3", cargo)
+            self.assertEqual(cargo[cargo.index("--target-dir") + 1], str((base / "cache").resolve()))
+            archive = base / "output/Drive-0.1.0-linux-x64-clap-debug.zip"
+            with zipfile.ZipFile(archive) as zipped:
+                self.assertEqual(zipped.read("Drive-debug.clap"), b"debug source build")
+            before = calls.read_bytes()
+            command[command.index("--api") + 1] = "clap,unknown"
+            result = subprocess.run(command, cwd=base, env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--api", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(calls.read_bytes(), before)
 
 
 if __name__ == "__main__":

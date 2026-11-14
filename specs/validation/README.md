@@ -5,6 +5,39 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Source-building plugin packager — 2026-11-14
+
+`tools/package_plugins.py` now builds selected products/APIs from source before
+staging artifacts. Debug is the default; `--release` selects optimized builds.
+Debug bundle, binary, ZIP and checksum names gain `-debug` before the extension.
+`--api` selects CLAP, VST3 or both through comma-separated values and `all`.
+CI passes `--release --api all` to retain its existing artifact names/globs.
+The [packaging contract](../architecture/all-effect-plugin-builds.md#packaging-ci-and-checks)
+defines source-build ordering, path handling, API subsets and naming.
+
+Completed local macOS checks:
+
+- `python3 -m unittest discover -s tools -p test_package_plugins.py -v`: PASS,
+  21 tests. Fixtures cover all registered products and three platform layouts,
+  profile coexistence, API selection, declared package/lib names, caller-relative
+  paths, build failures with stale libraries, notice/signature retention and
+  preservation of unselected archives/checksums.
+- `python3 -m unittest discover -s tools -p 'test_*.py' -v`: PASS, all 50 tooling
+  tests, including source packaging, desktop packaging and validator helpers.
+- Real offline source builds through the CLI: Drive debug with `--api clap,vst3`,
+  and Drive release with `--api vst3`, targeting `aarch64-apple-darwin`: PASS.
+  The three ZIPs coexist in the same output directory. Extracted bundles passed
+  `codesign --verify --strict`, install-name/plist checks, payload hashes and
+  archive checksum verification. Debug resources and install instructions use
+  the suffixed names; public identities remain unchanged.
+- Changed Markdown file links, CLI help and `git diff --check`: PASS.
+
+Logs/artifacts remain in ignored `work/plugin-packager/`. No Rust sources or
+DSP behavior changed; validation targets the Python tooling and actual Cargo
+build/package paths. Windows/Linux layouts use fixtures; native source builds,
+signatures, extraction and host loading on those platforms still require CI or
+native checks. External plugin-host acceptance and notarization remain open.
+
 ## Compressor rolling history — 2026-11-14
 
 The [Compressor contract](../effects/compressor.md#rolling-input-and-gain-reduction-history--2026-11-14)
