@@ -677,10 +677,11 @@ mod tests {
                                             12.0,
                                             &[],
                                             None,
-                                            OutputLevel::new(0.0, None),
+                                            (OutputLevel::new(0.0, None), 0.0),
                                         )
                                         .0
-                                        .controls[2][2],
+                                        .graph
+                                        .reduction_meter,
                                     );
                                 }
                                 2 => {

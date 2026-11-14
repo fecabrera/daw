@@ -77,6 +77,7 @@ pub use auto_filter::{
 };
 pub use compressor::{
     COMPRESSOR_STATE_VERSION, COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings,
+    compressor_gain_reduction_db, compressor_shaped_gain_reduction_db,
 };
 pub use ott::{OTT_STATE_VERSION, OTT_TYPE_ID, OttBandSettings, OttSettings};
 mod drive_v2;

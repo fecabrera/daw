@@ -1,6 +1,6 @@
 schema_version = 1
 settings_version = 1
-state_version = 1
+state_version = 2
 type_id = "daw.compressor"
 vendor = "Sie"
 version = "0.1.0"
@@ -81,12 +81,20 @@ maximum = 1.0
 default = 0.0
 scale = "choice"
 
+[[parameters]]
+id = 109
+key = "curve"
+minimum = -1.0
+maximum = 1.0
+default = 0.0
+scale = "linear"
+
 [[strips]]
 footer = "Comp"
 controls = [
 { parameter = "threshold", control = "db" },
 { parameter = "ratio", control = "scalar" },
-{ parameter = "detection", control = "mode" },
+{ parameter = "curve", control = "percent" },
 ]
 
 [[strips]]
@@ -102,4 +110,5 @@ footer = "Out"
 controls = [
 { parameter = "level", control = "gain" },
 { parameter = "dry_wet", control = "percent" },
+{ parameter = "detection", control = "mode" },
 ]

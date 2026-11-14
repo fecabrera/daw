@@ -12,6 +12,7 @@ pub enum Parameter {
     Level = 106,
     DryWet = 107,
     Detection = 108,
+    Curve = 109,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scale {
@@ -42,7 +43,7 @@ impl fmt::Display for ParameterError {
 impl std::error::Error for ParameterError {}
 
 impl Parameter {
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 10;
     pub const ALL: [Self; Self::COUNT] = [
         Self::Bypass,
         Self::Threshold,
@@ -53,6 +54,7 @@ impl Parameter {
         Self::Level,
         Self::DryWet,
         Self::Detection,
+        Self::Curve,
     ];
     pub fn from_id(id: u32) -> Result<Self, ParameterError> {
         id.checked_sub(100)
@@ -90,6 +92,7 @@ impl Parameter {
             Self::Knee => ("knee", "Knee", 0.0, 24.0, 6.0, Scale::Linear, 0),
             Self::Level => ("level", "Level", -1000.0, 12.0, 0.0, Scale::Gain, 0),
             Self::DryWet => ("dry_wet", "Dry Wet", 0.0, 1.0, 1.0, Scale::Linear, 0),
+            Self::Curve => ("curve", "Curve", -1.0, 1.0, 0.0, Scale::Linear, 0),
             Self::Detection => ("detection", "Detection", 0.0, 1.0, 0.0, Scale::Choice, 1),
         };
         ParameterInfo {
@@ -112,7 +115,7 @@ impl Parameter {
             Self::Release => "ms",
             Self::Knee => "dB",
             Self::Level => "dB",
-            Self::DryWet => "%",
+            Self::DryWet | Self::Curve => "%",
             Self::Detection => "",
         }
     }
@@ -126,7 +129,7 @@ impl Parameter {
             Self::Release => format!("{value:.3} {}", self.unit()),
             Self::Knee => format!("{value:.3} {}", self.unit()),
             Self::Level => format!("{} dB", gain::format_db(value)),
-            Self::DryWet => format!("{:.0}%", value * 100.0),
+            Self::DryWet | Self::Curve => format!("{:.0}%", value * 100.0),
             Self::Detection => ["Peak", "RMS"][value as usize].into(),
         })
     }
@@ -169,7 +172,7 @@ impl Parameter {
                 .parse::<f64>()
                 .map_err(|_| ParameterError)?,
             Self::Level => gain::parse_db(&text).ok_or(ParameterError)?,
-            Self::DryWet => {
+            Self::DryWet | Self::Curve => {
                 text.trim_end_matches('%')
                     .trim()
                     .parse::<f64>()
@@ -203,7 +206,7 @@ pub(crate) const STRIP_BINDINGS: [StripBinding; 3] = [
         &[
             (Parameter::Threshold, "db", "Db"),
             (Parameter::Ratio, "scalar", "Scalar"),
-            (Parameter::Detection, "mode", "Mode"),
+            (Parameter::Curve, "percent", "Percent"),
         ],
     ),
     (
@@ -219,6 +222,7 @@ pub(crate) const STRIP_BINDINGS: [StripBinding; 3] = [
         &[
             (Parameter::Level, "gain", "Gain"),
             (Parameter::DryWet, "percent", "Percent"),
+            (Parameter::Detection, "mode", "Mode"),
         ],
     ),
 ];

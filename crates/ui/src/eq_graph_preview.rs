@@ -6,14 +6,7 @@ use daw_core::{
 enum Band {
     Eq(MultibandEqBand),
     Compressor(MultibandCompressorBand),
-}
-impl Band {
-    fn id(&self) -> Id {
-        match self {
-            Self::Eq(b) => b.id,
-            Self::Compressor(b) => b.id,
-        }
-    }
+    Curve(Box<daw_core::CompressorSettings>),
 }
 #[derive(Clone, PartialEq)]
 pub(super) struct Preview {
@@ -94,6 +87,29 @@ impl State {
             },
         ));
     }
+    pub fn offer_curve(
+        &mut self,
+        frame: u64,
+        project: Id,
+        target: EffectChainTarget,
+        effect: Id,
+        before: daw_core::CompressorSettings,
+        parameters: [f32; 2],
+    ) {
+        let mut settings = before.clone();
+        settings.threshold_db = parameters[0];
+        settings.ratio = parameters[1];
+        self.offered = Some((
+            frame,
+            Preview {
+                project,
+                target,
+                effect,
+                before: Band::Curve(Box::new(before)),
+                band: Band::Curve(Box::new(settings)),
+            },
+        ));
+    }
     pub fn desired(&self, project: &Project, frame: u64) -> Option<Preview> {
         let (seen, p) = self.offered.as_ref()?;
         if *seen != frame || p.project != project.project_id {
@@ -102,12 +118,13 @@ impl State {
         let (chain, _) = project.effect_chain(p.target)?;
         let unit = &chain.iter().find(|e| e.id == p.effect)?.unit;
         let current = match (unit, &p.before) {
-            (EffectSettings::MultibandEq(s), Band::Eq(_)) => {
-                Band::Eq(s.bands.iter().find(|b| b.id == p.band.id())?.clone())
+            (EffectSettings::MultibandEq(s), Band::Eq(before)) => {
+                Band::Eq(s.bands.iter().find(|b| b.id == before.id)?.clone())
             }
-            (EffectSettings::MultibandCompressor(s), Band::Compressor(_)) => {
-                Band::Compressor(s.bands.iter().find(|b| b.id == p.band.id())?.clone())
+            (EffectSettings::MultibandCompressor(s), Band::Compressor(before)) => {
+                Band::Compressor(s.bands.iter().find(|b| b.id == before.id)?.clone())
             }
+            (EffectSettings::Compressor(s), Band::Curve(_)) => Band::Curve(Box::new(s.clone())),
             _ => return None,
         };
         (current == p.before).then(|| p.clone())
@@ -151,6 +168,9 @@ impl State {
                         .iter_mut()
                         .find(|b| b.id == band.id)
                         .ok_or("Effect preview band is unavailable")? = band.clone()
+                }
+                (EffectSettings::Compressor(s), Band::Curve(settings)) => {
+                    *s = settings.as_ref().clone()
                 }
                 _ => return Err("Effect preview effect changed".into()),
             }

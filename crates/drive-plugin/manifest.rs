@@ -73,6 +73,7 @@ pub fn generate(input: &str) -> Result<String> {
                 daw_unit_core::PLATE_REVERB_TYPE_ID => 5,
                 daw_unit_core::AMBIENT_REVERB_TYPE_ID => 3,
                 daw_unit_core::MULTIBAND_EQ_TYPE_ID => 2,
+                daw_unit_core::COMPRESSOR_TYPE_ID => 2,
                 _ => 1,
             },
         ),

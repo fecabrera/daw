@@ -165,7 +165,15 @@ impl MultibandCompressorSettings {
     }
 }
 impl ModulationDestinationSettings for MultibandCompressorSettings {
-    const MODULATION_PARAMETERS: &'static [P] = &P::COMPRESSOR;
+    const MODULATION_PARAMETERS: &'static [P] = &[
+        P::CompressorThreshold,
+        P::CompressorRatio,
+        P::CompressorAttack,
+        P::CompressorRelease,
+        P::CompressorKnee,
+        P::Level,
+        P::DryWet,
+    ];
     const MODULATION_SCOPE: ModulationScope = ModulationScope::Shared;
     fn modulations(&self) -> &[Modulation] {
         &self.modulations

@@ -37,7 +37,17 @@ Limiter latency is `ceil(sample_rate / 100) + 32` frames in either mode, includi
 
 Tail declarations use each product's fixed host bound. The original four products retain one second. Other products report four seconds, including the maximum Chorus feedback delay, with these exceptions: [Plate Reverb reports 45 seconds and Ambient Reverb reports 180 seconds](../effects/reverbs.md#implementation-and-provenance); [Loudness Meter reports zero](../effects/loudness-meter.md). Reverb host bounds remain at their product maxima so automation cannot shorten an active host tail. Quiet input must not cause the adapters to sleep before their portable histories advance.
 
-All added products include standard output current/held sample-peak telemetry. Compressor/Limiter also attach their portable reduction peak meters; OTT attaches its signed band meter. Portable `UnitMeter`/`LevelMonitor` owns enable clearing and publication. The shared body places only the meters present in its built-in counterpart. Equalizer uses per-band levels; Multiband EQ uses per-band levels and an output rail. Direction Mixer and Stereo Spread retain their built-in controls without an extra output rail. Shared meter painters live in `unit-ui`.
+All added products include standard output current/held sample-peak telemetry. Compressor/Limiter also attach their portable reduction peak meters; OTT attaches its signed band meter. Portable `UnitMeter`/`LevelMonitor` owns enable clearing and publication. The shared body places only the meters present in its built-in counterpart. Equalizer uses per-band levels; Multiband EQ uses per-band levels and an output rail. Direction Mixer and Stereo Spread retain their built-in controls without an extra output rail. Shared meter painters live in `unit-ui`. Regular Compressor shares its
+interactive Curve and right-side vertical GR rail in both hosts; its native body
+is 540 points wide with unchanged height. Its existing 13-value telemetry group
+now carries detector amplitude at attribute 4 (the first previously unused group
+cell). The meter message stays at 13 values. Curve parameter 109 is appended; Detection
+keeps 108. Compressor state envelope v2 appends Curve and accepts v1 with Curve
+zero; project settings stay v1. Old meter senders supply zero; old editors
+ignore that cell. The default-no-op `BandAudition::clear_live_preview` hook lets
+Compressor clear its curve cells at processing stop without clearing independent
+output/reduction holds. CLAP invokes it during serialized stop; VST3 invokes it
+before a stopped reading response.
 
 CLAP shares prepared atomics with the editor. VST3 exchanges copied scalar snapshots only on the control thread. The original output-only products retain two wire values (`current`, `peak`); nine of the new products carry thirteen values: output current/hold, reduction current/hold, three signed band currents, three reduction holds, and three boost holds. Multiband EQ appends 64 linear band readings and 64 held sample peaks for 141 values, followed by sample rate, 512 spectrum magnitudes and coherent-frame metadata for 668 values total, with independent per-band peak reset requests. See [spectrum wire compatibility](#spectrum-wire-compatibility). Equalizer uses the existing three band-current fields for its linear band readings. Extra attributes use `meter.<index>`. Reset masks select independent held readings. Meter messages, appearance, and resets never enter parameter/state payloads.
 

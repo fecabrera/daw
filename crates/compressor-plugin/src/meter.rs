@@ -76,4 +76,8 @@ impl MeterStorage for OutputMeter {
     }
 }
 
-impl daw_unit_core::BandAudition for OutputMeter {}
+impl daw_unit_core::BandAudition for OutputMeter {
+    fn clear_live_preview(&self) {
+        self.bands.clear();
+    }
+}

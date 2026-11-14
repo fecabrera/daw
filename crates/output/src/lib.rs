@@ -282,7 +282,8 @@ fn band_meters(
         .flat_map(|effect| {
             let group = matches!(
                 effect.unit,
-                daw_core::EffectSettings::Ott(_)
+                daw_core::EffectSettings::Compressor(_)
+                    | daw_core::EffectSettings::Ott(_)
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::PlateReverb(_)
                     | daw_core::EffectSettings::AmbientReverb(_)
@@ -1020,6 +1021,10 @@ impl AudioOutput {
     /// Held readings remain available while paused/stopped and while panels are hidden.
     pub fn gain_reduction_meter(&self, id: Id) -> Option<&daw_unit_core::PeakMeter> {
         self.effect_meters.get(&id).map(AsRef::as_ref)
+    }
+    /// Detector input envelope for the compressor transfer-curve marker.
+    pub fn compressor_detector_level(&self, id: Id) -> f32 {
+        self.band_monitor_values(id)[0]
     }
     pub fn ott_gain_change_db(&self, id: Id) -> [f32; 3] {
         self.band_monitor_values(id)
@@ -2357,6 +2362,17 @@ mod gain_reduction_meter_tests {
                     &output_meters(&plan, &outputs)[&id]
                 ));
             }
+            if kind == 0 {
+                for id in [layer, main] {
+                    let key = ModulationTarget::Effect(id);
+                    let reading = bands[&key].readings();
+                    assert!(reading[0] > 0.0);
+                    assert!(Arc::ptr_eq(&band_meters(&plan, &bands)[&key], &bands[&key]));
+                    let mut prepared = Renderer::new(plan.clone());
+                    bind_band_meters(&mut prepared, &bands);
+                    assert_eq!(bands[&key].readings(), reading);
+                }
+            }
             if kind == 2 {
                 for peak in bands[&ModulationTarget::Effect(layer)].reduction_peaks() {
                     peak.reset_peak();
@@ -2395,6 +2411,8 @@ mod gain_reduction_meter_tests {
             let mut callback =
                 Callback::new(plan.clone(), &tracks, consumer, retire, status, 48_000).unwrap();
             bind_effect_meters(&mut callback.renderer, &meters);
+            let curve = band_meters(&plan, &HashMap::new());
+            bind_band_meters(&mut callback.renderer, &curve);
             let mut producer = producer;
             producer
                 .push(Command::Play)
@@ -2405,6 +2423,9 @@ mod gain_reduction_meter_tests {
                     callback.next();
                 }
             });
+            if !limiter {
+                assert!(curve[&ModulationTarget::Effect(id)].readings()[0] > 0.0);
+            }
             assert!(meters[&id].reading() > 10.0);
             assert!(meters[&id].peak() >= meters[&id].reading());
             let current = meters[&id].reading();
@@ -2874,8 +2895,8 @@ mod modulation_meter_tests {
             std::array::from_fn(|i| handles[&eq_key][i].load(Ordering::Relaxed))
         );
         let compressor = renderer.modulation_snapshot(compressor_key).unwrap();
-        assert!(compressor[..7].iter().all(|v| v.is_finite()));
-        assert!(compressor[7..].iter().all(|v| v.is_nan()));
+        assert!(compressor[..8].iter().all(|v| v.is_finite()));
+        assert!(compressor[8..].iter().all(|v| v.is_nan()));
         assert_eq!(compressor[6], 0.4);
         assert_eq!(
             compressor.map(f32::to_bits),

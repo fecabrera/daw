@@ -710,6 +710,8 @@ mod prepared_level_binding_tests {
 /// Optional transient meter and band audition controls shared by native plugin adapters.
 /// These atomics are not parameters and must never enter serialized state.
 pub trait BandAudition {
+    /// Stop-only visual preview invalidation. Preserve independent held meters.
+    fn clear_live_preview(&self) {}
     /// Serialized processing-stop hook. Preserve held scalar peaks; invalidate
     /// only a live spectrum so a stopped editor cannot retain a ghost frame.
     fn clear_spectrum(&self) {}

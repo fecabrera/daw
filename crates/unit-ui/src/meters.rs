@@ -981,6 +981,64 @@ pub fn gain_reduction_sized(ui: &mut Ui, reading: GainReduction<'_>, size: f32) 
     response
 }
 
+/// Vertical reduction monitor: zero at the top, 24 dB at the bottom.
+/// The supplied rectangle includes the GR label and numeric readout.
+pub fn gain_reduction_vertical(ui: &mut Ui, rect: Rect, reading: GainReduction<'_>) -> Response {
+    let db = reading.current();
+    let response = ui.interact(
+        rect,
+        ui.id().with("vertical-gain-reduction"),
+        Sense::click(),
+    );
+    let response = reading.interact(ui, response, "Gain reduction before Dry/Wet");
+    let palette = theme::palette(ui.ctx());
+    let rail = Rect::from_center_size(
+        rect.center(),
+        Vec2::new(8.0, (rect.height() - 34.0).max(1.0)),
+    );
+    let painter = ui.painter();
+    painter.rect_filled(rail, 1.0, palette.input);
+    if db > 0.0 {
+        painter.rect_filled(
+            Rect::from_min_size(
+                rail.min,
+                Vec2::new(rail.width(), rail.height() * (db / 24.0).min(1.0)),
+            ),
+            1.0,
+            theme::accent(ui.ctx()),
+        );
+    }
+    if reading.held() > 0.0 {
+        vertical_peak_marker(
+            ui,
+            rail,
+            rail.top() + rail.height() * (reading.held() / 24.0).min(1.0),
+        );
+    }
+    painter.text(
+        rect.center_top() + Vec2::new(0.0, 1.0),
+        egui::Align2::CENTER_TOP,
+        "GR",
+        crate::fonts::numeric(9.0),
+        palette.secondary,
+    );
+    let value = if db >= 100.0 {
+        format!("−{db:.0}")
+    } else if db > 0.0 {
+        format!("−{db:.1}")
+    } else {
+        "0.0".into()
+    };
+    painter.text(
+        egui::pos2(rect.center().x, rail.bottom() + 4.0),
+        egui::Align2::CENTER_TOP,
+        value,
+        crate::fonts::numeric(9.0),
+        palette.text,
+    );
+    response
+}
+
 /// Thin reduction monitor fits above standard knob rows without changing unit height.
 pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reading: GainReduction<'_>) -> Response {
     let db = reading.current();
@@ -1049,5 +1107,111 @@ mod band_output_tests {
         assert_eq!(meter.readings(), [0.1, 3.0, 0.0]);
         assert_eq!(meter.boost_peaks()[1].peak(), 6.0);
         assert_eq!(requests.load(std::sync::atomic::Ordering::Relaxed), 1 << 63);
+    }
+}
+
+#[cfg(test)]
+mod vertical_reduction_tests {
+    use super::*;
+    use daw_unit_core::{MeterStorage, PeakMeter};
+    #[test]
+    fn vertical_reduction_fills_downward_clamps_and_resets_only_the_peak() {
+        for (unit_enabled, ui_enabled, focused, button) in [
+            (true, true, true, egui::PointerButton::Primary),
+            (false, true, true, egui::PointerButton::Primary),
+            (true, false, true, egui::PointerButton::Primary),
+            (true, true, false, egui::PointerButton::Primary),
+            (true, true, true, egui::PointerButton::Secondary),
+        ] {
+            let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
+            theme::configure(&ctx);
+            let meter = PeakMeter::default();
+            let rect = Rect::from_min_size(egui::pos2(10.0, 10.0), Vec2::new(28.0, 172.0));
+            let rail = Rect::from_center_size(rect.center(), Vec2::new(8.0, 138.0));
+            let paint = |events| {
+                let mut out = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(200.0, 250.0))),
+                        events,
+                        focused,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        ui.add_enabled_ui(ui_enabled, |ui| {
+                            let r = gain_reduction_vertical(
+                                ui,
+                                rect,
+                                GainReduction::new(meter.reading(), Some(&meter))
+                                    .for_unit(unit_enabled),
+                            );
+                            assert!(!r.changed());
+                        });
+                    },
+                );
+                out.textures_delta.clear();
+                out.shapes
+            };
+            for value in [0.0, 12.0, 36.0] {
+                meter.store(18.0_f32.max(value));
+                meter.initialize(value);
+                let shapes = paint(vec![]);
+                let rectangles: Vec<_> = shapes
+                    .iter()
+                    .filter_map(|p| match &p.shape {
+                        egui::Shape::Rect(r) if rail.contains_rect(r.rect) => Some(r),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    rectangles.len(),
+                    if unit_enabled && value > 0.0 { 2 } else { 1 }
+                );
+                if unit_enabled && value > 0.0 {
+                    let fill = rectangles[1];
+                    assert_eq!(fill.rect.top(), rail.top());
+                    assert_eq!(fill.rect.height(), rail.height() * (value / 24.0).min(1.0));
+                    if ui_enabled {
+                        assert_eq!(fill.fill, theme::accent(&ctx));
+                    }
+                }
+                let marker = shapes.iter().find_map(|p| match &p.shape {
+                    egui::Shape::LineSegment { points, stroke }
+                        if points[0].y == points[1].y
+                            && points.iter().all(|p| rail.contains(*p))
+                            && stroke.width == 1.0 =>
+                    {
+                        if ui_enabled {
+                            assert_eq!(stroke.color, theme::palette(&ctx).secondary);
+                        }
+                        Some(points)
+                    }
+                    _ => None,
+                });
+                assert_eq!(marker.is_some(), unit_enabled);
+                if let Some(points) = marker {
+                    assert!(points.iter().all(|p| rail.contains(*p)));
+                }
+            }
+            meter.clear();
+            meter.store(18.0);
+            meter.initialize(12.0);
+            paint(vec![]);
+            for pressed in [true, false] {
+                paint(vec![
+                    egui::Event::PointerMoved(rect.center()),
+                    egui::Event::PointerButton {
+                        pos: rect.center(),
+                        button,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ]);
+            }
+            let reset =
+                !unit_enabled || (ui_enabled && focused && button == egui::PointerButton::Primary);
+            assert_eq!(meter.peak(), if reset { 0.0 } else { 18.0 });
+            assert_eq!(meter.reading(), 12.0);
+        }
     }
 }

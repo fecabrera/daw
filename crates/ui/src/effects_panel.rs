@@ -1515,8 +1515,27 @@ impl DawUi {
                                                     daw_engine::ModulationTarget::Effect(effect.id),
                                                 )
                                             }),
-                                            output_level,
+                                            (
+                                                output_level,
+                                                self.output.as_ref().map_or(0.0, |o| {
+                                                    o.compressor_detector_level(effect.id)
+                                                }),
+                                            ),
                                         );
+                                        if !self.background_media.required
+                                            && let (Some(target), Some(parameters)) =
+                                                (target, _bounds.graph.preview)
+                                            && [settings.threshold_db, settings.ratio] != parameters
+                                        {
+                                            self.eq_graph_preview.offer_curve(
+                                                ui.ctx().cumulative_frame_nr(),
+                                                self.session.project.project_id,
+                                                target,
+                                                effect.id,
+                                                settings.clone(),
+                                                parameters,
+                                            );
+                                        }
                                         let power = _bounds.power;
                                         #[cfg(test)]
                                         self.effects_bounds.compressor_units.push(_bounds);

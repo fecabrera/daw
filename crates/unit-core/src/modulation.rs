@@ -192,6 +192,7 @@ pub enum ModulationParameter {
     ShimmerHighDamp,
     OscillatorCents,
     OscillatorWidth,
+    CompressorCurve,
 }
 impl ModulationParameter {
     pub const SHIMMER_REVERB: [Self; 12] = [
@@ -332,7 +333,7 @@ impl ModulationParameter {
         Self::LimiterCeiling,
     ];
     /// Continuous Compressor controls, in UI/telemetry order. Detection remains discrete.
-    pub const COMPRESSOR: [Self; 7] = [
+    pub const COMPRESSOR: [Self; 8] = [
         Self::CompressorThreshold,
         Self::CompressorRatio,
         Self::CompressorAttack,
@@ -340,6 +341,7 @@ impl ModulationParameter {
         Self::CompressorKnee,
         Self::Level,
         Self::DryWet,
+        Self::CompressorCurve,
     ];
     /// Fixed band controls, in UI/telemetry order. Mid uses the outer boundaries and Q.
     pub const EQUALIZER: [Self; 7] = [
@@ -459,6 +461,7 @@ impl ModulationParameter {
             Self::CompressorAttack => "Attack",
             Self::CompressorRelease => "Release",
             Self::CompressorKnee => "Knee",
+            Self::CompressorCurve => "Curve",
             Self::EqBandGain => "Gain",
             Self::EqBandFrequency => "Frequency",
             Self::EqBandQ => "Q",
@@ -557,6 +560,7 @@ impl ModulationParameter {
             Self::CompressorThreshold => 60.0,
             Self::CompressorRatio => 19.0,
             Self::CompressorKnee => 24.0,
+            Self::CompressorCurve => 2.0,
             Self::CompressorAttack | Self::CompressorRelease => 6.0,
             Self::OscillatorCents | Self::OscillatorWidth => 100.0,
             Self::Pitch => 48.0,
@@ -644,6 +648,7 @@ impl ModulationParameter {
             Self::StereoSpreadLowerFrequency | Self::StereoSpreadUpperFrequency => "oct",
             Self::CompressorThreshold | Self::CompressorKnee => "dB",
             Self::CompressorRatio => ":1",
+            Self::CompressorCurve => "%",
             Self::CompressorAttack | Self::CompressorRelease => "oct",
             Self::OscillatorCents => "cents",
             Self::OscillatorWidth => "%",

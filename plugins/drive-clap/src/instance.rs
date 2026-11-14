@@ -211,6 +211,9 @@ unsafe extern "C" fn stop(plugin: *const clap_plugin) {
                 .compare_exchange(3, 2, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
+                daw_drive_plugin::BandAudition::clear_live_preview(
+                    i.editor.model.output_meter.as_ref(),
+                );
                 // CLAP serializes stop_processing with audio processing. Do not
                 // clear from preparation/editor threads sharing the live handle.
                 daw_drive_plugin::BandAudition::clear_spectrum(

@@ -12,6 +12,7 @@ pub fn update_settings(s: &PluginState, settings: &mut Settings) {
     settings.attack_ms = s.get(P::Attack) as f32;
     settings.release_ms = s.get(P::Release) as f32;
     settings.knee_db = s.get(P::Knee) as f32;
+    settings.curve = s.get(P::Curve) as f32;
     settings.level_db = daw_unit_core::gain::to_db_f32(s.get(P::Level));
     settings.dry_wet = s.get(P::DryWet) as f32;
     settings.detection = [
@@ -19,7 +20,7 @@ pub fn update_settings(s: &PluginState, settings: &mut Settings) {
         daw_unit_core::CompressorDetection::Rms,
     ][s.get(P::Detection) as usize];
 }
-pub fn values(s: &Settings) -> [f64; 9] {
+pub fn values(s: &Settings) -> [f64; 10] {
     let values = [
         f64::from(!s.enabled),
         f64::from(s.threshold_db),
@@ -30,6 +31,7 @@ pub fn values(s: &Settings) -> [f64; 9] {
         f64::from(s.level_db),
         f64::from(s.dry_wet),
         f64::from(s.detection as u8),
+        f64::from(s.curve),
     ];
     std::array::from_fn(|i| {
         let info = P::ALL[i].info();

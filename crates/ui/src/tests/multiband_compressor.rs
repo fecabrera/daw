@@ -425,3 +425,90 @@ fn compressor_threshold_graph_previews_without_edits_and_commits_one_undo_step()
         }
     }
 }
+
+#[test]
+fn compressor_curve_previews_without_edits_and_commits_one_undo_step() {
+    fn settings(app: &DawUi, master: bool) -> daw_core::CompressorSettings {
+        let effects = if master {
+            &app.session.project.master.effects
+        } else {
+            &app.session.project.tracks[0].effects
+        };
+        let daw_core::EffectSettings::Compressor(s) = &effects[0].unit else {
+            panic!()
+        };
+        s.clone()
+    }
+    fn button(p: Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos: p,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        }
+    }
+    for master in [false, true] {
+        for cancel in [false, true] {
+            let (mut app, ctx, _) = fixture();
+            app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::compressor()];
+            if master {
+                app.session.project.master.effects =
+                    std::mem::take(&mut app.session.project.tracks[0].effects);
+                app.master_selected = true;
+            }
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            app.history = None;
+            app.ensure_history();
+            let original = settings(&app, master);
+            let start = app.effects_bounds.compressor_units[0].graph.handle.center();
+            let end = start + Vec2::new(-15.0, 20.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(settings(&app, master), original);
+            assert!(!app.dirty);
+            let preview = app.eq_graph_preview.published_plan(&app.session);
+            let target = if master {
+                daw_core::EffectChainTarget::Master
+            } else {
+                daw_core::EffectChainTarget::Track(app.session.project.tracks[0].id)
+            };
+            let (chain, _) = preview.project.effect_chain(target).unwrap();
+            let daw_core::EffectSettings::Compressor(s) = &chain[0].unit else {
+                panic!()
+            };
+            assert!(s.threshold_db < original.threshold_db);
+            assert!(s.ratio > original.ratio);
+            if cancel {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            if cancel {
+                assert_eq!(settings(&app, master), original);
+                assert!(!app.dirty);
+            } else {
+                let changed = settings(&app, master);
+                assert!(changed.threshold_db < original.threshold_db);
+                assert!(changed.ratio > original.ratio);
+                app.perform_history_action(HistoryAction::Undo, &ctx);
+                assert_eq!(settings(&app, master), original);
+                app.perform_history_action(HistoryAction::Redo, &ctx);
+                assert_eq!(settings(&app, master), changed);
+            }
+        }
+    }
+}

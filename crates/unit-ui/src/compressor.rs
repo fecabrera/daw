@@ -9,6 +9,7 @@ use egui::{Rect, Ui, Vec2};
 
 use crate::layout::PANEL_MARGIN;
 pub struct Bounds {
+    pub graph: crate::compressor_curve::Bounds,
     pub output_meter: Rect,
     pub header: Rect,
     pub power: Rect,
@@ -21,14 +22,11 @@ fn row(
     settings: &mut CompressorSettings,
     column: usize,
     row: usize,
-    reduction_db: meters::GainReduction<'_>,
-    markers: &[Option<knobs::ModulationMarker>; 7],
+    markers: &[Option<knobs::ModulationMarker>; 8],
+    preview: Option<[f32; 2]>,
 ) -> Rect {
     knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
         if (column, row) == (2, 2) {
-            return meters::gain_reduction(ui, reduction_db);
-        }
-        if (column, row) == (0, 2) {
             let mut position = f32::from(s.detection == CompressorDetection::Rms);
             let response = ui.add(Knob::new(
                 &mut position,
@@ -54,6 +52,7 @@ fn row(
         let (index, value) = match (column, row) {
             (0, 0) => (0, &mut s.threshold_db),
             (0, 1) => (1, &mut s.ratio),
+            (0, 2) => (7, &mut s.curve),
             (1, 0) => (2, &mut s.attack_ms),
             (1, 1) => (3, &mut s.release_ms),
             (1, 2) => (4, &mut s.knee_db),
@@ -65,21 +64,37 @@ fn row(
         if index == 5 {
             spec = spec.named("Compressor output level");
         }
-        ui.add(Knob::new(value, spec).modulated(markers[index].as_ref(), &mut s.modulation_open))
+        let mut shown = if index < 2 {
+            preview.map_or(*value, |p| p[index])
+        } else {
+            *value
+        };
+        let response = ui.add(
+            Knob::new(&mut shown, spec).modulated(markers[index].as_ref(), &mut s.modulation_open),
+        );
+        if response.changed() {
+            *value = shown;
+        }
+        response
     })
     .rect
 }
 
+pub struct Controls<'a> {
+    pub markers: &'a [Option<knobs::ModulationMarker>; 8],
+    pub reduction: meters::GainReduction<'a>,
+    pub level: meters::OutputLevel<'a>,
+    pub graph: crate::compressor_curve::Input,
+}
 pub fn show(
     ui: &mut Ui,
     settings: &mut CompressorSettings,
     compact: bool,
     body_height: f32,
-    markers: &[Option<knobs::ModulationMarker>; 7],
-    reduction_db: meters::GainReduction<'_>,
-    level: meters::OutputLevel<'_>,
+    controls: Controls<'_>,
 ) -> Bounds {
     let mut bounds = Bounds {
+        graph: crate::compressor_curve::Bounds::default(),
         output_meter: Rect::NOTHING,
         header: Rect::NOTHING,
         power: Rect::NOTHING,
@@ -88,6 +103,13 @@ pub fn show(
     };
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+        bounds.graph = crate::compressor_curve::show(
+            ui,
+            settings,
+            (compact, body_height),
+            controls.graph,
+            controls.reduction,
+        );
         for (column, name) in ["Comp", "Response", "Out"].into_iter().enumerate() {
             let rect = ui
                 .push_id(column, |ui| {
@@ -99,8 +121,14 @@ pub fn show(
                                 ui.set_min_height(body_height);
                                 if !compact {
                                     for index in 0..3 {
-                                        bounds.controls[column][index] =
-                                            row(ui, settings, column, index, reduction_db, markers);
+                                        bounds.controls[column][index] = row(
+                                            ui,
+                                            settings,
+                                            column,
+                                            index,
+                                            controls.markers,
+                                            bounds.graph.preview,
+                                        );
                                     }
                                 }
                                 rows::centered(
@@ -122,8 +150,13 @@ pub fn show(
                 .rect;
             bounds.sections[column] = rect;
             if !compact && column == 2 {
-                bounds.output_meter =
-                    meters::effect_output_level(ui, rect, PANEL_MARGIN, level, settings.enabled);
+                bounds.output_meter = meters::effect_output_level(
+                    ui,
+                    rect,
+                    PANEL_MARGIN,
+                    controls.level,
+                    settings.enabled,
+                );
             }
         }
     });

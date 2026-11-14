@@ -52,30 +52,25 @@ fn amplitude(db: f32) -> f32 {
     10_f32.powf(db / 20.0)
 }
 
-/// Soft-knee gain reduction in dB. The knee joins the two slopes continuously.
-fn reduction(level_db: f32, threshold_db: f32, slope: f32, knee: f32) -> f32 {
-    let over = level_db - threshold_db;
-    if knee > 0.0 && over > -knee * 0.5 && over < knee * 0.5 {
-        slope * (over + knee * 0.5).powi(2) / (2.0 * knee)
-    } else {
-        slope * over.max(0.0)
-    }
-}
+#[cfg(test)]
+use daw_unit_core::compressor_gain_reduction_db as reduction;
+use daw_unit_core::compressor_shaped_gain_reduction_db as shaped_reduction;
 
 #[derive(Clone)]
 pub struct Compressor {
     rms: [MeterState; 2],
-    // Threshold, slope, knee, log attack/release time, RMS weight, level, wet, enabled.
-    parameters: [Ramp; 9],
+    // Threshold, slope, knee, log attack/release time, RMS weight, level, wet, enabled, Curve.
+    parameters: [Ramp; 10],
     rate: f64,
     fade_frames: u32,
     configured_times: [f32; 2],
     coefficients: [f64; 2],
     reduction_db: f64,
     output_monitor: LevelMonitor<3>,
+    curve_monitor: LevelMonitor<3>,
     meter: UnitMeter<PeakMeter>,
-    external: daw_unit_core::ModulationSmoother<7>,
-    effective: [f32; 9],
+    external: daw_unit_core::ModulationSmoother<8>,
+    effective: [f32; 10],
 }
 impl Compressor {
     /// Prepare with validated settings on a control thread.
@@ -95,6 +90,7 @@ impl Compressor {
             coefficients: [0.0; 2],
             reduction_db: 0.0,
             output_monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
+            curve_monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
             meter: UnitMeter::new(settings.enabled),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: Self::values(settings),
@@ -102,7 +98,7 @@ impl Compressor {
         unit.configure([unit.effective[3], unit.effective[4]]);
         unit
     }
-    fn values(settings: &CompressorSettings) -> [f32; 9] {
+    fn values(settings: &CompressorSettings) -> [f32; 10] {
         [
             settings.threshold_db,
             1.0 - settings.ratio.recip(),
@@ -113,12 +109,14 @@ impl Compressor {
             amplitude(settings.level_db),
             settings.dry_wet,
             f32::from(settings.enabled),
+            settings.curve,
         ]
     }
     /// Keep detector/envelope history and unrelated in-flight ramps on compatible edits.
     pub fn retarget(&mut self, settings: &CompressorSettings) {
         self.meter.set_enabled(settings.enabled);
         self.output_monitor.set_enabled(settings.enabled);
+        self.curve_monitor.set_enabled(settings.enabled);
         for (parameter, target) in self.parameters.iter_mut().zip(Self::values(settings)) {
             parameter.retarget(target, self.fade_frames);
         }
@@ -127,6 +125,7 @@ impl Compressor {
     pub fn set_monitoring_enabled(&mut self, enabled: bool) {
         self.meter.set_enabled(enabled);
         self.output_monitor.set_enabled(enabled);
+        self.curve_monitor.set_enabled(enabled);
     }
     /// Optional lock-free monitoring handle. Attach on a control thread.
     pub fn set_gain_reduction_meter(&mut self, meter: Arc<AtomicU32>) {
@@ -152,6 +151,11 @@ impl Compressor {
     /// Attach final-output current and held sample peaks on a control thread.
     pub fn set_output_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
         self.output_monitor.attach_peak(meter);
+    }
+    /// Prepared input-envelope monitor: linked detector amplitude in cell zero.
+    /// Binding must not overwrite a handle owned by the active renderer.
+    pub fn set_curve_meter(&mut self, meter: Arc<BandMeter<3>>) {
+        self.curve_monitor.attach_peak_prepared(meter);
     }
     fn publish(&self) {
         self.meter.publish(self.gain_reduction_db());
@@ -179,10 +183,11 @@ impl EffectUnit for Compressor {
         self.effective = self.parameters.each_ref().map(|p| p.value);
         self.configure([self.effective[3], self.effective[4]]);
         self.output_monitor.reset();
+        self.curve_monitor.reset();
         self.publish();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        self.process_modulated(input, [0.0; 7])
+        self.process_modulated(input, [0.0; 8])
     }
 }
 impl Compressor {
@@ -203,7 +208,7 @@ impl Compressor {
         let p = &self.effective;
         let detected = peak * (1.0 - p[5]) + rms * p[5];
         let level_db = 20.0 * detected.max(1e-20).log10();
-        let target = f64::from(reduction(level_db, p[0], p[1], p[2]));
+        let target = f64::from(shaped_reduction(level_db, p[0], p[1], p[2], p[9]));
         let coefficient = self.coefficients[usize::from(target < self.reduction_db)];
         self.reduction_db = target + coefficient * (self.reduction_db - target);
         if self.reduction_db < 1e-8 {
@@ -220,6 +225,7 @@ impl Compressor {
         });
         self.publish();
         self.output_monitor.sample_output(output);
+        self.curve_monitor.sample([detected, 0.0, 0.0]);
         output
     }
 }

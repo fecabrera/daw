@@ -50,6 +50,7 @@ impl Processor {
     }
     pub fn set_output_meter(&mut self, meter: std::sync::Arc<crate::OutputMeter>) {
         self.drive.set_output_peak_meter(meter.output.clone());
+        self.drive.set_curve_meter(meter.bands.clone());
         self.drive
             .set_gain_reduction_peak_meter(meter.reduction.clone());
     }

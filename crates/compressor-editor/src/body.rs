@@ -3,7 +3,7 @@ use daw_drive_plugin::{Parameter as P, PluginState};
 use daw_unit_ui::{control_capture, layout::*, meters};
 use egui::{Rect, Response, Ui, Vec2};
 pub const SIZE: Vec2 = Vec2::new(
-    3.0 * UNIT_STRIP_WIDTH,
+    3.0 * UNIT_STRIP_WIDTH + daw_unit_ui::spectrum_graph::WIDTH,
     unit_control_height() + 2.0 * PANEL_MARGIN as f32,
 );
 pub struct Bounds {
@@ -20,16 +20,15 @@ pub fn show(
     _: &[Option<ModulationMarker>; P::COUNT - 1],
     level: meters::OutputLevel<'_>,
 ) -> Bounds {
-    render(ui, settings, level, 0.0.into(), [0.0; 3].into())
+    render(ui, settings, level, 0.0.into(), 0.0)
 }
 pub fn render(
     ui: &mut Ui,
     settings: &mut daw_unit_core::CompressorSettings,
     level: meters::OutputLevel<'_>,
     reduction: meters::GainReduction<'_>,
-    gains: meters::BandGainChange<'_>,
+    detector_level: f32,
 ) -> Bounds {
-    let _ = (level, reduction, gains);
     let before = PluginState::from_settings(settings).ok();
     let (b, captured) = control_capture::scope(ui, |ui| {
         daw_unit_ui::compressor::show(
@@ -37,13 +36,19 @@ pub fn render(
             settings,
             false,
             unit_control_height(),
-            &std::array::from_fn::<_, 7, _>(|_| None),
-            reduction,
-            level,
+            daw_unit_ui::compressor::Controls {
+                markers: &std::array::from_fn::<_, 8, _>(|_| None),
+                reduction,
+                level,
+                graph: daw_unit_ui::compressor_curve::Input {
+                    live_edits: true,
+                    detector_level,
+                },
+            },
         )
     });
     let after = PluginState::from_settings(settings).ok();
-    let controls = std::array::from_fn(|slot| {
+    let mut controls = std::array::from_fn(|slot| {
         let rect = match P::ALL[slot + 1] {
             P::Threshold => b.controls[0][0],
             P::Ratio => b.controls[0][1],
@@ -52,7 +57,8 @@ pub fn render(
             P::Knee => b.controls[1][2],
             P::Level => b.controls[2][0],
             P::DryWet => b.controls[2][1],
-            P::Detection => b.controls[0][2],
+            P::Detection => b.controls[2][2],
+            P::Curve => b.controls[0][2],
             _ => Rect::NOTHING,
         };
         control_capture::at(&captured, rect).map(|mut response| {
@@ -65,10 +71,15 @@ pub fn render(
             response
         })
     });
+    for (index, response) in &b.graph.edits {
+        let parameter = if *index == 0 { P::Threshold } else { P::Ratio };
+        let slot = P::ALL.iter().position(|p| *p == parameter).unwrap() - 1;
+        controls[slot] = Some(response.clone());
+    }
     Bounds {
         sections: b.sections,
         controls,
-        readouts: control_capture::at(&captured, b.controls[2][2])
+        readouts: control_capture::at(&captured, b.graph.reduction_meter)
             .map(|r| vec![(2, r)])
             .unwrap_or_default(),
     }

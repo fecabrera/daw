@@ -5,6 +5,135 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Compressor post-knee Curve control — 2026-11-13
+
+Comp now contains Threshold, Ratio and Curve; Detection moves to Out's third
+row. The shared built-in/native body keeps the existing strip widths and GR
+location. This supersedes the blank Out row and legacy readout alias recorded
+below. Native reset bindings now use the graph's meter rectangle.
+
+Curve changes audio and the static/live-point graph from −100% exponential,
+through the original response at zero, to +100% logarithmic. Tests cover all
+supported rates, monotonic output, knee value/tangent continuity, unity ratio,
+no expansion, bit-exact neutral math, audible shape ordering, modulation bounds,
+and compatible retargeting without resetting detector history or other ramps.
+Project settings without Curve load zero. Plugin parameter 109 and state v2
+append Curve while preserving earlier IDs and loading known v1 payloads.
+Multiband Compressor retains its original controls and seven-value snapshot.
+
+Focused unit-core, portable Compressor, plugin contract, native editor, UI and
+unit-ui tests pass. Shared body parity covers themes, scales and parameter
+snapshots. Native adapter tests cover parameter automation, direct-DSP parity,
+state recall and callback heap guards. The moved Detection control does not
+reset the GR peak; clicking GR sends no parameter edits. Formatting, strict
+workspace Clippy and changed-document local link checks pass.
+
+The full workspace suites pass separately in debug
+(`cargo test --workspace --offline`) and release
+(`cargo test --workspace --release --offline`). The macOS debug desktop executable
+and Compressor CLAP/VST3 libraries build offline. `python3 tools/check_cli.py`
+passes after building `daw-cli`. This updates the executable, not the packaged
+app bundle: packaging requires a committed source snapshot. No commit was made.
+
+Native pointer/device/listening, external plugin-host and Windows/Linux checks
+remain unverified. These automated egui and in-process adapter tests do not
+establish native interaction or listening acceptance.
+
+## Compressor GR inside Curve — 2026-11-13
+
+Gain reduction now sits inside Curve's right edge as an 8-point vertical rail,
+filling downward from zero to 24 dB. The graph narrows by 24 points while Curve
+stays 270 points wide and the native viewport stays 540 points. Out's third row
+is blank and its footer remains aligned. The logical readout slot is retained
+for existing peak-reset and bypass bindings.
+
+The shared vertical widget reuses GainReduction interaction, power masking,
+accessibility, tooltip and the shared vertical peak-marker painter. Focused tests
+pass for top-down fill, over-range clipping, held marker bounds, zero/off state,
+UI-disabled fading, guarded primary reset, focus loss and secondary clicks.
+The Curve layout matrix verifies unchanged width, meter placement, one GR label,
+footer alignment and compact/bypass behavior across themes and display scales.
+A direct native-editor click regression passes: the new location clears only
+reduction's held peak, keeps current reduction/output peak, requests reset bit 2,
+and sends no parameter events or state edits.
+
+Commands include `cargo test -p daw-unit-ui --offline vertical_reduction`,
+`cargo test -p daw-compressor-editor --offline curve_gr_click` and the complete
+UI/unit-ui/compressor-editor package suites. The existing knee-midpoint,
+modifier, atomic Undo/Redo, cancellation and host queue-retry checks remain covered.
+
+Final UI/unit-ui/compressor CLAP/VST3/editor debug and release suites pass after
+the GR move. The extra direct editor-reset regression passes in both profiles,
+as do the native joint-gesture and queue-retry cases. Formatting, strict workspace
+Clippy, changed-document local links and staged/unstaged diff checks pass. The
+macOS debug desktop executable and compressor CLAP/VST3 libraries build offline.
+The earlier full workspace debug/release and CLI checks remain recorded below;
+subsequent changes are confined to UI presentation, interactions and tests.
+
+Native pointer/device/listening and external-host checks remain unverified.
+
+## Compressor knee handle and axis locks — 2026-11-13
+
+The handle now sits at the knee's input midpoint (Threshold), with output from
+the shared soft-knee formula. This supersedes the initial Threshold + 12 dB
+anchor. Both axes extend down to −72 dBFS so every valid knee midpoint remains
+inside the plot, including minimum Threshold and maximum Knee. Hard-knee Ratio
+gestures keep the handle at the corner while changing the compressed slope.
+
+Command/Ctrl-drag changes only Ratio. Option/Alt-drag changes only Threshold.
+Both modifiers hold both values. Modes can change during one drag; every frame
+consumes both pointer axes so unlocking cannot apply past displacement. Shift
+fine control, bounds, cancellation and the one DAW release transaction remain.
+
+Focused debug checks pass:
+`cargo test -p daw-unit-ui -p daw-ui -p daw-compressor-editor --offline curve`.
+New regressions cover 27 Threshold/Ratio/Knee boundary combinations, actual knee
+coordinates and visibility, all axis-lock modes, mid-drag modifier transitions,
+no-jump frames, unchanged locked settings and native per-parameter change flags.
+Existing atomic Undo/Redo, native joint-gesture/queue-retry, theme/scale/footer,
+bypass and cancellation checks pass.
+The complete UI/unit-ui/compressor CLAP/VST3/editor package suites pass in debug
+and release after the knee and modifier refinements.
+
+Full workspace debug and release checks passed for the initial live-curve
+implementation (`cargo test --workspace --offline` and
+`cargo test --workspace --release --offline`). Source hashes confirm that these
+refinements change only `compressor_curve.rs` among implementation files; the
+DSP, meter transport, shared math and history/preparation code remain unchanged.
+Final UI/editor checks cover the refined graph separately.
+
+Native pointer/device/listening and external-host checks remain unverified.
+
+## Compressor live transfer curve — 2026-11-13
+
+The regular Compressor now adds a shared Curve strip in the DAW and CLAP/VST3
+editors. It shows the configured soft-knee input/output curve, a live detector
+input point and an unnumbered Threshold/Ratio handle. Horizontal movement adjusts
+Threshold; upward movement lowers Ratio. Both changes share one DAW release edit
+and Undo/Redo step. Existing Out gain reduction retains the actual attack/release
+reading. Compact/collapsed and bypass masking remain shared.
+
+Focused debug checks pass:
+
+- `cargo test -p daw-compressor -p daw-unit-ui -p daw-compressor-editor -p daw-compressor-plugin --offline`: portable detector monitoring and exact PCM at six rates; unchanged knee math; state/control contracts; built-in/editor mesh parity; viewport and parameter bindings.
+- `cargo test -p daw-ui -p daw-compressor-editor --offline curve`: track/Master two-parameter background preview, unchanged project/history while held, one-step Undo/Redo and cancellation; two balanced native host gestures and rollback retry after a full queue.
+- `cargo test -p daw-unit-ui -p daw-compressor-plugin --offline curve`: bounds, Shift/no-jump behavior, Escape/focus/disabled/compact/external-change cancellation; Dark/Light/Mist and three scales, footer alignment, live point coordinates and bypass; 13-value telemetry roundtrip and stop-only preview clearing that preserves output/reduction holds.
+- `cargo test -p daw-output --offline gain_reduction_meter_tests`: stable detector handles and callback publication on track/Master/layer/Main, non-publishing preparation, and existing realtime heap guards.
+- `cargo test -p daw-compressor-vst3 -p daw-compressor-clap --offline`: actual SDK factory lifecycle, parameter timing and dense automation, six-rate/in-place PCM equivalence, callback heap guards, state and editor geometry.
+
+The DSP and graph share the original reduction formula through unit-core. A
+prepared LevelMonitor publishes detector input through the existing group meter;
+no DSP, parameter or saved-state interpretation changes are introduced. The
+plugin preview uses a default-no-op shared stop hook. The curve depicts base
+settings; modulation and time-dependent reduction retain their existing monitors.
+
+Formatting and strict workspace/all-target Clippy pass. The native macOS debug
+desktop executable and CLI/compressor CLAP/VST3 libraries build offline.
+The CLI smoke check passes (`python3 tools/check_cli.py`), including deterministic
+codec exports and project/source workflows.
+Native pointer/device/listening, external-host and Windows/Linux checks remain
+unverified. Automated egui and in-process SDK tests do not establish those checks.
+
 ## Multiband Compressor crossover selection color — 2026-11-13
 
 Crossover lines now share the threshold lines' 30% secondary gray and use 65%

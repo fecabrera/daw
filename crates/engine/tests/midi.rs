@@ -1980,7 +1980,7 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let mut drive_routes = routes(Drive::MODULATION_PARAMETERS, &drive_amounts);
         let eq_amounts = [6.0, 0.5, 0.2, -3.0, 6.0, -0.5, 0.2];
         let mut eq_routes = routes(Equalizer::MODULATION_PARAMETERS, &eq_amounts);
-        let compressor_amounts = [-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25];
+        let compressor_amounts = [-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25, 0.5];
         let mut compressor_routes = routes(Compressor::MODULATION_PARAMETERS, &compressor_amounts);
         let mut sampler_routes = routes(daw_sampler::Sampler::MODULATION_PARAMETERS, &[-6.0]);
         let ott_amounts = [

@@ -410,6 +410,11 @@ impl IConnectionPointTrait for Component {
                         crate::telemetry::Kind::Reading
                     };
                     self.meter_connection.send(reply, {
+                        if !self.processing.load(Ordering::Acquire) {
+                            daw_drive_plugin::BandAudition::clear_live_preview(
+                                self.output_meter.as_ref(),
+                            );
+                        }
                         let mut values = daw_drive_plugin::meter_values(&self.output_meter);
                         if !self.processing.load(Ordering::Acquire) {
                             crate::telemetry::mask_stopped(&mut values);

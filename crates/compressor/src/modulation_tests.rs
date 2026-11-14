@@ -36,7 +36,7 @@ fn context(rate: u32) -> ProcessingContext {
         max_block_frames: 32,
     }
 }
-fn close(actual: [f32; 7], expected: [f32; 7]) {
+fn close(actual: [f32; 8], expected: [f32; 8]) {
     for (a, b) in actual.into_iter().zip(expected) {
         assert!(
             (a - b).abs() < b.abs().max(1.0) * 1e-4,
@@ -80,7 +80,7 @@ fn compressor_typed_modulation_preserves_neutral_audio_and_controls_every_target
                 reference.process_sample(input)
             );
         }
-        let amounts = [-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25];
+        let amounts = [-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25, 0.5];
         let mut routes: Vec<_> = P::COMPRESSOR
             .into_iter()
             .zip(amounts)
@@ -97,7 +97,7 @@ fn compressor_typed_modulation_preserves_neutral_audio_and_controls_every_target
         );
         close(
             unit.effective_parameters(),
-            [-18.0, 4.0, 10.0, 100.0, 6.0, 0.0, 1.0],
+            [-18.0, 4.0, 10.0, 100.0, 6.0, 0.0, 1.0, 0.0],
         );
         unit.reset();
         reference.reset();
@@ -119,7 +119,7 @@ fn compressor_typed_modulation_preserves_neutral_audio_and_controls_every_target
         }
         close(
             unit.effective_parameters(),
-            [-30.0, 6.0, 20.0, 50.0, 9.0, 6.0, 0.75],
+            [-30.0, 6.0, 20.0, 50.0, 9.0, 6.0, 0.75, 0.5],
         );
         assert!(unit.gain_reduction_db() > 0.0);
         let mut presentation = settings.clone();
@@ -140,7 +140,7 @@ fn compressor_modulation_bounds_nonfinite_offsets_silence_and_bypass_are_safe() 
     for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
         let mut settings = CompressorSettings::default();
         let mut unit = Compressor::new(context(rate), &settings);
-        for offsets in [[1e6; 7], [-1e6; 7], [f32::NAN; 7], [f32::INFINITY; 7]] {
+        for offsets in [[1e6; 8], [-1e6; 8], [f32::NAN; 8], [f32::INFINITY; 8]] {
             unit.reset();
             for _ in 0..rate / 50 {
                 assert!(
@@ -151,27 +151,27 @@ fn compressor_modulation_bounds_nonfinite_offsets_silence_and_bypass_are_safe() 
             }
             let expected = if offsets[0].is_finite() {
                 if offsets[0] > 0.0 {
-                    [0.0, 20.0, 200.0, 2000.0, 24.0, 12.0, 1.0]
+                    [0.0, 20.0, 200.0, 2000.0, 24.0, 12.0, 1.0, 1.0]
                 } else {
-                    [-60.0, 1.0, 0.1, 10.0, 0.0, -96.0, 0.0]
+                    [-60.0, 1.0, 0.1, 10.0, 0.0, -96.0, 0.0, -1.0]
                 }
             } else {
-                [-18.0, 4.0, 10.0, 100.0, 6.0, 0.0, 1.0]
+                [-18.0, 4.0, 10.0, 100.0, 6.0, 0.0, 1.0, 0.0]
             };
             close(unit.effective_parameters(), expected);
         }
         settings.enabled = false;
         unit.retarget(&settings);
         for _ in 0..rate / 200 {
-            unit.process_modulated([0.5, 0.25], [1.0; 7]);
+            unit.process_modulated([0.5, 0.25], [1.0; 8]);
         }
-        assert_eq!(unit.process_modulated([0.5, 0.25], [1.0; 7]), [0.5, 0.25]);
+        assert_eq!(unit.process_modulated([0.5, 0.25], [1.0; 8]), [0.5, 0.25]);
         settings.enabled = true;
         settings.level_db = daw_unit_core::SILENT_GAIN_DB;
         unit.retarget(&settings);
         unit.reset();
         for _ in 0..128 {
-            assert_eq!(unit.process_modulated([0.5, 0.25], [1.0; 7]), [0.0; 2]);
+            assert_eq!(unit.process_modulated([0.5, 0.25], [1.0; 8]), [0.0; 2]);
         }
         assert_eq!(
             unit.effective_parameters()[5],
@@ -184,7 +184,7 @@ fn compressor_modulation_bounds_nonfinite_offsets_silence_and_bypass_are_safe() 
 fn time_modulation_changes_detector_response_and_read_only_reduction() {
     let mut base = Compressor::new(context(48000), &CompressorSettings::default());
     let mut modulated = Compressor::new(context(48000), &CompressorSettings::default());
-    let offsets = [0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0];
+    let offsets = [0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0];
     for _ in 0..480 {
         base.process_sample([0.5; 2]);
         modulated.process_modulated([0.5; 2], offsets);

@@ -7,10 +7,13 @@ use std::{
     io::{Read, Write},
 };
 
-// Reverb states append discrete controls; other products retain their envelope.
+// Known products append controls; other products retain their envelope.
 const AMBIENT_STATE: bool = matches!(MAGIC, b"DAWAMBI1");
 const PLATE_STATE: bool = matches!(MAGIC, b"DAWPLAT1");
-pub const STATE_VERSION: u32 = if PLATE_STATE {
+const COMPRESSOR_STATE: bool = matches!(MAGIC, b"DAWCOMPR");
+pub const STATE_VERSION: u32 = if COMPRESSOR_STATE {
+    2
+} else if PLATE_STATE {
     5
 } else if AMBIENT_STATE {
     3
@@ -115,9 +118,10 @@ impl PluginState {
         bytes
     }
     pub fn decode(bytes: &[u8]) -> Result<Self, StateError> {
-        // Only known older reverb payloads may omit appended controls.
+        // Only known older product payloads may omit appended controls.
         let version = match bytes.len() {
             n if n == MAX_STATE_BYTES => STATE_VERSION,
+            n if COMPRESSOR_STATE && n == 16 + 8 * 9 => 1,
             n if AMBIENT_STATE && n == 16 + 8 * 10 => 1,
             n if AMBIENT_STATE && n == 16 + 8 * 11 => 2,
             n if PLATE_STATE && n == 16 + 8 * 13 => 1,

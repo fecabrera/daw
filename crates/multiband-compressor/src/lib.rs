@@ -598,10 +598,10 @@ impl MultibandCompressor {
         out
     }
     pub fn band_parameters(&self, id: ModulationTargetId) -> Option<[f32; 7]> {
-        self.bands
-            .iter()
-            .find(|b| b.destination.id == id)
-            .map(|b| b.destination.compressor.effective_parameters())
+        self.bands.iter().find(|b| b.destination.id == id).map(|b| {
+            let values = b.destination.compressor.effective_parameters();
+            std::array::from_fn(|i| values[i])
+        })
     }
     pub fn effective_parameters(&self) -> [f32; 2] {
         self.output.destination.effective

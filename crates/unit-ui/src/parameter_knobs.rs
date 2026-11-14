@@ -341,6 +341,7 @@ pub fn destination(parameter: Parameter) -> KnobSpec {
             .value_label(|v| format!("{v:.1}:1"))
             .format(|v| format!("{v:.1}:1"))
             .endpoint_labels("1:1", "20:1"),
+        Parameter::CompressorCurve => spread_intensity("Curve").endpoint_labels("Exp", "Log"),
         Parameter::CompressorAttack => compressor_time(true),
         Parameter::CompressorRelease => compressor_time(false),
         Parameter::CompressorKnee => KnobSpec::new("Knee", 0.0..=24.0, 6.0, 0.1)
@@ -673,6 +674,14 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
                 },
                 signed_db,
                 ["−60", "+60"],
+            ),
+            Parameter::CompressorCurve => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_percent,
+                ["−200", "+200"],
             ),
             Parameter::CompressorKnee => (
                 AmountMapping::Offset {

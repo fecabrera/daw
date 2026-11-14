@@ -9,8 +9,8 @@ fn ratio(slope: f32) -> f32 {
     (1.0 - slope).recip().clamp(1.0, 20.0)
 }
 impl Compressor {
-    /// Last processed Threshold dBFS, Ratio, Attack/Release ms, Knee dB, Level dB, Dry/Wet.
-    pub fn effective_parameters(&self) -> [f32; 7] {
+    /// Last processed Threshold dBFS, Ratio, Attack/Release ms, Knee dB, Level dB, Dry/Wet, Curve.
+    pub fn effective_parameters(&self) -> [f32; 8] {
         let p = self.effective;
         [
             p[0],
@@ -24,11 +24,12 @@ impl Compressor {
                 daw_unit_core::SILENT_GAIN_DB
             },
             p[7],
+            p[9],
         ]
     }
-    /// Offsets use COMPRESSOR order: dB, ratio, time octaves, dB, dB, normalized wet offset.
+    /// Offsets use COMPRESSOR order: dB, ratio, time octaves, dB, dB, normalized wet and curve offsets.
     /// Base ramps and detector/envelope state remain independent of modulation.
-    pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 7]) -> [f32; 2] {
+    pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 8]) -> [f32; 2] {
         let offsets = self.external.process(offsets).map(|v| v as f32);
         for parameter in &mut self.parameters {
             parameter.advance();
@@ -46,6 +47,7 @@ impl Compressor {
             p[6] = (p[6] * amplitude(offsets[5].clamp(-96.0, 96.0))).min(amplitude(12.0));
         }
         p[7] = (p[7] + offsets[6]).clamp(0.0, 1.0);
+        p[9] = (p[9] + offsets[7]).clamp(-1.0, 1.0);
         self.effective = p;
         self.configure([p[3], p[4]]);
         self.process_effective_sample(input)

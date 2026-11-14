@@ -13,7 +13,7 @@ The registered built-in effects have separate CLAP and VST3 development previews
 | [Filter](filter.md) | `filter` | Shape, Frequency, Q, Level, Dry/Wet |
 | [Auto-filter](auto-filter.md) | `auto-filter` | Filter controls, LFO power/wave, Hz/Note rate, Strength, Sync/Stereo Phase |
 | [Multiband Compressor](multiband-compressor.md) | `multiband-compressor` | 64 adjacent band slots, crossover frequency, compression controls, temporary Solo, Level and Dry/Wet |
-| [Compressor](compressor.md) | `compressor` | Threshold, Ratio, Detection, Attack, Release, Knee, Level, Dry/Wet |
+| [Compressor](compressor.md) | `compressor` | Threshold, Ratio, Curve, Detection, Attack, Release, Knee, Level, Dry/Wet |
 | [OTT](ott.md) | `ott` | Crossovers; per-band power, Depth, Input, Output, Attack, Release; Detection, Level, Dry/Wet |
 | [Limiter](limiter.md) | `limiter` | Input, Release, Lookahead, Ceiling, Peak/True Peak, L/R or M/S |
 | [Direction Mixer](direction-mixer.md) | `direction-mixer` | L/R or M/S input, Direction, Spread |
@@ -27,7 +27,7 @@ The registered built-in effects have separate CLAP and VST3 development previews
 
 [Build, package, and download instructions](../development/plugins.md) apply to all products. The packager accepts one slug, a comma-separated list, or `--units all`. Build both formats for all selected units first. Extract the downloaded ZIP and keep the included licenses beside the plugin. Close your host before replacing or removing it.
 
-Plugin editors retain their horizontal [output level meters and held peaks](output-meter.md). DAW units use stereo meters in the gaps between units. Limiter shows reduction on its left strip and output level on its right strip. Compressor also shows reduction, and OTT shows signed band gain changes. Click a held reading to reset it. Reset does not change audio or saved parameters. Right-click the background to choose Dark, Light, or Mist; Deep Orange is the default accent.
+Plugin editors retain their horizontal [output level meters and held peaks](output-meter.md). DAW units use stereo meters in the gaps between units. Limiter shows reduction on its left strip and output level on its right strip. Compressor shows its live Curve with a vertical gain-reduction meter, and OTT shows signed band gain changes. Click a held reading to reset it. Reset does not change audio or saved parameters. Right-click the background to choose Dark, Light, or Mist; Deep Orange is the default accent.
 
 Auto-filter and Chorus use the host's tempo and sample position. Their clock starts locally at 120 BPM. Stopped transport and missing updates keep the last valid tempo and advance a local position; playback resumes phase alignment with the host. Negative host positions start at frame zero. Hz mode keeps its frequency; Note mode follows tempo. The editors show the active rate control. Bar labels use four beats per bar. CLAP tempo changes follow block snapshots and transport events; continuous tempo ramps within a block are not applied.
 

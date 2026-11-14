@@ -26,6 +26,7 @@ pub mod exciter;
 pub mod saturator;
 
 pub mod compressor;
+pub mod compressor_curve;
 pub mod control_capture;
 pub mod harmonic_lift;
 

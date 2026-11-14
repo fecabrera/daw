@@ -720,7 +720,9 @@ pub(super) fn marker(
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
         ModulationParameter::SaturatorDrive => offsets.map(|o| (base + o).clamp(-36.0, 36.0)),
-        ModulationParameter::NoiseColor => offsets.map(|o| (base + o).clamp(-1.0, 1.0)),
+        ModulationParameter::NoiseColor | ModulationParameter::CompressorCurve => {
+            offsets.map(|o| (base + o).clamp(-1.0, 1.0))
+        }
         ModulationParameter::NoiseWidth => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::PlatePreDelay => offsets.map(|o| base + o.clamp(0.0, 300.0)),
         ModulationParameter::PlateDecay => offsets.map(|o| base * 2.0_f32.powf(o).clamp(0.3, 15.0)),
@@ -976,7 +978,8 @@ pub(super) fn marker(
         | ModulationParameter::DryWet
         | ModulationParameter::DriveGain
         | ModulationParameter::Tone
-        | ModulationParameter::ColorStrength => format!("{:.0}%", value * 100.0),
+        | ModulationParameter::ColorStrength
+        | ModulationParameter::CompressorCurve => format!("{:.0}%", value * 100.0),
     };
     lines.push(format!(
         "Range: {} to {}",

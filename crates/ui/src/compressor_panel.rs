@@ -10,13 +10,23 @@ pub(super) fn show<'a>(
     reduction_db: impl Into<meters::GainReduction<'a>>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
-    level: meters::OutputLevel<'_>,
+    monitor: (meters::OutputLevel<'_>, f32),
 ) -> (Bounds, egui::Response) {
     let reduction_db = reduction_db.into();
     ui.scope_builder(
         egui::UiBuilder::new()
             .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
-        |ui| show_inner(ui, settings, dimensions, reduction_db, sources, live, level),
+        |ui| {
+            show_inner(
+                ui,
+                settings,
+                dimensions,
+                reduction_db,
+                sources,
+                live,
+                monitor,
+            )
+        },
     )
     .inner
 }
@@ -27,9 +37,10 @@ fn show_inner(
     reduction_db: meters::GainReduction<'_>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
-    level: meters::OutputLevel<'_>,
+    monitor: (meters::OutputLevel<'_>, f32),
 ) -> (Bounds, egui::Response) {
     let (compact, height) = dimensions;
+    let (level, detector_level) = monitor;
     let reduction_db = reduction_db.for_unit(settings.enabled);
     let bases = [
         settings.threshold_db,
@@ -39,6 +50,7 @@ fn show_inner(
         settings.knee_db,
         settings.level_db,
         settings.dry_wet,
+        settings.curve,
     ];
     let markers = std::array::from_fn(|i| {
         crate::modulation_panel::marker(
@@ -54,6 +66,7 @@ fn show_inner(
     let open = settings.modulation_open;
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
+        graph: Default::default(),
         output_meter: Rect::NOTHING,
         header: Rect::NOTHING,
         power: Rect::NOTHING,
@@ -71,7 +84,7 @@ fn show_inner(
         |ui| {
             ui.horizontal_top(|ui| {
  ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
- bounds = daw_unit_ui::compressor::show(ui, settings, compact, crate::envelope_panel::body_height(compact), &markers, reduction_db, level);
+ bounds = daw_unit_ui::compressor::show(ui, settings, compact, crate::envelope_panel::body_height(compact), daw_unit_ui::compressor::Controls { markers:&markers, reduction:reduction_db, level, graph:daw_unit_ui::compressor_curve::Input { live_edits:false, detector_level } });
 if open {
 
                     crate::modulation_panel::body(ui, &mut settings.modulations, sources, <CompressorSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS, <CompressorSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);

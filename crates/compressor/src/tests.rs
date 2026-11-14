@@ -287,3 +287,84 @@ fn extreme_parameters_and_nonfinite_samples_do_not_produce_nonfinite_outputs() {
         }
     }
 }
+
+#[test]
+fn detector_curve_monitor_preserves_pcm_and_preparation_does_not_publish() {
+    for rate in RATES {
+        let mut s = CompressorSettings::default();
+        let mut monitored = unit(rate, &s);
+        let mut reference = unit(rate, &s);
+        let meter = Arc::new(BandMeter::<3>::default());
+        monitored.set_curve_meter(meter.clone());
+        for i in 0..rate / 4 {
+            let input = if i < rate / 8 { [0.5, -0.25] } else { [0.0; 2] };
+            assert_eq!(
+                monitored.process_sample(input),
+                reference.process_sample(input)
+            );
+        }
+        let reading = meter.readings()[0];
+        assert!(reading > 0.2 && reading < 0.5);
+        let mut prepared = unit(rate, &s);
+        prepared.set_curve_meter(meter.clone());
+        assert_eq!(meter.readings()[0], reading);
+        let mut detached = monitored.clone();
+        detached.process_sample([1.0; 2]);
+        assert_eq!(meter.readings()[0], reading);
+        s.enabled = false;
+        monitored.retarget(&s);
+        assert_eq!(meter.readings(), [0.0; 3]);
+        monitored.process_sample([1.0; 2]);
+        assert_eq!(meter.readings(), [0.0; 3]);
+        s.enabled = true;
+        monitored.retarget(&s);
+        monitored.process_sample([0.5; 2]);
+        assert!(meter.readings()[0] > 0.0);
+        monitored.reset();
+        assert_eq!(meter.readings(), [0.0; 3]);
+    }
+}
+
+#[test]
+fn shaped_curve_changes_audio_and_retargets_without_resetting_the_detector_or_other_ramps() {
+    for rate in RATES {
+        let mut settings = CompressorSettings {
+            attack_ms: 0.1,
+            release_ms: 10.0,
+            ..Default::default()
+        };
+        let mut output = [0.0; 3];
+        for (i, curve) in [-1.0, 0.0, 1.0].into_iter().enumerate() {
+            settings.curve = curve;
+            let mut processor = unit(rate, &settings);
+            output[i] = settle(&mut processor, rate, [1.0; 2])[0];
+            assert!(output[i] > 0.0 && output[i] <= 1.0);
+        }
+        assert!(output[0] > output[1] && output[1] > output[2]);
+        settings.curve = 0.0;
+        let mut processor = unit(rate, &settings);
+        settle(&mut processor, rate, [1.0; 2]);
+        settings.threshold_db = -24.0;
+        processor.retarget(&settings);
+        processor.process_sample([1.0; 2]);
+        let remaining = processor.parameters[0].remaining;
+        let threshold = processor.parameters[0].value;
+        assert!(remaining > 0);
+        let reduction = processor.gain_reduction_db();
+        let before = processor.effective_parameters();
+        settings.curve = 1.0;
+        processor.retarget(&settings);
+        assert_eq!(processor.gain_reduction_db(), reduction);
+        assert_eq!(processor.parameters[0].remaining, remaining);
+        assert_eq!(processor.parameters[0].value, threshold);
+        processor.process_sample([1.0; 2]);
+        let after = processor.effective_parameters();
+        assert_eq!(after[1..7], before[1..7]);
+        assert_eq!(processor.parameters[0].remaining, remaining - 1);
+        assert!(after[7] > 0.0 && after[7] < 1.0);
+        for _ in 0..rate / 100 {
+            processor.process_sample([1.0; 2]);
+        }
+        assert_eq!(processor.effective_parameters()[7], 1.0);
+    }
+}

@@ -3066,8 +3066,15 @@ fn compressor_layout_compact_collapse_and_readonly_meter_follow_unit_conventions
                         );
                     }
                 }
-                // The third Out row is a meter, not a control which edits saved state.
-                let meter = bounds.controls[2][2].center();
+                // GR is in Curve; its separate readout still supports peak reset.
+                assert!(
+                    bounds
+                        .graph
+                        .section
+                        .contains_rect(bounds.graph.reduction_meter)
+                );
+                assert!(bounds.graph.reduction_meter.left() > bounds.graph.plot.right());
+                let meter = bounds.graph.reduction_meter.center();
                 app.dirty = false;
                 let before = compressor_settings(&app).clone();
                 click(&mut app, &ctx, meter);
@@ -3098,6 +3105,7 @@ fn compressor_controls_edit_in_the_agreed_order_and_peak_rms_is_bounded() {
     for (column, row, key) in [
         (0, 0, egui::Key::ArrowRight),
         (0, 1, egui::Key::ArrowRight),
+        (0, 2, egui::Key::ArrowRight),
         (1, 0, egui::Key::ArrowRight),
         (1, 1, egui::Key::ArrowRight),
         (1, 2, egui::Key::ArrowRight),
@@ -3131,6 +3139,10 @@ fn compressor_controls_edit_in_the_agreed_order_and_peak_rms_is_bounded() {
                 assert!(after.ratio > before.ratio);
                 expected.ratio = after.ratio;
             }
+            (0, 2) => {
+                assert!(after.curve > before.curve);
+                expected.curve = after.curve;
+            }
             (1, 0) => {
                 assert!(after.attack_ms > before.attack_ms);
                 expected.attack_ms = after.attack_ms;
@@ -3160,7 +3172,7 @@ fn compressor_controls_edit_in_the_agreed_order_and_peak_rms_is_bounded() {
         (-300.0, daw_core::CompressorDetection::Rms),
         (-300.0, daw_core::CompressorDetection::Rms),
     ] {
-        let start = app.effects_bounds.compressor_units[0].controls[0][2].center();
+        let start = app.effects_bounds.compressor_units[0].controls[2][2].center();
         let end = start + Vec2::new(0.0, delta);
         end_click_sequence(&mut app, &ctx);
         frame(
@@ -3199,7 +3211,7 @@ fn compressor_peak_rms_paint_uses_the_shared_neutral_arc_and_choice_labels() {
             app.set_view_mode(ViewMode::Timeline, &ctx);
             frame(&mut app, &ctx, vec![]);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let rect = app.effects_bounds.compressor_units[0].controls[0][2];
+            let rect = app.effects_bounds.compressor_units[0].controls[2][2];
             for (name, selected, left) in [
                 (
                     "Peak",
