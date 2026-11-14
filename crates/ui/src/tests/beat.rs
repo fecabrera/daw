@@ -3100,7 +3100,7 @@ fn timeline_beat_children_use_group_geometry_and_saved_disclosure() {
             app.settings.theme = theme;
             theme::apply(&ctx, app.settings.clone());
             app.view_mode = ViewMode::Timeline;
-            app.track_rows_collapsed = collapsed;
+            app.timeline_track_size = if collapsed { 1.0 } else { 2.0 };
             let group = Id::new_v4();
             app.edit(Edit::GroupTracks {
                 track_ids: vec![parent],

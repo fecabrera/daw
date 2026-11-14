@@ -958,8 +958,7 @@ pub struct DawUi {
     lane_bounds: HashMap<Id, Rect>,
     timeline_bounds: Rect,
     fit_all_requested: bool,
-    track_rows_collapsed: bool,
-    timeline_tracks_large: bool,
+    timeline_track_size: f32,
     timeline_vertical_scroll: f32,
     timeline_vertical_restore: Option<f32>,
     #[cfg(test)]
@@ -1117,8 +1116,7 @@ impl Default for DawUi {
             lane_bounds: HashMap::new(),
             timeline_bounds: Rect::NOTHING,
             fit_all_requested: false,
-            track_rows_collapsed: false,
-            timeline_tracks_large: false,
+            timeline_track_size: 2.0,
             timeline_vertical_scroll: 0.0,
             timeline_vertical_restore: None,
             #[cfg(test)]
@@ -3795,7 +3793,7 @@ impl DawUi {
                 .map_or([0.0; 2], |output| output.status.meter.held_peaks());
             let cleared = meters::stereo_panel_held(ui, MASTER_HEIGHT - 14.0, levels, held, |ui| {
                 rows::centered(ui, knobs::SIZE, |ui| {
-                    let gain_width = if self.track_rows_collapsed {
+                    let gain_width = if self.track_rows_collapsed() {
                         0.0
                     } else {
                         knobs::SIZE + ui.spacing().item_spacing.x
@@ -3809,7 +3807,7 @@ impl DawUi {
                             self.master_name(ui);
                         },
                     );
-                    if self.track_rows_collapsed {
+                    if self.track_rows_collapsed() {
                         return;
                     }
                     let previous = self.session.project.master.gain_db;
@@ -4739,8 +4737,7 @@ impl DawUi {
                                         let mut solo = track.soloed;
                                         let mut header_rows = track_rows::HeaderRows::track_size(
                                             ui,
-                                            self.track_rows_collapsed,
-                                            self.large_track_headers(),
+                                            self.timeline_track_size,
                                         );
                                         if let Some(sends) = &mut header_rows.sends {
                                             self.timeline_send_knobs(sends, &track);
@@ -4791,7 +4788,7 @@ impl DawUi {
                                                 "Mute (M toggles selected tracks)",
                                                 "Solo (S toggles selected tracks)",
                                             ],
-                                            self.track_rows_collapsed,
+                                            self.track_rows_collapsed(),
                                         );
                                         let updated = gain != track.gain_db
                                             || pan != track.pan
@@ -6229,7 +6226,7 @@ mod tests {
     fn fixture() -> (DawUi, Id) {
         // Existing gesture fixtures exercise expanded tracks; compact tracks have dedicated coverage.
         let mut app = DawUi {
-            track_rows_collapsed: false,
+            timeline_track_size: 2.0,
             ..Default::default()
         };
         app.effects_catalog.expand_folders();

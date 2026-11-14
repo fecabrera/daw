@@ -120,8 +120,8 @@ pub fn horizontal_zoom(
     response
 }
 
-/// Discrete Timeline track height, using the horizontal zoom control's geometry.
-pub(super) fn track_size(ui: &mut Ui, size: &mut i32) -> egui::Response {
+/// Continuous Timeline track height, using the horizontal zoom control's geometry.
+pub(super) fn track_size(ui: &mut Ui, size: &mut f32) -> egui::Response {
     let response = ui
         .push_id("track-height-slider", |ui| {
             ui.spacing_mut().slider_width = 56.0;
@@ -130,22 +130,38 @@ pub(super) fn track_size(ui: &mut Ui, size: &mut i32) -> egui::Response {
             ui.style_mut()
                 .text_styles
                 .insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
+            let pointer_input = ui.input(|i| {
+                i.pointer.primary_down() || i.pointer.button_released(egui::PointerButton::Primary)
+            });
             let response = ui.add(
-                egui::Slider::new(size, 0..=2)
-                    .integer()
-                    .show_value(false)
-                    .trailing_fill(false)
-                    .handle_shape(egui::style::HandleShape::Circle),
+                egui::Slider::from_get_set(1.0..=4.0, |value| {
+                    if let Some(value) = value {
+                        let value = value as f32;
+                        let whole = value.round();
+                        // Quantize before painting so the handle stays at the snapped value.
+                        *size = if pointer_input && (value - whole).abs() <= 0.15 {
+                            whole
+                        } else {
+                            value
+                        };
+                    }
+                    f64::from(*size)
+                })
+                .step_by(0.01)
+                .smart_aim(false)
+                .show_value(false)
+                .trailing_fill(false)
+                .handle_shape(egui::style::HandleShape::Circle),
             );
-            let label = match *size {
-                0 => "Compact",
-                1 => "Regular",
-                _ => "Large",
-            };
+            if response.interact_pointer_pos().is_some() {
+                response.request_focus();
+            }
+            let label = format!("{size:.2}");
+            let label = label.trim_end_matches('0').trim_end_matches('.');
             response.widget_info(|| {
                 egui::WidgetInfo::slider(ui.is_enabled(), f64::from(*size), "Track height")
             });
-            response.on_hover_text(format!("Track height: {label} (Compact / Regular / Large)"))
+            response.on_hover_text(format!("Track height: {label} (1–4)"))
         })
         .inner;
     ui.add(

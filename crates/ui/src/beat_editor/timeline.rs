@@ -251,11 +251,8 @@ impl DawUi {
             let cleared =
                 meters::stereo_panel_held(&mut header, height - 14.0, levels, held, |ui| {
                     ui.add_enabled_ui(enabled, |ui| {
-                        let mut layout = track_rows::HeaderRows::track_size(
-                            ui,
-                            self.track_rows_collapsed,
-                            self.large_track_headers(),
-                        );
+                        let mut layout =
+                            track_rows::HeaderRows::track_size(ui, self.timeline_track_size);
                         rows::centered(&mut layout.name, knobs::SIZE, |ui| {
                             rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
                                 icons::header_icon_tinted(
@@ -294,7 +291,7 @@ impl DawUi {
                             &mut muted,
                             &mut soloed,
                             ["Mute subtrack", "Solo within this beat instrument"],
-                            self.track_rows_collapsed,
+                            self.track_rows_collapsed(),
                         );
                         #[cfg(test)]
                         self.beat_ui.mix_bounds.insert(

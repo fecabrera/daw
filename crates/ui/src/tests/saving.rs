@@ -353,13 +353,9 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
         app.session.project.add_midi_track().unwrap();
     }
     let original = app.session.project.clone();
-    for (compact, large, expected) in [
-        (true, false, MASTER_HEIGHT),
-        (false, false, track_rows::REGULAR_HEIGHT),
-        (false, true, track_rows::LARGE_HEIGHT),
-    ] {
-        app.track_rows_collapsed = compact;
-        app.timeline_tracks_large = large;
+    for size in [1.0, 1.5, 2.0, 2.75, 3.0, 3.5, 4.0] {
+        let expected = size * knobs::SIZE + 14.0;
+        app.timeline_track_size = size;
         app.zoom = 150.0;
         app.scroll = 8.0;
         app.timeline_vertical_scroll = 180.0;
@@ -373,6 +369,7 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
         assert_eq!((app.zoom, app.scroll), (150.0, 8.0));
         let mut reopened = DawUi::default();
         reopened.install_loaded_session(Session::open(&folder).unwrap(), false);
+        assert_eq!(reopened.timeline_track_size, size);
         assert_eq!(reopened.track_row_height(), expected);
         assert_eq!(
             (

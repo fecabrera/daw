@@ -9,16 +9,16 @@ pub(super) struct HeaderRows {
 
 impl HeaderRows {
     pub fn new(ui: &mut egui::Ui, collapsed: bool) -> Self {
-        Self::with_knobs(ui, collapsed, true, false, false)
+        Self::with_knobs(ui, collapsed, true, false, None)
     }
 
     pub fn track(ui: &mut egui::Ui, collapsed: bool) -> Self {
-        Self::with_knobs(ui, collapsed, !collapsed, false, false)
+        Self::with_knobs(ui, collapsed, !collapsed, false, None)
     }
 
     /// Timeline uses equal 28-point slots; the Editor overview retains its own layout.
-    pub fn track_size(ui: &mut egui::Ui, collapsed: bool, large: bool) -> Self {
-        Self::with_knobs(ui, collapsed, !collapsed, large && !collapsed, true)
+    pub fn track_size(ui: &mut egui::Ui, size: f32) -> Self {
+        Self::with_knobs(ui, size < 2.0, size >= 2.0, size >= 3.0, Some(size))
     }
 
     fn with_knobs(
@@ -26,15 +26,19 @@ impl HeaderRows {
         collapsed: bool,
         knobs: bool,
         large: bool,
-        timeline: bool,
+        timeline_size: Option<f32>,
     ) -> Self {
-        let height = if collapsed {
-            knobs::SIZE
-        } else if timeline {
-            knobs::SIZE * if large { 3.0 } else { 2.0 }
-        } else {
-            ROW_HEIGHT - 14.0
-        };
+        let timeline = timeline_size.is_some();
+        let height = timeline_size.map_or_else(
+            || {
+                if collapsed {
+                    knobs::SIZE
+                } else {
+                    ROW_HEIGHT - 14.0
+                }
+            },
+            |size| knobs::SIZE * size,
+        );
         let (body, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
         // Two 22-point buttons plus their divider, a six-point group gap,
@@ -47,6 +51,8 @@ impl HeaderRows {
                 0.0
             };
         let (name, mix) = if collapsed {
+            // Keep the one-row layout centered while its surface grows.
+            let body = Rect::from_center_size(body.center(), Vec2::new(body.width(), knobs::SIZE));
             let mix = Rect::from_min_max(Pos2::new(body.right() - mix_width, body.top()), body.max);
             (
                 Rect::from_min_max(body.min, Pos2::new(mix.left() - 6.0, body.bottom())),
@@ -105,25 +111,23 @@ impl HeaderRows {
     }
 }
 
-/// Timeline content consists of one, two or three 28-point slots, plus 7-point outer padding.
+/// Whole-size fixtures retain the established 28-point slot and 7-point outer padding.
+#[cfg(test)]
 pub(super) const REGULAR_HEIGHT: f32 = 2.0 * knobs::SIZE + 14.0;
+#[cfg(test)]
 pub(super) const LARGE_HEIGHT: f32 = 3.0 * knobs::SIZE + 14.0;
 
 impl DawUi {
-    pub(super) fn large_track_headers(&self) -> bool {
-        self.view_mode == mixer::ViewMode::Timeline
-            && !self.track_rows_collapsed
-            && self.timeline_tracks_large
+    pub(super) fn track_rows_collapsed(&self) -> bool {
+        self.timeline_track_size < 2.0
     }
     pub(super) fn track_row_height(&self) -> f32 {
         if self.view_mode == mixer::ViewMode::Edit {
             ROW_HEIGHT
-        } else if self.track_rows_collapsed {
-            MASTER_HEIGHT
-        } else if self.large_track_headers() {
-            LARGE_HEIGHT
         } else if self.view_mode == mixer::ViewMode::Timeline {
-            REGULAR_HEIGHT
+            self.timeline_track_size * knobs::SIZE + 14.0
+        } else if self.track_rows_collapsed() {
+            MASTER_HEIGHT
         } else {
             ROW_HEIGHT
         }
@@ -131,13 +135,7 @@ impl DawUi {
 
     pub(super) fn track_size_slider(&mut self, ui: &mut egui::Ui) {
         let enabled = self.edit_shortcuts_available(ui.ctx()) && self.track_name_edit.is_none();
-        let mut size = if self.track_rows_collapsed {
-            0
-        } else if self.timeline_tracks_large {
-            2
-        } else {
-            1
-        };
+        let mut size = self.timeline_track_size;
         let response = ui
             .add_enabled_ui(enabled, |ui| toolbars::track_size(ui, &mut size))
             .inner;
@@ -146,8 +144,7 @@ impl DawUi {
             self.track_size_bounds = response.rect;
         }
         if enabled && ui.is_enabled() && response.changed() {
-            self.track_rows_collapsed = size == 0;
-            self.timeline_tracks_large = size == 2;
+            self.timeline_track_size = size;
             ui.ctx().request_repaint();
         }
     }
@@ -156,7 +153,7 @@ impl DawUi {
         let enabled = self.edit_shortcuts_available(ui.ctx()) && self.track_name_edit.is_none();
         let response = ui
             .add_enabled_ui(enabled, |ui| {
-                icons::track_rows_button(ui, self.track_rows_collapsed)
+                icons::track_rows_button(ui, self.track_rows_collapsed())
             })
             .inner;
         #[cfg(test)]
@@ -164,8 +161,11 @@ impl DawUi {
             self.track_rows_bounds = response.rect;
         }
         if enabled && ui.is_enabled() && response.clicked() {
-            self.track_rows_collapsed = !self.track_rows_collapsed;
-            self.timeline_tracks_large = false;
+            self.timeline_track_size = if self.track_rows_collapsed() {
+                2.0
+            } else {
+                1.0
+            };
             ui.ctx().request_repaint();
         }
     }

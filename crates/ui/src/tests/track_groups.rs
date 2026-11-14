@@ -30,7 +30,7 @@ fn track_color_strips_cover_headers_and_only_the_group_nesting_gutter() {
                     b: 170,
                 };
             }
-            app.track_rows_collapsed = rows_collapsed;
+            app.timeline_track_size = if rows_collapsed { 1.0 } else { 2.0 };
             app.set_settings(
                 &ctx,
                 settings::AppSettings {

@@ -689,11 +689,11 @@ fn collection_saves_live_display_for_copy_and_zero_copy_without_history_edits() 
         daw_core::TrackHeight::Compact,
         daw_core::TrackHeight::Regular,
         daw_core::TrackHeight::Large,
+        daw_core::TrackHeight::Fractional(2.5),
     ] {
         let fixture = Fixture::new();
         let mut app = fixture.app();
-        app.track_rows_collapsed = height == daw_core::TrackHeight::Compact;
-        app.timeline_tracks_large = height == daw_core::TrackHeight::Large;
+        app.timeline_track_size = height.value();
         let revision = app.change_revision;
         for (zoom, scroll, vertical) in [(160.0, 12.5, 300.0), (95.0, 3.0, 50.0)] {
             app.zoom = zoom;

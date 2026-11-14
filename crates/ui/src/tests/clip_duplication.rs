@@ -275,7 +275,7 @@ fn moving_source_groups_to_new_tracks_previews_commits_cancels_and_undoes() {
     for kind in ["noise", "sampler", "effect"] {
         for cancel in [false, true] {
             let mut app = DawUi {
-                track_rows_collapsed: false,
+                timeline_track_size: 2.0,
                 ..Default::default()
             };
             let sample_file = (kind == "sampler").then(TestWav::new);

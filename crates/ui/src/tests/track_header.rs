@@ -25,7 +25,7 @@ fn label_rect(shapes: &[egui::epaint::ClippedShape], panel: Rect, label: &str) -
 
 #[test]
 fn timeline_size_does_not_change_regular_editor_overviews_or_project_data() {
-    assert!(!DawUi::default().track_rows_collapsed);
+    assert!(!DawUi::default().track_rows_collapsed());
     for color_theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -57,7 +57,7 @@ fn timeline_size_does_not_change_regular_editor_overviews_or_project_data() {
             let toggle = app.track_rows_bounds.center();
             click(&mut app, &ctx, toggle);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            assert!(app.track_rows_collapsed);
+            assert!(app.track_rows_collapsed());
             assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
                 egui::Shape::Circle(c) if app.master_bounds.contains(c.center))));
             for track in [audio, midi] {
@@ -127,7 +127,7 @@ fn compact_headers_keep_mixing_controls_and_drop_targets_on_their_track() {
         let other = app.session.project.add_track().unwrap();
         let ctx = context();
         app.select_track(track, false);
-        app.track_rows_collapsed = true;
+        app.timeline_track_size = 1.0;
         if editor {
             app.set_view_mode(ViewMode::Edit, &ctx);
         }
@@ -182,7 +182,7 @@ fn row_toggle_is_blocked_by_dialogs_and_active_track_gestures() {
         let point = app.track_rows_bounds.center();
         app.settings_open = true;
         click(&mut app, &ctx, point);
-        assert!(!app.track_rows_collapsed);
+        assert!(!app.track_rows_collapsed());
         app.settings_open = false;
         app.track_drag = Some(track);
         frame(
@@ -191,7 +191,7 @@ fn row_toggle_is_blocked_by_dialogs_and_active_track_gestures() {
             vec![egui::Event::PointerMoved(point), button(point, true)],
         );
         frame(&mut app, &ctx, vec![button(point, false)]);
-        assert!(!app.track_rows_collapsed);
+        assert!(!app.track_rows_collapsed());
         assert_eq!(app.session.project, before);
         assert!(!app.dirty);
     }
@@ -1087,7 +1087,7 @@ fn timeline_track_and_master_selection_uses_fill_without_outline() {
 }
 
 #[test]
-fn timeline_size_slider_selects_three_layouts_without_editing_the_project() {
+fn timeline_size_slider_selects_four_sizes_without_editing_the_project() {
     for theme in settings::ColorTheme::ALL {
         let (mut app, track) = fixture();
         let ctx = context();
@@ -1104,8 +1104,9 @@ fn timeline_size_slider_selects_three_layouts_without_editing_the_project() {
         let selection = (app.selected_track, app.selected_clip);
         for (fraction, height) in [
             (0.0, MASTER_HEIGHT),
-            (0.5, track_rows::REGULAR_HEIGHT),
-            (1.0, track_rows::LARGE_HEIGHT),
+            (1.0 / 3.0, track_rows::REGULAR_HEIGHT),
+            (2.0 / 3.0, track_rows::LARGE_HEIGHT),
+            (1.0, 4.0 * knobs::SIZE + 14.0),
         ] {
             let slider = app.track_size_bounds;
             assert!(app.fit_all_bounds.right() < slider.left());
@@ -1128,7 +1129,7 @@ fn timeline_size_slider_selects_three_layouts_without_editing_the_project() {
         assert_eq!(app.track_size_bounds, Rect::NOTHING);
         app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
-        assert_eq!(app.track_row_height(), track_rows::LARGE_HEIGHT);
+        assert_eq!(app.track_row_height(), 4.0 * knobs::SIZE + 14.0);
         frame(&mut app, &ctx, vec![]);
         let point = app.track_rows_bounds.center();
         frame(&mut app, &ctx, vec![egui::Event::PointerMoved(point)]);
@@ -1138,6 +1139,120 @@ fn timeline_size_slider_selects_three_layouts_without_editing_the_project() {
         let point = app.track_size_bounds.right_center() - Vec2::new(1.0, 0.0);
         click(&mut app, &ctx, point);
         assert_eq!(app.track_row_height(), MASTER_HEIGHT);
+    }
+}
+
+#[test]
+fn fractional_track_heights_keep_floor_layout_and_stick_to_whole_sizes() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    let before = app.session.project.clone();
+    for size in [1.0, 1.5, 1.99, 2.0, 2.5, 2.99, 3.0] {
+        app.timeline_track_size = size;
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        assert!((app.lane_bounds[&track].height() - (size * knobs::SIZE + 14.0)).abs() < 0.01);
+        assert_eq!(app.track_rows_collapsed(), size.floor() == 1.0);
+        let layout_ctx = context();
+        let mut out = layout_ctx.run_ui(Default::default(), |ui| {
+            let rows = track_rows::HeaderRows::track_size(ui, size);
+            assert_eq!(rows.sends.is_some(), size.floor() == 3.0);
+            if size < 2.0 {
+                assert_eq!(rows.name.max_rect().top(), rows.mix.max_rect().top());
+            } else {
+                assert!(rows.mix.max_rect().top() >= rows.name.max_rect().bottom());
+            }
+        });
+        out.textures_delta.clear();
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+    app.timeline_track_size = 1.5;
+    frame(&mut app, &ctx, vec![]);
+    let slider = app.track_size_bounds;
+    let radius = slider.height() / 2.5;
+    let center = Pos2::new(
+        slider.left() + radius + (slider.width() - 2.0 * radius) / 3.0,
+        slider.center().y,
+    );
+    click(&mut app, &ctx, center + Vec2::new(1.0, 0.0));
+    assert_eq!(app.timeline_track_size, 2.0);
+    // Pointer snapping must not trap keyboard input at the integer.
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::ArrowRight,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+    );
+    assert!(
+        app.timeline_track_size > 2.0 && app.timeline_track_size < 2.1,
+        "keyboard size: {}",
+        app.timeline_track_size
+    );
+    click(&mut app, &ctx, center + Vec2::new(7.0, 0.0));
+    assert!(app.timeline_track_size > 2.1 && app.timeline_track_size < 3.0);
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn track_height_handle_stays_at_integer_through_the_snap_zone() {
+    let (mut app, _) = fixture();
+    let ctx = context();
+    let window = Vec2::new(1280.0, 900.0);
+    for whole in [1.0, 2.0, 3.0, 4.0] {
+        app.timeline_track_size = whole;
+        frame_shapes(&mut app, &ctx, vec![], window);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], window);
+        let slider = app.track_size_bounds;
+        let handle = |shapes: &[egui::epaint::ClippedShape]| {
+            shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Circle(circle)
+                        if slider.contains(circle.center) && circle.radius > 3.0 =>
+                    {
+                        Some(circle.center)
+                    }
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let fixed = handle(&shapes);
+        frame_shapes(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(fixed), button(fixed, true)],
+            window,
+        );
+        // Two points is outside the old snap zone, but inside the wider zone.
+        for offset in [0.5, 1.0, 2.0, -2.0, -1.0, -0.5, 0.0] {
+            let point = fixed + Vec2::new(offset, 0.0);
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point)],
+                window,
+            );
+            assert_eq!(app.timeline_track_size, whole);
+            assert_eq!(handle(&shapes), fixed);
+        }
+        let direction = if whole == 4.0 { -1.0 } else { 1.0 };
+        let point = fixed + Vec2::new(7.0 * direction, 0.0);
+        let shapes = frame_shapes(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point)],
+            window,
+        );
+        assert!((app.timeline_track_size - whole) * direction > 0.0);
+        assert!((handle(&shapes).x - fixed.x) * direction > 0.0);
+        frame_shapes(&mut app, &ctx, vec![button(point, false)], window);
     }
 }
 
@@ -1158,7 +1273,7 @@ fn large_timeline_headers_edit_sends_and_scroll_them_between_name_and_mix() {
             .sends
             .push(send);
     }
-    app.timeline_tracks_large = true;
+    app.timeline_track_size = 3.0;
     frame(&mut app, &ctx, vec![]);
     let before = app.session.project.clone();
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
@@ -1216,15 +1331,14 @@ fn large_timeline_headers_edit_sends_and_scroll_them_between_name_and_mix() {
 fn first_middle_and_last_headers_have_equal_control_geometry_and_one_bottom_separator() {
     for theme in settings::ColorTheme::ALL {
         for scale in [1.0, 1.25, 2.0] {
-            for size in [0, 1, 2] {
+            for size in [1.0, 1.5, 2.0, 2.5, 3.0] {
                 let mut app = DawUi::default();
                 let tracks: Vec<_> = (0..3)
                     .map(|_| app.session.project.add_track().unwrap())
                     .collect();
                 app.selected_track = Some(tracks[0]);
                 app.selected_tracks = tracks.iter().copied().collect();
-                app.track_rows_collapsed = size == 0;
-                app.timeline_tracks_large = size == 2;
+                app.timeline_track_size = size;
                 let ctx = context();
                 app.set_settings(
                     &ctx,
@@ -1243,15 +1357,8 @@ fn first_middle_and_last_headers_have_equal_control_geometry_and_one_bottom_sepa
                         lane.min - Vec2::new(TRACK_WIDTH, 0.0),
                         Pos2::new(lane.left(), lane.bottom()),
                     );
-                    assert_eq!(
-                        panel.height(),
-                        [
-                            MASTER_HEIGHT,
-                            track_rows::REGULAR_HEIGHT,
-                            track_rows::LARGE_HEIGHT
-                        ][size]
-                    );
-                    assert_eq!(panel.height() - 14.0, [28.0, 56.0, 84.0][size]);
+                    assert_eq!(panel.height(), size * knobs::SIZE + 14.0);
+                    assert_eq!(panel.height() - 14.0, size * knobs::SIZE);
                     assert_header_meter_insets(&shapes, panel, &ctx);
                     let mute = label_rect(&shapes, panel, "M");
                     let offset = mute.center() - panel.min;

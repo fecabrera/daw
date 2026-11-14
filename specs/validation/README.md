@@ -5,6 +5,43 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Fractional Timeline track heights — 2026-11-14
+
+Track height now ranges from 1 to 3 in 0.01 steps. Whole-number labels replace
+Compact/Regular/Large in the toolbar. Pointer input snaps within 0.06 of each
+whole number, including the release frame. Snapping runs in the value setter
+before painting, so the handle stays fixed in the snap zone; focused arrow-key edits can leave
+the snap zone. Inner height scales as `28 * size`, while control layout uses
+`floor(size)`. Master and Editor overview heights retain their existing policy.
+One scalar replaces the two UI layout flags. Decimal sizes save as numeric
+metadata; the previous named manifest values and missing-display defaults load.
+Invalid/nonfinite sizes fail project validation. Display changes do not edit
+audio or history.
+
+Focused checks pass: core display migration/round-trip/validation tests and
+24 UI track-header tests, plus a paint-level handle regression that verifies
+fixed handle position inside the integer snap zone and movement outside it.
+Coverage includes decimal geometry, integer snapping, keyboard
+escape, equal first/middle/last-row geometry, themes/scales, existing controls,
+Editor policy, job/dialog guards and unchanged project/selection state.
+
+Full workspace tests pass separately in debug (`cargo test --workspace --offline`)
+and release (`cargo test --workspace --release --offline`) for the fractional-height
+implementation. After moving snapping into the value setter, the complete final
+UI debug and release suites pass (`cargo test -p daw-ui --offline` and
+`cargo test -p daw-ui --release --offline`). The paint regression checks every
+dragged frame rather than only the saved value.
+
+Formatting (`cargo fmt --all --check`), strict workspace Clippy
+(`cargo clippy --workspace --all-targets --offline -- -D warnings`), final UI
+Clippy, changed-document local links and staged/unstaged diff checks pass.
+The macOS debug desktop executable and CLI build offline. The CLI smoke check
+(`python3 tools/check_cli.py`) passes. App packaging was not run because it
+requires a committed source snapshot; no commit was made.
+
+Native pointer/device and Windows/Linux checks remain unverified. Automated
+egui input tests do not establish native interaction acceptance.
+
 ## Compressor post-knee Curve control — 2026-11-13
 
 Comp now contains Threshold, Ratio and Curve; Detection moves to Out's third

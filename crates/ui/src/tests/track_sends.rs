@@ -428,7 +428,7 @@ fn pinned_timeline_boundaries_have_one_full_width_divider() {
             app.perform_track_action(TrackAction::AddReturn, &ctx);
         }
         for collapsed in [false, true] {
-            app.track_rows_collapsed = collapsed;
+            app.timeline_track_size = if collapsed { 1.0 } else { 2.0 };
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let master = app.master_bounds;
             let mut tops = vec![master.top()];
@@ -735,7 +735,7 @@ fn return_selection_backgrounds_keep_shared_borders_and_pinned_dividers() {
                         ..Default::default()
                     },
                 );
-                app.track_rows_collapsed = !expanded;
+                app.timeline_track_size = if expanded { 2.0 } else { 1.0 };
                 let returns: Vec<_> = (0..count)
                     .map(|_| app.session.project.add_return_track().unwrap())
                     .collect();

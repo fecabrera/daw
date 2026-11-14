@@ -10,13 +10,7 @@ impl DawUi {
 
     pub(super) fn current_project_display(&self) -> daw_core::ProjectDisplay {
         daw_core::ProjectDisplay {
-            track_height: if self.track_rows_collapsed {
-                daw_core::TrackHeight::Compact
-            } else if self.timeline_tracks_large {
-                daw_core::TrackHeight::Large
-            } else {
-                daw_core::TrackHeight::Regular
-            },
+            track_height: daw_core::TrackHeight::from_value(self.timeline_track_size),
             horizontal_zoom: self.zoom,
             horizontal_scroll_seconds: self.scroll,
             vertical_scroll_points: self.timeline_vertical_scroll,
@@ -25,8 +19,7 @@ impl DawUi {
 
     pub(super) fn restore_project_display(&mut self) {
         let display = self.session.project.display;
-        self.track_rows_collapsed = display.track_height == daw_core::TrackHeight::Compact;
-        self.timeline_tracks_large = display.track_height == daw_core::TrackHeight::Large;
+        self.timeline_track_size = display.track_height.value();
         self.zoom = display.horizontal_zoom;
         self.scroll = display.horizontal_scroll_seconds;
         self.timeline_vertical_scroll = display.vertical_scroll_points;

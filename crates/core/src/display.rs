@@ -1,13 +1,65 @@
 //! Saved presentation metadata; this does not change rendering or edit history.
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum TrackHeight {
     Compact,
     #[default]
     Regular,
     Large,
+    /// Numeric display size; named variants retain legacy manifest strings.
+    Fractional(f32),
+}
+impl TrackHeight {
+    pub fn value(self) -> f32 {
+        match self {
+            Self::Compact => 1.0,
+            Self::Regular => 2.0,
+            Self::Large => 3.0,
+            Self::Fractional(value) => value,
+        }
+    }
+    pub fn from_value(value: f32) -> Self {
+        match value {
+            1.0 => Self::Compact,
+            2.0 => Self::Regular,
+            3.0 => Self::Large,
+            _ => Self::Fractional(value),
+        }
+    }
+}
+impl Serialize for TrackHeight {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Compact => serializer.serialize_str("compact"),
+            Self::Regular => serializer.serialize_str("regular"),
+            Self::Large => serializer.serialize_str("large"),
+            Self::Fractional(value) => serializer.serialize_f32(*value),
+        }
+    }
+}
+impl<'de> Deserialize<'de> for TrackHeight {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum Named {
+            Compact,
+            Regular,
+            Large,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Saved {
+            Named(Named),
+            Numeric(f32),
+        }
+        Ok(match Saved::deserialize(deserializer)? {
+            Saved::Named(Named::Compact) => Self::Compact,
+            Saved::Named(Named::Regular) => Self::Regular,
+            Saved::Named(Named::Large) => Self::Large,
+            Saved::Numeric(value) => Self::Fractional(value),
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -30,7 +82,9 @@ impl Default for ProjectDisplay {
 }
 impl ProjectDisplay {
     pub(crate) fn validate(self) -> crate::Result<()> {
-        if !self.horizontal_zoom.is_finite()
+        if !self.track_height.value().is_finite()
+            || !(1.0..=4.0).contains(&self.track_height.value())
+            || !self.horizontal_zoom.is_finite()
             || self.horizontal_zoom <= 0.0
             || !self.horizontal_scroll_seconds.is_finite()
             || self.horizontal_scroll_seconds < 0.0
@@ -71,6 +125,34 @@ mod tests {
                 .display,
             ProjectDisplay::default()
         );
+    }
+    #[test]
+    fn fractional_heights_roundtrip_and_named_heights_remain_compatible() {
+        for (json, value) in [
+            ("\"compact\"", 1.0),
+            ("\"regular\"", 2.0),
+            ("\"large\"", 3.0),
+            ("1.5", 1.5),
+            ("2.0", 2.0),
+            ("2.75", 2.75),
+            ("3.5", 3.5),
+            ("4.0", 4.0),
+        ] {
+            let height: TrackHeight = serde_json::from_str(json).unwrap();
+            assert_eq!(height.value(), value);
+            let mut project = crate::Project::default();
+            project.display.track_height = height;
+            project.validate().unwrap();
+            let reopened: crate::Project =
+                serde_json::from_str(&serde_json::to_string(&project).unwrap()).unwrap();
+            assert_eq!(reopened.display, project.display);
+        }
+        for value in [0.99, 4.01, f32::NAN, f32::INFINITY] {
+            let mut project = crate::Project::default();
+            project.display.track_height = TrackHeight::from_value(value);
+            assert!(project.validate().is_err());
+        }
+        assert!(serde_json::from_str::<TrackHeight>("\"unknown\"").is_err());
     }
     #[test]
     fn invalid_display_geometry_is_rejected() {
