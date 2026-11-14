@@ -4,6 +4,7 @@ use daw_core::{
 };
 #[derive(Clone, PartialEq)]
 enum Band {
+    FixedEq(Box<daw_core::EqSettings>),
     Eq(MultibandEqBand),
     Compressor(MultibandCompressorBand),
     Curve(Box<daw_core::CompressorSettings>),
@@ -40,6 +41,36 @@ impl State {
                 effect,
                 before: Band::Eq(before),
                 band: Band::Eq(band),
+            },
+        ));
+    }
+    pub fn offer_equalizer(
+        &mut self,
+        frame: u64,
+        project: Id,
+        target: EffectChainTarget,
+        effect: Id,
+        before: daw_core::EqSettings,
+        band: daw_unit_core::MultibandEqBand,
+    ) {
+        let mut settings = before.clone();
+        let index = (band.id.as_u128() - 1) as usize;
+        settings.bands[index].gain_db = band.gain_db;
+        if index != 1 {
+            settings.bands[index].frequency_hz = band.frequency_hz;
+            settings.bands[index].q = band.q;
+        }
+        if settings == before {
+            return;
+        }
+        self.offered = Some((
+            frame,
+            Preview {
+                project,
+                target,
+                effect,
+                before: Band::FixedEq(Box::new(before)),
+                band: Band::FixedEq(Box::new(settings)),
             },
         ));
     }
@@ -118,6 +149,7 @@ impl State {
         let (chain, _) = project.effect_chain(p.target)?;
         let unit = &chain.iter().find(|e| e.id == p.effect)?.unit;
         let current = match (unit, &p.before) {
+            (EffectSettings::Eq3(s), Band::FixedEq(_)) => Band::FixedEq(Box::new(s.clone())),
             (EffectSettings::MultibandEq(s), Band::Eq(before)) => {
                 Band::Eq(s.bands.iter().find(|b| b.id == before.id)?.clone())
             }
@@ -157,6 +189,7 @@ impl State {
                 .ok_or("Effect preview effect is unavailable")?
                 .unit;
             match (unit, &p.band) {
+                (EffectSettings::Eq3(s), Band::FixedEq(settings)) => *s = settings.as_ref().clone(),
                 (EffectSettings::MultibandEq(s), Band::Eq(band)) => {
                     *s.bands
                         .iter_mut()

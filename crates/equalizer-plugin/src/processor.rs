@@ -17,6 +17,7 @@ pub struct Processor {
     drive: Drive,
     state: PluginState,
     settings: crate::mapping::Settings,
+    rate: u32,
     frame: u64,
     tempo: f32,
     monitor: daw_unit_core::LevelMonitor<3>,
@@ -44,6 +45,7 @@ impl Processor {
                 &state.to_settings(),
             ),
             settings: state.to_settings(),
+            rate: rate as u32,
             frame: 0,
             tempo: 120.0,
             monitor: daw_unit_core::LevelMonitor::new(
@@ -55,6 +57,8 @@ impl Processor {
     }
     pub fn set_output_meter(&mut self, meter: std::sync::Arc<crate::OutputMeter>) {
         self.monitor.attach_peak(meter.output.clone());
+        meter.set_prepared_rate(self.rate);
+        self.drive.set_spectrum_meter(meter.spectrum.clone());
         self.drive
             .set_band_level_meter(meter.bands.current().clone());
     }

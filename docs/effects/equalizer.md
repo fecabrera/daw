@@ -16,6 +16,14 @@ Low and High are shelves. Mid adjusts the range between their Frequency controls
 
 A band's footer power button cuts that range rather than bypassing its Gain. Low off removes low frequencies, High off removes high frequencies, and Mid off removes the middle range. Higher Q makes cut edges steeper. Cuts have finite slopes; frequencies near a boundary can still pass. All three bands off produce silence. Header power bypasses the entire EQ and retains the band settings.
 
+## Response graph
+
+The expanded unit shows the combined response, each band's response and a live output spectrum, using the same graph style as Multiband EQ. The response includes band cuts. The spectrum clears when the unit is off or playback stops. Compact and collapsed units hide the graph.
+
+Drag Low or High left or right to change Frequency and up or down to change Gain. Hold Command on macOS or Ctrl on Windows/Linux to adjust Q. You can switch modes without releasing the mouse. Mid moves vertically to change Gain; its position between the outer boundaries follows those controls. Hold Shift for fine adjustment.
+
+Release to apply the changes. Escape or focus loss cancels the drag. In the DAW, changes within one drag form one Undo step and sound previews prepare in the background. Standalone plugins send host parameter gestures. Click away from the points to deselect the band.
+
 ## Output monitors
 
 Each band has a horizontal output-level monitor below the header. It shows the louder stereo channel in that range, from −60 to 0 dBFS. Enabled bands use the same green as track level meters; red indicates values above 0 dBFS. These colors do not follow the accent color. Disabled bands use secondary grey. Hover for the level. The analysis ranges overlap near their boundaries. Turning the unit off clears all three monitors and stops their updates. Turning it on resumes monitoring. Stopped or paused playback shows empty rails. Compact and collapsed units hide the monitors.

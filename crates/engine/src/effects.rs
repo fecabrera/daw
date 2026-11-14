@@ -1164,6 +1164,7 @@ impl EffectChain {
     }
     pub fn set_spectrum_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::SpectrumMeter>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
+            Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => unit.set_spectrum_meter(meter.clone()),
             Some((_, Some(RuntimeEffect::MultibandEq(unit)))) => {
                 unit.set_spectrum_meter(meter.clone())
             }

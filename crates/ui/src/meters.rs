@@ -657,6 +657,7 @@ mod tests {
                                             [2.0; 3],
                                             &[],
                                             None,
+                                            None,
                                         )
                                         .0
                                         .meters,

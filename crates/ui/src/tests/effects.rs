@@ -891,7 +891,7 @@ fn effects_library_drag_uses_reorder_preview_and_inserts_group_on_release() {
             .clamp(viewport.left() + 1.0, viewport.right() - 1.0);
             assert!(shapes.iter().any(|shape| matches!(&shape.shape,
                 egui::Shape::LineSegment { points, stroke } if points[0].x == expected_x && points[1].x == expected_x && *stroke == Stroke::new(2.0, theme::accent(&ctx)) && points[0].y == viewport.top() && points[1].y == viewport.bottom()
-            )));
+            )), "compact={compact} index={index} expected_x={expected_x} viewport={viewport:?} lines={:?}", shapes.iter().filter_map(|shape| match &shape.shape { egui::Shape::LineSegment { points, stroke } if *stroke == Stroke::new(2.0, theme::accent(&ctx)) => Some(points), _ => None }).collect::<Vec<_>>());
             frame(&mut app, &ctx, vec![button(end, false)]);
             assert!(app.effects_drag.is_none());
             let effects = &app.session.project.tracks[0].effects;
@@ -1268,7 +1268,11 @@ fn end_click_sequence(app: &mut DawUi, ctx: &egui::Context) {
     let mut output = ctx.run_ui(
         egui::RawInput {
             time: Some(ctx.input(|input| input.time) + 0.6),
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+            screen_rect: Some(Rect::from_min_size(
+                Pos2::ZERO,
+                ctx.data(|d| d.get_temp::<Vec2>(egui::Id::new("test-frame-size")))
+                    .unwrap_or(Vec2::new(1280.0, 800.0)),
+            )),
             ..Default::default()
         },
         |ui| app.show(ui),
@@ -1608,6 +1612,8 @@ fn drive_catalog_is_guarded_without_selection_and_during_modal_work() {
 fn chain_fixture(compact: bool, collapsed: bool) -> (DawUi, Id, egui::Context, Vec<Id>) {
     let (mut app, track) = fixture();
     let ctx = context();
+    // The two expanded EQs now include Response strips. Keep non-scroll drag targets visible.
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(1920.0, 800.0)));
     let mut eq = daw_core::EffectInstance::equalizer();
     let daw_core::EffectSettings::Eq3(settings) = &mut eq.unit else {
         unreachable!()
@@ -2130,7 +2136,11 @@ fn click_effect_with_shift(app: &mut DawUi, ctx: &egui::Context, point: Pos2, sh
         };
         let mut output = ctx.run_ui(
             egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                screen_rect: Some(Rect::from_min_size(
+                    Pos2::ZERO,
+                    ctx.data(|d| d.get_temp::<Vec2>(egui::Id::new("test-frame-size")))
+                        .unwrap_or(Vec2::new(1280.0, 800.0)),
+                )),
                 events: vec![
                     egui::Event::ModifiersChanged(modifiers),
                     egui::Event::PointerMoved(point),
@@ -2312,7 +2322,7 @@ fn dragging_selected_effects_preserves_chain_order_for_contiguous_and_separated_
                     let (mut app, _, ctx, _) = chain_fixture(compact, collapsed);
                     // Keep the expanded bank visible; edge scrolling has separate coverage.
                     ctx.data_mut(|d| {
-                        d.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(2400.0, 800.0))
+                        d.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(3200.0, 800.0))
                     });
                     frame(&mut app, &ctx, vec![]);
                     app.session.project.tracks[0].effects.extend([
@@ -4660,7 +4670,7 @@ fn modifier_drag_copies_selected_effects_in_chain_order_with_new_ids() {
                 let (mut app, _, ctx, ids) = chain_fixture(compact, collapsed);
                 // Keep the expanded bank visible; edge scrolling has separate coverage.
                 ctx.data_mut(|d| {
-                    d.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(2400.0, 800.0))
+                    d.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(3200.0, 800.0))
                 });
                 frame(&mut app, &ctx, vec![]);
                 let third = &mut app.session.project.tracks[0].effects[2];
@@ -7613,4 +7623,17 @@ fn catalog_effect_drops_on_lfo_and_envelope_reject_a_previous_valid_layer_target
             app.session.project.validate().unwrap();
         }
     }
+}
+
+// Keep explicit paint frames at the fixture size during a multi-frame gesture.
+fn frame_shapes(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    events: Vec<egui::Event>,
+    size: Vec2,
+) -> Vec<egui::epaint::ClippedShape> {
+    let size = ctx
+        .data(|d| d.get_temp::<Vec2>(egui::Id::new("test-frame-size")))
+        .unwrap_or(size);
+    super::frame_shapes(app, ctx, events, size)
 }

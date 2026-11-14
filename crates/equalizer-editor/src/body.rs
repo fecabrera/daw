@@ -3,7 +3,7 @@ use daw_drive_plugin::{Parameter as P, PluginState};
 use daw_unit_ui::{control_capture, layout::*, meters};
 use egui::{Rect, Response, Ui, Vec2};
 pub const SIZE: Vec2 = Vec2::new(
-    3.0 * UNIT_STRIP_WIDTH,
+    daw_unit_ui::eq_graph::WIDTH + 3.0 * UNIT_STRIP_WIDTH,
     unit_control_height() + 2.0 * PANEL_MARGIN as f32,
 );
 pub struct Bounds {
@@ -20,7 +20,7 @@ pub fn show(
     _: &[Option<ModulationMarker>; P::COUNT - 1],
     level: meters::OutputLevel<'_>,
 ) -> Bounds {
-    render(ui, settings, level, 0.0.into(), [0.0; 3])
+    render(ui, settings, level, 0.0.into(), [0.0; 3], None)
 }
 pub fn render(
     ui: &mut Ui,
@@ -28,6 +28,7 @@ pub fn render(
     level: meters::OutputLevel<'_>,
     reduction: meters::GainReduction<'_>,
     levels: [f32; 3],
+    spectrum: Option<&daw_unit_core::SpectrumReading>,
 ) -> Bounds {
     let _ = (level, reduction);
     let before = PluginState::from_settings(settings).ok();
@@ -39,10 +40,16 @@ pub fn render(
             unit_control_height(),
             levels,
             &std::array::from_fn(|_| None),
+            Some(daw_unit_ui::eq_graph::FixedInput {
+                live_edits: true,
+                spectrum,
+                response: daw_equalizer::response,
+                effective: None,
+            }),
         )
     });
     let after = PluginState::from_settings(settings).ok();
-    let controls = std::array::from_fn(|slot| {
+    let mut controls = std::array::from_fn(|slot| {
         let rect = match P::ALL[slot + 1] {
             P::LowGain => b.knobs[0][0],
             P::LowFrequency => b.knobs[0][1],
@@ -66,6 +73,20 @@ pub fn render(
             response
         })
     });
+    for (id, parameter, response) in b.graph.edits {
+        let p = match (id.as_u128(), parameter) {
+            (1, 0) => P::LowGain,
+            (1, 1) => P::LowFrequency,
+            (1, 2) => P::LowQ,
+            (2, 0) => P::MidGain,
+            (3, 0) => P::HighGain,
+            (3, 1) => P::HighFrequency,
+            (3, 2) => P::HighQ,
+            _ => continue,
+        };
+        let slot = P::ALL.iter().position(|v| *v == p).unwrap() - 1;
+        controls[slot] = Some(response);
+    }
     Bounds {
         sections: b.sections,
         controls,

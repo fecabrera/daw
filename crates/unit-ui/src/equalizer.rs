@@ -8,6 +8,7 @@ use daw_unit_core::{EqSettings, ModulationParameter as Parameter};
 use egui::{Rect, Ui, Vec2};
 
 pub struct Bounds {
+    pub graph: crate::eq_graph::Bounds,
     pub sections: [Rect; 3],
     pub header: Rect,
     pub power: Rect,
@@ -51,6 +52,7 @@ fn controls(
     }
     bounds
 }
+#[allow(clippy::too_many_arguments)]
 pub fn show(
     ui: &mut Ui,
     settings: &mut EqSettings,
@@ -58,8 +60,10 @@ pub fn show(
     body_height: f32,
     levels: [f32; 3],
     markers: &[Option<knobs::ModulationMarker>; 7],
+    graph: Option<crate::eq_graph::FixedInput<'_>>,
 ) -> Bounds {
     let mut bounds = Bounds {
+        graph: Default::default(),
         sections: [Rect::NOTHING; 3],
         header: Rect::NOTHING,
         power: Rect::NOTHING,
@@ -72,6 +76,10 @@ pub fn show(
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
 
+        if let Some(graph) = graph {
+            bounds.graph =
+                crate::eq_graph::show_equalizer(ui, settings, body_height, !compact, graph);
+        }
         for (index, name) in ["Low", "Mid", "High"].into_iter().enumerate() {
             let strip = ui
                 .push_id(index, |ui| {

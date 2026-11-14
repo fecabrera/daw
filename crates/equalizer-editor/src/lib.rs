@@ -9,6 +9,18 @@ fn show_body(
     settings: &mut daw_unit_core::EqSettings,
     model: &Model,
 ) -> body::Bounds {
+    let cache_id = ui.id().with("eq-spectrum-consumer");
+    let mut cache = ui
+        .data(|data| data.get_temp::<daw_unit_core::SpectrumCache>(cache_id))
+        .unwrap_or_default();
+    let spectrum =
+        cache
+            .read(&model.output_meter.spectrum)
+            .unwrap_or(daw_unit_core::SpectrumReading {
+                sample_rate_hz: model.output_meter.sample_rate_hz(),
+                ..Default::default()
+            });
+    ui.data_mut(|data| data.insert_temp(cache_id, cache));
     body::render(
         ui,
         settings,
@@ -23,6 +35,7 @@ fn show_body(
         )
         .for_unit(settings.enabled),
         model.output_meter.bands.readings(),
+        Some(&spectrum),
     )
 }
 fn paint_extra(
@@ -72,6 +85,12 @@ fn paint_reference(ui: &mut egui::Ui, settings: &mut daw_unit_core::EqSettings, 
             unit_control_height(),
             levels,
             &std::array::from_fn(|_| None),
+            Some(daw_unit_ui::eq_graph::FixedInput {
+                live_edits: true,
+                spectrum: None,
+                response: daw_equalizer::response,
+                effective: None,
+            }),
         )
     };
 }

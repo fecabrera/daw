@@ -30,6 +30,7 @@ pub struct Bounds {
     pub section: Rect,
     pub plot: Rect,
     pub nodes: Vec<Rect>,
+    pub selected: Option<daw_unit_core::ModulationTargetId>,
     /// Held draft for hosts that stage transient audio plans.
     pub preview: Option<MultibandEqBand>,
     /// Band identity, shared Gain/Frequency/Q index, and gesture response.
@@ -41,6 +42,7 @@ impl Default for Bounds {
             section: Rect::NOTHING,
             plot: Rect::NOTHING,
             nodes: Vec::new(),
+            selected: None,
             preview: None,
             edits: Vec::new(),
         }
@@ -67,6 +69,89 @@ pub fn show(
     height: f32,
     visible: bool,
     input: Input<'_>,
+) -> Bounds {
+    show_inner(ui, s, height, visible, input, None)
+}
+type FixedResponse = fn(&daw_unit_core::EqSettings, u32) -> [Vec<f32>; 3];
+pub struct FixedInput<'a> {
+    pub live_edits: bool,
+    pub spectrum: Option<&'a SpectrumReading>,
+    pub response: FixedResponse,
+    pub effective: Option<[f32; 7]>,
+}
+/// Fixed shelves reuse graph gestures, with Mid limited to Gain.
+pub fn show_equalizer(
+    ui: &mut Ui,
+    settings: &mut daw_unit_core::EqSettings,
+    height: f32,
+    visible: bool,
+    input: FixedInput<'_>,
+) -> Bounds {
+    let mut mapped = fixed_view(settings);
+    let original = settings.clone();
+    let bounds = show_inner(
+        ui,
+        &mut mapped,
+        height,
+        visible,
+        Input {
+            live_edits: input.live_edits,
+            spectrum: input.spectrum,
+            sample_rate_hz: input.spectrum.map_or(48_000, |s| s.sample_rate_hz),
+            effective: &[],
+            output_gain_db: None,
+            response: |_, r| FrequencyResponse::unity(r),
+        },
+        Some((&original, input.response, input.effective)),
+    );
+    for (i, b) in mapped.bands.iter().enumerate() {
+        settings.bands[i].gain_db = b.gain_db;
+        if i != 1 {
+            settings.bands[i].frequency_hz = b.frequency_hz;
+            settings.bands[i].q = b.q;
+        }
+    }
+    bounds
+}
+fn fixed_view(s: &daw_unit_core::EqSettings) -> MultibandEqSettings {
+    MultibandEqSettings {
+        enabled: s.enabled,
+        bands: s
+            .bands
+            .iter()
+            .enumerate()
+            .map(|(i, b)| MultibandEqBand {
+                id: daw_unit_core::ModulationTargetId::from_u128(i as u128 + 1),
+                enabled: b.enabled,
+                mode: [
+                    daw_unit_core::EqBandMode::LowShelf,
+                    daw_unit_core::EqBandMode::Bell,
+                    daw_unit_core::EqBandMode::HighShelf,
+                ][i],
+                frequency_hz: if i == 1 {
+                    (s.bands[0].frequency_hz * s.bands[2].frequency_hz).sqrt()
+                } else {
+                    b.frequency_hz
+                },
+                gain_db: b.gain_db,
+                q: b.q,
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+type FixedState<'a> = (
+    &'a daw_unit_core::EqSettings,
+    FixedResponse,
+    Option<[f32; 7]>,
+);
+fn show_inner(
+    ui: &mut Ui,
+    s: &mut MultibandEqSettings,
+    height: f32,
+    visible: bool,
+    input: Input<'_>,
+    fixed: Option<FixedState<'_>>,
 ) -> Bounds {
     let id = ui.make_persistent_id("eq-graph-drag");
     let selection = ui.make_persistent_id("eq-graph-selection");
@@ -143,6 +228,20 @@ pub fn show(
             } else {
                 String::new()
             };
+            let label = if fixed.is_some() {
+                ["Low", "Mid", "High"][i].to_owned()
+            } else {
+                format!("Band {}", i + 1)
+            };
+            let description = if fixed.is_some() && i == 1 {
+                format!("{label} · Gain: {:+.1} dB", shown.gain_db)
+            } else {
+                format!(
+                    "{label} · Frequency: {}{gain} · Q: {:.2}",
+                    crate::knobs::format_frequency(shown.frequency_hz),
+                    shown.q
+                )
+            };
             let response = ui
                 .interact(
                     rect,
@@ -150,24 +249,12 @@ pub fn show(
                     Sense::click_and_drag(),
                 )
                 .on_hover_cursor(egui::CursorIcon::Grab)
-                .on_hover_text(format!(
-                    "Band {} · Frequency: {}{} · Q: {:.2}",
-                    i + 1,
-                    crate::knobs::format_frequency(shown.frequency_hz),
-                    gain,
-                    shown.q
-                ));
+                .on_hover_text(&description);
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(
                     egui::WidgetType::DragValue,
                     response.enabled(),
-                    format!(
-                        "EQ band {} point: Frequency {:.0} Hz, Gain {:.1} dB, Q {:.2}",
-                        i + 1,
-                        b.frequency_hz,
-                        b.gain_db,
-                        b.q
-                    ),
+                    &description,
                 )
             });
             if response.clicked() || response.drag_started() {
@@ -214,18 +301,20 @@ pub fn show(
                         }
                     }
                     let original = &d.anchor;
-                    if d.q {
+                    if d.q && !(fixed.is_some() && i == 1) {
                         d.preview.q = (f64::from(original.q)
                             * 100_f64.powf(
                                 d.offset[0] / f64::from(plot.width())
                                     - d.offset[1] / f64::from(plot.height()),
                             ))
                         .clamp(0.1, 10.0) as f32;
-                    } else {
-                        d.preview.frequency_hz = (f64::from(original.frequency_hz)
-                            * 1000_f64.powf(d.offset[0] / f64::from(plot.width())))
-                        .clamp(20.0, 20_000.0)
-                            as f32;
+                    } else if !d.q {
+                        if !(fixed.is_some() && i == 1) {
+                            d.preview.frequency_hz = (f64::from(original.frequency_hz)
+                                * 1000_f64.powf(d.offset[0] / f64::from(plot.width())))
+                            .clamp(20.0, 20_000.0)
+                                as f32;
+                        }
                         if d.preview.mode.uses_gain() {
                             d.preview.gain_db = (f64::from(original.gain_db)
                                 - 48.0 * d.offset[1] / f64::from(plot.height()))
@@ -254,6 +343,15 @@ pub fn show(
                     }
                 }
             }
+        }
+        if drag.is_none()
+            && ui.is_enabled()
+            && ui.input(|i| i.pointer.primary_clicked())
+            && ui
+                .input(|i| i.pointer.interact_pos())
+                .is_some_and(|p| !bounds.nodes.iter().any(|r| r.contains(p)))
+        {
+            selected = None;
         }
         let view: Vec<_> = s
             .bands
@@ -284,12 +382,38 @@ pub fn show(
             };
             POINTS
         ];
-        for b in &view {
+        let fixed_curves = fixed.map(|(base, response, effective)| {
+            let mut base = base.clone();
+            for (i, b) in view.iter().enumerate() {
+                base.bands[i].gain_db = b.gain_db;
+                if i != 1 {
+                    base.bands[i].frequency_hz = b.frequency_hz;
+                    base.bands[i].q = b.q;
+                }
+            }
+            if drag.is_none()
+                && let Some(v) = effective.filter(|v| v.iter().all(|x| x.is_finite()))
+            {
+                for (i, j) in [(0, 0), (2, 4)] {
+                    base.bands[i].gain_db = v[j];
+                    base.bands[i].frequency_hz = v[j + 1];
+                    base.bands[i].q = v[j + 2];
+                }
+                base.bands[1].gain_db = v[3];
+            }
+            response(&base, input.sample_rate_hz)
+        });
+        for (i, b) in view.iter().enumerate() {
             let response = (input.response)(b, input.sample_rate_hz);
-            let values: Vec<_> = (0..POINTS)
-                .map(|j| response.db(20.0 * 1000_f32.powf(j as f32 / (POINTS - 1) as f32)))
-                .collect();
-            if s.enabled && b.enabled {
+            let values: Vec<_> = fixed_curves
+                .as_ref()
+                .map(|curves| curves[i].clone())
+                .unwrap_or_else(|| {
+                    (0..POINTS)
+                        .map(|j| response.db(20.0 * 1000_f32.powf(j as f32 / (POINTS - 1) as f32)))
+                        .collect()
+                });
+            if s.enabled && (b.enabled || fixed.is_some()) {
                 for (sum, value) in combined.iter_mut().zip(&values) {
                     *sum += value;
                 }
@@ -362,11 +486,20 @@ pub fn show(
             painter.text(
                 chart.right_top() + Vec2::new(-2.0, 1.0),
                 egui::Align2::RIGHT_TOP,
-                format!(
-                    "B{index} · {}{gain} · Q{:.2}",
-                    crate::knobs::format_frequency(b.frequency_hz),
-                    b.q
-                ),
+                if fixed.is_some() && index == 2 {
+                    format!("Mid · {:+.1} dB", b.gain_db)
+                } else {
+                    let label = if fixed.is_some() {
+                        ["Low", "Mid", "High"][index - 1].to_owned()
+                    } else {
+                        format!("B{index}")
+                    };
+                    format!(
+                        "{label} · {}{gain} · Q{:.2}",
+                        crate::knobs::format_frequency(b.frequency_hz),
+                        b.q
+                    )
+                },
                 font.clone(),
                 palette.secondary,
             );
@@ -394,6 +527,7 @@ pub fn show(
         });
     });
     bounds.section = strip.response.rect;
+    bounds.selected = selected;
     ui.data_mut(|data| {
         if let Some(d) = drag {
             data.insert_temp(id, d);
@@ -402,6 +536,8 @@ pub fn show(
         }
         if let Some(s) = selected {
             data.insert_temp(selection, s);
+        } else {
+            data.remove::<daw_unit_core::ModulationTargetId>(selection);
         }
     });
     bounds
@@ -463,6 +599,64 @@ mod tests {
             modifiers: Default::default(),
         }
     }
+    #[test]
+    fn empty_click_clears_selection_without_changing_parameters() {
+        let ctx = egui::Context::default();
+        theme::configure(&ctx);
+        crate::fonts::configure(&ctx);
+        let mut settings = MultibandEqSettings::default();
+        let before = settings.clone();
+        let bounds = frame(&ctx, &mut settings, vec![], true, true, false);
+        let point = bounds.nodes[0].center();
+        frame(
+            &ctx,
+            &mut settings,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+            true,
+            true,
+            false,
+        );
+        frame(
+            &ctx,
+            &mut settings,
+            vec![button(point, false)],
+            true,
+            true,
+            false,
+        );
+        assert_eq!(
+            frame(&ctx, &mut settings, vec![], true, true, false).selected,
+            Some(settings.bands[0].id)
+        );
+        // Selected handles use the accent; an empty click must remove that paint on this and subsequent frames.
+        let empty = bounds.plot.left_top() + Vec2::splat(8.0);
+        frame(
+            &ctx,
+            &mut settings,
+            vec![egui::Event::PointerMoved(empty), button(empty, true)],
+            true,
+            true,
+            false,
+        );
+        assert_eq!(
+            frame(
+                &ctx,
+                &mut settings,
+                vec![button(empty, false)],
+                true,
+                true,
+                false
+            )
+            .selected,
+            None
+        );
+        assert_eq!(
+            frame(&ctx, &mut settings, vec![], true, true, false).selected,
+            None
+        );
+        assert_eq!(settings, before);
+    }
+
     #[test]
     fn eq_graph_drafts_commit_by_id_on_release_and_cancel_without_mutating_settings() {
         for cancel in ["release", "escape", "focus", "hidden", "external"] {
@@ -685,3 +879,7 @@ mod tests {
 #[cfg(test)]
 #[path = "eq_graph/readiness_tests.rs"]
 mod readiness_tests;
+
+#[cfg(test)]
+#[path = "eq_graph/fixed_tests.rs"]
+mod fixed_tests;

@@ -325,6 +325,7 @@ pub struct Equalizer {
     remaining: u32,
     fade_frames: u32,
     monitor: monitor::Monitor,
+    spectrum: daw_spectrum::SpectrumAnalyzer,
     external: daw_unit_core::ModulationSmoother<7>,
     effective: [[f32; 4]; 3],
     // Conversion/filter configuration is unchanged while base ramps and offsets are steady.
@@ -345,6 +346,7 @@ impl Equalizer {
             remaining: 0,
             fade_frames: (context.sample_rate_hz / 200).max(1),
             monitor: monitor::Monitor::new(context.sample_rate_hz, settings.enabled),
+            spectrum: daw_spectrum::SpectrumAnalyzer::new(context.sample_rate_hz, settings.enabled),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: settings.bands.map(values),
             configuration: None,
@@ -352,6 +354,7 @@ impl Equalizer {
     }
     /// Retarget without allocating or resetting filter history. Display-only changes are no-ops.
     pub fn retarget(&mut self, settings: &EqSettings) {
+        self.spectrum.set_enabled(settings.enabled);
         for (band, settings) in self.bands.iter_mut().zip(settings.bands) {
             band.retarget(settings, self.fade_frames);
         }
@@ -361,6 +364,9 @@ impl Equalizer {
             self.target = target;
             self.remaining = self.fade_frames;
         }
+    }
+    pub fn set_spectrum_meter(&mut self, meter: std::sync::Arc<daw_unit_core::SpectrumMeter>) {
+        self.spectrum.attach(meter);
     }
     /// Attach prepared stereo-peak monitors in Low/Mid/High order on the control thread.
     /// Values are linear amplitudes of the filtered unit output, with a 300 ms release.
@@ -372,6 +378,9 @@ impl Equalizer {
     }
 }
 impl EffectUnit for Equalizer {
+    fn heap_bytes(&self) -> u64 {
+        self.spectrum.heap_bytes()
+    }
     fn descriptor(&self) -> UnitDescriptor {
         UnitDescriptor {
             type_id: EQ_TYPE_ID,
@@ -390,6 +399,7 @@ impl EffectUnit for Equalizer {
         self.mix = self.target;
         self.remaining = 0;
         self.monitor.reset();
+        self.spectrum.reset();
         self.external.reset();
         self.configuration = None;
         self.effective = std::array::from_fn(|i| self.bands[i].current);
@@ -436,6 +446,7 @@ impl Equalizer {
         let output = std::array::from_fn(|ch| input[ch] + (wet[ch] - input[ch]) * self.mix);
         self.monitor
             .sample(output, self.effective[0][0], self.effective[2][0]);
+        self.spectrum.sample(output);
         output
     }
 }
@@ -859,3 +870,6 @@ mod multiband;
 pub use multiband::MultibandEq;
 
 pub use multiband::band_response;
+
+mod response;
+pub use response::response;

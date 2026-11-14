@@ -1976,6 +1976,7 @@ dependencies = [
 name = "daw-equalizer-editor"
 version = "0.1.0"
 dependencies = [
+ "daw-equalizer",
  "daw-equalizer-plugin",
  "daw-plugin-support",
  "daw-plugin-window",
@@ -1990,6 +1991,7 @@ version = "0.1.0"
 dependencies = [
  "daw-equalizer",
  "daw-plugin-support",
+ "daw-spectrum",
  "daw-unit-core",
  "serde_json",
  "toml_edit",

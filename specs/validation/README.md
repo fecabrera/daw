@@ -5,6 +5,44 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## 3-band EQ live Response graph — 2026-11-14
+
+The DAW and CLAP/VST3/AUv2 editors share the Multiband EQ graph renderer for
+3-band EQ. Low/High support Frequency/Gain and modifier Q gestures; Mid edits Gain
+without writing its legacy Frequency/Q fields. Both EQ graphs clear band selection
+on an empty click. See [3-band EQ](../effects/equalizer.md#shared-live-response-graph--2026-11-14).
+
+Executed on macOS arm64:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `cargo test --workspace --offline` with macOS audio-service access: PASS,
+  3,456 passed and 22 intentionally ignored.
+- `cargo test --workspace --release --offline` with macOS audio-service access:
+  PASS, 3,456 passed and 22 intentionally ignored.
+- Focused DSP, graph, editor, plugin, output and VST3 checks:
+  `cargo test -p daw-unit-ui -p daw-equalizer -p daw-equalizer-editor -p daw-equalizer-plugin -p daw-output -p daw-equalizer-vst3 --offline`:
+  PASS, 213 tests. Includes curve/audio comparisons for shelves, cuts, crossed/equal
+  boundaries and silence, spectrum publication/clearing, schema-2 telemetry,
+  per-scope handle reuse, fixed-band gestures, deselection and editor parity.
+- `cargo test -p daw-ui --offline three_band_graph_preview`: PASS. Track and Master
+  drafts leave saved settings unchanged while held, restore on cancellation, and
+  commit all Frequency/Gain/Q changes as one Undo/Redo step.
+- The sandbox denied Apple's native `AudioComponentRegister`. Repeating the native
+  registration test with access to macOS audio services passed. This is an
+  environment limit, not an EQ assertion failure.
+- `cargo test -p daw-ui --offline`: PASS, 1,019 passed and 3 intentionally
+  ignored. Non-scroll effect-chain fixtures now fit the wider EQs and retain the
+  same viewport across gesture frames; separate edge-scroll coverage remains.
+- Shared VST3 telemetry checks for 3-band EQ, Multiband EQ and Multiband
+  Compressor: PASS. Legacy-prefix assertions exclude the synthesized rate field.
+- Documentation links in the four changed effect guides/specifications: 16 checked,
+  none missing.
+
+Remaining manual checks: native DAW and plugin-host appearance, mouse gestures,
+playback and automation in Logic/other hosts; Windows/Linux native execution.
+Automated egui and ABI tests do not establish those results.
+
 ## Native AUv2 exports and Logic input binding — 2026-11-14
 
 All 20 registered products now have native AUv2 targets using our locally generated

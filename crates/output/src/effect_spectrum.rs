@@ -7,7 +7,8 @@ pub(super) fn prepare(plan: &RenderPlan, previous: &Spectra) -> Spectra {
         .filter(|e| {
             matches!(
                 e.unit,
-                daw_core::EffectSettings::MultibandEq(_)
+                daw_core::EffectSettings::Eq3(_)
+                    | daw_core::EffectSettings::MultibandEq(_)
                     | daw_core::EffectSettings::MultibandCompressor(_)
             )
         })
@@ -26,9 +27,11 @@ mod tests {
     #[test]
     fn every_spectrum_scope_reuses_its_handle_and_prepared_binding_does_not_publish() {
         use daw_core::{BeatEdit, BeatSubtrack, Edit, EffectInstance, Project};
-        for compressor in [false, true] {
+        for kind in 0..3 {
             let make = || {
-                if compressor {
+                if kind == 0 {
+                    EffectInstance::equalizer()
+                } else if kind == 1 {
                     EffectInstance::multiband_compressor()
                 } else {
                     EffectInstance::multiband_equalizer()

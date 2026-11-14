@@ -6,6 +6,7 @@ use egui::{Rect, Ui, Vec2};
 
 pub(super) use daw_unit_ui::equalizer::Bounds;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut EqSettings,
@@ -14,14 +15,20 @@ pub(super) fn show(
     levels: [f32; 3],
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    spectrum: Option<daw_unit_core::SpectrumReading>,
 ) -> (Bounds, egui::Response) {
     ui.scope_builder(
         egui::UiBuilder::new()
             .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
-        |ui| show_inner(ui, settings, compact, height, levels, sources, live),
+        |ui| {
+            show_inner(
+                ui, settings, compact, height, levels, sources, live, spectrum,
+            )
+        },
     )
     .inner
 }
+#[allow(clippy::too_many_arguments)]
 fn show_inner(
     ui: &mut Ui,
     settings: &mut EqSettings,
@@ -30,6 +37,7 @@ fn show_inner(
     levels: [f32; 3],
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    spectrum: Option<daw_unit_core::SpectrumReading>,
 ) -> (Bounds, egui::Response) {
     let levels = meters::unit_reading(settings.enabled, levels);
     let bases = [
@@ -54,6 +62,7 @@ fn show_inner(
     });
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
+        graph: Default::default(),
         sections: [Rect::NOTHING; 3],
         header: Rect::NOTHING,
         power: Rect::NOTHING,
@@ -78,6 +87,8 @@ fn show_inner(
                 &mut bounds,
                 &markers,
                 sources,
+                spectrum.as_ref(),
+                live,
             )
         },
     );
@@ -94,6 +105,7 @@ fn show_inner(
     (bounds, result.header)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn body(
     ui: &mut Ui,
     settings: &mut EqSettings,
@@ -102,6 +114,8 @@ fn body(
     bounds: &mut Bounds,
     markers: &[Option<knobs::ModulationMarker>; 7],
     sources: &[crate::modulation_panel::Source],
+    spectrum: Option<&daw_unit_core::SpectrumReading>,
+    live: Option<daw_engine::ModulationSnapshot>,
 ) {
     let open = settings.modulation_open;
     ui.horizontal_top(|ui| {
@@ -113,7 +127,14 @@ fn body(
             crate::envelope_panel::body_height(compact),
             levels,
             markers,
+            Some(daw_unit_ui::eq_graph::FixedInput {
+                live_edits: false,
+                spectrum,
+                response: daw_equalizer::response,
+                effective: live.map(|v| std::array::from_fn(|i| v[i])),
+            }),
         );
+        bounds.graph = shared.graph;
         bounds.knobs = shared.knobs;
         bounds.bands = shared.bands;
         bounds.meters = shared.meters;
@@ -183,6 +204,7 @@ mod tests {
                                                 if compact { 68.0 } else { 244.0 },
                                                 [peak; 3],
                                                 &[],
+                                                None,
                                                 None,
                                             )
                                             .0,

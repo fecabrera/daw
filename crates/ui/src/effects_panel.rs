@@ -1133,7 +1133,22 @@ impl DawUi {
                                                     daw_engine::ModulationTarget::Effect(effect.id),
                                                 )
                                             }),
+                                            self.output
+                                                .as_ref()
+                                                .and_then(|o| o.effect_spectrum(effect.id)),
                                         );
+                                        if let (Some(target), Some(preview)) =
+                                            (target, _bounds.graph.preview.as_ref())
+                                        {
+                                            self.eq_graph_preview.offer_equalizer(
+                                                ui.ctx().cumulative_frame_nr(),
+                                                self.session.project.project_id,
+                                                target,
+                                                effect.id,
+                                                settings.clone(),
+                                                preview.clone(),
+                                            );
+                                        }
                                         let power = _bounds.power;
                                         #[cfg(test)]
                                         self.effects_bounds.units.push(_bounds);

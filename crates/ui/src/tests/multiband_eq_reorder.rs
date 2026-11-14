@@ -423,3 +423,99 @@ fn multiband_eq_graph_preview_is_atomic_cancellable_and_one_undo_step() {
         }
     }
 }
+
+#[test]
+fn three_band_graph_preview_commits_one_undo_step_or_restores_on_cancel() {
+    fn fixed(app: &DawUi) -> &daw_core::EqSettings {
+        let chain = if app.master_selected {
+            &app.session.project.master.effects
+        } else {
+            &app.session.project.tracks[0].effects
+        };
+        let daw_core::EffectSettings::Eq3(settings) = &chain[0].unit else {
+            panic!()
+        };
+        settings
+    }
+    for master in [false, true] {
+        for cancel in [false, true] {
+            let (mut app, ctx) = fixture(false, master);
+            let chain = if master {
+                &mut app.session.project.master.effects
+            } else {
+                &mut app.session.project.tracks[0].effects
+            };
+            chain[0] = daw_core::EffectInstance::equalizer();
+            app.history = None;
+            app.ensure_history();
+            frame(&mut app, &ctx, vec![]);
+            let original = fixed(&app).clone();
+            let start = app.effects_bounds.units[0].graph.nodes[0].center();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let next = start + Vec2::new(20.0, -15.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(next)]);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::ModifiersChanged(egui::Modifiers {
+                    command: true,
+                    mac_cmd: cfg!(target_os = "macos"),
+                    ctrl: !cfg!(target_os = "macos"),
+                    ..Default::default()
+                })],
+            );
+            let end = next + Vec2::new(10.0, -5.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(fixed(&app), &original);
+            assert!(!app.dirty);
+            let target = if master {
+                daw_core::EffectChainTarget::Master
+            } else {
+                daw_core::EffectChainTarget::Track(app.session.project.tracks[0].id)
+            };
+            let preview = app.eq_graph_preview.published_plan(&app.session);
+            let (chain, _) = preview.project.effect_chain(target).unwrap();
+            let daw_core::EffectSettings::Eq3(settings) = &chain[0].unit else {
+                panic!()
+            };
+            assert!(settings.bands[0].gain_db > original.bands[0].gain_db);
+            assert!(settings.bands[0].frequency_hz > original.bands[0].frequency_hz);
+            assert!(settings.bands[0].q > original.bands[0].q);
+            if cancel {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            if cancel {
+                assert_eq!(fixed(&app), &original);
+                assert!(!app.dirty);
+                let restored = app.eq_graph_preview.published_plan(&app.session);
+                let (chain, _) = restored.project.effect_chain(target).unwrap();
+                let daw_core::EffectSettings::Eq3(actual) = &chain[0].unit else {
+                    panic!()
+                };
+                assert_eq!(actual, &original);
+            } else {
+                let changed = fixed(&app).clone();
+                assert_ne!(changed, original);
+                app.perform_history_action(HistoryAction::Undo, &ctx);
+                assert_eq!(fixed(&app), &original);
+                app.perform_history_action(HistoryAction::Redo, &ctx);
+                assert_eq!(fixed(&app), &changed);
+            }
+        }
+    }
+}

@@ -205,3 +205,7 @@ Selector and band-context popups have separate identities; retain temporary
 Solo and Remove-band actions on the selector. Standalone control capture records
 the dropdown response so a menu selection emits a bounded edit for its Mode
 parameter.
+
+## Graph selection — 2026-11-14
+
+Primary clicks away from all graph handles clear band selection, including the cached selection on subsequent frames. This UI-only action does not change settings, host parameters, history or DSP state. The shared 3-band EQ graph follows the same rule.

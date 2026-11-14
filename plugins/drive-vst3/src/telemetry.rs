@@ -4,22 +4,28 @@ use daw_drive_plugin::METER_VALUES;
 // EQ and Multiband Compressor v2 append spectrum metadata. Regular Compressor v2
 // appends its rolling history after the original thirteen scalar readings.
 const HISTORY: bool = METER_VALUES == 415;
-const SPECTRUM: bool = METER_VALUES == 668 || METER_VALUES == 796;
-const LEGACY_VALUES: usize = if HISTORY {
+const SPECTRUM: bool = METER_VALUES == 668 || METER_VALUES == 796 || METER_VALUES == 540;
+const LEGACY_VALUES: usize = if HISTORY || METER_VALUES == 540 {
     13
 } else if METER_VALUES == 796 {
     269
 } else {
     206
 };
-const LEGACY_PREFIX: usize = if HISTORY {
+const LEGACY_PREFIX: usize = if HISTORY || METER_VALUES == 540 {
     13
 } else if METER_VALUES == 796 {
     269
 } else {
     142
 };
-const SPECTRUM_RATE: usize = if METER_VALUES == 796 { 269 } else { 141 };
+const SPECTRUM_RATE: usize = if METER_VALUES == 540 {
+    13
+} else if METER_VALUES == 796 {
+    269
+} else {
+    141
+};
 // Exact spectrum/history schema-2 sizes, never a threshold.
 // Other products retain their full v1 payloads.
 const EXTENDED: bool = SPECTRUM || HISTORY;
@@ -513,7 +519,8 @@ mod compatibility_tests {
                 assert_eq!(read(message.as_ptr()).is_some(), length == METER_VALUES);
                 message.setMessageID(Kind::Reading.id().as_ptr());
                 let (_, values) = read(message.as_ptr()).unwrap();
-                assert_eq!(*values.get(140).unwrap(), 140.0);
+                let last = LEGACY_PREFIX.min(SPECTRUM_RATE) - 1;
+                assert_eq!(values[last], last as f32);
                 assert!(
                     values
                         .get(SPECTRUM_RATE + 1..METER_VALUES.saturating_sub(14))
