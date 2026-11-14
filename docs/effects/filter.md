@@ -36,4 +36,4 @@ collapse state are saved with the project. Undo and Redo apply to changes.
 
 The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.
 
-This effect also has a [standalone CLAP/VST3 plugin](plugins.md).
+This effect also has a [standalone plugin](plugins.md).

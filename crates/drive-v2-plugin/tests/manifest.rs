@@ -17,7 +17,7 @@ fn checked_manifest_generates_the_public_descriptor_and_panel() {
 #[test]
 fn invalid_manifest_contracts_cannot_build() {
     let invalid = [
-        INPUT.replacen("schema_version = 1", "schema_version = 2", 1),
+        INPUT.replacen("schema_version = 2", "schema_version = 99", 1),
         INPUT.replacen("settings_version = 1", "settings_version = 2", 1),
         INPUT.replacen("state_version = 1", "state_version = 0", 1),
         INPUT.replacen("type_id = \"daw.drive-v2\"", "type_id = \"daw.other\"", 1),

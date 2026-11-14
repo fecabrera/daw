@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 settings_version = 1
 state_version = 1
 type_id = "daw.drive"
@@ -80,3 +80,12 @@ controls = [
     { parameter = "color_strength", control = "percent", enabled_by = "color_shape" },
     { parameter = "color_frequency", control = "frequency", enabled_by = "color_shape" },
 ]
+
+[auv2]
+type = "aufx"
+subtype = "Driv"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.drive.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieDriveAUView"
+component_version = 256

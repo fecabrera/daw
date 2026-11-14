@@ -67,7 +67,7 @@ DAW Stop clears it. Export appends a tail up to ten seconds and warns when the
 reported tail budget exceeds that cap. For longer fades, extend the arrangement
 with silence. Reverbs that are bypassed add no tail budget.
 
-Independent [CLAP and VST3 previews](plugins.md) use the same body and processor.
+Independent [standalone plugin previews](plugins.md) use the same body and processor.
 This is an original ambient processor. Exact reference-plugin equivalence has not
 been established. Long feedback settings can use substantial processing time and
 memory; native-device performance and listening checks remain separate from the

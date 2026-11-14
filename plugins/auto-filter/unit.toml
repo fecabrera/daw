@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 settings_version = 1
 state_version = 1
 type_id = "daw.auto-filter"
@@ -153,3 +153,12 @@ controls = [
 { parameter = "level", control = "gain" },
 { parameter = "dry_wet", control = "percent" },
 ]
+
+[auv2]
+type = "aufx"
+subtype = "AuFl"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.auto-filter.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieAutoFilterAUView"
+component_version = 256

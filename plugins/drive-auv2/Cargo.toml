@@ -1,0 +1,23 @@
+[package]
+name = "daw-drive-auv2"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+build = "../drive-auv2/build.rs"
+
+[lib]
+path = "../drive-auv2/src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+daw-drive-plugin = { package = "daw-drive-plugin", path = "../../crates/drive-plugin" }
+daw-drive-editor = { package = "daw-drive-editor", path = "../../crates/drive-editor" }
+daw-plugin-auv2.workspace = true
+daw-plugin-window.workspace = true
+daw-plugin-support.workspace = true
+
+[target.'cfg(target_os = "macos")'.build-dependencies]
+cc.workspace = true
+toml_edit.workspace = true

@@ -43,6 +43,14 @@ impl Default for Model {
     }
 }
 impl Model {
+    /// Copy instance-only view preferences without sharing event queues or writers.
+    pub fn copy_view_preferences(&self, source: &Self) {
+        self.appearance
+            .store(source.appearance.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.scale
+            .store(source.scale.load(Ordering::Relaxed), Ordering::Relaxed);
+    }
+
     /// Apply a host-transported VST3 snapshot on the control thread.
     pub fn receive_output(&self, values: [f32; 2]) {
         use daw_unit_core::MeterStorage;

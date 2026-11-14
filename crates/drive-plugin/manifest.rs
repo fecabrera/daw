@@ -63,10 +63,11 @@ pub fn generate(input: &str) -> Result<String> {
             "controller_id",
             "parameters",
             "strips",
+            "auv2",
         ],
     )?;
     for (key, expected) in [
-        ("schema_version", 1),
+        ("schema_version", 2),
         (
             "state_version",
             match MANIFEST_TYPE_ID {
@@ -111,6 +112,78 @@ pub fn generate(input: &str) -> Result<String> {
     let controller = class_id(string(root, "controller_id")?)?;
     if processor == controller {
         return Err(fail("processor/controller IDs must differ"));
+    }
+    let au = root
+        .get("auv2")
+        .and_then(Item::as_table)
+        .ok_or_else(|| fail("missing auv2 metadata"))?;
+    keys(
+        au,
+        &[
+            "type",
+            "subtype",
+            "manufacturer",
+            "bundle_id",
+            "factory",
+            "cocoa_class",
+            "component_version",
+        ],
+    )?;
+    let fourcc = |key: &str| -> Result<u32> {
+        let text = string(au, key)?;
+        let bytes: [u8; 4] = text
+            .as_bytes()
+            .try_into()
+            .map_err(|_| fail("AU codes require four ASCII bytes"))?;
+        if !bytes.iter().all(u8::is_ascii_alphanumeric) {
+            return Err(fail("invalid AU code"));
+        }
+        Ok(u32::from_be_bytes(bytes))
+    };
+    let au_type = fourcc("type")?;
+    let au_subtype = fourcc("subtype")?;
+    let au_manufacturer = fourcc("manufacturer")?;
+    if au_type != u32::from_be_bytes(*b"aufx")
+        || !string(au, "manufacturer")?
+            .bytes()
+            .any(|b| b.is_ascii_uppercase())
+        || string(au, "manufacturer")? == "appl"
+    {
+        return Err(fail("invalid AU effect type or manufacturer"));
+    }
+    let au_bundle = string(au, "bundle_id")?;
+    if au_bundle != format!("{clap_id}.auv2") {
+        return Err(fail("AU bundle identity must extend CLAP identity"));
+    }
+    let au_factory = string(au, "factory")?;
+    let au_class = string(au, "cocoa_class")?;
+    if au_factory != "DAWAudioUnitFactory" {
+        return Err(fail("unsupported AU factory symbol"));
+    }
+    if [au_factory, au_class].iter().any(|s| {
+        !s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            || s.as_bytes()[0].is_ascii_digit()
+    }) {
+        return Err(fail("invalid AU native symbol"));
+    }
+    let au_version = au
+        .get("component_version")
+        .and_then(Item::as_integer)
+        .filter(|v| (0..=i64::from(u32::MAX)).contains(v))
+        .ok_or_else(|| fail("invalid AU version"))?;
+    let version_parts: Vec<u32> = version
+        .split('.')
+        .map(|v| v.parse::<u32>())
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|_| fail("invalid AU component version"))?;
+    if version_parts.len() != 3
+        || version_parts[0] > 65535
+        || version_parts[1] > 255
+        || version_parts[2] > 255
+        || au_version as u32
+            != ((version_parts[0] << 16) | (version_parts[1] << 8) | version_parts[2])
+    {
+        return Err(fail("AU and product versions differ"));
     }
     let parameters = root
         .get("parameters")
@@ -222,7 +295,7 @@ pub fn generate(input: &str) -> Result<String> {
         .map(|p| format!("Parameter::{p:?}"))
         .join(", ");
     Ok(format!(
-        "pub const MANIFEST_SCHEMA_VERSION: u32 = 1;\npub const MANIFEST_STATE_VERSION: u32 = {state_version};\npub const UNIT_TYPE_ID: &str = {:?};\npub const IDENTITY: Identity = Identity {{ vendor: {vendor:?}, product: {product:?}, version: {version:?}, clap_id: {clap_id:?}, processor_id: {processor:?}, controller_id: {controller:?} }};\npub const PANEL: [Strip; {strip_count}] = [{panels}];\npub const PARAMETER_ORDER: [Parameter; {parameter_count}] = [{order}];\n",
+        "pub const AU_TYPE: u32 = {au_type};\npub const AU_SUBTYPE: u32 = {au_subtype};\npub const AU_MANUFACTURER: u32 = {au_manufacturer};\npub const AU_BUNDLE_ID: &str = {au_bundle:?};\npub const AU_FACTORY: &str = {au_factory:?};\npub const AU_COCOA_CLASS: &str = {au_class:?};\npub const AU_VERSION: u32 = {au_version};\npub const MANIFEST_SCHEMA_VERSION: u32 = 2;\npub const MANIFEST_STATE_VERSION: u32 = {state_version};\npub const UNIT_TYPE_ID: &str = {:?};\npub const IDENTITY: Identity = Identity {{ vendor: {vendor:?}, product: {product:?}, version: {version:?}, clap_id: {clap_id:?}, processor_id: {processor:?}, controller_id: {controller:?} }};\npub const PANEL: [Strip; {strip_count}] = [{panels}];\npub const PARAMETER_ORDER: [Parameter; {parameter_count}] = [{order}];\n",
         MANIFEST_TYPE_ID,
         strip_count = STRIP_BINDINGS.len(),
         parameter_count = Parameter::COUNT,

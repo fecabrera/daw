@@ -29,7 +29,7 @@ fn frozen_identity_and_wire_contract() {
     assert_ne!(IDENTITY.processor_id, IDENTITY.controller_id);
     assert_eq!(IDENTITY.version, "0.1.0");
     assert_eq!(UNIT_TYPE_ID, "daw.drive");
-    assert_eq!(MANIFEST_SCHEMA_VERSION, 1);
+    assert_eq!(MANIFEST_SCHEMA_VERSION, 2);
     assert_eq!(STATE_VERSION, 1);
     assert_eq!(
         PARAMETER_ORDER.map(|p| p as u32),

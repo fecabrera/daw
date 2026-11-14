@@ -1,12 +1,12 @@
 # Drive plugin development builds
 
-Drive has independent CLAP and VST3 development plugins. Both use the original built-in Drive sound and the same two-strip editor as built-in Drive. External DAW and Windows/Linux acceptance checks are not complete, and this is not a release package.
+Drive has independent CLAP, VST3 and macOS AUv2 development plugins. They use the original built-in Drive sound and the same two-strip editor as built-in Drive. External DAW and Windows/Linux acceptance checks are not complete, and this is not a release package.
 
 See [build and packaging instructions](../development/plugins.md) to create the development artifacts. Packaging does not install them into a plugin folder.
 
 ## Host compatibility and installation
 
-Use the VST3 build in a host that supports VST3. Logic Pro requires Audio Units; it cannot load these VST3 or CLAP builds. An Audio Unit version is not implemented. The macOS build is Apple Silicon only: use a native Apple Silicon host, not an Intel/Rosetta VST3 host.
+Choose the format supported by your host. Use AUv2 in Logic Pro; see the shared [installation guide](plugins.md). The macOS build is Apple Silicon only: use a native Apple Silicon host, not an Intel/Rosetta VST3 host.
 
 On macOS, a `.vst3` plugin is a bundle directory containing `Contents/Info.plist` and its executable. A folder appearance alone does not establish whether it can load. Copy the whole `Drive.vst3` bundle to `/Library/Audio/Plug-Ins/VST3` or your user's `~/Library/Audio/Plug-Ins/VST3`. Keep its contents intact. In Ableton Live, enable the VST3 system folders and rescan after replacing the plugin. Restart the host if the old module was loaded.
 
@@ -14,7 +14,7 @@ New macOS development packages are ad-hoc signed after their resources are assem
 
 ## Parameters
 
-The host exposes Volume, Gain, Tone, Color shape, Color strength, Color frequency, and Bypass. Their defaults and audible behavior match [built-in Drive](drive.md). Bypass defaults off. Both development processors accept stereo 32-bit audio at 44.1, 48, 88.2, 96, 176.4, or 192 kHz; it rejects other rates.
+The host exposes Volume, Gain, Tone, Color shape, Color strength, Color frequency, and Bypass. Their defaults and audible behavior match [built-in Drive](drive.md). Bypass defaults off. All formats accept stereo 32-bit audio at 44.1, 48, 88.2, 96, 176.4, or 192 kHz. Other rates are rejected.
 
 The host can automate all seven parameters. Color Off retains Strength and Frequency, including automated changes. The Drive editor dims Strength and Frequency while Color is Off. A generic host editor may keep those fields editable.
 
@@ -32,4 +32,4 @@ Plugin editors use Deep Orange as their default accent. Right-click the editor b
 
 The editor has a fixed size. Native screen-reader control exposure and Windows/Linux editor behavior still require work and validation. These development artifacts are not release packages.
 
-The editor includes the [standard output rail and held-peak indicator](output-meter.md). Clicking the rail resets monitoring without a host automation gesture. VST3 meter delivery uses the host's processor/controller connection; CLAP reads the instance's prepared atomic meter.
+The editor includes the [standard output rail and held-peak indicator](output-meter.md). Clicking the rail resets monitoring without a host automation gesture. VST3 meter delivery uses the host's processor/controller connection; CLAP and AUv2 read the instance's prepared atomic meter.

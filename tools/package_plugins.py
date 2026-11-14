@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import plistlib
 import shutil
@@ -52,14 +53,20 @@ def select_units(selection, root=ROOT):
     return list(dict.fromkeys(names))
 
 
-APIS = ("clap", "vst3")
+APIS = ("clap", "vst3", "auv2")
+
+def supported_apis(target):
+    return APIS if TARGETS[target][0] == "macos" else APIS[:2]
 
 
-def select_apis(selection):
+
+def select_apis(selection, target="aarch64-apple-darwin"):
     names = [name.strip() for name in selection.split(",")]
     if any(name not in (*APIS, "all") for name in names):
-        raise ValueError("--api must contain clap, vst3 or all, separated by commas")
-    return [api for api in APIS if "all" in names or api in names]
+        raise ValueError("--api must contain clap, vst3, auv2 or all, separated by commas")
+    if "auv2" in names and "auv2" not in supported_apis(target):
+        raise ValueError("AUv2 exports require a macOS target")
+    return [api for api in supported_apis(target) if "all" in names or api in names]
 
 
 def target_metadata(root, unit, api):
@@ -70,6 +77,8 @@ def target_metadata(root, unit, api):
 
 def build_plugins(target, target_dir, selected, apis, root, *, release):
     """Build exactly the selected format packages, using declared Cargo names."""
+    if "auv2" in apis and "DAW_AUV2_VERIFY_SDK" in os.environ:
+        raise ValueError("SDK verification candidates cannot be packaged; approve their provenance first")
     packages = [target_metadata(root, unit, api)["package"]["name"]
                 for unit in selected for api in apis]
     cargo = shutil.which("cargo")
@@ -100,7 +109,8 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
     for format_name in apis:
         content = staging / format_name
         content.mkdir()
-        bundle = content / f"{file_product}.{format_name}"
+        extension = "component" if format_name == "auv2" else format_name
+        bundle = content / f"{file_product}.{extension}"
         if system == "macos":
             binary = bundle / "Contents/MacOS" / file_product
         elif format_name == "clap":
@@ -117,12 +127,21 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
         # Preserve executable permissions in ZIPs, including when staged on Windows.
         binary.chmod(0o755)
         if system == "macos":
-            identifier = manifest["clap_id"] + (".vst3" if format_name == "vst3" else "")
-            (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps({
+            identifier = manifest["clap_id"] + ("." + format_name if format_name != "clap" else "")
+            info = {
                 "CFBundleExecutable": file_product, "CFBundleIdentifier": identifier,
                 "CFBundleName": manifest["product"], "CFBundlePackageType": "BNDL",
                 "CFBundleVersion": version, "CFBundleShortVersionString": version,
-            }))
+            }
+            if format_name == "auv2":
+                au = manifest["auv2"]
+                info["AudioComponents"] = [{"type": au["type"], "subtype": au["subtype"],
+                    "manufacturer": au["manufacturer"], "name": f"{manifest['vendor']}: {product}",
+                    "description": product, "factoryFunction": au["factory"],
+                    "version": au["component_version"]}]
+                info["LSMinimumSystemVersion"] = "12.0"
+                info["CFBundleIdentifier"] = au["bundle_id"]
+            (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
         notices = (bundle / "Contents/Resources/licenses" if bundle.is_dir()
                    else content / "licenses")
         notices.mkdir(parents=True)
@@ -141,14 +160,19 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
                     "version": version, "target": target, "format": format_name, "profile": profile,
                     "development_preview": True,
                     "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
+        if format_name == "auv2":
+            approved = json.loads((root / "crates/plugin-auv2/approved.json").read_text())
+            metadata["binding_generation"] = {key: value for key, value in approved.items() if key != "headers"}
         (content / "build.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
         (content / "README.txt").write_text(
             f"{product} development preview. macOS bundles are ad-hoc signed, not notarized.\n"
             "Windows/Linux binaries have no distribution signature.\n"
-            f"Extract the ZIP before use. Copy {file_product}." + format_name + " to a plugin search\n"
+            f"Extract the ZIP before use. Copy {file_product}." + extension + " to a plugin search\n"
             "folder supported by your DAW, then rescan. Keep the licenses with it.\n"
             "To remove, close the DAW and remove that file or bundle.\n"
-            "Logic Pro requires Audio Units; these CLAP/VST3 builds do not support it.\n"
+            + ("AUv2: use ~/Library/Audio/Plug-Ins/Components/ or /Library/Audio/Plug-Ins/Components/.\n"
+               if format_name == "auv2" else "Logic Pro requires the separate AUv2 export.\n")
+            + "Debug and release share identities; install one profile at a time.\n"
             "Native accessibility, external-host/platform checks and a complete release\n"
             "dependency/notice audit remain open. This is not a release package.\n",
             encoding="utf-8")
@@ -165,7 +189,7 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
                     output.writestr(entry, path.read_bytes())
         archives.append(archive)
     # Subset runs must not replace checksums for a previously packaged full set.
-    api_suffix = "" if tuple(apis) == APIS else "-" + "-".join(apis)
+    api_suffix = "" if tuple(apis) == supported_apis(target) else "-" + "-".join(apis)
     checksums = staging / f"{archive_name}-{version}-{system}-{architecture}{api_suffix}-SHA256SUMS{suffix}.txt"
     checksums.write_text("".join(
         f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in archives
@@ -181,7 +205,7 @@ def package(target, target_dir, output_dir, root=ROOT, *, units, release=False, 
     target_dir = Path(target_dir).resolve()
     output_dir = Path(output_dir).resolve()
     selected = select_units(units, root)
-    apis = select_apis(api)
+    apis = select_apis(api, target)
     build_plugins(target, target_dir, selected, apis, root, release=release)
     profile = "release" if release else "debug"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -195,9 +219,26 @@ def package(target, target_dir, output_dir, root=ROOT, *, units, release=False, 
         names = [path.name for path in artifacts]
         if len(names) != len(set(names)):
             raise ValueError("selected units produce conflicting archive names")
-        for path in artifacts:
-            destination = output_dir / path.name
-            path.replace(destination)
+        # Stage a rollback copy of every overwritten file before publication.
+        backup = staging / "previous"
+        backup.mkdir()
+        published = []
+        try:
+            for path in artifacts:
+                destination = output_dir / path.name
+                old = backup / path.name
+                if destination.exists():
+                    shutil.copy2(destination, old)
+                path.replace(destination)
+                published.append((destination, old if old.exists() else None))
+        except OSError:
+            for destination, old in reversed(published):
+                if old is None:
+                    destination.unlink(missing_ok=True)
+                else:
+                    old.replace(destination)
+            raise
+        for destination, _ in published:
             print(destination)
 
 
@@ -205,7 +246,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--units", required=True, help="Comma-separated unit names (for example drive,drive-v2), or all")
     parser.add_argument("--release", action="store_true", help="Build optimized plugins (default: debug)")
-    parser.add_argument("--api", default="all", help="Comma-separated clap, vst3 or all (default: all)")
+    parser.add_argument("--api", default="all", help="Comma-separated clap, vst3, auv2 or all (default: all)")
     parser.add_argument("--target", required=True, choices=TARGETS)
     parser.add_argument("--target-dir", type=Path, default=ROOT / "target")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "target/plugin-artifacts")

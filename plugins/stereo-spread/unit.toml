@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 settings_version = 1
 state_version = 1
 type_id = "daw.stereo-spread"
@@ -76,3 +76,12 @@ footer = "Spread"
 controls = [
 { parameter = "order", control = "integer" },
 ]
+
+[auv2]
+type = "aufx"
+subtype = "StSp"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.stereo-spread.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieStereoSpreadAUView"
+component_version = 256

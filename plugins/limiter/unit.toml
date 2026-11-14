@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 settings_version = 1
 state_version = 1
 type_id = "daw.limiter"
@@ -80,3 +80,12 @@ controls = [
 { parameter = "mode", control = "mode" },
 { parameter = "routing", control = "mode" },
 ]
+
+[auv2]
+type = "aufx"
+subtype = "Lmtr"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.limiter.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieLimiterAUView"
+component_version = 256

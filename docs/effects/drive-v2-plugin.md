@@ -1,6 +1,6 @@
 # Drive v2 plugins
 
-Drive v2 has separate CLAP and VST3 development plugins. Both use the built-in [Drive v2](drive-v2.md) DSP and the same three-strip controls. They have separate identities from original Drive, so both products can be installed together. Neither format loads original Drive plugin state.
+Drive v2 has separate CLAP, VST3 and macOS AUv2 development plugins. They use the built-in [Drive v2](drive-v2.md) DSP and the same three-strip controls. They have separate identities from original Drive, so both products can be installed together. The exports do not load original Drive plugin state.
 
 For build and package instructions, use the [plugin development guide](../development/plugins.md).
 These are development previews without notarization or distribution signatures.
@@ -8,7 +8,7 @@ Native host acceptance requires separate checks.
 
 ## Install locally
 
-Extract the ZIP. On macOS copy the complete `Drive v2.vst3` bundle into `~/Library/Audio/Plug-Ins/VST3/`, or `Drive v2.clap` into `~/Library/Audio/Plug-Ins/CLAP/`. Use a native Apple Silicon host that supports the selected format. Restart the host or rescan after replacement. Logic Pro requires Audio Units and cannot load these formats. On Windows/Linux, use a plugin search folder supported by the host. Keep the included licenses with the plugin. The build tools do not install plugins.
+Extract the ZIP. On macOS copy the complete `Drive v2.vst3` bundle into `~/Library/Audio/Plug-Ins/VST3/`, or `Drive v2.clap` into `~/Library/Audio/Plug-Ins/CLAP/`. Use a native Apple Silicon host that supports the selected format. Restart the host or rescan after replacement. Use the AUv2 `.component` export in Logic Pro; see the [shared AU installation instructions](plugins.md). On Windows/Linux, use a plugin search folder supported by the host. Keep the included licenses with the plugin. The build tools do not install plugins.
 
 ## Controls and state
 
@@ -22,4 +22,4 @@ Host state saves the 11 base parameters. DAW modulation routes, project identiti
 
 See the [implementation and local checks](../../specs/architecture/drive-v2-plugin-builds.md). Native editor attachment, SDK validators, external DAWs, accessibility, Windows/Linux execution, and clean-machine distribution require separate checks. Original Drive's historical validation results do not validate Drive v2.
 
-The editor includes the [standard output rail and held-peak indicator](output-meter.md). Clicking the rail resets monitoring without a host automation gesture. VST3 meter delivery uses the host's processor/controller connection; CLAP reads the instance's prepared atomic meter.
+The editor includes the [standard output rail and held-peak indicator](output-meter.md). Clicking the rail resets monitoring without a host automation gesture. VST3 meter delivery uses the host's processor/controller connection; CLAP and AUv2 read the instance's prepared atomic meter.

@@ -1,4 +1,4 @@
-schema_version=1
+schema_version=2
 settings_version=1
 state_version=3
 type_id="daw.ambient-reverb"
@@ -156,3 +156,12 @@ controls=[
 {parameter="width",control="percent"},
 {parameter="dry_wet",control="percent"}
 ]
+
+[auv2]
+type = "aufx"
+subtype = "AmRv"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.ambient-reverb.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieAmbientReverbAUView"
+component_version = 256

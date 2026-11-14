@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 settings_version = 1
 state_version = 1
 type_id = "daw.multiband-compressor"
@@ -6125,3 +6125,12 @@ controls = [
 { parameter = "level", control = "gain" },
 { parameter = "dry_wet", control = "percent" },
 ]
+
+[auv2]
+type = "aufx"
+subtype = "MbCp"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.multiband-compressor.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieMultibandCompressorAUView"
+component_version = 256

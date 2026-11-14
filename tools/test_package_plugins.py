@@ -22,6 +22,7 @@ from package_plugins import (ROOT, TARGETS, finalize_macos_bundle, package as bu
 def package(*args, **kwargs):
     """Legacy layout fixtures supply prebuilt release bytes, not Cargo projects."""
     kwargs.setdefault("release", True)
+    kwargs.setdefault("api", "clap,vst3")
     with patch("package_plugins.build_plugins"):
         return build_and_package(*args, **kwargs)
 
@@ -418,9 +419,10 @@ class PackagingTests(unittest.TestCase):
 
 class SourceBuildPackagingTests(unittest.TestCase):
     def test_api_lists_normalize_deduplicate_and_reject_invalid_values(self):
-        for value in ("all", "clap,vst3", "vst3, clap,clap", "all,clap"):
+        for value in ("clap,vst3", "vst3, clap,clap"):
             self.assertEqual(select_apis(value), ["clap", "vst3"])
         self.assertEqual(select_apis("vst3"), ["vst3"])
+        self.assertEqual(select_apis("all"), ["clap", "vst3", "auv2"])
         for value in ("", "clap,", ",clap", "CLAP", "au", "all,unknown"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 select_apis(value)
@@ -457,7 +459,7 @@ class SourceBuildPackagingTests(unittest.TestCase):
                     for api in ("clap", "vst3"):
                         (libraries / pattern.format(f"daw_drive_{api}")).write_bytes(f"{profile}:{api}".encode())
                     with patch("package_plugins.build_plugins") as build, patch("package_plugins.finalize_macos_bundle"), contextlib.redirect_stdout(io.StringIO()):
-                        build_and_package(target, base / "cache", output, units="drive", release=release)
+                        build_and_package(target, base / "cache", output, units="drive", release=release, api="clap,vst3")
                     self.assertEqual(build.call_args.kwargs, {"release": release})
                     archives = sorted(p for p in output.glob("*.zip") if p.name.endswith("-debug.zip") == (not release))
                     self.assertEqual(len(archives), 2)

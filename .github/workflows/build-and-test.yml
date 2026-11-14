@@ -22,7 +22,7 @@ jobs:
           - platform: Windows x64
             runner: windows-2025
           - platform: macOS arm64
-            runner: macos-15
+            runner: xcode-27
           - platform: Linux x64
             runner: ubuntu-24.04
     uses: ./.github/workflows/platform.yml

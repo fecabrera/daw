@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 settings_version = 1
 state_version = 1
 type_id = "daw.ott"
@@ -243,3 +243,12 @@ controls = [
 { parameter = "dry_wet", control = "percent" },
 { parameter = "detection", control = "mode" },
 ]
+
+[auv2]
+type = "aufx"
+subtype = "Ott3"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.ott.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieOttAUView"
+component_version = 256

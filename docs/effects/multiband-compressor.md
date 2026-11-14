@@ -79,5 +79,5 @@ The six continuous band controls and Out controls accept shared modulation from
 the same instrument. Open the header's connection dot to add routes. Split and
 Peak/RMS remain manual choices.
 
-This effect also has [standalone CLAP/VST3 previews](plugins.md), with up to 64 band
+This effect also has [standalone plugin previews](plugins.md), with up to 64 band
 slots and horizontal scrolling. More bands use more CPU and memory.

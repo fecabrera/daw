@@ -84,7 +84,7 @@ Export appends an effect tail, capped at ten seconds after the arrangement. A
 warning reports truncation. Leave silence at the end of the arrangement when a
 longer tail must fit inside the export. Bypassed reverbs add no tail budget.
 
-Independent [CLAP and VST3 previews](plugins.md) have the same controls and sound.
+Independent [standalone plugin previews](plugins.md) have the same controls and sound.
 This is an original plate-style processor. Sample-identical reproduction of a
 reference plugin has not been established. Native-host and listening acceptance
 are separate from automated checks.

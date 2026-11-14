@@ -32,4 +32,4 @@ Open the secondary-color header dot for [modulation connections](../modulation/R
 
 Direction amounts use degrees. Spread amounts use linear spread units. Contributions add to each base setting, with the result limited to the control's range. The base pointer and readout retain the saved value; range arcs and live dots show modulation. Input remains a manual choice.
 
-This effect also has a [standalone CLAP/VST3 plugin](plugins.md).
+This effect also has a [standalone plugin](plugins.md).

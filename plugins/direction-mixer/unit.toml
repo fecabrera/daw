@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 settings_version = 1
 state_version = 1
 type_id = "daw.direction-mixer"
@@ -48,3 +48,12 @@ controls = [
 { parameter = "direction", control = "scalar" },
 { parameter = "spread", control = "percent" },
 ]
+
+[auv2]
+type = "aufx"
+subtype = "DrMx"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.direction-mixer.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieDirectionMixerAUView"
+component_version = 256

@@ -48,7 +48,7 @@ need a selection retain their usual empty-selection prompts.
 - [Loudness Meter](effects/loudness-meter.md)
 
 - [Standard unit output meters and held peaks](effects/output-meter.md)
-- [Saturator and Bitcrusher CLAP/VST3 previews](effects/distortion-plugins.md)
+- [Saturator and Bitcrusher plugin previews](effects/distortion-plugins.md)
 
 - [3-band EQ](effects/equalizer.md)
 - [Multiband EQ](effects/multiband-eq.md)
@@ -97,4 +97,4 @@ need a selection retain their usual empty-selection prompts.
 
 - [Stem separation](audio/stem-separation.md): local models, four-stem groups, progress, and source retention.
 
-- [Effect plugins](effects/plugins.md): all CLAP/VST3 products, unit slugs, controls, and limits.
+- [Effect plugins](effects/plugins.md): all exported products, unit slugs, controls, and limits.

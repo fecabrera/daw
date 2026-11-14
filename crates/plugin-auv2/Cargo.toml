@@ -1,0 +1,16 @@
+[package]
+name = "daw-plugin-auv2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[target.'cfg(target_os = "macos")'.build-dependencies]
+bindgen.workspace = true
+cc.workspace = true
+sha2.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+daw-plugin-support.workspace = true

@@ -68,13 +68,14 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
 | `crates/saturator-plugin`, `crates/bitcrusher-plugin` | Typed plugin identities, parameters, bounded state and prepared adapters over the portable DSP. Share format/editor infrastructure; no DAW or SDK ownership. |
 | `crates/saturator-editor`, `crates/bitcrusher-editor` | Shared headerless body bindings, bounded host gestures, appearance and output telemetry. |
-| `plugins/saturator-*`, `plugins/bitcrusher-*` | Independent CLAP/VST3 products over the existing narrow format sources. |
+| `plugins/saturator-*`, `plugins/bitcrusher-*` | Independent CLAP/VST3/AUv2 products over the existing narrow format sources. |
 | `crates/drive-plugin` | Format-neutral Drive plugin identity, typed parameter mappings, checked panel bindings, bounded state envelope/publication, and prepared processor over the original Drive DSP. No DAW, SDK, window, or device dependencies. |
 | `crates/unit-ui` | Shared unit knobs, portable parameter controls, theme/fonts and shared effect bodies. Only egui and unit-core dependencies; no DAW project, SDK, window or device dependencies. |
 | `crates/drive-editor` | Drive body bindings, bounded editor/control messages, gestures and instance appearance. No SDK or audio ownership. |
 | `crates/plugin-window` | Native child-window adapter over the selected egui backend. Keep platform parent handles, main-thread lifetime and display scaling here. |
 | `crates/plugin-support` | Format-neutral ABI containment, fixed atomic snapshots, and bounded UTF-8 text helpers. No SDK, DAW, window, or device dependencies. |
 | `crates/plugin-clap` | Narrow CLAP binding facade; reexports shared boundary helpers. No concrete unit, DAW, window, or device dependencies. |
+| `crates/plugin-auv2` | Locally generated Apple C bindings, checked native buffer views, Cocoa bridge and ABI containment; follow [AUv2 exports](specs/architecture/auv2-plugin-builds.md). |
 | `crates/plugin-vst3` | Narrow VST3 binding facade, platform TUID encoding, UTF-16 text and borrowed stream helpers. No concrete unit, DAW, window, or device dependencies. |
 | `plugins/drive-vst3` | Independent Drive VST3 factory, component/audio processor, edit controller, normalized queues, and host/state boundary. Keep COM ownership here; reuse shared parameter/state, publication and DSP. |
 | `plugins/drive-clap` | Independent Drive CLAP entry, lifecycle, host/event/state bridge, and planar audio boundary. Keep unsafe SDK ownership here; reuse shared parameter/state and DSP crates. |
@@ -100,7 +101,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `apps/cli` | clap arguments, diagnostics, and exit codes over the shared project/export APIs. Must remain usable without graphics or an audio device. |
 | `plugins/drive` | Build-time Drive plugin manifest; stable public identities, parameter declarations, and two-strip panel bindings. |
 | `crates/*-plugin`, `crates/*-editor` | Independent typed contracts and native editor bindings for effect products; reuse bounded state exchange, portable DSP, shared controls, and meters. |
-| `plugins/<unit>`, `plugins/<unit>-clap`, `plugins/<unit>-vst3` | Checked product manifests and independent export targets. Shared format boundaries compile through concrete dependency aliases. |
+| `plugins/<unit>`, `plugins/<unit>-clap`, `plugins/<unit>-vst3`, `plugins/<unit>-auv2` | Checked product manifests and independent export targets. Shared format boundaries compile through concrete dependency aliases. |
 | `tools` | Demo generation, CLI smoke checks, CI summaries, and macOS/Windows/Linux packaging. |
 | `.github/workflows` | Native platform tests and release-package artifact uploads. |
 | `examples` | Tracked generated audio and demo project fixtures. |
@@ -158,7 +159,7 @@ The audio callback must remain nonblocking and must not allocate or perform file
 
 - Every unit with a variable number of strips must allow reordering of all removable strips. Keep fixed strips, including Add and Out, in their assigned positions. Reuse Oscillator's shared drag helpers and the strip gesture lifecycle; preserve strip identities, settings, modulation connections and automation bindings. Follow the [variable-strip reordering contract](specs/architecture/modular-audio-units.md#variable-strip-reordering) for release-only commits, cancellation, persistence and tests. This requirement applies to built-in units and standalone editors; documented implementation gaps are pending work, not exceptions.
 
-- New effect units include built-in DAW integration and standalone CLAP/VST3 products by default, unless the user explicitly narrows the scope. Add the typed plugin contract, shared editor bindings, checked manifest, packaging discovery and CI coverage together.
+- New effect units include built-in DAW integration and standalone CLAP/VST3 and macOS AUv2 products by default, unless the user explicitly narrows the scope. Add the typed plugin contract, shared editor bindings, checked manifest, packaging discovery and CI coverage together.
 
 - Built-in effects and standalone plugin editors must call the same `unit-ui` body renderers. Keep control order, knob specifications, labels, strip geometry, footers and meter placement shared. Keep DAW shells/modulation and SDK automation adapters in their host crates. Compare all effect editors against the built-in bodies when changing shared effect presentation; see [plugin editor parity](specs/architecture/all-effect-plugin-builds.md#built-in-editor-parity).
 
@@ -290,7 +291,7 @@ cargo test --workspace --release
 - On macOS, rebuild desktop deliverables with `sh tools/package_macos.sh debug` or `release` when desktop/runtime changes need an updated app. The unsigned bundle is under `target/<profile>/DAW.app`.
 - CI calls `.github/workflows/platform.yml` independently for Windows, macOS, and Linux, with fail-fast disabled. Each invocation has separate `test` and `build` jobs; build depends only on that invocation's tests and includes release builds, packaging, and artifact uploads. Do not gate all builds on the aggregate test matrix. Both jobs use `.github/actions/setup-build` for native dependencies, the pinned Rust toolchain, Python, and Cargo caching. Tests run locked workspace checks and CLI smoke checks. Keep the portable Windows executable with its project license and dependency notices, and retain the same notices in macOS DMG and Linux ZIP artifacts. Use the native scripts in `tools` rather than duplicating packaging commands in the workflow.
 - Keep CI command output visible in the console and in log artifacts. Preserve command failures when using `tee`, upload logs on failure, and write job summaries through `tools/summarize_ci.py`. Windows setup selects the MSVC linker by absolute path to avoid Git Bash's `link.exe`. UI background-job tests use a bounded 30-second wall-clock deadline for slower hosted workers.
-- `.github/workflows/plugins.yml` builds effect products as CLAP/VST3 previews on independent native platform workers. Reuse the shared setup/log/summary helpers and `tools/package_plugins.py`; retain native bundle layouts, executable ZIP permissions and notices. Keep plugin uploads gated on that worker's tests. Development CI does not replace SDK-validator, native editor/host or release acceptance checks.
+- `.github/workflows/plugins.yml` builds effect products as CLAP/VST3 and macOS AUv2 previews on independent native platform workers. Reuse the shared setup/log/summary helpers and `tools/package_plugins.py`; retain native bundle layouts, executable ZIP permissions and notices. Keep plugin uploads gated on that worker's tests. Development CI does not replace SDK-validator, native editor/host or release acceptance checks.
 - For documentation-only changes, check content, links, commands against their definitions, and `git diff --check`; do not rebuild or run unrelated audio tests.
 - Use temporary folders for tests. Do not overwrite user projects, recordings, or exports. Review `git diff` and `git status` before completion.
 - Once relevant checks pass, repeat them only after new changes or unresolved failures. Record unavailable device/platform checks explicitly; automated egui tests do not establish native gesture behavior.

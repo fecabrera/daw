@@ -1,4 +1,4 @@
-schema_version=1
+schema_version=2
 settings_version=1
 state_version=5
 type_id="daw.plate-reverb"
@@ -208,3 +208,12 @@ controls=[
 {parameter="width",control="percent"},
 {parameter="dry_wet",control="percent"}
 ]
+
+[auv2]
+type = "aufx"
+subtype = "PlRv"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.plate-reverb.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SiePlateReverbAUView"
+component_version = 256

@@ -1,6 +1,6 @@
 # Effect plugins
 
-The registered built-in effects have separate CLAP and VST3 development previews. [Multiband Exciter](exciter.md) is currently available inside the DAW only. Each uses its portable DAW processor. Host bypass, automation, and presets work independently for each instance. Plugin editors use the same control bodies as the built-in effects, including strip layout, labels, footers and meters.
+The registered built-in effects have separate CLAP, VST3 and macOS AUv2 development previews. [Multiband Exciter](exciter.md) is currently available inside the DAW only. Each uses its portable DAW processor. Host bypass, automation, and presets work independently for each instance. Plugin editors use the same control bodies as the built-in effects, including strip layout, labels, footers and meters.
 
 | Product | Unit slug | Controls |
 | --- | --- | --- |
@@ -25,7 +25,7 @@ The registered built-in effects have separate CLAP and VST3 development previews
 | [Chorus](chorus.md) | `chorus` | Delay, Depth, Feedback, Voices, Hz/Note rate, Stereo Phase, Width, Level, Dry/Wet |
 | [Loudness Meter](loudness-meter.md) | `loudness` | Target, TP quality, Clock, History metric, Hold/Resume, Reset; loudness, maxima, range, dynamics and output readings |
 
-[Build, package, and download instructions](../development/plugins.md) apply to all products. The packager accepts one slug, a comma-separated list, or `--units all`. Build both formats for all selected units first. Extract the downloaded ZIP and keep the included licenses beside the plugin. Close your host before replacing or removing it.
+[Build, package, and download instructions](../development/plugins.md) apply to all products. The packager accepts one slug, a comma-separated list, or `--units all`. Extract the downloaded ZIP and keep the included licenses beside the plugin. Close your host before replacing or removing it.
 
 Plugin editors retain their horizontal [output level meters and held peaks](output-meter.md). DAW units use stereo meters in the gaps between units. Limiter shows reduction on its left strip and output level on its right strip. Compressor shows its live Curve with a vertical gain-reduction meter, and OTT shows signed band gain changes. Click a held reading to reset it. Reset does not change audio or saved parameters. Right-click the background to choose Dark, Light, or Mist; Deep Orange is the default accent.
 
@@ -33,12 +33,20 @@ Auto-filter and Chorus use the host's tempo and sample position. Their clock sta
 
 Multiband EQ starts with one band. Click Plus to add bands, up to 64. Use the band power control to bypass it; right-click its footer to remove it. Scroll horizontally when needed. Automation IDs stay fixed. Presets restore enabled or changed bands; a bypassed band keeps its settings. Limiter reports rate-dependent processing latency, Saturator reports 32 frames, and Harmonic Lift reports 49 frames. Other plugins report zero latency. Leave host delay compensation enabled.
 
-These previews accept stereo planar 32-bit floating-point audio at 44.1, 48, 88.2, 96, 176.4, and 192 kHz. They do not include MIDI, sidechain inputs, DAW modulation routes, or DAW project data. Logic Pro requires Audio Units and cannot load these formats. VST3 meter delivery requires a processor/controller connection.
+These previews accept stereo planar 32-bit floating-point audio at 44.1, 48, 88.2, 96, 176.4, and 192 kHz. They do not include MIDI, sidechain inputs, DAW modulation routes, or DAW project data. Use the AUv2 export in Logic Pro. AUv2 accepts blocks up to 65536 frames. VST3 meter delivery requires a processor/controller connection.
 
 macOS bundles use ad-hoc signing without notarization. Windows/Linux builds are unsigned. Native editor attachment, external hosts, accessibility, and clean-machine release acceptance still need platform checks.
 
-Multiband EQ and Multiband Compressor have temporary S buttons for band audition. Solo is excluded from presets and automation. Offline mode in VST3 and the CLAP render extension suppress Solo; a host that records in real time captures the audition output.
+Multiband EQ and Multiband Compressor have temporary S buttons for band audition. Solo is excluded from presets and automation. Offline mode in AUv2/VST3 and the CLAP render extension suppress Solo; a host that records in real time captures the audition output.
 
 Shimmer Reverb follows host tempo for synced pre-delay and retains its last valid
 tempo when updates stop. Its musical delay is capped at eight seconds. It reports
 zero alignment latency and a conservative 120-second tail budget.
+
+For AUv2, extract the `.component` bundle and copy it to
+`~/Library/Audio/Plug-Ins/Components/` for your account, or
+`/Library/Audio/Plug-Ins/Components/` for all accounts. Restart or rescan your host.
+These AUv2 previews target Apple Silicon and declare macOS 12 or later.
+Debug and release share identities: install one profile at a time. Close the host
+before replacing a component. AU host scanning and custom-editor acceptance
+remain development checks; these previews are not notarized releases.

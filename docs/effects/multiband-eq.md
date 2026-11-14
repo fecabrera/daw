@@ -49,11 +49,11 @@ Open the header's modulation dot to connect shared Envelope, LFO, or Macro sourc
 
 Removing a band removes its modulation connections. Other bands keep their connections when their displayed numbers change. Undo restores a removed band and its connections.
 
-In the built-in effect, drag a band's label or unused strip space to reorder bands, as with oscillator strips. The insertion line shows the new position. Release within the band bank to apply the change. Escape, loss of focus, or release outside the bank cancels it. Drag near a lane edge to scroll. Knobs and Power keep their existing controls. Reordering retains each band's settings and modulation connections, changes the serial processing order, and supports Undo/Redo. In the standalone CLAP/VST3 plugins, use the same gesture to change visual strip order. Release within the bank to save it; Escape, focus loss or an outside drop cancels. The saved presentation order changes which strip appears first. Automation IDs, slot bindings and DSP processing order stay fixed.
+In the built-in effect, drag a band's label or unused strip space to reorder bands, as with oscillator strips. The insertion line shows the new position. Release within the band bank to apply the change. Escape, loss of focus, or release outside the bank cancels it. Drag near a lane edge to scroll. Knobs and Power keep their existing controls. Reordering retains each band's settings and modulation connections, changes the serial processing order, and supports Undo/Redo. In the standalone plugins, use the same gesture to change visual strip order. Release within the bank to save it; Escape, focus loss or an outside drop cancels. The saved presentation order changes which strip appears first. Automation IDs, slot bindings and DSP processing order stay fixed.
 
 The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.
 
-This effect also has a [standalone CLAP/VST3 plugin](plugins.md).
+This effect also has a [standalone plugin](plugins.md).
 
 Existing projects and plugin presets retain their filter modes. The new
 choices expand the plugin's Mode automation range. Check existing host Mode

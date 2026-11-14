@@ -41,7 +41,7 @@ The effect uses 4× oversampling to reduce aliasing. Its filters roll off the hi
 
 The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.
 
-Separate [CLAP and VST3 plugin previews](distortion-plugins.md) provide these controls in an external host.
+Separate [standalone plugin previews](distortion-plugins.md) provide these controls in an external host.
 
 Tube Clip is also available in the plugin previews. Existing saved No Clip, Soft
 Clip and Hard Clip settings retain their modes. VST3 keeps the old No Clip (0),

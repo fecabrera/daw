@@ -61,4 +61,4 @@ Compression thresholds, ratios, and knees are fixed. Independent upward/downward
 
 The DAW shows the [stereo output meter](output-meter.md) in the gap after the unit. Standalone editors keep the horizontal meter in **Out**. Click a meter to reset its held peaks. It measures the final stereo output. Its peak reset is independent of the band meters.
 
-This effect also has a [standalone CLAP/VST3 plugin](plugins.md).
+This effect also has a [standalone plugin](plugins.md).

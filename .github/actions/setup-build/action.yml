@@ -45,6 +45,15 @@ runs:
         }
         "LIBCLANG_PATH=$clangDirectory" >> $env:GITHUB_ENV
 
+    # Match the approved locally generated AU C ABI tuple. Keep CLAP/VST3
+    # buildable separately on other SDKs; workspace macOS checks include AU.
+    - name: Select approved macOS AU toolchain
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        test -d /Library/Developer/CommandLineTools/SDKs/MacOSX27.2.sdk
+        echo "DEVELOPER_DIR=/Library/Developer/CommandLineTools" >> "$GITHUB_ENV"
+
     - name: Configure macOS libclang
       if: runner.os == 'macOS'
       shell: bash

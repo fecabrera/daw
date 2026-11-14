@@ -34,4 +34,4 @@ Intensity amounts use percentage points, from −100 to +100. Frequency amounts 
 
 The base pointer and readout retain the saved value. Range arcs and moving dots show modulation; the dots reflect the actual constrained frequencies.
 
-This effect also has a [standalone CLAP/VST3 plugin](plugins.md).
+This effect also has a [standalone plugin](plugins.md).

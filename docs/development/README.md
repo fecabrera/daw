@@ -7,7 +7,7 @@ Run commands from the repository root with the toolchain pinned in [rust-toolcha
 - [Windows](windows.md): MSVC and libclang setup, builds, ZIP packaging, and troubleshooting.
 - [macOS](macos.md): builds, app bundles, and disk images.
 - [Linux](linux.md): prerequisites, builds, and portable ZIP packaging.
-- [Effect plugins](plugins.md): CLAP/VST3 builds and packaging.
+- [Effect plugins](plugins.md): CLAP/VST3/AUv2 builds and packaging.
 - [GitHub Actions builds](ci.md): platform artifacts, downloads, and logs.
 
 For CLI commands, see the [CLI guide](../cli/README.md). For contribution rules and validation commands, see [repository instructions](../../AGENTS.md#build-and-validation-workflow). Architecture and implementation contracts remain in [specifications](../../specs/README.md).

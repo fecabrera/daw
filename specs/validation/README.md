@@ -5,6 +5,70 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Native AUv2 exports and Logic input binding — 2026-11-14
+
+All 20 registered products now have native AUv2 targets using our locally generated
+Apple C bindings, existing typed processors/state and shared editor bodies. See
+[architecture](../architecture/auv2-plugin-builds.md) and
+[acceptance gates](../acceptance/auv2-plugin-builds.md).
+
+Executed on macOS 27.2.1 arm64, pinned Rust 1.97.0, CLTools/SDK 27.2 and Apple
+clang/libclang 21.0.0:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `cargo test --workspace --offline`: PASS, 3450 passed and 22 existing optional
+  checks ignored.
+- `cargo test --workspace --release --offline`: PASS, 3450 passed and 22 ignored.
+- `python3 -m unittest discover -s tools -p 'test_*.py' -v`: PASS, 57 tests.
+- Independent C/Rust layout, offset, constant, union-signedness and bidirectional
+  callback tests: PASS. Separate Cargo build outputs reproduce the approved
+  declaration hash. Missing required inventory symbols fail generation.
+- Each AU product runs 20 tests in both profiles. Coverage includes six-rate
+  processor parity, signed/sample-offset ramps, batch rejection/capacity, active
+  recall without allocation, parameter updates during preparation, preset names,
+  repeated timestamp caching, native registration/selector dispatch, fault
+  containment and editor/instance retirement. Warm render/reset/dense schedules
+  and recall allocate and retire zero objects under the allocator guard.
+- Real source builds through `package_plugins.py --units all --api auv2 --target
+  aarch64-apple-darwin`, with and without `--release`: PASS. Forty archives and
+  their checksum files are under ignored `work/au-packages/`.
+- `check_auv2_exports.py` on all twenty debug archives and separately all twenty
+  release archives: PASS. The independent native host checks actual packaged
+  binaries, signatures/hashes, NSBundle Cocoa-factory lookup, parameter metadata
+  and fractional indexed values, state recall, callback/connected-unit input,
+  and code lifetime after dlclose. Input callbacks/connections attach after
+  initialization. Audio checks require nonzero output, not only finite silence.
+- Python package regressions cover all AU products/profiles, unsupported-target
+  rejection before build/output creation, independent API checksum namespaces,
+  late publication rollback and preservation of unselected artifacts.
+
+Two native integration defects were found and corrected during these checks:
+implicit Rust Mach-O stripping misaligned LINKEDIT in some release dylibs, so the
+release profile now explicitly preserves linker output; and runtime-created
+Cocoa classes failed NSBundle lookup, so each product compiles static factory,
+container and timer classes. The compiler defect and workaround are linked in the
+architecture contract. No SDK headers or generated declarations are shipped.
+
+After the user reported silence in Logic Pro, read-only validation of the
+installed Drive v2 component with `auval -strict -v aufx Drv2 SieD` reproduced
+`-10849` when setting the render callback after initialization and `-66743` for
+fractional indexed values. The source adapter now accepts quiescent input-binding
+changes without replacing DSP, keeps input/output allocation flags independent,
+reuses host output planes for allocation-free input pulls, and quantizes AU
+indexed values before strict product validation. Updated debug/release packages
+pass the nonzero-output host checks. The installed system component was not
+replaced, so strict auval on the updated installation and a Logic playback retest
+remain pending. Quit the host before replacement and reset/rescan its cached
+validation result.
+
+Remaining native gates: custom editor attachment/interaction/accessibility,
+Logic/GarageBand/REAPER session/automation/bounce acceptance, minimum macOS 12,
+Windows/Linux execution, actual hosted CI and clean source-archive reproduction.
+The process-local host probe does not establish filesystem component discovery
+or strict auval success. No user projects, audio devices or installed components
+were changed. Logs/builds remain in ignored `work/` and `target/`.
+
 ## Source-building plugin packager — 2026-11-14
 
 `tools/package_plugins.py` now builds selected products/APIs from source before

@@ -26,4 +26,4 @@ Open the header's secondary-color dot to add [modulation](../modulation/README.m
 
 Gain amounts use dB, Frequency uses octaves, and Q uses Q units. The knob pointer retains the base setting while range arcs and live dots show modulation. Band power and the monitors are not modulation destinations.
 
-This effect also has a [standalone CLAP/VST3 plugin](plugins.md).
+This effect also has a [standalone plugin](plugins.md).

@@ -50,6 +50,18 @@ impl Default for Model {
     }
 }
 impl Model {
+    /// Copy instance-only view preferences without sharing event queues or writers.
+    pub fn copy_view_preferences(&self, source: &Self) {
+        self.appearance
+            .store(source.appearance.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.scale
+            .store(source.scale.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.visible_band_slots.store(
+            source.visible_band_slots.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+    }
+
     /// Apply a host-transported VST3 snapshot on the control thread.
     pub fn receive_output(&self, values: [f32; daw_drive_plugin::METER_VALUES]) {
         daw_drive_plugin::receive_meter(&self.output_meter, values);

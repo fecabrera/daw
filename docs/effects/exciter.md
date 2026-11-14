@@ -49,7 +49,7 @@ The effect uses 4× oversampling to reduce aliasing and keeps a fixed processing
 
 Each band's Drive, Mix and Level, plus Out Level and Dry/Wet, accept the shared modulation controls. Mode and crossover controls are not modulation destinations. Removing or copying bands preserves the other bands' connections. See [modulation](../modulation/README.md) and [unit editing](../editing/units.md) for routing, selection, copying, collapse and compact mode.
 
-This release provides the built-in effect. Separate CLAP/VST3 products are not included.
+This release provides the built-in effect. Separate plugin products are not included.
 
 ## Reorder bands
 

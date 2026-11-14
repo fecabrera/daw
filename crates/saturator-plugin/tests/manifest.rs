@@ -12,7 +12,7 @@ fn manifest_enforces_identity_parameters_and_panel_bindings() {
             .contains("io.github.fecabrera.daw.saturator")
     );
     for (from, to) in [
-        ("schema_version = 1", "schema_version = 99"),
+        ("schema_version = 2", "schema_version = 99"),
         ("type_id = \"daw.saturator\"", "type_id = \"unknown\""),
         ("id = 101", "id = 100"),
         ("default = 0.0", "default = nan"),

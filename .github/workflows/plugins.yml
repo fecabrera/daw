@@ -54,7 +54,7 @@ jobs:
             suffix: .dll
 
           - platform: macOS arm64
-            runner: macos-15
+            runner: xcode-27
             target: aarch64-apple-darwin
             prefix: lib
             suffix: .dylib
@@ -86,7 +86,7 @@ jobs:
 
       - name: Test packaging
         id: plugin_packaging_tests
-        run: python -m unittest discover -s tools -p test_package_plugins.py -v 2>&1 | tee work/ci-logs/packaging-tests.log
+        run: python -m unittest discover -s tools -p "test_*packag*.py" -v 2>&1 | tee work/ci-logs/packaging-tests.log
 
       - name: Build CLAP and VST3 libraries
         id: plugin_build
@@ -99,9 +99,21 @@ jobs:
           DRIVE_VST3_TEST_LIBRARY: ${{ github.workspace }}/target/${{ matrix.target }}/release/${{ matrix.prefix }}${{ matrix.unit.library }}_vst3${{ matrix.suffix }}
         run: cargo test --release --locked --target '${{ matrix.target }}' -p daw-${{ matrix.unit.slug }}-clap -p daw-${{ matrix.unit.slug }}-vst3 -p daw-${{ matrix.unit.slug }}-plugin -p daw-${{ matrix.unit.slug }}-editor 2>&1 | tee work/ci-logs/plugin-tests.log
 
+      - name: Build and test AUv2
+        if: runner.os == 'macOS'
+        id: auv2_tests
+        run: |
+          cargo test --locked --target '${{ matrix.target }}' -p daw-plugin-auv2 -p daw-${{ matrix.unit.slug }}-auv2 2>&1 | tee work/ci-logs/auv2-debug.log
+          cargo test --release --locked --target '${{ matrix.target }}' -p daw-plugin-auv2 -p daw-${{ matrix.unit.slug }}-auv2 2>&1 | tee work/ci-logs/auv2-release.log
+
       - name: Package plugin previews
         id: plugin_package
         run: python tools/package_plugins.py --release --api all --units '${{ matrix.unit.slug }}' --output-dir 'target/plugin-artifacts/${{ matrix.unit.slug }}' --target '${{ matrix.target }}' 2>&1 | tee work/ci-logs/plugin-package.log
+
+      - name: Check packaged AUv2 exports
+        if: runner.os == 'macOS'
+        id: auv2_exports
+        run: python tools/check_auv2_exports.py target/plugin-artifacts/${{ matrix.unit.slug }}/*-auv2.zip 2>&1 | tee work/ci-logs/auv2-exports.log
 
       # ZIPs retain bundle structure and executable modes after artifact download.
       - name: Upload CLAP preview
@@ -119,6 +131,16 @@ jobs:
         with:
           name: ${{ matrix.unit.name }}-VST3-${{ matrix.target }}
           path: target/plugin-artifacts/${{ matrix.unit.slug }}/*-vst3.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload AUv2 preview
+        if: runner.os == 'macOS'
+        id: auv2_artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.unit.name }}-AUv2-${{ matrix.target }}
+          path: target/plugin-artifacts/${{ matrix.unit.slug }}/*-auv2.zip
           if-no-files-found: error
           retention-days: 14
 

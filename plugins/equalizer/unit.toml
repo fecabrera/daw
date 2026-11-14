@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 settings_version = 1
 state_version = 1
 type_id = "daw.eq3"
@@ -121,3 +121,12 @@ controls = [
 { parameter = "high_frequency", control = "frequency" },
 { parameter = "high_q", control = "scalar" },
 ]
+
+[auv2]
+type = "aufx"
+subtype = "Eq03"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.equalizer.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieEqualizerAUView"
+component_version = 256

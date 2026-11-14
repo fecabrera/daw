@@ -2,6 +2,9 @@
 
 Status: development previews. Native host and release acceptance remain open.
 
+AUv2 extends this contract through [native AUv2 exports](auv2-plugin-builds.md).
+Manifest schema 2 adds format metadata without changing existing state envelopes.
+
 ## Products and ownership
 
 The registered standalone effect products each have a `plugins/<unit>/unit.toml` manifest and independent `daw-<unit>-plugin`, `daw-<unit>-editor`, `daw-<unit>-clap`, and `daw-<unit>-vst3` packages. The [user plugin table](../../docs/effects/plugins.md) defines product names, slugs, and exposed controls. The original four products retain their public identities and binary state formats. The later [Multiband Exciter](../effects/exciter.md) is built-in only and does not add a product to the packager or CI matrix.
