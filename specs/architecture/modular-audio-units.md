@@ -765,6 +765,14 @@ Every control strip, including double-width, graph, sample-preview, Out and modu
 
 Selected unit titles use the shared `palette.text` color, matching strip labels, while unselected titles use `palette.secondary`. Selection leaves header surfaces and power/modulation dots unchanged, including disabled units. Selected units keep their selection state, keyboard handling and group-edit gestures without a selected-unit outline. This supersedes earlier selected-unit border and adjoining-unit divider requirements. Drop-target outlines and insertion previews retain their existing behavior.
 
+## Strip footer typography — 2026-11-15
+
+All control-strip footer labels use the shared Outfit Semibold font at the
+existing 11-point footer size. This applies to plain labels, labels beside a
+Power control, editable Macro names and compact presentations in built-in units
+and standalone editor bodies. A Macro name remains semibold while its inline
+editor is open. Retain the existing active/disabled colors, truncation, footer
+alignment and interaction geometry.
 
 ## Transparent unit Add controls — 2026-11-09
 

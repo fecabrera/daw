@@ -35,6 +35,23 @@ pub(super) fn label(shapes: &[egui::epaint::ClippedShape], text: &str) -> Pos2 {
         })
         .unwrap_or_else(|| panic!("Missing label {text}"))
 }
+
+fn assert_footer_semibold(shapes: &[egui::epaint::ClippedShape], label: &str) {
+    let expected = crate::fonts::semibold(panels::HEADER_FONT_SIZE);
+    assert!(
+        shapes.iter().any(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text() == label => text
+                .galley
+                .job
+                .sections
+                .iter()
+                .all(|section| section.format.font_id == expected),
+            _ => false,
+        }),
+        "Footer label does not use the semibold font: {label}"
+    );
+}
+
 /// Popup text is painted after matching labels in the underlying instrument.
 pub(super) fn popup_label(shapes: &[egui::epaint::ClippedShape], text: &str) -> Pos2 {
     shapes
@@ -1658,6 +1675,10 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
                 i.layers[0].envelopes.push(e);
             }
             frame(&mut app, &ctx, vec![]);
+            let footer_shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            for label in ["Timing", "Attack", "Decay", "Sustain", "Release"] {
+                assert_footer_semibold(&footer_shapes, label);
+            }
             app.dirty = false;
             let rect = app
                 .instrument_ui

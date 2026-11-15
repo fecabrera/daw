@@ -16,6 +16,7 @@ See [Tooltips and Details](views/tooltips.md) for hover values, actions and diag
 
 Panel titles, including Tracks, Layers and Beat subtracks, use semibold text.
 The Timeline, Instrument, Editor and Mixer view buttons use semibold labels. Dragging a view button does not move the window.
+Unit strip footer labels use semibold text, including editable Macro names.
 
 - [Timeline](views/timeline.md): browse chords, import, arrange, select, trim, loop, split, and copy clips or a time range, and edit clip settings.
 - [Instrument](views/instrument.md): build layered sounds and add effects.

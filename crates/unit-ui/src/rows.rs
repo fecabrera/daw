@@ -14,7 +14,7 @@ pub fn centered<R>(
 pub fn unit_label(ui: &mut Ui, name: &str) -> egui::Response {
     let label = ui.painter().layout_no_wrap(
         name.into(),
-        egui::FontId::proportional(crate::layout::HEADER_FONT_SIZE),
+        crate::fonts::semibold(crate::layout::HEADER_FONT_SIZE),
         crate::theme::palette(ui.ctx()).text,
     );
     ui.add_space(
@@ -28,7 +28,7 @@ pub fn unit_label(ui: &mut Ui, name: &str) -> egui::Response {
 /// Standard Color footer. The button changes power; the label is not interactive.
 pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Response {
     let palette = crate::theme::palette(ui.ctx());
-    let font = egui::FontId::proportional(crate::layout::HEADER_FONT_SIZE);
+    let font = crate::fonts::semibold(crate::layout::HEADER_FONT_SIZE);
     let color = if on { palette.text } else { palette.secondary };
     let galley = ui.painter().layout_no_wrap(label.to_owned(), font, color);
     let size = crate::layout::COMPACT_BUTTON_SIZE;
@@ -222,4 +222,40 @@ pub fn band_solo(ui: &mut egui::Ui, label: &str, selected: &mut bool) -> egui::R
         *selected = !*selected;
     }
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_footer_labels_use_the_semibold_font() {
+        let ctx = egui::Context::default();
+        crate::fonts::configure(&ctx);
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            ui.set_width(200.0);
+            unit_label(ui, "Output");
+            power_label(ui, "Color", "Toggle color", true);
+        });
+        let expected = crate::fonts::semibold(crate::layout::HEADER_FONT_SIZE);
+        for label in ["Output", "Color"] {
+            let text = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => Some(text),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("Missing footer label: {label}"));
+            assert!(
+                text.galley
+                    .job
+                    .sections
+                    .iter()
+                    .all(|section| section.format.font_id == expected),
+                "Footer label does not use the semibold font: {label}"
+            );
+        }
+        output.textures_delta.clear();
+    }
 }

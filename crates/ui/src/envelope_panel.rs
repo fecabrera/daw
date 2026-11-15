@@ -235,13 +235,7 @@ pub(super) fn body(
                                 icons::COMPACT_BUTTON_SIZE
                             };
                             rows::centered(ui, footer_height, |ui| {
-                                ui.add_sized(
-                                    Vec2::new(ui.available_width(), icons::COMPACT_BUTTON_SIZE),
-                                    egui::Label::new(
-                                        egui::RichText::new(name).size(panels::HEADER_FONT_SIZE),
-                                    )
-                                    .halign(egui::Align::Center),
-                                );
+                                rows::unit_label(ui, name);
                             });
                         })
                         .inner

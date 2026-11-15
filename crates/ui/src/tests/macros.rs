@@ -13,6 +13,23 @@ fn text_rect(shapes: &[egui::epaint::ClippedShape], label: &str) -> Rect {
         })
         .unwrap_or_else(|| panic!("Missing {label}"))
 }
+
+fn assert_footer_semibold(shapes: &[egui::epaint::ClippedShape], label: &str) {
+    let expected = crate::fonts::semibold(panels::HEADER_FONT_SIZE);
+    assert!(
+        shapes.iter().any(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text() == label => text
+                .galley
+                .job
+                .sections
+                .iter()
+                .all(|section| section.format.font_id == expected),
+            _ => false,
+        }),
+        "Footer label does not use the semibold font: {label}"
+    );
+}
+
 #[test]
 fn macro_catalog_adds_multiple_named_powered_strips_to_layers_and_main() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
@@ -131,6 +148,8 @@ fn macro_panel_uses_one_knob_per_strip_plus_power_add_and_shared_route_controls(
             (unit.unwrap(), output.shapes)
         };
         let (unit, shapes) = draw(&mut module, false, vec![]);
+        assert_footer_semibold(&shapes, "Macro 1");
+        assert_footer_semibold(&shapes, "Macro 2");
         assert_eq!(
             unit.response.rect.height(),
             panels::unit_height(false) - 2.0 * panels::UNIT_VERTICAL_MARGIN
@@ -399,6 +418,8 @@ fn macro_names_commit_on_enter_and_cancel_without_changing_routes_or_power() {
                 frame(&mut app, &ctx, vec![]);
                 app.dirty = false;
                 begin_macro_rename(&mut app, &ctx, "Macro 2");
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                assert_footer_semibold(&shapes, "Macro 2");
                 frame(&mut app, &ctx, vec![egui::Event::Text("  Tone  ".into())]);
                 assert_eq!(
                     app.session.project.tracks[0].instrument.as_ref().unwrap(),

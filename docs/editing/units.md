@@ -24,6 +24,8 @@ Units have a vertical title header on the left. Double-click it to collapse or e
 
 Expanded units have a right header with the modulation dot. Click it to show or hide connection strips. Collapsed units hide the body and right header. Controls appear in rounded strips. Add buttons show a Plus symbol in a circle; it brightens on hover or keyboard focus.
 
+All strip footer labels use semibold text. This includes plain labels, labels beside a Power button, compact footers, and Macro names during rename.
+
 Selected unit titles use the same normal text color as strip labels; unselected titles stay muted. Header backgrounds and power/modulation dot colors do not change with selection. Selection supports the same shortcuts and group actions without adding an outline to the selected unit.
 
 ## Select and remove

@@ -210,7 +210,7 @@ pub fn wrapped<R>(
     )
 }
 
-/// Standard centered unit-footer pair: 18-point Power, 8-point gap, 11-point label.
+/// Standard centered unit-footer pair: 18-point Power, 8-point gap, 11-point semibold label.
 /// The caller supplies state and handles the returned release action.
 pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Response {
     power_label_with(ui, label, name, on, |ui, label, width| {
@@ -231,7 +231,7 @@ pub(super) fn power_label_with(
     label_ui: impl FnOnce(&mut Ui, egui::RichText, f32) -> egui::Response,
 ) -> (egui::Response, egui::Response) {
     let palette = crate::theme::palette(ui.ctx());
-    let font = egui::FontId::proportional(crate::panels::HEADER_FONT_SIZE);
+    let font = crate::fonts::semibold(crate::panels::HEADER_FONT_SIZE);
     let color = if on { palette.text } else { palette.secondary };
     let galley = ui
         .painter()

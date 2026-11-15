@@ -49,7 +49,7 @@ fn name_label(
         let mut draft = edit.take().unwrap();
         let mut output = egui::TextEdit::singleline(&mut draft.text)
             .id(ui.make_persistent_id("macro-name"))
-            .font(egui::FontId::proportional(panels::HEADER_FONT_SIZE))
+            .font(crate::fonts::semibold(panels::HEADER_FONT_SIZE))
             .desired_width(width)
             .min_size(Vec2::new(width, icons::COMPACT_BUTTON_SIZE))
             .margin(Vec2::new(2.0, 0.0))
