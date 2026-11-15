@@ -4,6 +4,43 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Windows ZIP entry paths — 2026-11-15
+
+The Windows packager previously derived ZIP names by slicing absolute path
+strings. The writer now walks the staged tree and builds forward-slash names
+under `DAW/` from item names, independent of provider/normalized path spelling.
+Resolve Cargo's executable to its filesystem provider path before .NET I/O.
+Staged publication, archive disposal, failure preservation and cleanup remain in
+the same transaction. See the [packaging contract](../architecture/windows-linux-packaging.md).
+
+Executed on macOS arm64:
+
+- `DAW_TEST_PWSH=<portable-pwsh> python3 -m unittest discover -s tools -p test_windows_packaging.py -v`:
+  PASS. Covers both `--local` orders, default debug, named `-Local`, a filesystem
+  drive alias, spaces/Unicode/percent/hash characters, exact `DAW/...` entry names,
+  executable bytes, local marker, every notice hash, source omission and
+  preservation/cleanup after build, missing-artifact and assembly failures.
+- `DAW_TEST_PWSH=<portable-pwsh> python3 -m unittest discover -s tools -p 'test_*.py' -v`:
+  PASS, 60 tests. Every successful packaging case requires fresh scenario-specific
+  executable bytes; a stale prior ZIP cannot satisfy another case.
+- `cargo test --workspace --offline` with macOS audio-service access: PASS,
+  3,456 passed and 22 intentionally ignored.
+- `cargo test --workspace --release --offline` with macOS audio-service access:
+  PASS, 3,456 passed and 22 intentionally ignored.
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- Regression control: the previous committed packager fails the new provider-drive
+  case; the updated writer passes it and removes all staging directories.
+- `git diff --check`: PASS.
+
+Used portable [PowerShell 7.6.6 from Microsoft's release](https://github.com/PowerShell/PowerShell/releases/tag/v7.6.6)
+under ignored `work/`, verified against the release's published SHA256 before
+extraction. No system installation was performed.
+
+Remaining checks: rerun the reported native Windows CI job, including Windows
+PowerShell 5.1/MSVC. These PowerShell fixtures on macOS do not establish native
+Windows behavior or execute an MSVC application build.
+
 ## Windows/Linux local packaging options — 2026-11-15
 
 Added `--local` to Linux and Windows packaging, matching macOS local semantics.

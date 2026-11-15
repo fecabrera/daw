@@ -27,6 +27,14 @@ not invoke the Python source-packaging helper.
 Cargo still reports the executable path; the archive is placed beside it,
 including configured target-directory paths.
 
+Resolve the reported executable to its filesystem provider path before .NET I/O.
+Build ZIP entry names by walking the staged directory tree from the explicit
+`DAW/` prefix and appending each item's name with `/`. Do not slice absolute
+paths by character offsets: provider aliases, short paths and normalized paths
+can have different representations. Preserve literal spaces, Unicode, `%` and
+`#` in entry names. Keep PowerShell 5.1 compatibility and validate the executable,
+local marker and dependency-notice hashes inside the archive.
+
 Both modes build fresh staging directories and publish only complete ZIP files.
 Failures preserve the previous archive. Fresh staging excludes stale distribution
 metadata from local packages and excludes the local marker from distributions.

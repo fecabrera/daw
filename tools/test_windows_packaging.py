@@ -27,13 +27,15 @@ NOTICE_DIRS = (
 @unittest.skipUnless(POWERSHELL, 'PowerShell required')
 class WindowsPackagingTests(unittest.TestCase):
     def test_local_flags_contents_and_failure_preservation(self):
-        with tempfile.TemporaryDirectory(prefix='windows packaging ') as temporary:
+        with tempfile.TemporaryDirectory(prefix='windows packaging 音 % # ') as temporary:
             root = Path(temporary)
             (root / 'tools').mkdir()
             shutil.copy(ROOT / 'tools/package_windows.ps1', root / 'tools/package_windows.ps1')
             shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
             for directory in NOTICE_DIRS:
                 shutil.copytree(ROOT / directory, root / directory)
+            extra_notice = 'archive test 音 % #.txt'
+            (root / 'crates/ui/assets/licenses' / extra_notice).write_bytes(b'exact fixture notice')
             wrapper = root / 'run.ps1'
             wrapper.write_text(r'''
 $ErrorActionPreference = 'Stop'
@@ -44,11 +46,15 @@ function global:cargo {
     $outputDirectory = Join-Path $env:DAW_TEST_ROOT "outputs/$buildProfile"
     [void][System.IO.Directory]::CreateDirectory($outputDirectory)
     $binary = Join-Path $outputDirectory 'daw-desktop.exe'
-    [System.IO.File]::WriteAllText($binary, "current-$buildProfile")
+    [System.IO.File]::WriteAllText($binary, "current-$buildProfile-$env:DAW_TEST_SCENARIO")
     [System.IO.File]::WriteAllText((Join-Path $env:DAW_TEST_ROOT 'cargo-called'), 'yes')
     $global:LASTEXITCODE = 0
     if ($env:DAW_TEST_FAILURE -eq 'build') { $global:LASTEXITCODE = 8; return }
     if ($env:DAW_TEST_FAILURE -eq 'artifact') { return }
+    if ($env:DAW_TEST_SCENARIO -eq 'drive') {
+        New-PSDrive -Name FixtureOutput -PSProvider FileSystem -Root (Join-Path $env:DAW_TEST_ROOT 'outputs') -Scope Global | Out-Null
+        $binary = Join-Path "FixtureOutput:/$buildProfile" 'daw-desktop.exe'
+    }
     @{reason='compiler-artifact'; target=@{name='daw-desktop'}; executable=$binary} | ConvertTo-Json -Compress
 }
 $packager = Join-Path $env:DAW_TEST_ROOT 'tools/package_windows.ps1'
@@ -57,6 +63,7 @@ switch ($env:DAW_TEST_SCENARIO) {
     'after' { & $packager release --local }
     'default' { & $packager --local }
     'native' { & $packager -Profile release -Local }
+    'drive' { & $packager release --local }
     'distribution' { & $packager release }
     'invalid' { & $packager fast --local }
 }
@@ -76,14 +83,21 @@ switch ($env:DAW_TEST_SCENARIO) {
                     self.assertIn('SOURCE_PACKAGING_CALLED', result.stderr)
 
             notices = json.loads((ROOT / 'tools/runtime_notices.json').read_text())['notices']
-            for scenario in ('before', 'after', 'default', 'native'):
+            for scenario in ('before', 'after', 'default', 'native', 'drive'):
                 with self.subTest(scenario=scenario):
                     result = run(scenario)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     profile = 'debug' if scenario == 'default' else 'release'
                     archive_path = root / f'outputs/{profile}/DAW.zip'
                     with zipfile.ZipFile(archive_path) as archive:
-                        self.assertEqual(archive.read('DAW/daw-desktop.exe'), f'current-{profile}'.encode())
+                        names = archive.namelist()
+                        self.assertIn('DAW/daw-desktop.exe', names)
+                        for name in names:
+                            self.assertTrue(name.startswith('DAW/'), name)
+                            self.assertNotIn('\\', name)
+                            self.assertFalse(any(part in ('', '.', '..') for part in name.split('/')), name)
+                        self.assertEqual(archive.read('DAW/licenses/' + extra_notice), b'exact fixture notice')
+                        self.assertEqual(archive.read('DAW/daw-desktop.exe'), f'current-{profile}-{scenario}'.encode())
                         self.assertIn(b'Local development build', archive.read('DAW/LOCAL-BUILD.txt'))
                         self.assertEqual(archive.read('DAW/LICENSE.txt'), (root / 'LICENSE').read_bytes())
                         for name in ('DAW-source.zip', 'source-manifest.json', 'SOURCE-ACCESS.txt'):

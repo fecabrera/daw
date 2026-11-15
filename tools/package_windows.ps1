@@ -68,7 +68,7 @@ try {
     if (-not $executable -or [System.IO.Path]::GetExtension($executable) -ne '.exe') {
         throw 'Cargo did not produce a Windows daw-desktop.exe. Check the configured build target.'
     }
-    $executable = (Resolve-Path -LiteralPath $executable).Path
+    $executable = (Resolve-Path -LiteralPath $executable).ProviderPath
     $artifactDirectory = Split-Path -Parent $executable
     $archivePath = Join-Path $artifactDirectory 'DAW.zip'
     $stagingDirectory = Join-Path $artifactDirectory ('.daw-package-' + [guid]::NewGuid().ToString('N'))
@@ -123,13 +123,27 @@ Keep LICENSE.txt and the licenses directory with this app.
         $temporaryArchive, [System.IO.Compression.ZipArchiveMode]::Create
     )
     try {
-        foreach ($file in Get-ChildItem -LiteralPath $packageDirectory -File -Recurse) {
-            # ZIP entry names use forward slashes, including on Windows PowerShell 5.1.
-            $entryName = $file.FullName.Substring($stagingDirectory.Length + 1).Replace('\', '/')
-            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-                $archive, $file.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal
+        # Build names from the tree, not absolute-path offsets. Provider/short-path
+        # spellings can differ from FileInfo.FullName on Windows.
+        function Add-PackageDirectory {
+            param(
+                [System.IO.Compression.ZipArchive]$Archive,
+                [string]$Directory,
+                [string]$Prefix
             )
+            foreach ($item in Get-ChildItem -LiteralPath $Directory) {
+                $entryName = $Prefix + $item.Name
+                if ($item.PSIsContainer) {
+                    Add-PackageDirectory -Archive $Archive -Directory $item.FullName -Prefix ($entryName + '/')
+                } else {
+                    [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                        $Archive, $item.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal
+                    )
+                }
+            }
         }
+        Add-PackageDirectory -Archive $archive -Directory $packageDirectory -Prefix 'DAW/'
+
     } finally {
         $archive.Dispose()
     }
