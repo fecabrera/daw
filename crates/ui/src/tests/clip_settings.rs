@@ -174,7 +174,7 @@ fn clip_settings_keep_form_spacing_while_catalog_rows_use_shared_list_spacing() 
         app.select_clip(clip, track, false);
         frame(&mut app, &ctx, vec![]);
         let catalog = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let positions = ["EQ & Filters", "Dynamics", "Distortion", "Imaging"]
+        let positions = ["EQ", "Filters", "Dynamics", "Distortion", "Imaging"]
             .map(|label| text_pos(&catalog, label).unwrap());
         for pair in positions.windows(2) {
             assert!((pair[1].y - pair[0].y - 28.0).abs() <= 0.5);

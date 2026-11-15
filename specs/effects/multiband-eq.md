@@ -4,7 +4,7 @@ For controls and use, see the [user guide](../../docs/effects/multiband-eq.md).
 
 ## Accepted behavior and layout
 
-Multiband EQ is a separate effect registered once in `effects_catalog::ENTRIES` under EQ & Filters. It uses the existing track, layer, Main, and Master effect chains, catalog gestures, unit selection, header reordering, collapse, compact mode, and `Edit::SetEffects` history. Existing `daw.eq3` settings and processing remain unchanged.
+Multiband EQ is a separate effect registered once in `effects_catalog::ENTRIES` under EQ. It uses the existing track, layer, Main, and Master effect chains, catalog gestures, unit selection, header reordering, collapse, compact mode, and `Edit::SetEffects` history. Existing `daw.eq3` settings and processing remain unchanged.
 
 Each band has a stable UUID, power, Mode, Frequency, Gain, and Q. There is no fixed band limit. Empty band lists are valid. Defaults are one enabled Bell band at 1 kHz, 0 dB, Q = 1/√2, with unit power on and Output Gain at 0 dB. Band Gain spans −24…+24 dB, Frequency 20…20,000 Hz, and Q 0.1…10. Output Gain uses the shared silence…+12 dB control. Band power bypasses its filter; it does not cut a frequency range.
 

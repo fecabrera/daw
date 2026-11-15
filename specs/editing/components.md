@@ -121,10 +121,13 @@ The Effects catalog uses the same `Catalog::with_folders`, `ControlPanel` folder
 
 | Category | Effects, in display order |
 | --- | --- |
-| EQ & Filters | 3-band EQ, Filter, Auto-filter |
-| Dynamics | Compressor, OTT, Limiter |
-| Distortion | Drive, Bitcrusher, Saturator |
+| EQ | 3-band EQ, Multiband EQ |
+| Filters | Filter, Auto-filter, Chorus |
+| Dynamics | Compressor, OTT, Limiter, Multiband Compressor |
+| Distortion | Drive, Bitcrusher, Saturator, Drive v2, Multiband Exciter, Harmonic Lift |
 | Imaging | Direction Mixer, Stereo Spread |
+| Reverb | Plate Reverb, Ambient Reverb, Shimmer Reverb |
+| Analysis | Loudness Meter |
 
 Entry indices and effect type IDs remain stable. Visible folder order determines Shift ranges, selected-type capture, Enter additions, and library group drops. Both addition paths instantiate through `effects_catalog::instantiate` in captured order; do not restore registration-array order when building a selected group. Construct fresh instances only for an explicit addition or a valid release. Preview and cancellation create no effect instances or project edits.
 

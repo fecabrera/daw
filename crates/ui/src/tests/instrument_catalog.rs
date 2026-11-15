@@ -131,7 +131,13 @@ fn both_catalogs_start_collapsed_and_retain_independent_expansion_choices() {
             let folder = app.effects_bounds.folders[0].center();
             click(&mut app, &ctx, folder, false);
             assert!(app.effects_bounds.entry.is_positive());
+            assert_eq!(app.effects_bounds.auto_filter_entry, Rect::NOTHING);
+            assert_eq!(app.effects_bounds.chorus_entry, Rect::NOTHING);
+            let filters = app.effects_bounds.folders[1].center();
+            click(&mut app, &ctx, filters, false);
+            assert!(app.effects_bounds.filter_entry.is_positive());
             assert!(app.effects_bounds.auto_filter_entry.is_positive());
+            assert!(app.effects_bounds.chorus_entry.is_positive());
             assert_eq!(app.effects_bounds.compressor_entry, Rect::NOTHING);
             assert_eq!(app.effects_bounds.drive_entry, Rect::NOTHING);
             for _ in 0..2 {

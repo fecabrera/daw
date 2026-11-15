@@ -546,7 +546,7 @@ Group registered components under Sources (Oscillator, Sampler), Modulators (Env
 
 ## Effects catalog categories — 2026-10-17
 
-Group effects under EQ & Filters (3-band EQ, Filter, Auto-filter), Dynamics (Compressor, OTT, Limiter), Distortion (Drive, Bitcrusher, Saturator), and Imaging (Direction Mixer, Stereo Spread). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
+Group effects under EQ (3-band EQ, Multiband EQ), Filters (Filter, Auto-filter, Chorus), Dynamics (Compressor, OTT, Limiter), Distortion (Drive, Bitcrusher, Saturator), and Imaging (Direction Mixer, Stereo Spread). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
 
 ## Standard effect Out-strip meter
 
@@ -706,7 +706,7 @@ Multiband EQ uses the existing portable `equalizer` crate, with variable stable-
 
 ## Chorus — 2026-10-25
 
-[Chorus](../effects/chorus.md) adds a portable stereo modulated-delay effect under Imaging, using the shared unit shell/strips, typed modulation, smoothing, monitoring and effect-chain lifecycle. History-aware seek preparation retains its delay/feedback/LFO state. Wet delays add no dry-path alignment latency; export keeps the arranged-duration policy.
+[Chorus](../effects/chorus.md) adds a portable stereo modulated-delay effect under Filters, using the shared unit shell/strips, typed modulation, smoothing, monitoring and effect-chain lifecycle. History-aware seek preparation retains its delay/feedback/LFO state. Wet delays add no dry-path alignment latency; export keeps the arranged-duration policy.
 
 
 ## Two-column unit strip spacing — 2026-10-25

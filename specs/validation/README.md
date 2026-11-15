@@ -5,6 +5,35 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## Separate EQ and Filters catalog folders — 2026-11-14
+
+The shared Effects catalog now uses seven folders in this order: EQ, Filters,
+Dynamics, Distortion, Imaging, Reverb and Analysis. EQ contains 3-band EQ and
+Multiband EQ. Filters contains Filter, Auto-filter and Chorus, including the
+confirmed move of Filter. This supersedes the earlier combined EQ & Filters
+folder and Chorus's Imaging placement recorded below. Registration indices,
+constructors and effect type IDs remain stable.
+
+Existing UI checks follow the new folder order, independent expansion, hidden
+selection pruning, keyboard ranges, spacing and cross-folder addition/drop order.
+Tests reveal scrolled rows and wait for scrolling to settle before clicking,
+rather than relying on previous category offsets. The shared runtime is unchanged.
+
+Executed on macOS arm64:
+
+- `cargo test -p daw-ui --offline`: PASS, 1,019 passed and 3 intentionally ignored.
+- `cargo test --workspace --offline` with macOS audio-service access: PASS,
+  3,456 passed and 22 intentionally ignored.
+- `cargo test --workspace --release --offline` with macOS audio-service access:
+  PASS, 3,456 passed and 22 intentionally ignored.
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- Relative documentation links in the changed guides/specifications: 188 checked,
+  none missing. `git diff --check`: PASS.
+
+Remaining checks: native application appearance and Windows/Linux execution.
+Automated egui checks do not establish those results.
+
 ## Source-package fixture line endings — 2026-11-14
 
 The Windows CI source-archive test expected LF bytes after `Path.write_text()`

@@ -1,6 +1,6 @@
 # Filter
 
-Filter shapes stereo audio with a static cutoff. Add it from **EQ & Filters** in
+Filter shapes stereo audio with a static cutoff. Add it from **Filters** in
 the Effects catalog to an audio/MIDI track, Master, or a MIDI instrument layer
 or Output. It has the same Cutoff and Out controls as Auto-filter.
 

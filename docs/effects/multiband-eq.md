@@ -1,6 +1,6 @@
 # Multiband EQ
 
-Add **Multiband EQ** from **Effects > EQ & Filters** to a track, instrument layer, Output, or Master. It starts with one neutral Bell band. The existing 3-band EQ remains available separately.
+Add **Multiband EQ** from **Effects > EQ** to a track, instrument layer, Output, or Master. It starts with one neutral Bell band. The existing 3-band EQ remains available separately.
 
 Use **Multiband EQ** for targeted tonal corrections, resonant cuts and boosts, and flexible frequency shaping.
 

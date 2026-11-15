@@ -4,7 +4,7 @@ For user instructions, see [Filter](../../docs/effects/filter.md).
 
 ## State and registration
 
-Register Filter once in `effects_catalog::ENTRIES` under EQ & Filters with type
+Register Filter once in `effects_catalog::ENTRIES` under Filters with type
 ID `daw.filter`. `unit-core::FilterSettings` stores version 1, enabled, collapsed,
 modulation visibility, Shape, Frequency, Q, Level, Dry/Wet and modulation routes.
 It stores no internal LFO fields. Defaults match Auto-filter's Cutoff/Out controls:

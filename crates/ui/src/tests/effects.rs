@@ -17,6 +17,55 @@ fn scroll_effects_catalog(app: &mut DawUi, ctx: &egui::Context, delta: f32) {
     }
 }
 
+// Catalog rows can move when categories gain entries. Reveal the target before clicking it.
+fn reveal_catalog_row(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    row: impl Fn(&effects_panel::EffectsUiBounds) -> Rect,
+) -> Pos2 {
+    let mut previous = Rect::NOTHING;
+    let mut stable = 0;
+    for _ in 0..120 {
+        let rect = row(&app.effects_bounds);
+        let mut viewport = app.effects_bounds.library;
+        viewport.min.y = app.effects_bounds.header.bottom();
+        if rect.is_positive() && viewport.contains_rect(rect) {
+            stable = if (rect.top() - previous.top()).abs() < 0.1 {
+                stable + 1
+            } else {
+                0
+            };
+            if stable >= 3 {
+                return rect.center();
+            }
+            previous = rect;
+            frame(app, ctx, vec![]);
+            continue;
+        }
+        stable = 0;
+        previous = rect;
+        let delta = (viewport.center().y - rect.center().y).clamp(-80.0, 80.0);
+        frame(
+            app,
+            ctx,
+            vec![
+                egui::Event::PointerMoved(viewport.center()),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    phase: egui::TouchPhase::Move,
+                    delta: Vec2::new(0.0, delta),
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+    }
+    panic!(
+        "catalog row {:?} is outside {:?}",
+        row(&app.effects_bounds),
+        app.effects_bounds.library
+    );
+}
+
 use super::*;
 
 #[test]
@@ -120,15 +169,17 @@ fn effect_category_folders_share_navigation_and_retain_only_visible_selections()
             let rows = [
                 b.folders[0],
                 b.entry,
+                b.folders[1],
                 b.filter_entry,
                 b.auto_filter_entry,
-                b.folders[1],
+                b.chorus_entry,
+                b.folders[2],
                 b.compressor_entry,
                 b.ott_entry,
                 b.limiter_entry,
-                b.folders[2],
-                b.drive_entry,
                 b.folders[3],
+                b.drive_entry,
+                b.folders[4],
                 b.direction_mixer_entry,
             ];
             assert!(
@@ -140,7 +191,7 @@ fn effect_category_folders_share_navigation_and_retain_only_visible_selections()
             click(&mut app, &ctx, drive);
             let compressor = app.effects_bounds.compressor_entry.center();
             click_effect_with_shift(&mut app, &ctx, compressor, true);
-            let dynamics = app.effects_bounds.folders[1].center();
+            let dynamics = app.effects_bounds.folders[2].center();
             click(&mut app, &ctx, dynamics);
             frame(&mut app, &ctx, vec![]);
             assert_eq!(
@@ -408,9 +459,11 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
         let visible = [
             None,
             Some(entries[0]),
+            Some(entries[12]),
+            None,
             Some(entries[2]),
             Some(entries[3]),
-            Some(entries[12]),
+            Some(entries[13]),
             None,
             Some(entries[4]),
             Some(entries[5]),
@@ -426,7 +479,6 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             None,
             Some(entries[7]),
             Some(entries[8]),
-            Some(entries[13]),
             None,
             Some(entries[16]),
             Some(entries[17]),
@@ -435,30 +487,30 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             Some(entries[18]),
         ];
         let mut steps = vec![
-            (egui::Key::ArrowDown, false, vec![entries[12]]),
+            (egui::Key::ArrowDown, false, vec![entries[13]]),
             (egui::Key::ArrowDown, false, vec![]),
             (egui::Key::ArrowDown, false, vec![entries[4]]),
         ];
-        for row in 7..visible.len() {
+        for row in 9..visible.len() {
             steps.push((
                 egui::Key::ArrowDown,
                 true,
-                visible[6..=row].iter().flatten().copied().collect(),
+                visible[8..=row].iter().flatten().copied().collect(),
             ));
         }
         steps.push((
             egui::Key::ArrowDown,
             true,
-            visible[6..].iter().flatten().copied().collect(),
+            visible[8..].iter().flatten().copied().collect(),
         ));
-        for row in (6..visible.len() - 1).rev() {
+        for row in (8..visible.len() - 1).rev() {
             steps.push((
                 egui::Key::ArrowUp,
                 true,
-                visible[6..=row].iter().flatten().copied().collect(),
+                visible[8..=row].iter().flatten().copied().collect(),
             ));
         }
-        for row in (1..6).rev() {
+        for row in (1..8).rev() {
             steps.push((
                 egui::Key::ArrowUp,
                 false,
@@ -474,7 +526,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
         }
         end_click_sequence(&mut app, &ctx);
         scroll_effects_catalog(&mut app, &ctx, 80.0);
-        let point = app.effects_bounds.compressor_entry.center();
+        let point = reveal_catalog_row(&mut app, &ctx, |b| b.compressor_entry);
         click_effect_with_shift(&mut app, &ctx, point, true);
         assert_eq!(
             app.effects_catalog.selection,
@@ -506,22 +558,25 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         (0.99, 0.99),
     ] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
-        let distortion = app.effects_bounds.folders[2].center();
+        let distortion = reveal_catalog_row(&mut app, &ctx, |b| b.folders[3]);
         click(&mut app, &ctx, distortion);
         frame(&mut app, &ctx, vec![]);
-        let folder = app.effects_bounds.folders[3].center();
+        let folder = reveal_catalog_row(&mut app, &ctx, |b| b.folders[4]);
         click(&mut app, &ctx, folder);
         frame(&mut app, &ctx, vec![]);
         assert!(!app.effects_bounds.stereo_spread_entry.is_positive());
+        let filters = reveal_catalog_row(&mut app, &ctx, |b| b.folders[1]);
+        click(&mut app, &ctx, filters);
+        frame(&mut app, &ctx, vec![]);
         end_click_sequence(&mut app, &ctx);
-        let reverb = app.effects_bounds.folders[4].center();
+        let reverb = reveal_catalog_row(&mut app, &ctx, |b| b.folders[5]);
         click(&mut app, &ctx, reverb);
         frame(&mut app, &ctx, vec![]);
         assert!(!app.effects_bounds.ambient_reverb_entry.is_positive());
-        let analysis = app.effects_bounds.folders[5].center();
+        let analysis = reveal_catalog_row(&mut app, &ctx, |b| b.folders[6]);
         click(&mut app, &ctx, analysis);
         frame(&mut app, &ctx, vec![]);
-        let point = app.effects_bounds.entry.center();
+        let point = reveal_catalog_row(&mut app, &ctx, |b| b.entry);
         click(&mut app, &ctx, point);
         library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
         assert_eq!(app.effects_catalog.selection.len(), 2);
@@ -563,19 +618,22 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
 fn effects_library_empty_click_respects_input_guards_and_other_catalog_controls() {
     for guard in ["header", "secondary", "modal", "focus", "drag"] {
         let (mut app, _, ctx, _) = chain_fixture(false, false);
-        let distortion = app.effects_bounds.folders[2].center();
+        let distortion = reveal_catalog_row(&mut app, &ctx, |b| b.folders[3]);
         click(&mut app, &ctx, distortion);
         frame(&mut app, &ctx, vec![]);
-        let folder = app.effects_bounds.folders[3].center();
+        let folder = reveal_catalog_row(&mut app, &ctx, |b| b.folders[4]);
         click(&mut app, &ctx, folder);
         frame(&mut app, &ctx, vec![]);
         assert!(!app.effects_bounds.stereo_spread_entry.is_positive());
-        for category in [4, 5] {
-            let folder = app.effects_bounds.folders[category].center();
+        let filters = reveal_catalog_row(&mut app, &ctx, |b| b.folders[1]);
+        click(&mut app, &ctx, filters);
+        frame(&mut app, &ctx, vec![]);
+        for category in [5, 6] {
+            let folder = reveal_catalog_row(&mut app, &ctx, |b| b.folders[category]);
             click(&mut app, &ctx, folder);
             frame(&mut app, &ctx, vec![]);
         }
-        let entry = app.effects_bounds.entry.center();
+        let entry = reveal_catalog_row(&mut app, &ctx, |b| b.entry);
         click(&mut app, &ctx, entry);
         let selected = app.effects_catalog.selection.clone();
         let blank = Pos2::new(
@@ -1103,9 +1161,7 @@ fn effect_catalog_colors_follow_hover_and_selection_without_editing_the_project(
                 let folder = shapes
                     .iter()
                     .find_map(|shape| match &shape.shape {
-                        egui::Shape::Text(text) if text.galley.text() == "EQ & Filters" => {
-                            Some(text)
-                        }
+                        egui::Shape::Text(text) if text.galley.text() == "EQ" => Some(text),
                         _ => None,
                     })
                     .unwrap();
@@ -1810,7 +1866,7 @@ fn unit_header_click_keeps_timeline_colors_while_a_drag_is_only_armed() {
                     shapes
                         .iter()
                         .find_map(|shape| match &shape.shape {
-                            egui::Shape::Text(t) if t.galley.text() == "EQ & Filters" => Some((
+                            egui::Shape::Text(t) if t.galley.text() == "EQ" => Some((
                                 t.fallback_color,
                                 t.override_text_color,
                                 t.opacity_factor,
@@ -5374,9 +5430,9 @@ fn layer_effects_share_the_component_lane_and_existing_effect_controls_and_drag_
         );
         assert!(!app.dirty);
         let drive = if saturator {
-            app.effects_bounds.saturator_entry.center()
+            reveal_catalog_row(&mut app, &ctx, |b| b.saturator_entry)
         } else {
-            app.effects_bounds.drive_entry.center()
+            reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry)
         };
         click(&mut app, &ctx, drive);
         library_key(&mut app, &ctx, egui::Key::Enter, false);
@@ -5946,7 +6002,7 @@ fn saturator_reuses_catalog_selectors_knobs_modulation_and_unit_actions() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for target in ["track", "master", "instrument"] {
             let (mut app, ctx) = categorized_catalog_fixture(theme, target);
-            let point = app.effects_bounds.saturator_entry.center();
+            let point = reveal_catalog_row(&mut app, &ctx, |b| b.saturator_entry);
             assert!(app.effects_bounds.saturator_entry.is_positive());
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Enter, false);
@@ -6599,6 +6655,7 @@ fn timeline_effect_drops_resolve_child_rows_and_scroll_to_visible_tracks() {
 fn drive_v2_catalog_three_strip_layout_color_power_and_gain_edits_use_shared_history() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx) = categorized_catalog_fixture(theme, "track");
+        reveal_catalog_row(&mut app, &ctx, |b| b.drive_v2_entry);
         let entry = app.effects_bounds.drive_v2_entry;
         assert!(entry.is_positive());
         click(&mut app, &ctx, entry.center());
@@ -6900,7 +6957,7 @@ fn mixed_inline_same_position_drop_keeps_the_revision_and_project_clean() {
 fn chorus_reuses_three_strips_catalog_modulation_and_power_in_all_themes() {
     for theme in settings::ColorTheme::ALL {
         let (mut app, ctx) = categorized_catalog_fixture(theme, "track");
-        scroll_effects_catalog(&mut app, &ctx, -300.0);
+        reveal_catalog_row(&mut app, &ctx, |b| b.chorus_entry);
         let entry = app.effects_bounds.chorus_entry;
         assert!(entry.is_positive());
         click(&mut app, &ctx, entry.center());

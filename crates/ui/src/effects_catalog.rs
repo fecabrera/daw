@@ -2,15 +2,17 @@
 #[derive(Clone, Copy, PartialEq)]
 enum Category {
     Analysis,
-    EqAndFilters,
+    Eq,
+    Filters,
     Dynamics,
     Distortion,
     Imaging,
     Reverb,
 }
 impl Category {
-    const ALL: [Self; 6] = [
-        Self::EqAndFilters,
+    const ALL: [Self; 7] = [
+        Self::Eq,
+        Self::Filters,
         Self::Dynamics,
         Self::Distortion,
         Self::Imaging,
@@ -21,7 +23,8 @@ impl Category {
     fn name(self) -> &'static str {
         match self {
             Self::Analysis => "Analysis",
-            Self::EqAndFilters => "EQ & Filters",
+            Self::Eq => "EQ",
+            Self::Filters => "Filters",
             Self::Dynamics => "Dynamics",
             Self::Distortion => "Distortion",
             Self::Imaging => "Imaging",
@@ -60,7 +63,7 @@ pub(super) const ENTRIES: [Entry; 21] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
-        Category::EqAndFilters,
+        Category::Eq,
         daw_core::EffectInstance::equalizer,
     ),
     Entry::new(
@@ -72,13 +75,13 @@ pub(super) const ENTRIES: [Entry; 21] = [
     Entry::new(
         daw_core::FILTER_TYPE_ID,
         "Filter",
-        Category::EqAndFilters,
+        Category::Filters,
         daw_core::EffectInstance::filter,
     ),
     Entry::new(
         daw_core::AUTO_FILTER_TYPE_ID,
         "Auto-filter",
-        Category::EqAndFilters,
+        Category::Filters,
         daw_core::EffectInstance::auto_filter,
     ),
     Entry::new(
@@ -132,13 +135,13 @@ pub(super) const ENTRIES: [Entry; 21] = [
     Entry::new(
         daw_core::MULTIBAND_EQ_TYPE_ID,
         "Multiband EQ",
-        Category::EqAndFilters,
+        Category::Eq,
         daw_core::EffectInstance::multiband_equalizer,
     ),
     Entry::new(
         daw_core::CHORUS_TYPE_ID,
         "Chorus",
-        Category::Imaging,
+        Category::Filters,
         daw_core::EffectInstance::chorus,
     ),
     Entry::new(
