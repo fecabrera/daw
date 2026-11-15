@@ -4,6 +4,28 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Unit UI test font setup — 2026-11-15
+
+Eight Compressor graph tests and two EQ readiness tests now call the shared
+font configuration before their first frame. This registers Outfit Semibold
+for the existing footer painter. Production code is unchanged. This resolves
+the missing-font failures recorded in the sidechain alignment checks below.
+
+Executed on macOS arm64:
+
+- `cargo test -p daw-unit-ui --lib --offline`: PASS, all 76 tests.
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `cargo test --workspace --offline` with native audio-service access: PASS,
+  3,508 passed and 22 intentionally ignored, including documentation tests.
+- `cargo test --workspace --release --offline` with native audio-service
+  access: PASS, 3,508 passed and 22 intentionally ignored, including
+  documentation tests.
+- `git diff --check`: PASS.
+
+Native UI, device behavior and other platforms were not checked for this
+test-only change.
+
 ## Sidechain alignment test rounding — 2026-11-15
 
 Reproduced the CI failure locally: Curve and Mapping centers were 260.96875

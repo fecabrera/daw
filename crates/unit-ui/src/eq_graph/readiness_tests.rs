@@ -57,6 +57,7 @@ fn full_range_and_legacy_readiness_keep_the_response_footer_without_resizing_or_
     ] {
         for scale in [1.0, 1.25, 2.0] {
             let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
             theme::configure(&ctx);
             theme::apply(&ctx, mode, palette, theme::ACCENT);
             ctx.set_pixels_per_point(scale);
@@ -122,6 +123,7 @@ fn full_range_and_legacy_readiness_keep_the_response_footer_without_resizing_or_
 fn silent_readings_do_not_request_collection_repaints() {
     for step in [1.0 / 60.0, 1.0 / 120.0, 0.023] {
         let ctx = egui::Context::default();
+        crate::fonts::configure(&ctx);
         let mut settings = MultibandEqSettings::default();
         let mut time = 0.0;
         let mut partial = SpectrumReading {

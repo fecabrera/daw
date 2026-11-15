@@ -475,6 +475,7 @@ mod tests {
     fn crossover_drag_previews_commits_by_id_and_clamps_between_neighbors() {
         for live in [false, true] {
             let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
             let mut s = MultibandCompressorSettings::default();
             let before = s.clone();
             let b = draw(&ctx, &mut s, vec![], live, true, true, false);
@@ -541,6 +542,7 @@ mod tests {
         for live in [false, true] {
             for mode in 0..5 {
                 let ctx = egui::Context::default();
+                crate::fonts::configure(&ctx);
                 let mut s = MultibandCompressorSettings::default();
                 let before = s.clone();
                 let b = draw(&ctx, &mut s, vec![], live, true, true, false);
@@ -603,6 +605,7 @@ mod tests {
     #[test]
     fn adjacent_crossover_lines_remain_individually_grabbable() {
         let ctx = egui::Context::default();
+        crate::fonts::configure(&ctx);
         let mut s = MultibandCompressorSettings::default();
         s.bands[0].upper_hz = 999.0;
         s.bands[1].upper_hz = 1000.0;
@@ -643,6 +646,7 @@ mod tests {
     #[test]
     fn crossover_drag_has_no_press_jump_and_shift_changes_only_future_movement() {
         let ctx = egui::Context::default();
+        crate::fonts::configure(&ctx);
         let mut s = MultibandCompressorSettings::default();
         let before = s.clone();
         let b = draw(&ctx, &mut s, vec![], false, true, true, false);
@@ -708,6 +712,7 @@ mod tests {
     fn threshold_drag_previews_commits_by_id_and_clamps_to_zero() {
         for live in [false, true] {
             let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
             let mut s = MultibandCompressorSettings::default();
             let before = s.clone();
             let b = draw(&ctx, &mut s, vec![], live, true, true, false);
@@ -778,6 +783,7 @@ mod tests {
         for live in [false, true] {
             for mode in 0..5 {
                 let ctx = egui::Context::default();
+                crate::fonts::configure(&ctx);
                 let mut s = MultibandCompressorSettings::default();
                 let before = s.clone();
                 let b = draw(&ctx, &mut s, vec![], live, true, true, false);
@@ -840,6 +846,7 @@ mod tests {
     #[test]
     fn threshold_drag_has_no_press_jump_and_shift_changes_only_future_movement() {
         let ctx = egui::Context::default();
+        crate::fonts::configure(&ctx);
         let mut s = MultibandCompressorSettings::default();
         let before = s.clone();
         let b = draw(&ctx, &mut s, vec![], false, true, true, false);
@@ -905,6 +912,7 @@ mod tests {
     fn threshold_lower_bound_and_crossover_intersection_keep_band_identity() {
         for threshold in [false, true] {
             let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
             let mut s = MultibandCompressorSettings::default();
             let before = s.clone();
             let b = draw(&ctx, &mut s, vec![], false, true, true, false);
