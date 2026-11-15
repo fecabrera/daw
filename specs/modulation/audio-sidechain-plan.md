@@ -264,6 +264,10 @@ Attack/Release on row two and Curve on the third row, centered across the full
 Mapping strip. Replace the Invert checkbox with a selected-state 18-point I button
 to the right of the centered Mapping footer label, using standard footer
 spacing, keyboard/accessibility behavior and an Invert On/Off tooltip.
+Alignment tests compare Curve and Mapping independently with the strip center.
+Allow half a physical pixel for Curve's centered text and half a logical point
+for Mapping's rounded leading space, plus egui's layout rounding increment.
+Check display scales of 100%, 125%, 150% and 200%.
 Place Input/Value labels and numeric readouts inside the graph’s inset frame,
 above the plot, in two centered columns. Use the shared three-knob-row chart
 height and reserve a header for these readouts. Expose their values through

@@ -751,9 +751,13 @@ mod tests {
     }
     #[test]
     fn sidechain_settings_reuse_standard_strip_widths_without_painting_edits() {
-        for compact in [false, true] {
+        for (compact, pixels_per_point) in [false, true]
+            .into_iter()
+            .flat_map(|compact| [1.0, 1.25, 1.5, 2.0].map(|scale| (compact, scale)))
+        {
             for input in [-9.7_f32, -39.2, -120.0, 240.0] {
                 let ctx = Context::default();
+                ctx.set_pixels_per_point(pixels_per_point);
                 crate::fonts::configure(&ctx);
                 crate::theme::configure(&ctx);
                 ctx.data_mut(|d| {
@@ -813,12 +817,22 @@ mod tests {
                             })
                             .unwrap()
                     };
-                    assert!(
-                        (text_center("Curve") - text_center("Mapping")).abs() < 0.75,
-                        "curve={} mapping={}",
-                        text_center("Curve"),
-                        text_center("Mapping")
-                    );
+                    let center = rect.left()
+                        + 2.0 * daw_unit_ui::layout::UNIT_STRIP_WIDTH
+                        + daw_unit_ui::layout::unit_columns_width(2) * 0.5;
+                    // The selector's centered galley snaps to physical pixels;
+                    // unit_label rounds its leading space to whole UI points.
+                    // Check each against the strip center, since those errors
+                    // can have opposite signs when comparing the two labels.
+                    for (label, tolerance) in [("Curve", 0.5 / pixels_per_point), ("Mapping", 0.5)]
+                    {
+                        assert!(
+                            (text_center(label) - center).abs()
+                                <= tolerance + egui::emath::GUI_ROUNDING,
+                            "{label}: center={} expected={center} scale={pixels_per_point}",
+                            text_center(label),
+                        );
+                    }
                     for label in ["Filter", "Mapping", "Response"] {
                         assert!((footer_y(label) - footer_y("Detector")).abs() < 0.1);
                     }

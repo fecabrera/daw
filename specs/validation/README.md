@@ -4,6 +4,32 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Sidechain alignment test rounding — 2026-11-15
+
+Reproduced the CI failure locally: Curve and Mapping centers were 260.96875
+and 260.01563 points. Each was within half a point of the strip center, but
+their opposite rounding errors exceeded the old 0.75-point comparison limit.
+The test now checks each label against the strip center with its own rounding
+bound, at 100%, 125%, 150% and 200% display scales. Production code is unchanged.
+
+Executed on macOS arm64:
+
+- `cargo test -p daw-ui --lib audio_sidechain --offline`: PASS, nine tests.
+- `cargo test -p daw-ui --lib --offline`: PASS, 1,025 passed and three ignored.
+  The release `daw-ui` library suite also passes within the workspace run.
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `cargo test --workspace --offline` with native audio-service access: FAIL
+  in ten unchanged `daw-unit-ui` tests. Eight Compressor graph tests and two
+  EQ readiness tests do not register the `Outfit Semibold` font. An isolated
+  `cargo test -p daw-unit-ui --lib --offline` reproduces all ten failures.
+  Sandboxed workspace runs stop earlier at AUv2 component registration.
+- `cargo test --workspace --release --offline` with native audio-service
+  access: FAIL in the same ten `daw-unit-ui` tests due to missing font setup.
+- `git diff --check`: PASS.
+
+Native UI and other platforms were not checked for this test-only change.
+
 ## Sidechain marker motion and centered Curve — 2026-11-15
 
 The response dot follows live telemetry smoothly along the selected mapping.
