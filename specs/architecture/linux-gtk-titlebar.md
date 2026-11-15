@@ -8,6 +8,8 @@ and desktop OpenGL 3.3 are required. The macOS and Windows entry points retain
 eframe and their existing adapters. The headless CLI has no GTK dependency.
 The `gtk_titlebar` example and empty `gtk-titlebar` feature remain compatibility
 aliases for the former trial commands; neither is required for normal startup.
+The example includes both `app_icon` and `gtk_host` from the desktop sources, so
+GTK startup and embedded icon registration share the normal launcher implementation.
 
 `GtkWindowControls` supplies actual widgets at both ends of an overlay and
 follows GTK's decoration layout. Custom mode reserves their measured widths and

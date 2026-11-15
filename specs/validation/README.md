@@ -4,6 +4,29 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## GTK compatibility example icon module — 2026-11-15
+
+The Linux `gtk_titlebar` example included `gtk_host` but omitted the crate-root
+`app_icon` module used by its startup path, causing E0433 in Linux all-target
+checks. The example now includes the same Linux-gated icon source as the normal
+desktop launcher. GTK/icon behavior is shared; no duplicate implementation or
+new dependency was added.
+
+Executed on macOS arm64:
+
+- `cargo test --workspace --release --offline` with macOS audio-service access:
+  PASS, 3,456 passed and 22 intentionally ignored.
+- `cargo test --workspace --offline` with macOS audio-service access: PASS,
+  3,456 passed and 22 intentionally ignored.
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `git diff --check`: PASS.
+
+Remaining checks: rerun Linux CI's all-target compilation and GTK smoke test.
+The macOS checks compile the example's non-Linux fallback, not its GTK branch.
+Docker CLI is present locally, but no Docker daemon is running, so native Linux
+compilation or window checks were not performed in this environment.
+
 ## Windows ZIP entry paths — 2026-11-15
 
 The Windows packager previously derived ZIP names by slicing absolute path

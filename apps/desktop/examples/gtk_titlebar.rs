@@ -1,5 +1,9 @@
 //! Compatibility alias for the default Linux GTK launcher.
 #[cfg(target_os = "linux")]
+#[path = "../src/app_icon.rs"]
+mod app_icon;
+
+#[cfg(target_os = "linux")]
 #[path = "../src/gtk_host.rs"]
 mod gtk_host;
 
