@@ -1,0 +1,13 @@
+<gresources>
+  <gresource prefix="/org/daw/DAW/icons">
+    <file>hicolor/16x16/apps/org.daw.DAW.png</file>
+    <file>hicolor/24x24/apps/org.daw.DAW.png</file>
+    <file>hicolor/32x32/apps/org.daw.DAW.png</file>
+    <file>hicolor/48x48/apps/org.daw.DAW.png</file>
+    <file>hicolor/64x64/apps/org.daw.DAW.png</file>
+    <file>hicolor/128x128/apps/org.daw.DAW.png</file>
+    <file>hicolor/256x256/apps/org.daw.DAW.png</file>
+    <file>hicolor/512x512/apps/org.daw.DAW.png</file>
+    <file>hicolor/scalable/apps/org.daw.DAW.svg</file>
+  </gresource>
+</gresources>

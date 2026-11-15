@@ -1,8 +1,27 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-source_revision="$(python3 tools/package_sources.py --revision-only)"
-profile="${1:-debug}"
+profile=debug
+profile_set=0
+local_build=0
+usage() {
+  echo 'Usage: sh tools/package_macos.sh [debug|release] [--local]'
+}
+for argument in "$@"; do
+  case "$argument" in
+    debug|release)
+      if [ "$profile_set" = 1 ]; then usage >&2; exit 2; fi
+      profile="$argument"
+      profile_set=1
+      ;;
+    --local) local_build=1 ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+if [ "$local_build" = 0 ]; then
+  source_revision="$(python3 tools/package_sources.py --revision-only)"
+fi
 executable="$(python3 tools/build_desktop.py "$profile" macos)"
 mkdir -p "$PWD/target/$profile"
 artifact="target/$profile/DAW.app"
@@ -12,6 +31,8 @@ trap 'exit 1' HUP INT TERM
 bundle="$staging_directory/DAW.app"
 mkdir -p "$bundle/Contents/MacOS"
 mkdir -p "$bundle/Contents/Resources/licenses"
+cp crates/ui/assets/app-icon/DAW.icns "$bundle/Contents/Resources/DAW.icns"
+cp crates/ui/assets/app-icon/Assets.car "$bundle/Contents/Resources/Assets.car"
 # Publish a fresh inode so a running DAW instance can keep its mapped executable.
 temporary_executable="$(mktemp "$bundle/Contents/MacOS/.daw-desktop.XXXXXX")"
 cp "$executable" "$temporary_executable"
@@ -37,14 +58,24 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <key>CFBundleExecutable</key><string>daw-desktop</string>
 <key>CFBundleIdentifier</key><string>dev.daw.prototype</string>
 <key>CFBundleName</key><string>DAW</string>
+<key>CFBundleIconFile</key><string>DAW.icns</string>
+<key>CFBundleIconName</key><string>DAW</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-python3 tools/package_sources.py --revision "$source_revision" --profile "$profile" \
-  --destination "$bundle/Contents/Resources" --binary "$bundle/Contents/MacOS/daw-desktop"
-# A failed source/vendor step must not replace the previous complete application.
+if [ "$local_build" = 1 ]; then
+  cat > "$bundle/Contents/Resources/LOCAL-BUILD.txt" <<'NOTE'
+Local development build from the current working tree, including uncommitted changes.
+No corresponding-source archive is included. This is not a distribution package.
+Keep LICENSE.txt and the licenses directory with this app.
+NOTE
+else
+  python3 tools/package_sources.py --revision "$source_revision" --profile "$profile" \
+    --destination "$bundle/Contents/Resources" --binary "$bundle/Contents/MacOS/daw-desktop"
+fi
+# Failed builds, assembly and source/vendor steps retain the previous app.
 if [ -e "$artifact" ]; then mv "$artifact" "$staging_directory/previous.app"; fi
 if ! mv "$bundle" "$artifact"; then
   if [ -e "$staging_directory/previous.app" ]; then mv "$staging_directory/previous.app" "$artifact"; fi

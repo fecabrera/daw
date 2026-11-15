@@ -6,6 +6,9 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 ## Architecture and baseline
 
+- [Windows/Linux desktop packaging](architecture/windows-linux-packaging.md): local working-tree ZIPs and distribution source packages.
+- [macOS application packaging](architecture/macos-packaging.md): local working-tree bundles and distribution source packages.
+- [Desktop application icons](architecture/app-icons.md): platform artwork, exports and launcher integration.
 - [Linux GTK window host](architecture/linux-gtk-titlebar.md): default Linux launcher, actual window controls, preferences migration and validation.
 
 - [MVP scope and architecture](architecture/mvp-scope.md).
@@ -31,6 +34,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Architecture review — 2026-10-19](architecture/review-2026-10-19/README.md): current architecture, pipelines, workflow stages, cache ownership, findings and review decisions.
 
 ## Projects and storage
+
 
 - [Project media source bundling](projects/source-bundling.md): staged plan for explicit collection, source verification, transactional copying, Save As, history and portability acceptance.
 - [Source bundling Stage 0](projects/source-bundling-stage0.md): storage compatibility, included-path containment, content verification and frozen copying/commit rules.

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DAW
+Comment=Digital audio workstation
+Exec=daw-desktop
+Icon=org.daw.DAW
+Terminal=false
+Categories=AudioVideo;Audio;AudioVideoEditing;
+StartupWMClass=org.daw.DAW

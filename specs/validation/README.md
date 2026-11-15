@@ -4,6 +4,226 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Windows/Linux local packaging options — 2026-11-15
+
+Added `--local` to Linux and Windows packaging, matching macOS local semantics.
+Distribution mode still requires a clean committed tracked tree and source
+materials. Local ZIPs use current files, include `LOCAL-BUILD.txt` and notices,
+and omit corresponding-source archives, access notices and manifests. Windows
+also accepts `-Local`; its parser handles both native `-File` and direct
+PowerShell invocation. See the [packaging contract](../architecture/windows-linux-packaging.md).
+
+Executed on macOS arm64:
+
+- `python3 -m unittest discover -s tools -p test_desktop_packaging.py`: PASS.
+  The Linux fixture now covers local builds on a dirty tree and without Git
+  history, both flag orders, default debug profile, icons/runtime requirements,
+  every runtime-notice hash, source omission and byte-identical preservation of
+  the previous ZIP after build, missing-artifact and assembly failures. Existing
+  macOS and distribution checks still pass.
+- `DAW_TEST_PWSH=<portable-pwsh> python3 -m unittest discover -s tools -p
+  test_windows_packaging.py`: PASS. Used portable PowerShell 7.6.6 from Microsoft's
+  release archive, verified against its published SHA256 file, under ignored
+  `work/`. No system installation was performed. Fixtures execute the Windows
+  script with fake Cargo output, no Git history and a source helper that throws
+  if invoked. Checked both `--local` orders, default debug, named `-Local`,
+  invalid profiles, default source-helper invocation, ZIP contents, notice hashes
+  and preservation/cleanup after build, artifact and assembly failures.
+- Actual `pwsh -File tools/package_windows.ps1` invocations with four local-flag
+  forms reached the Windows platform guard. This separately verifies parameter
+  binding through the native PowerShell entry point.
+- Shell syntax, changed documentation links and `git diff --check`: PASS.
+
+These were packaging fixtures. Native Windows PowerShell 5.1/MSVC and Linux
+application builds, shell presentation and audio-device checks were not run.
+Changes remain uncommitted as requested.
+
+## macOS local packaging option — 2026-11-15
+
+Added `--local` to `tools/package_macos.sh`. The default remains distribution
+packaging with a clean committed tracked tree and corresponding-source materials.
+Local mode uses current files, retains icons and notices, adds `LOCAL-BUILD.txt`
+and omits source archives/manifests. Both modes retain staged publication and
+preserve the previous app on failure. See the [packaging contract](../architecture/macos-packaging.md).
+
+Executed on macOS arm64:
+
+- `python3 -m unittest discover -s tools -p test_desktop_packaging.py`: PASS
+  (two tests with platform/profile/target subcases). Covered local builds on a
+  dirty tree and without repository history, both flag orders, default debug,
+  source-vendoring bypass, stale source metadata removal, invalid arguments,
+  and preservation after build, artifact-selection and icon-copy failures.
+  Existing distribution/source/archive assertions also pass.
+- `sh tools/package_macos.sh debug --local`: PASS.
+- `sh tools/package_macos.sh --local release`: PASS.
+- Verified both resulting apps: exact native binaries and icon files, runtime
+  notice hashes, local marker and absent distribution metadata. Both bundled
+  executables completed `--font-license` successfully.
+- Shell syntax, documentation links and `git diff --check`: PASS.
+
+No native UI or audio-device checks were run for this packaging-only change.
+Changes remain uncommitted as requested.
+
+## Shared Windows/Linux waveform — 2026-11-15
+
+Windows and Linux now use `DAW.icon/Assets/Waveform.svg`, composed without
+modifying it over `desktop-background.svg`. The rounded graphite background
+and transparent outer margins are retained. Regenerated the Windows ICO/window
+PNG and Linux scalable SVG, eight PNG sizes and GResource. Removed the unused
+`desktop-master.png`. macOS source and exports were not changed by this task.
+
+Executed on macOS arm64:
+
+- `python3 tools/export_app_icons.py --platform desktop`: PASS using librsvg and
+  GLib. Separate `windows` and `linux` export options are also available.
+- `python3 -m unittest discover -s tools -p test_export_app_icons.py`: PASS.
+  Changed a temporary shared SVG twice without a raster master; verified both
+  Windows and Linux exports change, ICO frames equal the Linux raster outputs,
+  scalable artwork retains the shared vector, embedded SVG matches the composite,
+  and a macOS catalog sentinel remains unchanged.
+- `python3 -m unittest discover -s tools -p test_desktop_packaging.py`: PASS,
+  including the packaged Linux scalable icon.
+- Inspected the 256-pixel composite. Decoded the ICO, checked all seven frame
+  sizes, verified the rounded background and transparent outer margins, and
+  compared the nested waveform with the canonical SVG.
+- `cargo fmt --all --check` and
+  `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: PASS.
+- Desktop debug and release tests: PASS. Both full workspace test variants stop
+  at the unchanged Ambient Reverb AUv2 registration assertion recorded below.
+- Changed documentation links and `git diff --check`: PASS.
+
+No native Windows/Linux shell checks or application package rebuilds were run.
+Changes remain uncommitted as requested.
+
+## Updated Icon Composer exports — 2026-11-15
+
+Regenerated `Assets.car`, `DAW.icns` and `macos.png` from the user's updated
+`DAW.icon`. Preserved its automatic graphite gradient, 1.1 waveform scale and
+translation. Removed unused `macos-1.png` and the obsolete `macos-master.png`
+concept reference. Windows/Linux source artwork and exports are unchanged.
+
+Executed on macOS arm64:
+
+- `python3 tools/export_app_icons.py --platform macos`: PASS with native
+  graphics-service access.
+- `assetutil --info`: PASS; the catalog includes the `DAW` icon stack.
+- Decoded ICNS and the 512-pixel PNG; inspected the regenerated PNG and checked
+  the updated source settings and removal of the obsolete files.
+- `cargo check --locked --offline -p daw-desktop` and `git diff --check`: PASS.
+
+This was an asset regeneration. No app bundle rebuild, native Dock check or
+audio-device check was performed. Changes remain uncommitted as requested.
+
+## Native macOS Icon Composer icon — 2026-11-15
+
+The user reported inconsistent Dock size and a non-native appearance, then chose
+a native graphite background rather than retaining the generated gradient.
+Replaced the macOS product's flattened artwork with `DAW.icon`: an orange SVG
+waveform group and native graphite fill. Committed Apple-compiled `Assets.car`,
+the Apple-generated ICNS fallback, and a padded PNG for direct Cargo launches.
+Bundled launches now suppress the eframe image override when `CFBundleIconName`
+is present. Windows/Linux artwork is unchanged.
+
+Executed on macOS arm64:
+
+- Created and opened the layered source in Xcode's Icon Composer. Inspected the
+  native default rendering exported with `ictool`.
+- `python3 tools/export_app_icons.py --platform macos`: PASS using Xcode 27.2's
+  `actool`. Native exports require graphics-service access outside the execution
+  sandbox; sandboxed attempts failed before export. No fallback renderer was used.
+- `assetutil --info crates/ui/assets/app-icon/Assets.car`: PASS. The catalog
+  includes `DAW`, vector waveform data, icon stacks, colors and native gradients.
+- Read the ICNS fallback alpha bounds: `(17,19)-(239,241)` on a 256-pixel canvas,
+  or 222×222 pixels. Icon Composer's own app fallback measures 224×224 on the same
+  canvas. The 512-pixel Cargo fallback preserves the compiled icon's margins.
+- `cargo check --locked --offline -p daw-desktop`: PASS.
+- `cargo fmt --all --check` and
+  `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --locked --offline -p daw-desktop` and its `--release` variant: PASS.
+- Both full workspace test variants stop at the unchanged Ambient Reverb AUv2
+  native-registration assertion recorded below. Remaining workspace tests did
+  not complete.
+- `python3 -m unittest discover -s tools -p test_desktop_packaging.py`: PASS.
+  Fixtures now require both `CFBundleIconName=DAW` and the exact catalog bytes.
+- Shell syntax, documentation links and `git diff --check`: PASS.
+
+The native catalog supersedes the prior unconditional macOS PNG override.
+Dock/system-appearance checks remain distinct from catalog, padding and package
+checks. Windows/Linux native checks remain outside this macOS correction.
+
+## macOS running application icon correction — 2026-11-15
+
+The first icon implementation set AppKit's application icon in the app creator.
+eframe subsequently applied its fallback icon on the first frame. The bundle
+icon and image-decode checks passed but did not cover that startup ordering.
+The reported white egui Dock icon exposed this gap.
+
+macOS now supplies an embedded 512-pixel `macos.png` through the same viewport
+icon entry point as Windows, so eframe applies the intended image. Removed the
+redundant direct AppKit assignment and its added dependency feature flags.
+The exporter also produces the macOS viewport PNG from the approved master.
+
+Executed checks on macOS arm64:
+
+- `cargo check --locked --offline -p daw-desktop` and
+  `cargo build --locked --offline -p daw-desktop`: PASS.
+- `cargo fmt --all --check` and
+  `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: PASS.
+- Both `cargo test --locked --offline --workspace` and its `--release` variant
+  stop at the same unchanged Ambient Reverb AUv2 registration assertion recorded
+  below; neither completes the remaining workspace tests.
+- `cargo test --locked --offline -p daw-desktop` and its `--release` variant:
+  PASS.
+- `python3 -m unittest discover -s tools -p test_desktop_packaging.py`: PASS.
+
+The earlier direct-AppKit startup claim is superseded by this correction.
+Native launch verification must observe the icon after the first rendered frame;
+bundle metadata and `--font-license` do not exercise this behavior.
+
+## Desktop application icons — 2026-11-15
+
+Added the approved orange V4 split waveform with a rounded graphite macOS tile
+and a flatter Windows/Linux tile. See [asset and integration contracts](../architecture/app-icons.md).
+
+Executed on macOS arm64:
+
+- `python3 tools/export_app_icons.py`: exported ICNS, ICO, eight PNG sizes and
+  the embedded GTK resource. The initial `iconutil` conversion rejected the
+  iconset; the exporter now writes PNG-backed ICNS entries directly.
+- Pillow decoded both masters, all ICO frame sizes and the 1024-pixel ICNS
+  representation. Transparent outer corners were checked. `sips` recognized
+  the ICNS container; `gresource list` reported all eight registered icon paths.
+- A Swift/AppKit decode check loaded the ICNS as a valid `NSImage` with 11
+  representations. This checks native decoding, not Dock presentation.
+- Inspected the platform masters and the 128-pixel Windows/Linux export.
+- Compiled `apps/desktop/build.rs` with Rust, exercised its Windows path using
+  LLVM's resource compiler through a temporary `rc.exe` shim, and converted the
+  generated resource to x64 COFF with `llvm-cvtres`. A relative output directory
+  containing a space passed. This is not a native Windows SDK or Explorer check.
+- `python3 -m unittest discover -s tools -p test_desktop_packaging.py`: PASS.
+  Fixtures cover macOS plist/icon bytes, all Linux packaged icon sizes and the
+  launcher icon name, plus existing publication/failure checks.
+- `cargo check --locked --offline -p daw-desktop` and
+  `cargo build --locked --offline -p daw-desktop`: PASS.
+- `cargo fmt --all --check` and
+  `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --locked --offline -p daw-desktop`: PASS.
+- `cargo test --locked --offline -p daw-desktop --release`: PASS.
+- `cargo test --locked --offline --workspace` and
+  `cargo test --locked --offline --workspace --release`: both stopped at
+  `daw-ambient-reverb-auv2`'s
+  `native::tests::native_audio_component_registration_and_host_calls` assertion
+  `!component.is_null()` in the unchanged shared AUv2 test source. Remaining
+  workspace tests did not run. No plugin changes were made for this icon task.
+- Shell syntax, changed documentation links and `git diff --check`: PASS.
+- `sh tools/package_macos.sh debug`: stopped at the existing clean-commit gate
+  before building or replacing an app bundle. The working tree contains this
+  task's changes and unrelated user changes; no commit was made.
+
+Native Finder/Dock presentation, Windows SDK compilation and Explorer/taskbar
+presentation, and Linux GTK/X11/Wayland launcher presentation remain unchecked.
+No audio-device check was needed for these startup and packaging changes.
+
 
 ## AUv2 unsupported-target workspace guards — 2026-11-15
 

@@ -2,12 +2,38 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('debug', 'release')]
-    [string]$Profile = 'debug'
+    [string]$Profile = 'debug',
+    # Accept --local as well as the standard PowerShell -Local spelling.
+    [Alias('-local')]
+    [switch]$Local,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$RemainingArguments
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# -File binds the double-hyphen alias; direct PowerShell invocation passes
+# --local as a positional string. Normalize both without losing -Profile/-Local.
+$profileSpecified = $PSBoundParameters.ContainsKey('Profile')
+if ($Profile -eq '--local') {
+    $Local = $true
+    $Profile = 'debug'
+    $profileSpecified = $false
+}
+foreach ($argument in $RemainingArguments) {
+    if ($argument -eq '--local') {
+        $Local = $true
+    } elseif ($argument -in @('debug', 'release') -and -not $profileSpecified) {
+        $Profile = $argument
+        $profileSpecified = $true
+    } else {
+        throw 'Usage: tools/package_windows.ps1 [debug|release] [--local]'
+    }
+}
+if ($Profile -notin @('debug', 'release')) {
+    throw 'Usage: tools/package_windows.ps1 [debug|release] [--local]'
+}
 
 if ($env:OS -ne 'Windows_NT') {
     throw 'Run this packager on Windows with the MSVC Rust toolchain.'
@@ -17,8 +43,10 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $stagingDirectory = $null
 Push-Location -LiteralPath $repositoryRoot
 try {
-    $sourceRevision = & python tools/package_sources.py --revision-only
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot identify a clean corresponding-source revision.' }
+    if (-not $Local) {
+        $sourceRevision = & python tools/package_sources.py --revision-only
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot identify a clean corresponding-source revision.' }
+    }
     $cargoArguments = @('build', '--locked', '-p', 'daw-desktop', '--message-format=json-render-diagnostics')
     if ($Profile -eq 'release') {
         $cargoArguments += '--release'
@@ -77,9 +105,17 @@ try {
         }
     }
 
-    & python tools/package_sources.py --revision $sourceRevision --profile $Profile `
-        --destination $packageDirectory --binary (Join-Path $packageDirectory 'daw-desktop.exe')
-    if ($LASTEXITCODE -ne 0) { throw 'Corresponding-source packaging failed. The existing ZIP was not changed.' }
+    if ($Local) {
+        @'
+Local development build from the current working tree, including uncommitted changes.
+No corresponding-source archive is included. This is not a distribution package.
+Keep LICENSE.txt and the licenses directory with this app.
+'@ | Set-Content -LiteralPath (Join-Path $packageDirectory 'LOCAL-BUILD.txt') -Encoding UTF8
+    } else {
+        & python tools/package_sources.py --revision $sourceRevision --profile $Profile `
+            --destination $packageDirectory --binary (Join-Path $packageDirectory 'daw-desktop.exe')
+        if ($LASTEXITCODE -ne 0) { throw 'Corresponding-source packaging failed. The existing ZIP was not changed.' }
+    }
 
     Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
     $temporaryArchive = Join-Path $stagingDirectory 'DAW.zip'
@@ -108,7 +144,8 @@ try {
 } finally {
     if ($stagingDirectory -and (Test-Path -LiteralPath $stagingDirectory)) {
         $stagingPath = [System.IO.Path]::GetFullPath($stagingDirectory)
-        $artifactPrefix = [System.IO.Path]::GetFullPath($artifactDirectory).TrimEnd('\') + '\'
+        $separator = [System.IO.Path]::DirectorySeparatorChar
+        $artifactPrefix = [System.IO.Path]::GetFullPath($artifactDirectory).TrimEnd($separator) + $separator
         if (-not $stagingPath.StartsWith($artifactPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             throw 'Refusing to remove a staging directory outside the build output directory.'
         }

@@ -2,6 +2,7 @@
 import os
 import hashlib
 import json
+import plistlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -14,6 +15,15 @@ ROOT = Path(__file__).resolve().parent.parent
 
 @unittest.skipUnless(os.name == "posix" and shutil.which("zip"), "POSIX shell and ZIP required")
 class DesktopPackagingTests(unittest.TestCase):
+    def test_shell_packagers_reject_invalid_arguments_before_building(self):
+        for platform in ('macos', 'linux'):
+            for arguments in (['--unknown'], ['release', 'debug'], ['--local', 'fast']):
+                with self.subTest(platform=platform, arguments=arguments):
+                    result = subprocess.run(['sh', str(ROOT / 'tools' / f'package_{platform}.sh'), *arguments],
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn('Usage:', result.stderr)
+
     def test_target_directory_overrides_cannot_select_stale_executables(self):
         for platform in ('macos', 'linux'):
             for profile in ('debug', 'release'):
@@ -31,6 +41,7 @@ class DesktopPackagingTests(unittest.TestCase):
                         shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
                         for directory in ('crates/unit-ui/assets/fonts', 'crates/ui/assets/icons', 'crates/ui/assets/licenses', 'crates/unit-ui/assets/licenses', 'crates/separation/assets/licenses', 'crates/media/assets/licenses', 'crates/timestretch/licenses', 'crates/oscillator/assets/licenses', 'crates/equalizer/assets/licenses'):
                             shutil.copytree(ROOT / directory, root / directory)
+                        shutil.copytree(ROOT / 'crates/ui/assets/app-icon', root / 'crates/ui/assets/app-icon')
                         default = root / 'target' / profile
                         default.mkdir(parents=True)
                         (default / 'daw-desktop').write_text('stale')
@@ -85,7 +96,15 @@ if not os.environ.get('OMIT_CARGO_ARTIFACT'):
                         if platform == 'macos':
                             data = (default / 'DAW.app/Contents/MacOS/daw-desktop').read_bytes()
                             source = default / 'DAW.app/Contents/Resources'
+                            self.assertEqual((source / 'DAW.icns').read_bytes(),
+                                             (ROOT / 'crates/ui/assets/app-icon/DAW.icns').read_bytes())
+                            metadata = plistlib.loads((default / 'DAW.app/Contents/Info.plist').read_bytes())
+                            self.assertEqual(metadata['CFBundleIconFile'], 'DAW.icns')
+                            self.assertEqual(metadata['CFBundleIconName'], 'DAW')
+                            self.assertEqual((source / 'Assets.car').read_bytes(),
+                                             (ROOT / 'crates/ui/assets/app-icon/Assets.car').read_bytes())
                             self.assertTrue((source/'DAW-source.zip').is_file())
+                            self.assertFalse((source / 'LOCAL-BUILD.txt').exists())
                             manifest=json.loads((source/'source-manifest.json').read_text())
                             self.assertEqual(manifest['binary_sha256'],hashlib.sha256(data).hexdigest())
                             notices = default / 'DAW.app/Contents/Resources/licenses'
@@ -95,6 +114,14 @@ if not os.environ.get('OMIT_CARGO_ARTIFACT'):
                                     self.assertEqual(hashlib.sha256(payload).hexdigest(), entry['sha256'])
                         else:
                             with zipfile.ZipFile(default / 'DAW-linux-x64.zip') as archive:
+                                self.assertIn('Icon=org.daw.DAW', archive.read('DAW/share/applications/org.daw.DAW.desktop').decode())
+                                self.assertEqual(
+                                    archive.read('DAW/share/icons/hicolor/scalable/apps/org.daw.DAW.svg'),
+                                    (ROOT / 'crates/ui/assets/app-icon/hicolor/scalable/apps/org.daw.DAW.svg').read_bytes())
+                                for size in (16, 24, 32, 48, 64, 128, 256, 512):
+                                    icon_path = f'hicolor/{size}x{size}/apps/org.daw.DAW.png'
+                                    self.assertEqual(archive.read('DAW/share/icons/' + icon_path),
+                                                     (ROOT / 'crates/ui/assets/app-icon' / icon_path).read_bytes())
                                 self.assertIn(b'GTK 4.8', archive.read('DAW/LINUX-REQUIREMENTS.txt'))
                                 data = archive.read('DAW/daw-desktop')
                                 manifest=json.loads(archive.read('DAW/source-manifest.json'))
@@ -118,6 +145,61 @@ if not os.environ.get('OMIT_CARGO_ARTIFACT'):
                             else:
                                 self.assertEqual((default/'DAW-linux-x64.zip').read_bytes(),old_archive)
                             del env[failure]
+                        # Local mode bypasses Git state and source vendoring.
+                        (root / 'LICENSE').write_text('local uncommitted license fixture')
+                        env['FAIL_SOURCE_VENDOR'] = '1'
+                        rejected = subprocess.run(['sh', str(root / 'tools' / script.name), profile],
+                                                  cwd=root, env=env, capture_output=True)
+                        self.assertNotEqual(rejected.returncode, 0)
+                        self.assertIn(b'Commit tracked changes', rejected.stderr)
+                        shutil.rmtree(root / '.git')
+                        local_arguments = ['--local'] if profile == 'debug' else ['release', '--local']
+                        subprocess.run(['sh', str(root / 'tools' / script.name), *local_arguments],
+                                       cwd=root, env=env, check=True, capture_output=True)
+
+                        def local_contents():
+                            if platform == 'macos':
+                                resources = default / 'DAW.app/Contents/Resources'
+                                contents = {p.relative_to(resources).as_posix(): p.read_bytes()
+                                            for p in resources.rglob('*') if p.is_file()}
+                                binary = (default / 'DAW.app/Contents/MacOS/daw-desktop').read_bytes()
+                                return binary, contents
+                            with zipfile.ZipFile(default / 'DAW-linux-x64.zip') as archive:
+                                contents = {n.removeprefix('DAW/'): archive.read(n)
+                                            for n in archive.namelist() if not n.endswith('/')}
+                            return contents['daw-desktop'], contents
+
+                        binary, contents = local_contents()
+                        self.assertEqual(binary, b'unpublished')
+                        self.assertIn(b'Local development build', contents['LOCAL-BUILD.txt'])
+                        self.assertEqual(contents['LICENSE.txt'], b'local uncommitted license fixture')
+                        for name in ('DAW-source.zip', 'source-manifest.json', 'SOURCE-ACCESS.txt'):
+                            self.assertNotIn(name, contents)
+                        for entry in json.loads((ROOT / 'tools/runtime_notices.json').read_text())['notices']:
+                            if 'desktop' in entry['deliverables']:
+                                self.assertEqual(hashlib.sha256(contents['licenses/' + Path(entry['notice']).name]).hexdigest(),
+                                                 entry['sha256'])
+                        if platform == 'linux':
+                            self.assertIn('share/icons/hicolor/scalable/apps/org.daw.DAW.svg', contents)
+                            self.assertIn('LINUX-REQUIREMENTS.txt', contents)
+                        subprocess.run(['sh', str(root / 'tools' / script.name), '--local', profile],
+                                       cwd=root, env=env, check=True, capture_output=True)
+                        previous = local_contents()
+                        previous_zip = (default / 'DAW-linux-x64.zip').read_bytes() if platform == 'linux' else None
+                        for failure in ('FAIL_CARGO_BUILD', 'OMIT_CARGO_ARTIFACT', 'FAIL_ICON_COPY'):
+                            if failure == 'FAIL_ICON_COPY':
+                                missing = 'DAW.icns' if platform == 'macos' else 'org.daw.DAW.desktop'
+                                (root / 'crates/ui/assets/app-icon' / missing).unlink()
+                            else:
+                                env[failure] = '1'
+                            failed = subprocess.run(['sh', str(root / 'tools' / script.name), profile, '--local'],
+                                                    cwd=root, env=env, capture_output=True)
+                            self.assertNotEqual(failed.returncode, 0)
+                            self.assertEqual(local_contents(), previous)
+                            if platform == 'linux':
+                                self.assertEqual((default / 'DAW-linux-x64.zip').read_bytes(), previous_zip)
+                            env.pop(failure, None)
+
 
 
 

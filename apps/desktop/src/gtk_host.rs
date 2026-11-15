@@ -91,6 +91,8 @@ fn build(
         .default_height(800)
         .build();
     window.set_size_request(900, 600);
+    crate::app_icon::install(&gtk4::prelude::WidgetExt::display(&window));
+    window.set_icon_name(Some("org.daw.DAW"));
     let area = gtk4::GLArea::builder()
         .hexpand(true)
         .vexpand(true)

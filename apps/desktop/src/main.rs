@@ -1,5 +1,6 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+mod app_icon;
 #[cfg(target_os = "linux")]
 mod gtk_host;
 #[cfg(target_os = "macos")]
@@ -100,7 +101,8 @@ fn main() -> eframe::Result {
     let project = std::env::args_os().nth(1).map(std::path::PathBuf::from);
     let viewport = egui::ViewportBuilder::default()
         .with_inner_size([1280.0, 800.0])
-        .with_min_inner_size([900.0, 600.0]);
+        .with_min_inner_size([900.0, 600.0])
+        .with_icon(app_icon::window_icon());
     #[cfg(target_os = "windows")]
     let viewport = viewport.with_decorations(true).with_transparent(true);
     #[cfg(target_os = "macos")]

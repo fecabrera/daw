@@ -46,7 +46,11 @@ The macOS and Linux desktop packagers explicitly build into the repository's `ta
 
 ## Corresponding source in desktop packages
 
-Desktop packaging requires Python 3, Git, Cargo and a clean committed tracked tree.
+Distribution packaging requires Python 3, Git, Cargo and a clean committed tracked tree.
+For a development package from uncommitted files, add `--local` to the platform
+packager. Local mode includes icons and license notices but omits the
+corresponding-source materials described below. See the [macOS](macos.md),
+[Windows](windows.md#package-a-zip), and [Linux](linux.md) guides for commands.
 Untracked files, recordings, build outputs and caches are excluded. The packager
 builds that revision and includes `DAW-source.zip`, `SOURCE-ACCESS.txt` and
 `source-manifest.json` beside the executable (inside `DAW.app/Contents/Resources`
