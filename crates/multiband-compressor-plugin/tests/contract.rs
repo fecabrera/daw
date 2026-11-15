@@ -179,7 +179,7 @@ fn band_level_holds_capture_between_ui_reads_and_wire_resets_leave_reduction_and
     assert_eq!(meter.eq_bands[0].boost_peaks()[0].peak(), 0.9);
     let mirror = daw_multiband_compressor_plugin::OutputMeter::default();
     let values = daw_multiband_compressor_plugin::meter_values(&meter);
-    assert_eq!(values.len(), 796);
+    assert_eq!(values.len(), 1200);
     daw_multiband_compressor_plugin::receive_meter(&mirror, values.map(|v| v as f32));
     assert_eq!(mirror.eq_bands[0].boost_peaks()[0].peak(), 0.9);
     assert!(mirror.reset_band_level_peak(0));

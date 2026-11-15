@@ -1,6 +1,7 @@
 //! Portable unit controls and presentation. No project, device, or host dependencies.
 pub mod ambient_reverb;
 mod compressor_graph;
+mod compressor_views;
 pub mod drive;
 pub mod drive_v2;
 pub mod eq_graph;

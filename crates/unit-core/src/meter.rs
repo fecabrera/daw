@@ -107,6 +107,8 @@ impl MeterStorage for PeakMeter {
 pub struct BandMeter<const N: usize> {
     current: Arc<[AtomicU32; N]>,
     history: Option<Arc<crate::LevelHistory>>,
+    curve: Option<Arc<BandMeter<N>>>,
+    curve_reduction: Option<Arc<PeakMeter>>,
     reductions: [PeakHold; N],
     boosts: [PeakHold; N],
 }
@@ -120,6 +122,8 @@ impl<const N: usize> BandMeter<N> {
         Self {
             current,
             history: None,
+            curve: None,
+            curve_reduction: None,
             reductions: std::array::from_fn(|_| PeakHold::default()),
             boosts: std::array::from_fn(|_| PeakHold::default()),
         }
@@ -130,6 +134,23 @@ impl<const N: usize> BandMeter<N> {
             history: Some(Arc::new(crate::LevelHistory::default())),
             ..Self::default()
         }
+    }
+    /// Independent compressor input/history alongside a band's output readings.
+    /// Allocate this companion only during host preparation.
+    pub fn with_curve_history() -> Self {
+        Self {
+            curve: Some(Arc::new(Self {
+                curve_reduction: Some(Arc::default()),
+                ..Self::with_history()
+            })),
+            ..Self::default()
+        }
+    }
+    pub fn curve(&self) -> Option<&Arc<BandMeter<N>>> {
+        self.curve.as_ref()
+    }
+    pub fn curve_reduction(&self) -> Option<&Arc<PeakMeter>> {
+        self.curve_reduction.as_ref()
     }
     pub fn history(&self) -> Option<&Arc<crate::LevelHistory>> {
         self.history.as_ref()
@@ -178,6 +199,12 @@ impl<const N: usize> MeterStorage for BandMeter<N> {
         self.clear_levels();
         if let Some(history) = &self.history {
             history.clear();
+        }
+        if let Some(curve) = &self.curve {
+            curve.clear();
+        }
+        if let Some(reduction) = &self.curve_reduction {
+            reduction.clear();
         }
     }
 }
@@ -731,6 +758,10 @@ mod prepared_level_binding_tests {
 pub trait BandAudition {
     /// Stop-only visual preview invalidation. Preserve independent held meters.
     fn clear_live_preview(&self) {}
+    /// Transient curve slot (0–63); 64 selects the general view. Not automation.
+    fn curve_band(&self) -> Option<&AtomicU32> {
+        None
+    }
     /// Serialized processing-stop hook. Preserve held scalar peaks; invalidate
     /// only a live spectrum so a stopped editor cannot retain a ghost frame.
     fn clear_spectrum(&self) {}

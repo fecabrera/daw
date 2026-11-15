@@ -4,6 +4,50 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Multiband Compressor band curve views — 2026-11-15
+
+The shared built-in/plugin body now offers A for the general spectrum and a
+vertical joined group of numbered band views. Labels are centered; A shares
+the filled group button style. The column has the standard strip frame and padding; the standalone default viewport includes its width. Selection uses band
+UUIDs in temporary UI state and does not change project/preset state, Solo or
+history. Each band uses the regular interactive curve, detector input history
+and GR rail. DAW drafts and release commits carry Threshold/Ratio together;
+plugin gestures target only the selected automation slot. DAW band GR readings
+now use the actual compressor reduction/hold, instead of the output monitor’s
+left-channel amplitude.
+
+Prepared companion curve/history meters reuse the contained Compressor's live
+monitoring path. VST3 schema 3 transports only the selected history and retains
+v2/v1 compatibility. Current detector/reduction readings clear on processing
+stop while history and holds remain available.
+
+Executed on macOS arm64:
+
+- Shared view tests: PASS, selecting/toggling views, A, grouped spacing and panel
+  margins, release-only two-parameter edits, unrelated bands unchanged, compact
+  visibility, presentation reorder and selected-band removal.
+- Plugin editor tests: PASS, selected-slot Threshold/Ratio gestures and joint
+  cancellation, existing crossover/threshold queue retries, and shared-body parity
+  across themes/scales and parameter snapshots.
+- Portable split-input history tests: PASS at all six processing rates. Monitoring
+  is PCM-neutral; independent capture, compatible updates and band-bypass clearing
+  retain the expected lifecycle.
+- Source/receiver meter tests: PASS, selected-slot history transfer, unrelated
+  histories preserved, malformed metadata rejected, and stop/reset behavior.
+- `cargo test --workspace --offline` with macOS audio-service access: PASS,
+  3,501 passed and 22 intentionally ignored.
+- `cargo test --workspace --release --offline` with macOS audio-service access:
+  PASS, 3,501 passed and 22 intentionally ignored.
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- Changed documentation links and `git diff --check`: PASS.
+- `sh tools/package_macos.sh debug --local`: PASS. Rebuilt the native application
+  bundle and verified its complete ad-hoc signature. Did not launch it.
+
+Remaining checks: native pointer gestures and host automation in external
+CLAP/VST3/AUv2 hosts; Windows and Linux platform execution. Headless gesture and
+shared-body tests do not establish those native behaviors.
+
 ## macOS application bundle signature — 2026-11-15
 
 A Safari-downloaded CI DMG passed `hdiutil verify`, but its application failed

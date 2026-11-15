@@ -346,6 +346,9 @@ impl MultibandCompressor {
         meter: Arc<daw_unit_core::BandMeter<3>>,
     ) {
         if let Some(b) = self.bands.iter_mut().find(|b| b.destination.id == id) {
+            if let Some(curve) = meter.curve() {
+                b.destination.compressor.set_curve_meter(curve.clone());
+            }
             b.destination.monitor.attach_peak_prepared(meter);
         }
     }

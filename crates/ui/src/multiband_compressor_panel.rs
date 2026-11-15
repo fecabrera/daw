@@ -11,6 +11,7 @@ pub(super) struct Bounds {
     pub solo_changed: bool,
     pub crossover_preview: Option<(Id, f32)>,
     pub threshold_preview: Option<(Id, f32)>,
+    pub curve_preview: Option<(Id, [f32; 2])>,
 }
 #[allow(clippy::too_many_arguments)]
 pub(super) fn show<'a>(
@@ -24,6 +25,7 @@ pub(super) fn show<'a>(
     levels: impl Fn(Id) -> meters::OutputLevel<'a>,
     reductions: impl Fn(Id) -> meters::GainReduction<'a>,
     spectrum: Option<daw_unit_core::SpectrumReading>,
+    curve_input: impl Fn(Id) -> (f32, Option<daw_unit_core::LevelHistoryReading>),
 ) -> (Bounds, egui::Response) {
     let (effect, solos) = audition;
     let mut selected: Vec<_> = settings
@@ -119,6 +121,14 @@ pub(super) fn show<'a>(
                             daw_unit_ui::multiband_compressor::Controls {
                                 live_graph_edits: false,
                                 spectrum: spectrum.as_ref(),
+                                curve_input: &|id| {
+                                    let (detector_level, history) = curve_input(id);
+                                    daw_unit_ui::compressor_curve::Input {
+                                        live_edits: false,
+                                        detector_level,
+                                        history,
+                                    }
+                                },
                                 solos: &mut selected,
                                 band_markers: &markers,
                                 output_markers: &output_markers,
@@ -226,6 +236,10 @@ pub(super) fn show<'a>(
     settings.enabled = enabled;
     settings.collapsed = collapsed;
     crate::modulation_panel::toggle(ui, &result, collapsed, &mut settings.modulation_open);
+    let curve_preview = body
+        .curve
+        .as_ref()
+        .and_then(|(id, c)| c.preview.map(|p| (*id, p)));
     let crossover_preview = body.crossover_preview;
     let threshold_preview = body.threshold_preview;
     (
@@ -238,6 +252,7 @@ pub(super) fn show<'a>(
             solo_changed,
             crossover_preview,
             threshold_preview,
+            curve_preview,
         },
         result.header,
     )

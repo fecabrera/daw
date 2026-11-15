@@ -190,3 +190,63 @@ generation 784–787, upper clock 788–791 and legacy bass clock 792–795. Use
 269-value v1 fallback scalar/band messages and mask unavailable spectrum. Stopped
 messages clear bins/readiness/clocks while retaining held peaks. Preserve other
 products' v1 layouts and EQ's 668-value v2 layout.
+
+## General and per-band curve views
+
+Place a narrow view selector to the left of the Response graph. A separate A
+button selects the general spectrum/crossover/threshold view. Numbered band
+buttons form one vertical joined group, with filled surfaces, no outline,
+1-point dividers and rounding only at the group's outside corners. Use the
+shared 22-point square toggle geometry. Surround the selector column with the
+standard strip frame, outer card insets and 10-point panel margin. Center every
+label on both axes. A uses the same filled button renderer, colors and size as
+the numbered controls, with all four corners rounded. Separate A from the
+numbered group with the shared 4-point strip gap. Keep this selector strip to the
+left of the Response strip. Scroll
+vertically when the band's count exceeds the column height. Compact mode hides
+the column and graph. The default standalone viewport adds the 42-point selector
+column to its existing width (1,032 points total) so the default Out controls
+remain visible. Additional bands retain horizontal scrolling.
+
+Only one band view is active. Clicking its number again selects A. Store selection
+in shared egui temporary state, keyed by the host's effect UI scope and the band
+UUID. Presentation reordering retains it; removing that UUID selects A. Selection
+is not project state, automation, Solo or an Undo entry. DAW and CLAP/VST3/AUv2
+editors call the same shared body and selection/group controls.
+
+Use `unit-ui::compressor_curve` for the selected band's transfer curve, detector
+marker, four-second scrolling input/reduction history, interactive midpoint handle
+and vertical GR rail. Build its settings with the band's `compressor_settings`;
+Curve remains zero, as in the band's DSP. Use unit AND band power for stale-reading
+masking. Return edits to that UUID's Threshold/Ratio only. The knobs show both draft
+values. Reuse regular compressor modifier locks, fine adjustment, cancellation,
+release-only DAW commits and bounded live plugin gestures. Route both draft values
+in one existing background graph-preview offer; one final effect transaction makes
+both values undoable together. Frequency, other bands, Solo and routing stay intact.
+
+A prepared band-output `BandMeter` can own an optional companion curve meter with
+its own `LevelHistory` and independent `PeakMeter` for actual compression dB.
+Only compressor band handles allocate this companion. DAW GR reads this meter,
+not the output monitor’s left-channel amplitude. Plugins share that same handle
+with their fixed-slot reduction array. Prepared binding must not clear a live
+reading or hold.
+The existing band binding attaches it to the contained regular compressor, so its
+input is the split/phase-compensated signal before compression or Makeup. Reuse
+`UnitMeter`, detector release, audio-clocked history, clone detachment, reset,
+bypass and renderer retirement. Capture continues in hidden views. Stable DAW
+band handles and compatible DSP inheritance retain histories. Monitoring does not
+alter PCM or allocate, block, wait, perform I/O or destroy final owners on audio.
+
+For plugins, prepare companion handles for the 64 fixed slots. A transient atomic
+curve-slot selector uses 0–63 for a band and 64 for A. CLAP and AUv2 share the
+prepared storage. VST3 sends this slot through a bounded control-thread message,
+then negotiates schema-3 meter messages with exactly 1,200 values. Preserve the
+796-value schema-2 prefix unchanged. Append selected slot plus one (zero means
+no curve), detector amplitude, next history position, valid history count, and
+200 input/reduction pairs. Transmit only the selected history; other slots keep
+their local capture. The receiver updates only the identified slot, without
+confusing a delayed frame with the newly selected band. Validate the whole packet
+and bounded integer metadata before mutation. Keep v2 (796) and v1 (269) fallback
+lengths and meanings unchanged. Other products retain their current formats.
+Stopped messages zero current detector/band reduction readings while retaining
+history and held peaks. No parameter IDs or serialized plugin state change.

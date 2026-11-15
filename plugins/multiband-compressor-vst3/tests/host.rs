@@ -131,7 +131,10 @@ mod spectrum_wire {
             assert_eq!(frame[783], 1.0);
             assert!(frame[270..782].iter().any(|v| *v > 0.01));
             let output = daw_drive_plugin::OutputMeter::default();
-            daw_drive_plugin::receive_meter(&output, frame.as_slice().try_into().unwrap());
+            daw_drive_plugin::receive_meter(
+                &output,
+                std::array::from_fn(|i| frame.get(i).copied().unwrap_or(0.0)),
+            );
             let r = output.spectrum.reading();
             assert!(r.upper_end_frame <= frames as u64);
             assert!((frames as u64 - r.upper_end_frame) as f64 / f64::from(rate) < 0.05);

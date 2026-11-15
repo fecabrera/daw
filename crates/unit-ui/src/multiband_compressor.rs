@@ -12,6 +12,14 @@ const SIZE: f32 = 42.0;
 const GAP: f32 = 3.0;
 pub struct Bounds {
     pub rect: Rect,
+    pub view_buttons: Vec<Rect>,
+    pub general_view: Rect,
+    pub view_column: Rect,
+    pub selected_band: Option<daw_unit_core::ModulationTargetId>,
+    pub curve: Option<(
+        daw_unit_core::ModulationTargetId,
+        crate::compressor_curve::Bounds,
+    )>,
     pub ranges: Rect,
     pub graph: Rect,
     pub plot: Rect,
@@ -38,6 +46,11 @@ impl Default for Bounds {
     fn default() -> Self {
         Self {
             rect: Rect::NOTHING,
+            view_buttons: Vec::new(),
+            general_view: Rect::NOTHING,
+            view_column: Rect::NOTHING,
+            selected_band: None,
+            curve: None,
             ranges: Rect::NOTHING,
             graph: Rect::NOTHING,
             plot: Rect::NOTHING,
@@ -66,6 +79,8 @@ pub struct Controls<'a> {
     /// Plugins publish live gestures; DAW hosts stage plans and commit on release.
     pub live_graph_edits: bool,
     pub spectrum: Option<&'a daw_unit_core::SpectrumReading>,
+    pub curve_input:
+        &'a dyn Fn(daw_unit_core::ModulationTargetId) -> crate::compressor_curve::Input,
     pub solos: &'a mut [bool],
     pub band_markers: &'a [[Option<ModulationMarker>; 6]],
     pub output_markers: &'a [Option<ModulationMarker>; 2],
@@ -144,6 +159,7 @@ fn ranges(
 }
 struct BandControls<'a> {
     threshold_preview: Option<f32>,
+    curve_preview: Option<[f32; 2]>,
     markers: &'a [Option<ModulationMarker>; 6],
     open: &'a mut bool,
     solo: &'a mut bool,
@@ -247,7 +263,11 @@ fn band(
                                     if target == 5 {
                                         spec = spec.named("Makeup");
                                     }
-                                    let mut shown = if target == 0 {
+                                    let mut shown = if target < 2
+                                        && let Some(preview) = c.curve_preview
+                                    {
+                                        preview[target]
+                                    } else if target == 0 {
                                         c.threshold_preview.unwrap_or(*value)
                                     } else {
                                         *value
@@ -416,16 +436,7 @@ pub fn show(
     b.rect = ui
         .horizontal_top(|ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
-            let graph =
-                crate::compressor_graph::show(ui, s, dimensions, c.spectrum, c.live_graph_edits);
-            b.graph = graph.section;
-            b.plot = graph.plot;
-            b.crossover_markers = graph.markers;
-            b.crossover_preview = graph.preview;
-            b.crossover_edits = graph.edits;
-            b.threshold_markers = graph.thresholds;
-            b.threshold_preview = graph.threshold_preview;
-            b.threshold_edits = graph.threshold_edits;
+            crate::compressor_views::show(ui, s, dimensions, &c, &mut b);
             ranges(ui, s, dimensions, &mut b);
             let order: Vec<_> = if s.presentation.is_empty() {
                 (0..s.bands.len()).collect()
@@ -439,6 +450,11 @@ pub fn show(
                 let mut unused = false;
                 let empty = std::array::from_fn(|_| None);
                 let controls = BandControls {
+                    curve_preview: b
+                        .curve
+                        .as_ref()
+                        .filter(|(id, _)| *id == s.bands[i].id)
+                        .and_then(|(_, c)| c.preview),
                     threshold_preview: b
                         .threshold_preview
                         .filter(|(id, _)| *id == s.bands[i].id)
@@ -526,6 +542,11 @@ mod spectrum_tests {
                                 Controls {
                                     live_graph_edits: false,
                                     spectrum: Some(&reading),
+                                    curve_input: &|_| crate::compressor_curve::Input {
+                                        live_edits: false,
+                                        detector_level: 0.0,
+                                        history: None,
+                                    },
                                     solos: &mut solos,
                                     band_markers: &[],
                                     output_markers: &[None, None],

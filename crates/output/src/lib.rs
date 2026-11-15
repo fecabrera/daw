@@ -326,7 +326,10 @@ fn band_meters(
                                     effect: effect.id,
                                     band,
                                 },
-                                false,
+                                matches!(
+                                    effect.unit,
+                                    daw_core::EffectSettings::MultibandCompressor(_)
+                                ),
                             )
                         }),
                 )
@@ -334,10 +337,12 @@ fn band_meters(
         .map(|(key, compressor)| {
             let meter = previous
                 .get(&key)
-                .filter(|meter| !compressor || meter.history().is_some())
+                .filter(|meter| !compressor || meter.history().is_some() || meter.curve().is_some())
                 .cloned()
                 .unwrap_or_else(|| {
-                    if compressor {
+                    if compressor && matches!(key, ModulationTarget::EffectBand { .. }) {
+                        Arc::new(daw_unit_core::BandMeter::with_curve_history())
+                    } else if compressor {
                         Arc::new(daw_unit_core::BandMeter::with_history())
                     } else {
                         Arc::default()
@@ -1142,6 +1147,25 @@ impl AudioOutput {
             .get(&ModulationTarget::EffectBand { effect, band })
             .map_or(0.0, |m| m.readings()[0])
     }
+    pub fn compressor_band_curve(
+        &self,
+        effect: Id,
+        band: Id,
+    ) -> (f32, Option<daw_unit_core::LevelHistoryReading>) {
+        let curve = self
+            .band_meters
+            .get(&ModulationTarget::EffectBand { effect, band })
+            .and_then(|m| m.curve());
+        let level = if self.status.playing.load(Ordering::Relaxed) {
+            curve.map_or(0.0, |m| m.readings()[0])
+        } else {
+            0.0
+        };
+        (
+            level,
+            curve.and_then(|m| m.history()).and_then(|h| h.reading()),
+        )
+    }
     pub fn individual_band_level_peak(
         &self,
         effect: Id,
@@ -1154,7 +1178,9 @@ impl AudioOutput {
     pub fn individual_band_peak(&self, effect: Id, band: Id) -> Option<&daw_unit_core::PeakHold> {
         self.band_meters
             .get(&ModulationTarget::EffectBand { effect, band })
-            .map(|m| &m.boost_peaks()[1])
+            .and_then(|m| m.curve())
+            .and_then(|m| m.curve_reduction())
+            .map(|m| m.hold())
     }
     pub fn multiband_compressor_reduction(&self, effect: Id, band: Id) -> f32 {
         if !self.status.playing.load(Ordering::Relaxed) {
@@ -1162,7 +1188,9 @@ impl AudioOutput {
         }
         self.band_meters
             .get(&ModulationTarget::EffectBand { effect, band })
-            .map_or(0.0, |m| m.readings()[1])
+            .and_then(|m| m.curve())
+            .and_then(|m| m.curve_reduction())
+            .map_or(0.0, |m| m.reading())
     }
     fn band_monitor_values(&self, id: Id) -> [f32; 3] {
         if !self.status.playing.load(Ordering::Relaxed) {

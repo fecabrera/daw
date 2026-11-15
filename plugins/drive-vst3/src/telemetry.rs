@@ -3,25 +3,28 @@
 use daw_drive_plugin::METER_VALUES;
 // EQ and Multiband Compressor v2 append spectrum metadata. Regular Compressor v2
 // appends its rolling history after the original thirteen scalar readings.
+const BAND_CURVE: bool = METER_VALUES == 1200;
+pub(crate) const SPECTRUM_END: usize = if BAND_CURVE { 796 } else { METER_VALUES };
 const HISTORY: bool = METER_VALUES == 415;
-const SPECTRUM: bool = METER_VALUES == 668 || METER_VALUES == 796 || METER_VALUES == 540;
+const SPECTRUM: bool =
+    METER_VALUES == 668 || METER_VALUES == 796 || METER_VALUES == 540 || BAND_CURVE;
 const LEGACY_VALUES: usize = if HISTORY || METER_VALUES == 540 {
     13
-} else if METER_VALUES == 796 {
+} else if METER_VALUES == 796 || BAND_CURVE {
     269
 } else {
     206
 };
 const LEGACY_PREFIX: usize = if HISTORY || METER_VALUES == 540 {
     13
-} else if METER_VALUES == 796 {
+} else if METER_VALUES == 796 || BAND_CURVE {
     269
 } else {
     142
 };
 const SPECTRUM_RATE: usize = if METER_VALUES == 540 {
     13
-} else if METER_VALUES == 796 {
+} else if METER_VALUES == 796 || BAND_CURVE {
     269
 } else {
     141
@@ -47,17 +50,30 @@ pub(crate) enum Kind {
     Reading,
     RequestV2,
     ReadingV2,
+    RequestV3,
+    ReadingV3,
+    CurveBand,
     Reset,
     Solo,
     BandReset,
 }
 impl Kind {
+    fn supported(self) -> bool {
+        match self {
+            Self::RequestV2 | Self::ReadingV2 => EXTENDED,
+            Self::RequestV3 | Self::ReadingV3 | Self::CurveBand => BAND_CURVE,
+            _ => true,
+        }
+    }
     fn id(self) -> &'static CStr {
         match self {
             Self::Request => c"daw.output-meter.request.v1",
             Self::Reading => c"daw.output-meter.reading.v1",
             Self::RequestV2 => c"daw.output-meter.request.v2",
             Self::ReadingV2 => c"daw.output-meter.reading.v2",
+            Self::RequestV3 => c"daw.output-meter.request.v3",
+            Self::ReadingV3 => c"daw.output-meter.reading.v3",
+            Self::CurveBand => c"daw.compressor-curve-band.v1",
             Self::BandReset => c"daw.band-peak.reset.v1",
             Self::Solo => c"daw.band-solo.v1",
             Self::Reset => c"daw.output-meter.reset.v1",
@@ -94,18 +110,26 @@ impl Connection {
         drop(old);
     }
     pub fn request_reading(&self) -> tresult {
+        if BAND_CURVE && self.send(Kind::RequestV3, [0.0; METER_VALUES]) == kResultOk {
+            return kResultOk;
+        }
         if EXTENDED && self.send(Kind::RequestV2, [0.0; METER_VALUES]) == kResultOk {
             return kResultOk;
         }
         self.send(Kind::Request, [0.0; METER_VALUES])
     }
     pub fn send(&self, kind: Kind, mut values: [f64; METER_VALUES]) -> tresult {
-        let extended = matches!(kind, Kind::ReadingV2 | Kind::RequestV2);
-        if extended && !EXTENDED {
+        let extended = matches!(
+            kind,
+            Kind::ReadingV2 | Kind::RequestV2 | Kind::ReadingV3 | Kind::RequestV3
+        );
+        if !kind.supported() {
             return kInvalidArgument;
         }
         let length = if EXTENDED && !extended {
             LEGACY_VALUES
+        } else if BAND_CURVE && matches!(kind, Kind::ReadingV2 | Kind::RequestV2) {
+            SPECTRUM_END
         } else {
             METER_VALUES
         };
@@ -151,6 +175,9 @@ impl IMessageTrait for Message {
             [
                 Kind::Request,
                 Kind::Reading,
+                Kind::RequestV3,
+                Kind::ReadingV3,
+                Kind::CurveBand,
                 Kind::RequestV2,
                 Kind::ReadingV2,
                 Kind::Reset,
@@ -158,10 +185,7 @@ impl IMessageTrait for Message {
                 Kind::BandReset,
             ]
             .into_iter()
-            .find(|k| {
-                k.id() == unsafe { CStr::from_ptr(id) }
-                    && (EXTENDED || !matches!(k, Kind::RequestV2 | Kind::ReadingV2))
-            }),
+            .find(|k| k.id() == unsafe { CStr::from_ptr(id) } && k.supported()),
         );
     }
     unsafe fn getAttributes(&self) -> *mut IAttributeList {
@@ -279,6 +303,9 @@ pub unsafe fn read(message: *mut IMessage) -> Option<(Kind, [f32; METER_VALUES])
     let kind = [
         Kind::Request,
         Kind::Reading,
+        Kind::RequestV3,
+        Kind::ReadingV3,
+        Kind::CurveBand,
         Kind::RequestV2,
         Kind::ReadingV2,
         Kind::Reset,
@@ -286,24 +313,32 @@ pub unsafe fn read(message: *mut IMessage) -> Option<(Kind, [f32; METER_VALUES])
         Kind::BandReset,
     ]
     .into_iter()
-    .find(|k| {
-        k.id() == unsafe { CStr::from_ptr(id) }
-            && (EXTENDED || !matches!(k, Kind::RequestV2 | Kind::ReadingV2))
-    })?;
+    .find(|k| k.id() == unsafe { CStr::from_ptr(id) } && k.supported())?;
     let mut values = [0.0; METER_VALUES];
     if matches!(
         kind,
-        Kind::Reading | Kind::ReadingV2 | Kind::Reset | Kind::Solo | Kind::BandReset
+        Kind::Reading
+            | Kind::ReadingV2
+            | Kind::ReadingV3
+            | Kind::CurveBand
+            | Kind::Reset
+            | Kind::Solo
+            | Kind::BandReset
     ) {
         let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }?;
-        let length = if kind == Kind::ReadingV2 {
+        let length = if matches!(kind, Kind::ReadingV2 | Kind::ReadingV3) {
+            let expected = if BAND_CURVE && kind == Kind::ReadingV2 {
+                SPECTRUM_END
+            } else {
+                METER_VALUES
+            };
             let mut count = 0;
             if unsafe { attributes.getInt(c"value-count".as_ptr(), &mut count) } != kResultOk
-                || count != METER_VALUES as i64
+                || count != expected as i64
             {
                 return None;
             }
-            METER_VALUES
+            expected
         } else if EXTENDED {
             LEGACY_VALUES
         } else {
@@ -326,7 +361,7 @@ pub unsafe fn read(message: *mut IMessage) -> Option<(Kind, [f32; METER_VALUES])
         let prefix = LEGACY_PREFIX.min(METER_VALUES);
         values[prefix..].fill(0.0);
         if SPECTRUM {
-            let schema = METER_VALUES.saturating_sub(14);
+            let schema = SPECTRUM_END.saturating_sub(14);
             values[schema] = 2.0;
             if let Some(rate) = values.get_mut(SPECTRUM_RATE)
                 && ![44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0].contains(rate)
@@ -417,16 +452,20 @@ fn attribute_key(index: usize) -> &'static CStr {
 
 pub(crate) fn mask_stopped(values: &mut [f64; METER_VALUES]) {
     values[0] = 0.0;
+    if BAND_CURVE {
+        *values.get_mut(797).unwrap() = 0.0;
+        values.get_mut(77..141).unwrap().fill(0.0);
+    }
     if HISTORY {
         *values.get_mut(2).unwrap() = 0.0;
         *values.get_mut(4).unwrap() = 0.0;
     }
     if SPECTRUM {
         let first = (SPECTRUM_RATE + 1).min(METER_VALUES);
-        let schema = METER_VALUES.saturating_sub(14);
+        let schema = SPECTRUM_END.saturating_sub(14);
         values[first..schema].fill(0.0);
         values[schema + 1] = 0.0;
-        values[schema + 6..].fill(0.0);
+        values[schema + 6..SPECTRUM_END].fill(0.0);
     }
 }
 
@@ -440,7 +479,9 @@ mod extended_tests {
             .to_com_ptr::<IAttributeList>()
             .unwrap();
         let message = ComWrapper::new(Message {
-            kind: Cell::new(Some(if EXTENDED {
+            kind: Cell::new(Some(if BAND_CURVE {
+                Kind::ReadingV3
+            } else if EXTENDED {
                 Kind::ReadingV2
             } else {
                 Kind::Reading
@@ -464,6 +505,37 @@ mod extended_tests {
 
 #[cfg(test)]
 mod compatibility_tests {
+    #[test]
+    fn selected_band_history_requires_schema_three_and_survives_stop_masking() {
+        if !BAND_CURVE {
+            return;
+        }
+        for length in [796, METER_VALUES - 1, METER_VALUES] {
+            let attributes = ComWrapper::new(
+                Attributes::complete(std::array::from_fn(|i| Cell::new(i as f64)))
+                    .with_length(length),
+            )
+            .to_com_ptr::<IAttributeList>()
+            .unwrap();
+            let message = ComWrapper::new(Message {
+                kind: Cell::new(Some(Kind::ReadingV3)),
+                attributes,
+            })
+            .to_com_ptr::<IMessage>()
+            .unwrap();
+            // SAFETY: owned message and attributes remain live throughout decoding.
+            let frame = unsafe { read(message.as_ptr()) };
+            assert_eq!(frame.is_some(), length == METER_VALUES);
+            if let Some((_, frame)) = frame {
+                assert_eq!(*frame.last().unwrap(), (METER_VALUES - 1) as f32);
+            }
+        }
+        let mut values = std::array::from_fn(|i| i as f64);
+        mask_stopped(&mut values);
+        assert_eq!(*values.get(797).unwrap(), 0.0);
+        assert_eq!(*values.get(800).unwrap(), 800.0);
+        assert_eq!(*values.get(141).unwrap(), 141.0);
+    }
     #[test]
     fn history_schema_two_retains_full_history_and_legacy_readings_have_no_history() {
         if !HISTORY {
@@ -501,7 +573,7 @@ mod compatibility_tests {
         if !SPECTRUM {
             return;
         }
-        for length in [LEGACY_VALUES, METER_VALUES - 1, METER_VALUES] {
+        for length in [LEGACY_VALUES, SPECTRUM_END - 1, SPECTRUM_END] {
             let attributes = ComWrapper::new(
                 Attributes::complete(std::array::from_fn(|i| Cell::new(i as f64)))
                     .with_length(length),
@@ -516,20 +588,20 @@ mod compatibility_tests {
             .unwrap();
             // SAFETY: owned COM objects remain live throughout synchronous calls.
             unsafe {
-                assert_eq!(read(message.as_ptr()).is_some(), length == METER_VALUES);
+                assert_eq!(read(message.as_ptr()).is_some(), length == SPECTRUM_END);
                 message.setMessageID(Kind::Reading.id().as_ptr());
                 let (_, values) = read(message.as_ptr()).unwrap();
                 let last = LEGACY_PREFIX.min(SPECTRUM_RATE) - 1;
                 assert_eq!(values[last], last as f32);
                 assert!(
                     values
-                        .get(SPECTRUM_RATE + 1..METER_VALUES.saturating_sub(14))
+                        .get(SPECTRUM_RATE + 1..SPECTRUM_END.saturating_sub(14))
                         .unwrap()
                         .iter()
                         .all(|v| *v == 0.0)
                 );
-                assert_eq!(*values.get(METER_VALUES.saturating_sub(14)).unwrap(), 2.0);
-                assert_eq!(*values.get(METER_VALUES.saturating_sub(13)).unwrap(), 0.0);
+                assert_eq!(*values.get(SPECTRUM_END.saturating_sub(14)).unwrap(), 2.0);
+                assert_eq!(*values.get(SPECTRUM_END.saturating_sub(13)).unwrap(), 0.0);
             }
         }
     }

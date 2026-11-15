@@ -53,6 +53,11 @@ fn paint_reference(ui: &mut egui::Ui, s: &mut daw_drive_plugin::Settings, model:
                 shared::Controls {
                     live_graph_edits: true,
                     spectrum: None,
+                    curve_input: &|_| daw_unit_ui::compressor_curve::Input {
+                        live_edits: true,
+                        detector_level: 0.0,
+                        history: None,
+                    },
                     solos: &mut solos,
                     band_markers: &[],
                     output_markers: &[None, None],
@@ -599,6 +604,122 @@ mod threshold_gesture_tests {
                 if cancel {
                     assert!(edits.contains(&Edit::Value(P::Band1Threshold, -18.0)));
                 }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod curve_gesture_tests {
+    use super::*;
+    use daw_drive_plugin::Parameter as P;
+    fn pointer(pos: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        }
+    }
+    fn draw(
+        ctx: &egui::Context,
+        editor: &mut Editor,
+        events: Vec<egui::Event>,
+    ) -> (Option<egui::Pos2>, Option<egui::Pos2>) {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, body::SIZE)),
+                focused: true,
+                events,
+                ..Default::default()
+            },
+            |ui| editor.show(ui),
+        );
+        let mut button = None;
+        let mut handle = None;
+        for shape in &output.shapes {
+            match &shape.shape {
+                egui::Shape::Text(t) if t.galley.text() == "2" => {
+                    button = Some(t.pos + t.galley.size() * 0.5)
+                }
+                egui::Shape::Circle(c) if (c.radius - 5.5).abs() < 0.01 => handle = Some(c.center),
+                _ => {}
+            }
+        }
+        output.textures_delta.clear();
+        (button, handle)
+    }
+    fn drain(model: &Model) -> Vec<Edit> {
+        std::iter::from_fn(|| model.pop()).collect()
+    }
+    #[test]
+    fn band_curve_maps_both_gestures_to_selected_slots_and_cancels_together() {
+        for cancel in [false, true] {
+            let ctx = egui::Context::default();
+            daw_unit_ui::fonts::configure(&ctx);
+            daw_unit_ui::theme::configure(&ctx);
+            let model = std::sync::Arc::new(Model::default());
+            let mut editor = Editor::new(model.clone(), || {});
+            let button = draw(&ctx, &mut editor, vec![]).0.unwrap();
+            draw(
+                &ctx,
+                &mut editor,
+                vec![egui::Event::PointerMoved(button), pointer(button, true)],
+            );
+            let handle = draw(&ctx, &mut editor, vec![pointer(button, false)])
+                .1
+                .unwrap();
+            assert!(drain(&model).is_empty());
+            draw(
+                &ctx,
+                &mut editor,
+                vec![egui::Event::PointerMoved(handle), pointer(handle, true)],
+            );
+            let end = handle + egui::vec2(20.0, 18.0);
+            draw(&ctx, &mut editor, vec![egui::Event::PointerMoved(end)]);
+            let mut edits = drain(&model);
+            if cancel {
+                draw(
+                    &ctx,
+                    &mut editor,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            draw(&ctx, &mut editor, vec![pointer(end, false)]);
+            edits.extend(drain(&model));
+            for parameter in [P::Band2Threshold, P::Band2Ratio] {
+                assert_eq!(
+                    edits
+                        .iter()
+                        .filter(|e| **e == Edit::Begin(parameter))
+                        .count(),
+                    1
+                );
+                assert_eq!(
+                    edits.iter().filter(|e| **e == Edit::End(parameter)).count(),
+                    1
+                );
+                assert!(
+                    edits
+                        .iter()
+                        .any(|e| matches!(e, Edit::Value(p, _) if *p == parameter))
+                );
+            }
+            assert!(edits.iter().all(|e| matches!(
+                e,
+                Edit::Begin(P::Band2Threshold | P::Band2Ratio)
+                    | Edit::Value(P::Band2Threshold | P::Band2Ratio, _)
+                    | Edit::End(P::Band2Threshold | P::Band2Ratio)
+            )));
+            if cancel {
+                assert!(edits.contains(&Edit::Value(P::Band2Threshold, -18.0)));
+                assert!(edits.contains(&Edit::Value(P::Band2Ratio, 4.0)));
             }
         }
     }

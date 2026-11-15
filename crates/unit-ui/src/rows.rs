@@ -128,6 +128,75 @@ pub fn square_toggle(ui: &mut Ui, label: &str, selected: bool) -> egui::Response
     .inner
 }
 
+/// Filled, centered square choice, matching the joined control surface.
+pub fn filled_square_toggle(ui: &mut Ui, label: &str, selected: bool) -> egui::Response {
+    grouped_square_toggle(ui, label, selected, egui::CornerRadius::same(5))
+}
+fn grouped_square_toggle(
+    ui: &mut Ui,
+    label: &str,
+    selected: bool,
+    corners: egui::CornerRadius,
+) -> egui::Response {
+    let rect = egui::Rect::from_min_size(ui.available_rect_before_wrap().min, Vec2::splat(22.0));
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(Layout::centered_and_justified(egui::Direction::LeftToRight)),
+        |ui| {
+            let fill = crate::theme::unit_header_fill(ui.ctx(), false);
+            let widgets = &mut ui.visuals_mut().widgets;
+            for widget in [
+                &mut widgets.noninteractive,
+                &mut widgets.inactive,
+                &mut widgets.hovered,
+                &mut widgets.active,
+                &mut widgets.open,
+            ] {
+                widget.bg_stroke = egui::Stroke::NONE;
+                widget.corner_radius = corners;
+            }
+            ui.visuals_mut().widgets.inactive.weak_bg_fill = fill;
+            square_toggle(ui, label, selected)
+        },
+    )
+    .inner
+}
+
+/// Joined vertical choices. Only the outside corners are rounded; gaps are dividers.
+/// The caller owns selection and each returned response's action/tooltip.
+pub fn vertical_toggle_group(
+    ui: &mut Ui,
+    labels: &[(egui::Id, String)],
+    selected: Option<usize>,
+) -> InnerResponse<Vec<egui::Response>> {
+    egui::Frame::new()
+        .fill(crate::theme::unit_separator(ui.ctx()))
+        .corner_radius(5)
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                labels
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (id, label))| {
+                        ui.push_id(*id, |ui| {
+                            let corners = egui::CornerRadius {
+                                nw: if index == 0 { 5 } else { 0 },
+                                ne: if index == 0 { 5 } else { 0 },
+                                sw: if index + 1 == labels.len() { 5 } else { 0 },
+                                se: if index + 1 == labels.len() { 5 } else { 0 },
+                            };
+                            grouped_square_toggle(ui, label, selected == Some(index), corners)
+                        })
+                        .inner
+                    })
+                    .collect()
+            })
+            .inner
+        })
+}
+
 /// Temporary band audition control; this response is never a parameter edit.
 pub fn band_solo(ui: &mut egui::Ui, label: &str, selected: &mut bool) -> egui::Response {
     let response = ui

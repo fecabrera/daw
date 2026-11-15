@@ -104,3 +104,82 @@ fn solo_is_live_only_clone_detaches_bypass_clears_and_multiple_solos_recombine()
     }
     assert_eq!(live.process_sample([0.1, -0.1]), [0.1, -0.1]);
 }
+
+#[test]
+fn curve_histories_capture_each_split_input_and_clear_on_band_bypass_without_changing_audio() {
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        let mut s = MultibandCompressorSettings::default();
+        let mut p = MultibandCompressor::new(context(rate), &s);
+        let mut reference = p.clone();
+        let meters: Vec<_> = s
+            .bands
+            .iter()
+            .map(|_| Arc::new(BandMeter::with_curve_history()))
+            .collect();
+        for (band, meter) in s.bands.iter().zip(&meters) {
+            p.set_band_level_meter(band.id, meter.clone());
+        }
+        for frame in 0..rate / 5 {
+            let x = tone(frame, rate, 60.0);
+            assert_eq!(p.process_sample([x, -x]), reference.process_sample([x, -x]));
+        }
+        let histories: Vec<_> = meters
+            .iter()
+            .map(|m| m.curve().unwrap().history().unwrap().reading().unwrap())
+            .collect();
+        assert!(histories.iter().all(|h| h.count == 10));
+        assert!(histories[0].bins[9][0] > histories[2].bins[9][0] * 10.0);
+        assert!(meters[0].curve().unwrap().readings()[0] > 0.01);
+        let reduction = meters[0].curve().unwrap().curve_reduction().unwrap();
+        assert!(
+            reduction.reading() > 1.0,
+            "GR must be compression dB, not linear output amplitude"
+        );
+        let before_reduction = reduction.reading();
+        let mut prepared = MultibandCompressor::new(context(rate), &s);
+        prepared.set_band_level_meter(s.bands[0].id, meters[0].clone());
+        assert_eq!(
+            reduction.reading(),
+            before_reduction,
+            "worker binding must not clear live readings"
+        );
+        let before = histories[0];
+        s.bands[0].threshold_db = -30.0;
+        assert!(p.retarget(&s));
+        assert_eq!(
+            meters[0]
+                .curve()
+                .unwrap()
+                .history()
+                .unwrap()
+                .reading()
+                .unwrap(),
+            before
+        );
+        s.bands[0].enabled = false;
+        assert!(p.retarget(&s));
+        assert_eq!(meters[0].curve().unwrap().readings()[0], 0.0);
+        assert_eq!(reduction.reading(), 0.0);
+        assert_eq!(
+            meters[0]
+                .curve()
+                .unwrap()
+                .history()
+                .unwrap()
+                .reading()
+                .unwrap()
+                .count,
+            0
+        );
+        assert_eq!(
+            meters[1]
+                .curve()
+                .unwrap()
+                .history()
+                .unwrap()
+                .reading()
+                .unwrap(),
+            histories[1]
+        );
+    }
+}

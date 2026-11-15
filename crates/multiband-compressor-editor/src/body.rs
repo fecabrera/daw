@@ -1,7 +1,7 @@
 use daw_drive_plugin::{Parameter as P, PluginState, Settings};
 use daw_unit_ui::{control_capture, layout::*, meters, multiband_compressor as shared};
 use egui::{Rect, Response, Ui, Vec2};
-pub const SIZE: Vec2 = Vec2::new(990.0, unit_control_height() + 2.0 * PANEL_MARGIN as f32);
+pub const SIZE: Vec2 = Vec2::new(1032.0, unit_control_height() + 2.0 * PANEL_MARGIN as f32);
 pub struct Bounds {
     pub sections: Vec<Rect>,
     pub controls: [Option<Response>; P::COUNT - 1],
@@ -58,6 +58,17 @@ pub fn render(ui: &mut Ui, s: &mut Settings, model: &crate::Model) -> Bounds {
                         shared::Controls {
                             live_graph_edits: true,
                             spectrum: spectrum.as_ref(),
+                            curve_input: &|id| {
+                                let meter = model.output_meter.eq_bands
+                                    [(id.as_u128() - 1) as usize]
+                                    .curve()
+                                    .unwrap();
+                                daw_unit_ui::compressor_curve::Input {
+                                    live_edits: true,
+                                    detector_level: meter.readings()[0],
+                                    history: meter.history().and_then(|h| h.reading()),
+                                }
+                            },
                             solos: &mut solos,
                             band_markers: &[],
                             output_markers: &[None, None],
@@ -72,6 +83,10 @@ pub fn render(ui: &mut Ui, s: &mut Settings, model: &crate::Model) -> Bounds {
             })
             .inner
     });
+    model.output_meter.curve_band.store(
+        b.selected_band.map_or(64, |id| (id.as_u128() - 1) as u32),
+        std::sync::atomic::Ordering::Relaxed,
+    );
     for (id, solo) in ids.iter().zip(solos) {
         model.output_meter.solos[(id.as_u128() - 1) as usize].store(
             solo && s.enabled && s.bands.iter().any(|b| b.id == *id),
@@ -179,6 +194,18 @@ pub fn render(ui: &mut Ui, s: &mut Settings, model: &crate::Model) -> Bounds {
     for (id, response) in &b.threshold_edits {
         let slot = (id.as_u128() - 1) as usize;
         controls[10 * slot + 3] = Some(response.clone());
+    }
+    if let Some((id, curve)) = &b.curve {
+        let slot = (id.as_u128() - 1) as usize;
+        for (index, response) in &curve.edits {
+            controls[10 * slot + 3 + index] = Some(response.clone());
+        }
+        if control_capture::at(&captured, curve.reduction_meter).is_some_and(|r| r.clicked()) {
+            model
+                .output_meter
+                .band_resets
+                .fetch_or(1_u64 << slot, std::sync::atomic::Ordering::Release);
+        }
     }
     let mut sections = vec![b.ranges];
     sections.extend(b.bands);

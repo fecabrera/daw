@@ -118,6 +118,29 @@ impl State {
             },
         ));
     }
+    pub fn offer_compressor_curve(
+        &mut self,
+        frame: u64,
+        project: Id,
+        target: EffectChainTarget,
+        effect: Id,
+        before: MultibandCompressorBand,
+        parameters: [f32; 2],
+    ) {
+        let mut band = before.clone();
+        band.threshold_db = parameters[0];
+        band.ratio = parameters[1];
+        self.offered = Some((
+            frame,
+            Preview {
+                project,
+                target,
+                effect,
+                before: Band::Compressor(before),
+                band: Band::Compressor(band),
+            },
+        ));
+    }
     pub fn offer_curve(
         &mut self,
         frame: u64,

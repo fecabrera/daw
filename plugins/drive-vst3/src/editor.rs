@@ -74,6 +74,12 @@ impl ControllerData {
             }
         }
         self.model.publish(self.state.get());
+        if let Some(slot) = self.model.output_meter.curve_band() {
+            let mut values = [0.0; daw_drive_plugin::METER_VALUES];
+            values[0] = f64::from(slot.load(std::sync::atomic::Ordering::Relaxed));
+            self.meter_connection
+                .send(crate::telemetry::Kind::CurveBand, values);
+        }
         let mut sent = self.sent_solos.get();
         for (index, flag) in self
             .model
@@ -427,6 +433,42 @@ impl Linux::ITimerHandlerTrait for Timer {
 mod audition_tests {
     use super::*;
     #[test]
+    fn curve_selection_messages_are_transient_bounded_and_reach_the_processor() {
+        let component = crate::component::Component::default();
+        let meter = component.output_meter.clone();
+        let Some(selection) = meter.curve_band() else {
+            return;
+        };
+        let peer = ComWrapper::new(component)
+            .to_com_ptr::<IConnectionPoint>()
+            .unwrap();
+        let data = ControllerData::default();
+        assert_eq!(
+            unsafe { data.meter_connection.connect(peer.as_ptr()) },
+            kResultOk
+        );
+        let before = data.state.get();
+        for slot in [0, 63, 64] {
+            data.model
+                .output_meter
+                .curve_band()
+                .unwrap()
+                .store(slot, std::sync::atomic::Ordering::Relaxed);
+            data.main();
+            assert_eq!(selection.load(std::sync::atomic::Ordering::Relaxed), slot);
+        }
+        assert_eq!(data.state.get(), before);
+        for invalid in [0.5, 65.0] {
+            let mut values = [0.0; daw_drive_plugin::METER_VALUES];
+            values[0] = invalid;
+            assert_eq!(
+                data.meter_connection
+                    .send(crate::telemetry::Kind::CurveBand, values),
+                kInvalidArgument
+            );
+        }
+    }
+    #[test]
     fn solo_messages_reach_prepared_band_flags_without_parameters_and_reject_invalid_slots() {
         use std::sync::atomic::Ordering;
         let component = crate::component::Component::default();
@@ -480,12 +522,12 @@ mod audition_tests {
                 *values.get_mut(77 + index).unwrap() = 3.0;
                 *values.get_mut(141 + index).unwrap() = 6.0;
             }
-            if matches!(daw_drive_plugin::METER_VALUES, 668 | 796) {
+            if matches!(daw_drive_plugin::METER_VALUES, 668 | 796 | 1200) {
                 *values
-                    .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(527))
+                    .get_mut(crate::telemetry::SPECTRUM_END.saturating_sub(527))
                     .unwrap() = 48_000.0;
                 *values
-                    .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(14))
+                    .get_mut(crate::telemetry::SPECTRUM_END.saturating_sub(14))
                     .unwrap() = 2.0;
             }
             daw_drive_plugin::receive_meter(&meter, values);
@@ -493,7 +535,14 @@ mod audition_tests {
             data.main();
             let values = daw_drive_plugin::meter_values(&meter);
             for index in [0, 63] {
-                assert_eq!(*values.get(77 + index).unwrap(), 3.0);
+                assert_eq!(
+                    *values.get(77 + index).unwrap(),
+                    if daw_drive_plugin::METER_VALUES == 1200 {
+                        0.0
+                    } else {
+                        3.0
+                    }
+                );
                 assert_eq!(*values.get(141 + index).unwrap(), 0.0);
             }
             assert!((values[1] - 0.7).abs() < 1e-6);
@@ -515,12 +564,12 @@ mod audition_tests {
                     *values.get_mut(141 + index).unwrap() = 6.0;
                 }
             }
-            if matches!(daw_drive_plugin::METER_VALUES, 668 | 796) {
+            if matches!(daw_drive_plugin::METER_VALUES, 668 | 796 | 1200) {
                 *values
-                    .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(527))
+                    .get_mut(crate::telemetry::SPECTRUM_END.saturating_sub(527))
                     .unwrap() = 48_000.0;
                 *values
-                    .get_mut(daw_drive_plugin::METER_VALUES.saturating_sub(14))
+                    .get_mut(crate::telemetry::SPECTRUM_END.saturating_sub(14))
                     .unwrap() = 2.0;
             }
             daw_drive_plugin::receive_meter(&meter, values);

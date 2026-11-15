@@ -35,6 +35,24 @@ after about 0.1 seconds of processed audio and updates about every 22 ms. At
 Unit power off clears the spectrum. Compact and collapsed units hide the graph.
 Monitoring does not change the sound or add playback latency.
 
+Use the small buttons to the left of the graph to choose a view. **A** shows the
+general spectrum, crossover and threshold view. The numbered buttons form a
+vertical group. Select a number to show that band's compressor curve, live input
+history and gain-reduction meter. Click **A** or the selected number to return
+to the general view. Changing views does not change the sound or Undo history.
+
+The band curve works like the regular [Compressor](compressor.md): drag its round
+handle left or right for Threshold and up or down for Ratio. Command/Ctrl locks
+the drag to Ratio; Option/Alt locks it to Threshold. Shift makes fine adjustments.
+Release to apply both values together; Escape or loss of focus cancels the drag.
+The DAW previews changes through background preparation and records one Undo for
+the drag. Plugins send the selected band's normal host parameter gestures.
+
+The background shows four seconds of that band's input level and gain reduction,
+with the newest point at the right edge. Capture continues in other views. Band
+power off clears its graph readings; removing the selected band returns to **A**.
+View selection is temporary and is not saved in the project or preset.
+
 Each band has these controls:
 
 | Control | Range | Default |

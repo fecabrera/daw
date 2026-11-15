@@ -968,6 +968,11 @@ impl DawUi {
                                                 self.output
                                                     .as_ref()
                                                     .and_then(|o| o.effect_spectrum(effect.id)),
+                                                |band| {
+                                                    self.output.as_ref().map_or((0.0, None), |o| {
+                                                        o.compressor_band_curve(effect.id, band)
+                                                    })
+                                                },
                                             );
                                         if !self.background_media.required
                                             && let (Some(target), Some((band, hz))) =
@@ -999,6 +1004,21 @@ impl DawUi {
                                                 effect.id,
                                                 before.clone(),
                                                 hz,
+                                            );
+                                        }
+                                        if !self.background_media.required
+                                            && let (Some(target), Some((band, parameters))) =
+                                                (target, bounds.curve_preview)
+                                            && let Some(before) =
+                                                settings.bands.iter().find(|b| b.id == band)
+                                        {
+                                            self.eq_graph_preview.offer_compressor_curve(
+                                                ui.ctx().cumulative_frame_nr(),
+                                                self.session.project.project_id,
+                                                target,
+                                                effect.id,
+                                                before.clone(),
+                                                parameters,
                                             );
                                         }
                                         if bounds.solo_changed

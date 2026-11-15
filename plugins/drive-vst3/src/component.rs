@@ -378,6 +378,16 @@ impl IConnectionPointTrait for Component {
                     };
                     if reset { kResultOk } else { kInvalidArgument }
                 }
+                crate::telemetry::Kind::CurveBand => {
+                    if values[0].fract() != 0.0 || !(0.0..=64.0).contains(&values[0]) {
+                        return kInvalidArgument;
+                    }
+                    let Some(slot) = self.output_meter.curve_band() else {
+                        return kInvalidArgument;
+                    };
+                    slot.store(values[0] as u32, Ordering::Relaxed);
+                    kResultOk
+                }
                 crate::telemetry::Kind::Solo => {
                     if values[0].fract() != 0.0
                         || values[0] < 0.0
@@ -403,8 +413,12 @@ impl IConnectionPointTrait for Component {
                     );
                     kResultOk
                 }
-                crate::telemetry::Kind::Request | crate::telemetry::Kind::RequestV2 => {
-                    let reply = if kind == crate::telemetry::Kind::RequestV2 {
+                crate::telemetry::Kind::Request
+                | crate::telemetry::Kind::RequestV2
+                | crate::telemetry::Kind::RequestV3 => {
+                    let reply = if kind == crate::telemetry::Kind::RequestV3 {
+                        crate::telemetry::Kind::ReadingV3
+                    } else if kind == crate::telemetry::Kind::RequestV2 {
                         crate::telemetry::Kind::ReadingV2
                     } else {
                         crate::telemetry::Kind::Reading

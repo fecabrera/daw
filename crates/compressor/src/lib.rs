@@ -165,6 +165,9 @@ impl Compressor {
         if let Some(history) = meter.history() {
             self.history.attach_prepared(history.clone());
         }
+        if let Some(reduction) = meter.curve_reduction() {
+            self.meter.attach_prepared(reduction.clone());
+        }
         self.curve_monitor.attach_peak_prepared(meter);
     }
     fn publish(&self) {
