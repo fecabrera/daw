@@ -4,6 +4,107 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Sidechain marker motion and centered Curve — 2026-11-15
+
+The response dot follows live telemetry smoothly along the selected mapping.
+Readouts and audio processing remain immediate. Marker tests cover frame-rate
+independence, bounded motion, nonlinear/inverted paths, route isolation, missing
+or nonfinite data, settings changes and interrupted GUI frames. Curve is centered
+across Mapping's third row; the painted-text alignment check uses galley bounds.
+
+Executed on macOS arm64:
+
+- `cargo test -p daw-ui audio_sidechain --offline`: PASS, nine tests.
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `sh tools/package_macos.sh debug --local`: PASS; rebuilt the app and verified
+  its complete ad-hoc signature.
+- Sidechain documentation links and `git diff --check`: PASS.
+
+Debug `cargo test --workspace --offline` and release
+`cargo test --workspace --release --offline` with native audio-service access:
+PASS, 3,507 passed and 22 intentionally ignored in each profile. Native visual
+inspection remains.
+
+## Sidechain Mapping footer and plot extent — 2026-11-15
+
+Mapping now places Lower/Upper first, Attack/Release second and Curve third.
+Invert uses a selected-state I footer button to the right of the centered Mapping
+label. The response chart omits its Input · dBFS caption and extends the plot
+16 points downward, retaining an 18-point inset for numeric ticks.
+
+Executed on macOS arm64:
+
+- Focused sidechain tests: PASS, six tests, including footer click-release and
+  disabled guards, centered I glyph, shared footer alignment, ordered limits,
+  mapping curves, embedded readouts and the extended plot/caption removal.
+- Debug and release workspace tests with native audio-service access: PASS,
+  3,504 passed and 22 intentionally ignored in each profile.
+- Formatting, strict workspace/all-target Clippy, documentation links and
+  `git diff --check`: PASS.
+- `sh tools/package_macos.sh debug --local`: PASS; rebuilt and verified the app.
+
+Native pointer/visual inspection of this final layout remains separate.
+
+## Sidechain response frame and triple width — 2026-11-15
+
+Response now uses the shared 270-point graph strip width. Input/Value labels and
+numeric readouts are inside the inset chart frame, above the plot. The graph
+exposes their actual values through accessibility metadata. The chart fills the
+existing three-row control height and retains the shared footer baseline.
+
+Focused sidechain tests pass: shared strip widths, unchanged settings during
+painting, aligned footers, readout bounds inside the frame and above the plot,
+finite mapping paths, clipped live markers, both themes and detection controls.
+Executed on macOS arm64:
+
+- `cargo test --workspace --offline` with native audio-service access: PASS,
+  3,503 passed and 22 intentionally ignored.
+- `cargo test --workspace --release --offline` with native audio-service access:
+  PASS, 3,503 passed and 22 intentionally ignored.
+- Formatting, strict workspace/all-target Clippy, documentation links and
+  `git diff --check`: PASS.
+- `sh tools/package_macos.sh debug --local`: PASS; rebuilt and verified the
+  complete app signature. Did not launch it.
+
+Native UI inspection of the final frame remains separate.
+
+## Sidechain detection knob and response graph — 2026-11-15
+
+The sidechain Detector strip uses the standard discrete Peak/RMS knob with Peak
+as its reset value. The Response display uses the compressor curve's inset
+background, subtle grid, gray stroke and small axis text, adapted to dBFS input
+and normalized 0–1 output. Mapping still calls `AudioSidechain::map`; the live
+marker uses actual Input/Value telemetry. No DSP, route format or mapping behavior
+changed. Mapping rows are Curve/Invert, Lower/Upper, then Attack/Release;
+Response has Input/Value above the graph. Detector and Filter use single-width
+strips; Mapping and Response use double-width strips. Detector stacks Tap, Channel
+and Detection mode. Filter has vertically stacked cutoffs and the standard
+power/label footer. Compact mode and footer alignment remain intact.
+
+Executed on macOS arm64:
+
+- `cargo test -p daw-ui audio_sidechain --offline`: PASS, five tests. Covers
+  discrete keyboard/focus and disabled behavior, existing dropdown/knob geometry,
+  repeated ordered-limit drags, no edits during painting, aligned footers, dB and
+  amplitude mapping with inversion, both themes, inset background and clipped
+  live marker positions.
+
+- `cargo test --workspace --offline` with native audio-service access: PASS,
+  3,503 passed and 22 intentionally ignored.
+- `cargo test --workspace --release --offline` with native audio-service access:
+  PASS, 3,503 passed and 22 intentionally ignored.
+- After the final four-strip layout, reran the five focused debug sidechain tests
+  and `cargo test --workspace --release audio_sidechain --offline`: PASS.
+- `cargo fmt --all --check` and strict workspace/all-target Clippy: PASS.
+- `sh tools/package_macos.sh debug --local`: PASS; rebuilt the final app and
+  verified its complete ad-hoc signature. Did not launch it.
+- Documentation links and `git diff --check`: PASS.
+
+Remaining checks: native pointer interaction and visual inspection on macOS,
+Windows and Linux. Automated shape and input tests do not establish native UI
+appearance or device behavior.
+
 ## Multiband Compressor band curve views — 2026-11-15
 
 The shared built-in/plugin body now offers A for the general spectrum and a

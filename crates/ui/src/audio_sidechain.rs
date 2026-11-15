@@ -222,175 +222,138 @@ fn number(
         };
     }
 }
-fn toggle(ui: &mut Ui, value: &mut bool, label: &str) {
-    rows::centered(ui, knobs::CHOICE_SIZE, |ui| {
-        ui.checkbox(value, egui::RichText::new(label).small())
-    });
-}
 pub(super) fn body(ui: &mut Ui, route: Id, s: &mut AudioSidechain, compact: bool) {
     let height = crate::envelope_panel::body_height(compact);
     let live = context(ui.ctx()).readings.get(&route).copied();
-    for section in 0..3 {
+    for section in 0..4 {
         ui.push_id((route, "audio-mapping", section), |ui| {
             daw_unit_ui::layout::unit_strip_with_width(
                 ui,
                 height,
-                daw_unit_ui::layout::unit_columns_width(2),
+                if section < 2 {
+                    daw_unit_ui::layout::UNIT_STRIP_WIDTH
+                } else if section == 3 {
+                    daw_unit_ui::spectrum_graph::WIDTH
+                } else {
+                    daw_unit_ui::layout::unit_columns_width(2)
+                },
                 egui::UiBuilder::new(),
                 |ui| {
                     let top = ui.cursor().top();
                     ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
                     if !compact {
-                        daw_unit_ui::layout::unit_columns(ui, 2, |ui, column| {
-                            for row in 0..if section == 2 { 1 } else { 3 } {
-                                ui.push_id(row, |ui| match (section, column, row) {
-                                    (0, 0, 0) => select(
-                                        ui,
-                                        "Tap",
-                                        &mut s.tap,
-                                        &[
-                                            (SidechainTap::PreFader, "Pre-fader"),
-                                            (SidechainTap::PostFader, "Post-fader"),
-                                        ],
-                                    ),
-                                    (0, 1, 0) => select(
-                                        ui,
-                                        "Channel",
-                                        &mut s.channel,
-                                        &[
-                                            (SidechainChannel::Stereo, "Stereo"),
-                                            (SidechainChannel::Left, "Left"),
-                                            (SidechainChannel::Right, "Right"),
-                                            (SidechainChannel::Mid, "Mid"),
-                                            (SidechainChannel::Side, "Side"),
-                                        ],
-                                    ),
-                                    (0, 0, 1) => select(
-                                        ui,
-                                        "Detector",
-                                        &mut s.detector,
-                                        &[
-                                            (SidechainDetector::Peak, "Peak"),
-                                            (SidechainDetector::Rms, "RMS"),
-                                        ],
-                                    ),
-                                    (0, 1, 1) => toggle(ui, &mut s.filter, "Filter"),
-                                    (0, 0, 2) => {
-                                        let maximum = (s.low_pass_hz - 0.1).max(s.high_pass_hz);
-                                        ui.add_enabled_ui(s.filter, |ui| {
-                                            number(
+                        if section == 3 {
+                            crate::audio_sidechain_graph::show(ui, s, live);
+                        } else {
+                            daw_unit_ui::layout::unit_columns(
+                                ui,
+                                if section < 2 { 1 } else { 2 },
+                                |ui, column| {
+                                    for row in 0..if section == 2 { 2 } else { 3 } {
+                                        ui.push_id(row, |ui| match (section, column, row) {
+                                            (0, 0, 0) => select(
                                                 ui,
-                                                &mut s.high_pass_hz,
-                                                "High-pass",
-                                                20.0..=maximum,
-                                                30.0,
-                                                "Hz",
-                                            )
-                                        });
-                                    }
-                                    (0, 1, 2) => {
-                                        let minimum = (s.high_pass_hz + 0.1).min(s.low_pass_hz);
-                                        ui.add_enabled_ui(s.filter, |ui| {
-                                            number(
+                                                "Tap",
+                                                &mut s.tap,
+                                                &[
+                                                    (SidechainTap::PreFader, "Pre-fader"),
+                                                    (SidechainTap::PostFader, "Post-fader"),
+                                                ],
+                                            ),
+                                            (0, 0, 1) => select(
                                                 ui,
-                                                &mut s.low_pass_hz,
-                                                "Low-pass",
-                                                minimum..=20_000.0,
-                                                20_000.0,
-                                                "Hz",
-                                            )
-                                        });
-                                    }
-                                    (1, 0, 0) => {
-                                        let maximum = (s.upper_db - 0.1).max(s.lower_db);
-                                        number(
-                                            ui,
-                                            &mut s.lower_db,
-                                            "Lower input",
-                                            -120.0..=maximum,
-                                            -36.0,
-                                            "dB",
-                                        );
-                                    }
-                                    (1, 1, 0) => {
-                                        let minimum = (s.lower_db + 0.1).min(s.upper_db);
-                                        number(
-                                            ui,
-                                            &mut s.upper_db,
-                                            "Upper input",
-                                            minimum..=24.0,
-                                            -6.0,
-                                            "dB",
-                                        );
-                                    }
-                                    (1, 0, 1) => select(
-                                        ui,
-                                        "Curve",
-                                        &mut s.curve,
-                                        &[
-                                            (SidechainCurve::Decibels, "dB"),
-                                            (SidechainCurve::Amplitude, "Amplitude"),
-                                        ],
-                                    ),
-                                    (1, 1, 1) => toggle(ui, &mut s.invert, "Invert"),
-                                    (1, column, 2) => {
-                                        rows::centered(ui, knobs::CHOICE_SIZE, |ui| {
-                                            ui.vertical_centered(|ui| {
-                                                ui.label(
-                                                    egui::RichText::new(if column == 0 {
-                                                        "Input"
-                                                    } else {
-                                                        "Value"
-                                                    })
-                                                    .small()
-                                                    .color(theme::palette(ui.ctx()).secondary),
-                                                );
-                                                ui.add(
-                                                    egui::Label::new(
-                                                        egui::RichText::new(
-                                                            live.filter(|v| v[column].is_finite())
-                                                                .map_or("—".into(), |v| {
-                                                                    if column == 0 {
-                                                                        format!("{:.1} dBFS", v[0])
-                                                                    } else {
-                                                                        format!("{:.3}", v[1])
-                                                                    }
-                                                                }),
-                                                        )
-                                                        .font(crate::fonts::numeric(9.0)),
+                                                "Channel",
+                                                &mut s.channel,
+                                                &[
+                                                    (SidechainChannel::Stereo, "Stereo"),
+                                                    (SidechainChannel::Left, "Left"),
+                                                    (SidechainChannel::Right, "Right"),
+                                                    (SidechainChannel::Mid, "Mid"),
+                                                    (SidechainChannel::Side, "Side"),
+                                                ],
+                                            ),
+                                            (0, 0, 2) => {
+                                                detection_mode(ui, &mut s.detector);
+                                            }
+                                            (1, 0, 0) => {
+                                                let maximum =
+                                                    (s.low_pass_hz - 0.1).max(s.high_pass_hz);
+                                                ui.add_enabled_ui(s.filter, |ui| {
+                                                    number(
+                                                        ui,
+                                                        &mut s.high_pass_hz,
+                                                        "High-pass",
+                                                        20.0..=maximum,
+                                                        30.0,
+                                                        "Hz",
                                                     )
-                                                    .wrap_mode(egui::TextWrapMode::Extend),
+                                                });
+                                            }
+                                            (1, 0, 1) => {
+                                                let minimum =
+                                                    (s.high_pass_hz + 0.1).min(s.low_pass_hz);
+                                                ui.add_enabled_ui(s.filter, |ui| {
+                                                    number(
+                                                        ui,
+                                                        &mut s.low_pass_hz,
+                                                        "Low-pass",
+                                                        minimum..=20_000.0,
+                                                        20_000.0,
+                                                        "Hz",
+                                                    )
+                                                });
+                                            }
+                                            (2, 0, 0) => {
+                                                let maximum = (s.upper_db - 0.1).max(s.lower_db);
+                                                number(
+                                                    ui,
+                                                    &mut s.lower_db,
+                                                    "Lower input",
+                                                    -120.0..=maximum,
+                                                    -36.0,
+                                                    "dB",
                                                 );
-                                            });
+                                            }
+                                            (2, 1, 0) => {
+                                                let minimum = (s.lower_db + 0.1).min(s.upper_db);
+                                                number(
+                                                    ui,
+                                                    &mut s.upper_db,
+                                                    "Upper input",
+                                                    minimum..=24.0,
+                                                    -6.0,
+                                                    "dB",
+                                                );
+                                            }
+                                            (2, 0, 1) => number(
+                                                ui,
+                                                &mut s.attack_ms,
+                                                "Attack",
+                                                0.0..=10_000.0,
+                                                5.0,
+                                                "ms",
+                                            ),
+                                            (2, 1, 1) => number(
+                                                ui,
+                                                &mut s.release_ms,
+                                                "Release",
+                                                0.0..=10_000.0,
+                                                120.0,
+                                                "ms",
+                                            ),
+                                            _ => {
+                                                ui.allocate_exact_size(
+                                                    egui::Vec2::splat(knobs::CHOICE_SIZE),
+                                                    egui::Sense::hover(),
+                                                );
+                                            }
                                         });
                                     }
-                                    (2, 0, 0) => number(
-                                        ui,
-                                        &mut s.attack_ms,
-                                        "Attack",
-                                        0.0..=10_000.0,
-                                        5.0,
-                                        "ms",
-                                    ),
-                                    (2, 1, 0) => number(
-                                        ui,
-                                        &mut s.release_ms,
-                                        "Release",
-                                        0.0..=10_000.0,
-                                        120.0,
-                                        "ms",
-                                    ),
-                                    _ => {
-                                        ui.allocate_exact_size(
-                                            egui::Vec2::splat(knobs::CHOICE_SIZE),
-                                            egui::Sense::hover(),
-                                        );
-                                    }
-                                });
+                                },
+                            );
+                            if section == 2 {
+                                curve_selector_row(ui, &mut s.curve);
                             }
-                        });
-                        if section == 2 {
-                            transfer_preview(ui, s, live);
                         }
                         // Readout text can use less height than a knob row.
                         // Keep every footer at the shared strip baseline.
@@ -404,7 +367,31 @@ pub(super) fn body(ui: &mut Ui, route: Id, s: &mut AudioSidechain, compact: bool
                         } else {
                             crate::icons::COMPACT_BUTTON_SIZE
                         },
-                        |ui| rows::unit_label(ui, ["Detector", "Mapping", "Response"][section]),
+                        |ui| {
+                            if section == 1 {
+                                let power = rows::power_label(
+                                    ui,
+                                    "Filter",
+                                    if s.filter {
+                                        "Disable filter"
+                                    } else {
+                                        "Enable filter"
+                                    },
+                                    s.filter,
+                                );
+                                if power.clicked() {
+                                    s.filter = !s.filter;
+                                }
+                                power
+                            } else if section == 2 {
+                                mapping_footer(ui, &mut s.invert)
+                            } else {
+                                rows::unit_label(
+                                    ui,
+                                    ["Detector", "Filter", "Mapping", "Response"][section],
+                                )
+                            }
+                        },
                     );
                 },
             )
@@ -412,71 +399,84 @@ pub(super) fn body(ui: &mut Ui, route: Id, s: &mut AudioSidechain, compact: bool
     }
 }
 
-fn transfer_preview(ui: &mut Ui, s: &AudioSidechain, live: Option<[f32; 2]>) {
-    let height = 2.0 * knobs::CHOICE_SIZE + f32::from(theme::TOOLBAR_PADDING);
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), height),
+fn curve_selector_row(ui: &mut Ui, curve: &mut SidechainCurve) {
+    let (slot, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), knobs::CHOICE_SIZE),
         egui::Sense::hover(),
     );
-    let plot = egui::Rect::from_min_max(
-        rect.min + egui::vec2(14.0, 5.0),
-        rect.max - egui::vec2(4.0, 20.0),
+    let mut centered = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt("centered-curve")
+            .max_rect(egui::Rect::from_center_size(
+                slot.center(),
+                egui::Vec2::splat(knobs::CHOICE_SIZE),
+            ))
+            .layout(egui::Layout::top_down(egui::Align::Min)),
     );
-    let colors = theme::palette(ui.ctx());
-    let stroke = egui::Stroke::new(1.0, colors.secondary);
-    ui.painter()
-        .line_segment([plot.left_top(), plot.left_bottom()], stroke);
-    ui.painter()
-        .line_segment([plot.left_bottom(), plot.right_bottom()], stroke);
-    let points = (0..=64)
-        .map(|i| {
-            let x = i as f32 / 64.0;
-            let db = s.lower_db + x * (s.upper_db - s.lower_db);
-            egui::pos2(
-                plot.left() + x * plot.width(),
-                plot.bottom() - s.map(10.0_f32.powf(db / 20.0)) * plot.height(),
+    select(
+        &mut centered,
+        "Curve",
+        curve,
+        &[
+            (SidechainCurve::Decibels, "dB"),
+            (SidechainCurve::Amplitude, "Amplitude"),
+        ],
+    );
+}
+
+fn mapping_footer(ui: &mut Ui, invert: &mut bool) -> egui::Response {
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = daw_unit_ui::layout::UNIT_STRIP_GAP;
+        ui.spacing_mut().interact_size.y = crate::icons::COMPACT_BUTTON_SIZE;
+        ui.spacing_mut().button_padding = egui::vec2(3.0, 0.0);
+        rows::unit_label(ui, "Mapping");
+        let mut response = ui
+            .add_sized(
+                egui::Vec2::splat(crate::icons::COMPACT_BUTTON_SIZE),
+                egui::Button::new(egui::RichText::new("I").small()).selected(*invert),
             )
-        })
-        .collect();
-    ui.painter().add(egui::Shape::line(points, stroke));
-    let font = egui::TextStyle::Small.resolve(ui.style());
-    for (point, anchor, text) in [
-        (
-            plot.left_top() - egui::vec2(5.0, 0.0),
-            egui::Align2::RIGHT_TOP,
-            "1",
-        ),
-        (
-            plot.left_bottom() - egui::vec2(5.0, 0.0),
-            egui::Align2::RIGHT_BOTTOM,
-            "0",
-        ),
-    ] {
-        ui.painter()
-            .text(point, anchor, text, font.clone(), colors.secondary);
+            .on_hover_text(format!("Invert: {}", if *invert { "On" } else { "Off" }));
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Button,
+                response.enabled(),
+                *invert,
+                "Invert",
+            )
+        });
+        if response.clicked() {
+            *invert = !*invert;
+            response.mark_changed();
+        }
+        response
+    })
+    .inner
+}
+
+fn detection_mode(ui: &mut Ui, detector: &mut SidechainDetector) -> egui::Response {
+    let mut value = f32::from(*detector == SidechainDetector::Rms);
+    let response = knobs::row(ui, &mut value, knobs::CHOICE_SIZE, |ui, value| {
+        ui.add(Knob::new(
+            value,
+            KnobSpec::new("Detection mode", 0.0..=1.0, 0.0, 1.0)
+                .two_way_labels("Peak", "RMS")
+                .format(|v| {
+                    if v == 0.0 {
+                        "Peak".into()
+                    } else {
+                        "RMS".into()
+                    }
+                }),
+        ))
+    });
+    if response.changed() {
+        *detector = if value == 0.0 {
+            SidechainDetector::Peak
+        } else {
+            SidechainDetector::Rms
+        };
     }
-    ui.painter().text(
-        egui::pos2(plot.center().x, rect.bottom()),
-        egui::Align2::CENTER_BOTTOM,
-        "Input · dBFS",
-        font,
-        colors.secondary,
-    );
-    if let Some([db, value]) = live.filter(|v| v.iter().all(|v| v.is_finite())) {
-        let x = ((db - s.lower_db) / (s.upper_db - s.lower_db)).clamp(0.0, 1.0);
-        ui.painter().circle_filled(
-            egui::pos2(
-                plot.left() + x * plot.width(),
-                plot.bottom() - value * plot.height(),
-            ),
-            2.5,
-            theme::accent(ui.ctx()),
-        );
-    }
-    response.on_hover_text(format!(
-        "Input range: {:.1}–{:.1} dBFS",
-        s.lower_db, s.upper_db
-    ));
+    response
 }
 
 pub(super) fn append_sources(
@@ -511,6 +511,114 @@ pub(super) fn append_sources(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mapping_footer_invert_toggles_on_release_and_respects_disabled_ui() {
+        let ctx = Context::default();
+        crate::fonts::configure(&ctx);
+        crate::theme::configure(&ctx);
+        let mut invert = false;
+        let draw = |invert: &mut bool, events: Vec<egui::Event>, enabled: bool| {
+            let mut button = egui::Rect::NOTHING;
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.add_enabled_ui(enabled, |ui| {
+                        rows::centered(ui, crate::icons::COMPACT_BUTTON_SIZE, |ui| {
+                            ui.set_width(daw_unit_ui::layout::unit_columns_width(2) - 20.0);
+                            button = mapping_footer(ui, invert).rect;
+                        });
+                    });
+                },
+            );
+            let label = out
+                .shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "Mapping" => {
+                        Some(egui::Rect::from_min_size(t.pos, t.galley.size()))
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let glyph = out
+                .shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "I" => {
+                        Some(t.pos + t.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert!(button.left() > label.right());
+            assert!((glyph - button.center()).length() < 0.75);
+            out.textures_delta.clear();
+            button.center()
+        };
+        let pos = draw(&mut invert, vec![], true);
+        let pointer = |pressed| egui::Event::PointerButton {
+            pos,
+            pressed,
+            button: egui::PointerButton::Primary,
+            modifiers: Default::default(),
+        };
+        draw(
+            &mut invert,
+            vec![egui::Event::PointerMoved(pos), pointer(true)],
+            true,
+        );
+        assert!(!invert);
+        draw(&mut invert, vec![pointer(false)], true);
+        assert!(invert);
+        draw(&mut invert, vec![pointer(true)], false);
+        draw(&mut invert, vec![pointer(false)], false);
+        assert!(invert);
+    }
+    #[test]
+    fn detector_knob_uses_shared_discrete_keyboard_control_and_disabled_guard() {
+        let ctx = Context::default();
+        crate::fonts::configure(&ctx);
+        crate::theme::configure(&ctx);
+        let mut detector = SidechainDetector::Peak;
+        let draw = |detector: &mut SidechainDetector, key: Option<egui::Key>, enabled: bool| {
+            let events = key
+                .into_iter()
+                .map(|key| egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                })
+                .collect();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.add_enabled_ui(enabled, |ui| {
+                        detection_mode(ui, detector).request_focus();
+                    });
+                },
+            );
+            output.textures_delta.clear();
+        };
+        draw(&mut detector, None, true);
+        assert_eq!(detector, SidechainDetector::Peak);
+        draw(&mut detector, Some(egui::Key::ArrowUp), true);
+        assert_eq!(detector, SidechainDetector::Rms);
+        draw(&mut detector, Some(egui::Key::ArrowDown), false);
+        assert_eq!(detector, SidechainDetector::Rms);
+        draw(&mut detector, None, true);
+        draw(&mut detector, Some(egui::Key::ArrowDown), true);
+        assert_eq!(detector, SidechainDetector::Peak);
+    }
     #[test]
     fn sidechain_ordered_knobs_clamp_repeated_dragging_without_invalid_settings() {
         fn frame(
@@ -548,14 +656,14 @@ mod tests {
                 })
                 .collect()
         }
-        for index in [0, 1, 2, 3] {
+        for index in [1, 2, 3, 5] {
             let ctx = Context::default();
             crate::fonts::configure(&ctx);
             crate::theme::configure(&ctx);
             let mut settings = AudioSidechain::new(Id::new_v4());
             settings.filter = true;
             let controls = frame(&ctx, &mut settings, vec![]);
-            assert_eq!(controls.len(), 6);
+            assert_eq!(controls.len(), 7);
             let origin = controls[index].rect.center();
             frame(
                 &ctx,
@@ -571,7 +679,7 @@ mod tests {
                 ],
             );
             for step in 0..64 {
-                let direction = if index == 0 || index == 2 { -1.0 } else { 1.0 };
+                let direction = if index == 1 || index == 3 { -1.0 } else { 1.0 };
                 let pos = origin + egui::vec2(0.0, direction * (2000.0 + step as f32));
                 frame(&ctx, &mut settings, vec![egui::Event::PointerMoved(pos)]);
                 assert!(
@@ -580,9 +688,9 @@ mod tests {
                 );
             }
             let (actual, limit) = match index {
-                0 => (settings.high_pass_hz, settings.low_pass_hz - 0.1),
-                1 => (settings.low_pass_hz, settings.high_pass_hz + 0.1),
-                2 => (settings.lower_db, settings.upper_db - 0.1),
+                1 => (settings.high_pass_hz, settings.low_pass_hz - 0.1),
+                2 => (settings.low_pass_hz, settings.high_pass_hz + 0.1),
+                3 => (settings.lower_db, settings.upper_db - 0.1),
                 _ => (settings.upper_db, settings.lower_db + 0.1),
             };
             assert!(
@@ -596,7 +704,7 @@ mod tests {
         let ctx = Context::default();
         crate::fonts::configure(&ctx);
         crate::theme::configure(&ctx);
-        let mut detector = SidechainDetector::Peak;
+        let mut tap = SidechainTap::PreFader;
         let mut out = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -617,11 +725,11 @@ mod tests {
                                 ui.available_rect_before_wrap().left() + knobs::CHOICE_SIZE * 0.5;
                             rects[column] = select_response(
                                 ui,
-                                "Detector",
-                                &mut detector,
+                                "Tap",
+                                &mut tap,
                                 &[
-                                    (SidechainDetector::Peak, "Peak"),
-                                    (SidechainDetector::Rms, "RMS"),
+                                    (SidechainTap::PreFader, "Pre-fader"),
+                                    (SidechainTap::PostFader, "Post-fader"),
                                 ],
                             )
                             .rect;
@@ -639,10 +747,10 @@ mod tests {
             },
         );
         out.textures_delta.clear();
-        assert_eq!(detector, SidechainDetector::Peak);
+        assert_eq!(tap, SidechainTap::PreFader);
     }
     #[test]
-    fn sidechain_settings_reuse_three_double_width_strips_and_do_not_edit_while_painting() {
+    fn sidechain_settings_reuse_standard_strip_widths_without_painting_edits() {
         for compact in [false, true] {
             for input in [-9.7_f32, -39.2, -120.0, 240.0] {
                 let ctx = Context::default();
@@ -694,7 +802,24 @@ mod tests {
                             .find_map(|s| text_y(&s.shape, text))
                             .expect("strip footer")
                     };
-                    for label in ["Mapping", "Response"] {
+                    let text_center = |name: &str| {
+                        out.shapes
+                            .iter()
+                            .find_map(|shape| match &shape.shape {
+                                egui::Shape::Text(t) if t.galley.text() == name => {
+                                    Some(t.pos.x + t.galley.rect.center().x)
+                                }
+                                _ => None,
+                            })
+                            .unwrap()
+                    };
+                    assert!(
+                        (text_center("Curve") - text_center("Mapping")).abs() < 0.75,
+                        "curve={} mapping={}",
+                        text_center("Curve"),
+                        text_center("Mapping")
+                    );
+                    for label in ["Filter", "Mapping", "Response"] {
                         assert!((footer_y(label) - footer_y("Detector")).abs() < 0.1);
                     }
                     fn find(
@@ -725,7 +850,12 @@ mod tests {
                 out.textures_delta.clear();
                 assert_eq!(settings, original);
                 assert!(
-                    (rect.width() - 3.0 * daw_unit_ui::layout::unit_columns_width(2)).abs() < 0.1,
+                    (rect.width()
+                        - (2.0 * daw_unit_ui::layout::UNIT_STRIP_WIDTH
+                            + daw_unit_ui::layout::unit_columns_width(2)
+                            + daw_unit_ui::spectrum_graph::WIDTH))
+                        .abs()
+                        < 0.1,
                     "{rect:?}"
                 );
                 assert!(

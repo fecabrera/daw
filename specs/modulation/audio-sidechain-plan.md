@@ -222,23 +222,69 @@ fail settings validation rather than being reinterpreted.
 UI appends Tracks, Groups and Returns after the existing provider groups, with
 exactly two section dividers. It uses the common Small dropdown layout. Selecting
 an audio source keeps the standard 90-point connection strip and its existing
-destination-matched Amount knob. It appends Detector, Mapping and Response strips,
-each using `unit_columns_width(2)`, `unit_columns` and `unit_strip_with_width`,
-as Chorus Motion does: 161-point width, 52-point knob columns and 19-point knob gaps,
-no internal divider, standard padding, full-height outer dividers, one centered
-footer, and the existing expanded/compact lane height. Strip reordering includes
+destination-matched Amount knob. It appends Detector, Filter, Mapping and Response
+strips. Detector and Filter use standard 90-point single-column strips. Mapping
+uses `unit_columns_width(2)`, as Chorus Motion does: 161-point width. Response
+uses the shared `spectrum_graph::WIDTH`: 270 points, matching EQ and Compressor.
+Reuse `unit_columns` and `unit_strip_with_width`, 52-point knob columns, 19-point
+knob gaps, standard padding, full-height outer dividers, one centered footer and
+the existing expanded/compact lane height. Strip reordering includes
 the complete connection and settings as one stable route. Telemetry is actual
 renderer Input dBFS and mapped value through the existing atomic snapshot path.
 
 Selectors use each column's padded 70-point field, matching Source/Destination,
 while knob centers and 52-point row allocations remain fixed. Input/Value use
 the shared numeric font on one line; longer dBFS readings cannot move the footer.
-Anchor all three footers to the shared strip body height, including when Mapping
+Anchor all four footers to the shared strip body height, including when Response
 readouts use less space than the standard knob rows.
 UI drags keep one 0.1 dB or 0.1 Hz input step between paired limits. Clamp after the
 knob's floating-point conversion. Do not shrink the gap on successive frames.
 Retain narrower valid saved ranges without changing them during painting; an
 edit cannot narrow them further. Bound no-ops must not reach validation as errors.
+
+## Detection knob and response graph
+
+Detection mode uses the shared `Knob`/`KnobSpec` discrete Peak/RMS control instead
+of a dropdown. Reuse the regular Compressor's 0/1, one-step, two-label convention,
+with Peak at zero and as the double-click reset. Preserve standard focus,
+keyboard, disabled and drag behavior. Detector is single-width and stacks Tap,
+Channel and Detection mode. Place High-pass and Low-pass vertically in a separate
+single-width Filter strip. Its footer uses the shared power/Filter label in both
+expanded and compact modes; remove the Filter checkbox. Filter power gates only
+the filter knobs and saved detector filtering, preserving cutoff values while
+bypassed. Painting must not rewrite saved settings.
+Tap, Channel and Curve retain the canonical dropdowns.
+
+The response display uses the Compressor curve's visual conventions, adapted to
+sidechain mapping: theme background with 2-point rounding, a 1-point secondary
+12%-opacity grid, 9-point axis text, faint diagonal reference and a 1.5-point gray
+mapping curve. Retain Mapping’s double width, Response’s shared triple width
+and the shared footer baseline. Mapping uses Lower/Upper on row one,
+Attack/Release on row two and Curve on the third row, centered across the full
+Mapping strip. Replace the Invert checkbox with a selected-state 18-point I button
+to the right of the centered Mapping footer label, using standard footer
+spacing, keyboard/accessibility behavior and an Invert On/Off tooltip.
+Place Input/Value labels and numeric readouts inside the graph’s inset frame,
+above the plot, in two centered columns. Use the shared three-knob-row chart
+height and reserve a header for these readouts. Expose their values through
+accessible graph metadata. Omit the Input · dBFS caption; retain numeric dBFS
+ticks and extend the plot down to the standard 18-point tick-label inset. Place the graph in a focused UI module. It remains a display; this change introduces no graph gestures or new route parameters.
+
+The x axis spans the saved Lower/Upper dBFS bounds; y spans normalized 0–1. Sample
+`AudioSidechain::map` at 161 points for the dB/Amplitude and Invert curves. Do not
+simulate detectors or envelopes in painting. Use actual renderer Input/Value
+telemetry for the accent marker; ignore nonfinite readings and clip finite
+out-of-range marker positions to the plot. Keep graph primitives finite and
+retain compact-mode hiding, sidechain validation, preparation and undo behavior.
+
+Smooth the live marker on the UI thread with a 35 ms exponential follow based on
+elapsed GUI time. Follow normalized input along the mapping curve and retain the
+measured output offset from that curve, including while edited settings await
+audio publication. Keep the numeric readouts and DSP unchanged. Store animation
+state per route/graph, reset on mapping changes, skipped frames or a restarted
+clock, and clear it immediately for missing, nonfinite or hidden readings.
+Request another frame after 16 ms while moving; settle exactly at the measured
+point within 0.1 logical pixel. The first available reading appears immediately.
 
 ## Bounce integration
 
