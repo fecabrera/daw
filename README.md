@@ -34,7 +34,6 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 ## Current features
 
 - **Bounce:** [render selected clips or complete tracks](docs/editing/bounce.md) to new audio tracks while retaining the disabled originals.
-
 - **Timeline:** arrange, trim, loop, stretch, transpose, split, merge, move, copy, and duplicate audio, MIDI and beat clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog. Audio clips support editable fades and adjacent crossfades.
 - **Beat editor:** build rhythms with [step patterns](docs/views/beat-editor.md) and independently configured subtrack instruments.
 - **MIDI editor:** create patterns and edit notes in a piano roll, with a project track browser, track controls and optional scale snapping.
@@ -50,15 +49,11 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Export and CLI:** export stereo WAV, MP3, or AAC files; inspect tracks, validate projects, collect sources and render audio with the [CLI](docs/cli/README.md).
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 
+Audio, MIDI and Beat workflows are available in four views: **Timeline**, **Instrument**, **Editor**, and **Mixer**.
+
+Normal imports retain external references; included recordings stay inside the project folder. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
+
 Stem separation supports four or six stems using local HTDemucs models through Charon, with CoreML on Apple Silicon macOS and CPU on supported platforms. Either validated model enables separation; CoreML takes priority, with optional CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
-
-## Status and planned work
-
-Audio and MIDI workflows are available in four views: **Timeline**, **Instrument**, **Editor**, and **Mixer**.
-
-The project format is experimental. Normal imports retain external references; included recordings stay inside the project folder. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
-
-Planned work includes audio editing, advanced beat editing, more effects, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
 
 ## Documentation
 
@@ -71,6 +66,16 @@ Planned work includes audio editing, advanced beat editing, more effects, and cu
 - [Implementation specifications](specs/README.md): architecture, data formats, requirements, and acceptance criteria.
 - [Validation records](specs/validation/README.md): completed checks and remaining verification limits.
 - [Repository instructions](AGENTS.md): contribution rules and development workflows.
+
+## Status and planned work
+
+Most of the features are experimental, including (but not limited to) the project manifest format and the layout of both the main application and the effects.
+
+Planned work includes audio editing, advanced beat editing, more effects, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
+
+## AI disclosure
+
+Development of this project has been assisted by AI. While most of the code has been AI-generated, all the designs and decisions are (and will always be) ultimately made by humans.
 
 ## Licenses
 
