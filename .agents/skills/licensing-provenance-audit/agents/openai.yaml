@@ -1,0 +1,4 @@
+interface:
+  display_name: "Licensing and Provenance Audit"
+  short_description: "Independent license audits with verified evidence"
+  default_prompt: "Use $licensing-provenance-audit to audit dependency licensing and provenance with a configured number of independent auditors and a separate final validator."

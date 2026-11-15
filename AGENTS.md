@@ -24,6 +24,20 @@ Exploration does not authorize implementation or changes to accepted requirement
 
 For a requested independent multi-agent branch or PR review, use the repository's [DAW review skill](.agents/skills/daw-review/SKILL.md). Confirm the target, review mode and adversarial/neutral reviewer mix; comparison mode also needs a base. Users can set each reviewer's stance, model and focus. Standalone mode reviews the full committed branch snapshot without a base or diff, including existing defects and dependencies. Keep reviewers independent, then use a separate findings validator. Use Documentation, Code Quality, Dependencies and Total as report labels. In comparison mode, skip Code Quality when no code inputs change and Dependencies when no dependencies are changed or affected. In standalone mode, skip a category only when its inputs are absent. SKIPPED affects neither PASS nor FAIL. Incomplete required coverage produces INCOMPLETE, neither PASS nor FAIL, even when blocking findings are present; keep those findings visible. With complete coverage, critical/major findings cause FAIL by default; otherwise PASS. Plan coverage before launching reviewers and close feasible gaps before reporting. A review does not authorize implementation changes or publishing comments.
 
+For a licensing and provenance audit, use the repository's
+[licensing and provenance audit skill](.agents/skills/licensing-provenance-audit/SKILL.md).
+Use the caller's independent auditor count; ask if absent. The final independent
+validator is additional to that count. Audit the full pinned project by default;
+an optional PR, commit or diff limits coverage to changed or affected inputs and
+their usage. Verify first-party code against its applicable project grant;
+keep third-party obligations and product distribution checks separate. Treat
+third-party compatibility as unproven until grants, provenance, actual use and
+obligation fulfillment establish it. Keep candidate graph paths in coverage
+records, outside unresolved dependency counts. Missing required evidence blocks
+clearance. Keep auditors independent, then have the separate validator verify
+both findings and clearances and consolidate the local report. An audit does not
+authorize implementation changes or publishing comments.
+
 This is a Rust desktop digital audio workstation (DAW) for macOS, Windows, and Linux, with a headless command-line interface (CLI). Both applications use the same project model and rendering logic. The project format is experimental. There is no fixed track-count limit. Undo/redo follows [session history](specs/editing/undo-redo.md). Mobile delivery is outside the current MVP.
 
 Read the documents relevant to the task:
