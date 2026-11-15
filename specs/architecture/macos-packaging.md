@@ -46,3 +46,12 @@ publishing it. A failed image step retains the previous DMG. Ad-hoc signing chec
 integrity; trusted browser distribution still requires Developer ID signing and
 Apple notarization. Native fixtures check the resource seal, exact final hashes,
 copy preservation, tamper rejection and rollback after receipt publication failure.
+
+DMG creation retries only `Resource busy` failures, using at most five attempts
+with delays of 2, 4, 6 and 8 seconds. Use the C locale for stable error matching,
+retain each attempt's diagnostics and delete any partial staged image before a
+retry. Other creation errors and checksum failures stop immediately. Exhausted
+retries preserve the previous published image and remove staging files. Portable
+fault-injection fixtures cover recovery, bounded failure, partial-image cleanup,
+nonretryable errors and verification failure; native fixtures still create and
+verify a real disk image.

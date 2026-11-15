@@ -4,6 +4,30 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## macOS DMG creation retries — 2026-11-15
+
+The Drive / macOS arm64 packaging job reported `hdiutil create` failing with
+`Resource busy` after successful bundle verification. The shared desktop DMG
+packager now retries only that error, with five attempts and 2/4/6/8-second
+delays. It retains diagnostics, removes partial staged images between attempts,
+and preserves the published DMG on creation or verification failure.
+
+Executed on macOS arm64:
+
+- Four portable fault-injection tests: PASS. Covered transient recovery,
+  persistent busy errors, immediate nonretryable failure, verification failure,
+  exit codes, partial-image cleanup and previous-artifact preservation.
+- `python3 -m unittest discover -s tools -p 'test_*packag*.py' -v` with native
+  disk-image service access: PASS, 38 tests run, one PowerShell test skipped.
+  This is the packaging command used by the Drive workflow. It includes real
+  DMG creation/checksum verification and signature/rollback checks.
+- `sh -n tools/package_macos_dmg.sh` and `git diff --check`: PASS.
+
+The sandboxed native DMG test reports `Device not configured`; the native-access
+run passes. The hosted runner's transient busy condition was injected in tests,
+not reproduced naturally. Hosted CI, Intel macOS and Finder interaction remain
+unchecked. Rust code is unchanged; Rust workspace checks were not repeated.
+
 ## Unit UI test font setup — 2026-11-15
 
 Eight Compressor graph tests and two EQ readiness tests now call the shared

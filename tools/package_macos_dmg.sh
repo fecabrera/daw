@@ -25,8 +25,27 @@ cp -R "target/$profile/DAW.app" "$staging_directory/image/DAW.app"
 cp -R "target/$profile/DAW-source-metadata" "$staging_directory/image/DAW-source-metadata"
 codesign --verify --deep --strict --verbose=2 "$staging_directory/image/DAW.app"
 ln -s /Applications "$staging_directory/image/Applications"
-hdiutil create -volname DAW -srcfolder "$staging_directory/image" \
-  -format UDZO "$staging_directory/DAW.dmg"
+# Hosted macOS workers can temporarily hold disk-image resources busy.
+# Retry only that error; retain diagnostics and never reuse a partial image.
+attempt=1
+while :; do
+  if LC_ALL=C hdiutil create -volname DAW -srcfolder "$staging_directory/image" \
+    -format UDZO "$staging_directory/DAW.dmg" 2>"$staging_directory/create.log"; then
+    cat "$staging_directory/create.log" >&2
+    break
+  else
+    status=$?
+  fi
+  cat "$staging_directory/create.log" >&2
+  if [ "$attempt" -ge 5 ] || ! grep -Fq 'Resource busy' "$staging_directory/create.log"; then
+    exit "$status"
+  fi
+  rm -f "$staging_directory/DAW.dmg"
+  delay=$((attempt * 2))
+  echo "Disk image resources busy; retrying in $delay seconds (attempt $((attempt + 1))/5)." >&2
+  sleep "$delay"
+  attempt=$((attempt + 1))
+done
 hdiutil verify "$staging_directory/DAW.dmg"
 # Publish only a complete disk image; failures retain the previous artifact.
 artifact="target/$profile/DAW-macos-$architecture.dmg"

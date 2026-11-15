@@ -75,6 +75,101 @@ def snapshot(directory):
             for p in directory.rglob('*') if p.is_file()}
 
 
+@unittest.skipUnless(os.name == 'posix', 'POSIX shell required')
+class DiskImageRetries(unittest.TestCase):
+    def package(self, mode):
+        with tempfile.TemporaryDirectory(prefix='DMG retry ') as temporary:
+            root = Path(temporary)
+            (root / 'tools').mkdir()
+            shutil.copy(ROOT / 'tools/package_macos_dmg.sh', root / 'tools')
+            (root / 'tools/package_macos.sh').write_text('''#!/bin/sh
+set -eu
+mkdir -p target/debug/DAW.app target/debug/DAW-source-metadata
+''')
+            output = root / 'target/debug'
+            output.mkdir(parents=True)
+            artifact = output / 'DAW-macos-arm64.dmg'
+            artifact.write_bytes(b'previous verified image')
+            shim = root / 'bin'
+            shim.mkdir()
+            (shim / 'uname').write_text('''#!/bin/sh
+case "$1" in
+  -s) echo Darwin ;;
+  -m) echo arm64 ;;
+esac
+''')
+            (shim / 'codesign').write_text('#!/bin/sh\nexit 0\n')
+            (shim / 'sleep').write_text('''#!/bin/sh
+echo "$1" >> "$DMG_TEST_ROOT/delays"
+''')
+            (shim / 'hdiutil').write_text('''#!/usr/bin/env python3
+import json, os, pathlib, sys
+root = pathlib.Path(os.environ['DMG_TEST_ROOT'])
+log = root / 'calls'
+calls = log.read_text().splitlines() if log.exists() else []
+with log.open('a') as output:
+    output.write(json.dumps(sys.argv[1:]) + '\\n')
+mode = os.environ['DMG_TEST_MODE']
+image = pathlib.Path(sys.argv[-1])
+if sys.argv[1] == 'create':
+    assert not image.exists(), 'partial image reused'
+    image.write_bytes(b'partial image')
+    if mode == 'fatal':
+        print('hdiutil: create failed - Permission denied', file=sys.stderr)
+        sys.exit(13)
+    if mode == 'busy' or (mode == 'recover' and len(calls) < 2):
+        print('hdiutil: create failed - Resource busy', file=sys.stderr)
+        sys.exit(16)
+    image.write_bytes(b'new verified image')
+elif sys.argv[1] == 'verify':
+    assert image.read_bytes() == b'new verified image'
+    if mode == 'verify_failure':
+        sys.exit(9)
+''')
+            for path in shim.iterdir():
+                path.chmod(0o755)
+            result = subprocess.run(
+                ['sh', str(root / 'tools/package_macos_dmg.sh'), 'debug'],
+                cwd=root, capture_output=True, text=True,
+                env=dict(os.environ, PATH=str(shim) + os.pathsep + os.environ['PATH'],
+                         DMG_TEST_ROOT=str(root), DMG_TEST_MODE=mode),
+            )
+            calls = [json.loads(line) for line in (root / 'calls').read_text().splitlines()]
+            delays = (root / 'delays').read_text().splitlines() if (root / 'delays').exists() else []
+            self.assertFalse(list(output.glob('.daw-dmg.*')))
+            return result, artifact.read_bytes(), [args[0] for args in calls], delays
+
+    def test_busy_creation_recovers_and_verifies_before_publication(self):
+        result, image, calls, delays = self.package('recover')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(image, b'new verified image')
+        self.assertEqual(calls, ['create', 'create', 'create', 'verify'])
+        self.assertEqual(delays, ['2', '4'])
+        self.assertEqual(result.stderr.count('hdiutil: create failed - Resource busy'), 2)
+
+    def test_persistent_busy_error_is_bounded_and_preserves_previous_image(self):
+        result, image, calls, delays = self.package('busy')
+        self.assertEqual(result.returncode, 16)
+        self.assertEqual(image, b'previous verified image')
+        self.assertEqual(calls, ['create'] * 5)
+        self.assertEqual(delays, ['2', '4', '6', '8'])
+
+    def test_other_creation_errors_fail_without_retry(self):
+        result, image, calls, delays = self.package('fatal')
+        self.assertEqual(result.returncode, 13)
+        self.assertIn('Permission denied', result.stderr)
+        self.assertEqual(image, b'previous verified image')
+        self.assertEqual(calls, ['create'])
+        self.assertEqual(delays, [])
+
+    def test_verification_failure_is_not_retried_or_published(self):
+        result, image, calls, delays = self.package('verify_failure')
+        self.assertEqual(result.returncode, 9)
+        self.assertEqual(image, b'previous verified image')
+        self.assertEqual(calls, ['create', 'verify'])
+        self.assertEqual(delays, [])
+
+
 @unittest.skipUnless(NATIVE, 'native macOS compiler and codesign required')
 class MacosSigning(unittest.TestCase):
     def test_complete_seal_final_receipts_copy_tampering_and_rollback(self):
