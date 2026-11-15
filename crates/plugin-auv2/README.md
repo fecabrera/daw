@@ -18,3 +18,8 @@ BSD-3-Clause dependency; its original license is retained in
 
 The shared Cocoa source compiles separately in each product with checked static
 class names. This lets AU hosts discover factories through NSBundle.
+
+Native AU code is enabled only for arm64 macOS. Intel macOS, Windows and Linux
+workspace checks compile this crate without generating bindings or linking AU
+frameworks. The product crates use the same target guard. Unsupported plugin
+package targets are rejected before building.

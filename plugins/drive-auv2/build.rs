@@ -1,7 +1,10 @@
 #[cfg(target_os = "macos")]
 fn main() {
     use std::{env, path::PathBuf, process::Command};
-    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
+    // Build scripts run on the host; select native AU work from Cargo's target.
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos")
+        || env::var("CARGO_CFG_TARGET_ARCH").as_deref() != Ok("aarch64")
+    {
         return;
     }
     let directory = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"));

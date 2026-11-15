@@ -53,7 +53,9 @@ These are development previews. macOS bundles are ad-hoc signed, without notariz
 Use the pinned Rust toolchain and the approved Apple SDK/libclang/CLTools
 installation recorded in [the generation contract](../../specs/architecture/auv2-plugin-builds.md#local-binding-generation).
 The initial installation is CLTools 27.2 with SDK 27.2 and Apple clang 21.
-No external AU binding crate is needed. Bindgen runs only for macOS AU builds.
+No external AU binding crate is needed. AU exports and binding generation support
+arm64 macOS only. Intel macOS workspace checks compile inert AU crates; these do
+not produce usable AU components.
 macOS CLAP/VST3-only builds and Windows/Linux builds do not need this SDK.
 
 ```sh

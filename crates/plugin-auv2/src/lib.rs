@@ -1,4 +1,5 @@
 //! Native AUv2 C ABI generated from the locally installed Apple SDK.
+#![cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[cfg(target_os = "macos")]
 #[allow(
     non_upper_case_globals,

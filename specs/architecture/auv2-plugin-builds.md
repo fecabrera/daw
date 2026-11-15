@@ -52,9 +52,15 @@ selector type. Rust also invokes an independently compiled C render callback.
 C trailing-one arrays are accessed through checked raw byte offsets and copied
 headers, never out-of-bounds Rust array references.
 
-Windows/Linux exports are inert libraries. Their workspace builds do not generate
-Apple bindings or link Apple frameworks. Building a macOS CLAP/VST3 package alone
-does not depend on this crate. No AU dependency enters DAW/CLI/DSP ownership.
+AU code and runtime dependencies are enabled only for arm64 macOS. Intel macOS,
+Windows and Linux AU crates are inert libraries so ordinary workspace checks,
+including CI's Intel macOS cross-check, do not generate Apple bindings or link AU
+frameworks. Both binding and product build scripts check Cargo's target OS and
+architecture before SDK queries, binding generation or native compilation. Build
+scripts execute on the host, so host-only `cfg(target_os)` checks are insufficient.
+The packager still rejects unsupported export targets before building or writing
+outputs; an inert crate is not a distributable AU component. Building a macOS
+CLAP/VST3 package alone does not depend on this crate. No AU dependency enters DAW/CLI/DSP ownership.
 
 ## Native lifecycle and supported audio
 

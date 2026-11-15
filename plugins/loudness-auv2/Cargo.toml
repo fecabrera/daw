@@ -11,7 +11,7 @@ build = "../drive-auv2/build.rs"
 path = "../drive-auv2/src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 daw-drive-plugin = { package = "daw-loudness-plugin", path = "../../crates/loudness-plugin" }
 daw-drive-editor = { package = "daw-loudness-editor", path = "../../crates/loudness-editor" }
 daw-plugin-auv2.workspace = true

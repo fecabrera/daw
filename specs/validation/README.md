@@ -5,6 +5,41 @@ Date: 2026-10-07.
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
 
+## AUv2 unsupported-target workspace guards — 2026-11-15
+
+The reported arm64-only panic came from the Intel macOS workspace cross-check:
+the build script accepted a macOS target without checking its architecture. AU
+binding generation, Cocoa compilation, library source and runtime dependencies
+now activate only for arm64 macOS. Intel macOS and non-macOS workspace builds use
+inert AU crates for all 20 products. Unsupported package requests remain rejected
+before Cargo or output creation. No Intel AU export support is implied.
+
+Executed on macOS arm64 with the pinned Rust toolchain:
+
+- Focused `cargo check --locked --offline --all-targets --target <target>` for
+  `daw-plugin-auv2` and all 20 AU products: PASS for `x86_64-apple-darwin` and
+  `x86_64-pc-windows-msvc`. The checks used rustup's pinned compiler and installed
+  target standard libraries in `work/auv2-unsupported-targets`.
+- Unsupported-target AU build-script outputs are empty: no generated bindings,
+  native archives or AU framework link directives on either checked target.
+- CI-equivalent `cargo check --locked --offline --workspace --all-targets --target x86_64-apple-darwin`:
+  PASS, using the same pinned compiler and isolated target directory.
+- `cargo test --workspace --offline` with macOS audio-service access: PASS,
+  3,456 passed and 22 intentionally ignored.
+- `cargo test --workspace --release --offline` with macOS audio-service access:
+  PASS, 3,456 passed and 22 intentionally ignored.
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- `python3 -m unittest discover -s tools -p 'test_*.py' -v`: PASS, 57 tests.
+  AU packaging coverage includes early rejection of Intel component requests,
+  existing Windows/Linux restrictions and all 20 supported native AU bundles.
+- Four focused AU packaging tests: PASS.
+- Relative documentation links in the changed AU documents: 14 checked, none
+  missing. `git diff --check`: PASS.
+
+Remaining checks: rerun hosted CI, including native Windows/Linux execution.
+Cross-compilation does not establish native host behavior or Intel AU support.
+
 ## Separate EQ and Filters catalog folders — 2026-11-14
 
 The shared Effects catalog now uses seven folders in this order: EQ, Filters,

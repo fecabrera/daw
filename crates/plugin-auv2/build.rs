@@ -1,7 +1,10 @@
 #[cfg(target_os = "macos")]
 fn main() {
     use std::{env, path::PathBuf, process::Command};
-    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
+    // Build scripts run on the host; select native AU work from Cargo's target.
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos")
+        || env::var("CARGO_CFG_TARGET_ARCH").as_deref() != Ok("aarch64")
+    {
         return;
     }
     println!("cargo:rerun-if-changed=wrapper.h");
@@ -19,11 +22,7 @@ fn main() {
         .trim()
         .to_owned();
     let target = env::var("TARGET").expect("Cargo TARGET");
-    let clang_target = if target.starts_with("aarch64") {
-        "arm64-apple-macos12.0"
-    } else {
-        panic!("AUv2 currently supports arm64 macOS only")
-    };
+    let clang_target = "arm64-apple-macos12.0";
     use sha2::{Digest, Sha256};
     use std::sync::{Arc, Mutex};
     #[derive(Debug)]

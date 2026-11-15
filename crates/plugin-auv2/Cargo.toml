@@ -12,5 +12,5 @@ cc.workspace = true
 sha2.workspace = true
 serde_json.workspace = true
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 daw-plugin-support.workspace = true

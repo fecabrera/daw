@@ -16,7 +16,7 @@ This matrix distinguishes automated coverage from native release acceptance.
 | Regression | Rustfmt, strict workspace Clippy, debug and release workspace tests; all Python tooling tests; existing CLAP/VST3 ABI gates. |
 | Apple validator | Install in a disposable test environment; run `python3 tools/check_auv2.py --units all` for each profile. Retain strict auval logs and exact component hashes. Process-local registration tests do not establish this gate. |
 | Hosts | Logic Pro scan/insert, multiple instances, automation modes, dirty state/presets/save/reopen, generic/custom editor, timing, bypass/delay compensation, offline/realtime bounce and tails for all 20. GarageBand and REAPER AU provide independent host coverage. |
-| Platforms | Native minimum macOS 12 and supported arm64 host checks. Windows/Linux verify no Apple-tool dependency in ordinary builds. Intel/universal are outside this delivery. |
+| Platforms | Native minimum macOS 12 and supported arm64 host checks. Windows/Linux and Intel macOS workspace checks verify inert AU crates without AU SDK generation or framework linking. Intel/universal AU exports are outside this delivery. |
 
 Only executed checks belong in validation history. Automated success does not
 establish bundle discovery, host behavior, listening quality or minimum-OS support.

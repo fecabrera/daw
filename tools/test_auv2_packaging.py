@@ -43,6 +43,13 @@ class Auv2Packaging(unittest.TestCase):
                         package(target, Path(temp) / 'target', output, units='drive', api=selection)
                     build.assert_not_called()
                     self.assertFalse(output.exists())
+        # Workspace checks allow an inert Intel AU crate, never a distributable component.
+        with tempfile.TemporaryDirectory() as temp, patch('package_plugins.build_plugins') as build:
+            output = Path(temp) / 'absent'
+            with self.assertRaisesRegex(ValueError, 'unsupported plugin target'):
+                package('x86_64-apple-darwin', Path(temp) / 'target', output, units='drive', api='auv2')
+            build.assert_not_called()
+            self.assertFalse(output.exists())
         self.assertEqual(select_apis('all,clap,auv2'), ['clap', 'vst3', 'auv2'])
         self.assertEqual(select_apis('auv2, clap,auv2'), ['clap', 'auv2'])
 
