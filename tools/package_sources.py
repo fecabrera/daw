@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import tarfile
@@ -50,7 +51,50 @@ def source_notices(vendor):
     return result
 
 
-def bundle(destination, binary, expected_revision, profile):
+def digest(path):
+    value = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            value.update(chunk)
+    return value.hexdigest()
+
+
+def write_receipt(destination, binary, archive, expected_revision, profile):
+    destination.mkdir(parents=True, exist_ok=True)
+    archive_name = Path(os.path.relpath(archive, destination)).as_posix()
+    manifest = {'revision': expected_revision, 'profile': profile,
+                'binary': binary.name, 'binary_sha256': digest(binary),
+                'source_archive': archive_name, 'source_sha256': digest(archive)}
+    if destination.resolve() != archive.parent.resolve():
+        manifest['binary_path'] = Path(os.path.relpath(binary, destination)).as_posix()
+    (destination / 'source-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+    (destination / 'SOURCE-ACCESS.txt').write_text(f'''DAW corresponding source and relinking materials
+Build commit: {expected_revision}
+Binary SHA-256: {manifest['binary_sha256']}
+
+The exact application source and locked Rust/native media dependency sources are
+provided in {archive_name} (SHA-256 {manifest['source_sha256']}).
+Unzip it and read DAW/SOURCE-BUILD.txt for build/relink steps and the immutable
+source routes for the unchanged ONNX Runtime native components. Local patches,
+locked Cargo inputs and native source/notice inventories are included.
+Keep these source materials with the binary when redistributing this package.
+''')
+
+
+def refresh_receipt(destination, binary, archive, expected_revision, profile):
+    """Finalize an external receipt after signing, without changing sealed resources."""
+    if destination.resolve() == archive.parent.resolve():
+        raise RuntimeError('Final signing receipts must be outside the sealed source directory.')
+    if revision() != expected_revision:
+        raise RuntimeError('Source revision changed during application signing.')
+    previous = json.loads((destination / 'source-manifest.json').read_text())
+    if (previous['revision'] != expected_revision or previous['profile'] != profile
+            or previous['source_sha256'] != digest(archive)):
+        raise RuntimeError('Corresponding source archive changed during application signing.')
+    write_receipt(destination, binary, archive, expected_revision, profile)
+
+
+def bundle(destination, binary, expected_revision, profile, *, receipt_destination=None):
     if revision() != expected_revision:
         raise RuntimeError('Source revision changed during the desktop build.')
     destination.mkdir(parents=True, exist_ok=True)
@@ -109,26 +153,19 @@ the root BSD license applies to original DAW code, not every combined component.
 ''')
         if revision() != expected_revision:
             raise RuntimeError('Tracked source changed while preparing the source package.')
-    def digest(path):
-        value = hashlib.sha256()
-        with path.open('rb') as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
-                value.update(chunk)
-        return value.hexdigest()
-    manifest = {'revision': expected_revision, 'profile': profile,
-                'binary': binary.name, 'binary_sha256': digest(binary),
-                'source_archive': archive.name, 'source_sha256': digest(archive)}
-    (destination / 'source-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
-    (destination / 'SOURCE-ACCESS.txt').write_text(f'''DAW corresponding source and relinking materials
+    receipts = receipt_destination if receipt_destination is not None else destination
+    write_receipt(receipts, binary, archive, expected_revision, profile)
+    if receipts.resolve() != destination.resolve():
+        # A binary hash inside its own signed bundle creates a circular seal.
+        # This stable note travels with the app; the final binary receipt stays outside.
+        (destination / 'SOURCE-ACCESS.txt').write_text(f'''DAW corresponding source and relinking materials
 Build commit: {expected_revision}
-Binary SHA-256: {manifest['binary_sha256']}
+Corresponding source: DAW-source.zip (SHA-256 {digest(archive)})
 
-The exact application source and locked Rust/native media dependency sources are
-provided beside this notice in DAW-source.zip (SHA-256 {manifest['source_sha256']}).
-Unzip it and read DAW/SOURCE-BUILD.txt for build/relink steps and the immutable
-source routes for the unchanged ONNX Runtime native components. Local patches,
-locked Cargo inputs and native source/notice inventories are included.
-Keep this entire source directory with the binary when redistributing this package.
+Read DAW/SOURCE-BUILD.txt inside the archive for build and relinking instructions.
+The final signed executable checksum is in DAW-source-metadata/source-manifest.json
+beside DAW.app in the distribution package. Keep the source archive and notices
+with the app; keep the companion receipts when redistributing the disk image.
 ''')
 
 
@@ -137,13 +174,22 @@ def main():
     parser.add_argument('--revision-only', action='store_true')
     parser.add_argument('--revision')
     parser.add_argument('--destination', type=Path)
+    parser.add_argument('--receipt-destination', type=Path)
+    parser.add_argument('--refresh-receipt', action='store_true')
     parser.add_argument('--binary', type=Path)
     parser.add_argument('--profile', choices=['debug', 'release'], default='debug')
     args = parser.parse_args()
     if args.revision_only:
         print(revision())
     elif args.destination and args.binary and args.revision:
-        bundle(args.destination, args.binary, args.revision, args.profile)
+        if args.refresh_receipt:
+            if args.receipt_destination is None:
+                parser.error('--refresh-receipt requires --receipt-destination')
+            refresh_receipt(args.receipt_destination, args.binary,
+                            args.destination / 'DAW-source.zip', args.revision, args.profile)
+        else:
+            bundle(args.destination, args.binary, args.revision, args.profile,
+                   receipt_destination=args.receipt_destination)
     else:
         parser.error('bundle requires --destination, --binary and --revision')
 

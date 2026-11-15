@@ -22,9 +22,12 @@ trap 'rm -rf "$staging_directory"' EXIT
 trap 'exit 1' HUP INT TERM
 mkdir "$staging_directory/image"
 cp -R "target/$profile/DAW.app" "$staging_directory/image/DAW.app"
+cp -R "target/$profile/DAW-source-metadata" "$staging_directory/image/DAW-source-metadata"
+codesign --verify --deep --strict --verbose=2 "$staging_directory/image/DAW.app"
 ln -s /Applications "$staging_directory/image/Applications"
 hdiutil create -volname DAW -srcfolder "$staging_directory/image" \
   -format UDZO "$staging_directory/DAW.dmg"
+hdiutil verify "$staging_directory/DAW.dmg"
 # Publish only a complete disk image; failures retain the previous artifact.
 artifact="target/$profile/DAW-macos-$architecture.dmg"
 mv -f "$staging_directory/DAW.dmg" "$artifact"

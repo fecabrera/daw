@@ -74,6 +74,13 @@ if not os.environ.get('OMIT_CARGO_ARTIFACT'):
     print(json.dumps({'reason':'compiler-artifact','target':{'name':'daw-desktop','kind':['bin']},'executable':str(p/'daw-desktop')}))
 ''')
                         cargo.chmod(0o755)
+                        codesign = shim / 'codesign'
+                        codesign.write_text('''#!/usr/bin/env python3
+import os, sys
+if ('--sign' in sys.argv and os.environ.get('FAIL_APP_SIGN')) or ('--verify' in sys.argv and os.environ.get('FAIL_APP_VERIFY')):
+    sys.exit(9)
+''')
+                        codesign.chmod(0o755)
                         rustc = shim / 'rustc'
                         native_target = 'x86_64-apple-darwin' if platform == 'macos' else 'x86_64-unknown-linux-gnu'
                         rustc.write_text('#!/bin/sh\necho "host: ' + native_target + '"\n')
@@ -105,8 +112,12 @@ if not os.environ.get('OMIT_CARGO_ARTIFACT'):
                                              (ROOT / 'crates/ui/assets/app-icon/Assets.car').read_bytes())
                             self.assertTrue((source/'DAW-source.zip').is_file())
                             self.assertFalse((source / 'LOCAL-BUILD.txt').exists())
-                            manifest=json.loads((source/'source-manifest.json').read_text())
+                            receipts = default/'DAW-source-metadata'
+                            self.assertFalse((source/'source-manifest.json').exists())
+                            manifest=json.loads((receipts/'source-manifest.json').read_text())
                             self.assertEqual(manifest['binary_sha256'],hashlib.sha256(data).hexdigest())
+                            self.assertEqual(manifest['binary_path'], '../DAW.app/Contents/MacOS/daw-desktop')
+                            self.assertEqual(manifest['source_sha256'],hashlib.sha256((source/'DAW-source.zip').read_bytes()).hexdigest())
                             notices = default / 'DAW.app/Contents/Resources/licenses'
                             for entry in json.loads((ROOT / 'tools/runtime_notices.json').read_text())['notices']:
                                 if 'desktop' in entry['deliverables']:
@@ -135,13 +146,18 @@ if not os.environ.get('OMIT_CARGO_ARTIFACT'):
                                         self.assertEqual(hashlib.sha256(payload).hexdigest(), entry['sha256'])
                         self.assertEqual(data, b'current')
                         old_archive=(default/'DAW-linux-x64.zip').read_bytes() if platform=='linux' else None
-                        for failure in ('FAIL_SOURCE_VENDOR', 'FAIL_CARGO_BUILD', 'OMIT_CARGO_ARTIFACT'):
+                        failures = ['FAIL_SOURCE_VENDOR', 'FAIL_CARGO_BUILD', 'OMIT_CARGO_ARTIFACT']
+                        if platform == 'macos':
+                            failures += ['FAIL_APP_SIGN', 'FAIL_APP_VERIFY']
+                            previous_receipt = (default/'DAW-source-metadata/source-manifest.json').read_bytes()
+                        for failure in failures:
                             env[failure] = '1'
                             failed=subprocess.run(['sh', str(root/'tools'/script.name),profile],cwd=root,env=env,capture_output=True)
                             self.assertNotEqual(failed.returncode,0, failed.stdout.decode())
                             if platform=='macos':
                                 self.assertEqual((default/'DAW.app/Contents/MacOS/daw-desktop').read_bytes(),data)
                                 self.assertTrue((default/'DAW.app/Contents/Resources/DAW-source.zip').is_file())
+                                self.assertEqual((default/'DAW-source-metadata/source-manifest.json').read_bytes(),previous_receipt)
                             else:
                                 self.assertEqual((default/'DAW-linux-x64.zip').read_bytes(),old_archive)
                             del env[failure]
@@ -171,6 +187,8 @@ if not os.environ.get('OMIT_CARGO_ARTIFACT'):
 
                         binary, contents = local_contents()
                         self.assertEqual(binary, b'unpublished')
+                        if platform == 'macos':
+                            self.assertFalse((default/'DAW-source-metadata').exists())
                         self.assertIn(b'Local development build', contents['LOCAL-BUILD.txt'])
                         self.assertEqual(contents['LICENSE.txt'], b'local uncommitted license fixture')
                         for name in ('DAW-source.zip', 'source-manifest.json', 'SOURCE-ACCESS.txt'):

@@ -4,6 +4,48 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## macOS application bundle signature — 2026-11-15
+
+A Safari-downloaded CI DMG passed `hdiutil verify`, but its application failed
+`codesign --verify --deep --strict` with “code has no resources but signature
+indicates they must be present”. Inspection found only the linker’s ad-hoc
+executable signature, with no sealed Resources or bound Info.plist. The downloaded
+file was inspected read-only and ejected; no launch or quarantine change occurred.
+
+Packaging now signs and verifies the complete app after resource assembly, then
+refreshes an external exact-binary receipt without changing sealed Resources.
+Publication rolls back the app and receipts together. The DMG path verifies the
+copied app and image checksum before replacing the previous disk image.
+
+Executed on macOS arm64:
+
+- Source receipt tests: PASS, four tests, including unchanged sealed resources,
+  post-signing executable hashes, and changed-source/archive rejection.
+- Native macOS signing/image tests with disk-image service access: PASS, two tests.
+  A compiled Mach-O fixture verifies after complete-bundle signing and copying;
+  resource tampering fails verification. Late receipt publication and image
+  verification failures retain the previous outputs. Real DMGs pass checksum
+  verification. No application is launched by these fixtures.
+- `PATH="$PWD/work/pwsh-7.6.6:$PATH" python3 -m unittest discover -s tools
+  -p 'test_*.py' -v` with disk-image service access: PASS, 63 tests, no skips.
+  Includes PowerShell packaging fixtures on macOS; Windows CI remains separate.
+- `sh -n tools/package_macos.sh tools/package_macos_dmg.sh`: PASS.
+- `cargo test --workspace --offline` with macOS audio-service access: PASS,
+  3,456 passed and 22 intentionally ignored. The initial sandboxed attempt stopped
+  at native AU registration; the full rerun with service access passed.
+- `cargo test --workspace --release --offline` with macOS audio-service access:
+  PASS, 3,456 passed and 22 intentionally ignored. The sandboxed release attempt
+  also stopped at native AU registration before the full service-enabled rerun.
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: PASS.
+- Changed Markdown file links and `git diff --check`: PASS.
+
+Remaining checks: regenerated CI download under Safari quarantine, native Finder
+launch, Intel macOS, and Developer ID/notarized distribution. Ad-hoc signing alone
+does not establish publisher trust or Gatekeeper approval. The first sandboxed
+native DMG test could not reach the disk-image service; the same test passed with
+that service available.
+
 ## GTK compatibility example icon module — 2026-11-15
 
 The Linux `gtk_titlebar` example included `gtk_host` but omitted the crate-root

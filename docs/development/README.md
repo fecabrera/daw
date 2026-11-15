@@ -53,8 +53,12 @@ corresponding-source materials described below. See the [macOS](macos.md),
 [Windows](windows.md#package-a-zip), and [Linux](linux.md) guides for commands.
 Untracked files, recordings, build outputs and caches are excluded. The packager
 builds that revision and includes `DAW-source.zip`, `SOURCE-ACCESS.txt` and
-`source-manifest.json` beside the executable (inside `DAW.app/Contents/Resources`
-on macOS). The manifest records the exact commit, profile and source/binary hashes.
+`source-manifest.json` beside the executable on Windows and Linux. On macOS,
+`DAW-source.zip` and a source-access note stay inside `DAW.app/Contents/Resources`;
+the DMG also contains `DAW-source-metadata` beside the app, with the manifest and
+full receipt for the final signed executable. Keep that companion directory when
+redistributing the package. The manifest records the exact commit, profile and
+source/binary hashes.
 CI uploads these materials within the same desktop download.
 
 The source archive contains the committed application, local vendor patches,

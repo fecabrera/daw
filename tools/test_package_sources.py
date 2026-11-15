@@ -51,7 +51,10 @@ class SourcePackages(unittest.TestCase):
             with self.subTest(line_ending=line_ending):
                 self._assert_source_archive(line_ending)
 
-    def _assert_source_archive(self, line_ending):
+    def test_external_receipt_refresh_preserves_sealed_resources_and_tracks_signed_bytes(self):
+        self._assert_source_archive(b'\n', external_receipt=True)
+
+    def _assert_source_archive(self, line_ending, external_receipt=False):
         with fixture(line_ending) as (root, binary, revision):
             check_output = subprocess.check_output
             def command(args, **kwargs):
@@ -68,8 +71,10 @@ class SourcePackages(unittest.TestCase):
                     return f'[source.crates-io]\nreplace-with = "vendored-sources"\n[source.vendored-sources]\ndirectory = "{vendor}"\n'.encode()
                 return check_output(args, **kwargs)
             destination = root/'package'
+            receipts = root/'DAW-source-metadata' if external_receipt else destination
             with patch.object(sources.subprocess, 'check_output', side_effect=command):
-                sources.bundle(destination, binary, revision, 'release')
+                sources.bundle(destination, binary, revision, 'release',
+                               receipt_destination=receipts if external_receipt else None)
             with zipfile.ZipFile(destination/'DAW-source.zip') as archive:
                 self.assertEqual(archive.read('DAW/Cargo.lock'), b'exact locked sources' + line_ending)
                 self.assertEqual(archive.read('DAW/vendor/charon-audio/DAW-PATCH.md'), b'local patch' + line_ending)
@@ -105,11 +110,33 @@ class SourcePackages(unittest.TestCase):
                 self.assertEqual(accesskit['path_in_vcs'],'common')
                 self.assertEqual(accesskit['git_revision'],'a55d3e1a18bb9ef0e4bccc9083fb13c3e0ad8969')
 
-            manifest=json.loads((destination/'source-manifest.json').read_text())
+            manifest=json.loads((receipts/'source-manifest.json').read_text())
             self.assertEqual(manifest['revision'],revision)
             self.assertEqual(manifest['binary_sha256'],hashlib.sha256(binary.read_bytes()).hexdigest())
             self.assertEqual(manifest['source_sha256'],hashlib.sha256((destination/'DAW-source.zip').read_bytes()).hexdigest())
             self.assertIn(revision,(destination/'SOURCE-ACCESS.txt').read_text())
+            if external_receipt:
+                self.assertFalse((destination/'source-manifest.json').exists())
+                self.assertEqual(manifest['binary_path'], '../daw-desktop')
+                self.assertEqual(manifest['source_archive'], '../package/DAW-source.zip')
+                sealed = {p.name:p.read_bytes() for p in destination.iterdir()}
+                binary.write_bytes(b'executable after final bundle signing')
+                sources.refresh_receipt(receipts, binary, destination/'DAW-source.zip', revision, 'release')
+                refreshed = json.loads((receipts/'source-manifest.json').read_text())
+                self.assertEqual(refreshed['binary_sha256'], hashlib.sha256(binary.read_bytes()).hexdigest())
+                self.assertEqual({p.name:p.read_bytes() for p in destination.iterdir()}, sealed)
+                before = (receipts/'source-manifest.json').read_bytes()
+                (destination/'DAW-source.zip').write_bytes(b'changed source archive')
+                with self.assertRaisesRegex(RuntimeError, 'source archive changed'):
+                    sources.refresh_receipt(receipts, binary, destination/'DAW-source.zip', revision, 'release')
+                self.assertEqual((receipts/'source-manifest.json').read_bytes(), before)
+                (destination/'DAW-source.zip').write_bytes(sealed['DAW-source.zip'])
+                (root/'Cargo.lock').write_bytes(b'changed tracked source')
+                with self.assertRaisesRegex(RuntimeError, 'Commit tracked changes'):
+                    sources.refresh_receipt(receipts, binary, destination/'DAW-source.zip', revision, 'release')
+                self.assertEqual((receipts/'source-manifest.json').read_bytes(), before)
+            else:
+                self.assertNotIn('binary_path', manifest)
 
     def test_dirty_or_changed_revision_cannot_publish_source_for_a_binary(self):
         with fixture() as (root,binary,revision):

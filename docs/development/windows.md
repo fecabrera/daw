@@ -88,6 +88,6 @@ The `CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG` suggestion adds backtrace detail; i
 Desktop downloads also contain the exact [corresponding source and relinking
 materials](README.md#corresponding-source-in-desktop-packages). Distribution packaging requires
 a clean committed tracked tree. Keep `SOURCE-ACCESS.txt`, `source-manifest.json`
-and `DAW-source.zip` with the binary and licenses; on macOS these are inside
-`DAW.app/Contents/Resources`. The source archive includes tracked repository demo
+and `DAW-source.zip` with the binary and licenses. See the linked source guide
+for their locations in macOS packages. The source archive includes tracked repository demo
 fixtures, but excludes untracked user data and build caches.
