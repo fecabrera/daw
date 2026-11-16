@@ -76,7 +76,7 @@ Stem separation supports four or six stems using local HTDemucs models through C
 
 Most of the features are experimental, including (but not limited to) the project manifest format and the layout of both the main application and the effects.
 
-Planned work includes audio editing, advanced beat editing, more effects, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
+Pending feature work includes audio recording and monitoring, timeline automation, advanced beat editing, additional effects and custom instrument routing. The [features and roadmap](docs/roadmap.md) separates implemented milestones, remaining feature work and native acceptance checks.
 
 ## AI disclosure
 

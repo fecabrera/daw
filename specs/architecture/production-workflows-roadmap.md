@@ -1,9 +1,14 @@
 # Basic production workflows: implementation roadmap
 
-Status: proposed delivery plan. Existing behavior contracts remain authoritative.
-Resolve the listed design gates in topic specifications before implementing each
-milestone. Assign calendar estimates after device prototypes and acceptance
-scope are measured.
+Status: implementation and acceptance roadmap, updated 2026-11-16. Initial
+recovery, fades/crossfades, live MIDI/recording, audio sidechain modulation and
+clip/track Bounce are implemented. Audio capture, automation and the remaining
+feature extensions are pending. Native acceptance remains a separate release
+gate; implementation status does not close it.
+
+Existing topic contracts remain authoritative. Proposed work still needs its
+listed design gates resolved before implementation. Assign calendar estimates
+after device prototypes and acceptance scope are measured.
 
 For the user-facing sequence, see [Features and roadmap](../../docs/roadmap.md).
 
@@ -14,24 +19,28 @@ recording, audio recording/monitoring, timeline automation and audio sidechain
 modulation. Prefer a usable
 vertical slice at each gate over adding all controls before their engine paths.
 
-| Stage | Deliverable | Required predecessors |
-| --- | --- | --- |
-| 0 | Freeze storage, timing and interaction contracts | None |
-| 1 | Autosave and crash recovery | Stage 0 storage contract |
-| 2A | Editable audio clip fades | Stage 0 fade contract |
-| 2B | Adjacent audio clip crossfades | Stage 2A and transition-model decision |
-| 3A | Live MIDI input | Stage 0 event-clock contract |
-| 3B | MIDI recording | Stages 1 and 3A |
-| 4A | Audio capture and monitoring prototype | Stage 0 event-clock contract |
-| 4B | Recoverable audio recording | Stages 1 and 4A |
-| 5A | Automation model and read playback | Stage 0 parameter/timing contract |
-| 5B | Automation lanes and write recording | Stage 5A; reuse Stage 3B gesture capture |
-| 6A | Audio detector and shared sidechain provider | Stage 0 audio/control dependency contract; shared modulation |
-| 6B | Sidechain sources and mapping controls | Stage 6A |
-| 7 | Integrated native acceptance | All shipping slices |
+| Stage | Deliverable | Feature status | Required predecessors |
+| --- | --- | --- | --- |
+| 0 | Storage, timing and interaction contracts | Recorded for delivered slices; capture/automation design gates remain open | None |
+| 1 | Autosave and crash recovery | Implemented | Stage 0 storage contract |
+| 2A | Editable audio clip fades | Initial scope implemented; presets remain pending | Stage 0 fade contract |
+| 2B | Adjacent audio clip crossfades | Initial scope implemented; broader transitions remain pending | Stage 2A and transition-model decision |
+| 3A | Live MIDI input | Implemented | Stage 0 event-clock contract |
+| 3B | MIDI recording | Implemented; performance extensions remain pending | Stages 1 and 3A |
+| 4A | Audio capture and monitoring prototype | Pending feature work | Stage 0 capture clock/device contract |
+| 4B | Recoverable audio recording | Pending feature work | Stages 1 and 4A |
+| 5A | Automation model and read playback | Pending feature work | Stage 0 parameter/timing contract |
+| 5B | Automation lanes and write recording | Pending feature work | Stage 5A; reuse Stage 3B gesture capture |
+| 6A | Audio detector and shared sidechain provider | Implemented | Shared modulation and audio/control dependency contract |
+| 6B | Sidechain sources and mapping controls | Implemented | Stage 6A |
+| 7 | Integrated native acceptance | Pending verification, not a feature implementation | All shipping slices |
 
-Stages ship in the numbered user-facing order. Device feasibility prototypes may
-run earlier to expose platform limits before delivery estimates are made.
+Stage numbers retain the proposed user-facing sequence, not a claim that all
+numbered work is unfinished or that every native gate is closed. The next
+unimplemented core feature stages are 4 and 5. Stage 6 is already implemented
+and does not depend on Stage 5. Device feasibility prototypes may run earlier.
+Native acceptance for delivered slices remains open in parallel; required
+predecessor acceptance still gates dependent releases.
 
 ## Existing foundations and ownership
 
@@ -55,7 +64,14 @@ must have an explicit outcome; never silently drop capture data or note-offs.
 
 ## Stage 0: freeze the contracts
 
-Produce focused topic specifications and small feasibility probes. Confirm:
+The delivered slices have focused contracts in [recovery](../projects/autosave-recovery.md),
+[fades](../editing/fades.md), [live MIDI](../audio/live-midi.md),
+[MIDI recording](../editing/midi-recording.md) and
+[sidechains](../modulation/audio-sidechain-plan.md). This does not close the
+capture clock/drift, monitoring/routing or automation design gates for Stages 4
+and 5. Before those features proceed, complete the applicable specifications and
+feasibility probes below; retain the established contracts for delivered work.
+Confirm:
 
 - Recovery snapshot identity, revision, cadence, retention, unnamed-project
   ownership and behavior after explicit Discard. Recovery must not mark manual
@@ -89,81 +105,104 @@ current primary-source and license checks at implementation time.
 
 ## Stage 1: autosave and crash recovery
 
-The [recovery implementation](../projects/autosave-recovery.md) provides private generations, instance leases, startup choices and durable MIDI takes. Native crash and storage-failure acceptance remains open.
+**Feature status: implemented.** The [recovery contract](../projects/autosave-recovery.md)
+provides private generations, instance leases, startup choices and durable MIDI
+takes. There is no pending initial recovery implementation in this roadmap.
 
-Add bounded, versioned recovery snapshots outside the manually saved manifest.
-Use the existing snapshot worker and revision tracking. Retain the previous
-valid generation until the next generation is published atomically. Preserve
-edits made while a snapshot is writing. Avoid saving uncommitted field drafts.
+Modified committed sessions produce private, versioned snapshots through the
+existing worker/revision path. The previous valid generation survives until its
+replacement is published. Manual Save and its clean checkpoint remain separate;
+uncommitted field drafts are not recovery edits.
 
-Offer Recover, Open last saved and Discard recovery at startup. Support unnamed
-projects and multiple application instances without snapshot collisions. Keep
-recoverable project-owned media alive through retention and cleanup. Do not
-silently collect external recordings. Define recovery cadence and storage bounds
-in the topic specification; show failures through existing reporting paths.
+Startup supports Recover, Open last saved and Discard recovery, including unnamed
+projects. Instance leases isolate concurrent apps. Recovery retains owned media
+and history sources, leaves external sources external, and uses bounded retention
+and recognized-data cleanup. See the topic contract for cadence, storage limits,
+publication/acknowledgment rules and failure behavior.
 
-Exit gate: process-kill/failure injection before and after publication; corrupt
-latest snapshot fallback; newer-edit/manual-save races; explicit Discard;
-unnamed projects; missing sources; instance isolation; and bounded cleanup all
-pass. Recovery leaves manual saves intact and never deletes unrelated files.
+**Remaining acceptance:** native process-kill and storage-failure checks, corrupt
+latest-generation fallback, newer-edit/manual-save races, Discard, unnamed
+projects, missing sources, instance isolation and bounded cleanup. Automated
+coverage is recorded in [live MIDI/recovery validation](../validation/live-midi-2026-11-15.md);
+it does not close native durability gates. Manual saves and unrelated files must
+remain intact.
 
 ## Stage 2: editable fades and crossfades
 
-Initial implementation is described in [Audio clip fades and crossfades](../editing/fades.md). It includes the requested handle/midpoint controls and inspector settings. Broader curve presets and transition support remain planned.
+**Feature status: initial scope implemented.** See the
+[fade/crossfade contract](../editing/fades.md). Initial controls are available;
+additional presets and transition types are separate pending feature work.
 
 ### 2A: clip fades
 
-Add saved fade-in/out lengths and movable control points on S-curves for audio
-clips. Additional curve presets remain a later extension. Use dedicated handles in Timeline and the audio Editor, with previews,
-release-only transactions, Escape/focus-loss cancellation and group-edit rules.
-Keep the existing shared-boundary trim press region distinct from fade handles.
-Use one evaluator for playback and export. Define rate/tempo edit behavior,
-copy/split/trim/loop/stretch behavior and legacy defaults in the fade contract.
+Audio clips save fade-in/out lengths and movable midpoint curve controls.
+Timeline and the audio Editor provide dedicated handles, previews, release-only
+transactions, Escape/focus-loss cancellation and group editing. Clip settings
+uses the same values. The shared-boundary trim press region remains separate.
+Playback/export use the shared evaluator. The topic contract governs rate/tempo
+edits, copy/split/trim/loop/stretch behavior and legacy defaults.
+
+**Pending feature extension:** additional curve presets, including dedicated
+equal-power presets.
 
 ### 2B: transitions
 
-Support adjacent audio clips, including looped clips. Non-looped owners need
-sufficient source handles; looped owners continue their saved repeat phase. Show the
-transition extent and clamp or reject unavailable material explicitly. Keep
-source recordings unchanged. Store transitions by stable clip identity and
-validate affected clips as one transaction. Prepare any required audio before
-publication. Defer arbitrary same-track overlapping arrangements and automatic
-crossfade creation until separately specified.
+Fixed-boundary crossfades work between adjacent audio clips with matching channel
+layouts, including looped clips. Non-looped owners need source handles; looped
+owners retain repeat phase. Transition extent and source bounds are explicit.
+Recordings remain unchanged. Stable clip identities and atomic validation retain
+transitions through supported edits; required audio prepares before publication.
 
-Exit gate: known-signal curve tests; mono/stereo and every project rate;
-playback/export parity; source and stretch limits; missing audio; repeated clips;
-transaction rollback; Undo/Redo; save/reopen; legacy sound; and gesture conflicts
-pass. Native listening checks cover clicks, dips and excessive gain at joins.
+**Pending feature extensions:** broader transition types, arbitrary same-track
+overlapping arrangements and automatic crossfade creation require separate scope.
+
+**Acceptance:** retain curve endpoint/midpoint tests, all project rates,
+playback/export parity, source/stretch limits, missing audio, loops, rollback,
+Undo/Redo, save/reopen, legacy sound and gesture-conflict coverage. Executed checks
+are recorded in [validation history](../validation/README.md). Native appearance,
+pointer gestures and listening for clicks, dips or excessive gain remain open.
 
 ## Stage 3: live MIDI and MIDI recording
 
+**Feature status: implemented.** See [live MIDI](../audio/live-midi.md),
+[recording](../editing/midi-recording.md), [recovery](../projects/autosave-recovery.md)
+and [executed validation](../validation/live-midi-2026-11-15.md).
+
 ### 3A: live input
 
-Implementation: [live MIDI](../audio/live-midi.md), [recording](../editing/midi-recording.md), and [recovery](../projects/autosave-recovery.md). Multiple R-enabled MIDI tracks are supported. With none armed, the primary selected MIDI track is the target. Native acceptance remains open.
-
-Add machine-local MIDI device/channel selection and multiple armed instrument targets with selected-track fallback.
-Schedule timestamped note-on/off, velocity and sustain through bounded engine
-events, independent of editor painting. Keep live input distinct from chord and
-mouse audition. Define release behavior on Stop, disconnect, target change and
-focus loss; provide a panic action that releases held voices. Never leave stuck
-notes after queue pressure. Prepare Sampler pitches on workers; define the live
-behavior for a pitch that is not ready instead of processing it in the callback.
+Machine-local device/channel selection supports multiple R-enabled MIDI targets.
+With none armed, input follows the primary selected MIDI track. Timestamped
+note-on/off, velocity and sustain pass through bounded engine events independently
+of painting. Live input remains separate from chord/mouse audition. Stop, target
+changes, focus loss and Panic use the existing release rules; overflow has an
+independent panic path. Workers prepare exact Sampler pitches; unready attacks
+are suppressed rather than transformed in the callback or replayed late.
 
 ### 3B: record patterns
 
-Add arming, Record and a configurable count-in through shared transport actions.
-Capture notes, velocity and sustain; resolve sustain into playable note durations
-until controller lanes exist. Publish validated patterns as one undoable take
-through existing MIDI preparation/history paths. Preserve the original project
-on failed publication and retain recoverable captured data where possible.
-Defer loop overdub, punch, MIDI file exchange, continuous-controller editing, MIDI Polyphonic Expression and MIDI clock sync.
+Record, configurable count-in and arming use the shared transport actions.
+Capture resolves sustain into note durations and publishes a validated whole take
+through the existing preparation/history path. Whole takes use one history
+transition and durable recovery checkpoints. Failure retains retryable captured
+data and leaves the original project intact. Loop recording is rejected in the
+current slice.
 
-Exit gate: deterministic event ordering and frame/tick conversion, held-note
-boundaries, sustain, count-in, disconnect/overflow, pending sample pitches,
-collision policy, Undo/Redo, save/reopen and recovery pass. Test physical MIDI
-keyboards and latency on each supported platform; synthetic events are insufficient.
+**Pending feature extensions:** loop overdub, punch, MIDI file exchange,
+controller/sustain lanes, MIDI Polyphonic Expression (MPE) and MIDI clock sync.
+These are not unresolved parts of the implemented initial recording slice.
+
+**Remaining acceptance:** physical keyboard/sustain timing and latency on each
+supported platform, unplug/reconnect, audio-device loss, long sessions and native
+listening through layer/Main/send chains, voice stealing and prepared-pitch or
+transport transitions. Native recovery fault points and storage pressure also
+remain open. Retain automated event ordering, frame/tick conversion, note-boundary,
+count-in, overflow, collision, history, save/reopen and recovery regressions;
+synthetic events do not establish physical-device results.
 
 ## Stage 4: audio recording and monitoring
+
+**Feature status: pending.** The saved input-device preference is a foundation;
+it does not implement audio capture, input meters or monitoring.
 
 ### 4A: capture feasibility and monitoring
 
@@ -190,6 +229,9 @@ Defer comping, punch recording and loop takes.
 
 ## Stage 5: timeline automation
 
+**Feature status: pending.** Existing instrument modulation and sidechains do not
+provide authored timeline automation lanes or write recording.
+
 ### 5A: model and playback
 
 Start with track/Master volume and track pan, then register continuous effect
@@ -214,28 +256,29 @@ write-mode boundaries and callback allocation checks pass.
 
 ## Stage 6: audio sidechain modulation
 
-Extend the current modulation Source dropdown with Tracks, Groups and Returns.
-Order its sections as None, divider, existing modulation sources, divider,
-sidechain sources.
-Selecting an audio source reveals detector and normalized mapping controls in the
-same connection strip. Preserve existing sources, signed amount controls, typed
-destinations, strip identities, power, reorder and telemetry.
+**Feature status: implemented; native acceptance open.** The
+[audio sidechain contract](../modulation/audio-sidechain-plan.md) owns detector,
+routing and UI behavior. The Source dropdown contains None, existing modulation
+source groups, and Tracks/Groups/Returns with the established dividers. Selecting
+an audio source reveals detector and normalized mapping controls in that
+connection. Existing sources, signed amounts, typed destinations, connection
+identities, power, reorder and telemetry remain shared.
 
-Deliver the detector/provider and routing validation first, then the shared UI.
-Implemented with native acceptance pending. The [audio sidechain contract](../modulation/audio-sidechain-plan.md) defines
 Peak/RMS detection, channel selection, optional frequency filtering, input-level
-bounds, curve/inversion and attack/release. Prepare combined audio/control
-ordering and alignment before callback publication. Never resolve a cross-track
-source or advance a detector inside a destination's processing loop.
+bounds, curve/inversion and attack/release are implemented. Preparation resolves
+combined audio/control ordering and alignment before callback publication. Source
+lookup and detector advancement stay outside destination processing loops.
+Desktop and headless export use the same processing path.
 
-This milestone reuses the shared modulation contract; it does not require
-Stage 5 automation to function. Both features need explicit composition rules
-when they control the same destination.
+This milestone does not require Stage 5 automation. Their combination still
+needs an explicit composition rule when automation is implemented.
 
-Exit gate: detector/mapping reference tests, routing/cycle and latency tests,
-playback/seek/loop/export parity, mute/solo rules, missing/deleted source handling,
-identity/history/persistence, callback allocation checks and native source-picker
-interaction pass. Use the same processing path for desktop and headless export.
+**Acceptance:** retain detector/mapping references, routing/cycle/latency tests,
+playback/seek/loop/export parity, mute/Solo, missing/deleted sources, identity,
+history/persistence and callback-allocation coverage in
+[validation history](../validation/README.md). Native source selection, mapping,
+telemetry, audible ducking and playback/export alignment on macOS, Windows and
+Linux remain open. This is verification work, not an unimplemented detector or UI.
 
 ## Stage 7: core release gate
 
@@ -251,18 +294,41 @@ Close the milestone only when required checks pass or explicitly narrow the
 advertised scope. Apply the same release gate to each lower-priority milestone.
 No additional effect units are required for the six core milestones.
 
+## Outstanding native acceptance for delivered features
+
+Keep these gates separate from pending implementation. Automated tests, native
+builds and limited UI observations are evidence only for the cases actually run.
+Do not mark a gate complete from a passing synthetic test or package build.
+
+| Delivered slice | Native checks still open | Contract / evidence |
+| --- | --- | --- |
+| Stage 1 recovery | Kill points around journal/base/checkpoint sync, publication and acknowledgment; disk full/permissions; missing sources; multi-instance admission and platform leases/durability | [Recovery contract](../projects/autosave-recovery.md), [MIDI/recovery validation](../validation/live-midi-2026-11-15.md) |
+| Stage 2 fades/crossfades | Appearance/scaling, pointer gestures and listening for clicks, dips or excessive gain at joins | [Fade verification](../editing/fades.md#verification), [validation history](../validation/README.md) |
+| Stage 3 live MIDI/recording | Physical keys/sustain, latency calibration, device loss/reconnect, long sessions, voice/processing and prepared-pitch/transport transitions | [Remaining gates and follow-ups](../validation/live-midi-2026-11-15.md#remaining-gates) |
+| Stage 6 audio sidechains | Source-picker/mapping interaction in every theme, readable telemetry, audible ducking and playback/export alignment across platforms | [Sidechain acceptance](../modulation/audio-sidechain-plan.md#delivery-and-acceptance) |
+| Milestone 9 clip/track Bounce | Native UI and listening at the documented render point, including tail behavior | [Bounce validation](../validation/bounce.md) |
+
+Windows/Linux native device/UI and durability coverage remains open where listed
+in each record. Future capture/automation gates depend on their feature work and
+are not presented as acceptance-only gaps in delivered features. Recent
+[Settings](../validation/settings-sidebar-2026-11-16.md),
+[modulation submenus](../validation/destination-submenus-2026-11-16.md) and
+[Mixer/gutter changes](../validation/beat-mixer-2026-11-16.md) are implemented;
+their native UI limits remain in the linked records.
+
 ## Lower-priority delivery sequence
 
-The remaining basic features follow the core milestones. This is a proposed
-order; it does not assign release dates. Each item needs a topic specification
+The remaining basic features follow the core milestones. Clip and complete-track
+Bounce are already implemented within milestone 9. The proposed order for the
+remaining work does not assign release dates. Each item needs a topic specification
 before implementation, including defaults, bounds, cancellation, migrations and
 failure behavior. Retain existing behavior until its replacement is specified.
 
-| User milestone | Work package | Main dependencies |
+| User milestone | Remaining feature work | Main dependencies |
 | --- | --- | --- |
 | 7 | Arrangement markers | Shared timeline interaction, history and persistence |
 | 8 | MIDI performance tools | Stage 3 recording; Stage 5 lane editing for controller lanes |
-| 9 | Bounce, freeze and batch stem export | Shared renderer/export, source ownership and Stage 1 recovery |
+| 9 | Explicit time-range Bounce, freeze and batch stem export; clip/track Bounce implemented | Shared renderer/export, source ownership and Stage 1 recovery |
 | 10 | Tempo and time-signature maps | Shared musical clock; Stage 5 automation time-basis contract |
 | 11 | Third-party plugin hosting | Stage 3 live input, Stage 5 automation and stable render/event contracts |
 
@@ -300,14 +366,21 @@ notes reliably.
 
 ### Bounce, freeze and batch stem export
 
-Start with rendering selected clips or a time range to a new project-owned audio
-asset. Then add track rendering and reversible instrument freeze. Preserve the
+**Implemented:** [Bounce clips and complete tracks](../editing/bounce.md) creates
+project-owned audio through worker rendering and atomic publication, retains
+disabled originals and supports one-step Undo/Redo. Its guide/contract defines
+the render point, sends/Returns, tails, cancellation and storage ownership.
+See [executed Bounce checks](../validation/bounce.md); native UI/listening remains
+an acceptance gap, not pending clip/track rendering.
+
+**Pending feature work:** explicit time-range Bounce and reversible instrument
+freeze. Current Bounce requires whole clips or complete source tracks. Preserve the
 original clips, instrument state, routing and automation for unfreeze. Specify
 the render point, effect tails, latency alignment and treatment of sends/Returns
 before implementing each action. Reuse worker rendering and transactional source
 publication; never render in UI painting or overwrite source media.
 
-Add batch stem export with explicit track selection, shared start/end bounds,
+Batch stem export also remains pending. Add explicit track selection, shared start/end bounds,
 tail policy, file naming, destination collision handling and cancellation.
 Define whether stems include shared returns and Master processing; do not imply
 that separately exported stems always sum to the stereo mix.
