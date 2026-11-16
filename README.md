@@ -17,6 +17,10 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 ![Layered instrument with oscillator modulation, layer meters and Output effects](docs/assets/screenshots/instrument.png)
 
+**[Audio editor](docs/views/editor.md)**
+
+![Audio editor with a stereo waveform, transient markers, clip options and the track overview above it](docs/assets/screenshots/audio-editor.png)
+
 **[MIDI editor](docs/views/editor.md)**
 
 ![Piano roll with a chord pattern and the track overview above it](docs/assets/screenshots/midi-editor.png)
