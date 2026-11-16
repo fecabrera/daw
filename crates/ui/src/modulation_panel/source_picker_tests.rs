@@ -467,11 +467,7 @@ fn destination_selector_fills_inner_strip_width_and_preserves_assigned_routes() 
         let mut route = Modulation::new(ModulationParameter::Amplitude);
         route.source = Some(sources[1].id);
         let before = route;
-        let targets = [Target {
-            parameter: route.parameter,
-            id: None,
-            label: "Amplitude gain".into(),
-        }];
+        let targets = [Target::flat(route.parameter, None, "Amplitude gain")];
         let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 300.0))),

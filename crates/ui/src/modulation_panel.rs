@@ -191,56 +191,8 @@ fn source_picker_with_audio(
         })
         .response
 }
-fn destination_picker<'a>(
-    ui: &mut Ui,
-    route: &mut Modulation,
-    targets: &[Target],
-    scope: ModulationScope,
-    sources_for_target: impl Fn(Option<daw_core::Id>) -> &'a [Source],
-) -> egui::Response {
-    crate::menus::Dropdown::from_id_salt("parameter")
-        .small_items()
-        .selected_text(
-            egui::RichText::new(
-                targets
-                    .iter()
-                    .find(|t| t.parameter == route.parameter && t.id == route.target)
-                    .map_or("Unavailable", |t| t.label.as_str()),
-            )
-            .size(panels::HEADER_FONT_SIZE),
-        )
-        .width(ui.available_width())
-        .truncate()
-        .show_ui(ui, |ui| {
-            for target in targets {
-                if ui
-                    .selectable_label(
-                        route.parameter == target.parameter && route.target == target.id,
-                        &target.label,
-                    )
-                    .clicked()
-                {
-                    let target_changed = route.target != target.id;
-                    route.parameter = target.parameter;
-                    route.target = target.id;
-                    if target_changed
-                        && scope == ModulationScope::Shared
-                        && route.source.is_some_and(|source| {
-                            !sources_for_target(target.id)
-                                .iter()
-                                .any(|s| s.id == source && scope.accepts(s.scope))
-                        })
-                    {
-                        route.source = None;
-                    }
-                    route.amount = route
-                        .amount
-                        .clamp(-target.parameter.limit(), target.parameter.limit());
-                }
-            }
-        })
-        .response
-}
+mod destination_menu;
+use destination_menu::destination_picker;
 /// Filter through the shared graph rules before opening a provider's source picker.
 pub(super) fn provider_sources(
     instrument: &InstrumentSettings,
@@ -305,6 +257,46 @@ pub(super) struct Target {
     pub parameter: ModulationParameter,
     pub id: Option<daw_core::Id>,
     pub label: String,
+    group: Option<TargetGroup>,
+    leaf: String,
+}
+struct TargetGroup {
+    id: daw_core::Id,
+    name: String,
+    order: usize,
+}
+impl Target {
+    pub(super) fn flat(
+        parameter: ModulationParameter,
+        id: Option<daw_core::Id>,
+        label: impl Into<String>,
+    ) -> Self {
+        let label = label.into();
+        Self {
+            parameter,
+            id,
+            leaf: label.clone(),
+            label,
+            group: None,
+        }
+    }
+    pub(super) fn strip(
+        parameter: ModulationParameter,
+        id: daw_core::Id,
+        order: usize,
+        name: impl Into<String>,
+        leaf: impl Into<String>,
+    ) -> Self {
+        let name = name.into();
+        let leaf = leaf.into();
+        Self {
+            parameter,
+            id: Some(id),
+            label: format!("{name} · {leaf}"),
+            leaf,
+            group: Some(TargetGroup { id, name, order }),
+        }
+    }
 }
 pub(super) fn body(
     ui: &mut Ui,
@@ -316,11 +308,7 @@ pub(super) fn body(
 ) {
     let targets: Vec<_> = parameters
         .iter()
-        .map(|p| Target {
-            parameter: *p,
-            id: None,
-            label: p.label().into(),
-        })
+        .map(|p| Target::flat(*p, None, p.label()))
         .collect();
     targeted_body(ui, routes, sources, &targets, scope, compact);
 }

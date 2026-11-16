@@ -44,3 +44,5 @@ Save/reopen, Save As, track duplication, sample-rate changes, and layer reorderi
 ## Strip reordering — 2026-11-02
 
 Macro strip order uses the shared `unit-ui` gesture lifecycle. Only visible controls participate; hidden control entries remain retained. Knobs, Power and active name editing cannot arm a reorder. Commit the complete control values/identities through the existing instrument edit on valid release only. Routes remain keyed by stable identity; project persistence and history retain the resulting order.
+
+Destination menus follow the [shared strip submenu contract](../modulation/contract.md#destination-strip-submenus). Keep unit-wide choices at the root, explicit strip UUIDs and qualified selected captions.

@@ -80,6 +80,37 @@ Every expanded modulation strip labels its two dropdowns Source and Destination.
 
 `Oscillator::from_settings` installs its instance identity. `SourceUnit::set_frequency` sets its unmodulated frequency; `process_modulation` generates the next mono sample (there is no input audio). Standalone callers using `Oscillator::new` retain an unscoped destination and the unmodulated `SourceUnit::next_sample` API. Gain uses the same stable target and shared typed entry point, with signed dB offsets and processed extrema. See [pitch/gain behavior, limits, and migration](oscillator-pitch.md).
 
+## Destination strip submenus
+
+The DAW Destination picker groups removable strips for Oscillator, Macro,
+Multiband EQ, Multiband Compressor and Exciter. Keep unit-wide choices at the
+root in their declaration order, followed by one shared divider when both root
+choices and strip groups exist. List one submenu per strip, including a single
+strip or a single Value leaf. Fixed Harmonic Lift targets remain flat.
+
+Use explicit UI-only group UUID, name, display order and short leaf metadata.
+Do not infer groups from target UUID presence or parse qualified labels. Keep
+the qualified selected caption and existing parameter/target UUID assignment.
+Duplicate names remain distinct groups. Use current strip order; Compressor
+uses its saved presentation order but Band N retains signal-range numbering.
+Keep the backing choice order and new-route defaults independent of menu order.
+Metadata does not enter project serialization, the engine or the audio callback.
+
+Oscillator roots are Level, Pitch, Cents; Osc N leaves are Pitch, Gain, Cents,
+Width. Macro leaves are Value and omit retained absent controls. EQ Band N
+leaves are Gain, Frequency, Q, with Output · Gain at the root. Exciter Band N
+leaves are Drive, Level, Mix, with Out controls at the root. Compressor Band N
+leaves are Threshold, Ratio, Attack, Release, Knee, Level, with Out controls at
+the root. Other flat receiving units retain their choices.
+
+Root and submenu leaves use the same assignment operation, amount limits and
+target-specific source/cycle eligibility. Browsing and dismissal make no edit;
+selection uses existing route history and persistence. Scope widget IDs by
+stable group UUID and target/parameter within the existing route/unit scope.
+Reuse the Small dropdown/submenu presentation, width measurement, ChevronRight,
+layout and separator helpers from the Source picker and the
+[canonical dropdown contract](../views/dropdowns.md).
+
 ## Destination-matched amount knobs
 
 All destination-owned modulation amount strips use `parameter_knobs.rs`. Its `destination` function is the normal knob definition used by Sampler, Amplitude, Auto-filter, Drive, Saturator, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, and Bitcrusher; Pitch returns the same `knobs::pitch_spec` used by oscillators. Its `amount` function derives the signed amount control from that definition. New targets must register both their destination definition and their amount-unit mapping here. Do not create an unrelated generic amount knob in a unit panel.

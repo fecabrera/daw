@@ -794,36 +794,33 @@ fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_sa
             false,
         );
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let target_label = if whole_unit {
-            parameter.label().to_string()
-        } else {
-            format!("Osc 2 · {}", parameter.label())
-        };
         let mut shapes = shapes;
-        if !shapes
-            .iter()
-            .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == target_label))
-        {
-            let point = label(&shapes, "Osc 2 · Pitch");
-            frame(
-                &mut app,
-                &ctx,
-                vec![
-                    egui::Event::PointerMoved(point),
-                    egui::Event::MouseWheel {
-                        phase: egui::TouchPhase::Move,
-                        unit: egui::MouseWheelUnit::Point,
-                        delta: Vec2::new(0.0, -500.0),
-                        modifiers: Default::default(),
-                    },
-                ],
-            );
-            for _ in 0..12 {
-                frame(&mut app, &ctx, vec![]);
-            }
+        if !whole_unit {
+            // The strip footer has the same name; popup text is painted last.
+            let parent = shapes
+                .iter()
+                .rev()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "Osc 2" => {
+                        Some(t.pos + t.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .expect("Osc 2 submenu");
+            click(&mut app, &ctx, parent, false);
             shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         }
-        let second = label(&shapes, &target_label);
+        // The child is painted after its parent, including repeated Pitch/Cents.
+        let second = shapes
+            .iter()
+            .rev()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == parameter.label() => {
+                    Some(t.pos + t.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .expect("destination leaf");
         click(&mut app, &ctx, second, false);
         let l = &mut app.session.project.tracks[0]
             .instrument

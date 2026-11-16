@@ -1,5 +1,7 @@
 # Iteration 1 validation
 
+- [Modulation destination submenus — 2026-11-16](destination-submenus-2026-11-16.md): five receiving units, stable targets, unchanged defaults and native Oscillator menu checks.
+
 - [Settings sidebar — 2026-11-16](settings-sidebar-2026-11-16.md): active-group controls, navigation isolation, sizing and native preview.
 
 - [Silent stopped MIDI seeks — 2026-11-16](stopped-midi-seek-2026-11-16.md): Auto-filter and live monitoring, silent seek preparation and exact playback resume.

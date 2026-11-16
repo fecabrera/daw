@@ -8,7 +8,7 @@ Implemented on 2026-10-16. Each oscillator is a separate pitch destination. Enve
 
 1. Add Oscillator and an Envelope or LFO from the Instrument component catalog.
 2. Click the secondary-color dot at the right of the Oscillator header. The regular waveform, pitch, gain, and source controls remain visible.
-3. Add a connection with Plus. Select its source and an `Osc N · Pitch` target. Set a signed amount in semitones. Each new connection targets the first oscillator, starts enabled, has no source, and has zero amount.
+3. Add a connection with Plus. Select its source, open `Osc N` in Destination, then select `Pitch`. Set a signed amount in semitones. Each new connection targets the first oscillator, starts enabled, has no source, and has zero amount.
 4. Add more connections to modulate other oscillators or combine sources on one oscillator. Use the connection's power control to disable it, or its context menu to remove it.
 
 Like every [destination-matched modulation amount knob](contract.md#destination-matched-amount-knobs), the amount knob reuses the base Pitch knob’s one-semitone steps and octave reference marks across −48 to +48 semitones. Shift slows dragging while retaining whole-semitone steps. Existing saved or programmatic fractional amounts remain supported and are retained until adjusted; +0.25 is +25 cents. Modulation never writes the base Pitch setting.
@@ -44,7 +44,7 @@ All route vectors, source instances, and telemetry handles are prepared outside 
 
 ## Per-oscillator Gain
 
-Implemented on 2026-10-19. The same stable oscillator target ID accepts `OscillatorGain` alongside `Pitch`, declared once in `ModulationParameter::OSCILLATOR`. Target pickers enumerate `Osc N · Pitch` and `Osc N · Gain` for every strip. Routes use the existing layer-owned vector, validation, source scope, source cache, route ramps, transfer/removal logic, and saved expansion state. Existing projects need no migration; missing connections remain empty. Gain amounts are signed dB in −24..+24. Invalid targets and amounts fail the existing transaction validation.
+Implemented on 2026-10-19. The same stable oscillator target ID accepts `OscillatorGain` alongside `Pitch`, declared once in `ModulationParameter::OSCILLATOR`. Destination pickers group Pitch, Gain, Cents and Width inside each Osc N submenu; their selected captions remain qualified. Level, Pitch and Cents roots precede the shared divider. See [destination submenus](contract.md#destination-strip-submenus). Routes use the existing layer-owned vector, validation, source scope, source cache, route ramps, transfer/removal logic, and saved expansion state. Existing projects need no migration; missing connections remain empty. Gain amounts are signed dB in −24..+24. Invalid targets and amounts fail the existing transaction validation.
 
 The portable Oscillator resolves Pitch/Gain alongside Cents/Width through the typed entry point and one shared four-value additive smoother. The host supplies its existing 5 ms smoothed linear base gain (including source mute) through `set_base_gain`; the portable unit applies `base_gain × 10^(offset / 20)` before voice velocity and Amplitude. Sum limits are ±96 dB before conversion, and final gain is limited to +12 dB. Exactly zero base gain remains silent. Neutral offsets preserve the former sample multiplication exactly. `SourceUnit::next_sample` retains its standalone unmodulated waveform API. No routing, lookup, allocation, or new gain ramp is added to the host.
 

@@ -192,8 +192,7 @@ pub(super) fn unit(
                     Vec2::new(add_width, envelope_panel::body_height(compact) + 20.0)).clicked();
                 if open {
 
-                    let targets: Vec<_> = module.controls.iter().enumerate().filter(|(_, c)| c.present).map(|(index, c)|
-                        modulation_panel::Target { parameter: ModulationParameter::MacroValue, id: Some(c.id), label: format!("{} · Value", c.display_name(index)) }).collect();
+                    let targets = modulation_targets(module);
                     modulation_panel::targeted_body_with_sources(ui, &mut module.modulations, &targets,
                         ModulationScope::Shared, compact, |target| controls.available.iter()
                             .find(|(id, _)| id.layer == controls.layer && Some(id.unit) == target)
@@ -251,4 +250,22 @@ pub(super) fn unit(
         module.add();
     }
     Some(result)
+}
+
+pub(super) fn modulation_targets(module: &MacroModuleSettings) -> Vec<modulation_panel::Target> {
+    module
+        .controls
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.present)
+        .map(|(index, c)| {
+            modulation_panel::Target::strip(
+                ModulationParameter::MacroValue,
+                c.id,
+                index,
+                c.display_name(index),
+                "Value",
+            )
+        })
+        .collect()
 }

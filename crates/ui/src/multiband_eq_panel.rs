@@ -266,23 +266,7 @@ fn body<'a>(
         bounds.output = shared.output;
         bounds.graph = shared.graph;
         if settings.modulation_open {
-            let mut targets: Vec<_> = settings
-                .bands
-                .iter()
-                .enumerate()
-                .flat_map(|(i, b)| {
-                    P::EQ_BAND.map(|parameter| Target {
-                        parameter,
-                        id: Some(b.id),
-                        label: format!("Band {} · {}", i + 1, parameter.label()),
-                    })
-                })
-                .collect();
-            targets.push(Target {
-                parameter: P::Level,
-                id: None,
-                label: "Output · Gain".into(),
-            });
+            let targets = modulation_targets(settings);
             modulation_panel::targeted_body(
                 ui,
                 &mut settings.modulations,
@@ -555,3 +539,24 @@ mod meter_tests {
 
 #[cfg(test)]
 use crate::icons;
+
+pub(super) fn modulation_targets(settings: &MultibandEqSettings) -> Vec<Target> {
+    let mut targets: Vec<_> = settings
+        .bands
+        .iter()
+        .enumerate()
+        .flat_map(|(i, b)| {
+            P::EQ_BAND.map(|parameter| {
+                Target::strip(
+                    parameter,
+                    b.id,
+                    i,
+                    format!("Band {}", i + 1),
+                    parameter.label(),
+                )
+            })
+        })
+        .collect();
+    targets.push(Target::flat(P::Level, None, "Output · Gain"));
+    targets
+}

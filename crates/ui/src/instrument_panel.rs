@@ -1215,35 +1215,7 @@ impl DawUi {
         sources: &[crate::modulation_panel::Source],
     ) -> (Rect, Rect, Rect) {
         let layer_id = layer.id;
-        let mut targets: Vec<_> = layer
-            .oscillators
-            .iter()
-            .enumerate()
-            .flat_map(|(i, s)| {
-                daw_core::ModulationParameter::OSCILLATOR.map(|parameter| {
-                    crate::modulation_panel::Target {
-                        parameter,
-                        id: Some(s.id),
-                        label: format!("Osc {} · {}", i + 1, parameter.label()),
-                    }
-                })
-            })
-            .collect();
-        targets.push(crate::modulation_panel::Target {
-            parameter: daw_core::ModulationParameter::Level,
-            id: None,
-            label: "Level".into(),
-        });
-        targets.push(crate::modulation_panel::Target {
-            parameter: daw_core::ModulationParameter::Pitch,
-            id: None,
-            label: "Pitch".into(),
-        });
-        targets.push(crate::modulation_panel::Target {
-            parameter: daw_core::ModulationParameter::OscillatorCents,
-            id: None,
-            label: "Cents".into(),
-        });
+        let targets = oscillator_targets(layer);
         let unit_enabled = layer.oscillator_enabled;
         let InstrumentLayerSettings {
             oscillators,
@@ -1509,4 +1481,41 @@ impl DawUi {
         }
         (result.response.rect, result.header.rect, result.power.rect)
     }
+}
+
+pub(super) fn oscillator_targets(
+    layer: &InstrumentLayerSettings,
+) -> Vec<crate::modulation_panel::Target> {
+    let mut targets: Vec<_> = layer
+        .oscillators
+        .iter()
+        .enumerate()
+        .flat_map(|(i, s)| {
+            daw_core::ModulationParameter::OSCILLATOR.map(|parameter| {
+                crate::modulation_panel::Target::strip(
+                    parameter,
+                    s.id,
+                    i,
+                    format!("Osc {}", i + 1),
+                    parameter.label(),
+                )
+            })
+        })
+        .collect();
+    targets.push(crate::modulation_panel::Target::flat(
+        daw_core::ModulationParameter::Level,
+        None,
+        "Level",
+    ));
+    targets.push(crate::modulation_panel::Target::flat(
+        daw_core::ModulationParameter::Pitch,
+        None,
+        "Pitch",
+    ));
+    targets.push(crate::modulation_panel::Target::flat(
+        daw_core::ModulationParameter::OscillatorCents,
+        None,
+        "Cents",
+    ));
+    targets
 }

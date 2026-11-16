@@ -15,7 +15,7 @@ Header power and individual strip power are independent. Off supplies a neutral 
 
 ## Modulate a Macro
 
-Open the Macro header's secondary-color dot. Select a shared Envelope, LFO, or another Macro and choose the wanted strip's Value destination. Amount spans −100% to +100%. Incoming movement combines with the base value within 0–100%. Self-connections and feedback loops are unavailable. Per note Envelopes cannot feed Macro.
+Open the Macro header's secondary-color dot. Select a shared Envelope, LFO, or another Macro and open the wanted strip's submenu in Destination, then select Value. Amount spans −100% to +100%. Incoming movement combines with the base value within 0–100%. Self-connections and feedback loops are unavailable. Per note Envelopes cannot feed Macro.
 
 The knob shows the base value; the live dot shows the processed value. Sources and destinations stay within the same MIDI instrument, including Output. A Macro does not create or prolong notes.
 

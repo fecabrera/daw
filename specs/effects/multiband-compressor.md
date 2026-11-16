@@ -250,3 +250,5 @@ and bounded integer metadata before mutation. Keep v2 (796) and v1 (269) fallbac
 lengths and meanings unchanged. Other products retain their current formats.
 Stopped messages zero current detector/band reduction readings while retaining
 history and held peaks. No parameter IDs or serialized plugin state change.
+
+Destination menus follow the [shared strip submenu contract](../modulation/contract.md#destination-strip-submenus). Keep unit-wide choices at the root, explicit strip UUIDs and qualified selected captions.

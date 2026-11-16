@@ -141,34 +141,7 @@ pub(super) fn show<'a>(
                     })
                     .inner;
                 if settings.modulation_open {
-                    let mut targets: Vec<_> = settings
-                        .bands
-                        .iter()
-                        .enumerate()
-                        .flat_map(|(i, b)| {
-                            P::COMPRESSOR[..6]
-                                .iter()
-                                .copied()
-                                .map(move |parameter| Target {
-                                    parameter,
-                                    id: Some(b.id),
-                                    label: format!(
-                                        "Band {} · {}",
-                                        i + 1,
-                                        if parameter == P::DryWet {
-                                            "Mix"
-                                        } else {
-                                            parameter.label()
-                                        }
-                                    ),
-                                })
-                        })
-                        .collect();
-                    targets.extend([P::Level, P::DryWet].map(move |parameter| Target {
-                        parameter,
-                        id: None,
-                        label: format!("Out · {}", parameter.label()),
-                    }));
+                    let targets = modulation_targets(settings);
                     crate::modulation_panel::targeted_body(
                         ui,
                         &mut settings.modulations,
@@ -256,4 +229,36 @@ pub(super) fn show<'a>(
         },
         result.header,
     )
+}
+
+pub(super) fn modulation_targets(settings: &MultibandCompressorSettings) -> Vec<Target> {
+    let mut targets: Vec<_> = settings
+        .bands
+        .iter()
+        .enumerate()
+        .flat_map(|(i, b)| {
+            let order = if settings.presentation.is_empty() {
+                i
+            } else {
+                settings
+                    .presentation
+                    .iter()
+                    .position(|id| *id == b.id)
+                    .unwrap_or(i)
+            };
+            P::COMPRESSOR[..6].iter().copied().map(move |parameter| {
+                Target::strip(
+                    parameter,
+                    b.id,
+                    order,
+                    format!("Band {}", i + 1),
+                    parameter.label(),
+                )
+            })
+        })
+        .collect();
+    targets.extend([P::Level, P::DryWet].map(move |parameter| {
+        Target::flat(parameter, None, format!("Out · {}", parameter.label()))
+    }));
+    targets
 }

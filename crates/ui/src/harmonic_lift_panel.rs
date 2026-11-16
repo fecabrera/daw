@@ -94,26 +94,27 @@ pub(super) fn show<'a>(
                         .iter()
                         .enumerate()
                         .flat_map(|(i, b)| {
-                            [P::EqBandFrequency, P::EqBandGain].map(|parameter| Target {
-                                parameter,
-                                id: Some(b.id),
-                                label: format!(
-                                    "{} · {}",
-                                    daw_unit_core::HARMONIC_BAND_NAMES[i],
-                                    if parameter == P::EqBandGain {
-                                        "Gain"
-                                    } else {
-                                        "Frequency"
-                                    }
-                                ),
+                            [P::EqBandFrequency, P::EqBandGain].map(|parameter| {
+                                Target::flat(
+                                    parameter,
+                                    Some(b.id),
+                                    format!(
+                                        "{} · {}",
+                                        daw_unit_core::HARMONIC_BAND_NAMES[i],
+                                        if parameter == P::EqBandGain {
+                                            "Gain"
+                                        } else {
+                                            "Frequency"
+                                        }
+                                    ),
+                                )
                             })
                         })
                         .collect();
-                    targets.extend(P::HARMONIC_LIFT.map(|parameter| Target {
-                        parameter,
-                        id: None,
-                        label: parameter.label().into(),
-                    }));
+                    targets.extend(
+                        P::HARMONIC_LIFT
+                            .map(|parameter| Target::flat(parameter, None, parameter.label())),
+                    );
                     modulation_panel::targeted_body(
                         ui,
                         &mut s.modulations,

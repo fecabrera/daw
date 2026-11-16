@@ -78,3 +78,5 @@ Exercise live/offline, block and seek parity; all effect placements; Solo dry is
 ## Strip reordering — 2026-11-02
 
 DAW strip reordering uses the shared release-only gesture lifecycle. Ranges owns the crossover topology: retain each ordered upper boundary at its frequency position, and move the complete processing strip identity/settings to the destination range. Preserve routes and monitoring/Solo keys by UUID. Reject control changes during the gesture, cancellation and outside/no-op drops without an edit. Existing effect transactions prepare the reordered topology outside the callback and persist it through project history.
+
+Destination menus follow the [shared strip submenu contract](../modulation/contract.md#destination-strip-submenus). Keep unit-wide choices at the root, explicit strip UUIDs and qualified selected captions.

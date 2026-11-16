@@ -95,7 +95,9 @@ There is no lookahead, automatic makeup or external sidechain.
 
 The six continuous band controls and Out controls accept shared modulation from
 the same instrument. Open the header's connection dot to add routes. Split and
-Peak/RMS remain manual choices.
+Peak/RMS remain manual choices. In Destination, open a **Band N** submenu to
+choose a band control. Out controls stay at the top level. Band submenus follow
+the displayed strip order and retain their frequency-range numbers.
 
 This effect also has [standalone plugin previews](plugins.md), with up to 64 band
 slots and horizontal scrolling. More bands use more CPU and memory.

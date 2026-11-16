@@ -12,6 +12,11 @@ Modulation changes a parameter over time without changing its base setting. Enve
 
 New connections are enabled but have no source and zero Amount. They do not affect the sound until assigned and adjusted. Connections and their visible layout save with the project.
 
+For units with removable strips, open the strip's submenu in Destination, then
+select its parameter. Oscillator, Macro, Multiband EQ, Multiband Compressor and
+Exciter use these submenus. Unit-wide controls stay at the top, above the strip
+list. The selected value includes the strip name, for example **Osc 2 · Gain**.
+
 ## Choose sources and amounts
 
 The Source dropdown starts with None, followed by a divider. Select LFO or Envelope to choose a provider from its instrument-wide lane. Regular layer and Output submenus contain their Macros. Groups with no compatible sources are hidden. The selected value includes the group name so repeated component names remain clear. Source and Destination selectors fill the space inside their strip.

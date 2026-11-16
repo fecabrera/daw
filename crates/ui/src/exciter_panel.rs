@@ -127,31 +127,7 @@ pub(super) fn show(
                     })
                     .inner;
                 if settings.modulation_open {
-                    let mut targets: Vec<_> = settings
-                        .bands
-                        .iter()
-                        .enumerate()
-                        .flat_map(|(i, b)| {
-                            P::SATURATOR.map(|parameter| Target {
-                                parameter,
-                                id: Some(b.id),
-                                label: format!(
-                                    "Band {} · {}",
-                                    i + 1,
-                                    if parameter == P::DryWet {
-                                        "Mix"
-                                    } else {
-                                        parameter.label()
-                                    }
-                                ),
-                            })
-                        })
-                        .collect();
-                    targets.extend([P::Level, P::DryWet].map(|parameter| Target {
-                        parameter,
-                        id: None,
-                        label: format!("Out · {}", parameter.label()),
-                    }));
+                    let targets = modulation_targets(settings);
                     crate::modulation_panel::targeted_body(
                         ui,
                         &mut settings.modulations,
@@ -225,4 +201,32 @@ pub(super) fn show(
         },
         result.header,
     )
+}
+
+pub(super) fn modulation_targets(settings: &ExciterSettings) -> Vec<Target> {
+    let mut targets: Vec<_> = settings
+        .bands
+        .iter()
+        .enumerate()
+        .flat_map(|(i, b)| {
+            P::SATURATOR.map(|parameter| {
+                Target::strip(
+                    parameter,
+                    b.id,
+                    i,
+                    format!("Band {}", i + 1),
+                    if parameter == P::DryWet {
+                        "Mix"
+                    } else {
+                        parameter.label()
+                    },
+                )
+            })
+        })
+        .collect();
+    targets
+        .extend([P::Level, P::DryWet].map(|parameter| {
+            Target::flat(parameter, None, format!("Out · {}", parameter.label()))
+        }));
+    targets
 }

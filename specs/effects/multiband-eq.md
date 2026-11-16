@@ -209,3 +209,5 @@ parameter.
 ## Graph selection — 2026-11-14
 
 Primary clicks away from all graph handles clear band selection, including the cached selection on subsequent frames. This UI-only action does not change settings, host parameters, history or DSP state. The shared 3-band EQ graph follows the same rule.
+
+Destination menus follow the [shared strip submenu contract](../modulation/contract.md#destination-strip-submenus). Keep unit-wide choices at the root, explicit strip UUIDs and qualified selected captions.
