@@ -75,6 +75,9 @@ impl DawUi {
                 );
                 if gutter.intersects(clip) {
                     painter.rect_filled(gutter, 0.0, theme::clip_colors(track.color, None).body);
+                    // Gutters paint after the rows; restore their closing edge
+                    // so the fill cannot cover the last child's separator.
+                    panels::ControlPanel::paint_row_dividers(&painter, gutter, false, true);
                 }
             }
         }

@@ -1,6 +1,6 @@
 # Iteration 1 validation
 
-- [Beat subtracks in Mixer — 2026-11-16](beat-mixer-2026-11-16.md): shared child strips, group hierarchy, isolated controls, undo and native layout checks.
+- [Beat subtracks in Mixer — 2026-11-16](beat-mixer-2026-11-16.md): shared child strips, group hierarchy, isolated controls, undo, native layout checks and a Timeline gutter-divider follow-up.
 
 - [Modulation destination submenus — 2026-11-16](destination-submenus-2026-11-16.md): five receiving units, stable targets, unchanged defaults and native Oscillator menu checks.
 

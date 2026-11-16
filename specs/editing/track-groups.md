@@ -14,7 +14,10 @@ resolved base clip-body color, including nested headers. Beat subtrack headers
 inherit their parent track color. Expanded Group and Beat parents continue
 their color below the header as an 8-point gutter through visible descendants.
 Use the remaining actual indentation width at the three-level cap, so deeper
-groups do not paint over child headers. Clip gutters to the scrolling viewport
+groups do not paint over child headers. After painting each hierarchy gutter,
+restore its bottom divider through the shared row-divider painter. This closes
+the gutter above the following track for both project groups and beat folders,
+including nested groups. Clip gutters to the scrolling viewport
 and preserve continuation when an ancestor header is virtualized offscreen.
 Reserve the 16-point strip before the existing seven-point left content inset.
 Keep icons, disclosure arrows, labels and controls outside the strip. Preserve

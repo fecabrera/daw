@@ -50,3 +50,24 @@ control isolation. Native Windows/Linux, other display scales, keyboard rename
 and live-device behavior remain unverified. Automated geometry tests cover
 Dark, Light and Mist plus 640×480 and 1280×800 layouts; they do not establish
 native results on those other platforms.
+
+## Timeline gutter closing divider follow-up
+
+Expanded beat folders and project groups painted their color gutters after row
+separators, covering the divider above the next track. The shared hierarchy
+painter now restores each gutter's closing edge after its fill through the
+existing row-divider painter. Row geometry and project data stay unchanged.
+
+- Full UI suite: 1,045 passed, 3 ignored.
+- `cargo fmt --all --check`: passed.
+- Strict workspace Clippy: passed.
+- `cargo test --workspace --offline`: 3,548 passed, 22 ignored.
+- `cargo test --workspace --release --offline`: 3,548 passed, 22 ignored.
+- Local macOS debug app rebuild and signature checks: passed.
+- Documentation link targets and `git diff --check`: passed.
+
+Both full profiles had native macOS Audio Unit registration outside the sandbox.
+An isolated native preview opened, but its controls lost focus and remained
+disabled during setup; it was closed without creating a project. Final native
+visual verification of the divider remains pending. The temporary example was
+removed before workspace checks; preview artifacts remain ignored under work.
