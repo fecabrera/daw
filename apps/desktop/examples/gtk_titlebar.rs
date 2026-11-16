@@ -8,6 +8,10 @@ mod app_icon;
 mod gtk_host;
 
 #[cfg(target_os = "linux")]
+#[path = "../src/midi.rs"]
+mod midi;
+
+#[cfg(target_os = "linux")]
 fn main() -> gtk4::glib::ExitCode {
     gtk_host::run()
 }

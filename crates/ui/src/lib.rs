@@ -413,7 +413,7 @@ enum Job {
 }
 
 enum Action {
-    Recovery(daw_project::recovery::RecoveryEntry, bool),
+    Recovery(Box<daw_project::recovery::RecoveryEntry>, bool),
     New,
     Open(PathBuf),
     CloseProject,
@@ -1391,9 +1391,9 @@ impl DawUi {
             Some(Action::Recovery(entry, saved)) => {
                 self.midi.recovery_running = true;
                 self.midi_send(if saved {
-                    midi_service::Command::OpenSaved(entry)
+                    midi_service::Command::OpenSaved(*entry)
                 } else {
-                    midi_service::Command::Recover(entry)
+                    midi_service::Command::Recover(*entry)
                 });
             }
             Some(Action::New | Action::CloseProject) => {

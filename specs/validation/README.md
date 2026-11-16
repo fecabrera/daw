@@ -8,6 +8,27 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Recovery action and GTK example CI fixes — 2026-11-16
+
+The UI stores the recovery entry in `Action::Recovery` through a `Box` to
+avoid the large enum variant reported by Windows Clippy. The GTK compatibility
+example includes the desktop MIDI module required by the shared GTK launcher.
+Recovery commands still receive the owned entry; recovery behavior is unchanged.
+
+Executed on macOS arm64:
+
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --locked --offline -p daw-ui -p daw-desktop --all-targets -- -D warnings`: PASS.
+- `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: PASS.
+- `cargo test --locked --offline --workspace`: INCOMPLETE. Stopped during
+  compilation after an extended wait; no test result was produced.
+- `cargo test --locked --offline --workspace --release`: INCOMPLETE. Stopped
+  during compilation after an extended wait; no test result was produced.
+
+Native Windows Clippy and Linux GTK example compilation remain for CI. The
+Linux-only modules are not compiled by the macOS checks. No native UI or MIDI
+device checks were run for these build fixes.
+
 ## macOS DMG creation retries — 2026-11-15
 
 The Drive / macOS arm64 packaging job reported `hdiutil create` failing with

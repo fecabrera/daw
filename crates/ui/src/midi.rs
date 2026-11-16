@@ -481,7 +481,7 @@ impl DawUi {
                     }
                 } else {
                     self.midi.recoveries.remove(0);
-                    self.request(Action::Recovery(entry, choice == 1));
+                    self.request(Action::Recovery(Box::new(entry), choice == 1));
                 }
             }
         }
