@@ -204,6 +204,14 @@ impl DawUi {
     }
 
     pub(super) fn effects_target(&self) -> Option<EffectTarget> {
+        if !self.master_selected
+            && let Some((_, row)) = self.selected_mixer_beat_row()
+        {
+            return Some(EffectTarget::Layer {
+                track: row.id,
+                layer: row.instrument.main.id,
+            });
+        }
         if self.view_mode == ViewMode::Instrument {
             return self
                 .selected_track

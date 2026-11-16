@@ -183,6 +183,9 @@ impl DawUi {
             }
             return;
         }
+        if self.mixer_beat_action(action) {
+            return;
+        }
         if self.view_mode == ViewMode::Timeline
             && matches!(action, TrackAction::Mute | TrackAction::Solo)
             && self.timeline_beat_mix_action(action)

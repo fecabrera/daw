@@ -83,3 +83,44 @@ Keep that classification in bypass and at zero Stereo phase because power and
 phase modulation can change during playback. Use the existing stereo pan/send
 coefficients; do not classify from instantaneous sample equality. Legacy mono
 instruments without stereo-capable processing retain the mono pan law.
+
+## Beat subtrack strips
+
+Mixer presents each visible expanded beat parent followed immediately by its
+subtracks, in saved lane order. Reuse the group disclosure, saved
+`group_collapsed`, colored ancestor gutters, three-level cap and strip width.
+Timeline and Mixer share disclosure and Undo/Redo. A collapsed enclosing project
+group hides both parent and beat children. Hidden children continue processing.
+The parent header is a group-style disclosure/name pair. Child headers use the
+existing audio-lines artwork and shared centered semibold name/rename controls.
+
+`mixer::strip` owns one shared strip renderer for project tracks, beat subtracks
+and Master. A narrow target binding resolves identity, mix state and meter;
+retain existing strip geometry, numeric/fader behavior, M/S, peak-reset controls,
+selection fill and boundaries. Do not create synthetic project tracks or copy
+mix state into a second model. Use the existing layer meter at
+`(subtrack.id, subtrack.instrument.main.id)` and commit child gain, pan, mute and
+solo through `Edit::Beat` / `BeatEdit::SetMix`. The child shows its parent name
+through the shared output-destination painter. Child strips have no send rack;
+the parent retains its sends. Reserve the same rack area and output divider so
+faders, meters and bottom controls align with tracks, Returns and Master.
+
+Selection reuses the beat owner/selected-subtrack state. Selecting a child keeps
+its project beat parent as `selected_track` and targets the subtrack Main/Output
+effect chain through the existing Layer effect target. Plain parent selection
+clears child scope and restores parent-track effects. Multi-selection stays
+within one beat parent; M/S acts through the shared batched beat mix action.
+Rename uses the shared beat name editor. Delete uses the existing beat removal
+transaction; the child context menu reuses the beat-header menu. Keep existing
+text, recording, focus, drag, popup and job guards. Navigation and painting alone
+make no project edit. Stable subtrack IDs own inputs, widget scopes and meter
+handles through reorder/removal/restoration. Empty parents show only their own
+strip. Do not place child IDs into arrangement clip/drop geometry.
+
+Compute gutter clearance from visible beat children only in Mixer. Preserve the
+existing Timeline Track mixer behavior. Keep source horizontal scrolling and
+pinned Return/Master banks, output alignment and narrow-layout behavior.
+
+The 2026-11-16 request supersedes the earlier parent-only Mixer restriction in
+the beat design. It changes presentation and control access, not beat audio
+routing, instrument ownership, callback work or project format.

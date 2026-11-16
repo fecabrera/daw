@@ -292,6 +292,26 @@ impl DawUi {
     pub(super) fn deselect_beat_subtracks(&mut self) {
         self.beat_ui.selected.clear();
     }
+    pub(super) fn selected_mixer_beat_row(&self) -> Option<(Id, &BeatSubtrack)> {
+        if self.view_mode != ViewMode::Mixer || self.beat_ui.output_selected {
+            return None;
+        }
+        let parent = self.selected_track?;
+        if self.beat_ui.track != Some(parent) || !self.timeline_beat_open(parent) {
+            return None;
+        }
+        let beat = self.session.project.beat(parent)?;
+        let row = beat
+            .subtracks
+            .iter()
+            .find(|row| Some(row.id) == self.beat_ui.primary && self.beat_subtrack_selected(row.id))
+            .or_else(|| {
+                beat.subtracks
+                    .iter()
+                    .find(|row| self.beat_subtrack_selected(row.id))
+            })?;
+        Some((parent, row))
+    }
     pub(super) fn beat_subtrack_selected(&self, id: Id) -> bool {
         self.beat_ui.selected.contains(&id)
     }

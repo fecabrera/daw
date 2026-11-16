@@ -1,6 +1,6 @@
 # Beat tracks and step editor
 
-Use beat tracks to build rhythms from independently configured instruments. Mixer shows the parent beat track only. You can place that parent inside a [project track group](../editing/track-groups.md).
+Use beat tracks to build rhythms from independently configured instruments. Mixer shows the parent beat track and expandable subtrack strips. Use the parent for whole-beat controls and each child for its gain, pan, Mute, Solo and output effects. You can place that parent inside a [project track group](../editing/track-groups.md).
 
 ## Create a beat
 

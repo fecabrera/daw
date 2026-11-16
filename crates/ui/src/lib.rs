@@ -4453,14 +4453,22 @@ impl DawUi {
                 && track.kind == daw_core::TrackKind::Beat
             {
                 self.timeline_beat_disclosure(ui, track.id, icon_width);
-            } else if track.kind == daw_core::TrackKind::Group {
+            } else if track.kind == daw_core::TrackKind::Group
+                || (mixer
+                    && self.view_mode == ViewMode::Mixer
+                    && track.kind == daw_core::TrackKind::Beat)
+            {
                 if icons::disclosure_button(
                     ui,
                     !track.group_collapsed,
-                    if track.group_collapsed {
-                        "Expand group"
-                    } else {
-                        "Collapse group"
+                    match (
+                        track.kind == daw_core::TrackKind::Beat,
+                        track.group_collapsed,
+                    ) {
+                        (true, true) => "Expand beat subtracks",
+                        (true, false) => "Collapse beat subtracks",
+                        (false, true) => "Expand group",
+                        (false, false) => "Collapse group",
                     },
                     self.editing_enabled(),
                     tint,
@@ -6311,6 +6319,7 @@ mod tests {
     mod midi;
     mod midi_pattern_gestures;
     mod mixer;
+    mod mixer_beat;
     mod modulation_lanes;
     mod multiband_compressor;
     mod multiband_eq_reorder;

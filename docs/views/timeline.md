@@ -41,7 +41,7 @@ The Add track and Duplicate track buttons stay available when another pane or no
 
 Press M to toggle Mute and S to toggle Solo on each selected track. These shortcuts work from any focused pane or control in Timeline, except while you enter text. Dialogs, blocking jobs and active drags still disable them. Release a dragged control before using M/S. Holding a key does not toggle repeatedly.
 
-When beat subtracks are selected in an expanded beat track, M/S toggles each selected subtrack instead of the parent. The group change uses one undo step. Click the beat parent header to return M/S control to the whole track. Mixer shortcuts continue to control whole tracks.
+When beat subtracks are selected in an expanded beat track, M/S toggles each selected subtrack instead of the parent. The group change uses one undo step. Click the beat parent header to return M/S control to the whole track. Mixer uses the same subtrack scope when a beat child strip is selected; selecting its parent returns to whole-track scope.
 
 Rename (Command/Ctrl+R), Group (Command/Ctrl+G), and Ungroup (Command/Ctrl+Shift+G) also work when another pane or non-text control has focus in Timeline. Text entry, active drags, dialogs and blocking jobs retain their guards. Selection requirements still apply.
 

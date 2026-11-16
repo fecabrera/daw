@@ -16,7 +16,7 @@ This plan extends the [Beat MVP](beat-editor.md), [source-container architecture
 - Editor and Instrument both support adding, selecting one or several subtracks, deleting, renaming, and reordering them. Both expose the same subtrack gain and pan values. Retain the previously accepted Mute/Solo controls.
 - In Instrument, each subtrack is an expandable group with a compact one-row header. It contains source layers, its own LFO and Envelope sublanes, and a separate Output sublane. Kick and Snare have separate outputs, settings and modulators.
 - One fixed Output lane follows all subtrack groups and sums the whole beat instrument. Each group has its own Output child backed by the existing subtrack main bus.
-- Mixer controls the parent beat track. Beat subtracks do not become extra Mixer strips or ordinary children in the project track browser.
+- Mixer controls the parent beat track and its expandable virtual subtrack strips through the [shared Mixer contract](mixer.md#beat-subtrack-strips). Subtracks remain outside the project-track list. This 2026-11-16 requirement supersedes the former parent-only Mixer scope.
 - Every beat subtrack is an instrument, with source units chosen inside its layers. There are no audio/MIDI subtrack types or type chooser. Sampler, Oscillator and other supported sources use the existing instrument model.
 - Preserve step/velocity controls, one fixed trigger pitch per subtrack, one active voice per subtrack, the shared pattern grid, lane-stop links, immutable pattern sources and serial routing.
 - Reject cross-beat-track clip transfers for now. Retain hidden steps when pattern length shrinks or resolution becomes coarser; hidden steps remain silent and return unchanged when visible again.

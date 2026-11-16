@@ -3476,7 +3476,7 @@ fn timeline_subtrack_mix_shortcuts_toggle_selected_buses_as_one_history_edit() {
 }
 
 #[test]
-fn timeline_subtrack_mix_shortcuts_retain_input_guards_and_mixer_parent_scope() {
+fn timeline_subtrack_mix_shortcuts_retain_input_guards_and_share_mixer_child_scope() {
     let (mut app, ctx, parent, ids) = timeline_subtrack_shortcut_fixture();
     let original = app.session.project.clone();
     for (modifiers, repeat) in [
@@ -3535,13 +3535,36 @@ fn timeline_subtrack_mix_shortcuts_retain_input_guards_and_mixer_parent_scope() 
     super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
     app.set_view_mode(ViewMode::Mixer, &ctx);
     frame(&mut app, &ctx, vec![]);
+    assert!(app.selected_mixer_beat_row().is_some());
+    app.perform_track_action(TrackAction::Mute, &ctx);
+    assert!(!app.session.project.tracks[0].muted);
+    for row in &app.session.project.beat(parent).unwrap().subtracks {
+        let before = original
+            .beat(parent)
+            .unwrap()
+            .subtracks
+            .iter()
+            .find(|r| r.id == row.id)
+            .unwrap();
+        assert_eq!(
+            row.muted,
+            if app.beat_subtrack_selected(row.id) {
+                !before.muted
+            } else {
+                before.muted
+            }
+        );
+    }
+    let children = app.session.project.beat(parent).unwrap().clone();
+    let strip = app.mixer_bounds[&parent];
+    click(
+        &mut app,
+        &ctx,
+        Pos2::new(strip.center().x, strip.top() + 160.0),
+    );
     app.perform_track_action(TrackAction::Mute, &ctx);
     assert!(app.session.project.tracks[0].muted);
-    assert_eq!(
-        app.session.project.beat(parent),
-        original.beat(parent),
-        "Mixer keeps whole-track scope even with cached child selection"
-    );
+    assert_eq!(app.session.project.beat(parent).unwrap(), &children);
 }
 
 #[test]

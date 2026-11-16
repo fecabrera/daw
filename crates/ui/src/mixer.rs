@@ -1,6 +1,9 @@
 use super::*;
 use crate::panels::HEADER_HEIGHT;
 
+mod beat;
+mod strip;
+
 pub(super) const STRIP_WIDTH: f32 = 120.0;
 pub(super) const HEADER_TEXT: egui::Color32 = egui::Color32::WHITE;
 pub(super) const GROUP_GUTTER_HEIGHT: f32 = HEADER_HEIGHT / 2.0;
@@ -346,6 +349,12 @@ impl DawUi {
                 self.session
                     .project
                     .track_depth(self.session.project.tracks[i].id)
+                    .saturating_add(usize::from({
+                        let track = &self.session.project.tracks[i];
+                        self.view_mode == ViewMode::Mixer
+                            && !track.group_collapsed
+                            && track.beat.as_ref().is_some_and(|b| !b.subtracks.is_empty())
+                    }))
                     .min(3)
             })
             .max()
@@ -486,6 +495,9 @@ impl DawUi {
                                 && ui.rect_contains_pointer(rect)
                                 && ui.input(|input| input.focused && input.pointer.any_pressed())
                             {
+                                if track.kind == daw_core::TrackKind::Beat {
+                                    self.navigate_beat_owner(track.id, None, false);
+                                }
                                 if ui.input(|i| i.pointer.secondary_pressed()) {
                                     if !self.track_selected(track.id) {
                                         self.select_track(track.id, false);
@@ -516,6 +528,7 @@ impl DawUi {
                             }
                             outlines.push((track.id, rect));
                         });
+                        self.mixer_beat_children(ui, &track, tracks_rect, &mut outlines);
                     }
                 });
             });
@@ -562,8 +575,6 @@ impl DawUi {
     }
 
     fn mixer_output_destination(&self, ui: &mut egui::Ui, track: &daw_core::Track, width: f32) {
-        let palette = theme::palette(ui.ctx());
-        let border = Stroke::new(STRIP_BORDER, palette.border);
         let destination = track
             .group_id
             .and_then(|id| {
@@ -574,6 +585,12 @@ impl DawUi {
                     .find(|parent| parent.id == id)
             })
             .map_or("Master", |parent| parent.name.as_str());
+        self.mixer_destination_label(ui, destination, width);
+    }
+
+    fn mixer_destination_label(&self, ui: &mut egui::Ui, destination: &str, width: f32) {
+        let palette = theme::palette(ui.ctx());
+        let border = Stroke::new(STRIP_BORDER, palette.border);
         let (destination_rect, response) =
             ui.allocate_exact_size(Vec2::new(width, toolbars::CONTROL_HEIGHT), Sense::hover());
         ui.painter()
@@ -615,351 +632,6 @@ impl DawUi {
             )
         });
         response.on_hover_text(format!("Output destination: {destination}"));
-    }
-
-    pub(super) fn mixer_strip(
-        &mut self,
-        ui: &mut egui::Ui,
-        rect: Rect,
-        track: Option<&daw_core::Track>,
-        left_divider: bool,
-    ) -> Option<Rect> {
-        let mut rack_bounds = None;
-        let palette = theme::palette(ui.ctx());
-        let selected = track.map_or(self.master_selected, |track| self.track_selected(track.id));
-        ui.painter().rect_filled(
-            rect,
-            0.0,
-            if selected {
-                theme::selected_track_header_background(ui.ctx())
-            } else {
-                palette.panel
-            },
-        );
-        let header_fill = track.map_or_else(
-            || theme::unit_header_fill(ui.ctx(), false),
-            |track| theme::clip_colors(track.color, None).header,
-        );
-        // The first three ancestor bands mirror Timeline's nesting cap. Paint
-        // each ancestor across every descendant so the gutter stays connected
-        // when its parent scrolls outside the viewport.
-        let mut ancestors = Vec::new();
-        let mut parent = track.and_then(|track| track.group_id);
-        while let Some(id) = parent {
-            let Some(group) = self
-                .session
-                .project
-                .tracks
-                .iter()
-                .find(|track| track.id == id)
-            else {
-                break;
-            };
-            ancestors.push(group);
-            parent = group.group_id;
-        }
-        let header_top = rect.top() + ancestors.len().min(3) as f32 * GROUP_GUTTER_HEIGHT;
-        for (level, group) in ancestors.into_iter().rev().take(3).enumerate() {
-            ui.painter().rect_filled(
-                Rect::from_min_size(
-                    Pos2::new(rect.left(), rect.top() + level as f32 * GROUP_GUTTER_HEIGHT),
-                    Vec2::new(rect.width(), GROUP_GUTTER_HEIGHT),
-                ),
-                0.0,
-                theme::clip_colors(group.color, None).header,
-            );
-        }
-        ui.painter().rect_filled(
-            Rect::from_min_size(
-                Pos2::new(rect.left(), header_top),
-                Vec2::new(rect.width(), HEADER_HEIGHT),
-            ),
-            0.0,
-            header_fill,
-        );
-        let border = Stroke::new(STRIP_BORDER, palette.border);
-        if header_top > rect.top() {
-            ui.painter().hline(rect.x_range(), header_top + 0.5, border);
-        }
-        // The toolbar or open catalog owns the workspace's left separator.
-        if left_divider {
-            ui.painter()
-                .vline(rect.left() + 0.5, header_top..=rect.bottom(), border);
-        }
-        // The right toolbar owns the single outer divider in both workspaces.
-        if track.is_none() && !matches!(self.view_mode, ViewMode::Timeline | ViewMode::Mixer) {
-            ui.painter()
-                .vline(rect.right() - 0.5, rect.y_range(), border);
-        }
-        let inner = rect.shrink2(STRIP_PADDING);
-        let content_rect = Rect::from_min_max(
-            Pos2::new(
-                inner.left(),
-                header_top + (HEADER_HEIGHT - toolbars::CONTROL_HEIGHT) / 2.0,
-            ),
-            inner.max,
-        );
-        let mut content = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt("controls")
-                .max_rect(content_rect)
-                .layout(egui::Layout::top_down(egui::Align::Center)),
-        );
-        content.spacing_mut().item_spacing = Vec2::splat(CONTROL_SPACING);
-        // Match the icon-to-label gap to the vertical padding around the header artwork.
-        content.spacing_mut().item_spacing.x = (HEADER_HEIGHT - icons::TOOLBAR_ICON_SIZE) / 2.0;
-        if let Some(track) = track {
-            self.track_name_layout(&mut content, track, true);
-        } else {
-            self.master_name_layout(&mut content, true);
-        }
-        if self.midi.busy() {
-            content.disable();
-        }
-        content.spacing_mut().item_spacing.x = CONTROL_SPACING;
-        content.spacing_mut().item_spacing.y = OUT_CONTROL_SPACING;
-        if let Some(track) = track {
-            content.add_space(
-                (header_top + HEADER_HEIGHT + OUT_CONTROL_SPACING - content.cursor().top())
-                    .max(0.0),
-            );
-            // Match the send rows' inset within the strip's shared content padding.
-            self.mixer_output_destination(
-                &mut content,
-                track,
-                (inner.width() - 2.0 * f32::from(menus::ITEM_PADDING)).max(0.0),
-            );
-        }
-        // Align all faders, meters, and bottom controls, including Master.
-        let rack_height = self.mixer_send_height();
-        let fader_height =
-            (inner.height() - FIXED_CONTROL_HEIGHT - rack_height - self.mixer_gutter_height())
-                .clamp(MIN_FADER_HEIGHT, 220.0);
-        let numeric_height = numeric_field_height(&content);
-        let controls_height = knobs::PAN_VISIBLE_HEIGHT
-            + 2.0 * numeric_height
-            + toolbars::CONTROL_HEIGHT
-            + fader_height
-            + 4.0 * OUT_CONTROL_SPACING;
-        content.add_space(
-            (inner.bottom()
-                - content.cursor().top()
-                - controls_height
-                - rack_height
-                - OUT_CONTROL_SPACING
-                - STRIP_BORDER * 0.5)
-                .max(0.0),
-        );
-        if rack_height > 0.0 {
-            let (rack_rect, _) =
-                content.allocate_exact_size(Vec2::new(inner.width(), rack_height), Sense::hover());
-            // The remaining standard item gap after this slot mirrors this inset.
-            let send_rect = Rect::from_min_max(
-                rack_rect.min,
-                Pos2::new(
-                    rack_rect.right(),
-                    (rack_rect.bottom() - OUT_CONTROL_SPACING - STRIP_BORDER * 0.5)
-                        .max(rack_rect.top()),
-                ),
-            );
-            let mut rack = content.new_child(
-                egui::UiBuilder::new()
-                    .id_salt("send_rack")
-                    .max_rect(send_rect)
-                    .layout(egui::Layout::top_down(egui::Align::Center)),
-            );
-            rack.set_clip_rect(send_rect.intersect(content.clip_rect()));
-            rack.spacing_mut().item_spacing.y = CONTROL_SPACING;
-            if let Some(track) = track.filter(|t| t.kind != daw_core::TrackKind::Return) {
-                rack_bounds = Some(send_rect);
-                rack.add_space(
-                    (send_rect.height() - send_controls_height(track.sends.len())).max(0.0),
-                );
-                rack.add_enabled_ui(self.editing_enabled(), |ui| self.send_rack(ui, track));
-                ui.painter()
-                    .hline(rect.x_range(), rack_rect.bottom(), border);
-            }
-        }
-        // Visible padding is measured from the divider stroke and strip border.
-        let output_rect = Rect::from_min_max(
-            Pos2::new(
-                rect.left() + OUT_PADDING + STRIP_BORDER,
-                content.cursor().top() + STRIP_BORDER * 0.5,
-            ),
-            Pos2::new(rect.right() - OUT_PADDING - STRIP_BORDER, inner.bottom()),
-        );
-        let mut content = content.new_child(
-            egui::UiBuilder::new()
-                .id_salt("out_controls")
-                .max_rect(output_rect)
-                .layout(egui::Layout::top_down(egui::Align::Center)),
-        );
-        content.spacing_mut().item_spacing = Vec2::new(CONTROL_SPACING, OUT_CONTROL_SPACING);
-        let mut gain = track.map_or(self.session.project.master.gain_db, |t| t.gain_db);
-        let mut pan = track.map_or(0.0, |t| t.pan);
-        let mut muted = track.is_some_and(|t| t.muted);
-        let mut soloed = track.is_some_and(|t| t.soloed);
-        let previous = (gain, pan, muted, soloed);
-        let mut inputs = track.map_or_else(
-            || Inputs {
-                gain: self.master_gain_input.clone(),
-                pan: String::new(),
-            },
-            |track| {
-                self.inputs.remove(&track.id).unwrap_or_else(|| Inputs {
-                    gain: faders::format_gain(gain),
-                    pan: format!("{pan:.2}"),
-                })
-            },
-        );
-        if track.is_some() {
-            if knobs::pan_visible(&mut content, &mut pan).changed() {
-                inputs.pan = format!("{pan:.2}");
-            }
-            if let Err(error) = mixer_numeric(&mut content, &mut inputs.pan, &mut pan, false, true)
-            {
-                self.fail(error);
-            }
-        } else {
-            content.allocate_space(Vec2::new(
-                1.0,
-                knobs::PAN_VISIBLE_HEIGHT + numeric_height + OUT_CONTROL_SPACING,
-            ));
-        }
-        let levels = self.output.as_ref().map_or([(0.0, false); 2], |output| {
-            track.map_or_else(
-                || output.status.meter.levels(),
-                |track| {
-                    output
-                        .track_meter(track.id)
-                        .map_or([(0.0, false); 2], |meter| meter.levels())
-                },
-            )
-        });
-        let mut cleared = [false; 2];
-        let column_widths = [
-            faders::SCALE_WIDTH + faders::rail_width(&content),
-            meters::STEREO_WIDTH,
-        ];
-        let column_height = numeric_height + OUT_CONTROL_SPACING + fader_height;
-        content.allocate_ui_with_layout(
-            Vec2::new(
-                column_widths.iter().sum::<f32>() + METER_COLUMN_SPACING,
-                column_height,
-            ),
-            egui::Layout::left_to_right(egui::Align::Min),
-            |ui| {
-                ui.spacing_mut().item_spacing.x = METER_COLUMN_SPACING;
-                ui.allocate_ui_with_layout(
-                    Vec2::new(column_widths[0], column_height),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        ui.spacing_mut().interact_size.y = numeric_height;
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.add_space((column_widths[0] - NUMERIC_WIDTH) / 2.0);
-                            if let Err(error) = mixer_numeric(
-                                ui,
-                                &mut inputs.gain,
-                                &mut gain,
-                                true,
-                                track.is_none(),
-                            ) {
-                                self.fail(error);
-                            }
-                        });
-                        ui.spacing_mut().interact_size.y = toolbars::CONTROL_HEIGHT;
-                        let fader = faders::gain(ui, &mut gain, fader_height);
-                        #[cfg(test)]
-                        self.mixer_faders.insert(track.map(|t| t.id), fader.rect);
-                        if fader.changed() {
-                            inputs.gain = faders::format_gain(gain);
-                        }
-                    },
-                );
-                ui.allocate_ui_with_layout(
-                    Vec2::new(column_widths[1], column_height),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        let idle_meter = daw_output::StereoMeter::default();
-                        let meter = self.output.as_ref().map_or(&idle_meter, |output| {
-                            track.map_or(&output.status.meter, |track| {
-                                output.track_meter(track.id).unwrap_or(&idle_meter)
-                            })
-                        });
-                        ui.spacing_mut().interact_size.y = numeric_height;
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.add_space((column_widths[1] - NUMERIC_WIDTH) / 2.0);
-                            meters::peak_level(ui, meter);
-                        });
-                        cleared = meters::stereo_held(ui, fader_height, levels, meter.held_peaks());
-                    },
-                );
-            },
-        );
-        let mut arm = track.and_then(|track| self.midi_arm(track));
-        if track.is_some() {
-            let width = (if arm.is_some() { 3.0 } else { 2.0 }) * toolbars::CONTROL_HEIGHT
-                + rows::GROUP_DIVIDER_WIDTH
-                + if arm.is_some() {
-                    mix_controls::GROUP_GAP
-                } else {
-                    0.0
-                };
-            let (rect, _) = content
-                .allocate_exact_size(Vec2::new(width, toolbars::CONTROL_HEIGHT), Sense::hover());
-            // R remains interactive while model editing is locked during a take.
-            let mut controls = ui.new_child(
-                egui::UiBuilder::new()
-                    .id_salt("track-msr")
-                    .max_rect(rect)
-                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
-            );
-            controls.add_enabled_ui(arm.is_some() || !self.midi.busy(), |ui| {
-                mix_controls::track_mute_solo(ui, &mut muted, &mut soloed, arm.as_mut())
-            });
-        } else {
-            content.allocate_space(Vec2::new(1.0, toolbars::CONTROL_HEIGHT));
-        }
-        if let Some(track) = track {
-            self.apply_midi_arm(track.id, arm);
-            if self.midi.busy() {
-                gain = previous.0;
-                pan = previous.1;
-                muted = previous.2;
-                soloed = previous.3;
-            }
-            self.inputs.insert(track.id, inputs);
-            if previous != (gain, pan, muted, soloed) {
-                if let Some(t) = self
-                    .session
-                    .project
-                    .tracks
-                    .iter_mut()
-                    .find(|t| t.id == track.id)
-                {
-                    t.gain_db = gain;
-                    t.pan = pan;
-                    t.muted = muted;
-                    t.soloed = soloed;
-                }
-                self.changed();
-            }
-        } else {
-            self.master_gain_input = inputs.gain;
-            if gain != previous.0 {
-                self.session.project.master.gain_db = gain;
-                self.changed();
-            }
-        }
-        let meter = self.output.as_ref().and_then(|output| {
-            track.map_or(Some(&output.status.meter), |track| {
-                output.track_meter(track.id)
-            })
-        });
-        meters::reset_on_click(ui, meter, cleared);
-        rack_bounds
     }
 }
 

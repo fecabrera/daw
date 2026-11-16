@@ -14,7 +14,7 @@ returns them to the bottom of the full-height toolbar.
 
 Use the left **Effects** button to show the effects catalog and the bottom **Effects lane** button to show the selected track’s or Master’s effect chain. These panels start closed and remember their visibility independently of Editor and Timeline. Mixer has no Clip settings, Chords or Instrument components button.
 
-Select a track, group or Master to change the effect target. Add effects from the catalog and use the same unit controls, reordering and compact mode as Timeline. The lane sits below the mixer; Master stays pinned at the right of the mixer area when shown. Toggling panels changes only the workspace layout.
+Select a track, group, beat subtrack or Master to change the effect target. A beat subtrack targets its instrument Output effects; its parent targets the beat-track effects. Add effects from the catalog and use the same unit controls, reordering and compact mode as Timeline. The lane sits below the mixer; Master stays pinned at the right of the mixer area when shown. Toggling panels changes only the workspace layout.
 
 ## Track controls
 
@@ -43,6 +43,24 @@ instrument-layer and Master meters in every view. Each L/R bar has a held-peak m
 ## Track groups
 
 [Track groups](../editing/track-groups.md) have the same controls and meters as tracks. Select a group to edit its shared effects. Group and Master center their icons and labels together. Its borderless arrow hides or shows child strips; hidden children keep playing. Create or ungroup through the Track menu or context menu. Use Timeline to drag tracks between groups.
+
+## Beat tracks
+
+Beat tracks show their subtracks immediately after the parent, with the same
+colored gutters, headers and collapse arrow as track groups. Click the parent's
+arrow to hide or show them. Timeline and Mixer share this saved collapse state.
+Hidden subtracks keep playing.
+
+Each child strip controls that subtrack's gain, pan, Mute and Solo, with the same
+fader, numeric fields and stereo meters as other strips. Solo stays within the
+beat instrument. The output label names the parent beat track. Use the parent
+strip for whole-beat controls and sends.
+
+Select a child to edit its instrument Output effects. Shift-click or Command/Ctrl-click
+selects several subtracks within the same beat track. M and S toggle the selected
+subtracks together. Rename and Delete operate on the selected subtrack; removing
+subtracks uses one Undo step. Click the parent strip to return to whole-track
+controls and effects.
 
 ## Sends and Returns
 

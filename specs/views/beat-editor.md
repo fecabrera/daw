@@ -2,11 +2,14 @@
 
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/views/beat-editor.md).
 
-Status: Beat MVP implemented across the project model, storage, renderer, CLI and both views; native platform acceptance remains open. Last updated: 2026-11-13.
+Status: Beat MVP implemented across the project model, storage, renderer, CLI and both views; native platform acceptance remains open. Last updated: 2026-11-16.
 
-The beat editor is the lower editor for beat clips in Editor. It shows one step row per beat subtrack. Instrument opens the selected subtrack’s Layers page with source layers, local LFO, Envelope and Output. Selecting the beat parent opens only final Output. The shared Tracks panel lists subtracks as children of their parent. Both views share subtrack creation, single/group selection, deletion, rename, reorder, gain and pan. Mixer controls the parent beat track.
+The beat editor is the lower editor for beat clips in Editor. It shows one step row per beat subtrack. Instrument opens the selected subtrack’s Layers page with source layers, local LFO, Envelope and Output. Selecting the beat parent opens only final Output. The shared Tracks panel lists subtracks as children of their parent. Both views share subtrack creation, single/group selection, deletion, rename, reorder, gain and pan. Mixer controls both the parent beat track and its expandable subtrack strips.
 
 The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, shared-code boundaries and remaining data/UI decisions. It supersedes the older Units-view placement and D33's historical exclusion of beat processing from Instrument. Current views are Timeline, Instrument, Editor and Mixer. A beat subtrack is the child previously called a beat lane; it is not a project track group or a MIDI instrument layer.
+
+The 2026-11-16 Mixer request supersedes the earlier parent-only restriction;
+see [beat subtrack strips](mixer.md#beat-subtrack-strips).
 
 ## Confirmed requirements
 
@@ -16,7 +19,7 @@ The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, sh
 | B02 | Add a beat pattern editor in the Editor view with lanes and step toggles. | Users can enable or disable steps to build beats. |
 | B03 | Every beat subtrack is an instrument. | Source choice belongs to its layers; do not classify subtracks as audio or MIDI. |
 | B04 | Each lane has its own sources and effects, including samples or synths as appropriate. | Lane processing must be independent and use the shared modular-unit core. |
-| B05 | Mixer controls tracks only, including each beat track as a whole. | Beat lanes do not have individual mixer strips. |
+| B05 | Mixer controls the beat parent and its subtracks. | Reuse group-style disclosure and shared Mixer strips; retain independent subtrack identities and the existing audio path. |
 | B06 | The Instrument view controls sources, effects, and modulators for beat subtracks. | Keep subtrack processing inside its Instrument group. |
 | B07 | The beat pattern editor handles beat creation only. | Keep step and pattern editing in Editor and processing configuration in Instrument. |
 | B08 | Each beat subtrack is one independently configured instrument with its own source layers. | Retain future subtrack polyphony without introducing audio/MIDI subtrack types. |
@@ -24,7 +27,7 @@ The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, sh
 | B10 | Treat beat and MIDI patterns as clip audio sources, like audio files. | Clip trimming and looping change the clip without changing its underlying source. |
 | B11 | Editing a beat or MIDI pattern creates a new source. | Other clips retain their existing source and content. |
 | B12 | A parent beat track has its own effects, in addition to each lane's effects. | Reuse subtrack effects inside Instrument and the existing parent-track effects lane. |
-| B13 | Beat lanes have independent controls. | Expose subtrack processing in Instrument and shared mix controls in Editor/Instrument; Mixer controls the parent track. |
+| B13 | Beat lanes have independent controls. | Expose subtrack processing in Instrument and shared mix controls in Editor, Instrument and Mixer; the parent Mixer strip controls the whole beat. |
 | B14 | The user sets pattern length and step resolution. | Store these settings with the pattern source. |
 | B15 | All lanes in a pattern share its length and resolution. | Lane-specific lengths and resolutions are not supported. |
 | B16 | Eventually allow customized trigger duration, including one step, until the next trigger, or stopping based on another lane. | Keep trigger duration separate from pattern length and grid resolution. |
@@ -59,7 +62,7 @@ The view model was revised on 2026-10-11 through B25 and D28 in the unit design.
 | --- | --- |
 | Editor (beat pattern editor) | Edit the active clip's steps; manage and mix the shared beat subtracks. |
 | Instrument | Configure each subtrack group, including independent sources, effects, LFO/Envelope sublanes and shared mix controls. Parent-track effects use their existing lane. |
-| Mixer | Control the beat track as a whole. |
+| Mixer | Control the beat track as a whole or its individual subtracks through expandable child strips. |
 
 BQ05's Mixer and beat-editing responsibilities were resolved on 2026-10-11 through B05–B07. BQ07's parent-track effects and independent lane controls were confirmed through B12–B13; B23 fixes the MVP control set and serial routing.
 
@@ -80,7 +83,7 @@ Accepted on 2026-10-11 through B19–B24, with navigation revised by B25. This i
 | Playback | Steps trigger instruments and send note-off after one step. Source trigger modes, envelopes and Amplitude determine audible duration. New triggers replace the current voice. | Customizable trigger-duration modes and subtrack polyphony. |
 | Lane stops | Simple directional stop connections, with a short fade. The stopping lane wins when connected lanes trigger together. | More advanced trigger-control rules. |
 | Navigation | Open a beat clip from Timeline in Editor using the beat pattern editor; retain its clip/lane context in Instrument. Add an instrument subtrack, then configure its source layers. | Additional step-editor tools. |
-| Controls and audio routing | Shared lane gain, pan, mute, and solo in Editor/Instrument; serial lane effects followed by lane gain/pan, summed lanes, then serial track effects followed by track gain/pan. Mixer controls the whole track. | Parallel audio paths, shared-effect sends, audio sidechains. |
+| Controls and audio routing | Shared lane gain, pan, mute, and solo in Editor/Instrument; serial lane effects followed by lane gain/pan, summed lanes, then serial track effects followed by track gain/pan. Mixer exposes whole-track and subtrack controls. | Parallel audio paths, shared-effect sends, audio sidechains. |
 
 Preserve the source rules in B10–B11 throughout. Editing the pattern or its grid creates a new source; clip trims and loops preserve the source.
 
@@ -124,7 +127,7 @@ Enabled steps produce note events for their subtrack instruments. Each instrumen
 
 ### Routing
 
-The accepted MVP signal path is steps → lane source/instrument → serial lane effects → lane gain/pan → summed subtrack outputs → overall beat Output → serial beat-track effects → track gain/pan → track mix. The beat track has one mixer strip that controls the beat as a whole. Editor and Instrument share subtrack mix controls. Instrument provides subtrack layers, local modulators and serial effects; parent effects use the shared track-effects lane. D23 in the [Units MVP scope](../architecture/modular-audio-units.md#accepted-units-mvp-scope) fixes gain/pan placement and Master effects before Master gain and output meters.
+The accepted MVP signal path is steps → lane source/instrument → serial lane effects → lane gain/pan → summed subtrack outputs → overall beat Output → serial beat-track effects → track gain/pan → track mix. The beat parent has a mixer strip that controls the beat as a whole, followed by expandable subtrack strips. Editor, Instrument and Mixer share subtrack mix settings. Instrument provides subtrack layers, local modulators and serial effects; parent effects use the shared track-effects lane. D23 in the [Units MVP scope](../architecture/modular-audio-units.md#accepted-units-mvp-scope) fixes gain/pan placement and Master effects before Master gain and output meters.
 
 The MVP uses serial lane/track effect paths and lane stop events. Instrument and modulation graphs may branch internally under the accepted Units scope. Parallel lane/track effect paths, shared-effect sends, and audio sidechains are deferred. Their design remains separate from the accepted lane stop connections.
 
@@ -162,7 +165,7 @@ On 2026-10-12, D33 split the former Units view into Instrument and Effects and e
 
 Verify that a beat track owns one beat instrument and exposes one output bus after lane processing. Lane source settings, controls, voices, and stop connections must remain independent. Parent effects and gain/pan process the combined output. Verify that pattern edits preserve source isolation and do not change the instrument setup.
 
-Check on/off step scheduling, independent lane sources/effects, subtrack instruments using different source units, tempo changes, loop boundaries, pattern save/reopen, and playback/export consistency. Verify one instrument and at most one active voice per lane, different instruments across lanes, and simultaneous playback of separate lanes. Verify that Mixer controls the whole beat track, lane sources/effects/modulators are controlled through the Instrument view, and the beat pattern editor in Editor handles beat creation. Test voice replacement, one-step instrument note-off, source trigger modes and sample tails, and serial lane/track routing. Add multiple-voice and stealing checks when subtrack polyphony is implemented. Preserve the modular runtime's callback, preparation, and atomic-publication rules.
+Check on/off step scheduling, independent lane sources/effects, subtrack instruments using different source units, tempo changes, loop boundaries, pattern save/reopen, and playback/export consistency. Verify one instrument and at most one active voice per lane, different instruments across lanes, and simultaneous playback of separate lanes. Verify that Mixer exposes the parent and expandable subtrack strips with shared controls and existing local Solo semantics, lane sources/effects/modulators are controlled through the Instrument view, and the beat pattern editor in Editor handles beat creation. Test voice replacement, one-step instrument note-off, source trigger modes and sample tails, and serial lane/track routing. Add multiple-voice and stealing checks when subtrack polyphony is implemented. Preserve the modular runtime's callback, preparation, and atomic-publication rules.
 
 Verify independent lane controls and effect state. Check that each lane's effects precede lane gain/pan and the parent track's effects process the combined lane output before track gain/pan. Verify both levels can be configured through Instrument without creating lane strips in Mixer.
 
@@ -456,14 +459,14 @@ BeatEdit::SetMix edits. Preserve parent mix flags, unselected buses, gain, pan
 and source-layer settings. Ignore cached Instrument layer selection. Keep the
 standard shortcut guards for text editing, modifiers, held keys, pointer
 gestures, dialogs and jobs. Explicit parent-header selection clears child
-selection and restores parent scope. Mixer retains whole-track scope.
+selection and restores parent scope. Mixer uses the same subtrack scope for selected child strips; parent selection restores whole-track scope.
 
 Child lanes contain only the musical grid. Do not paint beat-hit previews or
 create independent clips. Keep child IDs out of lane_bounds and clip placement;
 reject clip moves and file drops over child rows. Include child height when
 placing new-track previews and computing enclosing group/reorder boundaries.
 Effect drops resolve to the subtrack's existing Main bus. Clips remain on the
-parent and retain their existing editing behavior. Mixer remains parent-only.
+parent and retain their existing editing behavior. Mixer shows expandable child strips through the [shared strip contract](mixer.md#beat-subtrack-strips).
 
 Validate saved disclosure, legacy defaults, Undo/Redo, nested parent extents, control
 isolation, shared owner selection, and rejection of media/clip placement. Native
