@@ -1,5 +1,7 @@
 # Iteration 1 validation
 
+- [Silent stopped MIDI seeks — 2026-11-16](stopped-midi-seek-2026-11-16.md): Auto-filter and live monitoring, silent seek preparation and exact playback resume.
+
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
 Date: 2026-10-07.

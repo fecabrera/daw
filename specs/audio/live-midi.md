@@ -26,7 +26,7 @@ Resolve valid R-enabled MIDI tracks in project order. If none exist, use the
 primary selected MIDI track. Selection of other track kinds yields no target.
 Each MIDI track prepares 64 live voice slots on a worker. Live and scheduled
 voices share the saved instrument processing root, layer/Main effects and buses.
-Stopped monitoring advances a separate clock without moving the playhead.
+Stopped monitoring advances a separate clock without moving the playhead. After a stopped or paused seek, clear reconstructed arrangement voices, effect tails and alignment buffers on the worker before live monitoring. Preserve the cache snapshots. Play after such a seek reconstructs exact playback history; an ordinary pause/resume retains its active history.
 Transport-cache snapshots omit live reserves. The output worker must recreate these reserves after replacing its renderer with a restored snapshot, then reconcile memory admission before publication. Offline export does not allocate live reserves. Voice stealing is bounded and
 old token releases cannot release a replacement. Panic forces a 5 ms release.
 

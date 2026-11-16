@@ -554,6 +554,7 @@ pub struct AudioOutput {
     audition: audition::Sender,
     plan: Arc<RenderPlan>,
     desired_transport: Option<(u64, TransportState)>,
+    resume_needs_preparation: bool,
     project_rate_hz: u32,
     buffer_size_frames: u32,
     // None is used only by device-independent control/callback tests.
@@ -760,6 +761,7 @@ impl AudioOutput {
         let mut output = Self {
             plan: Arc::new(plan),
             desired_transport: None,
+            resume_needs_preparation: false,
             project_rate_hz,
             buffer_size_frames,
             _stream: Some(stream),
@@ -905,6 +907,9 @@ impl AudioOutput {
             .map_or_else(|| self.status.transport(), |(_, state)| state)
     }
     fn prepare(&mut self, state: Option<TransportState>) {
+        if state.is_some_and(|state| !state.playing) {
+            self.resume_needs_preparation = true;
+        }
         self.preparation_failed = false;
         self.prepare_revision = self
             .preparation
@@ -1211,6 +1216,7 @@ impl AudioOutput {
             return Ok(());
         }
         let resume = state.paused
+            && !self.resume_needs_preparation
             && self.prepare_revision == self.status.applied_revision.load(Ordering::Acquire);
         if !state.paused {
             state.playback_start = Some(state.frame);
@@ -1227,6 +1233,11 @@ impl AudioOutput {
     pub fn pause(&mut self) -> Result<(), String> {
         self.drain();
         let mut state = self.current_transport();
+        if state.playing && !self.preparing() {
+            // An ordinary pause retains active playback history. A prepared seek
+            // instead clears it for silent monitoring and must replay on Play.
+            self.resume_needs_preparation = false;
+        }
         state.paused |= state.playing;
         state.playing = false;
         if self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire) {

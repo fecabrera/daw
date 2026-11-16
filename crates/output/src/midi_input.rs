@@ -568,6 +568,87 @@ mod tests {
         assert!(!callback.renderer.recording);
     }
     #[test]
+    fn stopped_and_paused_auto_filter_seeks_do_not_audition_cached_notes_with_live_input_enabled() {
+        let mut project = daw_core::Project::default();
+        let track = project.add_midi_track().unwrap();
+        project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
+        project.tracks[0]
+            .effects
+            .push(daw_core::EffectInstance::auto_filter());
+        let clip = project.add_midi_pattern(track, 0).unwrap();
+        project
+            .edit(daw_core::Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: daw_core::MidiPattern {
+                    length_ticks: 3840,
+                    notes: vec![daw_core::MidiNote {
+                        id: Id::new_v4(),
+                        start_tick: 0,
+                        length_ticks: 3840,
+                        pitch: 60,
+                        velocity: 110,
+                    }],
+                },
+            })
+            .unwrap();
+        // A buffered master stage also exercises latency priming at the seek frame.
+        project
+            .master
+            .effects
+            .push(daw_core::EffectInstance::limiter());
+        let plan = daw_engine::RenderPlan {
+            project,
+            beat_tracks: Default::default(),
+            audio: Default::default(),
+            sampler_audio: Default::default(),
+            stretched_audio: Default::default(),
+        };
+        let status = Arc::new(crate::Status::default());
+        let bindings = crate::preparation::Bindings::prepare(&plan, &Default::default());
+        let worker = crate::preparation::Worker::new(status).unwrap();
+        for paused in [false, true] {
+            for frame in [6000, 12000] {
+                worker.submit(
+                    plan.clone(),
+                    bindings.clone(),
+                    Some(daw_engine::TransportState {
+                        frame,
+                        playing: false,
+                        paused,
+                        playback_start: paused.then_some(0),
+                    }),
+                );
+                let mut prepared = crate::preparation_tests::ready(&worker).renderer;
+                prepared.live_midi_route(track, true);
+                let mut peak = 0.0_f32;
+                crate::preparation_tests::realtime(|| {
+                    for _ in 0..2000 {
+                        for sample in prepared.next_sample() {
+                            peak = peak.max(sample.abs());
+                        }
+                    }
+                });
+                assert_eq!(
+                    peak, 0.0,
+                    "seek must not play cached notes: paused={paused}, frame={frame}"
+                );
+                prepared.live_midi_note(Id::new_v4(), Some((69, 110)));
+                crate::preparation_tests::realtime(|| {
+                    for _ in 0..2000 {
+                        for sample in prepared.next_sample() {
+                            peak = peak.max(sample.abs());
+                        }
+                    }
+                });
+                assert!(
+                    peak > 0.01,
+                    "live keyboard input must still sound after seeking"
+                );
+                assert_eq!(prepared.playhead, frame);
+            }
+        }
+    }
+    #[test]
     fn restored_transport_has_live_voice_capacity_before_publication() {
         let (callback, _, tracks) = fixture();
         let plan = callback.renderer.plan.clone();

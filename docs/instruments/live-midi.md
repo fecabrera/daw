@@ -13,7 +13,7 @@ Selecting an audio, beat, group or Return track gives no fallback MIDI target.
 R and track selection do not modify the project or enter Undo history.
 
 Input uses each track's instrument, effects, sends and mix controls. It works
-while stopped and alongside arrangement playback. Note velocity and sustain
+while stopped and alongside arrangement playback. Moving the playhead in Timeline or Editor while stopped or paused does not audition the arrangement, including with Auto-filter enabled. Live keyboard input remains available. Note velocity and sustain
 pedal affect playback. Repeated presses of the same key release in press order.
 
 New Sampler pitches prepare in the background. A target whose exact pitch is

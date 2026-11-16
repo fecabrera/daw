@@ -998,6 +998,7 @@ pub(super) fn controlled_output(rate: u32) -> (AudioOutput, Callback) {
         audition: callback.audition_sender.take().unwrap(),
         plan: Arc::new(plan),
         desired_transport: None,
+        resume_needs_preparation: false,
         project_rate_hz: 48_000,
         buffer_size_frames: 512,
         _stream: None,
@@ -1226,4 +1227,61 @@ fn metronome_updates_and_callback_processing_are_allocation_free() {
             });
         }
     }
+}
+
+#[test]
+fn paused_seek_is_silent_and_play_reconstructs_exact_history_before_resuming() {
+    let (mut output, mut callback) = controlled_output(48_000);
+    let mut plan = (*output.plan).clone();
+    plan.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::auto_filter());
+    output.plan = Arc::new(plan);
+    output.preparation = preparation::Worker::new(output.status.clone()).unwrap();
+    callback.renderer.play();
+    output.status.publish_transport(&callback.renderer);
+    output.pause().unwrap();
+    realtime(|| callback.update());
+    for _ in 0..512 {
+        realtime(|| callback.next_project_sample());
+    }
+    output.seek(12000).unwrap();
+    let seek_revision = output.prepare_revision;
+    let stopped = ready(&output.preparation);
+    output
+        .commands
+        .push(Command::Plan(stopped.renderer))
+        .unwrap();
+    realtime(|| callback.update());
+    assert!(callback.renderer.transport_state().paused);
+    assert!(output.resume_needs_preparation);
+    output.play().unwrap();
+    assert!(output.prepare_revision > seek_revision);
+    let state = output.transport_intent();
+    assert_eq!(state.frame, 12000);
+    assert_eq!(state.playback_start, Some(4800));
+    let playing = ready(&output.preparation);
+    output
+        .commands
+        .push(Command::Plan(playing.renderer))
+        .unwrap();
+    realtime(|| callback.update());
+    let mut reference = Renderer::new((*output.plan).clone());
+    reference.prepare_transport(state);
+    for index in 0..2048 {
+        let actual = realtime(|| callback.next_project_sample());
+        let expected = reference.next_sample();
+        if index > 512 {
+            assert_eq!(actual, expected);
+        }
+    }
+    // An ordinary pause can still resume its retained playback history directly.
+    output.status.publish_transport(&callback.renderer);
+    output.pause().unwrap();
+    realtime(|| callback.update());
+    assert!(!output.resume_needs_preparation);
+    output.play().unwrap();
+    realtime(|| callback.update());
+    assert!(callback.renderer.playing);
+    assert!(output.preparation.take().is_none());
 }

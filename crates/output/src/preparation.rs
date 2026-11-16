@@ -305,6 +305,9 @@ impl Worker {
                         };
                         status.performance.cache(cache.memory_usage());
                         renderer.renderer = prepared;
+                        if !transport.playing {
+                            renderer.prepare_stopped_monitoring();
+                        }
                         // Transport snapshots deliberately omit live input reserves.
                         // Rebuild them on this worker after replacing the renderer,
                         // and admit their actual storage before publication.

@@ -868,6 +868,16 @@ impl Renderer {
         self.prime_latency(self.playing || self.paused, false);
         true
     }
+    /// Worker-only: discard reconstructed arrangement tails before stopped live monitoring.
+    /// Playback must reconstruct transport history again before this renderer resumes.
+    pub fn prepare_stopped_monitoring(&mut self) {
+        debug_assert!(!self.playing);
+        self.reset_processing();
+        self.previous = [0.0; 2];
+        self.latent_held_mix = [0.0; 2];
+        self.transition_from = [0.0; 2];
+        self.transition = 0;
+    }
     /// Bounded activation of a worker-prepared transport, retaining the output fade.
     pub fn activate_transport(&mut self, old: &Self) {
         self.recording = old.recording;
