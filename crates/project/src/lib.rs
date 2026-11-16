@@ -1,6 +1,9 @@
 mod bounce;
 mod bounce_tail;
 mod generated_media;
+pub mod midi_input;
+pub mod midi_recording;
+pub mod recovery;
 pub use bounce::{BounceError, BounceProgress, PreparedBounce};
 mod normalize;
 pub use normalize::{NormalizeMode, NormalizeOptions, NormalizeProgress};
@@ -95,6 +98,8 @@ pub struct Session {
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
     pub sampler_audio: HashMap<Id, daw_media::PreparedSampler>,
+    /// Transient exact pitches requested by live input; never serialized.
+    pub live_midi_pitches: HashMap<Id, Vec<u8>>,
     pub stretched_audio: daw_media::ClipAudioCache,
     /// Worker-compiled sparse waveform clocks. No bins are allocated for gaps.
     pub compound_views: HashMap<Id, std::sync::Arc<daw_core::CompiledAudioTrack>>,
@@ -104,6 +109,9 @@ pub struct Session {
     missing_audio: HashSet<Id>,
     // Clones and history share ownership until generated sources are saved or released.
     temporary_stems: Vec<std::sync::Arc<separation::TemporaryStems>>,
+    recovery_owner: Option<std::sync::Arc<recovery::RecoveryStore>>,
+    /// Only an interrupted, not-yet-published recovered take restores one history step.
+    pub recovered_take_before: Option<Box<Session>>,
 }
 /// A validated document without prepared media. Do not construct a renderer from its editor state.
 pub struct ProjectDocument(Session);
@@ -116,6 +124,16 @@ impl ProjectDocument {
 }
 
 impl Session {
+    pub fn recovered_working_copy(&self) -> bool {
+        self.recovery_owner.as_ref().is_some_and(|owner| {
+            self.folder.as_ref().is_some_and(|folder| {
+                folder.parent() == Some(owner.folder.as_path())
+                    && folder
+                        .file_name()
+                        .is_some_and(|name| name.to_string_lossy().starts_with("restored-"))
+            })
+        })
+    }
     /// Prepare an atomic project-rate change on a worker. Source files stay untouched.
     pub fn with_audio_settings(
         &self,
@@ -216,10 +234,13 @@ impl Session {
             project,
             audio: HashMap::new(),
             sampler_audio: Default::default(),
+            live_midi_pitches: Default::default(),
             stretched_audio: HashMap::new(),
             compound_views: HashMap::new(),
             folder: Some(folder),
             temporary_stems: Vec::new(),
+            recovery_owner: None,
+            recovered_take_before: None,
             missing_audio: HashSet::new(),
             warnings: if let Some(previous_stretch_revision) = previous_stretch_revision {
                 vec![format!(

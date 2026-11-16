@@ -9,6 +9,7 @@ mod macos_file_drag;
 mod macos_menu;
 #[cfg(target_os = "macos")]
 mod macos_titlebar;
+mod midi;
 #[cfg(target_os = "windows")]
 mod windows_file_drag;
 #[cfg(target_os = "windows")]
@@ -139,6 +140,9 @@ fn main() -> eframe::Result {
                 settings.default_stretch_engine,
             );
             ui.set_settings(&cc.egui_ctx, settings);
+            if let Some(root) = midi::recovery_root() {
+                ui.enable_midi(Box::new(midi::NativeMidi::default()), root);
+            }
             #[cfg(target_os = "macos")]
             let (ui, menu) = {
                 let mut ui = ui;

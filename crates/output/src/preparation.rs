@@ -305,7 +305,15 @@ impl Worker {
                         };
                         status.performance.cache(cache.memory_usage());
                         renderer.renderer = prepared;
-                        if let Err(error) = renderer.prepare_streaming() {
+                        // Transport snapshots deliberately omit live input reserves.
+                        // Rebuild them on this worker after replacing the renderer,
+                        // and admit their actual storage before publication.
+                        renderer.prepare_live_midi();
+                        let prepared = renderer.prepare_streaming().and_then(|()| {
+                            let bytes = renderer.memory_usage().owned_bytes();
+                            renderer._memory.try_resize(bytes)
+                        });
+                        if let Err(error) = prepared {
                             publish_error(&worker, revision, error);
                             continue;
                         }

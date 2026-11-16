@@ -1,5 +1,6 @@
 use daw_ui::{
-    ClipAction, ClipMenuAction, DawUi, FileAction, HistoryAction, TrackAction, ViewMode, ViewPanel,
+    ClipAction, ClipMenuAction, DawUi, FileAction, HistoryAction, TrackAction, TransportAction,
+    ViewMode, ViewPanel,
 };
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, rc::Retained, sel};
 use objc2_app_kit::{
@@ -17,6 +18,7 @@ struct MenuTargetIvars {
 #[derive(Clone, Copy)]
 enum MenuAction {
     Settings,
+    Transport(TransportAction),
     ProjectSettings,
     File(FileAction),
     Clip(ClipAction),
@@ -39,6 +41,15 @@ define_class!(
     unsafe impl NSObjectProtocol for DawMenuTarget {}
 
     impl DawMenuTarget {
+        // SAFETY: The selector takes an NSMenuItem sender and returns void.
+        #[unsafe(method(performTransportAction:))]
+        fn perform_transport_action(&self, item: &NSMenuItem) {
+            if let Ok(index) = usize::try_from(item.tag())
+                && let Some(action) = TransportAction::ALL.get(index) {
+                let _ = self.ivars().sender.send(MenuAction::Transport(*action));
+                self.ivars().context.request_repaint();
+            }
+        }
         // SAFETY: The selector takes an NSMenuItem sender and returns void.
         #[unsafe(method(performViewAction:))]
         fn perform_view_action(&self, item: &NSMenuItem) {
@@ -382,6 +393,28 @@ impl NativeMenu {
         track_item.setTitle(ns_string!("Track"));
         track_item.setSubmenu(Some(&track_menu));
         menubar.addItem(&track_item);
+        let transport_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Transport"));
+        transport_menu.setAutoenablesItems(false);
+        for (index, action) in TransportAction::ALL.into_iter().enumerate() {
+            // SAFETY: The selector is defined above with an NSMenuItem argument.
+            let item = unsafe {
+                NSMenuItem::initWithTitle_action_keyEquivalent(
+                    NSMenuItem::alloc(mtm),
+                    &NSString::from_str(action.label()),
+                    Some(sel!(performTransportAction:)),
+                    ns_string!(""),
+                )
+            };
+            item.setTag(index as isize);
+            // SAFETY: NativeMenu retains the target and detaches it before dropping.
+            unsafe { item.setTarget(Some(&target)) };
+            transport_menu.addItem(&item);
+            items.push((MenuAction::Transport(action), item));
+        }
+        let transport_item = NSMenuItem::new(mtm);
+        transport_item.setTitle(ns_string!("Transport"));
+        transport_item.setSubmenu(Some(&transport_menu));
+        menubar.addItem(&transport_item);
         let view_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("View"));
         view_menu.setAutoenablesItems(false);
         for (index, mode) in ViewMode::ALL.into_iter().enumerate() {
@@ -443,6 +476,7 @@ impl NativeMenu {
         for action in self.receiver.try_iter() {
             match action {
                 MenuAction::Settings => ui.open_settings(),
+                MenuAction::Transport(action) => ui.perform_transport_action(action),
                 MenuAction::ProjectSettings => ui.open_project_settings(),
                 MenuAction::File(action) => ui.perform_file_action(action),
                 MenuAction::Clip(action) => ui.perform_clip_action(action, ctx),
@@ -524,6 +558,7 @@ impl NativeMenu {
             }
             item.setEnabled(match action {
                 MenuAction::Settings => ui.settings_enabled(),
+                MenuAction::Transport(action) => ui.transport_action_enabled(*action),
                 MenuAction::ProjectSettings => ui.project_settings_enabled(),
                 MenuAction::File(action) => ui.file_action_enabled(*action),
                 MenuAction::Clip(action) => ui.clip_action_enabled(*action, ctx),

@@ -1,3 +1,5 @@
+mod midi_input;
+pub use midi_input::{MidiAction, MidiReceipt, MidiSender};
 mod audition;
 mod audition_stream;
 mod effect_spectrum;
@@ -39,6 +41,7 @@ pub use performance::{Performance, PerformanceSnapshot};
 
 #[derive(Default)]
 pub struct Status {
+    midi: midi_input::Port,
     pub performance: Performance,
     metronome_enabled: AtomicBool,
     transport_sequence: AtomicU64,
@@ -129,6 +132,7 @@ impl PreparedRenderer {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mut renderer = Renderer::new(plan);
+        renderer.prepare_live_midi();
         renderer.prepare_streaming()?;
         let memory =
             performance::RendererMemoryLease::try_new(renderer.memory_usage().owned_bytes())?;
@@ -1474,6 +1478,7 @@ impl AudioOutput {
     }
 }
 struct Callback {
+    midi: midi_input::Receiver,
     project_rate_hz: u32,
     metronome: metronome::Metronome,
     audition: audition::Player,
@@ -1556,8 +1561,10 @@ impl Callback {
             .unwrap_or_default();
         let (sender, audition) = audition::channel(project_rate_hz);
         let (effect_retired, effect_receiver) = RingBuffer::new(64);
+        let midi = midi_input::Receiver::new(&status);
         Ok(Self {
             project_rate_hz,
+            midi,
             metronome: metronome::Metronome::new(project_rate_hz),
             audition,
             audition_sender: Some(sender),
@@ -1736,7 +1743,10 @@ impl Callback {
             clock: self.rendered_frames,
         }
     }
-    fn install(&mut self, next: Box<PreparedRenderer>) {
+    fn install(&mut self, mut next: Box<PreparedRenderer>) {
+        if next.prepared_transport {
+            next.inherit_live_midi(&mut self.renderer);
+        }
         if let Some(requested_at) = next.requested_at {
             self.status
                 .performance
@@ -1795,6 +1805,9 @@ impl Callback {
     }
     fn next_project_sample(&mut self) -> [f32; 2] {
         self.activate_scheduled();
+        let count_in = self
+            .midi
+            .sample(&mut self.renderer, self.rendered_frames, &self.status);
         let sample = self.renderer.next_sample();
         self.status
             .buffering
@@ -1807,9 +1820,13 @@ impl Callback {
             .then(|| self.renderer.playhead.saturating_sub(1));
         self.metronome
             .set_signature(self.renderer.plan.project.time_signature);
-        let click = self
-            .metronome
-            .next(frame, f64::from(self.renderer.plan.project.tempo_bpm));
+        self.metronome.set_enabled(
+            count_in.is_some() || self.status.metronome_enabled.load(Ordering::Relaxed),
+        );
+        let click = self.metronome.next(
+            count_in.or(frame),
+            f64::from(self.renderer.plan.project.tempo_bpm),
+        );
         let audition = self.audition.next();
         // Worker activation deadlines use the project sample clock. A disk
         // hold must not move that clock ahead of the transport/DSP state.

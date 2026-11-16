@@ -146,6 +146,7 @@ impl TitlebarStyle {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
+    pub midi: crate::MidiPreferences,
     pub audio: daw_output::AudioSettings,
     pub audio_quality: daw_core::AudioQuality,
     /// Copied into new projects; existing projects keep their saved engine.
@@ -169,6 +170,17 @@ impl AppSettings {
         let Ok(mut settings) = serde_json::from_value::<Self>(value.clone()) else {
             return Self::default();
         };
+        settings.midi.recording_offset_ms = settings.midi.recording_offset_ms.clamp(-200, 200);
+        if settings.midi.count_in_bars == 0 {
+            settings.midi.count_in_bars = 1;
+            settings.midi.count_in_enabled = false;
+        }
+        if !matches!(settings.midi.count_in_bars, 1 | 2 | 4) {
+            settings.midi.count_in_bars = 1;
+        }
+        if settings.midi.channel.is_some_and(|channel| channel > 15) {
+            settings.midi.channel = None;
+        }
         // Earlier preferences stored optional device-quality overrides. Preserve
         // explicit legacy values as new-project defaults, never as live overrides.
         if value.get("audio_quality").is_none()
@@ -298,6 +310,12 @@ fn model_row(
 /// Discovery data and actions for the main Settings device selectors.
 #[derive(Default)]
 pub struct AudioControls<'a> {
+    pub midi_devices: Option<&'a [crate::MidiDevice]>,
+    pub midi_enabled: bool,
+    pub midi_connected: bool,
+    pub midi_panic_requested: bool,
+    pub midi_take_retained: bool,
+    pub midi_retry_requested: bool,
     pub devices: Option<&'a daw_output::Devices>,
     pub error: Option<&'a str>,
     pub enabled: bool,
@@ -321,6 +339,7 @@ pub fn show(
     let popup_was_open = egui::Popup::is_any_open(ctx);
     let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
         .show_with_content(ctx, |ui| {
+            egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-150.0).max(160.0)).show(ui,|ui|{
             let label_text = |label: &str| {
                 ui.painter()
                     .layout_no_wrap(
@@ -504,6 +523,36 @@ pub fn show(
                         });
                 },
             );
+            ui.add_enabled_ui(audio.midi_enabled,|ui|{
+                crate::rows::field(ui,label_width,|ui|{ui.label("MIDI input");},|ui|{
+                    crate::menus::Dropdown::from_id_salt("midi-device").selected_text(settings.midi.device.as_ref().and_then(|id|audio.midi_devices.unwrap_or(&[]).iter().find(|d|&d.id==id)).map_or("Off",|d|d.name.as_str())).width(ui.available_width()).show_ui(ui,|ui|{
+                        ui.selectable_value(&mut settings.midi.device,None,"Off");
+                        for device in audio.midi_devices.unwrap_or(&[]){ui.selectable_value(&mut settings.midi.device,Some(device.id.clone()),&device.name);}
+                    });
+                });
+                crate::rows::field(ui,label_width,|ui|{ui.label("MIDI channel");},|ui|{
+                    crate::menus::Dropdown::from_id_salt("midi-channel").selected_text(settings.midi.channel.map_or("All channels".into(),|c|format!("Channel {}",c+1))).width(ui.available_width()).show_ui(ui,|ui|{
+                        ui.selectable_value(&mut settings.midi.channel,None,"All channels");for channel in 0..16{ui.selectable_value(&mut settings.midi.channel,Some(channel),format!("Channel {}",channel+1));}
+                    });
+                });
+                crate::rows::field(ui,label_width,|ui|{ui.label("Count-in");},|ui|{
+                    crate::menus::Dropdown::from_id_salt("midi-count-in").selected_text(if settings.midi.count_in_bars==0{"Off".into()}else{format!("{} {}",settings.midi.count_in_bars,if settings.midi.count_in_bars==1{"bar"}else{"bars"})}).width(ui.available_width()).show_ui(ui,|ui|{
+                        for bars in [1,2,4]{ui.selectable_value(&mut settings.midi.count_in_bars,bars,if bars==0{"Off".into()}else{format!("{bars} {}",if bars==1{"bar"}else{"bars"})});}
+                    });
+                });
+            });
+            ui.add_enabled_ui(audio.midi_enabled, |ui| {
+                crate::rows::field(ui, label_width, |ui| { ui.label("Recording offset"); }, |ui| {
+                    ui.add(egui::DragValue::new(&mut settings.midi.recording_offset_ms).range(-200..=200).suffix(" ms")).on_hover_text("Shift recorded notes; positive values place notes later");
+                });
+            });
+            ui.add_enabled_ui(audio.midi_enabled,|ui|{ui.checkbox(&mut settings.midi.count_in_enabled,"Count-in enabled").on_hover_text(if settings.midi.count_in_enabled{"Count-in: On"}else{"Count-in: Off"});});
+            if ui.button("Panic").on_hover_text("Panic").clicked(){audio.midi_panic_requested=true;}
+            if audio.midi_take_retained&&ui.button("Retry MIDI take publication").clicked(){audio.midi_retry_requested=true;}
+            crate::rows::advice(ui,"Enable R after M/S to receive MIDI on several tracks. With no R enabled, the selected MIDI track receives input. Its R text shows the active color.");
+            if settings.midi.device.is_some()&&!audio.midi_connected{ui.label("MIDI input is disconnected.");}
+            ui.separator();
+
             ui.separator();
             ui.strong("Stem Separation");
             ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE && models_enabled, |ui| {
@@ -514,6 +563,7 @@ pub fn show(
             if !daw_project::SEPARATION_AVAILABLE {
                 ui.label(daw_project::SEPARATION_UNAVAILABLE_REASON);
             }
+            });
         })
         .is_some();
     close || (!popup_was_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)))
@@ -762,6 +812,21 @@ mod tests {
         };
         frame(&ctx, &mut settings, vec![]);
         assert_eq!(settings.midi_note_split, daw_core::MidiNoteSplit::Split);
+        for _ in 0..5 {
+            frame(
+                &ctx,
+                &mut settings,
+                vec![
+                    egui::Event::PointerMoved(Pos2::new(450.0, 450.0)),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        phase: egui::TouchPhase::Move,
+                        delta: Vec2::new(0.0, -120.0),
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+        }
         click(&ctx, &mut settings, "Split into two");
         click(&ctx, &mut settings, "Preserve first");
         assert_eq!(

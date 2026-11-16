@@ -116,6 +116,7 @@ impl Renderer {
                 continue;
             }
             let (sample, mono) = track_processing::TrackProcessor {
+                monitor_only: self.monitor_only,
                 sidechains: &[],
                 sidechain_sources: None,
                 audio: &mut self.audio_tracks[index],
@@ -257,6 +258,7 @@ impl Renderer {
                 let valid = frame >= input || region.is_some_and(|(start, _)| frame >= start);
                 let (sample, mono) = if valid {
                     track_processing::TrackProcessor {
+                        monitor_only: self.monitor_only,
                         sidechains: &self.sidechains.values[index],
                         sidechain_sources: Some(&self.sidechains.indices[index]),
                         audio: &mut self.audio_tracks[index],

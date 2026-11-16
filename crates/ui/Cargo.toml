@@ -13,6 +13,7 @@ daw-media.workspace = true
 daw-engine.workspace = true
 daw-project.workspace = true
 daw-output.workspace = true
+rtrb.workspace = true
 egui.workspace = true
 egui_extras = { version = "0.36.2", default-features = false, features = ["svg"] }
 egui-lucide = "0.1.0"

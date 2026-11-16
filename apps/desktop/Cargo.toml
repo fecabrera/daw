@@ -10,6 +10,7 @@ gtk-titlebar = []
 
 [dependencies]
 daw-ui.workspace = true
+midir.workspace = true
 egui.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

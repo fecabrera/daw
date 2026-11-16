@@ -61,6 +61,7 @@ struct LayerVoice {
 struct Voice {
     active_last_sample: bool,
     sleeping: bool,
+    panic_remaining: u32,
     layers: Vec<LayerVoice>,
     controls: Vec<Control>,
     control_order: Vec<usize>,
@@ -112,6 +113,7 @@ impl Voice {
         duration_frames: Option<u64>,
     ) {
         self.sleeping = false;
+        self.panic_remaining = 0;
         let idle = self.transition == 0
             && self.layers.iter().all(LayerVoice::is_idle)
             && self.controls.iter().all(|e| e.envelope.is_idle());
@@ -193,6 +195,7 @@ impl Voice {
     }
     fn reset(&mut self) {
         self.active_last_sample = false;
+        self.panic_remaining = 0;
         self.sleeping = true;
         self.pitch_index = None;
         self.end_note();
@@ -345,6 +348,20 @@ impl Voice {
                 *value = self.transition_from[ch] * (1.0 - progress) + *value * progress;
             }
             self.transition -= 1;
+        }
+        if self.panic_remaining > 0 {
+            self.panic_remaining -= 1;
+            let gain = self.panic_remaining as f32 / self.fade_frames as f32;
+            sample = sample.map(|v| v * gain);
+            for layer in &mut self.layers {
+                layer.output = layer.output.map(|v| v * gain);
+                layer.source_output = layer.source_output.map(|v| v * gain);
+                layer.mixed_output = layer.mixed_output.map(|v| v * gain);
+                layer.previous = layer.output;
+            }
+            if self.panic_remaining == 0 {
+                self.reset();
+            }
         }
         self.previous = sample;
         sample
@@ -507,6 +524,9 @@ pub(crate) struct MidiTrackRuntime {
     layer_index: std::collections::HashMap<Id, usize>,
     oscillator_index: std::collections::HashMap<(Id, Id), usize>,
     voices: Vec<Voice>,
+    live_voices: Vec<Voice>,
+    live_enabled: bool,
+    live_ready: [bool; 128],
     clips: Vec<PatternClip>,
     clip_ranges: super::schedule::Ranges,
     sample_rate_hz: u32,
@@ -552,9 +572,11 @@ impl MidiTrackRuntime {
             + map_bytes(&self.oscillator_index)
             + self.shared.heap_bytes()
             + vec_bytes(&self.voices)
+            + vec_bytes(&self.live_voices)
             + self
                 .voices
                 .iter()
+                .chain(&self.live_voices)
                 .map(|v| {
                     vec_bytes(&v.controls)
                         + v.controls.iter().map(|c| vec_bytes(&c.routes)).sum::<u64>()
@@ -927,10 +949,19 @@ impl MidiTrackRuntime {
             tempo_bpm: project.tempo_bpm,
             fingerprint: hash.finish(),
             held_sample: [0.0; 2],
-            voices: (0..voice_count)
+            live_voices: Vec::new(),
+            live_enabled: false,
+            live_ready: std::array::from_fn(|pitch| {
+                layers.iter().zip(&banks).all(|(layer, bank)| {
+                    layer.sampler.as_ref().is_none_or(|s| !s.enabled)
+                        || bank.as_ref().is_some_and(|b| b[pitch].is_some())
+                })
+            }),
+            voices: (0..voice_count.max(1))
                 .map(|_| Voice {
                     active_last_sample: false,
                     sleeping: true,
+                    panic_remaining: 0,
                     layers: layers
                         .iter()
                         .zip(&banks)
@@ -1243,7 +1274,13 @@ impl MidiTrackRuntime {
         std::mem::swap(&mut self.oscillator_index, &mut prepared.oscillator_index);
         // Adding the first LFO also installs its prepared note-origin schedule.
         std::mem::swap(&mut self.lfo_notes, &mut prepared.lfo_notes);
-        for (voice, next) in self.voices.iter_mut().zip(&mut prepared.voices) {
+        self.live_ready = prepared.live_ready;
+        for (voice, next) in self
+            .voices
+            .iter_mut()
+            .zip(&mut prepared.voices)
+            .chain(self.live_voices.iter_mut().zip(&mut prepared.live_voices))
+        {
             // New controls can extend a live release; re-evaluate activity once after retarget.
             voice.sleeping = false;
             for n in &mut next.controls {
@@ -1371,7 +1408,20 @@ impl MidiTrackRuntime {
             .iter()
             .find(|v| v.owns_release(v.release_age))
             .and_then(|v| v.release_age);
-        for voice in &mut self.voices {
+        let live = self.live_active();
+        let scheduled_gain = if live {
+            fade * self.tail_clip_gain
+        } else {
+            1.0
+        };
+        let fade = if live { 1.0 } else { fade };
+        for (is_live, voice) in self
+            .voices
+            .iter_mut()
+            .map(|v| (false, v))
+            .chain(self.live_voices.iter_mut().map(|v| (true, v)))
+        {
+            let gain = if is_live { 1.0 } else { scheduled_gain };
             let sample = voice.sample(&self.shared.values, &self.shared.index, shared_release);
             for ((sum, bus), layer) in self
                 .layer_samples
@@ -1380,18 +1430,18 @@ impl MidiTrackRuntime {
                 .zip(&voice.layers)
             {
                 for (ch, sum) in sum.iter_mut().enumerate() {
-                    *sum += layer.output[ch];
-                    bus.meter_sample[ch] += layer.mixed_output[ch];
+                    *sum += layer.output[ch] * gain;
+                    bus.meter_sample[ch] += layer.mixed_output[ch] * gain;
                     if let Some(source) = &mut bus.source_output {
-                        source.sample[ch] += layer.source_output[ch];
+                        source.sample[ch] += layer.source_output[ch] * gain;
                     }
                     if let Some(amplitude) = &mut bus.amplitude_output {
-                        amplitude.sample[ch] += layer.output[ch];
+                        amplitude.sample[ch] += layer.output[ch] * gain;
                     }
                 }
             }
             for ch in 0..2 {
-                sum[ch] += sample[ch];
+                sum[ch] += sample[ch] * gain;
             }
         }
         for bus in &mut self.layer_effects {
@@ -1639,6 +1689,9 @@ impl MidiTrackRuntime {
         self.held_sample
     }
     pub fn reset(&mut self) {
+        for voice in &mut self.live_voices {
+            voice.reset();
+        }
         self.loop_wrapped = false;
         self.tail_clip_gain = 1.0;
         self.carried_stop_gain = None;
@@ -1656,6 +1709,124 @@ impl MidiTrackRuntime {
         }
         self.last_clip = None;
         self.last_source = None;
+    }
+    /// Control-worker only. Independent reserve; scheduled clips cannot steal these slots.
+    pub fn prepare_live(&mut self) {
+        if self.live_voices.is_empty()
+            && let Some(template) = self.voices.first()
+        {
+            self.live_voices = (0..64)
+                .map(|_| {
+                    let mut v = template.clone();
+                    v.reset();
+                    v
+                })
+                .collect();
+        }
+    }
+    pub fn inherit_live(&mut self, old: &mut Self) {
+        self.live_enabled = old.live_enabled;
+        if self.compatible(old) && self.live_voices.len() == old.live_voices.len() {
+            // Newly prepared exact pitches must reach every retained live slot.
+            for (voice, prepared) in old.live_voices.iter_mut().zip(&mut self.live_voices) {
+                for (layer, next) in voice.layers.iter_mut().zip(&mut prepared.layers) {
+                    if let (Some(sampler), Some(bank)) = (&mut layer.sampler, &mut next.sampler) {
+                        sampler.inherit_bank(bank);
+                    }
+                }
+            }
+            std::mem::swap(&mut self.live_voices, &mut old.live_voices);
+            self.shared.adopt_live(&old.shared);
+        }
+    }
+    pub fn live_route(&mut self, enabled: bool) {
+        if self.live_enabled && !enabled {
+            self.release_live();
+        }
+        self.live_enabled = enabled;
+    }
+    pub fn release_live(&mut self) {
+        for voice in &mut self.live_voices {
+            for layer in &mut voice.layers {
+                layer.one_shot = false;
+            }
+            if voice.current.is_some() {
+                self.shared.live_event(false);
+            }
+            voice.end_note();
+            if !voice.sleeping {
+                voice.panic_remaining = voice.fade_frames;
+            }
+        }
+    }
+    pub fn live_note(&mut self, token: Id, attack: Option<(u8, u8)>) -> bool {
+        if let Some((pitch, velocity)) = attack {
+            if !self.live_enabled
+                || !self
+                    .live_ready
+                    .get(usize::from(pitch))
+                    .copied()
+                    .unwrap_or(false)
+            {
+                return false;
+            }
+            let slot = self
+                .live_voices
+                .iter()
+                .position(|v| v.sleeping)
+                .or_else(|| {
+                    self.live_voices
+                        .iter()
+                        .enumerate()
+                        .max_by_key(|(_, v)| v.held_frames)
+                        .map(|(i, _)| i)
+                });
+            if let Some(slot) = slot {
+                let voice = &mut self.live_voices[slot];
+                if voice.current.is_some() {
+                    self.shared.live_event(false);
+                }
+                voice.note_on_with_duration(token, pitch, velocity, None);
+                self.shared.live_event(true);
+                return true;
+            }
+            return false;
+        }
+        for voice in &mut self.live_voices {
+            if voice.current == Some(token) {
+                voice.end_note();
+                self.shared.live_event(false);
+            }
+        }
+        true
+    }
+    pub fn live_enabled(&self) -> bool {
+        self.live_enabled
+    }
+    pub fn live_active(&self) -> bool {
+        self.live_voices.iter().any(|v| !v.sleeping)
+    }
+    pub fn sample_live(&mut self, frame: u64) -> [f32; 2] {
+        // Scheduled notes are frozen while paused/stopped; only the live reserve advances.
+        let mut scheduled = std::mem::take(&mut self.voices);
+        std::mem::swap(&mut self.voices, &mut self.live_voices);
+        let sample = self.voice_sample(frame, None, 1.0);
+        std::mem::swap(&mut self.voices, &mut self.live_voices);
+        std::mem::swap(&mut self.voices, &mut scheduled);
+        if self.main_remaining > 0 {
+            for ch in 0..2 {
+                self.main_gain[ch] +=
+                    (self.main_target[ch] - self.main_gain[ch]) / self.main_remaining as f32;
+            }
+            self.main_remaining -= 1;
+        }
+        let sample = std::array::from_fn(|ch| sample[ch] * self.main_gain[ch]);
+        for bus in &mut self.layer_effects {
+            for (peak, value) in bus.peak.iter_mut().zip(bus.meter_sample) {
+                *peak = peak.max(value.abs());
+            }
+        }
+        sample
     }
     pub fn begin_note_audition(&mut self, pitch: u8) {
         // The isolated preview keeps prepared voices/banks but bypasses clip scheduling.
@@ -1720,6 +1891,7 @@ impl MidiTrackRuntime {
     pub fn amplitude_gain(&self, layer: Id) -> f32 {
         self.voices
             .iter()
+            .chain(&self.live_voices)
             .filter(|voice| voice.active_last_sample)
             .filter_map(|voice| {
                 self.layer_index
@@ -1837,6 +2009,7 @@ impl MidiTrackRuntime {
         for sampler in self
             .voices
             .iter()
+            .chain(&self.live_voices)
             .filter(|v| v.active_last_sample)
             .filter_map(|v| self.layer_index.get(&layer).and_then(|&i| v.layers.get(i)))
             .filter_map(|l| l.sampler.as_ref())
@@ -1858,6 +2031,7 @@ impl MidiTrackRuntime {
         let sampler = self
             .voices
             .iter()
+            .chain(&self.live_voices)
             .filter(|v| v.active_last_sample)
             .filter_map(|v| self.layer_index.get(&layer).and_then(|&i| v.layers.get(i)))
             .filter_map(|l| l.sampler.as_ref())
@@ -1872,6 +2046,7 @@ impl MidiTrackRuntime {
     pub fn sampler_position(&self, layer: Id) -> f32 {
         self.voices
             .iter()
+            .chain(&self.live_voices)
             .filter(|v| v.active_last_sample)
             .filter_map(|v| self.layer_index.get(&layer).and_then(|&i| v.layers.get(i)))
             .filter_map(|l| l.sampler.as_ref())
@@ -1884,6 +2059,7 @@ impl MidiTrackRuntime {
         self.sample_in_region(frame, None)
     }
     pub fn sample_in_region(&mut self, frame: u64, loop_region: Option<(u64, u64)>) -> [f32; 2] {
+        let live_gain = if self.live_active() { 1.0 } else { 0.0 };
         let wrapped = self.loop_wrapped;
         let retain_tails = loop_region.is_some();
         let carried_gain = if let Some(gain) = &mut self.carried_stop_gain {
@@ -2069,7 +2245,9 @@ impl MidiTrackRuntime {
             }
             self.main_remaining -= 1;
         }
-        let sample = std::array::from_fn(|ch| sample[ch] * self.main_gain[ch] * clip_gain);
+        let sample = std::array::from_fn(|ch| {
+            sample[ch] * self.main_gain[ch] * if live_gain > 0.0 { 1.0 } else { clip_gain }
+        });
         // Read-only pre-track monitoring: regular buses include clip gain; Output
         // includes its own gain/pan and clip gain. No monitor changes the audio sum.
         let regular = self.layer_samples.len();
@@ -2599,5 +2777,51 @@ mod live_pitch_tests {
             assert_eq!(runtime.voices[0].pitch, 60);
             assert!(runtime.voices[0].held_frames > age);
         }
+    }
+}
+
+#[cfg(test)]
+mod external_input_tests {
+    use super::*;
+    #[test]
+    fn clip_reconstruction_does_not_reset_live_voice_or_unknown_note_duration() {
+        let mut project = Project::default();
+        let id = project.add_midi_track().unwrap();
+        project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
+        project.add_midi_pattern(id, 100).unwrap();
+        let mut runtime = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        runtime.prepare_live();
+        runtime.live_route(true);
+        let token = Id::from_u128(7);
+        assert!(runtime.live_note(token, Some((60, 100))));
+        for frame in 0..500 {
+            runtime.sample(frame);
+        }
+        let voice = runtime
+            .live_voices
+            .iter()
+            .find(|v| v.current == Some(token))
+            .unwrap();
+        assert_eq!(voice.note_duration_frames, None);
+        assert_eq!(voice.held_frames, 500);
+        runtime.live_route(false);
+        for frame in 500..1000 {
+            runtime.sample(frame);
+        }
+        assert!(runtime.live_voices.iter().all(|v| v.sleeping));
+    }
+    #[test]
+    fn missing_exact_sampler_pitch_suppresses_entire_target() {
+        let mut project = Project::default();
+        project.add_midi_track().unwrap();
+        let layer = &mut project.tracks[0].instrument.as_mut().unwrap().layers[0];
+        layer.sampler = Some(Default::default());
+        layer.oscillators.clear();
+        let mut runtime = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        runtime.prepare_live();
+        runtime.live_route(true);
+        assert!(!runtime.live_note(Id::new_v4(), Some((60, 127))));
+        assert!(!runtime.live_note(Id::new_v4(), Some((255, 127))));
+        assert!(!runtime.live_active());
     }
 }

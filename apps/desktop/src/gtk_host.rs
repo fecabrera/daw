@@ -142,6 +142,9 @@ fn build(
         settings.default_stretch_engine,
     );
     ui.set_settings(&ctx, settings);
+    if let Some(root) = crate::midi::recovery_root() {
+        ui.enable_midi(Box::new(crate::midi::NativeMidi::default()), root);
+    }
     let state = Rc::new(RefCell::new(State {
         ui,
         ctx: ctx.clone(),

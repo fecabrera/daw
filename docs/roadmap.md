@@ -39,10 +39,7 @@ not a release-date commitment.
 
 ### 1. Protect work
 
-Add background recovery snapshots, recovery choices at startup and a bounded
-retention policy. Manual Save remains explicit. Recovery must retain available
-project-owned audio and report missing external recordings. Completed recordings
-must become recoverable before their temporary files can be removed.
+[Private recovery snapshots and startup recovery](projects/recovery.md) are implemented with bounded generation retention. Manual Save remains explicit. MIDI takes publish a durable recovery checkpoint before entering the editor. Native crash and storage-failure acceptance remains open.
 
 ### 2. Finish audio transitions — initial controls implemented
 
@@ -55,10 +52,10 @@ planned. Native appearance and listening acceptance remain open.
 
 ### 3. Capture MIDI performances
 
-Start with device selection, live playing and reliable note release on Stop,
-disconnect and track changes. Follow with track arming, a configurable count-in
-and recording notes, velocity and sustain. Recorded patterns must remain editable
-and survive save, reopen and recovery. Loop overdub, controller editing and
+[Live input](instruments/live-midi.md) and [MIDI recording](editing/midi-recording.md)
+are implemented with multiple R-enabled tracks, selected-track fallback, count-in,
+sustain-to-duration capture and recoverable whole takes. Native keyboard, latency
+and platform acceptance remain open. Loop overdub, controller editing and
 expression features follow later.
 
 ### 4. Capture audio

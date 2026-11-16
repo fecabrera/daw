@@ -89,6 +89,8 @@ current primary-source and license checks at implementation time.
 
 ## Stage 1: autosave and crash recovery
 
+The [recovery implementation](../projects/autosave-recovery.md) provides private generations, instance leases, startup choices and durable MIDI takes. Native crash and storage-failure acceptance remains open.
+
 Add bounded, versioned recovery snapshots outside the manually saved manifest.
 Use the existing snapshot worker and revision tracking. Retain the previous
 valid generation until the next generation is published atomically. Preserve
@@ -137,7 +139,9 @@ pass. Native listening checks cover clicks, dips and excessive gain at joins.
 
 ### 3A: live input
 
-Add machine-local MIDI device/channel selection and an explicit instrument target.
+Implementation: [live MIDI](../audio/live-midi.md), [recording](../editing/midi-recording.md), and [recovery](../projects/autosave-recovery.md). Multiple R-enabled MIDI tracks are supported. With none armed, the primary selected MIDI track is the target. Native acceptance remains open.
+
+Add machine-local MIDI device/channel selection and multiple armed instrument targets with selected-track fallback.
 Schedule timestamped note-on/off, velocity and sustain through bounded engine
 events, independent of editor painting. Keep live input distinct from chord and
 mouse audition. Define release behavior on Stop, disconnect, target change and

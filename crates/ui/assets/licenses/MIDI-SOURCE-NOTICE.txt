@@ -1,0 +1,9 @@
+External MIDI input uses midir 0.11.0 (MIT), https://github.com/Boddlnagg/midir.
+The native callback forwards validated fixed-size messages; device management is
+in apps/desktop/src/midi.rs. Portable project/engine/CLI crates do not link midir.
+macOS uses coremidi 0.9.2 and coremidi-sys 3.2.1 (MIT). Windows uses winapi 0.3.9
+(MIT OR Apache-2.0) and its GNU target import libraries. Linux uses ALSA; its
+existing notices and prerequisites continue to apply. Android-only dependencies
+resolved by Cargo are not part of desktop distributions. Exact selected source
+packages and checksums are recorded in Cargo.lock. Unmodified license texts are
+packaged beside this notice on macOS, Windows and Linux.

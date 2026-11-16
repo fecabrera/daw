@@ -1,0 +1,5 @@
+Lucide Numbers icon
+Source: https://github.com/lucide-icons/lucide/blob/main/icons/numbers.svg
+Retrieved 2026-11-15. Licensed under the ISC license in LUCIDE-LICENSE.txt.
+The SVG paths are unchanged. The currentColor stroke is white so the shared
+transport renderer can tint the mask for light/dark, active and disabled states.

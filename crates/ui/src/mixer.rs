@@ -482,7 +482,7 @@ impl DawUi {
                             self.mixer_bounds.insert(track.id, rect);
                             // Select the whole panel without taking input from its controls.
                             if ui.is_enabled()
-                                && self.editing_enabled()
+                                && (self.editing_enabled() || self.midi.busy())
                                 && ui.rect_contains_pointer(rect)
                                 && ui.input(|input| input.focused && input.pointer.any_pressed())
                             {
@@ -713,6 +713,9 @@ impl DawUi {
         } else {
             self.master_name_layout(&mut content, true);
         }
+        if self.midi.busy() {
+            content.disable();
+        }
         content.spacing_mut().item_spacing.x = CONTROL_SPACING;
         content.spacing_mut().item_spacing.y = OUT_CONTROL_SPACING;
         if let Some(track) = track {
@@ -895,21 +898,38 @@ impl DawUi {
                 );
             },
         );
+        let mut arm = track.and_then(|track| self.midi_arm(track));
         if track.is_some() {
-            content.allocate_ui_with_layout(
-                Vec2::new(
-                    2.0 * toolbars::CONTROL_HEIGHT + rows::GROUP_DIVIDER_WIDTH,
-                    toolbars::CONTROL_HEIGHT,
-                ),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |ui| {
-                    mix_controls::mute_solo(ui, &mut muted, &mut soloed, ["Mute", "Solo"]);
-                },
+            let width = (if arm.is_some() { 3.0 } else { 2.0 }) * toolbars::CONTROL_HEIGHT
+                + rows::GROUP_DIVIDER_WIDTH
+                + if arm.is_some() {
+                    mix_controls::GROUP_GAP
+                } else {
+                    0.0
+                };
+            let (rect, _) = content
+                .allocate_exact_size(Vec2::new(width, toolbars::CONTROL_HEIGHT), Sense::hover());
+            // R remains interactive while model editing is locked during a take.
+            let mut controls = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("track-msr")
+                    .max_rect(rect)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
+            controls.add_enabled_ui(arm.is_some() || !self.midi.busy(), |ui| {
+                mix_controls::track_mute_solo(ui, &mut muted, &mut soloed, arm.as_mut())
+            });
         } else {
             content.allocate_space(Vec2::new(1.0, toolbars::CONTROL_HEIGHT));
         }
         if let Some(track) = track {
+            self.apply_midi_arm(track.id, arm);
+            if self.midi.busy() {
+                gain = previous.0;
+                pan = previous.1;
+                muted = previous.2;
+                soloed = previous.3;
+            }
             self.inputs.insert(track.id, inputs);
             if previous != (gain, pan, muted, soloed) {
                 if let Some(t) = self

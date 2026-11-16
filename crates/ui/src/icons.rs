@@ -350,6 +350,64 @@ pub(super) fn toggle_with_surface_tooltip(
     active_colors: (Color32, Color32),
     surface_style: ToggleSurface,
 ) -> Response {
+    toggle_painted_with_surface_tooltip(
+        ui,
+        name,
+        tooltip,
+        selected,
+        size,
+        active_colors,
+        surface_style,
+        |ui, rect, color| {
+            icon.size(TOOLBAR_ICON_SIZE)
+                .stroke_width(2.0)
+                .color(color)
+                .image()
+                .alt_text(name)
+                .paint_at(ui, rect);
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn toggle_image_with_surface_tooltip(
+    ui: &mut Ui,
+    image: egui::Image<'_>,
+    name: &str,
+    tooltip: &str,
+    selected: bool,
+    size: Vec2,
+    active_colors: (Color32, Color32),
+    surface_style: ToggleSurface,
+) -> Response {
+    toggle_painted_with_surface_tooltip(
+        ui,
+        name,
+        tooltip,
+        selected,
+        size,
+        active_colors,
+        surface_style,
+        |ui, rect, color| {
+            image
+                .fit_to_exact_size(Vec2::splat(TOOLBAR_ICON_SIZE))
+                .tint(color)
+                .alt_text(name)
+                .paint_at(ui, rect);
+        },
+    )
+}
+#[allow(clippy::too_many_arguments)]
+fn toggle_painted_with_surface_tooltip(
+    ui: &mut Ui,
+    name: &str,
+    tooltip: &str,
+    selected: bool,
+    size: Vec2,
+    active_colors: (Color32, Color32),
+    surface_style: ToggleSurface,
+    paint: impl FnOnce(&Ui, egui::Rect, Color32),
+) -> Response {
     let ToggleSurface {
         idle,
         hovered: (hover_fill, hover_foreground),
@@ -371,15 +429,11 @@ pub(super) fn toggle_with_surface_tooltip(
     if !ui.is_enabled() {
         color = palette.secondary;
     }
-    icon.size(TOOLBAR_ICON_SIZE)
-        .stroke_width(2.0)
-        .color(color)
-        .image()
-        .alt_text(name)
-        .paint_at(
-            ui,
-            egui::Rect::from_center_size(rect.center(), Vec2::splat(TOOLBAR_ICON_SIZE)),
-        );
+    paint(
+        ui,
+        egui::Rect::from_center_size(rect.center(), Vec2::splat(TOOLBAR_ICON_SIZE)),
+        color,
+    );
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, name)
     });

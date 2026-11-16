@@ -658,7 +658,11 @@ fn timing_section_orders_metronome_signature_tempo_and_keeps_project_and_transpo
         let rect = app.metronome_bounds;
         assert_eq!(rect.size(), Vec2::new(30.0, 24.0));
         assert!((rect.center().y - app.transport_bounds[0].center().y).abs() < 0.1);
-        assert!((app.time_signature_control.bounds[0].left() - rect.right() - 7.0).abs() < 0.1);
+        assert!((app.count_in_bounds.left() - rect.right() - 7.0).abs() < 0.1);
+        assert!(
+            (app.time_signature_control.bounds[0].left() - app.count_in_bounds.right() - 7.0).abs()
+                < 0.1
+        );
         let idle = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(idle.iter().any(|shape| matches!(&shape.shape,
             egui::Shape::Rect(surface) if surface.rect == rect && surface.fill == theme::unit_separator(&ctx)
@@ -933,4 +937,82 @@ fn time_signature_editors_keep_display_width_and_scroll_long_input() {
             }
         }
     }
+}
+
+#[test]
+fn count_in_toggle_persists_app_settings_without_a_project_edit() {
+    let (mut app, _) = fixture();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    let enabled = app.settings.midi.count_in_enabled;
+    let point = app.count_in_bounds.center();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    frame(&mut app, &ctx, vec![button(point, false)]);
+    assert_eq!(app.settings.midi.count_in_enabled, !enabled);
+    assert_eq!(
+        settings::AppSettings::from_json(Some(&app.settings.to_json())),
+        app.settings
+    );
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn multiple_midi_arms_and_implicit_selection_are_transient() {
+    let (mut app, _) = fixture();
+    let a = app.session.project.add_midi_track().unwrap();
+    let b = app.session.project.add_midi_track().unwrap();
+    app.selected_track = Some(b);
+    let before = app.session.project.clone();
+    assert!(
+        app.midi_arm(
+            app.session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == b)
+                .unwrap()
+        )
+        .unwrap()
+        .fallback
+    );
+    for id in [a, b] {
+        app.apply_midi_arm(
+            id,
+            Some(crate::midi::Arm {
+                armed: true,
+                fallback: false,
+                editable: true,
+            }),
+        );
+    }
+    assert_eq!(
+        daw_core::resolve_midi_targets(&app.session.project, &app.midi.armed, Some(b)),
+        vec![a, b]
+    );
+    assert!(
+        !app.midi_arm(
+            app.session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == b)
+                .unwrap()
+        )
+        .unwrap()
+        .fallback
+    );
+    app.midi.armed.clear();
+    assert_eq!(
+        daw_core::resolve_midi_targets(&app.session.project, &app.midi.armed, Some(b)),
+        vec![b]
+    );
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
 }

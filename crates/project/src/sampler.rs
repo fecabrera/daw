@@ -4,7 +4,7 @@ use daw_core::{SamplerInput, SamplerSettings};
 
 impl Session {
     pub fn sampler_preparation_needed(&self, project: &Project) -> bool {
-        let requests = sampler_requests(project);
+        let requests = sampler_requests(project, &self.live_midi_pitches);
         self.sampler_audio.keys().any(|id| {
             !requests
                 .iter()
@@ -195,7 +195,7 @@ impl Session {
         ) -> Result<daw_media::PreparedSampler>,
     ) -> Result<()> {
         let mut outputs = HashMap::new();
-        for (s, notes) in sampler_requests(&self.project) {
+        for (s, notes) in sampler_requests(&self.project, &self.live_midi_pitches) {
             if cancelled() {
                 return Err(error("Sample preparation cancelled"));
             }
@@ -230,7 +230,10 @@ impl Session {
 
 /// Prepare the unique pitches referenced by each track, including hidden pattern notes.
 /// Pattern copies and repeated clips share these buffers. Empty tracks need only the root.
-fn sampler_requests(project: &Project) -> Vec<(&SamplerSettings, Vec<u8>)> {
+fn sampler_requests<'a>(
+    project: &'a Project,
+    live: &HashMap<Id, Vec<u8>>,
+) -> Vec<(&'a SamplerSettings, Vec<u8>)> {
     let mut requests = Vec::new();
     for track in &project.tracks {
         let Some(instrument) = &track.instrument else {
@@ -257,6 +260,7 @@ fn sampler_requests(project: &Project) -> Vec<(&SamplerSettings, Vec<u8>)> {
                     .map(move |n| daw_core::transposed_midi_pitch(n.pitch, clip.transpose))
             })
             .collect();
+        notes.extend(live.get(&track.id).into_iter().flatten().copied());
         notes.sort_unstable();
         notes.dedup();
         for sampler in instrument.layers.iter().filter_map(|l| l.sampler.as_ref()) {

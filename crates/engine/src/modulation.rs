@@ -96,6 +96,7 @@ pub(crate) fn provider_order<'a>(
 #[derive(Clone, Copy, Default)]
 pub(crate) struct NoteState {
     held: usize,
+
     durations: [Option<u64>; 2],
     starts: [Option<u64>; 2],
     released: Option<u64>,
@@ -125,6 +126,8 @@ pub(crate) struct SharedControls {
     pub values: Vec<ModulationValue>,
     pub index: daw_unit_core::ModulationSourceIndex,
     providers: Vec<ProviderControl>,
+    live_held: usize,
+    live_origins: [Option<i128>; 2],
     order: Vec<usize>,
     held: usize,
     note_durations: [Option<u64>; 2],
@@ -172,6 +175,8 @@ impl SharedControls {
             values,
             providers: Vec::new(),
             held: 0,
+            live_held: 0,
+            live_origins: [None; 2],
             note_durations: [None; 2],
             note_ages: [0; 2],
             frame: 0,
@@ -200,12 +205,18 @@ impl SharedControls {
         self
     }
     pub fn reset(&mut self) {
+        self.live_held = 0;
+        self.live_origins = [None; 2];
         self.reset_notes();
         for provider in &mut self.providers {
             provider.reset();
         }
     }
     pub fn reset_notes(&mut self) {
+        if self.live_held > 0 {
+            self.held = self.live_held;
+            return;
+        }
         for e in &mut self.controls {
             e.reset();
         }
@@ -224,6 +235,10 @@ impl SharedControls {
         self.release_frames = 0;
     }
     pub fn reconstruct(&mut self, state: NoteState, frame: u64) {
+        if self.live_held > 0 {
+            self.held = state.held.saturating_add(self.live_held);
+            return;
+        }
         self.reset_notes();
         self.held = state.held;
         self.note_durations = state.durations;
@@ -257,7 +272,10 @@ impl SharedControls {
         }
     }
     pub fn end(&mut self) {
-        self.held = 0;
+        self.held = self.live_held;
+        if self.live_held > 0 {
+            return;
+        }
         self.release_frames = 0;
         for e in &mut self.controls {
             e.envelope.note_off();
@@ -279,6 +297,19 @@ impl SharedControls {
             e.envelope.advance(frame.saturating_sub(self.frame));
         }
         self.frame = frame;
+    }
+    pub fn live_event(&mut self, on: bool) {
+        if on {
+            let origin = Some(i128::from(self.frame.saturating_add(1)));
+            self.live_origins[0] = origin;
+            if self.held == 0 {
+                self.live_origins[1] = origin;
+            }
+            self.live_held += 1;
+        } else {
+            self.live_held = self.live_held.saturating_sub(1);
+        }
+        self.event(on, None);
     }
     pub fn event(&mut self, on: bool, duration_frames: Option<u64>) {
         if on {
@@ -304,7 +335,36 @@ impl SharedControls {
             }
         }
     }
-    pub fn tick(&mut self, context: ModulationSourceContext) {
+    pub fn adopt_live(&mut self, old: &Self) {
+        self.live_held = old.live_held;
+        self.held = self.held.saturating_add(old.live_held);
+        self.live_origins = old.live_origins;
+        if old.live_held > 0 {
+            for control in &mut self.controls {
+                control.note_on(None);
+            }
+        }
+    }
+    pub fn tick(&mut self, mut context: ModulationSourceContext) {
+        self.frame = context.frame;
+        if let Some(origin) = self.live_origins[0] {
+            context.note_origin = Some(
+                context
+                    .note_origin
+                    .map_or(origin, |scheduled| scheduled.max(origin)),
+            );
+        }
+        if self.live_held > 0
+            && let Some(origin) = self.live_origins[1]
+        {
+            context.legato_origin = Some(if self.held > self.live_held {
+                context
+                    .legato_origin
+                    .map_or(origin, |scheduled| scheduled.min(origin))
+            } else {
+                origin
+            });
+        }
         if self.held > 0 {
             for age in &mut self.note_ages {
                 *age = age.saturating_add(1);

@@ -1,5 +1,7 @@
 # Mixer
 
+MIDI tracks have an **R** button in its own group after M/S on the same row. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
+
 Selected tracks use a highlighted strip background without a selection outline.
 
 Mixer controls track levels and the final project output. It uses the same track settings as Timeline, so edits in either view apply to playback and export.

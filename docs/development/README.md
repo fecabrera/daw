@@ -11,6 +11,8 @@ Run commands from the repository root with the toolchain pinned in [rust-toolcha
 - [GitHub Actions builds](ci.md): platform artifacts, downloads, and logs.
 
 For CLI commands, see the [CLI guide](../cli/README.md). For contribution rules and validation commands, see [repository instructions](../../AGENTS.md#build-and-validation-workflow). Architecture and implementation contracts remain in [specifications](../../specs/README.md).
+The desktop MIDI adapter uses midir with native CoreMIDI, WinMM and ALSA backends. ALSA development libraries are required on Linux. MIDI device dependencies stay outside the CLI and portable engine. Packaged dependency notices are in `crates/ui/assets/licenses`. Physical keyboard, device-disconnect and latency checks must run on each platform.
+
 ## Headless tools
 
 With the platform prerequisites installed, build from the repository root:

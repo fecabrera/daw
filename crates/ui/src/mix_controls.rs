@@ -21,6 +21,70 @@ fn mute_solo_with_size(
     tooltips: [&str; 2],
     size: f32,
 ) -> [Response; 2] {
+    mute_solo_arm_with_size(ui, muted, soloed, tooltips, size, None)
+}
+fn mute_solo_arm_with_size(
+    ui: &mut Ui,
+    muted: &mut bool,
+    soloed: &mut bool,
+    tooltips: [&str; 2],
+    size: f32,
+    arm: Option<&mut crate::midi::Arm>,
+) -> [Response; 2] {
+    if let Some(arm) = arm {
+        return ui
+            .allocate_ui_with_layout(
+                egui::Vec2::new(3.0 * size + rows::GROUP_DIVIDER_WIDTH + GROUP_GAP, size),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.spacing_mut().item_spacing.x = GROUP_GAP;
+                    let toggles = ui
+                        .add_enabled_ui(arm.editable, |ui| {
+                            mute_solo_arm_with_size(ui, muted, soloed, tooltips, size, None)
+                        })
+                        .inner;
+                    ui.scope(|ui| {
+                        rows::panel_button_style(ui);
+                        let font_size = if size == toolbars::CONTROL_HEIGHT {
+                            egui::TextStyle::Small.resolve(ui.style()).size
+                        } else {
+                            9.0
+                        };
+                        let mut text =
+                            egui::RichText::new("R").font(crate::fonts::semibold(font_size));
+                        if arm.fallback && !arm.armed {
+                            text = text.color(ui.visuals().selection.stroke.color);
+                        }
+                        let response = ui
+                            .add_sized(
+                                egui::Vec2::splat(size),
+                                egui::Button::new(text)
+                                    .selected(arm.armed)
+                                    .stroke(egui::Stroke::NONE)
+                                    .corner_radius(5),
+                            )
+                            .on_hover_text(if arm.armed {
+                                "Disable MIDI reception"
+                            } else {
+                                "Enable MIDI reception"
+                            });
+                        response.widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::Button,
+                                ui.is_enabled(),
+                                arm.armed,
+                                "Receive MIDI and recording",
+                            )
+                        });
+                        if response.clicked() {
+                            arm.armed = !arm.armed;
+                        }
+                    });
+                    toggles
+                },
+            )
+            .inner;
+    }
     ui.allocate_ui_with_layout(
         egui::Vec2::new(2.0 * size + rows::GROUP_DIVIDER_WIDTH, size),
         egui::Layout::left_to_right(egui::Align::Center),
@@ -95,6 +159,22 @@ fn mute_solo_with_size(
     .inner
 }
 
+pub(super) fn track_mute_solo(
+    ui: &mut Ui,
+    muted: &mut bool,
+    soloed: &mut bool,
+    arm: Option<&mut crate::midi::Arm>,
+) -> [Response; 2] {
+    mute_solo_arm_with_size(
+        ui,
+        muted,
+        soloed,
+        ["Mute", "Solo"],
+        toolbars::CONTROL_HEIGHT,
+        arm,
+    )
+}
+
 /// Track/layer mixing row: mute/solo at left, pan then gain at right.
 pub(super) fn header_row(
     ui: &mut Ui,
@@ -104,13 +184,30 @@ pub(super) fn header_row(
     soloed: &mut bool,
     tooltips: [&str; 2],
 ) -> (GainPanResponse, [Response; 2]) {
+    header_row_with_arm(ui, gain, pan, muted, soloed, tooltips, None)
+}
+fn header_row_with_arm(
+    ui: &mut Ui,
+    gain: &mut f32,
+    pan: &mut f32,
+    muted: &mut bool,
+    soloed: &mut bool,
+    tooltips: [&str; 2],
+    arm: Option<&mut crate::midi::Arm>,
+) -> (GainPanResponse, [Response; 2]) {
+    let editable = arm.as_ref().is_none_or(|a| a.editable);
     rows::centered(ui, knobs::SIZE, |ui| {
-        let toggles = mute_solo(ui, muted, soloed, tooltips);
+        let toggles =
+            mute_solo_arm_with_size(ui, muted, soloed, tooltips, toolbars::CONTROL_HEIGHT, arm);
         let knobs = ui
             .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = KNOB_GAP;
-                let gain = knobs::header_gain(ui, gain);
-                let pan = knobs::header_pan(ui, pan);
+                let gain = ui
+                    .add_enabled_ui(editable, |ui| knobs::header_gain(ui, gain))
+                    .inner;
+                let pan = ui
+                    .add_enabled_ui(editable, |ui| knobs::header_pan(ui, pan))
+                    .inner;
                 GainPanResponse {
                     bounds: [gain.rect, pan.rect],
                 }
@@ -133,6 +230,7 @@ pub(super) fn track_header_row(
     soloed: &mut bool,
     tooltips: [&str; 2],
     compact: bool,
+    arm: Option<&mut crate::midi::Arm>,
 ) -> (GainPanResponse, [Response; 2]) {
     if compact {
         rows::centered(ui, knobs::SIZE, |ui| {
@@ -140,12 +238,12 @@ pub(super) fn track_header_row(
                 GainPanResponse {
                     bounds: [Rect::NOTHING; 2],
                 },
-                mute_solo(ui, muted, soloed, tooltips),
+                mute_solo_arm_with_size(ui, muted, soloed, tooltips, toolbars::CONTROL_HEIGHT, arm),
             )
         })
         .inner
     } else {
-        header_row(ui, mix.0, mix.1, muted, soloed, tooltips)
+        header_row_with_arm(ui, mix.0, mix.1, muted, soloed, tooltips, arm)
     }
 }
 
@@ -174,14 +272,92 @@ pub(super) fn named_row<R>(
 /// Fixed-width M/S controls for the catalog-height Tracks row.
 pub(super) const BROWSER_BUTTON_SIZE: f32 = 16.0;
 pub(super) const BROWSER_WIDTH: f32 = 2.0 * BROWSER_BUTTON_SIZE + rows::GROUP_DIVIDER_WIDTH;
-pub(super) fn browser_row(ui: &mut Ui, muted: &mut bool, soloed: &mut bool) -> [Response; 2] {
-    mute_solo_with_size(ui, muted, soloed, ["Mute", "Solo"], BROWSER_BUTTON_SIZE)
+pub(super) fn browser_row(
+    ui: &mut Ui,
+    muted: &mut bool,
+    soloed: &mut bool,
+    arm: Option<&mut crate::midi::Arm>,
+) -> [Response; 2] {
+    mute_solo_arm_with_size(
+        ui,
+        muted,
+        soloed,
+        ["Mute", "Solo"],
+        BROWSER_BUTTON_SIZE,
+        arm,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use egui::{Pos2, Vec2};
+
+    #[test]
+    fn midi_arm_uses_a_separate_group_on_the_mute_solo_row() {
+        for fallback in [false, true] {
+            let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
+            crate::theme::configure(&ctx);
+            let mut arm = crate::midi::Arm {
+                armed: false,
+                fallback,
+                editable: true,
+            };
+            let mut buttons = [Rect::NOTHING; 2];
+            let mut output = ctx.run_ui(Default::default(), |ui| {
+                buttons = mute_solo_arm_with_size(
+                    ui,
+                    &mut false,
+                    &mut false,
+                    ["Mute", "Solo"],
+                    22.0,
+                    Some(&mut arm),
+                )
+                .map(|r| r.rect);
+            });
+            output.textures_delta.clear();
+            let labels: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if ["M", "S", "R"].contains(&text.galley.text()) => {
+                        Some(text)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(labels.len(), 3);
+            assert!((labels[1].pos.y - labels[2].pos.y).abs() < 0.1);
+            if fallback {
+                assert_eq!(
+                    labels[2].galley.job.sections[0].format.color,
+                    ctx.global_style().visuals.selection.stroke.color
+                );
+            }
+            let r = labels[2].pos + labels[2].galley.rect.center().to_vec2();
+            let surface = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect)
+                        if rect.rect.contains(r) && (rect.rect.width() - 22.0).abs() < 0.1 =>
+                    {
+                        Some(rect)
+                    }
+                    _ => None,
+                })
+                .expect("R has its own button surface");
+            assert!(
+                (surface.rect.left() - buttons[1].right() - GROUP_GAP).abs() < 0.1,
+                "R group gap: {}",
+                surface.rect.left() - buttons[1].right()
+            );
+            assert_ne!(surface.fill, ctx.global_style().visuals.selection.bg_fill);
+            assert_eq!(surface.corner_radius, egui::CornerRadius::same(5));
+            output.textures_delta.clear();
+        }
+    }
 
     #[test]
     fn joined_mute_solo_keep_independent_toggles_and_disabled_guards() {

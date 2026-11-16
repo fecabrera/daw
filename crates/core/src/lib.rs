@@ -67,6 +67,8 @@ pub use beat::{
     BeatStep, BeatSubtrack, BeatTrigger,
 };
 mod midi;
+mod midi_recording;
+pub use midi_recording::{RecordedMidiTrack, resolve_midi_targets};
 mod midi_trim;
 pub use chords::{CHORD_ROOTS, Chord, ChordKind};
 mod midi_options;

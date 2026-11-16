@@ -227,13 +227,30 @@ impl DawUi {
     }
     fn browser_mix(&mut self, ui: &mut egui::Ui, row: &Row, rect: Rect, enabled: bool) {
         let mut value = row.mix;
+        let mut arm = if row.beat.is_none() {
+            self.session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == row.id)
+                .and_then(|t| self.midi_arm(t))
+        } else {
+            None
+        };
+        let extra = if row.kind == TrackKind::Midi && row.beat.is_none() {
+            mix_controls::BROWSER_BUTTON_SIZE + mix_controls::GROUP_GAP
+        } else {
+            0.0
+        };
         let controls = Rect::from_center_size(
             Pos2::new(
-                rect.right() - f32::from(menus::ITEM_PADDING) - mix_controls::BROWSER_WIDTH * 0.5,
+                rect.right()
+                    - f32::from(menus::ITEM_PADDING)
+                    - (mix_controls::BROWSER_WIDTH + extra) * 0.5,
                 rect.center().y,
             ),
             Vec2::new(
-                mix_controls::BROWSER_WIDTH,
+                mix_controls::BROWSER_WIDTH + extra,
                 mix_controls::BROWSER_BUTTON_SIZE,
             ),
         );
@@ -246,7 +263,7 @@ impl DawUi {
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         let responses = child
             .add_enabled_ui(enabled, |ui| {
-                mix_controls::browser_row(ui, &mut value.muted, &mut value.soloed)
+                mix_controls::browser_row(ui, &mut value.muted, &mut value.soloed, arm.as_mut())
             })
             .inner;
         #[cfg(test)]
@@ -256,6 +273,7 @@ impl DawUi {
             .insert(row.id, std::array::from_fn(|index| responses[index].rect));
         #[cfg(not(test))]
         let _ = responses;
+        self.apply_midi_arm(row.id, arm);
         if value != row.mix {
             if let Some(parent) = row.beat {
                 self.edit_beat(
@@ -303,7 +321,14 @@ impl DawUi {
         response.rect
     }
     fn browser_name_input(&mut self, ui: &mut egui::Ui, row: &Row, rect: Rect, selected: bool) {
-        let right = rect.right() - mix_controls::BROWSER_WIDTH - 8.0;
+        let right = rect.right()
+            - mix_controls::BROWSER_WIDTH
+            - if row.kind == TrackKind::Midi {
+                mix_controls::BROWSER_BUTTON_SIZE + mix_controls::GROUP_GAP
+            } else {
+                0.0
+            }
+            - 8.0;
         let left = (rect.left()
             + f32::from(menus::ITEM_PADDING)
             + (row.depth + 1) as f32 * (icons::TOOLBAR_ICON_SIZE + f32::from(menus::ITEM_PADDING)))
@@ -387,8 +412,8 @@ impl DawUi {
             .gesture
             .as_ref()
             .is_some_and(|gesture| gesture.owns(self.track_drag));
-        let available = (enabled || own_gesture)
-            && self.edit_environment_available()
+        let available = (enabled || own_gesture || self.midi.busy())
+            && (self.edit_environment_available() || self.midi.busy())
             && ui.is_enabled()
             && ui.input(|i| i.focused)
             && !ui.ctx().text_edit_focused();
@@ -518,6 +543,12 @@ impl DawUi {
                                             row.depth,
                                             (icon, open),
                                             mix_controls::BROWSER_WIDTH
+                                                + if row.kind == TrackKind::Midi {
+                                                    mix_controls::BROWSER_BUTTON_SIZE
+                                                        + mix_controls::GROUP_GAP
+                                                } else {
+                                                    0.0
+                                                }
                                                 + 2.0 * f32::from(menus::ITEM_PADDING),
                                         )
                                     })

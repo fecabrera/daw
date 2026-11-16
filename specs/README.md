@@ -103,6 +103,10 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 ## Modulation and audio
 
+- [Live MIDI input](audio/live-midi.md).
+- [MIDI recording](editing/midi-recording.md).
+- [Autosave and recovery](projects/autosave-recovery.md).
+
 - [AAC-LC export](audio/aac-export.md): portable streaming encoding, rate conversion and ADTS limits.
 - [Audio import](audio/import.md): WAV, MP3 and AAC-LC decoding, metadata and preparation limits.
 - [Project time signature](audio/time-signature.md): saved meter, transport input, musical display, snapping and metronome grouping.

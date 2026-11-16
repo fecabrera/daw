@@ -76,6 +76,10 @@ need a selection retain their usual empty-selection prompts.
 
 ## Workflows and limits
 
+- [Live MIDI input](instruments/live-midi.md).
+- [MIDI recording](editing/midi-recording.md).
+- [Autosave and recovery](projects/recovery.md).
+
 - [Bounce clips and tracks](editing/bounce.md): bake sound to audio and retain disabled originals.
 
 - [Normalize clip gain](editing/normalize-gain.md): set audio clips to individual peak or loudness targets.

@@ -55,6 +55,12 @@ impl RendererMemoryLease {
         self.0 = active_bytes;
         retired.0 = total - active_bytes;
     }
+    /// Control-worker only: reconcile storage after replacing a cached renderer.
+    pub fn try_resize(&mut self, bytes: u64) -> Result<(), String> {
+        let mut additional = Self::try_new(bytes.saturating_sub(self.0))?;
+        self.redistribute(&mut additional, bytes);
+        Ok(())
+    }
     pub fn try_new(bytes: u64) -> Result<Self, String> {
         const LIMIT: u64 = 512 * 1024 * 1024;
         OUTPUT_RENDERER_BYTES.fetch_update(Relaxed, Relaxed, |used| {

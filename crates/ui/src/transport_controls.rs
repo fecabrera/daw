@@ -160,3 +160,43 @@ pub(super) fn metronome(ui: &mut Ui, selected: bool, enabled: bool) -> Response 
     })
     .inner
 }
+
+/// Record uses the same geometry, surface and icon treatment as Play/Stop/Loop.
+pub(super) fn record(ui: &mut Ui, selected: bool, enabled: bool) -> Response {
+    let surface = standard_surface(ui);
+    ui.add_enabled_ui(enabled, |ui| {
+        icons::toggle_with_surface(
+            ui,
+            icons::Lucide::Circle,
+            "Record MIDI",
+            selected,
+            Vec2::new(30.0, icons::TOOLBAR_BUTTON_SIZE),
+            (STOP_FILL, egui::Color32::WHITE),
+            surface,
+        )
+    })
+    .inner
+}
+
+/// Count-in shares the metronome's timing color and standard transport surface.
+pub(super) fn count_in(ui: &mut Ui, selected: bool, enabled: bool) -> Response {
+    let surface = standard_surface(ui);
+    let name = if selected {
+        "Disable count-in"
+    } else {
+        "Enable count-in"
+    };
+    ui.add_enabled_ui(enabled, |ui| {
+        icons::toggle_image_with_surface_tooltip(
+            ui,
+            egui::Image::new(egui::include_image!("../assets/icons/numbers.svg")),
+            name,
+            name,
+            selected,
+            Vec2::new(30.0, icons::TOOLBAR_BUTTON_SIZE),
+            (theme::LOOP_COLOR, egui::Color32::WHITE),
+            surface,
+        )
+    })
+    .inner
+}

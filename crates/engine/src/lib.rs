@@ -233,6 +233,9 @@ pub struct Renderer {
     /// Prepared model. Update only through an effect transaction or renderer inheritance.
     pub plan: RenderPlan,
     end_frame: u64,
+    pub recording: bool,
+    live_clock: u64,
+    monitor_only: bool,
     audio_tracks: Vec<schedule::AudioTrack>,
     track_index: HashMap<Id, usize>,
     effect_tracks: HashMap<Id, Option<usize>>,
@@ -432,6 +435,9 @@ impl Renderer {
             buses,
             alignment,
             end_frame,
+            recording: false,
+            live_clock: 0,
+            monitor_only: false,
             audio_tracks,
             track_index,
             effect_tracks,
@@ -864,6 +870,12 @@ impl Renderer {
     }
     /// Bounded activation of a worker-prepared transport, retaining the output fade.
     pub fn activate_transport(&mut self, old: &Self) {
+        self.recording = old.recording;
+        self.live_clock = old.live_clock;
+        if self.recording {
+            self.playing = old.playing;
+            self.playhead = old.playhead;
+        }
         self.ramp = old.ramp;
         self.previous = old.previous;
         self.transition_from = old.previous;
@@ -900,6 +912,8 @@ impl Renderer {
         self.playhead = old.playhead;
         self.playing = old.playing;
         self.paused = old.paused;
+        self.recording = old.recording;
+        self.live_clock = old.live_clock;
         self.playback_start = old.playback_start;
         // Equivalent prepared sources retain read-ahead, loop pins and staged PCM.
         // The unused candidate moves into the renderer retired by the host.
@@ -942,6 +956,11 @@ impl Renderer {
         }
         for (index, runtime) in self.midi.iter_mut().enumerate() {
             let id = self.plan.project.tracks[index].id;
+            if let Some(&previous) = old.track_index.get(&id)
+                && let Some((next, previous)) = runtime.as_mut().zip(old.midi[previous].as_ref())
+            {
+                next.live_route(previous.live_enabled());
+            }
             if let Some(&previous) = old.track_index.get(&id)
                 && runtime
                     .as_ref()
@@ -1110,8 +1129,54 @@ impl Renderer {
         self.transition_from = self.previous;
         self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
     }
+    /// Control-worker only; memory is included in renderer admission.
+    pub fn prepare_live_midi(&mut self) {
+        for (track, runtime) in self.plan.project.tracks.iter().zip(&mut self.midi) {
+            if track.kind == daw_core::TrackKind::Midi
+                && let Some(runtime) = runtime
+            {
+                runtime.prepare_live();
+            }
+        }
+    }
+    pub fn live_midi_route(&mut self, track: Id, enabled: bool) {
+        if let Some(&index) = self.track_index.get(&track)
+            && let Some(runtime) = &mut self.midi[index]
+        {
+            runtime.live_route(enabled);
+        }
+    }
+    /// Bounded transfer into an exactly prepared transport. Scheduled DSP remains prepared.
+    pub fn inherit_live_midi(&mut self, old: &mut Self) {
+        for (index, track) in self.plan.project.tracks.iter().enumerate() {
+            if let Some(&previous) = old.track_index.get(&track.id)
+                && let Some((next, previous)) =
+                    self.midi[index].as_mut().zip(old.midi[previous].as_mut())
+            {
+                next.inherit_live(previous);
+            }
+        }
+    }
+    pub fn has_live_midi_routes(&self) -> bool {
+        self.midi.iter().flatten().any(|r| r.live_enabled())
+    }
+    pub fn live_midi_note(&mut self, token: Id, attack: Option<(u8, u8)>) -> bool {
+        let mut ready = true;
+        for runtime in self.midi.iter_mut().flatten() {
+            ready &= runtime.live_note(token, attack);
+        }
+        ready
+    }
+    pub fn panic_live_midi(&mut self) {
+        for runtime in self.midi.iter_mut().flatten() {
+            runtime.release_live();
+        }
+    }
+    fn live_midi_active(&self) -> bool {
+        self.midi.iter().flatten().any(|r| r.live_active())
+    }
     pub fn play(&mut self) {
-        if self.end_frame > 0 {
+        if self.end_frame > 0 || self.recording {
             if !self.playing && !self.paused {
                 self.playback_start = Some(self.playhead);
             }
@@ -1134,6 +1199,7 @@ impl Renderer {
         self.playback_start.is_some()
     }
     pub fn stop(&mut self) {
+        let live_was_active = self.live_midi_active();
         self.master_effects.reset();
         for effects in &mut self.effects {
             effects.reset();
@@ -1145,6 +1211,9 @@ impl Renderer {
         self.paused = false;
         if let Some(start) = self.playback_start.take() {
             self.seek(start);
+        } else if live_was_active {
+            self.transition_from = self.previous;
+            self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
         }
     }
     /// Exact range from the current offline history. Forward requests reuse DSP state;
@@ -1263,14 +1332,16 @@ impl Renderer {
         }
 
         let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1) as f32;
-        let target = if self.playing { 1.0 } else { 0.0 };
+        let monitor = self.has_live_midi_routes() || self.live_midi_active();
+        let target = if self.playing || monitor { 1.0 } else { 0.0 };
         self.ramp = if self.ramp < target {
             (self.ramp + 1.0 / fade_frames).min(target)
         } else {
             (self.ramp - 1.0 / fade_frames).max(target)
         };
         let mut mix = [0.0; 2];
-        if self.playing || self.ramp > 0.0 {
+        let live = monitor;
+        if self.playing || self.ramp > 0.0 && !live {
             let l = &self.plan.project.transport.r#loop;
             if self.playing
                 && l.enabled
@@ -1285,7 +1356,7 @@ impl Renderer {
                 self.transition_from = self.previous;
                 self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
             }
-            if self.playing && !l.enabled && self.playhead >= self.end_frame {
+            if self.playing && !l.enabled && self.playhead >= self.end_frame && !self.recording {
                 self.playing = false;
             }
             if !self.playing && self.alignment.total > 0 {
@@ -1317,12 +1388,25 @@ impl Renderer {
                 self.playhead = self.playhead.saturating_add(1);
             }
         }
+        if !self.playing && live {
+            self.monitor_only = true;
+            self.sample_tracks(self.live_clock, None, false, true, true);
+            mix = self.sample_buses(self.live_clock, None, true, true);
+            mix = self.sample_master(mix, self.live_clock, None, true);
+            self.monitor_only = false;
+            self.live_clock = self.live_clock.wrapping_add(1);
+        }
         if self.master_remaining > 0 {
             self.master += (self.master_target - self.master) / self.master_remaining as f32;
             self.master_remaining -= 1;
         }
         for x in &mut mix {
-            *x *= self.master * self.ramp;
+            *x *= self.master
+                * if !self.playing && live {
+                    1.0
+                } else {
+                    self.ramp
+                };
         }
         if self.transition > 0 {
             let progress = 1.0 - self.transition as f32 / fade_frames;

@@ -3,6 +3,7 @@ use super::{effects::EffectChain, latency, midi::MidiTrackRuntime, schedule::Aud
 use daw_core::Clip;
 
 pub(super) struct TrackProcessor<'a> {
+    pub monitor_only: bool,
     pub sidechains: &'a [daw_unit_core::ModulationValue],
     pub sidechain_sources: Option<&'a daw_unit_core::ModulationSourceIndex>,
     pub audio: &'a mut AudioTrack,
@@ -25,10 +26,16 @@ impl TrackProcessor<'_> {
                 if advancing {
                     runtime.sample_in_region(frame, region)
                 } else {
-                    runtime.held_sample()
+                    if self.monitor_only {
+                        runtime.sample_live(frame)
+                    } else {
+                        runtime.held_sample()
+                    }
                 },
                 Some(runtime.output_is_mono()),
             )
+        } else if self.monitor_only {
+            ([0.0; 2], Some(false))
         } else {
             self.audio.sample(self.clips, frame, realtime)
         };

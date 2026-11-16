@@ -18,6 +18,8 @@ If Save As fails because an included recording or generated stem is missing, res
 
 Saving fails if a directory occupies the `project.json` destination. The directory and its contents remain intact. Move that directory out of the project folder or choose another save location, then retry.
 
+See [Autosave and recovery](recovery.md) for private checkpoints and interrupted MIDI takes. MIDI input, channel, recording offset and count-in preferences are in Application Settings. The Numbers transport button toggles that count-in preference.
+
 ## Background audio preparation
 
 Opening a project shows the editor after its saved data is checked. Audio loads and prepares in the background. Waveforms appear as original audio becomes available. Play stays unavailable until the required audio is ready; opening does not start playback automatically.
@@ -76,7 +78,7 @@ Settings groups controls into five categories:
 - **Appearance**: titlebar style where supported, theme, and accent color.
 - **Playback**: input/output devices, audio quality defaults, and seek cache profile.
 - **Time stretch**: the default engine for new projects.
-- **MIDI**: how notes are divided when splitting clips.
+- **MIDI**: input device/channel, count-in, recording offset, Panic, retained-take retry, and note splitting.
 - **Stem Separation**: local model selection and validation.
 
 Choose **Dark**, **Light**, or **Mist** under **Appearance > Theme**. Light uses near-white backgrounds, white panels, and pale grey separators. Mist uses cool grey backgrounds and pale panels. All themes keep your selected accent and clip colors.

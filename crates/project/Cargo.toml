@@ -11,6 +11,8 @@ daw-core.workspace = true
 daw-media.workspace = true
 daw-engine.workspace = true
 serde_json.workspace = true
+serde.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]

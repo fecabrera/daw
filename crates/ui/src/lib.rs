@@ -1,3 +1,8 @@
+mod midi;
+mod midi_service;
+mod midi_writer;
+pub use midi::{Preferences as MidiPreferences, TransportAction};
+pub use midi_service::{MidiBackend, MidiDevice, MidiIngress};
 mod bounce;
 mod eq_graph_preview;
 mod time_signature_control;
@@ -408,6 +413,7 @@ enum Job {
 }
 
 enum Action {
+    Recovery(daw_project::recovery::RecoveryEntry, bool),
     New,
     Open(PathBuf),
     CloseProject,
@@ -869,6 +875,8 @@ struct LoopDrag {
 }
 
 pub struct DawUi {
+    midi: midi::State,
+    midi_after_take: Option<Action>,
     eq_graph_preview: eq_graph_preview::State,
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
@@ -912,6 +920,10 @@ pub struct DawUi {
     transport_bounds: [Rect; 3],
     #[cfg(test)]
     metronome_bounds: Rect,
+    #[cfg(test)]
+    count_in_bounds: Rect,
+    #[cfg(test)]
+    record_bounds: Rect,
     #[cfg(test)]
     mixer_returns_bounds: Rect,
     #[cfg(test)]
@@ -1028,6 +1040,8 @@ pub struct DawUi {
 impl Default for DawUi {
     fn default() -> Self {
         Self {
+            midi: Default::default(),
+            midi_after_take: None,
             eq_graph_preview: Default::default(),
             view_mode: mixer::ViewMode::default(),
             chords: Default::default(),
@@ -1071,6 +1085,10 @@ impl Default for DawUi {
             transport_bounds: [Rect::NOTHING; 3],
             #[cfg(test)]
             metronome_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            count_in_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            record_bounds: Rect::NOTHING,
             #[cfg(test)]
             mixer_returns_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -1356,6 +1374,11 @@ impl DawUi {
         });
     }
     fn request(&mut self, action: Action) {
+        if self.midi.busy() {
+            self.midi_after_take = Some(action);
+            self.midi_boundary(daw_output::MidiAction::Seal);
+            return;
+        }
         self.pending = Some(action);
         if self.dirty {
             self.unsaved_prompt = true;
@@ -1365,6 +1388,14 @@ impl DawUi {
     }
     fn perform_pending(&mut self) {
         match self.pending.take() {
+            Some(Action::Recovery(entry, saved)) => {
+                self.midi.recovery_running = true;
+                self.midi_send(if saved {
+                    midi_service::Command::OpenSaved(entry)
+                } else {
+                    midi_service::Command::Recover(entry)
+                });
+            }
             Some(Action::New | Action::CloseProject) => {
                 self.output = None;
                 self.reset_background_media();
@@ -1429,7 +1460,7 @@ impl DawUi {
         }
     }
     fn save(&mut self, save_as: bool) {
-        if save_as || self.session.folder.is_none() {
+        if save_as || self.session.folder.is_none() || self.session.recovered_working_copy() {
             self.project_name_dialog = Some(project_name_dialog::ProjectNameDialog::new(
                 self.session.project.name.clone(),
                 save_as,
@@ -1815,6 +1846,9 @@ impl DawUi {
         self.sync_needed = true;
     }
     fn seek(&mut self, frame: u64) {
+        if self.midi.busy() {
+            return;
+        }
         self.session.project.transport.playhead_frame = frame;
         self.navigation_revision = self.navigation_revision.wrapping_add(1);
         self.change_revision = self.change_revision.wrapping_add(1);
@@ -1869,6 +1903,9 @@ impl DawUi {
             .is_some_and(|o| o.transport_intent().playing)
     }
     fn toggle_playback(&mut self) {
+        if self.midi_boundary(daw_output::MidiAction::Pause) {
+            return;
+        }
         if self.is_playing() {
             if let Some(output) = &mut self.output
                 && let Err(e) = output.pause()
@@ -1880,6 +1917,9 @@ impl DawUi {
         }
     }
     fn stop_action(&self) -> transport_controls::StopAction {
+        if self.midi.busy() {
+            return transport_controls::StopAction::Stop;
+        }
         if self.chords.audition.preparing() || self.output.as_ref().is_some_and(|o| o.auditioning())
         {
             return transport_controls::StopAction::Stop;
@@ -1893,6 +1933,12 @@ impl DawUi {
         )
     }
     fn stop(&mut self) {
+        if self.midi_boundary(daw_output::MidiAction::Stop) {
+            return;
+        }
+        if let Some(service) = &self.midi.service {
+            service.panic();
+        }
         self.chords.audition.cancel();
         if let Some(output) = &self.output {
             output.stop_audition();
@@ -1904,6 +1950,9 @@ impl DawUi {
         }
     }
     fn toggle_looping(&mut self) {
+        if self.midi.busy() {
+            return;
+        }
         let region = &mut self.session.project.transport.r#loop;
         if !region.enabled && region.end_frame <= region.start_frame {
             self.fail("Drag on the time ruler to select a loop region");
@@ -1913,6 +1962,9 @@ impl DawUi {
         }
     }
     fn edit(&mut self, command: Edit) {
+        if self.midi.busy() {
+            return;
+        }
         self.ensure_history();
         let editor_options_only = matches!(command, Edit::SetMidiOptions { .. });
         match self.session.project.edited(command) {
@@ -2417,6 +2469,8 @@ impl DawUi {
             worker.set_waker(move || wake.request_repaint());
         }
         self.poll();
+        self.poll_midi(ui.ctx());
+        self.midi_dialogs(ui.ctx());
         self.poll_bounce_publication();
         self.poll_audio_devices(&ctx);
         // Publish completed jobs before a new pointer gesture starts its own undo step.
@@ -2512,7 +2566,7 @@ impl DawUi {
         }
         self.update_window_title(&ctx);
         if ui.is_enabled()
-            && self.edit_environment_available()
+            && (self.edit_environment_available() || self.midi.busy())
             && transport_controls::take_play_pause(&ctx)
         {
             self.toggle_playback();
@@ -2941,7 +2995,7 @@ impl DawUi {
                     action,
                     FileAction::Import | FileAction::SaveAs | FileAction::CollectSources
                 ) && (action != FileAction::Save || self.session.folder.is_some()))
-            && self.editing_enabled()
+            && (self.editing_enabled() || self.midi.busy() && action == FileAction::Save)
             && (action != FileAction::Export || self.session.project.end() > 0)
             && (action != FileAction::CollectSources || self.collection_enabled())
     }
@@ -2982,7 +3036,9 @@ impl DawUi {
         self.edit_environment_available_with_job(false)
     }
     fn edit_environment_available_with_job(&self, allow_job: bool) -> bool {
-        (self.job.is_none() || allow_job)
+        !self.midi.busy()
+            && !self.midi.recovery_prompt()
+            && (self.job.is_none() || allow_job)
             && !self.unsaved_prompt
             && self.overwrite.is_none()
             && self.export_dialog.is_none()
@@ -3312,6 +3368,7 @@ impl DawUi {
                         ui.menu_button("Edit", |ui| self.edit_menu(ui));
                         ui.menu_button("Clip", |ui| self.clip_menu(ui));
                         ui.menu_button("Track", |ui| self.track_menu(ui));
+                        ui.menu_button("Transport", |ui| self.transport_menu(ui));
                         ui.menu_button("View", |ui| self.view_menu(ui));
                         #[cfg(not(any(target_os = "windows", target_os = "linux")))]
                         ui.separator();
@@ -3385,8 +3442,21 @@ impl DawUi {
             if buttons.looping.clicked() {
                 self.toggle_looping();
             }
-            ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
-            ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
+            let record =
+                transport_controls::record(ui, self.midi.recording, self.midi_record_enabled());
+            #[cfg(test)]
+            {
+                self.record_bounds = record.rect;
+            }
+            if record.clicked() {
+                self.record_midi();
+            }
+            ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
+                self.time_control(ui)
+            });
+            ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
+                self.musical_control(ui)
+            });
             ui.separator();
             let metronome =
                 transport_controls::metronome(ui, self.metronome_enabled, self.job.is_none());
@@ -3400,7 +3470,19 @@ impl DawUi {
                     output.set_metronome(self.metronome_enabled);
                 }
             }
-            ui.add_enabled_ui(self.job.is_none(), |ui| {
+            let count_in = transport_controls::count_in(
+                ui,
+                self.settings.midi.count_in_enabled,
+                self.job.is_none() && !self.midi.busy(),
+            );
+            #[cfg(test)]
+            {
+                self.count_in_bounds = count_in.rect;
+            }
+            if count_in.clicked() {
+                self.settings.midi.count_in_enabled = !self.settings.midi.count_in_enabled;
+            }
+            ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
                 match self
                     .time_signature_control
                     .show(ui, self.session.project.time_signature)
@@ -3412,7 +3494,9 @@ impl DawUi {
                     _ => {}
                 }
             });
-            ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
+            ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
+                self.tempo_control(ui)
+            });
             if self.view_mode == ViewMode::Instrument {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     self.track_control(ui);
@@ -4739,12 +4823,15 @@ impl DawUi {
                                     levels,
                                     held,
                                     |ui| {
+                                        let mut arm = self.midi_arm(&track);
                                         let mut mute = track.muted;
                                         let mut solo = track.soloed;
-                                        let mut header_rows = track_rows::HeaderRows::track_size(
-                                            ui,
-                                            self.timeline_track_size,
-                                        );
+                                        let mut header_rows =
+                                            track_rows::HeaderRows::track_size_with_arm(
+                                                ui,
+                                                self.timeline_track_size,
+                                                arm.is_some(),
+                                            );
                                         if let Some(sends) = &mut header_rows.sends {
                                             self.timeline_send_knobs(sends, &track);
                                         }
@@ -4783,6 +4870,9 @@ impl DawUi {
                                         {
                                             self.select_track_clips(track.id);
                                         }
+                                        if self.midi.busy() && arm.is_none() {
+                                            header_rows.mix.disable();
+                                        }
                                         let mut gain = track.gain_db;
                                         let mut pan = track.pan;
                                         mix_controls::track_header_row(
@@ -4792,7 +4882,9 @@ impl DawUi {
                                             &mut solo,
                                             ["Mute", "Solo"],
                                             self.track_rows_collapsed(),
+                                            arm.as_mut(),
                                         );
+                                        self.apply_midi_arm(track.id, arm);
                                         let updated = gain != track.gain_db
                                             || pan != track.pan
                                             || mute != track.muted
@@ -4826,7 +4918,7 @@ impl DawUi {
                     );
                     // Include child controls without taking their pointer interaction.
                     if ui.is_enabled()
-                        && self.editing_enabled()
+                        && (self.editing_enabled() || self.midi.busy())
                         && ui.rect_contains_pointer(inner.response.rect)
                         && ui.input(|input| {
                             input.focused
@@ -5994,6 +6086,10 @@ impl DawUi {
             let enabled =
                 self.job.is_none() && !self.separation_models.busy() && self.error.is_none();
             let mut audio = settings::AudioControls {
+                midi_devices: Some(&self.midi.devices),
+                midi_enabled: enabled && !self.midi.busy(),
+                midi_connected: self.midi.connected,
+                midi_take_retained: self.midi.take_retained,
                 devices: self.audio_devices.catalog.as_ref(),
                 error: self.audio_devices.error.as_deref(),
                 enabled: enabled && !self.audio_devices.busy(),
@@ -6010,9 +6106,18 @@ impl DawUi {
             ) {
                 self.settings_open = false;
             }
+            let midi_panic_requested = audio.midi_panic_requested;
+            let midi_retry_requested = audio.midi_retry_requested;
             let selection = audio.selection.take();
             let quality_requested = audio.quality_requested;
             let refresh_requested = audio.refresh_requested;
+            if midi_retry_requested {
+                self.midi.finalizing = true;
+                self.midi_send(midi_service::Command::Retry);
+            }
+            if midi_panic_requested && let Some(service) = &self.midi.service {
+                service.panic();
+            }
             if let Some(draft) = selection {
                 self.apply_audio_device_selection(draft);
             }

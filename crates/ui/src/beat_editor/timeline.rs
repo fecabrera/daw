@@ -289,6 +289,7 @@ impl DawUi {
                             &mut soloed,
                             ["Mute subtrack", "Solo within this beat instrument"],
                             self.track_rows_collapsed(),
+                            None,
                         );
                         #[cfg(test)]
                         self.beat_ui.mix_bounds.insert(

@@ -9,24 +9,39 @@ pub(super) struct HeaderRows {
 
 impl HeaderRows {
     pub fn new(ui: &mut egui::Ui, collapsed: bool) -> Self {
-        Self::with_knobs(ui, collapsed, true, false, None)
+        Self::with_knobs(ui, collapsed, true, false, None, 0.0)
     }
 
     pub fn track(ui: &mut egui::Ui, collapsed: bool) -> Self {
-        Self::with_knobs(ui, collapsed, !collapsed, false, None)
+        Self::with_knobs(ui, collapsed, !collapsed, false, None, 0.0)
     }
 
     /// Timeline uses equal 28-point slots; the Editor overview retains its own layout.
     pub fn track_size(ui: &mut egui::Ui, size: f32) -> Self {
-        Self::with_knobs(ui, size < 2.0, size >= 2.0, size >= 3.0, Some(size))
+        Self::with_knobs(ui, size < 2.0, size >= 2.0, size >= 3.0, Some(size), 0.0)
     }
 
+    pub fn track_size_with_arm(ui: &mut egui::Ui, size: f32, arm: bool) -> Self {
+        Self::with_knobs(
+            ui,
+            size < 2.0,
+            size >= 2.0,
+            size >= 3.0,
+            Some(size),
+            if arm {
+                toolbars::CONTROL_HEIGHT + mix_controls::GROUP_GAP
+            } else {
+                0.0
+            },
+        )
+    }
     fn with_knobs(
         ui: &mut egui::Ui,
         collapsed: bool,
         knobs: bool,
         large: bool,
         timeline_size: Option<f32>,
+        extra_width: f32,
     ) -> Self {
         let timeline = timeline_size.is_some();
         let height = timeline_size.map_or_else(
@@ -43,7 +58,8 @@ impl HeaderRows {
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
         // Two 22-point buttons plus their divider, a six-point group gap,
         // and two 28-point knob slots separated by four points.
-        let mix_width = 2.0 * toolbars::CONTROL_HEIGHT
+        let mix_width = extra_width
+            + 2.0 * toolbars::CONTROL_HEIGHT
             + rows::GROUP_DIVIDER_WIDTH
             + if knobs {
                 mix_controls::GROUP_GAP + 2.0 * knobs::SIZE + mix_controls::KNOB_GAP
