@@ -1,6 +1,6 @@
 use egui::{Align2, Context, Frame, RichText, TextStyle, Vec2, Window};
 
-const PADDING: i8 = 8;
+pub(super) const PADDING: i8 = 8;
 const DEFAULT_WIDTH: f32 = 320.0;
 const MAX_WIDTH: f32 = 560.0;
 
@@ -10,6 +10,8 @@ pub struct Dialog<'a, T> {
     message: &'a str,
     actions: &'a [(&'a str, T)],
     actions_enabled: bool,
+    width: Option<f32>,
+    footer_separator: bool,
 }
 
 impl<'a, T: Copy> Dialog<'a, T> {
@@ -19,7 +21,19 @@ impl<'a, T: Copy> Dialog<'a, T> {
             message,
             actions,
             actions_enabled: true,
+            width: None,
+            footer_separator: false,
         }
+    }
+
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = Some(width);
+        self
+    }
+
+    pub fn footer_separator(mut self, enabled: bool) -> Self {
+        self.footer_separator = enabled;
+        self
     }
 
     pub fn actions_enabled(mut self, enabled: bool) -> Self {
@@ -41,8 +55,8 @@ impl<'a, T: Copy> Dialog<'a, T> {
             .collapsible(false)
             .resizable(false)
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-            .default_width(DEFAULT_WIDTH)
-            .max_width(MAX_WIDTH)
+            .default_width(self.width.unwrap_or(DEFAULT_WIDTH))
+            .max_width(self.width.unwrap_or(MAX_WIDTH))
             .frame(Frame::window(&ctx.global_style()).inner_margin(PADDING))
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::splat(f32::from(PADDING));
@@ -52,6 +66,20 @@ impl<'a, T: Copy> Dialog<'a, T> {
                 ui.add_enabled_ui(self.actions_enabled, |ui| {
                     content(ui);
                     if !self.actions.is_empty() {
+                        if self.footer_separator {
+                            let (separator, _) = ui.allocate_exact_size(
+                                Vec2::new(ui.available_width(), 1.0),
+                                egui::Sense::hover(),
+                            );
+                            let padding = f32::from(PADDING);
+                            ui.painter()
+                                .with_clip_rect(ui.clip_rect().expand(padding))
+                                .hline(
+                                    (separator.left() - padding)..=(separator.right() + padding),
+                                    separator.center().y,
+                                    egui::Stroke::new(1.0, crate::theme::palette(ctx).border),
+                                );
+                        }
                         crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
                             for &(label, action) in self.actions {
                                 if ui.button(label).clicked() {

@@ -324,42 +324,44 @@ pub struct AudioControls<'a> {
     pub refresh_requested: bool,
 }
 
-pub fn show(
-    ctx: &Context,
-    settings: &mut AppSettings,
-    models: &daw_project::SeparationModels,
-    model_info: &std::collections::HashMap<
-        daw_project::SeparationModelKind,
-        daw_project::SeparationModelInfo,
-    >,
-    models_enabled: bool,
-    model_action: &mut Option<ModelAction>,
-    audio: &mut AudioControls<'_>,
-) -> bool {
-    let popup_was_open = egui::Popup::is_any_open(ctx);
-    let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
-        .show_with_content(ctx, |ui| {
-            egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-150.0).max(160.0)).show(ui,|ui|{
-            let label_text = |label: &str| {
-                ui.painter()
-                    .layout_no_wrap(
-                        label.into(),
-                        egui::TextStyle::Body.resolve(ui.style()),
-                        crate::theme::palette(ctx).text,
-                    )
-                    .size()
-                    .x
-            };
-            let label_width = label_text("Split MIDI notes").max(
-                label_text("Accent color") + ui.spacing().item_spacing.x + 14.0,
-            );
-            ui.strong("Appearance");
-            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-            {
-            let show_titlebar = cfg!(any(target_os = "macos", target_os = "windows"));
-            #[cfg(target_os = "linux")]
-            let show_titlebar = show_titlebar || crate::titlebar::linux_custom_available(ctx);
-            if show_titlebar {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+enum Group {
+    #[default]
+    Appearance,
+    Playback,
+    TimeStretch,
+    Midi,
+    StemSeparation,
+}
+impl Group {
+    const ALL: [Self; 5] = [
+        Self::Appearance,
+        Self::Playback,
+        Self::TimeStretch,
+        Self::Midi,
+        Self::StemSeparation,
+    ];
+    fn label(self) -> &'static str {
+        match self {
+            Self::Appearance => "Appearance",
+            Self::Playback => "Playback",
+            Self::TimeStretch => "Time stretch",
+            Self::Midi => "MIDI",
+            Self::StemSeparation => "Stem Separation",
+        }
+    }
+}
+fn group_id() -> egui::Id {
+    egui::Id::new("app-settings-group")
+}
+
+fn appearance(ui: &mut egui::Ui, ctx: &Context, settings: &mut AppSettings, label_width: f32) {
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    {
+        let show_titlebar = cfg!(any(target_os = "macos", target_os = "windows"));
+        #[cfg(target_os = "linux")]
+        let show_titlebar = show_titlebar || crate::titlebar::linux_custom_available(ctx);
+        if show_titlebar {
             crate::rows::field(
                 ui,
                 label_width,
@@ -377,195 +379,500 @@ pub fn show(
                         });
                 },
             );
-            }
-            }
-            crate::rows::field(
-                ui,
-                label_width,
-                |ui| {
-                    ui.label("Theme");
-                },
-                |ui| {
-                    crate::menus::Dropdown::from_id_salt("color_theme")
-                        .selected_text(settings.theme.name())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for theme in ColorTheme::ALL {
-                                if ui
-                                    .selectable_value(&mut settings.theme, theme, theme.name())
-                                    .changed()
-                                {
-                                    crate::theme::apply(ctx, settings.clone());
-                                }
-                            }
-                        });
-                },
-            );
-            let swatch_color = settings.accent.color();
-            crate::rows::field(
-                ui,
-                label_width,
-                |ui| {
-                    ui.label("Accent color");
-                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), egui::Sense::hover());
-                    swatch(ui, rect, swatch_color);
-                },
-                |ui| {
-                    crate::menus::Dropdown::from_id_salt("accent_color")
-                        .selected_text(settings.accent.name())
-                        .width(ui.available_width())
-                        .height(300.0)
-                        .show_ui(ui, |ui| {
-                            for accent in AccentColor::ALL {
-                                let selected = settings.accent == accent;
-                                let response =
-                                    ui.add(egui::Button::new("").selected(selected).min_size(
-                                        Vec2::new(165.0, crate::toolbars::CONTROL_HEIGHT),
-                                    ));
-                                let rect = Rect::from_center_size(
-                                    Pos2::new(
-                                        response.rect.left() + 13.0,
-                                        response.rect.center().y,
-                                    ),
-                                    Vec2::splat(14.0),
-                                );
-                                swatch(ui, rect, accent.color());
-                                ui.painter().text(
-                                    Pos2::new(rect.right() + 8.0, rect.center().y),
-                                    egui::Align2::LEFT_CENTER,
-                                    accent.name(),
-                                    egui::TextStyle::Body.resolve(ui.style()),
-                                    crate::theme::palette(ui.ctx()).text,
-                                );
-                                response.widget_info(|| {
-                                    egui::WidgetInfo::selected(
-                                        egui::WidgetType::Button,
-                                        ui.is_enabled(),
-                                        selected,
-                                        accent.name(),
-                                    )
-                                });
-                                if response.clicked() {
-                                    settings.accent = accent;
-                                    crate::theme::apply(ctx, settings.clone());
-                                    ui.close();
-                                }
-                            }
-                        });
-                },
-            );
-            ui.separator();
-            ui.strong("Playback");
-            ui.add_enabled_ui(audio.enabled, |ui| {
-                let empty = daw_output::Devices::default();
-                let devices = audio.devices.unwrap_or(&empty);
-                let mut draft = settings.audio.clone();
-                let output_changed = crate::audio_settings::device_row(ui, label_width, "Output device", &mut draft.output_device, &devices.outputs);
-                let input_changed = crate::audio_settings::device_row(ui, label_width, "Input device", &mut draft.input_device, &devices.inputs);
-                if output_changed || input_changed { audio.selection = Some(draft); }
-                crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                    if ui.button("Audio quality defaults…").clicked() { audio.quality_requested = true; }
-                    if ui.button("Refresh devices").clicked() { audio.refresh_requested = true; }
+        }
+    }
+    crate::rows::field(
+        ui,
+        label_width,
+        |ui| {
+            ui.label("Theme");
+        },
+        |ui| {
+            crate::menus::Dropdown::from_id_salt("color_theme")
+                .selected_text(settings.theme.name())
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for theme in ColorTheme::ALL {
+                        if ui
+                            .selectable_value(&mut settings.theme, theme, theme.name())
+                            .changed()
+                        {
+                            crate::theme::apply(ctx, settings.clone());
+                        }
+                    }
                 });
-            });
-            crate::rows::advice(ui, "Changing output stops playback. Input selection is saved for future recording; input monitoring is not available.");
-            if !audio.enabled { ui.label("Checking audio devices…"); }
-            if let Some(error) = audio.error { ui.label(error); }
-            crate::rows::field(
-                ui, label_width,
-                |ui| { ui.label("Seek cache"); },
-                |ui| {
-                    crate::menus::Dropdown::from_id_salt("seek_cache")
-                        .selected_text(settings.seek_cache.name())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for profile in CacheProfile::ALL {
-                                ui.selectable_value(&mut settings.seek_cache, profile, profile.name())
-                                    .on_hover_text(profile.name());
-                            }
+        },
+    );
+    let swatch_color = settings.accent.color();
+    crate::rows::field(
+        ui,
+        label_width,
+        |ui| {
+            ui.label("Accent color");
+            let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), egui::Sense::hover());
+            swatch(ui, rect, swatch_color);
+        },
+        |ui| {
+            crate::menus::Dropdown::from_id_salt("accent_color")
+                .selected_text(settings.accent.name())
+                .width(ui.available_width())
+                .height(300.0)
+                .show_ui(ui, |ui| {
+                    for accent in AccentColor::ALL {
+                        let selected = settings.accent == accent;
+                        let response = ui.add(
+                            egui::Button::new("")
+                                .selected(selected)
+                                .min_size(Vec2::new(165.0, crate::toolbars::CONTROL_HEIGHT)),
+                        );
+                        let rect = Rect::from_center_size(
+                            Pos2::new(response.rect.left() + 13.0, response.rect.center().y),
+                            Vec2::splat(14.0),
+                        );
+                        swatch(ui, rect, accent.color());
+                        ui.painter().text(
+                            Pos2::new(rect.right() + 8.0, rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            accent.name(),
+                            egui::TextStyle::Body.resolve(ui.style()),
+                            crate::theme::palette(ui.ctx()).text,
+                        );
+                        response.widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::Button,
+                                ui.is_enabled(),
+                                selected,
+                                accent.name(),
+                            )
                         });
-                },
-            );
-            ui.separator();
-            ui.strong("Time stretch");
-            crate::rows::field(
-                ui, label_width,
-                |ui| { ui.label("Default engine"); },
-                |ui| {
-                    crate::menus::Dropdown::from_id_salt("default_stretch_engine")
-                        .selected_text(settings.default_stretch_engine.label())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for engine in [daw_core::StretchEngine::RUBBER_BAND, daw_core::StretchEngine::INTEGRATED] {
-                                ui.selectable_value(&mut settings.default_stretch_engine, engine, engine.label());
-                            }
-                        });
-                },
-            );
-            crate::rows::advice(ui, "Used for new projects. Change an existing project's engine in Project Settings.");
-            ui.separator();
-            ui.strong("MIDI");
-            crate::rows::field(
-                ui,
-                label_width,
-                |ui| {
-                    ui.label("Split MIDI notes");
-                },
-                |ui| {
-                    crate::menus::Dropdown::from_id_salt("midi_note_split")
-                        .selected_text(settings.midi_note_split.name())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for mode in daw_core::MidiNoteSplit::ALL {
-                                ui.selectable_value(&mut settings.midi_note_split, mode, mode.name())
-                                    .on_hover_text(mode.name());
-                            }
-                        });
-                },
-            );
-            ui.add_enabled_ui(audio.midi_enabled,|ui|{
-                crate::rows::field(ui,label_width,|ui|{ui.label("MIDI input");},|ui|{
-                    crate::menus::Dropdown::from_id_salt("midi-device").selected_text(settings.midi.device.as_ref().and_then(|id|audio.midi_devices.unwrap_or(&[]).iter().find(|d|&d.id==id)).map_or("Off",|d|d.name.as_str())).width(ui.available_width()).show_ui(ui,|ui|{
-                        ui.selectable_value(&mut settings.midi.device,None,"Off");
-                        for device in audio.midi_devices.unwrap_or(&[]){ui.selectable_value(&mut settings.midi.device,Some(device.id.clone()),&device.name);}
-                    });
+                        if response.clicked() {
+                            settings.accent = accent;
+                            crate::theme::apply(ctx, settings.clone());
+                            ui.close();
+                        }
+                    }
                 });
-                crate::rows::field(ui,label_width,|ui|{ui.label("MIDI channel");},|ui|{
-                    crate::menus::Dropdown::from_id_salt("midi-channel").selected_text(settings.midi.channel.map_or("All channels".into(),|c|format!("Channel {}",c+1))).width(ui.available_width()).show_ui(ui,|ui|{
-                        ui.selectable_value(&mut settings.midi.channel,None,"All channels");for channel in 0..16{ui.selectable_value(&mut settings.midi.channel,Some(channel),format!("Channel {}",channel+1));}
-                    });
-                });
-                crate::rows::field(ui,label_width,|ui|{ui.label("Count-in");},|ui|{
-                    crate::menus::Dropdown::from_id_salt("midi-count-in").selected_text(if settings.midi.count_in_bars==0{"Off".into()}else{format!("{} {}",settings.midi.count_in_bars,if settings.midi.count_in_bars==1{"bar"}else{"bars"})}).width(ui.available_width()).show_ui(ui,|ui|{
-                        for bars in [1,2,4]{ui.selectable_value(&mut settings.midi.count_in_bars,bars,if bars==0{"Off".into()}else{format!("{bars} {}",if bars==1{"bar"}else{"bars"})});}
-                    });
-                });
-            });
-            ui.add_enabled_ui(audio.midi_enabled, |ui| {
-                crate::rows::field(ui, label_width, |ui| { ui.label("Recording offset"); }, |ui| {
-                    ui.add(egui::DragValue::new(&mut settings.midi.recording_offset_ms).range(-200..=200).suffix(" ms")).on_hover_text("Shift recorded notes; positive values place notes later");
-                });
-            });
-            ui.add_enabled_ui(audio.midi_enabled,|ui|{ui.checkbox(&mut settings.midi.count_in_enabled,"Count-in enabled").on_hover_text(if settings.midi.count_in_enabled{"Count-in: On"}else{"Count-in: Off"});});
-            if ui.button("Panic").on_hover_text("Panic").clicked(){audio.midi_panic_requested=true;}
-            if audio.midi_take_retained&&ui.button("Retry MIDI take publication").clicked(){audio.midi_retry_requested=true;}
-            crate::rows::advice(ui,"Enable R after M/S to receive MIDI on several tracks. With no R enabled, the selected MIDI track receives input. Its R text shows the active color.");
-            if settings.midi.device.is_some()&&!audio.midi_connected{ui.label("MIDI input is disconnected.");}
-            ui.separator();
+        },
+    );
+}
 
-            ui.separator();
-            ui.strong("Stem Separation");
-            ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE && models_enabled, |ui| {
-                model_row(ui, label_width, daw_project::SeparationModelKind::Cpu, models.cpu.as_deref(), model_info.get(&daw_project::SeparationModelKind::Cpu), model_action);
-                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-                model_row(ui, label_width, daw_project::SeparationModelKind::CoreMl, models.coreml.as_deref(), model_info.get(&daw_project::SeparationModelKind::CoreMl), model_action);
-            });
-            if !daw_project::SEPARATION_AVAILABLE {
-                ui.label(daw_project::SEPARATION_UNAVAILABLE_REASON);
+fn playback(
+    ui: &mut egui::Ui,
+    settings: &mut AppSettings,
+    audio: &mut AudioControls<'_>,
+    label_width: f32,
+) {
+    ui.add_enabled_ui(audio.enabled, |ui| {
+        let empty = daw_output::Devices::default();
+        let devices = audio.devices.unwrap_or(&empty);
+        let mut draft = settings.audio.clone();
+        let output_changed = crate::audio_settings::device_row(
+            ui,
+            label_width,
+            "Output device",
+            &mut draft.output_device,
+            &devices.outputs,
+        );
+        let input_changed = crate::audio_settings::device_row(
+            ui,
+            label_width,
+            "Input device",
+            &mut draft.input_device,
+            &devices.inputs,
+        );
+        if output_changed || input_changed {
+            audio.selection = Some(draft);
+        }
+        crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
+            if ui.button("Audio quality defaults…").clicked() {
+                audio.quality_requested = true;
             }
+            if ui.button("Refresh devices").clicked() {
+                audio.refresh_requested = true;
+            }
+        });
+    });
+    crate::rows::advice(
+        ui,
+        "Changing output stops playback. Input selection is saved for future recording; input monitoring is not available.",
+    );
+    if !audio.enabled {
+        ui.label("Checking audio devices…");
+    }
+    if let Some(error) = audio.error {
+        ui.label(error);
+    }
+    crate::rows::field(
+        ui,
+        label_width,
+        |ui| {
+            ui.label("Seek cache");
+        },
+        |ui| {
+            crate::menus::Dropdown::from_id_salt("seek_cache")
+                .selected_text(settings.seek_cache.name())
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for profile in CacheProfile::ALL {
+                        ui.selectable_value(&mut settings.seek_cache, profile, profile.name())
+                            .on_hover_text(profile.name());
+                    }
+                });
+        },
+    );
+}
+
+fn time_stretch(ui: &mut egui::Ui, settings: &mut AppSettings, label_width: f32) {
+    crate::rows::field(
+        ui,
+        label_width,
+        |ui| {
+            ui.label("Default engine");
+        },
+        |ui| {
+            crate::menus::Dropdown::from_id_salt("default_stretch_engine")
+                .selected_text(settings.default_stretch_engine.label())
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for engine in [
+                        daw_core::StretchEngine::RUBBER_BAND,
+                        daw_core::StretchEngine::INTEGRATED,
+                    ] {
+                        ui.selectable_value(
+                            &mut settings.default_stretch_engine,
+                            engine,
+                            engine.label(),
+                        );
+                    }
+                });
+        },
+    );
+    crate::rows::advice(
+        ui,
+        "Used for new projects. Change an existing project's engine in Project Settings.",
+    );
+}
+
+fn midi(
+    ui: &mut egui::Ui,
+    settings: &mut AppSettings,
+    audio: &mut AudioControls<'_>,
+    label_width: f32,
+) {
+    crate::rows::field(
+        ui,
+        label_width,
+        |ui| {
+            ui.label("Split MIDI notes");
+        },
+        |ui| {
+            crate::menus::Dropdown::from_id_salt("midi_note_split")
+                .selected_text(settings.midi_note_split.name())
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for mode in daw_core::MidiNoteSplit::ALL {
+                        ui.selectable_value(&mut settings.midi_note_split, mode, mode.name())
+                            .on_hover_text(mode.name());
+                    }
+                });
+        },
+    );
+    ui.add_enabled_ui(audio.midi_enabled, |ui| {
+        crate::rows::field(
+            ui,
+            label_width,
+            |ui| {
+                ui.label("MIDI input");
+            },
+            |ui| {
+                crate::menus::Dropdown::from_id_salt("midi-device")
+                    .selected_text(
+                        settings
+                            .midi
+                            .device
+                            .as_ref()
+                            .and_then(|id| {
+                                audio
+                                    .midi_devices
+                                    .unwrap_or(&[])
+                                    .iter()
+                                    .find(|d| &d.id == id)
+                            })
+                            .map_or("Off", |d| d.name.as_str()),
+                    )
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut settings.midi.device, None, "Off");
+                        for device in audio.midi_devices.unwrap_or(&[]) {
+                            ui.selectable_value(
+                                &mut settings.midi.device,
+                                Some(device.id.clone()),
+                                &device.name,
+                            );
+                        }
+                    });
+            },
+        );
+        crate::rows::field(
+            ui,
+            label_width,
+            |ui| {
+                ui.label("MIDI channel");
+            },
+            |ui| {
+                crate::menus::Dropdown::from_id_salt("midi-channel")
+                    .selected_text(
+                        settings
+                            .midi
+                            .channel
+                            .map_or("All channels".into(), |c| format!("Channel {}", c + 1)),
+                    )
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut settings.midi.channel, None, "All channels");
+                        for channel in 0..16 {
+                            ui.selectable_value(
+                                &mut settings.midi.channel,
+                                Some(channel),
+                                format!("Channel {}", channel + 1),
+                            );
+                        }
+                    });
+            },
+        );
+        crate::rows::field(
+            ui,
+            label_width,
+            |ui| {
+                ui.label("Count-in");
+            },
+            |ui| {
+                crate::menus::Dropdown::from_id_salt("midi-count-in")
+                    .selected_text(if settings.midi.count_in_bars == 0 {
+                        "Off".into()
+                    } else {
+                        format!(
+                            "{} {}",
+                            settings.midi.count_in_bars,
+                            if settings.midi.count_in_bars == 1 {
+                                "bar"
+                            } else {
+                                "bars"
+                            }
+                        )
+                    })
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for bars in [1, 2, 4] {
+                            ui.selectable_value(
+                                &mut settings.midi.count_in_bars,
+                                bars,
+                                if bars == 0 {
+                                    "Off".into()
+                                } else {
+                                    format!("{bars} {}", if bars == 1 { "bar" } else { "bars" })
+                                },
+                            );
+                        }
+                    });
+            },
+        );
+    });
+    ui.add_enabled_ui(audio.midi_enabled, |ui| {
+        crate::rows::field(
+            ui,
+            label_width,
+            |ui| {
+                ui.label("Recording offset");
+            },
+            |ui| {
+                ui.add(
+                    egui::DragValue::new(&mut settings.midi.recording_offset_ms)
+                        .range(-200..=200)
+                        .suffix(" ms"),
+                )
+                .on_hover_text("Shift recorded notes; positive values place notes later");
+            },
+        );
+    });
+    ui.add_enabled_ui(audio.midi_enabled, |ui| {
+        ui.checkbox(&mut settings.midi.count_in_enabled, "Count-in enabled")
+            .on_hover_text(if settings.midi.count_in_enabled {
+                "Count-in: On"
+            } else {
+                "Count-in: Off"
+            });
+    });
+    if ui.button("Panic").on_hover_text("Panic").clicked() {
+        audio.midi_panic_requested = true;
+    }
+    if audio.midi_take_retained && ui.button("Retry MIDI take publication").clicked() {
+        audio.midi_retry_requested = true;
+    }
+    crate::rows::advice(
+        ui,
+        "Enable R after M/S to receive MIDI on several tracks. With no R enabled, the selected MIDI track receives input. Its R text shows the active color.",
+    );
+    if settings.midi.device.is_some() && !audio.midi_connected {
+        ui.label("MIDI input is disconnected.");
+    }
+}
+
+fn separation(
+    ui: &mut egui::Ui,
+    models: &daw_project::SeparationModels,
+    model_info: &std::collections::HashMap<
+        daw_project::SeparationModelKind,
+        daw_project::SeparationModelInfo,
+    >,
+    models_enabled: bool,
+    model_action: &mut Option<ModelAction>,
+    label_width: f32,
+) {
+    ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE && models_enabled, |ui| {
+        model_row(
+            ui,
+            label_width,
+            daw_project::SeparationModelKind::Cpu,
+            models.cpu.as_deref(),
+            model_info.get(&daw_project::SeparationModelKind::Cpu),
+            model_action,
+        );
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        model_row(
+            ui,
+            label_width,
+            daw_project::SeparationModelKind::CoreMl,
+            models.coreml.as_deref(),
+            model_info.get(&daw_project::SeparationModelKind::CoreMl),
+            model_action,
+        );
+    });
+    if !daw_project::SEPARATION_AVAILABLE {
+        ui.label(daw_project::SEPARATION_UNAVAILABLE_REASON);
+    }
+}
+
+pub fn show(
+    ctx: &Context,
+    settings: &mut AppSettings,
+    models: &daw_project::SeparationModels,
+    model_info: &std::collections::HashMap<
+        daw_project::SeparationModelKind,
+        daw_project::SeparationModelInfo,
+    >,
+    models_enabled: bool,
+    model_action: &mut Option<ModelAction>,
+    audio: &mut AudioControls<'_>,
+) -> bool {
+    let popup_was_open = egui::Popup::is_any_open(ctx);
+    let mut group = ctx
+        .data_mut(|data| data.get_temp::<Group>(group_id()))
+        .unwrap_or_default();
+    let width = (ctx.content_rect().width() - 48.0).clamp(280.0, 680.0);
+    let height = (ctx.content_rect().height() - 150.0).clamp(160.0, 420.0);
+    let sidebar_width = (width * 0.24).clamp(96.0, 160.0);
+    let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
+        .width(width)
+        .footer_separator(true)
+        .show_with_content(ctx, |ui| {
+            ui.horizontal_top(|ui| {
+                ui.allocate_ui_with_layout(
+                    Vec2::new(sidebar_width, height),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(sidebar_width);
+                        ui.set_min_height(height);
+                        // Let the shared catalog body own the sidebar insets,
+                        // including the space next to the dialog edges/divider.
+                        let bounds = ui.max_rect().expand(f32::from(crate::dialogs::PADDING));
+                        let mut sidebar = ui.new_child(
+                            egui::UiBuilder::new()
+                                .id_salt("settings-sidebar")
+                                .max_rect(bounds),
+                        );
+                        sidebar.set_clip_rect(
+                            bounds.intersect(
+                                ui.clip_rect().expand(f32::from(crate::dialogs::PADDING)),
+                            ),
+                        );
+                        let panel = crate::panels::ControlPanel::with_width(
+                            &sidebar,
+                            bounds,
+                            bounds.width(),
+                        );
+                        panel.catalog_body(&mut sidebar, |ui| {
+                            for item in Group::ALL {
+                                if panel
+                                    .catalog_item(ui, item.label(), group == item, false)
+                                    .clicked()
+                                {
+                                    group = item;
+                                }
+                            }
+                        });
+                    },
+                );
+                let (divider, _) =
+                    ui.allocate_exact_size(Vec2::new(1.0, height), egui::Sense::hover());
+                let padding = f32::from(crate::dialogs::PADDING);
+                ui.painter()
+                    .with_clip_rect(ui.clip_rect().expand(padding))
+                    .vline(
+                        divider.center().x,
+                        (divider.top() - padding)..=(divider.bottom() + padding + 0.5),
+                        egui::Stroke::new(1.0, crate::theme::palette(ctx).border),
+                    );
+                ui.allocate_ui_with_layout(
+                    Vec2::new(ui.available_width(), height),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_min_height(height);
+                        egui::ScrollArea::vertical()
+                            .id_salt(("settings-content", group))
+                            .max_height(height)
+                            .show(ui, |ui| {
+                                ui.set_min_width(ui.available_width());
+                                let label_text = |label: &str| {
+                                    ui.painter()
+                                        .layout_no_wrap(
+                                            label.into(),
+                                            egui::TextStyle::Body.resolve(ui.style()),
+                                            crate::theme::palette(ctx).text,
+                                        )
+                                        .size()
+                                        .x
+                                };
+                                let label_width = label_text("Recording offset")
+                                    .max(label_text("Split MIDI notes"))
+                                    .max(
+                                        label_text("Accent color")
+                                            + ui.spacing().item_spacing.x
+                                            + 14.0,
+                                    )
+                                    .min(ui.available_width() * 0.44);
+                                ui.strong(group.label());
+                                match group {
+                                    Group::Appearance => appearance(ui, ctx, settings, label_width),
+                                    Group::Playback => playback(ui, settings, audio, label_width),
+                                    Group::TimeStretch => time_stretch(ui, settings, label_width),
+                                    Group::Midi => midi(ui, settings, audio, label_width),
+                                    Group::StemSeparation => separation(
+                                        ui,
+                                        models,
+                                        model_info,
+                                        models_enabled,
+                                        model_action,
+                                        label_width,
+                                    ),
+                                }
+                            });
+                    },
+                );
             });
         })
         .is_some();
+    ctx.data_mut(|data| data.insert_temp(group_id(), group));
     close || (!popup_was_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)))
 }
 
@@ -578,10 +885,19 @@ mod tests {
         settings: &mut AppSettings,
         events: Vec<egui::Event>,
     ) -> (bool, Vec<egui::epaint::ClippedShape>) {
+        frame_at_size(ctx, settings, events, Vec2::new(900.0, 700.0))
+    }
+
+    fn frame_at_size(
+        ctx: &Context,
+        settings: &mut AppSettings,
+        events: Vec<egui::Event>,
+        size: Vec2,
+    ) -> (bool, Vec<egui::epaint::ClippedShape>) {
         let mut closed = false;
         let mut output = ctx.run_ui(
             egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 700.0))),
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
                 events,
                 ..Default::default()
             },
@@ -625,6 +941,100 @@ mod tests {
             vec![egui::Event::PointerMoved(point), button(true)],
         );
         frame(ctx, settings, vec![button(false)]).0
+    }
+
+    #[test]
+    fn sidebar_shows_only_the_active_group_without_changing_preferences() {
+        for theme in ColorTheme::ALL {
+            let ctx = Context::default();
+            crate::theme::configure(&ctx);
+            let mut settings = AppSettings {
+                theme,
+                ..Default::default()
+            };
+            crate::theme::apply(&ctx, settings.clone());
+            let before = settings.clone();
+            for (group, field) in [
+                (Group::Appearance, "Theme"),
+                (Group::Playback, "Seek cache"),
+                (Group::TimeStretch, "Default engine"),
+                (Group::Midi, "Split MIDI notes"),
+                (Group::StemSeparation, "CPU model"),
+                (Group::Appearance, "Theme"),
+            ] {
+                frame(&ctx, &mut settings, vec![]);
+                if group != Group::Appearance
+                    || ctx.data_mut(|d| d.get_temp::<Group>(group_id())) != Some(Group::Appearance)
+                {
+                    click(&ctx, &mut settings, group.label());
+                }
+                let shapes = frame(&ctx, &mut settings, vec![]).1;
+                let text = |label: &str| {
+                    shapes.iter().any(
+                        |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == label),
+                    )
+                };
+                for item in Group::ALL {
+                    assert!(text(item.label()));
+                }
+                for label in [
+                    "Theme",
+                    "Seek cache",
+                    "Default engine",
+                    "Split MIDI notes",
+                    "CPU model",
+                ] {
+                    assert_eq!(
+                        text(label),
+                        label == field,
+                        "visible field {label} on {group:?}"
+                    );
+                }
+                assert_eq!(settings, before);
+                assert_eq!(
+                    ctx.data_mut(|d| d.get_temp::<Group>(group_id())),
+                    Some(group)
+                );
+            }
+            assert!(click(&ctx, &mut settings, "Close"));
+        }
+    }
+
+    #[test]
+    fn sidebar_and_close_remain_visible_on_each_page_and_smaller_windows() {
+        for theme in ColorTheme::ALL {
+            for size in [Vec2::new(640.0, 480.0), Vec2::new(900.0, 700.0)] {
+                let ctx = Context::default();
+                crate::theme::configure(&ctx);
+                let mut settings = AppSettings {
+                    theme,
+                    ..Default::default()
+                };
+                crate::theme::apply(&ctx, settings.clone());
+                for group in Group::ALL {
+                    ctx.data_mut(|d| d.insert_temp(group_id(), group));
+                    for _ in 0..3 {
+                        frame_at_size(&ctx, &mut settings, vec![], size);
+                    }
+                    let shapes = frame_at_size(&ctx, &mut settings, vec![], size).1;
+                    for label in Group::ALL.map(Group::label).into_iter().chain(["Close"]) {
+                        let bounds = shapes
+                            .iter()
+                            .find_map(|s| match &s.shape {
+                                egui::Shape::Text(t) if t.galley.text() == label => {
+                                    Some(Rect::from_min_size(t.pos, t.galley.size()))
+                                }
+                                _ => None,
+                            })
+                            .expect("navigation and Close stay visible");
+                        assert!(
+                            Rect::from_min_size(Pos2::ZERO, size).contains_rect(bounds),
+                            "{label}: {bounds:?} in {size:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -773,6 +1183,7 @@ mod tests {
         };
         frame(&ctx, &mut settings, vec![]);
         assert_eq!(settings.seek_cache, CacheProfile::Balanced);
+        click(&ctx, &mut settings, "Playback");
         for profile in [
             CacheProfile::Light,
             CacheProfile::Responsive,
@@ -812,21 +1223,7 @@ mod tests {
         };
         frame(&ctx, &mut settings, vec![]);
         assert_eq!(settings.midi_note_split, daw_core::MidiNoteSplit::Split);
-        for _ in 0..5 {
-            frame(
-                &ctx,
-                &mut settings,
-                vec![
-                    egui::Event::PointerMoved(Pos2::new(450.0, 450.0)),
-                    egui::Event::MouseWheel {
-                        unit: egui::MouseWheelUnit::Point,
-                        phase: egui::TouchPhase::Move,
-                        delta: Vec2::new(0.0, -120.0),
-                        modifiers: Default::default(),
-                    },
-                ],
-            );
-        }
+        click(&ctx, &mut settings, "MIDI");
         click(&ctx, &mut settings, "Split into two");
         click(&ctx, &mut settings, "Preserve first");
         assert_eq!(

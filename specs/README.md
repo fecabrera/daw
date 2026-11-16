@@ -71,6 +71,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Chord catalog](editing/chords.md).
 - [Audio sidechain modulation plan](modulation/audio-sidechain-plan.md): high-priority track/group/Return sources and configurable audio-to-control mapping.
 - [Mixer strip output destinations](views/mixer.md).
+- [Application Settings](views/application-settings.md): sidebar groups, active-page controls and transient navigation state.
 - [View menu panels](views/view-menu.md): shared panel toggles, view availability and checked states.
 - [Tooltip presentation](views/tooltips.md): canonical types, concise formats, accessibility and Details reports. See the [acceptance inventory](acceptance/tooltips.md) for shared editor coverage.
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).

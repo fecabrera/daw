@@ -492,13 +492,29 @@ mod tests {
         }
         render(vec![]);
         let shapes = render(vec![]);
+        let playback = point(&shapes, "Playback");
+        render(vec![
+            egui::Event::PointerMoved(playback),
+            egui::Event::PointerButton {
+                pos: playback,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            },
+        ]);
+        render(vec![egui::Event::PointerButton {
+            pos: playback,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Default::default(),
+        }]);
+        let shapes = render(vec![]);
         for label in [
             "Output device",
             "Input device",
             "Audio quality defaults…",
             "Refresh devices",
             "Time stretch",
-            "Default engine",
         ] {
             point(&shapes, label);
         }

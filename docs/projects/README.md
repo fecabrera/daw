@@ -73,6 +73,8 @@ Audio settings changes prepare the required audio before replacing the session. 
 
 Open Settings from the app-name menu on macOS or File on Windows/Linux. Use Command+, on macOS or Ctrl+, on Windows/Linux.
 
+Choose a group in the left sidebar. The right panel shows only that group’s settings. The selected group is remembered during the app session; switching groups does not change preferences or modify the project.
+
 Settings groups controls into five categories:
 
 - **Appearance**: titlebar style where supported, theme, and accent color.
