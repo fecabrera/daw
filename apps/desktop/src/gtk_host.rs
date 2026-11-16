@@ -142,7 +142,9 @@ fn build(
         settings.default_stretch_engine,
     );
     ui.set_settings(&ctx, settings);
-    if let Some(root) = crate::midi::recovery_root() {
+    if smoke.is_none()
+        && let Some(root) = crate::midi::recovery_root()
+    {
         ui.enable_midi(Box::new(crate::midi::NativeMidi::default()), root);
     }
     let state = Rc::new(RefCell::new(State {
@@ -176,9 +178,18 @@ fn build(
     input::connect_input(&area, &window, &state);
 
     let smoke_controls = (left.clone(), right.clone(), titlebar_box.clone());
+    let destroyed = Rc::new(Cell::new(false));
+    let destroyed_window = destroyed.clone();
+    window.connect_destroy(move |_| destroyed_window.set(true));
+    let titlebar_pending = Rc::new(Cell::new(false));
     let weak_window = window.downgrade();
     let render_state = state.clone();
+    let render_destroyed = destroyed.clone();
+    let render_pending = titlebar_pending.clone();
     area.connect_render(move |area, _| {
+        if render_destroyed.get() {
+            return glib::Propagation::Stop;
+        }
         let Some(window) = weak_window.upgrade() else {
             return glib::Propagation::Stop;
         };
@@ -203,7 +214,7 @@ fn build(
             }
         }
         let custom = state.ui.settings().titlebar == TitlebarStyle::Custom;
-        if window.titlebar().is_some() != custom {
+        if window.titlebar().is_some() != custom && !render_pending.replace(true) {
             // GTK requires titlebar changes before realization. Recreate only
             // the native surface; the session, workers and egui state stay live.
             let (window, titlebar, left, right, area) = (
@@ -213,7 +224,15 @@ fn build(
                 right.clone(),
                 area.clone(),
             );
-            glib::idle_add_local_once(move || {
+            let pending = render_pending.clone();
+            let destroyed = render_destroyed.clone();
+            // Run after this snapshot, before GTK's next redraw. Default idle
+            // priority can starve while the UI requests continuous repaints.
+            glib::idle_add_local_full(glib::Priority::HIGH_IDLE, move || {
+                pending.set(false);
+                if destroyed.get() || !window.is_visible() {
+                    return glib::ControlFlow::Break;
+                }
                 let maximized = window.is_maximized();
                 let fullscreen = window.is_fullscreen();
                 let size = (window.width(), window.height());
@@ -238,7 +257,12 @@ fn build(
                 }
                 area.grab_focus();
                 area.queue_render();
+                glib::ControlFlow::Break
             });
+        }
+        if state.smoke {
+            // Exercise titlebar switching while redraws remain continuously due.
+            ctx.request_repaint();
         }
         if let Some(settings) = gtk4::Settings::default() {
             let dark = ctx.global_style().visuals.dark_mode;
@@ -386,6 +410,9 @@ fn build(
     let weak_area = area.downgrade();
     // Poll only the repaint flag; worker callbacks never access GTK objects.
     glib::timeout_add_local(Duration::from_millis(16), move || {
+        if destroyed.get() {
+            return glib::ControlFlow::Break;
+        }
         let Some(area) = weak_area.upgrade() else {
             return glib::ControlFlow::Break;
         };
@@ -405,10 +432,11 @@ fn build(
     area.grab_focus();
     if let Some(passed) = smoke {
         let mut step = 0;
+        let mut deadline = Instant::now() + Duration::from_secs(10);
         glib::timeout_add_local(Duration::from_millis(600), move || {
             let (left, right, _) = &smoke_controls;
             let mut state = state.borrow_mut();
-            if state.painter.is_none() || area.error().is_some() {
+            if area.error().is_some() {
                 tracing::error!("GTK smoke test: renderer unavailable");
                 drop(state);
                 window.destroy();
@@ -417,9 +445,24 @@ fn build(
             let native = state.ui.settings().titlebar == TitlebarStyle::Native;
             let correct = window.titlebar().is_none() == native
                 && left.is_visible() != native
-                && right.is_visible() != native;
+                && right.is_visible() != native
+                && !titlebar_pending.get()
+                && state.painter.is_some()
+                && state.renderer_generation > step;
             if !correct {
-                tracing::error!("GTK smoke test: titlebar visibility mismatch");
+                if Instant::now() < deadline {
+                    return glib::ControlFlow::Continue;
+                }
+                tracing::error!(
+                    step,
+                    native,
+                    titlebar = window.titlebar().is_some(),
+                    left_visible = left.is_visible(),
+                    right_visible = right.is_visible(),
+                    pending = titlebar_pending.get(),
+                    generation = state.renderer_generation,
+                    "GTK smoke test: titlebar transition did not complete"
+                );
                 drop(state);
                 window.destroy();
                 return glib::ControlFlow::Break;
@@ -438,13 +481,8 @@ fn build(
                 state.ui.set_settings(&ctx, settings);
                 ctx.request_repaint();
                 step += 1;
+                deadline = Instant::now() + Duration::from_secs(10);
                 return glib::ControlFlow::Continue;
-            }
-            if state.renderer_generation < 3 {
-                tracing::error!("GTK smoke test: window surfaces were not recreated");
-                drop(state);
-                window.destroy();
-                return glib::ControlFlow::Break;
             }
             save_snapshot(&window, "custom.png");
             passed.set(true);

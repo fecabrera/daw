@@ -50,7 +50,12 @@ header gestures use shared hit-testing for native dragging and double-click
 maximize. Root close requests enter the existing unsaved-project guard before
 GTK closes. Titlebar switching is deferred until after the current snapshot. The host hides
 and unrealizes the window before changing its titlebar, then presents it again,
-retaining the session and maximized state. Managed texture images are cached on
+retaining the session and maximized state. Only one titlebar switch may be queued.
+It runs at GLib high-idle priority before the next GTK redraw, so continuous
+repaints cannot starve it. Destruction cancels deferred presentation and repaint
+polling; a hidden window is not presented by a pending switch.
+See [GLib idle source priorities](https://docs.gtk.org/glib/const.PRIORITY_HIGH_IDLE.html).
+Managed texture images are cached on
 the CPU, including partial updates, and uploaded to each replacement GL painter.
 Freed images leave the cache.
 
@@ -84,11 +89,17 @@ cargo clippy -p daw-desktop --all-targets --locked --offline -- -D warnings
 cargo test -p daw-ui titlebar::tests --locked --offline
 ```
 
-The smoke test renders the DAW, switches Custom → Native → Custom, checks GTK
-custom-titlebar presence and control visibility, verifies surface recreation,
+The smoke test renders the DAW with continuous repaint requests, switches
+Custom → Native → Custom, checks GTK custom-titlebar presence and control
+visibility, verifies surface recreation,
 saves `work/gtk-titlebar/native.png` and `work/gtk-titlebar/custom.png`, and closes.
-It does not load or save preferences or open a user project. Render failure
-returns a failing process exit code. The screenshot is an ignored scratch output.
+Each transition has a ten-second deadline and must finish with a recreated
+renderer before the next step. Failure reports the requested mode, titlebar,
+control visibility, pending switch and renderer generation. It does not load or
+save preferences, open a user project, initialize MIDI devices or access recovery
+storage. Headless CI disables GTK accessibility bus discovery with `GTK_A11Y=none`.
+Render failure returns a failing process exit code. The screenshot is an ignored
+scratch output.
 
 The host does not establish parity for accessibility of the egui content,
 full IM preedit/composition, image clipboard, or additional viewports. GTK owns

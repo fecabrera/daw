@@ -8,6 +8,32 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## GTK titlebar smoke scheduling — 2026-11-16
+
+The Linux CI log reports a titlebar visibility mismatch followed by repeated
+attempts to present a destroyed window. The render callback queued a default
+idle switch on every mismatched frame. Continuous redraws could postpone those
+switches, leaving several callbacks to present the window after failure cleanup.
+This scheduling diagnosis has not been reproduced locally on Linux.
+
+The host now queues one high-idle switch, guards deferred presentation after
+destruction or hiding, and stops repaint polling after destruction. The smoke
+test requests continuous repaints and waits up to ten seconds per transition,
+checking the renderer generation and logging transition state on failure.
+Smoke startup skips native MIDI and recovery storage. Headless CI sets
+`GTK_A11Y=none` because that session has no accessibility bus.
+
+Executed on macOS arm64:
+
+- `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: PASS.
+
+Linux GTK compilation and the Xvfb smoke test cannot run on this host and remain
+for native CI. macOS Clippy excludes the Linux-only host implementation. No
+native UI, MIDI device, full debug or full release test run was performed for
+this Linux-only change.
+
+`cargo fmt --all --check` and `git diff --check`: PASS.
+
 ## Recovery action and GTK example CI fixes — 2026-11-16
 
 The UI stores the recovery entry in `Action::Recovery` through a `Box` to
