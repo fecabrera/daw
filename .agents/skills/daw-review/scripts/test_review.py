@@ -367,6 +367,91 @@ class ReviewerStances(unittest.TestCase):
 
 
 class Snapshots(unittest.TestCase):
+    def test_local_working_tree_and_saved_patch_freeze_the_same_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            base = self.make_repo(repo)
+            (repo / "docs/test.txt").write_text("staged\n")
+            (repo / "added.rs").write_text("pub fn added() {}\n")
+            (repo / "crates/ui/lib.rs").write_text("pub fn retained() {}\n")
+            review.git(repo, "add", ".")
+            (repo / "docs/test.txt").write_text("unstaged\n")
+            (repo / "crates/ui/test.txt").unlink()
+            (repo / "binary.dat").write_bytes(b"\0binary\xff")
+            review.git(repo, "add", "binary.dat")
+            (repo / "untracked.rs").write_text("private\n")
+            before = review.git(repo, "status", "--porcelain")
+            index = review.git(repo, "diff", "--cached", "--binary", binary=True)
+            args = SimpleNamespace(repo=repo, out=root / "local", reviewers=1, config=None,
+                                   base=None, head=None, type="local", target="local changes")
+            review.prepare(args)
+            run = review.read_json(args.out / "run.json")
+            self.assertEqual(run["base_sha"], base)
+            self.assertIsNone(run["merge_base"])
+            self.assertEqual(run["head_revision_kind"], "tree")
+            self.assertEqual(run["excluded_untracked_files"], 1)
+            self.assertFalse(run["excluded_working_tree_changes"])
+            self.assertTrue(run["code_scope"]["changed"])
+            self.assertEqual((args.out / "head/docs/test.txt").read_text(), "unstaged\n")
+            self.assertFalse((args.out / "head/crates/ui/test.txt").exists())
+            self.assertFalse((args.out / "head/untracked.rs").exists())
+            self.assertEqual((args.out / "head/binary.dat").read_bytes(), b"\0binary\xff")
+            self.assertEqual(review.git(repo, "status", "--porcelain"), before)
+            self.assertEqual(review.git(repo, "diff", "--cached", "--binary", binary=True), index)
+            # Reapply the captured patch after the live files have changed.
+            patch_file = root / "saved.patch"
+            patch_file.write_bytes((args.out / "diff.patch").read_bytes())
+            (repo / "docs/test.txt").write_text("later edit\n")
+            args.out, args.base, args.patch = root / "patch", base, patch_file
+            review.prepare(args)
+            saved = review.read_json(args.out / "run.json")
+            self.assertEqual(saved["head_sha"], run["head_sha"])
+            self.assertEqual(saved["changed_files"], run["changed_files"])
+            self.assertTrue(saved["excluded_working_tree_changes"])
+            output = io.StringIO()
+            with redirect_stdout(output):
+                review.prompt(SimpleNamespace(run=args.out, reviewer="reviewer-1", adjudicator=False))
+            self.assertIn("result Git tree ID, not a commit", output.getvalue())
+            entry = report()
+            entry.update(head_sha=saved["head_sha"], stance="neutral")
+            review.write_json(args.out / "reports/reviewer-1.json", entry)
+            final = adjudication()
+            final["head_sha"] = saved["head_sha"]
+            review.write_json(args.out / "adjudication.json", final)
+            review.render(SimpleNamespace(run=args.out, adjudication=args.out / "adjudication.json", coordinator_model="not exposed"))
+            rendered = (args.out / "report.md").read_text()
+            self.assertIn("**Type:** local diff", rendered)
+            self.assertIn("result tree", rendered)
+            self.assertNotIn("merge base `None`", rendered)
+            self.assertEqual(review.read_json(args.out / "audit.json")["run"]["head_sha"], run["head_sha"])
+
+    def test_local_cli_scope_and_invalid_patch_do_not_change_user_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            self.make_repo(repo)
+            patch_file = root / "bad.patch"
+            patch_file.write_text("not a patch\n")
+            before = review.git(repo, "status", "--porcelain")
+            common = [sys.executable, str(Path(review.__file__)), "prepare", "--repo", str(repo),
+                      "--type", "local", "--target", "local", "--reviewers", "1", "--out", str(root / "run")]
+            for options in (["--mode", "standalone"], ["--head", "HEAD"], ["--base", "HEAD"],
+                            ["--patch", str(patch_file)], ["--patch", str(patch_file), "--base", "HEAD"]):
+                with self.subTest(options=options):
+                    result = subprocess.run([*common, *options], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertFalse((root / "run/run.json").exists())
+                    self.assertEqual(review.git(repo, "status", "--porcelain"), before)
+            # Empty working-tree diffs are valid and skip both implementation categories.
+            valid = [str(root / "empty") if value == str(root / "run") else value for value in common]
+            result = subprocess.run(valid, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            run = review.load_run(root / "empty")[1]
+            self.assertEqual(run["changed_files"], [])
+            self.assertFalse(run["code_scope"]["changed"])
+            self.assertFalse(run["dependency_scope"]["changed"])
+
     def make_repo(self, root):
         root.mkdir()
         subprocess.run(["git", "init", "-q", str(root)], check=True)

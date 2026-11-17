@@ -4,7 +4,7 @@ Read this repository's current `AGENTS.md`, the root README, `docs/README.md`, a
 
 ## Review mode
 
-**Comparison** reviews new, changed and affected behavior between pinned revisions. **Standalone** reviews the full committed branch snapshot without a baseline. In standalone mode, read "changed" or "affected" flow/feature below as every applicable flow/feature present at the pinned head. Inventory the full implementation and docs, include existing defects, and mark unreviewed required areas as limited coverage. Do not infer introduction history from the absence of a diff. Requirement violations need current evidence, not proof that a recent commit caused them.
+**Comparison** reviews new, changed and affected behavior between pinned snapshots. Local input compares the exact base commit with a frozen result tree; branch/PR input compares merge base with head. Local changes have no review commit provenance. **Standalone** reviews the full committed branch snapshot without a baseline. In standalone mode, read "changed" or "affected" flow/feature below as every applicable flow/feature present at the pinned head. Inventory the full implementation and docs, include existing defects, and mark unreviewed required areas as limited coverage. Do not infer introduction history from the absence of a diff. Requirement violations need current evidence, not proof that a recent commit caused them.
 
 ## Reviewer stances
 

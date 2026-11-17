@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 import subprocess
 import sys
 import tarfile
+import tempfile
 import tomllib
 
 CATEGORIES = ("docs", "code", "deps")
@@ -84,6 +85,23 @@ def review_mode(run):
     mode = run.get("mode", "comparison")
     require(mode in ("comparison", "standalone"), "Invalid review mode")
     return mode
+
+
+def local_snapshot(repo, base, patch, dest):
+    """Apply data to an isolated index; never change the user's index or files."""
+    with tempfile.TemporaryDirectory(prefix="daw-review-") as tmp:
+        isolated = Path(tmp) / "repo"
+        subprocess.run(["git", "clone", "--shared", "--no-checkout", "--quiet", "--", str(repo), str(isolated)],
+                       capture_output=True, check=True)
+        git(isolated, "read-tree", base)
+        if patch:
+            subprocess.run(["git", "-C", str(isolated), "apply", "--cached", "--whitespace=nowarn", "-"],
+                           input=patch, capture_output=True, check=True)
+        tree = git(isolated, "write-tree")
+        changed = git(isolated, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "--no-renames", "-z", base, tree, "--", binary=True)
+        files = [p.decode("utf-8", errors="surrogateescape") for p in changed.split(b"\0") if p]
+        snapshot(isolated, tree, dest)
+        return tree, files
 
 
 def standalone_scope(run, category):
@@ -258,11 +276,20 @@ def configure_reviewers(args, config):
 def prepare(args):
     require(sys.version_info >= (3, 12), "Python 3.12+ required for safe archive extraction")
     mode = review_mode({"mode": getattr(args, "mode", "comparison")})
-    if mode == "standalone":
+    local = args.type == "local"
+    patch_path = getattr(args, "patch", None)
+    require(not patch_path or local, "--patch requires --type local")
+    if local:
+        require(mode == "comparison", "Local diffs require comparison mode")
+        require(not args.head, "Local diffs do not accept --head")
+        require(not patch_path or args.base, "Saved patches require an explicit --base")
+        require(patch_path or args.base is None, "Working-tree diffs use HEAD; omit --base")
+    elif mode == "standalone":
         require(args.type == "branch", "Standalone mode requires --type branch")
         require(args.base is None, "Standalone mode does not accept --base")
     else:
         require(args.base, "Comparison mode requires --base")
+    require(local or args.head, "Branch and PR reviews require --head")
     repo = Path(git(args.repo, "rev-parse", "--show-toplevel")).resolve()
     out = Path(args.out).resolve()
     require(not out.exists(), "Use a new run directory; existing artifacts are never overwritten")
@@ -282,10 +309,13 @@ def prepare(args):
         nonempty(adjudicator["model"], "adjudicator.model")
     fail_on = config.get("fail_on", ["critical", "major"])
     require(any(fail_on == list(LEVELS[:n]) for n in range(1, 5)), "fail_on must be a nonempty ordered severity prefix")
-    head = commit(repo, args.head)
+    head = None if local else commit(repo, args.head)
     base = merge_base = None
     files = tracked_files = patch = None
-    if mode == "standalone":
+    if local:
+        base = commit(repo, args.base if patch_path else "HEAD")
+        patch = Path(patch_path).read_bytes() if patch_path else git(repo, "diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv", "--no-renames", base, "--", binary=True)
+    elif mode == "standalone":
         inventory = git(repo, "ls-tree", "-r", "--name-only", "-z", head, binary=True)
         tracked_files = [p.decode("utf-8", errors="surrogateescape") for p in inventory.split(b"\0") if p]
     else:
@@ -299,8 +329,11 @@ def prepare(args):
     for name in ("reports", "scratch"):
         (out / name).mkdir()
     if mode == "comparison":
-        snapshot(repo, merge_base, out / "base")
-    snapshot(repo, head, out / "head")
+        snapshot(repo, base if local else merge_base, out / "base")
+    if local:
+        head, files = local_snapshot(repo, base, patch, out / "head")
+    else:
+        snapshot(repo, head, out / "head")
     for marker in ("AGENTS.md", "Cargo.toml", "crates/ui", "crates/engine", "specs", "docs"):
         require((out / "head" / marker).exists(), f"Target does not identify this DAW repository: missing {marker}")
     for agent in [r["id"] for r in reviewers] + ["adjudicator"]:
@@ -312,17 +345,26 @@ def prepare(args):
         "repository": str(repo), "base_ref": args.base, "head_ref": args.head,
         "base_sha": base, "head_sha": head, "merge_base": merge_base,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "excluded_working_tree_changes": dirty, "changed_files": files,
+        "excluded_working_tree_changes": dirty if not local or patch_path else False, "changed_files": files,
         "reviewers": reviewers, "adjudicator": adjudicator, "fail_on": fail_on,
     }
+    if local:
+        run.update({"base_ref": args.base if patch_path else "HEAD", "head_ref": None,
+                    "local_input": "patch" if patch_path else "working-tree",
+                    "patch_path": str(Path(patch_path).resolve()) if patch_path else None,
+                    "head_revision_kind": "tree",
+                    "excluded_untracked_files": git(repo, "ls-files", "--others", "--exclude-standard", "-z", binary=True).count(b"\0")})
     if tracked_files is not None:
         run["tracked_files"] = tracked_files
     run["dependency_scope"] = dependency_scope(run, out)
     run["code_scope"] = code_scope(run, out)
     write_json(out / "run.json", run)
     print(out / "run.json")
-    if dirty:
-        print("Working-tree changes are excluded; review uses pinned commits only.")
+    if local:
+        print("Local diff frozen against the exact base; head_sha identifies a Git tree, not a commit.")
+        print(f"Untracked files excluded: {run['excluded_untracked_files']}; ignored files are excluded.")
+    if run["excluded_working_tree_changes"]:
+        print("Working-tree changes are excluded; review uses the pinned snapshots only.")
 
 
 def load_run(path):
@@ -461,8 +503,12 @@ def inline(text):
 
 def markdown(run, reports, document, findings, counts, coordinator_model):
     mode = review_mode(run)
-    lines = [f"**Type:** {'PR' if run['type'] == 'pr' else 'branch'}", f"**Target:** {inline(run['target'])}", f"**Mode:** {mode}"]
-    if mode == "standalone":
+    label = {'pr': 'PR', 'branch': 'branch', 'local': 'local diff'}[run['type']]
+    lines = [f"**Type:** {label}", f"**Target:** {inline(run['target'])}", f"**Mode:** {mode}"]
+    if run['type'] == 'local':
+        lines += [f"**Revisions:** exact base commit `{run['base_sha']}`; result tree `{run['head_sha']}`.",
+                  f"Input: {run['local_input']}. No merge base or review commit is created. Untracked files excluded: {run['excluded_untracked_files']}; ignored files are excluded."]
+    elif mode == "standalone":
         lines += [f"**Revision:** `{run['head_sha']}`.", "", "Scope: the full committed snapshot, including existing issues and dependencies. No base comparison or introduction history is inferred."]
     else:
         lines += [f"**Revisions:** base `{run['base_sha']}`; head `{run['head_sha']}`; merge base `{run['merge_base']}`."]
@@ -532,7 +578,11 @@ def prompt(args):
     else:
         common.update({"base_sha": run["base_sha"], "merge_base": run["merge_base"], "base_snapshot": str(root / "base"),
                        "diff": str(root / "diff.patch"), "changed_files": run["changed_files"]})
+    if run["type"] == "local":
+        common.update({key: run[key] for key in ("local_input", "head_revision_kind", "excluded_untracked_files")})
     print(f"Read {SKILL / 'references/rubric.md'} and {SKILL / 'references/protocol.md'}.")
+    if run["type"] == "local":
+        print("Review the frozen local diff against its exact base commit, without a merge base. head_sha is the result Git tree ID, not a commit. Use it unchanged in JSON. Do not read the live working tree or attribute changes to a commit.")
     if args.adjudicator:
         load_reports(root, run)
         print("Act only as the independent neutral adjudicator. Give neither reviewer stance extra weight. Recheck every raw finding and suggestion directly against pinned evidence. Return the adjudicator JSON. Do not contact reviewers or other agents.")
@@ -578,11 +628,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("prepare")
-    for flag in ("repo", "target", "head", "out"):
+    for flag in ("repo", "target", "out"):
         create.add_argument(f"--{flag}", required=True)
     create.add_argument("--mode", choices=("comparison", "standalone"), default="comparison")
-    create.add_argument("--base", help="Required for comparison; not accepted in standalone mode")
-    create.add_argument("--type", choices=("branch", "pr"), required=True)
+    create.add_argument("--base", help="Required for branch/PR comparison and saved patches; omitted for working-tree and standalone input")
+    create.add_argument("--head", help="Required for branch/PR; not accepted for local diffs")
+    create.add_argument("--patch", help="Saved Git patch for --type local; requires --base")
+    create.add_argument("--type", choices=("branch", "pr", "local"), required=True)
     create.add_argument("--reviewers", type=int, help="Legacy total; defaults unspecified stances to neutral")
     create.add_argument("--adversarial-reviewers", type=int, help="Number of adversarial reviewers")
     create.add_argument("--neutral-reviewers", type=int, help="Number of neutral reviewers")

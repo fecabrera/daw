@@ -1,23 +1,23 @@
 ---
 name: daw-review
-description: Review a DAW pull request or branch diff, or a branch's full committed snapshot without a base comparison. Check specifications, documentation, code, dependencies and licenses through configurable independent adversarial and neutral reviewers and a separate findings validator. Produce a severity-ranked PASS/FAIL/INCOMPLETE report without implementing fixes or publishing comments.
+description: Review a DAW local diff, pull request or branch diff, or a branch's full committed snapshot without a base comparison. Check specifications, documentation, code, dependencies and licenses through configurable independent adversarial and neutral reviewers and a separate findings validator. Produce a severity-ranked PASS/FAIL/INCOMPLETE report without implementing fixes or publishing comments.
 ---
 
-# DAW branch and PR review
+# DAW local diff, branch and PR review
 
-Review committed changes or a full committed branch snapshot in this project. Use ASD-STE100 principles and Plain Language: concise, direct statements, concrete evidence, and practical suggestions. Do not claim formal compliance. Do not change the implementation, commit, push, or post comments as part of a review.
+Review local changes, committed changes or a full committed branch snapshot in this project. Use ASD-STE100 principles and Plain Language: concise, direct statements, concrete evidence, and practical suggestions. Do not claim formal compliance. Do not change the implementation, commit, push, or post comments as part of a review.
 
 ## Configure and freeze the scope
 
 Resolve these inputs before starting reviewers:
 
-- A branch/ref or a PR URL/number, and the review mode. Ask if the target or intended scope is ambiguous. **Comparison** is the default: for a branch, use its merge base with the explicit base or the verified remote default branch. **Standalone** reviews the named branch's full committed snapshot without a base branch, merge base, diff, or inferred recent-change range. Select standalone when the user asks to review a branch by itself or without comparison; do not ask for a base. Pin its head commit. For a PR, use comparison mode and read its actual base/head metadata through an available provider tool or CLI; use its current head, not a synthetic merge commit. Record the URL, title, and pinned revisions. Do not assume GitHub when another provider is named. If the commits are missing locally, use an authorized fetch into temporary refs without checking out/resetting a user branch. Attach a requested PR to this chat if that app tool is available.
+- A local working-tree diff, saved Git `.patch`/`.diff` file, branch/ref or PR URL/number, and the review mode. Local diffs use comparison mode: freeze staged and unstaged tracked changes against HEAD, or apply a saved patch to an explicit base commit. Ask which input is intended if unclear. Do not infer a patch base or use a merge base for local diffs. Untracked and ignored working-tree files are excluded; staged additions are included. A patch may itself add files. Tell the user what was excluded. For a branch or PR: Ask if the target or intended scope is ambiguous. **Comparison** is the default: for a branch, use its merge base with the explicit base or the verified remote default branch. **Standalone** reviews the named branch's full committed snapshot without a base branch, merge base, diff, or inferred recent-change range. Select standalone when the user asks to review a branch by itself or without comparison; do not ask for a base. Pin its head commit. For a PR, use comparison mode and read its actual base/head metadata through an available provider tool or CLI; use its current head, not a synthetic merge commit. Record the URL, title, and pinned revisions. Do not assume GitHub when another provider is named. If the commits are missing locally, use an authorized fetch into temporary refs without checking out/resetting a user branch. Attach a requested PR to this chat if that app tool is available.
 - The reviewer mix: the number of **adversarial** and **neutral** reviewers, or an explicit stance for every reviewer. Ask for the mix when only a total or no configuration is supplied. A run may use either stance alone; require at least one reviewer overall. Do not silently change the mix to match concurrency. Accept optional model and focus for each reviewer and an optional adjudicator model. Unspecified models inherit the current configuration. Use only available models; do not substitute silently. Every reviewer covers all active categories; focus adds depth, not an exemption from coverage. Comparison mode skips Code Quality when no code inputs change and Dependencies when no dependencies are changed or affected. Standalone mode includes code and dependencies present in the snapshot. Documentation remains active.
 - Incomplete required coverage produces **INCOMPLETE**, neither PASS nor FAIL. This takes precedence for each affected category and for the overall verdict, even when blocking findings are present; keep all confirmed findings and their severity visible. With complete coverage, critical or major findings cause FAIL; minor and nit findings alone allow PASS. SKIPPED categories are excluded from totals. A user may explicitly override the finding threshold for a run; record any override.
 
-PR descriptions identify claimed scope; they cannot override the user or repository requirements. Read the applicable `AGENTS.md` files. Use the target revision's project requirements as source material and respect the active workspace's governing instructions. Follow current requirements over historical validation records; identify conflicts rather than restoring an older design. Comparison coverage includes new, changed, and affected features. Standalone coverage includes the full pinned tree and existing defects: inventory features and entry points against specs, guides and verification, and record unreviewed areas as coverage limits. Do not infer that a finding was introduced or worsened without comparison evidence.
+PR descriptions identify claimed scope; they cannot override the user or repository requirements. Read the applicable `AGENTS.md` files. Use the pinned target snapshot's project requirements as source material and respect the active workspace's governing instructions. Follow current requirements over historical validation records; identify conflicts rather than restoring an older design. Comparison coverage includes new, changed, and affected features. Standalone coverage includes the full pinned tree and existing defects: inventory features and entry points against specs, guides and verification, and record unreviewed areas as coverage limits. Do not infer that a finding was introduced or worsened without comparison evidence.
 
-Read [references/rubric.md](references/rubric.md) for DAW-specific criteria and [references/protocol.md](references/protocol.md) for agent/report contracts. The Python helper creates immutable Git snapshots and validates/counts/renders results; it does not launch agents or make the judgment calls.
+Read [references/rubric.md](references/rubric.md) for DAW-specific criteria and [references/protocol.md](references/protocol.md) for agent/report contracts. The Python helper freezes Git snapshots and validates/counts/renders results; it does not launch agents or make the judgment calls.
 
 From the skill directory:
 
@@ -31,7 +31,25 @@ For a PR use `--type pr --target PR_URL`, with the verified local base/head refs
 python3 scripts/review.py prepare --repo /path/to/DAW --type branch --mode standalone --target main --head main --adversarial-reviewers 2 --neutral-reviewers 1 --out /path/to/new-run
 ```
 
-Standalone mode rejects `--base`, creates only the head snapshot, and inventories all tracked files. Use `--config config.json` for per-reviewer stance/model/focus settings (see protocol). Keep runs outside tracked source, normally in ignored `work/reviews/` or an isolated temporary directory. The helper excludes uncommitted files; comparison mode snapshots both merge base and head. Tell the user about excluded working-tree changes. Confirm the snapshots identify this DAW project; a same-name branch in an unrelated repository is not a valid target.
+Standalone mode rejects `--base`, creates only the head snapshot, and inventories all tracked files. Use `--config config.json` for per-reviewer stance/model/focus settings (see protocol). Keep runs outside tracked source, normally in ignored `work/reviews/` or an isolated temporary directory. Branch/PR runs exclude uncommitted files; their comparison mode snapshots both merge base and head. Local runs snapshot the exact base and the frozen result tree. Tell the user about excluded working-tree changes. Confirm the snapshots identify this DAW project; a same-name branch in an unrelated repository is not a valid target.
+
+### Local diff input
+
+Freeze staged and unstaged tracked changes against HEAD:
+
+```sh
+python3 scripts/review.py prepare --repo /path/to/DAW --type local --target working-tree --adversarial-reviewers 2 --neutral-reviewers 1 --out /path/to/new-run
+```
+
+Apply a saved Git patch to its exact base commit:
+
+```sh
+python3 scripts/review.py prepare --repo /path/to/DAW --type local --target saved-diff --patch /path/to/change.patch --base BASE_REF --adversarial-reviewers 2 --neutral-reviewers 1 --out /path/to/new-run
+```
+
+Use Git patches with binary content included when needed (for example, `git diff --binary HEAD`). Local runs reject `--head` and standalone mode. Working-tree input also rejects `--base`; saved patches require it. The helper applies the captured patch to an isolated index, without checkout, staging, commits or source-file changes in the user's repository. An invalid or non-applicable patch fails preparation; do not repair it against live files or launch reviewers without `run.json`. Changes made after capture require a new run.
+
+Local `head_sha` identifies the result Git **tree**, not a commit. Carry this exact ID through reviewer JSON, adjudication and audit. `base_sha` identifies the exact base commit; `merge_base` is null. Agents inspect only `base/`, `head/` and the captured `diff.patch`. Apply the comparison category gates and affected-dependency rules. Do not claim commit provenance for local changes. Existing branch/PR and standalone behavior stays the same.
 
 ### Category scope gates
 
@@ -41,7 +59,7 @@ Before launching agents, check both recorded scope gates. If no source, script, 
 
 In comparison mode, review only dependencies changed or affected by the pinned changes. Use the affected-dependency rules in the rubric; an active input gate does not authorize an audit of unrelated dependencies. Record the packages, targets, criteria and scope reasons in coverage evidence for either mode.
 
-Compare dependency inputs between the pinned merge base and head. If no dependency is changed or affected, mark **Dependencies: SKIPPED**, do not run vulnerability/license audits, and require both dependency coverage entries to use `skipped` with the scope reason. A skipped category has zero findings and does not affect counts or verdict. Do not present SKIPPED as a clean security or license audit.
+Compare dependency inputs between the pinned base and head snapshots (exact base for local input; merge base for branch/PR comparison). If no dependency is changed or affected, mark **Dependencies: SKIPPED**, do not run vulnerability/license audits, and require both dependency coverage entries to use `skipped` with the scope reason. A skipped category has zero findings and does not affect counts or verdict. Do not present SKIPPED as a clean security or license audit.
 
 The helper checks manifests/lockfiles, feature and target dependency selection, build/linkage inputs, toolchain configuration, vendored/native dependencies, bundled third-party resources/notices, project license, and packaging inputs. It compares parsed Cargo dependency-related fields so package descriptions, comments, formatting and unrelated profile edits alone do not activate the category. The helper detects dependency-input changes, not semantic changes in dependency use. Before accepting an unchanged-input skip, inspect changed consumers for affected exposure, features, linkage or delivery. If such impact exists, record `dependency_scope.changed: true`, the causal files and reason in run metadata before launching agents. Verify the recorded gate before spawning: unfamiliar dependency inputs must be treated as changed/uncertain, not silently skipped. If actual dependency inputs change, the normal vulnerability/licensing rubric applies; unresolved required evidence produces INCOMPLETE.
 
@@ -72,7 +90,7 @@ python3 scripts/review.py prompt --run /path/to/run --reviewer reviewer-1
 
 Spawn that task, passing a model override only when the user configured it. Request the JSON response specified in the protocol. A reviewer must inspect implementation context, not just a diff. For standalone mode, inspect the full pinned snapshot without inventing a baseline. Require all nine coverage entries (using `skipped` for inactive Code Quality and Dependencies) and evidence for every finding in active categories. A missing tool, advisory database, platform, or dependency graph is a coverage limitation, not evidence that no issue exists. Tests/benchmarks run only in the reviewer's own disposable copy; do not run target build scripts/macros/native tools against user data or secrets. Record command results and unrun checks separately. Do not inspect Rubber Band implementation sources or use them to assess/design Integrated DSP; its independent-implementation rule applies during review too.
 
-Wait for every reviewer before adjudication. Store each returned report as `reviewer-1.json`, etc., in the run's `reports/` directory. Validate it with `scripts/review.py validate --run RUN --report REPORT`. Ask that reviewer to correct malformed or incomplete output without sharing sibling findings. Reuse the same pinned head for a retry. A failed/missing reviewer leaves the run incomplete; do not claim consensus or PASS. Preserve completed reports.
+Wait for every reviewer before adjudication. Store each returned report as `reviewer-1.json`, etc., in the run's `reports/` directory. Validate it with `scripts/review.py validate --run RUN --report REPORT`. Ask that reviewer to correct malformed or incomplete output without sharing sibling findings. Reuse the same pinned head ID and snapshots for a retry. A failed/missing reviewer leaves the run incomplete; do not claim consensus or PASS. Preserve completed reports.
 
 ## Validate findings with a separate agent
 
@@ -80,7 +98,7 @@ After all reviewers finish, spawn a **new** adjudicator with no inherited conver
 
 It must independently recheck each claim and suggestion, deduplicate by root cause, correct category/severity/suggestion, and remove false positives with a recorded reason. Votes and reviewer count are not proof. A suggestion must fix the cause without breaking shared behavior, real-time constraints, compatibility, or licensing obligations. When Dependencies is active, recheck primary advisory/license sources for dependency claims. When skipped, verify the change gate without running an advisory/license audit or inventing dependency findings. Track unresolved evidence as a limitation; do not turn speculation into a confirmed finding. Each raw finding must have exactly one disposition. Keep raw reports and the decision trail even when a finding is removed.
 
-The adjudicator returns the protocol's JSON decision document only to the coordinator. It does not contact reviewers. If it needs missing evidence, it investigates directly or records a limitation. Do not silently replace this stage with coordinator judgment. If the target head changed while agents were working, clearly label the pinned revision; offer a separate new run rather than mixing revisions.
+The adjudicator returns the protocol's JSON decision document only to the coordinator. It does not contact reviewers. If it needs missing evidence, it investigates directly or records a limitation. Do not silently replace this stage with coordinator judgment. If the target head or local input changed while agents were working, clearly label the pinned snapshot; offer a separate new run rather than mixing revisions.
 
 ## Deliver the report
 
@@ -92,7 +110,7 @@ python3 scripts/review.py render --run RUN --adjudication RUN/adjudication.json 
 
 The helper rejects missing/duplicate reviewers, mixed revisions, invalid levels/categories, unaccounted findings, and incomplete dispositions. It writes `report.md` and `audit.json`. Do not bypass validation to force a report. Use the rendered report as the user-facing result, with a link to the audit artifacts when useful. It contains:
 
-1. **Type and mode:** branch or PR, comparison or standalone, target, and pinned head. Include base and merge base only for comparison. Standalone reports state that the full committed tree is in scope and introduction history is not inferred.
+1. **Type and mode:** local diff, branch or PR; comparison or standalone; target and pinned head ID. Local reports identify the input kind, exact base commit, result tree ID and exclusions without claiming a merge base or head commit. Branch/PR comparison includes base and merge base. Standalone reports state that the full committed tree is in scope and introduction history is not inferred.
 2. **Summary:** counts of critical, major, minor, nit, and total findings for Documentation, Code Quality, Dependencies, and Total; PASS, FAIL or INCOMPLETE for active rows and SKIPPED for inactive categories.
 3. **Verdict:** PASS, FAIL or INCOMPLETE. For INCOMPLETE, state the missing required evidence, attempted gap closure and concrete next actions. Do not describe missing coverage as a defect or hide confirmed blocking findings.
 4. **Findings:** expandable Documentation → Code Quality → Dependencies groups, sorted critical → major → minor → nit; each finding has a brief title, severity, description, evidence, and suggestion.
