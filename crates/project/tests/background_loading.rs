@@ -81,6 +81,32 @@ fn failed_media_completion_keeps_the_document_and_all_original_audio_maps() {
 }
 
 #[test]
+fn validation_failure_after_decode_keeps_active_session_unchanged() {
+    let fixture = Fixture::new();
+    let mut active = fixture.document();
+    // Decode can succeed before stretch preparation validates the model.
+    active.project.tempo_bpm = 0.0;
+    let original = active.project.clone();
+    let warnings = active.warnings.clone();
+    let folder = active.folder.clone();
+
+    let invalid = active
+        .prepare_project_audio(&|| false, &|_, _| {})
+        .unwrap_err();
+    assert_eq!(
+        invalid.to_string(),
+        original.validate().unwrap_err().to_string()
+    );
+    assert_eq!(active.project, original);
+    assert_eq!(active.folder, folder);
+    assert_eq!(active.warnings, warnings);
+    assert!(active.audio.is_empty());
+    assert!(active.stretched_audio.is_empty());
+    assert!(active.sampler_audio.is_empty());
+    assert!(active.compound_views.is_empty());
+}
+
+#[test]
 fn undo_after_loading_time_edit_prepares_originals_and_preserves_redo() {
     for missing_source in [false, true] {
         let fixture = Fixture::new();

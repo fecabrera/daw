@@ -1,5 +1,7 @@
 # Iteration 1 validation
 
+- [Audio preparation session copies — 2026-11-17](audio-preparation-session-copies-2026-11-17.md) records before and after measurements and rollback checks.
+
 - [External plugin hosting integration — 2026-11-17](external-plugin-hosting-integration-2026-11-17.md): active effects/instruments, controls/editors, modulation, PCM sidechains, state/history and native checks.
 - [External plugin hosting foundation — 2026-11-17](external-plugin-hosting-foundation-2026-11-17.md): earlier scanner-only checkpoint.
 

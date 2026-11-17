@@ -171,17 +171,20 @@ impl Session {
         self.prepare_stretches_cancellable(&|| false)
     }
     pub fn prepare_stretches_cancellable(&mut self, cancelled: &impl Fn() -> bool) -> Result<()> {
-        self.prepare_stretches_using(cancelled, |next| next.prepare_sampler_audio(cancelled))
+        if cancelled() {
+            return Err(error("Audio preparation cancelled"));
+        }
+        let mut candidate = self.clone();
+        candidate
+            .prepare_stretches_in_place(cancelled, |next| next.prepare_sampler_audio(cancelled))?;
+        self.audio = candidate.audio;
+        self.stretched_audio = candidate.stretched_audio;
+        self.sampler_audio = candidate.sampler_audio;
+        self.compound_views = candidate.compound_views;
+        Ok(())
     }
-    pub(super) fn prepare_stretches_parallel(
-        &mut self,
-        cancelled: &(impl Fn() -> bool + Sync),
-    ) -> Result<()> {
-        self.prepare_stretches_using(cancelled, |next| {
-            next.prepare_sampler_audio_parallel(cancelled)
-        })
-    }
-    fn prepare_stretches_using(
+    /// May partially update derived maps on error. Pass only a private candidate.
+    pub(super) fn prepare_stretches_in_place(
         &mut self,
         cancelled: &impl Fn() -> bool,
         samplers: impl FnOnce(&mut Self) -> Result<()>,
@@ -189,19 +192,6 @@ impl Session {
         if cancelled() {
             return Err(error("Audio preparation cancelled"));
         }
-        let mut candidate = self.clone();
-        candidate.prepare_stretches_in_place(cancelled, samplers)?;
-        self.audio = candidate.audio;
-        self.stretched_audio = candidate.stretched_audio;
-        self.sampler_audio = candidate.sampler_audio;
-        self.compound_views = candidate.compound_views;
-        Ok(())
-    }
-    fn prepare_stretches_in_place(
-        &mut self,
-        cancelled: &impl Fn() -> bool,
-        samplers: impl FnOnce(&mut Self) -> Result<()>,
-    ) -> Result<()> {
         self.project.validate().map_err(error)?;
         self.prepare_compound_sources(cancelled)?;
         for track in &self.project.tracks {

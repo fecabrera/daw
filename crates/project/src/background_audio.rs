@@ -30,7 +30,7 @@ pub struct BackgroundAudio {
 impl BackgroundAudio {
     pub fn new() -> Result<Self> {
         Self::with_prepare(|session, cancelled, progress, decoded| {
-            session.prepare_project_audio_observed(
+            session.prepare_owned_audio(
                 &|| cancelled(),
                 &|done, total| progress(done, total),
                 &|audio| decoded(audio),
@@ -39,11 +39,11 @@ impl BackgroundAudio {
     }
     fn with_prepare(
         prepare: impl Fn(
-            &mut Session,
+            Session,
             &(dyn Fn() -> bool + Sync),
             &dyn Fn(u64, u64),
             &dyn Fn(&Decoded),
-        ) -> Result<()>
+        ) -> Result<Session>
         + Send
         + 'static,
     ) -> Result<Self> {
@@ -77,10 +77,9 @@ impl BackgroundAudio {
                         worker.stopped.load(Ordering::Acquire)
                             || worker.revision.load(Ordering::Acquire) != request.revision
                     };
-                    let mut session = request.session;
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         prepare(
-                            &mut session,
+                            request.session,
                             &cancelled,
                             &|done, total| {
                                 worker.progress.store(done, Ordering::Relaxed);
@@ -102,8 +101,9 @@ impl BackgroundAudio {
                             },
                         )
                     }))
-                    .unwrap_or_else(|_| Err(error("Audio preparation worker stopped unexpectedly")))
-                    .map(|()| session);
+                    .unwrap_or_else(|_| {
+                        Err(error("Audio preparation worker stopped unexpectedly"))
+                    });
                     if !cancelled() {
                         *worker.ready.lock().unwrap() = Some((request.revision, result));
                         let wake = worker.waker.lock().unwrap().clone();
@@ -186,12 +186,13 @@ mod tests {
         let (release, gate) = mpsc::channel();
         let count = Arc::new(AtomicUsize::new(0));
         let calls = count.clone();
-        let worker = BackgroundAudio::with_prepare(move |_, _, _, _| {
+        let worker = BackgroundAudio::with_prepare(move |session, _, _, decoded| {
             if calls.fetch_add(1, Ordering::Relaxed) == 0 {
+                decoded(&session.audio);
                 started_tx.send(()).unwrap();
                 gate.recv().unwrap();
             }
-            Ok(())
+            Ok(session)
         })
         .unwrap();
         worker.submit(Session::default());
@@ -201,6 +202,7 @@ mod tests {
         worker.submit(next.clone());
         next.project.name = "Latest".into();
         let revision = worker.submit(next);
+        assert!(worker.poll_decoded().is_none());
         release.send(()).unwrap();
         let (actual, result) = completion(&worker);
         assert_eq!(actual, revision);
@@ -212,19 +214,26 @@ mod tests {
         let (started_tx, started) = mpsc::channel();
         let (release, gate) = mpsc::channel();
         let count = AtomicUsize::new(0);
-        let worker = BackgroundAudio::with_prepare(move |_, _, _, _| {
+        let worker = BackgroundAudio::with_prepare(move |mut session, cancelled, _, decoded| {
+            session.project.name = "Private candidate".into();
             if count.fetch_add(1, Ordering::Relaxed) == 0 {
+                decoded(&session.audio);
                 started_tx.send(()).unwrap();
                 gate.recv().unwrap();
+                assert!(cancelled());
+                return Ok(session);
             }
             Err(error("injected failure"))
         })
         .unwrap();
-        worker.submit(Session::default());
+        let active = Session::default();
+        let original = active.project.clone();
+        worker.submit(active.clone());
         started.recv().unwrap();
         worker.cancel();
+        assert!(worker.poll_decoded().is_none());
         release.send(()).unwrap();
-        let revision = worker.submit(Session::default());
+        let revision = worker.submit(active.clone());
         let (actual, result) = completion(&worker);
         assert_eq!(actual, revision);
         assert!(
@@ -234,18 +243,20 @@ mod tests {
                 .to_string()
                 .contains("injected failure")
         );
+        assert_eq!(active.project, original);
+        assert!(worker.poll().is_none());
     }
     #[test]
     fn dropping_a_generation_does_not_join_its_running_worker() {
         let (started_tx, started) = mpsc::channel();
         let (release, gate) = mpsc::channel();
         let (finished_tx, finished) = mpsc::channel();
-        let worker = BackgroundAudio::with_prepare(move |_, cancelled, _, _| {
+        let worker = BackgroundAudio::with_prepare(move |session, cancelled, _, _| {
             started_tx.send(()).unwrap();
             gate.recv().unwrap();
             assert!(cancelled());
             finished_tx.send(()).unwrap();
-            Ok(())
+            Ok(session)
         })
         .unwrap();
         worker.submit(Session::default());

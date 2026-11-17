@@ -59,6 +59,16 @@ Stage 0 defines this separation for the session/history APIs. Model history beco
 
 ## Ownership
 
+A background request owns a private session. It decodes sources and prepares
+stretches and sampler pitches in that session. The worker returns the complete
+candidate only for the current revision. A failed or obsolete request drops its
+candidate. Early waveform events still carry the request revision and cannot
+publish a playable session.
+
+A caller that borrows the active session keeps a private copy until preparation
+succeeds. Export prepares its existing private snapshot and publishes the output
+file only after rendering and encoding succeed.
+
 | Owner | Responsibility |
 | --- | --- |
 | `daw-core` | Validated project edits and stable identity; no cache files, workers, or device state. |

@@ -232,9 +232,9 @@ impl Session {
         }
     }
     pub fn open(folder: &Path) -> Result<Self> {
-        let mut session = Self::open_document(folder)?.into_editor_session();
-        session.prepare_project_audio(&|| false, &|_, _| {})?;
-        Ok(session)
+        Self::open_document(folder)?
+            .into_editor_session()
+            .prepare_owned_audio(&|| false, &|_, _| {}, &|_| {})
     }
     pub fn open_document(folder: &Path) -> Result<ProjectDocument> {
         let folder = absolute(folder)?;
@@ -281,26 +281,20 @@ impl Session {
         cancelled: &(impl Fn() -> bool + Sync),
         progress: &impl Fn(u64, u64),
     ) -> Result<()> {
-        self.prepare_project_audio_observed(cancelled, progress, &|_| {})
-    }
-    pub(crate) fn prepare_project_audio_observed(
-        &mut self,
-        cancelled: &(impl Fn() -> bool + Sync),
-        progress: &impl Fn(u64, u64),
-        decoded: &impl Fn(&HashMap<Id, AudioData>),
-    ) -> Result<()> {
-        let mut next = self.clone();
-        next.prepare_project_audio_in_place(cancelled, progress, decoded)?;
-        *self = next;
+        *self = self
+            .clone()
+            .prepare_owned_audio(cancelled, progress, &|_| {})?;
         Ok(())
     }
-    fn prepare_project_audio_in_place(
-        &mut self,
+    /// Prepare a private candidate. On failure, dropping it discards every
+    /// partial change. Borrowed callers must keep their original until success.
+    fn prepare_owned_audio(
+        mut self,
         cancelled: &(impl Fn() -> bool + Sync),
         progress: &impl Fn(u64, u64),
         decoded: &impl Fn(&HashMap<Id, AudioData>),
-    ) -> Result<()> {
-        let session = self;
+    ) -> Result<Self> {
+        let session = &mut self;
         let total = session
             .project
             .assets
@@ -370,9 +364,11 @@ impl Session {
         if cancelled() {
             return Err(error("Audio preparation cancelled"));
         }
-        session.prepare_stretches_parallel(cancelled)?;
+        session.prepare_stretches_in_place(cancelled, |candidate| {
+            candidate.prepare_sampler_audio_parallel(cancelled)
+        })?;
         progress(total, total);
-        Ok(())
+        Ok(self)
     }
     pub fn source_path(&self, asset: &Asset) -> Result<PathBuf> {
         asset.source.validate_storage().map_err(error)?;
@@ -599,7 +595,9 @@ impl Session {
         let temp = parent.join(format!(".export-{}.tmp", Id::new_v4()));
         let result = (|| {
             let mut snapshot = self.clone();
-            snapshot.prepare_stretches()?;
+            snapshot.prepare_stretches_in_place(&|| false, |candidate| {
+                candidate.prepare_sampler_audio(&|| false)
+            })?;
             let mut plan = snapshot.plan();
             plan.external.offline = true;
             plan.external.publish = false;

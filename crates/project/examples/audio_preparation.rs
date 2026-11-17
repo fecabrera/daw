@@ -1,6 +1,6 @@
 //! Synthetic release probe. Writes only an explicitly supplied scratch fixture folder.
 use daw_core::{Edit, Id, MidiNote, MidiPattern, SamplerMode};
-use daw_project::Session;
+use daw_project::{BackgroundAudio, Session};
 use std::{path::Path, time::Instant};
 fn pattern(pitches: &[u8], velocity: u8) -> MidiPattern {
     MidiPattern {
@@ -79,15 +79,90 @@ fn timed<T>(name: &str, work: impl FnOnce() -> T) -> T {
     );
     result
 }
+fn benchmark(root: &Path, case: &str) {
+    let mut session = Session::open_document(root).unwrap().into_editor_session();
+    // Repeat short references to one pattern to exercise project copying without
+    // generating more source files or asking the sampler for extra pitches.
+    if case == "worker-many-clips" {
+        let clips = &mut session.project.tracks[0].clips;
+        let original = clips[0].clone();
+        clips.extend((1..20_000).map(|index| {
+            let mut clip = original.clone();
+            clip.id = Id::new_v4();
+            clip.start_frame += index * original.length_frames;
+            clip
+        }));
+    }
+    if case != "worker-cold" {
+        session
+            .prepare_project_audio(&|| false, &|_, _| {})
+            .unwrap();
+    }
+    if case == "export" {
+        let start = Instant::now();
+        let first_block = std::cell::Cell::new(None);
+        let warnings = session
+            .export_with_progress(
+                &root.join("benchmark.wav"),
+                true,
+                daw_media::ExportSettings {
+                    wav_codec: daw_media::WavCodec::Float32,
+                    ..Default::default()
+                },
+                |done, _| {
+                    if done > 0 && first_block.get().is_none() {
+                        first_block.set(Some(start.elapsed().as_secs_f64() * 1000.0));
+                    }
+                },
+            )
+            .unwrap();
+        println!(
+            "{}",
+            serde_json::json!({
+                "case": case, "milliseconds": start.elapsed().as_secs_f64() * 1000.0,
+                "first_block_ms": first_block.get().unwrap(), "warnings": warnings,
+            })
+        );
+        return;
+    }
+    assert!(matches!(
+        case,
+        "worker-cold" | "worker-warm" | "worker-many-clips"
+    ));
+    let worker = BackgroundAudio::new().unwrap();
+    let (send, receive) = std::sync::mpsc::channel();
+    worker.set_waker(move || {
+        let _ = send.send(());
+    });
+    let prepared = timed(case, || {
+        let revision = worker.submit(session.clone());
+        let deadline = Instant::now() + std::time::Duration::from_secs(60);
+        loop {
+            if let Some((ready, result)) = worker.poll() {
+                assert_eq!(ready, revision);
+                break result.unwrap();
+            }
+            receive
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .unwrap();
+        }
+    });
+    assert_eq!(prepared.project, session.project);
+}
+
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     assert!(
         args.len() >= 3,
-        "audio_preparation init|uncached|cached <scratch-project> [seconds|cache-directory]"
+        "audio_preparation init|uncached|cached|benchmark <scratch-project> [seconds|cache-directory]"
     );
     let root = Path::new(&args[2]);
     if args[1] == "init" {
         initialize(root, args.get(3).map_or(58, |n| n.parse().unwrap()));
+        return;
+    }
+    if args[1] == "benchmark" {
+        benchmark(root, args.get(3).expect("benchmark case"));
         return;
     }
     if args[1] == "cached" {
