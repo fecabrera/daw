@@ -234,6 +234,7 @@ pub struct Renderer {
     capture_controls: Option<Vec<Vec<daw_unit_core::ModulationValue>>>,
     /// Prepared model. Update only through an effect transaction or renderer inheritance.
     pub plan: RenderPlan,
+    /// Content bound for optional seek-cache warming, not a live transport limit.
     end_frame: u64,
     pub recording: bool,
     live_clock: u64,
@@ -860,7 +861,7 @@ impl Renderer {
         mut cancelled: impl FnMut() -> bool,
     ) -> bool {
         self.playhead = state.frame;
-        self.playing = state.playing && self.end_frame > 0;
+        self.playing = state.playing;
         self.paused = state.paused;
         self.playback_start = state.playback_start;
         self.reset_processing();
@@ -926,10 +927,8 @@ impl Renderer {
     }
     /// Resume an already prepared paused transport without resetting its history.
     pub fn resume(&mut self) {
-        if self.end_frame > 0 {
-            self.playing = true;
-            self.paused = false;
-        }
+        self.playing = true;
+        self.paused = false;
     }
     pub fn inherit(&mut self, old: &mut Self) {
         let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
@@ -1202,17 +1201,15 @@ impl Renderer {
         self.midi.iter().flatten().any(|r| r.live_active())
     }
     pub fn play(&mut self) {
-        if self.end_frame > 0 || self.recording {
-            if !self.playing && !self.paused {
-                self.playback_start = Some(self.playhead);
-            }
-            if !self.paused && self.alignment.total > 0 {
-                self.reset_processing();
-                self.prime_latency(true, true);
-            }
-            self.paused = false;
-            self.playing = true;
+        if !self.playing && !self.paused {
+            self.playback_start = Some(self.playhead);
         }
+        if !self.paused && self.alignment.total > 0 {
+            self.reset_processing();
+            self.prime_latency(true, true);
+        }
+        self.paused = false;
+        self.playing = true;
     }
     pub fn pause(&mut self) {
         if self.playing {
@@ -1381,9 +1378,6 @@ impl Renderer {
                 self.playhead = l.start_frame;
                 self.transition_from = self.previous;
                 self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
-            }
-            if self.playing && !l.enabled && self.playhead >= self.end_frame && !self.recording {
-                self.playing = false;
             }
             if !self.playing && self.alignment.total > 0 {
                 mix = self.latent_held_mix;
@@ -1990,7 +1984,7 @@ mod tests {
                 assert_eq!(renderer.next_sample(), expected);
             }
             assert_eq!(renderer.next_sample(), [0.0; 2]);
-            assert!(!renderer.playing);
+            assert!(renderer.playing);
             assert!(std::sync::Arc::ptr_eq(&plan.audio[&id].samples, &original));
             plan.audio.clear();
             assert_eq!(plan.sample_at(1000), [0.0; 2]);
@@ -1999,7 +1993,56 @@ mod tests {
     }
 
     #[test]
-    fn transport_pauses_at_position_wraps_and_stops_at_end() {
+    fn transport_plays_empty_projects_and_resumes_in_silence() {
+        let mut empty = plan();
+        empty.project.tracks.clear();
+        let mut renderer = Renderer::new(empty);
+        renderer.seek(4000);
+        renderer.play();
+        for _ in 0..512 {
+            assert_eq!(renderer.next_sample(), [0.0; 2]);
+        }
+        assert!(renderer.playing);
+        assert_eq!(renderer.playhead, 4512);
+        renderer.pause();
+        renderer.next_sample();
+        assert_eq!(renderer.playhead, 4512);
+        renderer.resume();
+        renderer.next_sample();
+        assert_eq!(renderer.playhead, 4513);
+        renderer.stop();
+        assert_eq!(renderer.playhead, 4000);
+    }
+
+    #[test]
+    fn transport_crosses_leading_silence_and_can_start_after_content() {
+        let mut p = plan();
+        p.project.tracks[0].clips[0].start_frame = 1000;
+        let mut renderer = Renderer::new(p);
+        renderer.play();
+        for _ in 0..1000 {
+            assert_eq!(renderer.next_sample(), [0.0; 2]);
+        }
+        for _ in 0..500 {
+            renderer.next_sample();
+        }
+        assert_eq!(renderer.next_sample(), renderer.plan.sample_at(1500));
+        assert_ne!(renderer.previous, [0.0; 2]);
+        renderer.stop();
+        let mut renderer = Renderer::new(renderer.plan.clone());
+        renderer.seek(5000);
+        renderer.play();
+        for _ in 0..512 {
+            assert_eq!(renderer.next_sample(), [0.0; 2]);
+        }
+        assert!(renderer.playing);
+        assert_eq!(renderer.playhead, 5512);
+        renderer.stop();
+        assert_eq!(renderer.playhead, 5000);
+    }
+
+    #[test]
+    fn transport_pauses_wraps_and_continues_past_content_end() {
         let mut renderer = Renderer::new(plan());
         renderer.play();
         for _ in 0..600 {
@@ -2035,8 +2078,8 @@ mod tests {
         renderer.play();
         renderer.next_sample();
         renderer.next_sample();
-        assert!(!renderer.playing);
-        assert_eq!(renderer.playhead, 2000);
+        assert!(renderer.playing);
+        assert_eq!(renderer.playhead, 2001);
         renderer.stop();
         assert_eq!(renderer.playhead, 1999);
         renderer.play();
@@ -2046,7 +2089,7 @@ mod tests {
         renderer.play();
         renderer.next_sample();
         renderer.stop();
-        assert_eq!(renderer.playhead, 700);
+        assert_eq!(renderer.playhead, 1999);
     }
     #[test]
     fn stop_returns_to_original_start_after_pause_seek_and_live_edit() {

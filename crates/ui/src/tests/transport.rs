@@ -1012,3 +1012,40 @@ fn multiple_midi_arms_and_implicit_selection_are_transient() {
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
 }
+
+#[test]
+fn empty_project_play_button_and_space_dispatch_without_a_clip() {
+    let mut app = DawUi::default();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.session.project.end(), 0);
+    frame(&mut app, &ctx, vec![]);
+    let play = app.transport_bounds[0].center();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(play), button(play, true)],
+    );
+    frame(&mut app, &ctx, vec![button(play, false)]);
+    assert_eq!(app.playback_requests, 1);
+    end_click_sequence(&mut app, &ctx);
+    frame(
+        &mut app,
+        &ctx,
+        vec![space_event(true, egui::Modifiers::NONE)],
+    );
+    assert_eq!(app.playback_requests, 2);
+    frame(
+        &mut app,
+        &ctx,
+        vec![space_event(false, egui::Modifiers::NONE)],
+    );
+    app.background_media.required = true;
+    frame(
+        &mut app,
+        &ctx,
+        vec![space_event(true, egui::Modifiers::NONE)],
+    );
+    assert_eq!(app.playback_requests, 2);
+    assert!(app.output.is_none());
+}

@@ -937,6 +937,8 @@ pub struct DawUi {
     #[cfg(test)]
     transport_bounds: [Rect; 3],
     #[cfg(test)]
+    playback_requests: usize,
+    #[cfg(test)]
     metronome_bounds: Rect,
     #[cfg(test)]
     count_in_bounds: Rect,
@@ -1102,6 +1104,8 @@ impl Default for DawUi {
             effects_bounds: Default::default(),
             #[cfg(test)]
             transport_bounds: [Rect::NOTHING; 3],
+            #[cfg(test)]
+            playback_requests: 0,
             #[cfg(test)]
             metronome_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -1883,9 +1887,15 @@ impl DawUi {
         if !self.media_ready() {
             return;
         }
-        if self.session.project.end() == 0 {
-            return;
-        }
+        self.start_audio_playback();
+    }
+    // UI input tests observe dispatch without opening native audio devices.
+    #[cfg(test)]
+    fn start_audio_playback(&mut self) {
+        self.playback_requests += 1;
+    }
+    #[cfg(not(test))]
+    fn start_audio_playback(&mut self) {
         if self
             .output
             .as_ref()
@@ -3464,7 +3474,7 @@ impl DawUi {
                 playing,
                 stop_action,
                 enabled,
-                playing || self.media_ready() && self.session.project.end() > 0,
+                playing || self.media_ready(),
                 self.job.is_none(),
             );
             #[cfg(test)]

@@ -2332,10 +2332,12 @@ mod tests {
             .unwrap();
             producer.push(Command::Play).unwrap();
             callback.update();
-            assert!(!callback.renderer.playing);
+            assert!(callback.renderer.playing);
             for _ in 0..10_000 {
                 assert_eq!(callback.next(), [0.0; 2]);
             }
+            assert!(callback.renderer.playing);
+            assert!(callback.renderer.playhead > 0);
             assert!(!status.failed.load(Ordering::Relaxed));
             producer.push(Command::Seek(123)).unwrap();
             producer

@@ -289,7 +289,7 @@ impl TransportCache {
             return None;
         }
         renderer.playhead = state.frame;
-        renderer.playing = state.playing && renderer.end_frame > 0;
+        renderer.playing = state.playing;
         renderer.paused = state.paused;
         renderer.playback_start = state.playback_start;
         renderer.prime_latency(live, false);
@@ -365,6 +365,34 @@ impl TransportCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prepared_empty_transport_keeps_play_intent_with_and_without_history() {
+        for history in [false, true] {
+            let mut p = crate::tests::plan();
+            p.project.tracks.clear();
+            let mut cache = TransportCache::new(p);
+            cache.history = history;
+            let mut renderer = cache
+                .prepare(
+                    TransportState {
+                        frame: 1000,
+                        playing: true,
+                        paused: false,
+                        playback_start: Some(1000),
+                    },
+                    || false,
+                )
+                .unwrap();
+            assert!(renderer.playing);
+            for _ in 0..256 {
+                assert_eq!(renderer.next_sample(), [0.0; 2]);
+            }
+            assert_eq!(renderer.playhead, 1256);
+            renderer.stop();
+            assert_eq!(renderer.playhead, 1000);
+        }
+    }
+
     #[test]
     fn failed_track_worker_reconstructs_from_complete_history_with_serial_fallback() {
         use daw_core::*;

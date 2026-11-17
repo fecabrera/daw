@@ -12,6 +12,44 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Playback through empty timeline space — 2026-11-17
+
+Supersedes the iteration-1 requirement to disable empty-project playback and
+stop automatically at the last clip. Live transport now starts at any frame and
+continues through silence until Pause or Stop, or repeats the enabled loop.
+The content bound remains available for optional seek-cache warming. Offline
+render requests and project export duration retain their existing bounds.
+
+Regression coverage includes empty projects, leading silence followed by audio,
+starts beyond content, continued playback after content, pause/resume, Stop
+return positions, looping, and direct/cached preparation with and without
+processing history.
+
+Completed checks on macOS arm64:
+
+- `cargo test -p daw-engine --lib`: PASS (53 tests).
+- `cargo fmt --all --check`: PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS.
+- `git diff --check`: PASS.
+
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: PASS.
+- `sh tools/package_macos.sh debug --local`: PASS; ad-hoc signature verified.
+
+Initial workspace runs exposed an obsolete callback assertion that empty
+projects cannot play. That test now checks silent playback and playhead progress.
+A debug UI run also crashed in CoreAudio device configuration when a catalog
+navigation test pressed Space. UI tests now observe playback dispatch without
+opening native audio; engine/output tests retain real transport processing.
+The new UI regression checks Play and Space on an empty project and preserves
+the pending-media guard. Its click setup needs two layout frames before input.
+The targeted UI regression passes. Final workspace results:
+
+- `cargo test --workspace`: PASS, including 1,067 UI tests with 3 ignored.
+- `cargo test --workspace --release`: PASS, including 1,067 UI tests with 3 ignored.
+
+Native UI/audio-device checks and Windows/Linux checks have not been run for
+this change.
+
 Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
