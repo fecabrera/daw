@@ -1,5 +1,8 @@
 # Timeline display state
 
+Draw the playhead line from the bottom of the ruler across the arrangement
+lanes and track workspace. Draw it over lane content and below the scrollbar.
+
 ## Toolbar and sizes
 
 Timeline offers a continuous Track height slider from 1 to 3 with 0.01 steps.

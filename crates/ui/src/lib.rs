@@ -3898,22 +3898,6 @@ impl DawUi {
             );
         }
 
-        let playhead_x = timeline_rect.left()
-            + ((self
-                .session
-                .project
-                .seconds(self.session.project.transport.playhead_frame)
-                - self.scroll) as f32)
-                * self.zoom;
-        if (timeline_rect.left()..=timeline_rect.right()).contains(&playhead_x) {
-            painter.line_segment(
-                [
-                    Pos2::new(playhead_x, timeline_rect.top()),
-                    Pos2::new(playhead_x, timeline_rect.bottom()),
-                ],
-                Stroke::new(1.0_f32, theme::accent(ui.ctx())),
-            );
-        }
         let track_panels = self.track_panel_containers(&tracks.inner);
         self.paint_track_group_edges(ui, &track_panels, tracks.inner_rect);
         // Pinned rows own one shared boundary across the controls and Timeline.
@@ -3931,6 +3915,24 @@ impl DawUi {
             );
         }
         control_panel.finish(ui);
+
+        // Draw over both the arrangement lanes and the track workspace.
+        let playhead_x = timeline_rect.left()
+            + ((self
+                .session
+                .project
+                .seconds(self.session.project.transport.playhead_frame)
+                - self.scroll) as f32)
+                * self.zoom;
+        if (timeline_rect.left()..=timeline_rect.right()).contains(&playhead_x) {
+            painter.line_segment(
+                [
+                    Pos2::new(playhead_x, self.arrangement.ruler_bounds.bottom()),
+                    Pos2::new(playhead_x, timeline_rect.bottom()),
+                ],
+                Stroke::new(1.0, theme::accent(ui.ctx())),
+            );
+        }
         self.timeline_scrollbar_at(ui, scrollbar_rect, "timeline_scrollbar");
         let pointer = ui.input(|i| i.pointer.latest_pos())?;
         let master = master_rect.intersect(ui.clip_rect());

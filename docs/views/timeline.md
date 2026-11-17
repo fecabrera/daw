@@ -3,6 +3,7 @@
 The **Markers**, **Tempo** and **Signature** lanes sit below the ruler and above
 tracks. They stay visible while tracks scroll vertically. Markers show section
 names; signatures use the same blocks. Tempo uses BPM points and a step line.
+The playhead line runs from the ruler across the arrangement lanes and tracks.
 
 Use the **+** button on each lane header to add a section, tempo point or
 signature block at the playhead. A new tempo or signature uses the value active

@@ -368,3 +368,19 @@ Both final native-access workspace runs passed, debug and release, including
 1,066 UI tests (3 ignored) in each profile. Formatting, strict workspace clippy,
 `git diff --check` and the rebuilt bundle/signature checks passed. Native visual,
 pointer/device and Windows/Linux acceptance remain separate pending checks.
+
+## Playhead across arrangement lanes (2026-11-17)
+
+The Timeline playhead line starts at the ruler bottom and draws over the
+arrangement lanes and tracks. The egui regression checks its endpoints and its
+paint order over a marker fill.
+
+On macOS arm64, the arrangement-filtered UI run passed all 21 tests.
+Formatting, strict workspace Clippy and `git diff --check` passed.
+
+- `cargo test --locked --offline --workspace` passed with macOS host access.
+- `cargo test --locked --offline --workspace --release` passed with macOS host
+  access.
+
+Each workspace run passed 1,075 UI tests with 3 ignored. The sandboxed runs
+stopped at Audio Unit registration. Native visual checks were not run.

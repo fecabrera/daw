@@ -11,6 +11,7 @@ fn metadata_lanes_follow_the_ruler_and_marker_drags_commit_or_cancel() {
         name: "Verse".into(),
         length_frames: Some(96_000),
     }];
+    app.session.project.transport.playhead_frame = frames(2.0);
     let ctx = context();
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     let ruler = app.arrangement.ruler_bounds;
@@ -20,15 +21,23 @@ fn metadata_lanes_follow_the_ruler_and_marker_drags_commit_or_cancel() {
     );
     assert_eq!(ruler.bottom(), app.effects_bounds.header.bottom());
     assert!(shapes.iter().any(|shape|matches!(&shape.shape,egui::Shape::LineSegment{points,stroke} if *stroke==Stroke::new(1.0,theme::palette(&ctx).border)&&points[0].x==ruler.left()-TRACK_WIDTH&&points[1].x==ruler.right()&&points[0].y==app.effects_bounds.header.bottom()-0.5&&points[1].y==points[0].y)));
-    assert!(
-        shapes
-            .iter()
-            .any(|shape| matches!(&shape.shape,egui::Shape::Rect(rect)
-        if rect.fill==theme::arrangement_block_fill(&ctx)
-            && rect.rect.left()>=ruler.left() && rect.rect.right()<=ruler.right()
-            && rect.rect.top()==ruler.bottom()
-            && rect.rect.bottom()==ruler.bottom()+beat_editor::SUBTRACK_LANE_HEIGHT-1.0))
-    );
+    let playhead_x = ruler.left() + 2.0 * app.zoom;
+    let marker_fill = shapes
+        .iter()
+        .position(|shape| {
+            matches!(&shape.shape, egui::Shape::Rect(rect)
+                if rect.fill == theme::arrangement_block_fill(&ctx)
+                    && rect.rect.x_range().contains(playhead_x)
+                    && rect.rect.top() == ruler.bottom()
+                    && rect.rect.bottom() == ruler.bottom() + beat_editor::SUBTRACK_LANE_HEIGHT - 1.0)
+        })
+        .expect("marker fill under the playhead");
+    assert!(shapes[marker_fill + 1..].iter().any(|shape| {
+        matches!(&shape.shape, egui::Shape::LineSegment { points, stroke }
+            if *stroke == Stroke::new(1.0, theme::accent(&ctx))
+                && points[0] == Pos2::new(playhead_x, ruler.bottom())
+                && points[1] == Pos2::new(playhead_x, app.timeline_bounds.bottom()))
+    }));
     assert_eq!(
         app.lane_bounds[&track].top() - ruler.bottom(),
         3.0 * beat_editor::SUBTRACK_LANE_HEIGHT
