@@ -207,7 +207,12 @@ impl Project {
             asset_id: asset.id,
             name: asset.name.clone(),
             start_frame,
-            length_frames: asset.decoded_frame_count,
+            length_frames: self
+                .musical_clock()?
+                .frame_for_reference(start_frame, asset.decoded_frame_count, self.tempo_bpm)?
+                .checked_sub(start_frame)
+                .filter(|n| *n > 0)
+                .ok_or_else(|| Error("Beat clip exceeds timing bounds".into()))?,
             source_offset_frame: 0,
             muted: false,
             color: None,

@@ -6,10 +6,14 @@ mod modulation;
 /// Immutable buffers indexed by MIDI note. Missing entries play silence.
 /// Keep the complete bank alive outside the callback; note changes only an index.
 pub type SampleBank = [Option<Arc<Vec<[f32; 2]>>>; 128];
+static EMPTY_BANK: SampleBank = [const { None }; 128];
 
 #[derive(Clone)]
 pub struct Sampler {
     bank: Arc<SampleBank>,
+    duration_banks: Vec<(u64, Arc<SampleBank>)>,
+    duration_index: Option<usize>,
+    duration_missing: bool,
     granular: Option<Box<daw_granulizer::Granulizer>>,
     note: u8,
     root_note: u8,
@@ -50,6 +54,9 @@ impl Sampler {
         let target = gain(settings);
         Self {
             bank,
+            duration_banks: Vec::new(),
+            duration_index: None,
+            duration_missing: false,
             granular: settings.granulizer.map(|g| {
                 Box::new(daw_granulizer::Granulizer::new(
                     context,
@@ -80,6 +87,25 @@ impl Sampler {
             fade_frames: (context.sample_rate_hz / 200).max(1),
         }
     }
+    /// Install immutable variants on a control thread. Note-on changes only an index.
+    pub fn with_duration_banks(mut self, banks: Vec<(u64, Arc<SampleBank>)>) -> Self {
+        self.duration_banks = banks;
+        self
+    }
+    pub fn select_duration(&mut self, frames: u64) {
+        self.duration_index = self.duration_banks.iter().position(|(f, _)| *f == frames);
+        self.duration_missing = self.duration_index.is_none()
+            && self.bank[usize::from(self.root_note)]
+                .as_ref()
+                .is_none_or(|s| s.len() as u64 != frames);
+    }
+    fn selected_bank(&self) -> &SampleBank {
+        if self.duration_missing {
+            return &EMPTY_BANK;
+        }
+        self.duration_index
+            .map_or(self.bank.as_ref(), |i| self.duration_banks[i].1.as_ref())
+    }
     pub fn descriptor(&self) -> UnitDescriptor {
         UnitDescriptor {
             type_id: if self.granular.is_some() {
@@ -108,11 +134,28 @@ impl Sampler {
     }
     /// Swap prepared owners only during renderer inheritance; the retired source keeps the old bank.
     pub fn inherit_bank(&mut self, next: &mut Self) {
-        if !Arc::ptr_eq(&self.bank, &next.bank) {
+        if !Arc::ptr_eq(&self.bank, &next.bank)
+            || self.duration_banks.len() != next.duration_banks.len()
+            || self
+                .duration_banks
+                .iter()
+                .zip(&next.duration_banks)
+                .any(|((fa, a), (fb, b))| fa != fb || !Arc::ptr_eq(a, b))
+        {
             let previous_buffer = self.samples().as_ptr();
             std::mem::swap(&mut self.bank, &mut next.bank);
+            std::mem::swap(&mut self.duration_banks, &mut next.duration_banks);
+            let duration = self
+                .duration_index
+                .and_then(|i| next.duration_banks.get(i))
+                .map(|(f, _)| *f);
+            self.duration_index = None;
+            self.duration_missing = false;
+            if let Some(length) = duration {
+                self.select_duration(length);
+            }
             if self.granular.is_none() {
-                let note = if self.bank[usize::from(self.requested_note)].is_some() {
+                let note = if self.selected_bank()[usize::from(self.requested_note)].is_some() {
                     self.requested_note
                 } else {
                     self.root_note
@@ -141,7 +184,7 @@ impl Sampler {
             g.set_live_pitch(note);
             return;
         }
-        if !preview && self.bank[usize::from(note)].is_some() {
+        if !preview && self.selected_bank()[usize::from(note)].is_some() {
             self.select_pitch_buffer(note);
         }
         self.pitch_target = 2_f64.powf(f64::from(i16::from(note) - i16::from(self.note)) / 12.0);
@@ -167,7 +210,7 @@ impl Sampler {
             self.external.reset();
             self.effective_gain = self.target;
         }
-        let length = self.bank[usize::from(self.root_note)]
+        let length = self.selected_bank()[usize::from(self.root_note)]
             .as_ref()
             .map_or(0, |s| s.len());
         if let Some(g) = &mut self.granular {
@@ -187,7 +230,7 @@ impl Sampler {
         self.active = !self.samples().is_empty();
     }
     fn samples(&self) -> &[[f32; 2]] {
-        self.bank
+        self.selected_bank()
             .get(usize::from(if self.granular.is_some() {
                 self.root_note
             } else {
@@ -217,11 +260,11 @@ impl Sampler {
         self.effective_gain = self.target;
     }
     pub fn advance(&mut self, frames: u64) {
+        let length = self.selected_bank()[usize::from(self.root_note)]
+            .as_ref()
+            .map_or(0, |s| s.len());
         if let Some(g) = &mut self.granular {
-            let samples = self.bank[usize::from(self.root_note)]
-                .as_deref()
-                .map_or(&[][..], Vec::as_slice);
-            g.advance(frames, samples.len());
+            g.advance(frames, length);
             return;
         }
         if self.active {
@@ -248,11 +291,12 @@ impl Sampler {
             .map(|g| (g.effective(), g.grain_positions()))
     }
     pub fn heap_bytes(&self) -> u64 {
-        if self.granular.is_some() {
-            std::mem::size_of::<daw_granulizer::Granulizer>() as u64
-        } else {
-            0
-        }
+        daw_unit_core::memory::vec_bytes(&self.duration_banks)
+            + if self.granular.is_some() {
+                std::mem::size_of::<daw_granulizer::Granulizer>() as u64
+            } else {
+                0
+            }
     }
     pub fn next_sample(&mut self) -> [f32; 2] {
         self.process_modulated(0.0)

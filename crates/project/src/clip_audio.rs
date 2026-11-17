@@ -118,6 +118,7 @@ impl Session {
         let before = &self.project;
         if before.sample_rate_hz != project.sample_rate_hz
             || before.tempo_bpm != project.tempo_bpm
+            || before.timing != project.timing
             || before.stretch_engine != project.stretch_engine
             || before.tracks.len() != project.tracks.len()
         {

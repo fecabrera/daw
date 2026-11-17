@@ -350,10 +350,21 @@ impl EffectUpdate {
                 .collect();
             chains.push(ChainUpdate {
                 owner: *owner,
-                chain: if direct_slots.is_some() {
-                    EffectChain::chain(None, &[], rate, desired.project.buffer_size_frames)
-                } else {
-                    EffectChain::prepared(after, rate, desired.project.buffer_size_frames, &reuse)
+                chain: {
+                    let mut chain = if direct_slots.is_some() {
+                        EffectChain::chain(None, &[], rate, desired.project.buffer_size_frames)
+                    } else {
+                        EffectChain::prepared(
+                            after,
+                            rate,
+                            desired.project.buffer_size_frames,
+                            &reuse,
+                        )
+                    };
+                    chain.clock = Some(std::sync::Arc::new(
+                        desired.project.musical_clock().expect("validated timing"),
+                    ));
+                    chain
                 },
                 settings: after.to_vec(),
                 slots,

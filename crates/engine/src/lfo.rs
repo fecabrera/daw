@@ -5,6 +5,7 @@ use daw_unit_core::ModulationSourceContext;
 #[derive(Clone)]
 pub(super) struct NoteClip {
     clip: Clip,
+    clock: Option<(std::sync::Arc<daw_core::MusicalClock>, f32)>,
     retrigger: Vec<u64>,
     legato: Vec<u64>,
     previous: [Option<i128>; 2],
@@ -32,6 +33,7 @@ impl NoteClip {
         }
         Self {
             clip,
+            clock: None,
             retrigger,
             legato,
             previous: [None; 2],
@@ -46,6 +48,13 @@ impl NoteClip {
         let local = frame
             .saturating_sub(self.clip.start_frame)
             .min(self.clip.length_frames - 1);
+        let local = self.clock.as_ref().map_or(local, |(clock, bpm)| {
+            clock.sample_reference_position(
+                self.clip.start_frame,
+                frame.min(self.clip.end() - 1),
+                *bpm,
+            )
+        });
         let position = self.clip.source_frame(local);
         let index = events.partition_point(|e| *e <= position);
         let (event, cycle) = if let Some(repeat) = self.clip.repeat {
@@ -74,10 +83,11 @@ impl NoteClip {
         let repeat_offset = self.clip.repeat.map_or(0, |r| {
             cycle * i128::from(r.length_frames) - i128::from(r.phase_frame)
         });
-        Some(
-            i128::from(self.clip.start_frame) + repeat_offset + i128::from(event)
-                - i128::from(self.clip.source_offset_frame),
-        )
+        let offset = repeat_offset + i128::from(event) - i128::from(self.clip.source_offset_frame);
+        Some(self.clock.as_ref().map_or(
+            i128::from(self.clip.start_frame) + offset,
+            |(clock, bpm)| clock.frame_for_signed_reference(self.clip.start_frame, offset, *bpm),
+        ))
     }
 }
 #[derive(Clone)]
@@ -109,6 +119,15 @@ impl NoteSchedule {
         }
         Self { clips }
     }
+    pub fn with_clock(mut self, clock: std::sync::Arc<daw_core::MusicalClock>, bpm: f32) -> Self {
+        let mut previous = [None; 2];
+        for c in &mut self.clips {
+            c.clock = Some((clock.clone(), bpm));
+            c.previous = previous;
+            previous = [c.origin(c.clip.end() - 1, 0), c.origin(c.clip.end() - 1, 1)];
+        }
+        self
+    }
     pub fn context(&self, frame: u64, tempo_bpm: f32) -> ModulationSourceContext {
         let index = self.clips.partition_point(|c| c.clip.start_frame <= frame);
         let origins = index.checked_sub(1).map_or([None; 2], |i| {
@@ -119,7 +138,20 @@ impl NoteSchedule {
         });
         ModulationSourceContext {
             frame,
-            tempo_bpm,
+            musical: self
+                .clips
+                .first()
+                .and_then(|c| c.clock.as_ref())
+                .map(|(clock, _)| daw_unit_core::MusicalPosition {
+                    quarter: clock.quarter_at(frame),
+                    note_origin: origins[0].map(|f| clock.signed_quarter_at(f)),
+                    legato_origin: origins[1].map(|f| clock.signed_quarter_at(f)),
+                }),
+            tempo_bpm: self
+                .clips
+                .first()
+                .and_then(|c| c.clock.as_ref())
+                .map_or(tempo_bpm, |(clock, _)| clock.tempo_at(frame)),
             note_origin: origins[0],
             legato_origin: origins[1],
         }

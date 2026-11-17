@@ -85,6 +85,33 @@ impl Project {
                 }
             }
         }
+        for event in &mut next.timing.tempos {
+            event.start_frame = scale(event.start_frame)?;
+        }
+        for event in &mut next.timing.signatures {
+            event.start_frame = scale(event.start_frame)?;
+        }
+        for marker in &mut next.markers {
+            let end = marker
+                .length_frames
+                .map(|length| {
+                    marker
+                        .start_frame
+                        .checked_add(length)
+                        .ok_or_else(|| Error("Section exceeds timeline bounds".into()))
+                })
+                .transpose()?;
+            marker.start_frame = scale(marker.start_frame)?;
+            marker.length_frames = end
+                .map(|end| {
+                    scale(end).and_then(|end| {
+                        end.checked_sub(marker.start_frame)
+                            .filter(|length| *length > 0)
+                            .ok_or_else(|| Error("Sample rate change makes a section empty".into()))
+                    })
+                })
+                .transpose()?;
+        }
         next.transport.playhead_frame = scale(next.transport.playhead_frame)?;
         next.transport.r#loop.start_frame = scale(next.transport.r#loop.start_frame)?;
         next.transport.r#loop.end_frame = scale(next.transport.r#loop.end_frame)?;

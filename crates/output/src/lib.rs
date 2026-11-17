@@ -1830,14 +1830,18 @@ impl Callback {
         let frame = (self.renderer.playing && !self.renderer.buffering())
             .then(|| self.renderer.playhead.saturating_sub(1));
         self.metronome
-            .set_signature(self.renderer.plan.project.time_signature);
+            .set_signature(self.renderer.clock.signature_at(self.renderer.playhead));
         self.metronome.set_enabled(
             count_in.is_some() || self.status.metronome_enabled.load(Ordering::Relaxed),
         );
-        let click = self.metronome.next(
-            count_in.or(frame),
-            f64::from(self.renderer.plan.project.tempo_bpm),
-        );
+        let click = if let Some(pre_roll) = count_in {
+            self.metronome.next(
+                Some(pre_roll),
+                f64::from(self.renderer.clock.tempo_at(self.renderer.playhead)),
+            )
+        } else {
+            self.metronome.next_mapped(frame, &self.renderer.clock)
+        };
         let audition = self.audition.next();
         // Worker activation deadlines use the project sample clock. A disk
         // hold must not move that clock ahead of the transport/DSP state.

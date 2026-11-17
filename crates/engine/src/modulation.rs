@@ -70,6 +70,7 @@ impl Control {
             ModulationSourceContext {
                 frame: context.frame,
                 tempo_bpm: context.tempo_bpm,
+                musical: context.musical,
                 ..Default::default()
             },
         )
@@ -102,6 +103,18 @@ pub(crate) struct NoteState {
     released: Option<u64>,
 }
 impl NoteState {
+    pub fn mapped(self, map: impl Fn(u64) -> u64) -> Self {
+        Self {
+            held: self.held,
+            starts: self.starts.map(|s| s.map(&map)),
+            released: self.released.map(&map),
+            durations: std::array::from_fn(|i| {
+                self.durations[i].map(|d| {
+                    self.starts[i].map_or(d, |s| map(s.saturating_add(d)).saturating_sub(map(s)))
+                })
+            }),
+        }
+    }
     pub fn record(&mut self, on: bool, frame: u64, duration: u64) {
         if on {
             self.starts[0] = Some(frame);
@@ -345,7 +358,15 @@ impl SharedControls {
             }
         }
     }
-    pub fn tick(&mut self, mut context: ModulationSourceContext) {
+    #[cfg(test)]
+    pub fn tick(&mut self, context: ModulationSourceContext) {
+        self.tick_clock(context, None);
+    }
+    pub fn tick_clock(
+        &mut self,
+        mut context: ModulationSourceContext,
+        clock: Option<&daw_core::MusicalClock>,
+    ) {
         self.frame = context.frame;
         if let Some(origin) = self.live_origins[0] {
             context.note_origin = Some(
@@ -365,6 +386,10 @@ impl SharedControls {
                 origin
             });
         }
+        if let (Some(clock), Some(musical)) = (clock, &mut context.musical) {
+            musical.note_origin = context.note_origin.map(|f| clock.signed_quarter_at(f));
+            musical.legato_origin = context.legato_origin.map(|f| clock.signed_quarter_at(f));
+        }
         if self.held > 0 {
             for age in &mut self.note_ages {
                 *age = age.saturating_add(1);
@@ -382,6 +407,7 @@ impl SharedControls {
                         shared_sources: Some(&self.index),
                         frame: context.frame,
                         tempo_bpm: context.tempo_bpm,
+                        musical: context.musical,
                         ..Default::default()
                     },
                 );

@@ -5896,3 +5896,19 @@ fn stereo_sampler_uses_unity_center_and_linear_track_balance_in_all_render_paths
         }
     }
 }
+
+#[test]
+fn compiled_timing_queries_do_not_allocate_at_saturated_note_and_click_bounds() {
+    let clock = MusicalClock::constant(48_000, 120.0, TimeSignature::default());
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACK_ALLOCATIONS.with(|c| c.set(true));
+    assert_eq!(
+        clock.frame_for_signed_reference(u64::MAX, i128::MAX, 120.0),
+        i128::from(u64::MAX)
+    );
+    assert!(clock.frame_for_signed_reference(0, i128::MIN, 120.0) < 0);
+    let (boundary, _) = clock.beat_at(u64::MAX);
+    assert!(boundary > 0);
+    TRACK_ALLOCATIONS.with(|c| c.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}

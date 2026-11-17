@@ -43,6 +43,7 @@ impl Project {
             self.validate_clip(&placement.clip)?;
             self.validate_beat_destination(placement.track_id, placement.clip.asset_id)?;
         }
+        let clock = crate::timing::ClipClock::new(self)?;
         // Remove the full moving group first, so original ranges cannot trim each other.
         for track in &mut self.tracks {
             track.clips.retain(|clip| !incoming.contains(&clip.id));
@@ -59,7 +60,7 @@ impl Project {
                     let end = winner.clip.end();
                     pieces = pieces
                         .into_iter()
-                        .flat_map(|piece| piece.uncovered_ranges(start, end))
+                        .flat_map(|piece| clock.uncovered(&piece, start, end))
                         .collect();
                 }
                 survivors.extend(pieces);

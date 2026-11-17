@@ -22,6 +22,8 @@ impl RenderPlan {
     pub fn same_processing_plan(&self, other: &Self) -> bool {
         let mut a = self.project.clone();
         let mut b = other.project.clone();
+        a.markers.clear();
+        b.markers.clear();
         a.transport.playhead_frame = 0;
         b.transport.playhead_frame = 0;
         for track in &mut a.tracks {
@@ -49,7 +51,16 @@ impl RenderPlan {
             && self.sampler_audio.len() == other.sampler_audio.len()
             && self.sampler_audio.iter().all(|(id, a)| {
                 other.sampler_audio.get(id).is_some_and(|b| {
-                    a.variants().count() == b.variants().count()
+                    a.duration_variants().count() == b.duration_variants().count()
+                        && a.duration_variants().zip(b.duration_variants()).all(
+                            |((la, a), (lb, b))| {
+                                la == lb
+                                    && a.variants().zip(b.variants()).all(|((ka, a), (kb, b))| {
+                                        ka == kb && std::sync::Arc::ptr_eq(&a.samples, &b.samples)
+                                    })
+                            },
+                        )
+                        && a.variants().count() == b.variants().count()
                         && a.variants().zip(b.variants()).all(|((ka, a), (kb, b))| {
                             ka == kb
                                 && a.sample_rate_hz == b.sample_rate_hz
@@ -111,9 +122,11 @@ impl Renderer {
                     .iter()
                     .map(|t| t.heap_bytes())
                     .sum::<u64>(),
-            processor_bytes: self.capture_controls.as_ref().map_or(0, |controls| {
-                vec_bytes(controls) + controls.iter().map(vec_bytes).sum::<u64>()
-            }) + std::mem::size_of::<Self>() as u64
+            processor_bytes: self.clock.memory_bytes()
+                + self.capture_controls.as_ref().map_or(0, |controls| {
+                    vec_bytes(controls) + controls.iter().map(vec_bytes).sum::<u64>()
+                })
+                + std::mem::size_of::<Self>() as u64
                 + map_bytes(&self.track_index)
                 + map_bytes(&self.effect_tracks)
                 + vec_bytes(&self.gains)

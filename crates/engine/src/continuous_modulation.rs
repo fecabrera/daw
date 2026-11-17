@@ -86,6 +86,7 @@ impl ProviderControl {
                     shared_sources: Some(index),
                     frame: context.frame,
                     tempo_bpm: context.tempo_bpm,
+                    musical: context.musical,
                     ..Default::default()
                 },
                 context,
@@ -99,6 +100,7 @@ impl ProviderControl {
                     shared_sources: Some(index),
                     frame: context.frame,
                     tempo_bpm: context.tempo_bpm,
+                    musical: context.musical,
                     ..Default::default()
                 },
                 context,

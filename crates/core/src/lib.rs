@@ -17,7 +17,10 @@ mod audio_merge;
 pub use clip_channels::ClipChannels;
 mod fades;
 pub use fades::{ClipFade, ClipFades};
+mod conductor_edit;
+mod frame_ranges;
 mod time_signature;
+mod timing;
 pub use daw_unit_core::OscillatorUnison;
 pub use daw_unit_core::{
     AMBIENT_REVERB_TYPE_ID, AmbientHighPassSlope, AmbientReverbSettings, ReverbFilterSlope,
@@ -29,6 +32,9 @@ pub use daw_unit_core::{
 pub use daw_unit_core::{PLATE_REVERB_TYPE_ID, PlateDriveMode, PlateReverbSettings};
 pub use daw_unit_core::{SHIMMER_REVERB_TYPE_ID, ShimmerReverbSettings};
 pub use time_signature::TimeSignature;
+pub use timing::{
+    ArrangementMarker, MusicalClock, SignatureEvent, TIMING_EVENT_LIMIT, TempoEvent, TimingMap,
+};
 mod effect_owners;
 pub use daw_unit_core::{
     HARMONIC_BAND_NAMES, HARMONIC_FREQUENCY_DEFAULTS, HARMONIC_FREQUENCY_RANGES,
@@ -260,6 +266,10 @@ pub struct Project {
     pub tempo_bpm: f32,
     #[serde(default)]
     pub time_signature: TimeSignature,
+    #[serde(default, skip_serializing_if = "TimingMap::is_empty")]
+    pub timing: TimingMap,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markers: Vec<ArrangementMarker>,
     pub master: Master,
     pub assets: Vec<Asset>,
     #[serde(deserialize_with = "deserialize_tracks")]
@@ -420,6 +430,8 @@ impl Default for Project {
             buffer_size_frames: default_buffer_size(),
             tempo_bpm: DEFAULT_TEMPO_BPM,
             time_signature: TimeSignature::default(),
+            timing: TimingMap::default(),
+            markers: Vec::new(),
             master: Master {
                 gain_db: 0.0,
                 effects: vec![],
@@ -551,6 +563,7 @@ impl Project {
             return Err(invalid("Unsupported project buffer size"));
         }
         self.time_signature.validate()?;
+        self.musical_clock()?;
         if !self.tempo_bpm.is_finite() || self.tempo_bpm <= 0.0 {
             return Err(invalid("Tempo must be a positive finite BPM value"));
         }
@@ -753,9 +766,16 @@ impl Project {
         let available = c
             .source_length(a.decoded_frame_count)
             .ok_or_else(|| invalid("Stretched source length exceeds supported bounds"))?;
-        let source_length = c
-            .repeat
-            .map_or(c.length_frames, |repeat| repeat.length_frames);
+        let source_length = c.repeat.map_or_else(
+            || {
+                if a.is_audio() {
+                    c.length_frames
+                } else {
+                    self.midi_reference_position(c, c.end())
+                }
+            },
+            |repeat| repeat.length_frames,
+        );
         if c.length_frames == 0
             || c.start_frame.checked_add(c.length_frames).is_none()
             || c.source_offset_frame
@@ -994,15 +1014,44 @@ impl Project {
                 self.apply_trim_boundary(clip_id, &selected, edge, delta)?;
             }
             Edit::StretchClips { clips, edge } => self.apply_stretches(&clips, edge)?,
+            Edit::SetMarkers { markers } => {
+                self.markers = markers;
+                self.validate_timing()?;
+            }
+            Edit::SetTempoEvents { events } => self.apply_tempo_events(events)?,
+            Edit::SetSignatureEvents { mut events } => {
+                events.sort_by_key(|e| e.start_frame);
+                let origin = events
+                    .first()
+                    .filter(|e| e.start_frame == 0)
+                    .ok_or_else(|| {
+                        Error("The origin signature cannot be removed or moved".into())
+                    })?;
+                if origin.id != self.signature_events()[0].id {
+                    return Err(Error(
+                        "The origin signature identity must be preserved".into(),
+                    ));
+                }
+                self.time_signature = origin.signature;
+                self.timing.signatures = events;
+                self.validate_timing()?;
+            }
             Edit::SetTimeSignature { signature } => {
                 signature.validate()?;
                 self.time_signature = signature;
+                if let Some(origin) = self.timing.signatures.first_mut() {
+                    origin.signature = signature;
+                }
             }
             Edit::SetTempo { bpm } => {
                 if !bpm.is_finite() || bpm <= 0.0 {
                     return Err(Error("Tempo must be a positive finite BPM value".into()));
                 }
-                if bpm != self.tempo_bpm {
+                if bpm != self.tempo_bpm && !self.timing.is_empty() {
+                    let mut events = self.tempo_events();
+                    events[0].bpm = bpm;
+                    self.apply_tempo_events(events)?;
+                } else if bpm != self.tempo_bpm {
                     // Beat position = frames * BPM / (sample rate * 60).
                     // Audio lengths stay fixed. MIDI ranges scale with their beat-timed notes.
                     let ratio = f64::from(self.tempo_bpm) / f64::from(bpm);
@@ -1043,6 +1092,30 @@ impl Project {
                         }
                     }
                     self.bound_retimed_midi_sources()?;
+                    for marker in &mut self.markers {
+                        let end = marker
+                            .length_frames
+                            .map(|length| {
+                                marker
+                                    .start_frame
+                                    .checked_add(length)
+                                    .ok_or_else(|| Error("Section exceeds timeline bounds".into()))
+                            })
+                            .transpose()?;
+                        marker.start_frame =
+                            checked_frame((marker.start_frame as f64 * ratio).round())?;
+                        marker.length_frames = end
+                            .map(|end| {
+                                checked_frame((end as f64 * ratio).round()).and_then(|end| {
+                                    end.checked_sub(marker.start_frame)
+                                        .filter(|length| *length > 0)
+                                        .ok_or_else(|| {
+                                            Error("Tempo edit makes a section empty".into())
+                                        })
+                                })
+                            })
+                            .transpose()?;
+                    }
                     let region = &mut self.transport.r#loop;
                     // Match ruler snapping: fractional beat boundaries must not land
                     // in the preceding beat in the selection monitor.
@@ -1195,6 +1268,23 @@ impl Project {
                 });
             }
             Edit::Split { clip_id, at } => {
+                let source_advance = self
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.clips)
+                    .find(|c| c.id == clip_id)
+                    .map(|c| {
+                        if self
+                            .assets
+                            .iter()
+                            .any(|a| a.id == c.asset_id && !a.is_audio())
+                        {
+                            self.midi_reference_position(c, at)
+                        } else {
+                            at.saturating_sub(c.start_frame)
+                        }
+                    })
+                    .unwrap_or(0);
                 let t = self
                     .tracks
                     .iter_mut()
@@ -1211,10 +1301,12 @@ impl Project {
                     source_offset_frame: if c.repeat.is_some() {
                         c.source_offset_frame
                     } else {
-                        c.source_offset_frame + left_len
+                        c.source_offset_frame + source_advance
                     },
                     length_frames: c.length_frames - left_len,
-                    repeat: c.repeat.map(|repeat| repeat.shifted(i128::from(left_len))),
+                    repeat: c
+                        .repeat
+                        .map(|repeat| repeat.shifted(i128::from(source_advance))),
                     ..c.clone()
                 };
                 c.length_frames = left_len;
@@ -1233,6 +1325,16 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    SetMarkers {
+        markers: Vec<ArrangementMarker>,
+    },
+    SetTempoEvents {
+        events: Vec<TempoEvent>,
+    },
+    SetSignatureEvents {
+        events: Vec<SignatureEvent>,
+    },
+
     Bounce {
         request: BounceRequest,
         outputs: Vec<BounceOutput>,

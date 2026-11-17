@@ -223,9 +223,17 @@ impl DawUi {
             return;
         }
         self.ensure_history();
-        let signature = self.session.project.time_signature;
+        let clock = match self.session.project.musical_clock() {
+            Ok(c) => c,
+            Err(e) => {
+                self.fail(e);
+                return;
+            }
+        };
+        let start = self.session.project.transport.playhead_frame;
+        let signature = clock.signature_at(start);
         let bars = u64::from(self.settings.midi.count_in_bars);
-        let frames = (60.0 / f64::from(self.session.project.tempo_bpm)
+        let frames = (60.0 / f64::from(clock.tempo_at(start))
             * f64::from(self.session.project.sample_rate_hz)
             * f64::from(signature.numerator)
             * 4.0

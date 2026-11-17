@@ -38,3 +38,6 @@ Capture runs outside painting and writes a recoverable journal. A failure ends
 the take at the accepted prefix and releases live notes. A failed publication
 retains recovery data; use Retry MIDI take publication in Settings or recover
 after restarting. See [Recovery](../projects/recovery.md).
+
+Count-in uses the tempo and signature at the recording start. Recorded notes
+follow the song tempo map. The map remains fixed until the take ends.

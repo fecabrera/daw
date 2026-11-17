@@ -33,6 +33,7 @@ mod transport_cache;
 use daw_core::{Clip, Id, Project, linear_gain};
 use daw_media::AudioData;
 use std::collections::HashMap;
+use std::sync::Arc;
 pub use transport_cache::{TransportCache, TransportCacheMemory};
 
 /// Maximum bounded PCM chunk accepted by note-audition hosts.
@@ -229,6 +230,7 @@ pub enum ModulationTarget {
 /// Immutable decoded/prepared audio remains shared.
 #[derive(Clone)]
 pub struct Renderer {
+    pub clock: Arc<daw_core::MusicalClock>,
     capture_controls: Option<Vec<Vec<daw_unit_core::ModulationValue>>>,
     /// Prepared model. Update only through an effect transaction or renderer inheritance.
     pub plan: RenderPlan,
@@ -285,6 +287,11 @@ struct TrackGains {
 impl Renderer {
     pub fn new(plan: RenderPlan) -> Self {
         let plan = plan.prepare_beats();
+        let clock = Arc::new(
+            plan.project
+                .musical_clock()
+                .expect("validated render timing"),
+        );
         let end_frame = plan.project.end().max(
             plan.beat_tracks
                 .values()
@@ -351,7 +358,7 @@ impl Renderer {
                 }
             })
             .collect();
-        let effects = plan
+        let mut effects: Vec<_> = plan
             .project
             .tracks
             .iter()
@@ -363,12 +370,16 @@ impl Renderer {
                 )
             })
             .collect();
-        let master_effects = effects::EffectChain::chain(
+        let mut master_effects = effects::EffectChain::chain(
             None,
             &plan.project.master.effects,
             plan.project.sample_rate_hz,
             plan.project.buffer_size_frames,
         );
+        for chain in &mut effects {
+            chain.clock = Some(clock.clone());
+        }
+        master_effects.clock = Some(clock.clone());
         let master = linear_gain(plan.project.master.gain_db);
         let playhead = plan.project.transport.playhead_frame;
         let mut midi: Vec<_> = plan
@@ -426,10 +437,14 @@ impl Renderer {
         for (index, runtime) in midi.iter_mut().enumerate() {
             if let Some(runtime) = runtime {
                 runtime.configure_sidechains(&sidechains.values[index]);
+                for bus in &mut runtime.layer_effects {
+                    bus.chain.clock = Some(clock.clone());
+                }
             }
         }
         let sidechain_post = vec![[0.0; 4]; plan.project.tracks.len()];
         let mut renderer = Self {
+            clock,
             sidechains,
             sidechain_post,
             buses,
@@ -1173,6 +1188,7 @@ impl Renderer {
     pub fn live_midi_note(&mut self, token: Id, attack: Option<(u8, u8)>) -> bool {
         let mut ready = true;
         for runtime in self.midi.iter_mut().flatten() {
+            runtime.set_live_tempo(self.clock.tempo_at(self.playhead));
             ready &= runtime.live_note(token, attack);
         }
         ready

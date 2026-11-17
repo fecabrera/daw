@@ -136,6 +136,7 @@ mod track_rows;
 mod track_selector;
 mod transport_controls;
 pub use mixer::ViewMode;
+mod arrangement;
 mod audio_settings;
 mod musical_time;
 pub mod panels;
@@ -183,6 +184,9 @@ fn placement_start(
         .flat_map(|clip| [clip.start_frame, clip.end()]);
     musical_time::Timeline::at_sample_rate(project.tempo_bpm, zoom, 0.0, project.sample_rate_hz)
         .with_time_signature(project.time_signature)
+        .with_clock(std::sync::Arc::new(
+            project.musical_clock().expect("validated timing"),
+        ))
         .snap_range(start, length, anchors)
 }
 
@@ -634,8 +638,12 @@ struct TempoEdit {
     focus: bool,
     width: f32,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum PositionStep {
+    Musical {
+        clock: std::sync::Arc<daw_core::MusicalClock>,
+        bars: bool,
+    },
     Beats {
         count: i64,
         tempo: f32,
@@ -646,8 +654,18 @@ enum PositionStep {
 }
 
 impl PositionStep {
-    fn shift(self, frame: u64, steps: i64) -> u64 {
+    fn shift(&self, frame: u64, steps: i64) -> u64 {
         match self {
+            Self::Musical { clock, bars } => {
+                let sig = clock.signature_at(frame);
+                let q_step = 4.0 / f64::from(sig.denominator)
+                    * if *bars { f64::from(sig.numerator) } else { 1.0 };
+                clock
+                    .ceil_frame_at_quarter(
+                        (clock.quarter_at(frame) + steps as f64 * q_step).max(0.0),
+                    )
+                    .unwrap_or(u64::MAX)
+            }
             Self::Beats {
                 count,
                 tempo,
@@ -655,12 +673,12 @@ impl PositionStep {
                 signature,
             } => musical_time::shift_at_rate_in_meter(
                 frame,
-                tempo,
-                steps.saturating_mul(count),
-                sample_rate_hz,
-                signature,
+                *tempo,
+                steps.saturating_mul(*count),
+                *sample_rate_hz,
+                *signature,
             ),
-            Self::Frames(count) => (i128::from(frame) + i128::from(steps) * i128::from(count))
+            Self::Frames(count) => (i128::from(frame) + i128::from(steps) * i128::from(*count))
                 .clamp(0, i128::from(u64::MAX)) as u64,
         }
     }
@@ -731,7 +749,7 @@ fn monitor_drag_position(
         frame,
         units: 0.0,
         applied: 0,
-        step: steps[index],
+        step: steps[index].clone(),
     });
     let fine = ui.input(|input| if input.modifiers.shift { 0.1 } else { 1.0 });
     state.units -= f64::from(response.drag_delta().y) * fine;
@@ -817,7 +835,7 @@ impl ClipDragMode {
     fn at(block: Rect, pointer: Pos2) -> Self {
         let left = (pointer.x - block.left()).abs();
         let right = (pointer.x - block.right()).abs();
-        if left.min(right) < 8.0 {
+        if left.min(right) < trim::EDGE_RESIZE_RADIUS {
             match (pointer.y < block.top() + 22.0, left <= right) {
                 (true, true) => Self::LoopLeft,
                 (true, false) => Self::LoopRight,
@@ -944,6 +962,7 @@ pub struct DawUi {
     history: Option<daw_project::SessionHistory>,
     output: Option<AudioOutput>,
     selected_track: Option<Id>,
+    arrangement: arrangement::State,
     selected_tracks: HashSet<Id>,
     selected_clip: Option<Id>,
     selected_clips: HashSet<Id>,
@@ -1109,6 +1128,7 @@ impl Default for DawUi {
             history: None,
             output: None,
             selected_track: None,
+            arrangement: Default::default(),
             selected_tracks: HashSet::new(),
             selected_clip: None,
             selected_clips: HashSet::new(),
@@ -1966,7 +1986,10 @@ impl DawUi {
             return;
         }
         self.ensure_history();
-        let editor_options_only = matches!(command, Edit::SetMidiOptions { .. });
+        let editor_options_only = matches!(
+            command,
+            Edit::SetMidiOptions { .. } | Edit::SetMarkers { .. }
+        );
         match self.session.project.edited(command) {
             Ok(project) => {
                 if !editor_options_only && self.prepare_audio_edit(&project, None) {
@@ -2181,7 +2204,9 @@ impl DawUi {
         }
     }
     fn clip_actions_available(&self, ctx: &egui::Context) -> bool {
-        self.edit_shortcuts_available(ctx) && !ctx.egui_wants_keyboard_input()
+        self.edit_shortcuts_available(ctx)
+            && !self.arrangement_has_focus(ctx)
+            && !ctx.egui_wants_keyboard_input()
     }
 
     fn edit_shortcuts_available(&self, ctx: &egui::Context) -> bool {
@@ -3094,18 +3119,36 @@ impl DawUi {
         }
     }
     fn set_tempo(&mut self, bpm: f32) {
-        if bpm == self.session.project.tempo_bpm {
+        let events = self.session.project.tempo_events();
+        let frame = self.session.project.transport.playhead_frame;
+        let active = events
+            .partition_point(|e| e.start_frame <= frame)
+            .saturating_sub(1);
+        if bpm == events[active].bpm {
             return;
         }
+        let command = if self.session.project.timing.tempos.is_empty() {
+            Edit::SetTempo { bpm }
+        } else {
+            let mut events = events;
+            events[active].bpm = bpm;
+            Edit::SetTempoEvents { events }
+        };
         let mut candidate = self.session.project.clone();
-        if let Err(error) = candidate.edit(Edit::SetTempo { bpm }) {
+        if let Err(error) = candidate.edit(command.clone()) {
             self.fail(format!("Tempo change rejected: {error}"));
             return;
         }
-        self.edit(Edit::SetTempo { bpm });
+        self.edit(command);
     }
     fn tempo_control(&mut self, ui: &mut egui::Ui) {
-        let previous = self.session.project.tempo_bpm;
+        let previous = self
+            .session
+            .project
+            .musical_clock()
+            .map_or(self.session.project.tempo_bpm, |c| {
+                c.tempo_at(self.session.project.transport.playhead_frame)
+            });
         if let Some(mut edit) = self.tempo_edit.take() {
             let mut output = egui::TextEdit::singleline(&mut edit.text)
                 .id(ui.make_persistent_id("tempo"))
@@ -3166,6 +3209,12 @@ impl DawUi {
             {
                 self.tempo_bounds = response.rect;
             }
+            let drag_id = response.id.with("whole-bpm-drag");
+            if response.drag_started() {
+                ui.data_mut(|data| {
+                    data.insert_temp(drag_id, musical_time::TempoValueDrag::new(previous))
+                });
+            }
             if response.double_clicked() {
                 self.tempo_edit = Some(TempoEdit {
                     text: previous.to_string(),
@@ -3178,15 +3227,22 @@ impl DawUi {
             {
                 let delta = response.drag_delta().y;
                 if delta != 0.0 {
-                    let step = ui.input(|input| if input.modifiers.shift { 0.1 } else { 1.0 });
-                    // Round drag changes to hundredths to avoid displaying float noise.
-                    let adjusted =
-                        ((f64::from(previous) - f64::from(delta) * step) * 100.0).round() / 100.0;
-                    let value = adjusted.clamp(0.01, f64::from(f32::MAX)) as f32;
+                    let fine = ui.input(|input| input.modifiers.shift);
+                    let value = ui.data_mut(|data| {
+                        let mut drag = data
+                            .get_temp::<musical_time::TempoValueDrag>(drag_id)
+                            .unwrap_or_else(|| musical_time::TempoValueDrag::new(previous));
+                        let value = drag.update(delta, fine);
+                        data.insert_temp(drag_id, drag);
+                        value
+                    });
                     if value != previous {
                         self.set_tempo(value);
                     }
                 }
+            }
+            if response.drag_stopped() {
+                ui.data_mut(|data| data.remove::<musical_time::TempoValueDrag>(drag_id));
             }
         }
     }
@@ -3239,12 +3295,7 @@ impl DawUi {
         let signature = self.display_time_signature();
         let monitor = transport_monitor_control(
             ui,
-            &musical_time::monitor_at_rate_in_meter(
-                frame,
-                tempo,
-                self.session.project.sample_rate_hz,
-                signature,
-            ),
+            &self.position_text(frame),
             "Bars and beats",
             0,
             Sense::hover(),
@@ -3254,12 +3305,13 @@ impl DawUi {
         {
             self.musical_bounds = responses.each_ref().map(|response| response.rect);
         }
+        let steps = self.project_musical_steps(tempo, signature);
         if let Some(destination) = monitor_drag_position(
             ui,
             &responses,
             &mut self.musical_drag,
             frame,
-            &musical_steps(tempo, self.session.project.sample_rate_hz, signature),
+            &steps,
             0..=u64::MAX,
         ) && destination != frame
         {
@@ -3272,18 +3324,8 @@ impl DawUi {
         let region = &self.session.project.transport.r#loop;
         let text = format!(
             "{}–{}",
-            musical_time::monitor_at_rate_in_meter(
-                region.start_frame,
-                tempo,
-                self.session.project.sample_rate_hz,
-                signature
-            ),
-            musical_time::monitor_at_rate_in_meter(
-                region.end_frame,
-                tempo,
-                self.session.project.sample_rate_hz,
-                signature
-            ),
+            self.position_text(region.start_frame),
+            self.position_text(region.end_frame),
         );
         let monitor = transport_monitor_control(ui, &text, "Selection", 0, Sense::hover());
         for endpoint in 0..2 {
@@ -3304,12 +3346,13 @@ impl DawUi {
                     region.start_frame.saturating_add(gap)..=u64::MAX,
                 )
             };
+            let steps = self.project_musical_steps(tempo, signature);
             if let Some(destination) = monitor_drag_position(
                 ui,
                 &responses,
                 &mut self.selection_drag[endpoint],
                 frame,
-                &musical_steps(tempo, self.session.project.sample_rate_hz, signature),
+                &steps,
                 limits,
             ) && destination != frame
             {
@@ -3482,21 +3525,23 @@ impl DawUi {
             if count_in.clicked() {
                 self.settings.midi.count_in_enabled = !self.settings.midi.count_in_enabled;
             }
-            ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
-                match self
-                    .time_signature_control
-                    .show(ui, self.session.project.time_signature)
-                {
-                    Ok(Some(signature)) if signature != self.session.project.time_signature => {
-                        self.edit(Edit::SetTimeSignature { signature })
+            ui.add_enabled_ui(
+                self.job.is_none() && !self.midi.busy() && !self.is_playing(),
+                |ui| {
+                    let signature = self.active_signature();
+                    match self.time_signature_control.show(ui, signature) {
+                        Ok(Some(signature)) if signature != self.active_signature() => {
+                            self.set_active_signature(signature)
+                        }
+                        Err(error) => self.fail(error),
+                        _ => {}
                     }
-                    Err(error) => self.fail(error),
-                    _ => {}
-                }
-            });
-            ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
-                self.tempo_control(ui)
-            });
+                },
+            );
+            ui.add_enabled_ui(
+                self.job.is_none() && !self.midi.busy() && !self.is_playing(),
+                |ui| self.tempo_control(ui),
+            );
             if self.view_mode == ViewMode::Instrument {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     self.track_control(ui);
@@ -3703,6 +3748,14 @@ impl DawUi {
             self.return_bank_height
                 .min(return_count as f32 * self.track_row_height())
                 .min((master_rect.top() - bounds.top()) * 0.4)
+                .min(
+                    (master_rect.top()
+                        - bounds.top()
+                        - RULER_HEIGHT
+                        - beat_editor::SUBTRACK_LANE_HEIGHT
+                        - 60.0)
+                        .max(0.0),
+                )
                 .max(0.0)
         } else {
             0.0
@@ -3725,6 +3778,7 @@ impl DawUi {
             self.scrollbar_bounds = scrollbar_rect;
         }
         self.ruler(ui, &control_panel);
+        self.arrangement_lanes(ui, return_rect.top());
         let timeline_rect = Rect::from_min_max(
             Pos2::new(timeline_left, ui.cursor().top()),
             Pos2::new(bounds.right(), bounds.bottom()),
@@ -4310,7 +4364,7 @@ impl DawUi {
                 }
                 self.add_track_dropdown(ui);
             });
-            self.time_ruler(ui);
+            self.arrangement.ruler_bounds = self.time_ruler(ui);
         });
     }
     fn time_ruler(&mut self, ui: &mut egui::Ui) -> Rect {
@@ -5061,18 +5115,110 @@ impl DawUi {
             self.scroll = seconds;
         }
     }
+    fn active_signature(&self) -> daw_core::TimeSignature {
+        self.session
+            .project
+            .musical_clock()
+            .map_or(self.session.project.time_signature, |c| {
+                c.signature_at(self.session.project.transport.playhead_frame)
+            })
+    }
+    fn set_active_signature(&mut self, signature: daw_core::TimeSignature) {
+        let mut events = self.session.project.signature_events();
+        let index = events
+            .partition_point(|e| e.start_frame <= self.session.project.transport.playhead_frame)
+            .saturating_sub(1);
+        if self.session.project.timing.signatures.is_empty() {
+            self.edit(Edit::SetTimeSignature { signature });
+        } else {
+            events[index].signature = signature;
+            self.edit(Edit::SetSignatureEvents { events });
+        }
+    }
+    fn project_musical_steps(
+        &self,
+        tempo: f32,
+        signature: daw_core::TimeSignature,
+    ) -> [PositionStep; 2] {
+        if self.session.project.timing.is_empty() {
+            return musical_steps(tempo, self.session.project.sample_rate_hz, signature);
+        }
+        let clock = std::sync::Arc::new(
+            self.session
+                .project
+                .musical_clock()
+                .expect("validated timing"),
+        );
+        [
+            PositionStep::Musical {
+                clock: clock.clone(),
+                bars: true,
+            },
+            PositionStep::Musical { clock, bars: false },
+        ]
+    }
+    fn position_text(&self, frame: u64) -> String {
+        if self.session.project.timing.is_empty() {
+            return musical_time::monitor_at_rate_in_meter(
+                frame,
+                self.session.project.tempo_bpm,
+                self.session.project.sample_rate_hz,
+                self.display_time_signature(),
+            );
+        }
+        let (bar, beat) = self
+            .session
+            .project
+            .musical_clock()
+            .map_or((1, 1), |c| c.position(frame));
+        format!("{bar:04}.{beat:02}")
+    }
     fn display_time_signature(&self) -> daw_core::TimeSignature {
-        self.time_signature_control
-            .preview(self.session.project.time_signature)
+        self.time_signature_control.preview(self.active_signature())
     }
     fn musical_timeline(&self) -> musical_time::Timeline {
-        musical_time::Timeline::at_sample_rate(
+        let timeline = musical_time::Timeline::at_sample_rate(
             self.session.project.tempo_bpm,
             self.view_zoom(),
             self.view_scroll(),
             self.session.project.sample_rate_hz,
         )
-        .with_time_signature(self.display_time_signature())
+        .with_time_signature(self.display_time_signature());
+        if self.midi_editor.content_active
+            && self.selected_track.is_some_and(|id| {
+                self.session
+                    .project
+                    .tracks
+                    .iter()
+                    .any(|t| t.id == id && t.kind == daw_core::TrackKind::Beat)
+            })
+        {
+            return timeline;
+        }
+        if !self.time_signature_control.active() {
+            return timeline.with_clock(std::sync::Arc::new(
+                self.session
+                    .project
+                    .musical_clock()
+                    .expect("validated UI timing"),
+            ));
+        }
+        let mut project = self.session.project.clone();
+        {
+            let frame = project.transport.playhead_frame;
+            let mut events = project.signature_events();
+            let index = events
+                .partition_point(|e| e.start_frame <= frame)
+                .saturating_sub(1);
+            events[index].signature = self.display_time_signature();
+            if index == 0 {
+                project.time_signature = events[index].signature;
+            }
+            project.timing.signatures = events;
+        }
+        timeline.with_clock(std::sync::Arc::new(
+            project.musical_clock().expect("validated UI timing"),
+        ))
     }
     fn paint_grid(&self, painter: &egui::Painter, rect: Rect) {
         self.musical_timeline().paint_grid(painter, rect);
@@ -5108,6 +5254,12 @@ impl DawUi {
             self.session.project.sample_rate_hz,
         )
         .with_time_signature(self.display_time_signature())
+        .with_clock(std::sync::Arc::new(
+            self.session
+                .project
+                .musical_clock()
+                .expect("validated timing"),
+        ))
     }
     fn drag_delta(&self, drag: &Drag, pointer: Pos2) -> i64 {
         (f64::from(pointer.x - drag.origin.x) / f64::from(self.clip_drag_zoom())
@@ -5500,7 +5652,11 @@ impl DawUi {
                     clip.end(),
                     unsnapped,
                 );
-                clip = clip.looped_by(daw_core::ClipEdge::Left, i128::from(next) - start);
+                clip = self.session.project.looped_clip(
+                    &clip,
+                    daw_core::ClipEdge::Left,
+                    i128::from(next) - start,
+                )?;
             }
             ClipDragMode::LoopRight => {
                 let end = self.clip_edge_frame(
@@ -5510,7 +5666,11 @@ impl DawUi {
                     clip.start_frame,
                     unsnapped,
                 );
-                clip = clip.looped_by(daw_core::ClipEdge::Right, i128::from(end) - start - length);
+                clip = self.session.project.looped_clip(
+                    &clip,
+                    daw_core::ClipEdge::Right,
+                    i128::from(end) - start - length,
+                )?;
             }
             _ => return None,
         }
@@ -6075,6 +6235,7 @@ impl DawUi {
         }
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
+        self.arrangement_dialog(ctx);
         if self.show_diagnostic_details(ctx) {
             return;
         }
@@ -6283,6 +6444,7 @@ mod tests {
         .find(|(h, _, _)| *h == header)
         .unwrap_or_else(|| panic!("Missing unit geometry for {header:?}"))
     }
+    mod arrangement;
     mod audio_editor;
     mod background_audio;
     mod beat;
@@ -8302,7 +8464,7 @@ mod tests {
     }
 
     #[test]
-    fn tempo_drag_uses_vertical_motion_and_shift_for_fine_adjustment() {
+    fn tempo_drag_uses_whole_bpm_steps_with_or_without_shift() {
         let (mut app, track) = fixture();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
@@ -8343,7 +8505,7 @@ mod tests {
         assert_eq!(app.session.project.tempo_bpm, 131.0);
         let fine_down = fine_up + Vec2::new(0.0, 3.0);
         frame(&mut app, &ctx, vec![egui::Event::PointerMoved(fine_down)]);
-        assert_eq!(app.session.project.tempo_bpm, 130.7);
+        assert_eq!(app.session.project.tempo_bpm, 131.0);
 
         let down = fine_down + Vec2::new(0.0, 10.0);
         frame(
@@ -8354,7 +8516,7 @@ mod tests {
                 egui::Event::PointerMoved(down),
             ],
         );
-        assert_eq!(app.session.project.tempo_bpm, 120.7);
+        assert_eq!(app.session.project.tempo_bpm, 121.0);
         frame(&mut app, &ctx, vec![button(down, false)]);
         assert!(app.tempo_edit.is_none());
         assert!(app.error.is_none());
@@ -8380,7 +8542,7 @@ mod tests {
         );
         let down = start + Vec2::new(0.0, 20.0);
         frame(&mut app, &ctx, vec![egui::Event::PointerMoved(down)]);
-        assert_eq!(app.session.project.tempo_bpm, 0.01);
+        assert_eq!(app.session.project.tempo_bpm, 1.0);
         app.session.project.validate().unwrap();
         app.dirty = false;
         frame(
@@ -8388,13 +8550,13 @@ mod tests {
             &ctx,
             vec![egui::Event::PointerMoved(down + Vec2::new(0.0, 10.0))],
         );
-        assert_eq!(app.session.project.tempo_bpm, 0.01);
+        assert_eq!(app.session.project.tempo_bpm, 1.0);
         assert!(!app.dirty);
 
         let (sender, receiver) = mpsc::channel();
         app.job = Some(receiver);
         frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start)]);
-        assert_eq!(app.session.project.tempo_bpm, 0.01);
+        assert_eq!(app.session.project.tempo_bpm, 1.0);
         assert!(!app.dirty);
         frame(&mut app, &ctx, vec![button(start, false)]);
         drop(sender);
@@ -9753,8 +9915,9 @@ mod tests {
                 let ctx = context();
                 frame(&mut app, &ctx, vec![]);
                 let lane = app.lane_bounds[&track];
+                let ruler = app.arrangement.ruler_bounds;
                 let point =
-                    |time: f64| Pos2::new(lane.left() + time as f32 * 70.0, lane.top() - 29.0);
+                    |time: f64| Pos2::new(lane.left() + time as f32 * 70.0, ruler.bottom() - 29.0);
                 let start = point(press);
                 let end = point(target);
                 frame(
@@ -11179,12 +11342,12 @@ mod tests {
     }
     #[test]
     fn add_track_button_remains_enabled_beyond_four_tracks() {
-        let (mut app, track) = fixture();
+        let (mut app, _track) = fixture();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let add = Pos2::new(
             app.timeline_bounds.left() - 19.0 - 28.0 - f32::from(theme::TOOLBAR_PADDING),
-            app.lane_bounds[&track].top() - RULER_HEIGHT / 2.0,
+            app.arrangement.ruler_bounds.center().y,
         );
         for expected in 2..=8 {
             frame(
@@ -11292,7 +11455,10 @@ mod tests {
             .find(|tick| tick.beat == 4.0)
             .unwrap()
             .x;
-        let label = Pos2::new(lane.left() + bar_two + 3.0, lane.top() - 10.0);
+        let label = Pos2::new(
+            lane.left() + bar_two + 3.0,
+            app.arrangement.ruler_bounds.bottom() - 10.0,
+        );
         frame(
             &mut app,
             &ctx,
@@ -11304,7 +11470,10 @@ mod tests {
             musical_time::monitor(app.session.project.transport.playhead_frame, 60.0),
             "0002.01"
         );
-        let start = Pos2::new(lane.left() + bar_two, lane.top() - 29.0);
+        let start = Pos2::new(
+            lane.left() + bar_two,
+            app.arrangement.ruler_bounds.bottom() - 29.0,
+        );
         let end = start + Vec2::new(280.0, 0.0);
         frame(
             &mut app,
@@ -11330,7 +11499,10 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let lane = app.lane_bounds[&track];
-        let start = Pos2::new(lane.left() + 70.0, lane.top() - 29.0);
+        let start = Pos2::new(
+            lane.left() + 70.0,
+            app.arrangement.ruler_bounds.bottom() - 29.0,
+        );
         frame(
             &mut app,
             &ctx,
@@ -11345,7 +11517,10 @@ mod tests {
         assert!(app.dirty);
         app.session.project.transport.r#loop.enabled = true;
         app.dirty = false;
-        let start = Pos2::new(lane.left() + 70.0, lane.top() - 29.0);
+        let start = Pos2::new(
+            lane.left() + 70.0,
+            app.arrangement.ruler_bounds.bottom() - 29.0,
+        );
         let end = start + Vec2::new(0.0, 15.0);
         frame(
             &mut app,
@@ -11374,10 +11549,11 @@ mod tests {
             let ctx = context();
             frame(&mut app, &ctx, vec![]);
             let lane = app.lane_bounds[&track];
+            let ruler = app.arrangement.ruler_bounds;
             let point = |seconds: f64| {
                 Pos2::new(
                     lane.left() + (seconds - scroll) as f32 * zoom,
-                    lane.top() - 29.0,
+                    ruler.bottom() - 29.0,
                 )
             };
             for (start, end, expected) in [
@@ -11404,11 +11580,11 @@ mod tests {
             }
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let band = Rect::from_min_max(
-                Pos2::new(lane.left(), lane.top() - RULER_HEIGHT),
-                Pos2::new(point(3.0).x, lane.top() - 20.0),
+                Pos2::new(lane.left(), app.arrangement.ruler_bounds.top()),
+                Pos2::new(point(3.0).x, app.arrangement.ruler_bounds.bottom() - 20.0),
             );
             assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == band && rect.fill == theme::ruler_loop_colors(&ctx, true).0)));
-            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == theme::ruler_loop_colors(&ctx, true).0 && rect.rect.bottom() > lane.top() - 20.0)));
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == theme::ruler_loop_colors(&ctx, true).0 && rect.rect.bottom() > app.arrangement.ruler_bounds.bottom() - 20.0)));
             assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == theme::LOOP_COLOR && rect.rect.width() == 3.0 && rect.rect.height() == 14.0)));
             assert_eq!(app.session.project.transport.playhead_frame, frames(8.0));
             assert!(app.session.project.transport.r#loop.enabled);
@@ -11430,7 +11606,7 @@ mod tests {
             let lane = app.lane_bounds[&track];
             let start = Pos2::new(
                 lane.left() + if left { 70.0 } else { 210.0 },
-                lane.top() - 29.0,
+                app.arrangement.ruler_bounds.bottom() - 29.0,
             );
             let end = start + Vec2::new(if left { 500.0 } else { -500.0 }, 25.0);
             frame(
@@ -11454,7 +11630,10 @@ mod tests {
             let ctx = context();
             frame(&mut app, &ctx, vec![]);
             let lane = app.lane_bounds[&track];
-            let start = Pos2::new(lane.left() + 280.0, lane.top() - 29.0);
+            let start = Pos2::new(
+                lane.left() + 280.0,
+                app.arrangement.ruler_bounds.bottom() - 29.0,
+            );
             let end = start + Vec2::new(140.0, 0.0);
             frame(
                 &mut app,
@@ -11504,7 +11683,10 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let lane = app.lane_bounds[&track];
-        let marker = Pos2::new(lane.left() + 70.0, lane.top() - 10.0);
+        let marker = Pos2::new(
+            lane.left() + 70.0,
+            app.arrangement.ruler_bounds.bottom() - 10.0,
+        );
         frame(
             &mut app,
             &ctx,
@@ -11533,7 +11715,10 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let lane = app.lane_bounds[&track];
-        let start = Pos2::new(lane.left() + 280.0, lane.top() - 10.0);
+        let start = Pos2::new(
+            lane.left() + 280.0,
+            app.arrangement.ruler_bounds.bottom() - 10.0,
+        );
         // A playhead drag must retain its role when it enters the upper band.
         let end = start + Vec2::new(140.0, -25.0);
         frame(
@@ -12605,10 +12790,11 @@ mod tests {
                 let ctx = context();
                 frame(&mut app, &ctx, vec![]);
                 let lane = app.lane_bounds[&track];
+                let ruler = app.arrangement.ruler_bounds;
                 let point = |time: f64| {
                     Pos2::new(
                         lane.left() + (time - scroll) as f32 * zoom,
-                        lane.top() - 10.0,
+                        ruler.bottom() - 10.0,
                     )
                 };
                 let click = point(2.27);
@@ -12649,7 +12835,7 @@ mod tests {
                 assert!(live.abs_diff(frames(if free_release { 3.27 } else { 3.25 })) <= 1);
                 shift_frame(&mut app, &ctx, vec![button(end, false)], free_release);
                 assert_eq!(app.session.project.transport.playhead_frame, live);
-                let background = point(4.27) + Vec2::new(0.0, 50.0);
+                let background = Pos2::new(point(4.27).x, lane.top() + 40.0);
                 shift_frame(
                     &mut app,
                     &ctx,

@@ -195,6 +195,7 @@ impl DawUi {
             }
         }
         menus::separator(ui);
+        self.arrangement_view_menu(ui);
         let fullscreen = ui.input(|input| input.viewport().fullscreen.unwrap_or(false));
         if ui
             .add_enabled(

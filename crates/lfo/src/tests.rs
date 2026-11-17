@@ -413,3 +413,34 @@ fn published_depth_is_neutral_at_zero_for_amplitude_and_additive_destinations() 
         }
     }
 }
+
+#[test]
+fn integrated_note_phase_survives_tempo_changes_and_seeks() {
+    for rate in RATES {
+        let mut unit = Lfo::new(
+            LfoSettings {
+                rate_mode: LfoRateMode::Note,
+                note_rate: NoteRate(10),
+                ..settings()
+            },
+            context(rate),
+        );
+        let beats = unit.settings.note_rate.beats();
+        for (quarter, tempo) in [(0.25, 120.0), (2.25, 60.0), (5.75, 180.0)] {
+            let value = unit.sample_at(ModulationSourceContext {
+                frame: u64::from(rate) * 3,
+                tempo_bpm: tempo,
+                musical: Some(daw_unit_core::MusicalPosition {
+                    quarter,
+                    note_origin: None,
+                    legato_origin: None,
+                }),
+                ..Default::default()
+            });
+            let expected = (quarter / beats * std::f64::consts::TAU).sin() as f32;
+            // New units/seek targets have no rate-change correction history.
+            assert!((value - expected).abs() < 0.002, "{value} != {expected}");
+            unit.reset();
+        }
+    }
+}

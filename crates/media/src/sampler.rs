@@ -6,6 +6,7 @@ use timestretch::Pitch;
 
 #[derive(Clone)]
 pub struct PreparedSampler {
+    durations: BTreeMap<u64, Box<PreparedSampler>>,
     source: Arc<Vec<[f32; 2]>>,
     input: SamplerInput,
     start_frame: u64,
@@ -16,6 +17,9 @@ pub struct PreparedSampler {
 
 impl PreparedSampler {
     pub fn visit_memory(&self, usage: &mut crate::AudioMemoryUsage) {
+        for variant in self.durations.values() {
+            variant.visit_memory(usage);
+        }
         usage.samples(&self.source);
         usage.audio(&self.selected);
         for variant in self.variants.values() {
@@ -23,7 +27,12 @@ impl PreparedSampler {
         }
     }
     pub fn heap_bytes(&self) -> u64 {
-        self.input.name.capacity() as u64
+        self.durations
+            .values()
+            .map(|v| v.heap_bytes() + std::mem::size_of::<Self>() as u64)
+            .sum::<u64>()
+            + daw_unit_core::memory::tree_bytes::<u64, Box<Self>>(self.durations.len())
+            + self.input.name.capacity() as u64
             + self.selected.metadata.sample_format.capacity() as u64
             + daw_unit_core::memory::tree_bytes::<i8, PreparedStretch>(self.variants.len())
             + self
@@ -65,6 +74,21 @@ impl PreparedSampler {
             })
     }
 
+    pub fn duration(&self, frames: u64) -> Option<&Self> {
+        if self.root_audio().frame_count() == frames {
+            Some(self)
+        } else {
+            self.durations.get(&frames).map(Box::as_ref)
+        }
+    }
+    pub fn add_duration(&mut self, frames: u64, mut prepared: Self) {
+        prepared.durations.clear();
+        self.durations.insert(frames, Box::new(prepared));
+    }
+    pub fn duration_variants(&self) -> impl Iterator<Item = (u64, &Self)> {
+        std::iter::once((self.root_audio().frame_count(), self))
+            .chain(self.durations.iter().map(|(&f, v)| (f, v.as_ref())))
+    }
     /// Root audio is always present for previews and duration/voice scheduling.
     pub fn root_audio(&self) -> &AudioData {
         &self.variants[&0].audio
@@ -259,6 +283,7 @@ impl PreparedSampler {
         }
         check()?;
         Ok(Self {
+            durations: BTreeMap::new(),
             source: source.samples.clone(),
             input: input.clone(),
             start_frame: settings.start_frame,

@@ -1,5 +1,7 @@
 # Iteration 1 validation
 
+- [Arrangement markers and timing maps — 2026-11-16](timing-maps-2026-11-16.md): shared clock, lanes, retiming, capture and validation evidence.
+
 - [Beat subtracks in Mixer — 2026-11-16](beat-mixer-2026-11-16.md): shared child strips, group hierarchy, isolated controls, undo, native layout checks and a Timeline gutter-divider follow-up.
 
 - [Modulation destination submenus — 2026-11-16](destination-submenus-2026-11-16.md): five receiving units, stable targets, unchanged defaults and native Oscillator menu checks.

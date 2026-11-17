@@ -12,6 +12,32 @@ pub(super) fn original_cycle_end(clip: &Clip) -> u64 {
 }
 
 impl DawUi {
+    fn mapped_original_cycle_end(&self, clip: &Clip) -> u64 {
+        if let Some(repeat) = clip.repeat.filter(|_| {
+            self.session
+                .project
+                .assets
+                .iter()
+                .any(|a| a.id == clip.asset_id && !a.is_audio())
+        }) {
+            self.session
+                .project
+                .musical_clock()
+                .ok()
+                .and_then(|c| {
+                    c.frame_for_reference(
+                        clip.start_frame,
+                        repeat.length_frames - repeat.phase_frame,
+                        self.session.project.tempo_bpm,
+                    )
+                    .ok()
+                })
+                .unwrap_or(clip.end())
+                .min(clip.end())
+        } else {
+            original_cycle_end(clip)
+        }
+    }
     pub(super) fn editor_original_span(&self, lane: Rect, clip: &Clip) -> Rect {
         // Restrict only the repeat boundary. Preserve the lane clip around
         // original edges so shared fade handles remain whole at clip seams.
@@ -19,7 +45,7 @@ impl DawUi {
             lane.left()
                 + self
                     .musical_timeline()
-                    .pixel_at_frame(original_cycle_end(clip)) as f32
+                    .pixel_at_frame(self.mapped_original_cycle_end(clip)) as f32
         } else {
             lane.right()
         };
@@ -34,7 +60,9 @@ impl DawUi {
     ) -> bool {
         let frame = self.ruler_frame(lane, pointer);
         track.clips.iter().any(|clip| {
-            clip.repeat.is_some() && frame >= original_cycle_end(clip) && frame < clip.end()
+            clip.repeat.is_some()
+                && frame >= self.mapped_original_cycle_end(clip)
+                && frame < clip.end()
         })
     }
 }

@@ -11,6 +11,33 @@ enum NoteDragMode {
     Start,
     End,
 }
+
+#[derive(Clone)]
+struct SourceClock {
+    clock: std::sync::Arc<daw_core::MusicalClock>,
+    start: u64,
+    origin: i128,
+    frames_per_tick: f64,
+    bpm: f32,
+}
+impl SourceClock {
+    fn frame(&self, tick: f64) -> i128 {
+        self.clock.frame_for_signed_reference(
+            self.start,
+            self.origin + (tick * self.frames_per_tick).round() as i128,
+            self.bpm,
+        )
+    }
+    fn tick(&self, frame: u64) -> f64 {
+        (self.clock.interval_quarters(self.start, frame)
+            * 60.0
+            * f64::from(self.clock.sample_rate_hz())
+            / f64::from(self.bpm)
+            - self.origin as f64)
+            / self.frames_per_tick
+    }
+}
+
 struct DraggedNote {
     original: MidiNote,
     copy_id: Id,
@@ -21,6 +48,7 @@ struct NoteDragPattern {
     preview: MidiPattern,
     notes: Vec<DraggedNote>,
     beat_width: f32,
+    clock: Option<SourceClock>,
 }
 struct NoteDrag {
     anchor: (Id, Id),
@@ -50,6 +78,7 @@ struct NoteDraw {
     original: MidiPattern,
     grid_left: f32,
     beat_width: f32,
+    clock: Option<SourceClock>,
     step: u32,
     min_tick: u32,
     max_tick: u32,
@@ -895,6 +924,23 @@ impl DawUi {
             })
             .unwrap_or(original)
     }
+    fn editor_source_clock(&self, clip: &Clip, local: i128) -> Option<SourceClock> {
+        (self.session.project.timing.tempos.len() > 1).then(|| SourceClock {
+            clock: std::sync::Arc::new(
+                self.session
+                    .project
+                    .musical_clock()
+                    .expect("validated timing"),
+            ),
+            start: clip.start_frame,
+            origin: local - i128::from(clip.source_offset_frame),
+            bpm: self.session.project.tempo_bpm,
+            frames_per_tick: f64::from(self.session.project.sample_rate_hz) * 60.0
+                / f64::from(self.session.project.tempo_bpm)
+                / f64::from(MIDI_TICKS_PER_BEAT)
+                * clip.stretch.map_or(1.0, |s| s.ratio()),
+        })
+    }
     fn editor_beat_width(&self, clip: &Clip) -> f32 {
         self.midi_editor.content.zoom * 60.0 / self.session.project.tempo_bpm
             * clip.stretch.map_or(1.0, |s| s.ratio() as f32)
@@ -1002,11 +1048,30 @@ impl DawUi {
         .header;
         let beat_width = self.editor_beat_width(clip);
         let step = self.editor_step(clip);
-        let base = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
+        let base = clip
+            .repeat
+            .map_or_else(
+                || {
+                    self.session
+                        .project
+                        .midi_reference_position(clip, clip.end())
+                },
+                |r| r.length_frames,
+            )
+            .max(1);
         let phase = clip.repeat.map_or(0, |r| r.phase_frame);
         let rate = f64::from(self.session.project.sample_rate_hz);
+        let full_reference = self
+            .session
+            .project
+            .midi_reference_position(clip, clip.end());
         let frame_at = |x: f32| {
-            ((f64::from(x - block.left()) / f64::from(self.view_zoom())) * rate).max(0.0) as u64
+            let frame = (i128::from(clip.start_frame)
+                + self
+                    .musical_timeline()
+                    .frame_delta(f64::from(x - block.left())))
+            .clamp(0, i128::from(u64::MAX)) as u64;
+            self.session.project.midi_reference_position(clip, frame)
         };
         let first = frame_at(visible.left()).saturating_add(phase) / base;
         let last = frame_at(visible.right()).saturating_add(phase) / base;
@@ -1063,31 +1128,76 @@ impl DawUi {
         }
         for repetition in first..=last {
             let local = i128::from(repetition) * i128::from(base) - i128::from(phase);
-            let start = local.max(0).min(i128::from(clip.length_frames));
-            let end = (local + i128::from(base)).min(i128::from(clip.length_frames));
+            let start = local.max(0).min(i128::from(full_reference));
+            let end = (local + i128::from(base)).min(i128::from(full_reference));
             if end <= start {
                 continue;
             }
+            let mapped = self.editor_source_clock(clip, local);
+            let clock = self
+                .session
+                .project
+                .musical_clock()
+                .expect("validated timing");
+            let actual = |offset: i128| {
+                if mapped.is_some() {
+                    clock.frame_for_signed_reference(
+                        clip.start_frame,
+                        offset,
+                        self.session.project.tempo_bpm,
+                    ) - i128::from(clip.start_frame)
+                } else {
+                    offset
+                }
+            };
             let span = Rect::from_min_max(
                 Pos2::new(
-                    block.left() + start as f32 / rate as f32 * self.view_zoom(),
+                    block.left() + actual(start) as f32 / rate as f32 * self.view_zoom(),
                     canvas.top(),
                 ),
                 Pos2::new(
-                    block.left() + end as f32 / rate as f32 * self.view_zoom(),
+                    block.left() + actual(end) as f32 / rate as f32 * self.view_zoom(),
                     canvas.bottom(),
                 ),
             );
             let source_left = block.left()
-                + (local - i128::from(clip.source_offset_frame)) as f32 / rate as f32
+                + actual(local - i128::from(clip.source_offset_frame)) as f32 / rate as f32
                     * self.view_zoom();
             let grid = Rect::from_min_size(
                 Pos2::new(source_left, canvas.top()),
                 Vec2::new(
-                    beat_width * display.length_ticks as f32 / MIDI_TICKS_PER_BEAT as f32,
+                    mapped.as_ref().map_or(
+                        beat_width * display.length_ticks as f32 / MIDI_TICKS_PER_BEAT as f32,
+                        |m| {
+                            (m.frame(f64::from(display.length_ticks)) - m.frame(0.0)) as f32
+                                / rate as f32
+                                * self.view_zoom()
+                        },
+                    ),
                     canvas.height(),
                 ),
             );
+            let zoom = self.view_zoom();
+            let note_rect = |grid: Rect, note: &MidiNote, width: f32| {
+                if let Some(m) = &mapped {
+                    let x = |tick| {
+                        block.left()
+                            + (m.frame(tick) - i128::from(clip.start_frame)) as f32 / rate as f32
+                                * zoom
+                    };
+                    let top = grid.top() + f32::from(127 - note.pitch) * NOTE_HEIGHT + 1.0;
+                    Rect::from_min_max(
+                        Pos2::new(x(f64::from(note.start_tick)), top),
+                        Pos2::new(
+                            x(f64::from(note.start_tick + note.length_ticks))
+                                .max(x(f64::from(note.start_tick)) + 2.0),
+                            top + NOTE_HEIGHT - 2.0,
+                        ),
+                    )
+                } else {
+                    note_rect(grid, note, width)
+                }
+            };
             let note_viewport = viewport.intersect(span);
             if !note_viewport.is_positive() {
                 continue;
@@ -1329,11 +1439,44 @@ impl DawUi {
                     .max(1.0) as u32)
                     .min(pattern.length_ticks)
                     .max(min_tick + 1);
+                let (min_tick, max_tick) = if let Some(m) = &mapped {
+                    let first = m
+                        .tick(
+                            clock
+                                .frame_for_signed_reference(
+                                    clip.start_frame,
+                                    start,
+                                    self.session.project.tempo_bpm,
+                                )
+                                .max(0) as u64,
+                        )
+                        .round()
+                        .max(0.0) as u32;
+                    let last = m
+                        .tick(
+                            clock
+                                .frame_for_signed_reference(
+                                    clip.start_frame,
+                                    end,
+                                    self.session.project.tempo_bpm,
+                                )
+                                .max(0) as u64,
+                        )
+                        .round()
+                        .max(1.0) as u32;
+                    (
+                        first.min(pattern.length_ticks - 1),
+                        last.min(pattern.length_ticks).max(first + 1),
+                    )
+                } else {
+                    (min_tick, max_tick)
+                };
                 let start_tick = snapped_note_tick(
                     &self.musical_timeline(),
                     f64::from(pointer.x - lane.left()),
                     f64::from(grid.left() - lane.left()),
                     beat_width,
+                    mapped.as_ref(),
                     min_tick..=max_tick - 1,
                     musical_time::snap_bypassed(ui),
                 )
@@ -1349,6 +1492,7 @@ impl DawUi {
                     original: pattern.clone(),
                     grid_left: grid.left(),
                     beat_width,
+                    clock: mapped.clone(),
                     step,
                     min_tick,
                     max_tick,
@@ -1408,6 +1552,8 @@ impl DawUi {
                     preview: original.clone(),
                     notes,
                     beat_width: self.editor_beat_width(c),
+                    clock: self
+                        .editor_source_clock(c, -i128::from(c.repeat.map_or(0, |r| r.phase_frame))),
                 })
             })
             .collect();
@@ -1479,8 +1625,28 @@ impl DawUi {
                                 (-i64::from(n.length_ticks - 1), i64::from(available_end))
                             }
                         };
-                        min_pixels = min_pixels.max(min_ticks as f64 * pixels_per_tick);
-                        max_pixels = max_pixels.min(max_ticks as f64 * pixels_per_tick);
+                        let bounds = if let Some(m) = &pattern.clock {
+                            let q = m.clock.signed_quarter_at(drag.anchor_frame);
+                            let quarter_per_tick = m.frames_per_tick * f64::from(m.bpm)
+                                / (60.0 * f64::from(m.clock.sample_rate_hz()));
+                            let pixel = |ticks: i64| {
+                                let frame = m
+                                    .clock
+                                    .frame_at_quarter(
+                                        (q + ticks as f64 * quarter_per_tick).max(0.0),
+                                    )
+                                    .unwrap_or(u64::MAX);
+                                timeline.pixels_for_frames(i128::from(frame) - drag.anchor_frame)
+                            };
+                            (pixel(min_ticks), pixel(max_ticks))
+                        } else {
+                            (
+                                min_ticks as f64 * pixels_per_tick,
+                                max_ticks as f64 * pixels_per_tick,
+                            )
+                        };
+                        min_pixels = min_pixels.max(bounds.0);
+                        max_pixels = max_pixels.min(bounds.1);
                         min_pitch_delta = min_pitch_delta.max(i16::from(n.pitch) - 127);
                         max_pitch_delta = max_pitch_delta.min(i16::from(n.pitch));
                     }
@@ -1527,9 +1693,15 @@ impl DawUi {
             for pattern in &mut drag.patterns {
                 // Rebuild from immutable originals when modifiers or the pointer change.
                 pattern.preview = pattern.original.clone();
-                let local_delta = (pixels * f64::from(MIDI_TICKS_PER_BEAT)
-                    / f64::from(pattern.beat_width))
-                .round() as i64;
+                let local_delta = if let Some(m) = &pattern.clock {
+                    let anchor = drag.anchor_frame.clamp(0, i128::from(u64::MAX)) as u64;
+                    let end = (drag.anchor_frame + timeline.frame_delta(pixels))
+                        .clamp(0, i128::from(u64::MAX)) as u64;
+                    (m.tick(end) - m.tick(anchor)).round() as i64
+                } else {
+                    (pixels * f64::from(MIDI_TICKS_PER_BEAT) / f64::from(pattern.beat_width))
+                        .round() as i64
+                };
                 for note in &pattern.notes {
                     let mut next = note.original.clone();
                     match drag.mode {
@@ -1607,6 +1779,7 @@ impl DawUi {
                     f64::from(pointer.x - timeline_left),
                     f64::from(draw.grid_left - timeline_left),
                     draw.beat_width,
+                    draw.clock.as_ref(),
                     draw.min_tick..=draw.max_tick,
                     bypass,
                 )
@@ -1655,10 +1828,14 @@ fn snapped_note_tick(
     pixel: f64,
     source_pixel: f64,
     beat_width: f32,
+    clock: Option<&SourceClock>,
     limits: std::ops::RangeInclusive<u32>,
     bypass: bool,
 ) -> u32 {
     let at = |tick: u32| {
+        if let Some(m) = clock {
+            return m.frame(f64::from(tick)).clamp(0, i128::from(u64::MAX)) as u64;
+        }
         timeline
             .frame_at_pixel(
                 source_pixel
@@ -1672,6 +1849,12 @@ fn snapped_note_tick(
         std::iter::empty(),
         bypass,
     );
+    if let Some(m) = clock {
+        return m
+            .tick(frame)
+            .round()
+            .clamp(f64::from(*limits.start()), f64::from(*limits.end())) as u32;
+    }
     ((timeline.pixel_at_frame(frame) - source_pixel) / f64::from(beat_width)
         * f64::from(MIDI_TICKS_PER_BEAT))
     .round()

@@ -125,7 +125,7 @@ impl Project {
             // A linear source window is one repetition with no phase shift.
             let mut window = (*clip).clone();
             window.repeat.get_or_insert(ClipLoop {
-                length_frames: clip.length_frames,
+                length_frames: self.midi_reference_position(clip, clip.end()),
                 phase_frame: 0,
             });
             occurrences.extend(

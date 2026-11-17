@@ -15,6 +15,7 @@ impl Project {
     ) -> Result<Vec<ClipPlacement>> {
         let tracks = track_set(self, tracks, start, end)?;
         let mut slices = Vec::new();
+        let clock = crate::timing::ClipClock::new(self)?;
         for track in &self.tracks {
             if !tracks.contains(&track.id) {
                 continue;
@@ -25,7 +26,7 @@ impl Project {
                 if from >= to {
                     continue;
                 }
-                let mut piece = clip.retained_range(from, to);
+                let mut piece = clock.retained(clip, from, to);
                 piece.id = Id::new_v4();
                 self.validate_clip(&piece)?;
                 slices.push(ClipPlacement {
@@ -42,6 +43,7 @@ impl Project {
     pub fn without_clip_range(&self, tracks: &[Id], start: u64, end: u64) -> Result<Self> {
         let tracks = track_set(self, tracks, start, end)?;
         let mut next = self.clone();
+        let clock = crate::timing::ClipClock::new(self)?;
         for track in &mut next.tracks {
             if !tracks.contains(&track.id) {
                 continue;
@@ -49,7 +51,7 @@ impl Project {
             track.clips = track
                 .clips
                 .iter()
-                .flat_map(|clip| clip.uncovered_ranges(start, end))
+                .flat_map(|clip| clock.uncovered(clip, start, end))
                 .collect();
         }
         next.validate()?;

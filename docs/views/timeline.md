@@ -1,5 +1,69 @@
 # Timeline
 
+The **Markers**, **Tempo** and **Signature** lanes sit below the ruler and above
+tracks. They stay visible while tracks scroll vertically. Markers show section
+names; signatures use the same blocks. Tempo uses BPM points and a step line.
+
+Use the **+** button on each lane header to add a section, tempo point or
+signature block at the playhead. A new tempo or signature uses the value active
+there. If a tempo or signature change already exists at that position, it is
+selected. Right-clicking the header offers the same Add action.
+Double-click empty lane space to add an event there. A new section appears immediately as **New section**, one bar
+long in the active signature. Drag its left or right edge to trim or extend it.
+The opposite edge stays fixed. Drag the body to move the complete section.
+Section resizing changes only its range; clips stay in place. Double-click
+its label to rename it in place. Press Enter to apply; Escape or clicking away
+cancels. Double-click a signature event to edit its value.
+
+Double-click empty Tempo lane space to create a point immediately at the tempo
+active there. Click a point to select it, then press Delete to remove it. Drag up
+to increase BPM and down to decrease it in whole-number steps. The transport
+BPM control uses the same 1 BPM steps. Hold Shift in either control for slower
+movement while keeping those whole-number steps.
+Horizontal dragging moves the point in time. The initial drag direction locks
+that axis, ignoring small movement on the other axis. Move farther across the
+other axis to switch direction; ignored motion does not jump into the value.
+Values preview during the gesture
+and apply on release; Escape or focus loss cancels. A vertical drag can finish
+outside the short row. The origin point can change BPM but stays at zero and
+cannot be deleted. Use a point's **Edit…** context action for numeric entry.
+
+Section and signature labels use the unit-header text style. Click to select
+one block; Shift-click toggles blocks in the selection. Selected labels become
+brighter. Clicking empty lane space clears selection. Selection does not seek
+or edit the project. Delete removes the selected blocks in one Undo step.
+Right-click a section and choose **Seek here** to seek to it. The lane header
+menu also has Previous marker and Next marker.
+
+Section and signature edges follow clip resize rules. Expanding over a neighbor
+trims its covered edge or removes it when fully covered. Drag the dividing line
+between touching blocks to move their shared boundary while keeping the pair's
+outer edges fixed. Either section can disappear when reduced to zero. The
+signature at zero is protected. Start slightly inside the edge to trim only that
+block. Selected blocks resize together, using the same requested change.
+
+Signature blocks fill the lane continuously. Each block ends at the next
+signature change, and the last extends to the end. Resizing moves the shared
+transition; it never leaves an empty gap. Expanding across changes can trim or
+remove covered neighbors. The first signature stays at zero. BPM labels use the
+standard small-text size.
+
+Release applies the edit. Shift bypasses snapping. Escape, focus loss or release
+outside the lane cancels. The tempo and signature at the song origin can change
+but cannot move or be deleted. Coincident markers are listed in the context menu.
+Use **View > Arrangement lanes** to hide or collapse lanes.
+
+Tempo changes preserve musical positions for sections, clips and loop endpoints.
+Audio clip lengths stay fixed. MIDI notes follow the tempo map, including held
+notes across changes. Each signature change begins a new bar without moving
+clips or notes. While stopped, the transport tempo and signature controls edit
+the event active at the playhead. These controls are read-only during playback.
+Maps cannot change during recording. A rejected change leaves the arrangement
+unchanged. Tempo ramps and moving complete song sections remain planned.
+
+Mapped projects require a version of the app that supports timing maps. Older
+versions can ignore these events and play the project with a constant tempo.
+
 MIDI tracks have an **R** button in its own group after M/S on the same row. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
 
 The left toolbar lists **Effects** and **Chords**. **Clip settings** uses the toolbar at the right of the timeline area, from the playback toolbar down to the effects lane.

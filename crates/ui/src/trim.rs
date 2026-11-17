@@ -1,7 +1,8 @@
 use super::*;
 use daw_core::ClipEdge;
 
-const SHARED_BOUNDARY_RADIUS: f32 = 3.0;
+pub(super) const SHARED_BOUNDARY_RADIUS: f32 = 3.0;
+pub(super) const EDGE_RESIZE_RADIUS: f32 = 8.0;
 
 impl DawUi {
     pub(super) fn at_trim_boundary(

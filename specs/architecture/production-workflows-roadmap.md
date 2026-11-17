@@ -326,24 +326,22 @@ failure behavior. Retain existing behavior until its replacement is specified.
 
 | User milestone | Remaining feature work | Main dependencies |
 | --- | --- | --- |
-| 7 | Arrangement markers | Shared timeline interaction, history and persistence |
+| 7 | Whole-section editing; section markers implemented | Shared timeline interaction, history and persistence |
 | 8 | MIDI performance tools | Stage 3 recording; Stage 5 lane editing for controller lanes |
 | 9 | Explicit time-range Bounce, freeze and batch stem export; clip/track Bounce implemented | Shared renderer/export, source ownership and Stage 1 recovery |
-| 10 | Tempo and time-signature maps | Shared musical clock; Stage 5 automation time-basis contract |
+| 10 | Tempo ramps; step tempo/signature maps implemented | Shared musical clock; Stage 5 automation time-basis contract |
 | 11 | Third-party plugin hosting | Stage 3 live input, Stage 5 automation and stable render/event contracts |
 
 ### Arrangement markers
 
-Start with named point markers, add/rename/move/delete, previous/next navigation
-and save/reopen. Use stable identities and shared history transactions. Define
-whether markers follow absolute frames or musical positions, including behavior
-under the existing global tempo/rate edits. Defer moving or duplicating complete
-song sections until clip, automation and transition edits can form one atomic
-transaction.
+Section marker creation with a one-bar range, inline renaming, unit-header selection, clip-style edge resizing/overlap resolution,
+dragging, deletion, navigation, persistence and history are implemented. See [the timing-map contract](../audio/timing-maps.md).
+Markers retain musical anchors during tempo edits and scale during rate edits.
+Whole-section move/copy remains pending feature work.
 
-Exit gate: snapping and Shift bypass, cancellation, bounds, selection/focus
-isolation, Undo/Redo, tempo/rate edits and persistence pass. Markers must not
-change audio rendering.
+Native acceptance remains open for pointer/focus behavior, short/narrow layouts,
+Undo/Redo and navigation on supported platforms. Automated checks are recorded
+separately in the [validation index](../validation/README.md).
 
 ### MIDI performance tools
 
@@ -392,21 +390,16 @@ and validation behavior when both expose the operation.
 
 ### Tempo and time-signature maps
 
-Add explicit tempo/signature events before considering tempo ramps. Define a
-shared piecewise musical-time conversion used by rulers, snapping, scheduling,
-count-in, metronome, automation and export. Preserve integer frame clip ranges
-and the existing MIDI tick content. Specify which objects follow musical time
-and which retain absolute time; document the treatment of audio clips, loops,
-recorded takes, fade transitions and markers.
+Explicit step maps, a shared compiled musical clock, Timeline lanes, source
+mapping, renderer/effect timing, metronome/count-in and recording conversion are
+implemented under [the timing-map contract](../audio/timing-maps.md). Legacy
+constant maps retain their source/reference clock. Tempo ramps remain pending
+feature work. Timeline automation remains its separate milestone.
 
-Migrate a legacy project's single tempo/signature into an equivalent constant
-map without changing its sound or positions. Specify new map-edit transactions
-and their overlap/overflow rollback rules before changing `Edit::SetTempo`
-behavior. Validate the full affected arrangement atomically.
-
-Exit gate: boundary rounding and conversion tests, changes inside notes/clips,
-seek/loop/metronome/export parity, recording alignment, cancellation, history,
-rate changes and legacy round trips pass.
+Native acceptance remains open for audible boundary/seek/loop behavior, hardware
+capture alignment, export comparisons and platform-specific gestures. Do not
+count these checks as unimplemented map features. Record executed automated and
+native checks separately in the [validation index](../validation/README.md).
 
 ### Third-party plugin hosting
 

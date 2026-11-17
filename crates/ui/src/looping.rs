@@ -18,16 +18,20 @@ impl DawUi {
         let mut upper = i128::MAX;
         for entry in &drag.clips {
             let clip = &entry.clip;
-            let length = i128::from(clip.length_frames);
-            let minimum = clip.repeat.map_or(length, |repeat| {
-                length.min(i128::from(repeat.length_frames))
-            });
             // Keep a common delta within every clip's minimum and timeline bounds.
+            let limit = self
+                .session
+                .project
+                .looped_clip(clip, edge, if left { i128::MAX } else { i128::MIN })
+                .unwrap_or_else(|| clip.clone());
             let (min, max) = if left {
-                (-i128::from(clip.start_frame), length - minimum)
+                (
+                    -i128::from(clip.start_frame),
+                    i128::from(limit.start_frame) - i128::from(clip.start_frame),
+                )
             } else {
                 (
-                    minimum - length,
+                    i128::from(limit.end()) - i128::from(clip.end()),
                     i128::from(u64::MAX) - i128::from(clip.end()),
                 )
             };
@@ -62,7 +66,11 @@ impl DawUi {
             .map(|entry| ClipPreview {
                 track: entry.track,
                 track_index: entry.track_index,
-                clip: entry.clip.looped_by(edge, delta),
+                clip: self
+                    .session
+                    .project
+                    .looped_clip(&entry.clip, edge, delta)
+                    .unwrap_or_else(|| entry.clip.clone()),
                 valid: true,
                 removed: false,
             })

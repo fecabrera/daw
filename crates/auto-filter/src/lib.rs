@@ -132,9 +132,23 @@ impl AutoFilter {
         self.rate_hz = settings.rate_hz;
         self.note_beats = settings.note_rate.beats();
     }
-    fn phase(&mut self, frame: u64, tempo_bpm: f32) -> f64 {
+    #[cfg(test)]
+    fn phase(&mut self, frame: u64, tempo: f32) -> f64 {
+        self.musical_phase(frame, tempo, None)
+    }
+    fn musical_phase(
+        &mut self,
+        frame: u64,
+        tempo_bpm: f32,
+        musical: Option<daw_unit_core::MusicalPosition>,
+    ) -> f64 {
         let rate = daw_lfo::rate_hz(self.rate_mode, self.rate_hz, self.note_beats, tempo_bpm);
-        self.clock.phase_at(frame, 0, rate)
+        if let Some(m) = musical.filter(|_| self.rate_mode == daw_unit_core::LfoRateMode::Note) {
+            self.clock
+                .phase_at_quarters(frame, 0, m.quarter, self.note_beats, rate)
+        } else {
+            self.clock.phase_at(frame, 0, rate)
+        }
     }
     /// Explicit host position makes seeks, loop wraps and export phase deterministic.
     pub fn process_at(&mut self, input: [f32; 2], frame: u64, tempo_bpm: f32) -> [f32; 2] {
@@ -148,20 +162,32 @@ impl AutoFilter {
         tempo_bpm: f32,
         offsets: [f32; 4],
     ) -> [f32; 2] {
-        self.process_offsets_at(
+        self.process_musical_offsets_at(
             input,
             frame,
             tempo_bpm,
+            None,
             [
                 offsets[0], offsets[1], offsets[2], offsets[3], 0.0, 0.0, 0.0,
             ],
         )
     }
+    #[cfg(test)]
     fn process_offsets_at(
         &mut self,
         input: [f32; 2],
         frame: u64,
+        tempo: f32,
+        offsets: [f32; 7],
+    ) -> [f32; 2] {
+        self.process_musical_offsets_at(input, frame, tempo, None, offsets)
+    }
+    fn process_musical_offsets_at(
+        &mut self,
+        input: [f32; 2],
+        frame: u64,
         tempo_bpm: f32,
+        musical: Option<daw_unit_core::MusicalPosition>,
         offsets: [f32; 7],
     ) -> [f32; 2] {
         let [strength, sync, stereo] = self
@@ -175,7 +201,7 @@ impl AutoFilter {
             (sync * 360.0) as f32,
             (stereo * 360.0) as f32,
         ];
-        let phase = self.phase(frame, tempo_bpm);
+        let phase = self.musical_phase(frame, tempo_bpm, musical);
         let depth = strength * self.lfo_mix.next();
         let waves: [f64; 5] = std::array::from_fn(|i| self.waves[i].next());
         let mut cutoff_offsets = [0.0; 2];
@@ -252,10 +278,11 @@ impl daw_unit_core::ModulationDestination for AutoFilter {
         modulation: &daw_unit_core::ModulationInputs,
         context: daw_unit_core::ModulationContext,
     ) -> Self::Audio {
-        self.process_offsets_at(
+        self.process_musical_offsets_at(
             input,
             context.frame,
             context.tempo_bpm,
+            context.musical,
             modulation.offsets(daw_unit_core::ModulationParameter::AUTO_FILTER),
         )
     }

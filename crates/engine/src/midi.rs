@@ -47,6 +47,7 @@ struct LayerVoice {
     noise: Option<Box<daw_noise::Noise>>,
     noise_routes: Vec<Route>,
     sampler: Option<daw_sampler::Sampler>,
+    sampler_durations: Vec<(u32, u64)>,
     sampler_routes: Vec<Route>,
     one_shot: bool,
     one_shot_target: bool,
@@ -94,6 +95,18 @@ struct OscillatorVoice {
     frequency_remaining: u32,
 }
 impl Voice {
+    fn sampler_tempo(&mut self, bpm: f32) {
+        for layer in &mut self.layers {
+            if let Some(s) = &mut layer.sampler
+                && let Some((_, length)) = layer
+                    .sampler_durations
+                    .iter()
+                    .find(|(tempo, _)| *tempo == bpm.to_bits())
+            {
+                s.select_duration(*length);
+            }
+        }
+    }
     /// Retrigger starts from the contribution actually fed into the layer buses.
     fn attenuate_previous(&mut self, gain: f32) {
         self.previous = self.previous.map(|value| value * gain);
@@ -508,6 +521,7 @@ fn clip_pitch(pitch: u8, transpose: i8) -> u8 {
 
 #[derive(Clone)]
 pub(crate) struct MidiTrackRuntime {
+    clock: std::sync::Arc<daw_core::MusicalClock>,
     mono: bool,
     beat_stopped: bool,
     loop_wrapped: bool,
@@ -538,6 +552,7 @@ pub(crate) struct MidiTrackRuntime {
     shared: SharedControls,
     lfo_notes: super::lfo::NoteSchedule,
     tempo_bpm: f32,
+    live_tempo_bpm: f32,
     main_gain: [f32; 2],
     main_target: [f32; 2],
     main_remaining: u32,
@@ -560,7 +575,8 @@ impl MidiTrackRuntime {
                 })
                 .sum::<u64>()
             + self.clip_ranges.heap_bytes()
-            + self.lfo_notes.heap_bytes();
+            + self.lfo_notes.heap_bytes()
+            + self.clock.memory_bytes();
         let processors = vec_bytes(&self.layer_effects)
             + self
                 .layer_effects
@@ -595,6 +611,7 @@ impl MidiTrackRuntime {
                                     })
                                     + vec_bytes(&l.oscillator_level_routes)
                                     + l.sampler.as_ref().map_or(0, |s| s.heap_bytes())
+                                    + vec_bytes(&l.sampler_durations)
                                     + vec_bytes(&l.sources)
                                     + l.sources
                                         .iter()
@@ -724,6 +741,16 @@ impl MidiTrackRuntime {
                             .max()
                             .unwrap_or(0),
                     );
+                    let fastest = project
+                        .timing
+                        .tempos
+                        .iter()
+                        .map(|e| e.bpm)
+                        .fold(project.tempo_bpm, f32::max);
+                    let release_frames = (release_frames as f64 * f64::from(fastest)
+                        / f64::from(project.tempo_bpm))
+                    .ceil()
+                    .min(u64::MAX as f64) as u64;
                     let release_source_frames = clip.stretch.map_or(release_frames, |stretch| {
                         stretch.original_frame(release_frames).saturating_add(1)
                     });
@@ -827,6 +854,15 @@ impl MidiTrackRuntime {
             }
         }
         project.tempo_bpm.to_bits().hash(&mut hash);
+        for e in &project.timing.tempos {
+            e.start_frame.hash(&mut hash);
+            e.bpm.to_bits().hash(&mut hash);
+        }
+        for e in &project.timing.signatures {
+            e.start_frame.hash(&mut hash);
+            e.signature.numerator.hash(&mut hash);
+            e.signature.denominator.hash(&mut hash);
+        }
         project.sample_rate_hz.hash(&mut hash);
         for clip in &track.clips {
             clip.muted.hash(&mut hash);
@@ -870,6 +906,7 @@ impl MidiTrackRuntime {
         let effect_latency = super::layer_effects::latency(instrument, project.sample_rate_hz);
         let parallel_latency =
             super::layer_effects::parallel_latency(instrument, project.sample_rate_hz);
+        let clock = std::sync::Arc::new(project.musical_clock().expect("validated MIDI timing"));
         Some(Self {
             beat_stopped: false,
             loop_wrapped: false,
@@ -903,16 +940,24 @@ impl MidiTrackRuntime {
                             project.sample_rate_hz,
                         ));
                     }
+                    bus.chain.clock = Some(clock.clone());
                     bus
                 })
-                .chain(std::iter::once(super::layer_effects::LayerEffects::new(
-                    instrument.main.id,
-                    &instrument.main.effects,
-                    [1.0; 2],
-                    project.sample_rate_hz,
-                    project.buffer_size_frames,
-                    super::latency::chain_frames(&instrument.main.effects, project.sample_rate_hz),
-                )))
+                .chain(std::iter::once({
+                    let mut bus = super::layer_effects::LayerEffects::new(
+                        instrument.main.id,
+                        &instrument.main.effects,
+                        [1.0; 2],
+                        project.sample_rate_hz,
+                        project.buffer_size_frames,
+                        super::latency::chain_frames(
+                            &instrument.main.effects,
+                            project.sample_rate_hz,
+                        ),
+                    );
+                    bus.chain.clock = Some(clock.clone());
+                    bus
+                }))
                 .collect(),
             layer_samples: vec![[0.0; 2]; layers.len()],
             effect_latency,
@@ -945,8 +990,10 @@ impl MidiTrackRuntime {
             main_gain: bus_gains(instrument.main.gain_db, instrument.main.pan),
             main_target: bus_gains(instrument.main.gain_db, instrument.main.pan),
             main_remaining: 0,
-            lfo_notes,
+            lfo_notes: lfo_notes.with_clock(clock.clone(), project.tempo_bpm),
             tempo_bpm: project.tempo_bpm,
+            live_tempo_bpm: project.tempo_bpm,
+            clock,
             fingerprint: hash.finish(),
             held_sample: [0.0; 2],
             live_voices: Vec::new(),
@@ -987,6 +1034,16 @@ impl MidiTrackRuntime {
                                 .flat_map(|n| &n.modulations)
                                 .map(|r| Route::new(*r, project.sample_rate_hz))
                                 .collect(),
+                            sampler_durations: layer
+                                .sampler
+                                .iter()
+                                .flat_map(|s| {
+                                    project.tempo_events().into_iter().filter_map(move |e| {
+                                        s.output_frames(project.sample_rate_hz, e.bpm)
+                                            .map(|length| (e.bpm.to_bits(), length))
+                                    })
+                                })
+                                .collect(),
                             sampler: layer.sampler.as_ref().map(|s| {
                                 daw_sampler::Sampler::with_bank(
                                     ProcessingContext {
@@ -995,6 +1052,25 @@ impl MidiTrackRuntime {
                                     },
                                     s,
                                     bank.as_ref().unwrap().clone(),
+                                )
+                                .with_duration_banks(
+                                    sampler_audio
+                                        .get(&s.id)
+                                        .into_iter()
+                                        .flat_map(|p| p.duration_variants())
+                                        .map(|(length, p)| {
+                                            let mut bank: daw_sampler::SampleBank =
+                                                std::array::from_fn(|_| None);
+                                            for (offset, a) in p.variants() {
+                                                let note =
+                                                    i16::from(s.root_note) + i16::from(offset);
+                                                if (0..=127).contains(&note) {
+                                                    bank[note as usize] = Some(a.samples.clone());
+                                                }
+                                            }
+                                            (length, std::sync::Arc::new(bank))
+                                        })
+                                        .collect(),
                                 )
                             }),
                             sampler_routes: layer
@@ -1309,6 +1385,10 @@ impl MidiTrackRuntime {
                     .iter()
                     .any(|v| v.owns_release(Some(voice.release_frames)));
             for (layer, next_layer) in voice.layers.iter_mut().zip(&mut next.layers) {
+                std::mem::swap(
+                    &mut layer.sampler_durations,
+                    &mut next_layer.sampler_durations,
+                );
                 daw_unit_core::retarget_modulation_routes(
                     &mut layer.routes,
                     &mut next_layer.routes,
@@ -1400,8 +1480,10 @@ impl MidiTrackRuntime {
                 source.sample = [0.0; 2];
             }
         }
-        self.shared
-            .tick(self.lfo_notes.context(frame, self.tempo_bpm));
+        self.shared.tick_clock(
+            self.lfo_notes.context(frame, self.tempo_bpm),
+            Some(&self.clock),
+        );
         let shared_release = self
             .shared
             .values
@@ -1759,6 +1841,9 @@ impl MidiTrackRuntime {
             }
         }
     }
+    pub fn set_live_tempo(&mut self, bpm: f32) {
+        self.live_tempo_bpm = bpm;
+    }
     pub fn live_note(&mut self, token: Id, attack: Option<(u8, u8)>) -> bool {
         if let Some((pitch, velocity)) = attack {
             if !self.live_enabled
@@ -1786,6 +1871,7 @@ impl MidiTrackRuntime {
                 if voice.current.is_some() {
                     self.shared.live_event(false);
                 }
+                voice.sampler_tempo(self.live_tempo_bpm);
                 voice.note_on_with_duration(token, pitch, velocity, None);
                 self.shared.live_event(true);
                 return true;
@@ -2088,7 +2174,30 @@ impl MidiTrackRuntime {
             let clip = &prepared.clip;
             clip_gain = linear_gain(clip.gain_db);
             self.tail_clip_gain = clip_gain;
-            let position = clip.source_frame(frame - clip.start_frame);
+            let local_reference =
+                self.clock
+                    .sample_reference_position(clip.start_frame, frame, self.tempo_bpm);
+            let position = clip.source_frame(local_reference);
+            let occurrence = |event: &NoteEvent| {
+                let start_ref = i128::from(local_reference)
+                    + i128::from(output_frame(clip, event.frame))
+                    - i128::from(position);
+                let start = self.clock.frame_for_signed_reference(
+                    clip.start_frame,
+                    start_ref,
+                    self.tempo_bpm,
+                );
+                let end = self.clock.frame_for_signed_reference(
+                    clip.start_frame,
+                    start_ref + i128::from(event.duration_frames),
+                    self.tempo_bpm,
+                );
+                (
+                    start,
+                    end,
+                    u64::try_from(end - start).unwrap_or(u64::MAX).max(1),
+                )
+            };
             let source = clip
                 .stretch
                 .map_or(position, |s| s.original_frame(position));
@@ -2103,7 +2212,33 @@ impl MidiTrackRuntime {
                     .next_event
                     .checked_sub(1)
                     .map_or_else(Default::default, |i| prepared.note_states[i]);
-                self.shared.reconstruct(state, position);
+                if self.clock.is_constant() {
+                    self.shared.reconstruct(state, position);
+                } else {
+                    let source_zero = self.clock.frame_for_signed_reference(
+                        clip.start_frame,
+                        i128::from(local_reference) - i128::from(position),
+                        self.tempo_bpm,
+                    );
+                    let bias = source_zero.saturating_neg().max(0);
+                    let map = |source: u64| {
+                        self.clock
+                            .frame_for_signed_reference(
+                                clip.start_frame,
+                                i128::from(local_reference) + i128::from(source)
+                                    - i128::from(position),
+                                self.tempo_bpm,
+                            )
+                            .saturating_add(bias)
+                            .clamp(0, i128::from(u64::MAX)) as u64
+                    };
+                    self.shared.reconstruct(
+                        state.mapped(map),
+                        i128::from(frame)
+                            .saturating_add(bias)
+                            .min(i128::from(u64::MAX)) as u64,
+                    );
+                }
                 for (slot, voice) in self.voices.iter_mut().enumerate() {
                     voice.reset();
                     let event = prepared.slot_starts.get(slot).and_then(|starts| {
@@ -2113,15 +2248,19 @@ impl MidiTrackRuntime {
                     if let Some(event) = event {
                         let (pitch, velocity) = event.on.unwrap();
                         let pitch = clip_pitch(pitch, clip.transpose);
-                        let start = output_frame(clip, event.frame);
-                        let end = start.saturating_add(event.duration_frames);
-                        voice.note_on(event.note, pitch, velocity, event.duration_frames);
+                        let (absolute_start, absolute_end, duration) = occurrence(event);
+                        let elapsed = u64::try_from((i128::from(frame) - absolute_start).max(0))
+                            .unwrap_or(u64::MAX);
+                        let start = 0;
+                        let end = duration;
+                        voice.sampler_tempo(self.clock.tempo_at(absolute_start.max(0) as u64));
+                        voice.note_on(event.note, pitch, velocity, duration);
                         voice.pitch_index = Some(event.pitch_index);
-                        voice.advance_envelopes(position.min(end).saturating_sub(start));
+                        voice.advance_envelopes(elapsed.min(end).saturating_sub(start));
                         voice.reconstructed_at = start;
-                        if position >= end {
+                        if i128::from(frame) >= absolute_end {
                             voice.end_note();
-                            voice.advance_envelopes(position - end);
+                            voice.advance_envelopes(elapsed - end);
                             voice.reconstructed_at = end;
                         }
                     } else {
@@ -2138,7 +2277,7 @@ impl MidiTrackRuntime {
                     .filter(|e| e.frame <= source)
                 {
                     self.shared
-                        .event(event.on.is_some(), event.on.map(|_| event.duration_frames));
+                        .event(event.on.is_some(), event.on.map(|_| occurrence(event).2));
                     let voice = &mut self.voices[event.slot];
                     if let Some((pitch, velocity)) = event.on {
                         self.beat_stopped = false;
@@ -2151,11 +2290,13 @@ impl MidiTrackRuntime {
                                 1.0,
                             ));
                         }
+                        voice.sampler_tempo(self.clock.tempo_at(frame));
+                        let (_, _, duration) = occurrence(event);
                         voice.note_on(
                             event.note,
                             clip_pitch(pitch, clip.transpose),
                             velocity,
-                            event.duration_frames,
+                            duration,
                         );
                         voice.pitch_index = Some(event.pitch_index);
                     } else if voice.current == Some(event.note) {
@@ -2278,6 +2419,64 @@ impl MidiTrackRuntime {
 mod tests {
     use super::*;
     use daw_core::{Edit, MidiNote, MidiPattern};
+    #[test]
+    fn tempo_boundary_maps_note_on_off_duration_and_seek_without_retrigger() {
+        let mut project = Project::default();
+        let track = project.add_midi_track().unwrap();
+        project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
+        let clip = project.add_midi_pattern(track, 0).unwrap();
+        let note = Id::new_v4();
+        project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: MidiPattern {
+                    length_ticks: 3840,
+                    notes: vec![MidiNote {
+                        id: note,
+                        start_tick: 960,
+                        length_ticks: 1920,
+                        pitch: 60,
+                        velocity: 100,
+                    }],
+                },
+            })
+            .unwrap();
+        project.tracks[0].clips[0].length_frames = 96_000;
+        let mut events = project.tempo_events();
+        events.push(daw_core::TempoEvent {
+            id: Id::new_v4(),
+            start_frame: 48_000,
+            bpm: 60.0,
+        });
+        project.edit(Edit::SetTempoEvents { events }).unwrap();
+        let mut runtime = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        for frame in 0..72_001 {
+            runtime.sample(frame);
+        }
+        let voice = runtime
+            .voices
+            .iter()
+            .find(|v| v.current == Some(note))
+            .unwrap();
+        assert_eq!(voice.note_duration_frames, Some(72_000));
+        assert_eq!(voice.held_frames, 48_001);
+        let mut sought = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        sought.sample(72_000);
+        assert_eq!(
+            sought
+                .voices
+                .iter()
+                .find(|v| v.current == Some(note))
+                .unwrap()
+                .note_duration_frames,
+            Some(72_000)
+        );
+        for frame in 72_001..96_001 {
+            runtime.sample(frame);
+        }
+        assert!(runtime.voices.iter().all(|v| v.current != Some(note)));
+    }
+
     #[test]
     fn overlapping_notes_have_independent_voices_and_note_offs() {
         let mut project = Project::default();

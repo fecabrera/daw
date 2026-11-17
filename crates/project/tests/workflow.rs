@@ -5809,3 +5809,92 @@ fn normalize_loudness_and_true_peak_reach_targets_from_prepared_audio_and_fail_a
         before.tracks[0].clips[0]
     );
 }
+
+#[test]
+fn timing_maps_markers_and_capture_survive_storage_and_rate_changes() {
+    use daw_core::{ArrangementMarker, Id, SignatureEvent, TempoEvent, TimeSignature};
+    use daw_project::midi_recording::{CaptureAction, CaptureEvent, MidiCapture};
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let mut events = session.project.tempo_events();
+    events.push(TempoEvent {
+        id: Id::new_v4(),
+        start_frame: 48_000,
+        bpm: 60.0,
+    });
+    session
+        .project
+        .edit(Edit::SetTempoEvents { events })
+        .unwrap();
+    let mut events = session.project.signature_events();
+    events.push(SignatureEvent {
+        id: Id::new_v4(),
+        start_frame: 72_000,
+        signature: TimeSignature {
+            numerator: 3,
+            denominator: 8,
+        },
+    });
+    session
+        .project
+        .edit(Edit::SetSignatureEvents { events })
+        .unwrap();
+    session
+        .project
+        .edit(Edit::SetMarkers {
+            markers: vec![ArrangementMarker {
+                id: Id::new_v4(),
+                start_frame: 96_000,
+                name: "Verse".into(),
+                length_frames: Some(96_000),
+            }],
+        })
+        .unwrap();
+    let mut capture = MidiCapture::new(session, Id::new_v4(), &[track]);
+    capture.start(24_000);
+    let token = Id::new_v4();
+    capture
+        .event(CaptureEvent {
+            frame: 24_000,
+            action: CaptureAction::Attack {
+                token,
+                pitch: 60,
+                velocity: 100,
+            },
+        })
+        .unwrap();
+    capture
+        .event(CaptureEvent {
+            frame: 96_000,
+            action: CaptureAction::Release { token },
+        })
+        .unwrap();
+    let mut session = capture.finish(96_000).unwrap();
+    let clip = &session.project.tracks[0].clips[0];
+    assert_eq!(clip.length_frames, 72_000);
+    let pattern = session
+        .project
+        .assets
+        .iter()
+        .find(|a| a.id == clip.asset_id)
+        .unwrap()
+        .midi_pattern
+        .as_ref()
+        .unwrap();
+    assert_eq!(pattern.notes[0].length_ticks, 1920);
+    let expected = session.project.clone();
+    let folder = fixture.0.join("maps");
+    session.save(&folder).unwrap();
+    let loaded = Session::open(&folder).unwrap();
+    assert_eq!(loaded.project.timing, expected.timing);
+    assert_eq!(loaded.project.markers, expected.markers);
+    for rate in daw_core::SAMPLE_RATES {
+        let scaled = loaded.project.with_audio_settings(rate, 512).unwrap();
+        let clock = scaled.musical_clock().unwrap();
+        let frame = (96_000u128 * u128::from(rate) / 48_000) as u64;
+        assert_eq!(clock.quarter_at(frame), 3.0);
+        assert_eq!(scaled.markers[0].start_frame, frame);
+        assert_eq!(scaled.markers[0].length_frames, Some(frame));
+    }
+}

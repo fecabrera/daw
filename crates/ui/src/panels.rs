@@ -666,11 +666,7 @@ impl PanelStyle {
             );
         }
         let palette = crate::theme::palette(ui.ctx());
-        let header_text = if crate::unit_selection::is_selected(ui) {
-            palette.text
-        } else {
-            palette.secondary
-        };
+        let header_text = unit_header_text(ui.ctx(), crate::unit_selection::is_selected(ui));
         let title_rect = Rect::from_min_max(
             header_rect.min + Vec2::new(1.0, HEADER_HEIGHT + 1.0),
             header_rect.max - Vec2::splat(1.0),
@@ -750,6 +746,15 @@ pub struct UnitResponse<R> {
     pub header: Response,
     pub power: Response,
     pub modulation_header: Rect,
+}
+
+pub(super) fn unit_header_text(ctx: &egui::Context, selected: bool) -> Color32 {
+    let palette = crate::theme::palette(ctx);
+    if selected {
+        palette.text
+    } else {
+        palette.secondary
+    }
 }
 
 fn paint_unit_title(ui: &Ui, rect: Rect, name: &str, color: Color32, vertical: bool) {

@@ -7,6 +7,7 @@ pub(super) use timeline::TimelineState;
 
 const STEP_INSETS: Vec2 = Vec2::new(1.0, 2.0);
 const SUBTRACK_AUDITION_WIDTH: f32 = 16.0;
+pub(super) const SUBTRACK_LANE_HEIGHT: f32 = 32.0;
 
 pub(super) fn trigger_note_name(pitch: u8) -> String {
     let name = daw_unit_core::note_name(pitch);
@@ -840,8 +841,14 @@ impl DawUi {
         }
         let edge = daw_core::ClipEdge::Right;
         let next = if clip.repeat.is_some() {
-            let candidate =
-                clip.looped_by(edge, i128::from(frames) - i128::from(clip.length_frames));
+            let Some(candidate) = self.session.project.looped_clip(
+                clip,
+                edge,
+                i128::from(frames) - i128::from(clip.length_frames),
+            ) else {
+                self.fail("Beat loop exceeds timing bounds");
+                return;
+            };
             self.session.project.resized_clips(&[candidate], edge)
         } else {
             let mut candidate = clip.clone();
@@ -932,7 +939,7 @@ impl DawUi {
                 let mut row_bounds = Vec::new();
                 for row in &rows {
                     let top = ui.next_widget_position();
-                    let height = 32.0;
+                    let height = SUBTRACK_LANE_HEIGHT;
                     let rect = Rect::from_min_size(top, Vec2::new(ui.available_width(), height));
                     row_bounds.push((row.id, rect));
                     // Keep full-list drag geometry while omitting offscreen widgets.
@@ -1170,8 +1177,11 @@ impl DawUi {
                                     if let Some(clip) = cell_clip {
                                         let frame = self.session.project.transport.playhead_frame;
                                         if frame >= clip.start_frame && frame < clip.end() {
-                                            let position =
-                                                clip.source_frame(frame - clip.start_frame);
+                                            let position = clip.source_frame(
+                                                self.session
+                                                    .project
+                                                    .midi_reference_position(clip, frame),
+                                            );
                                             let source = clip
                                                 .stretch
                                                 .map_or(position, |s| s.original_frame(position));

@@ -449,7 +449,7 @@ fn transport_loop_button_keeps_validity_dirty_state_and_workspace_geometry() {
 #[test]
 fn loop_bar_clicks_toggle_on_release_in_both_views_without_changing_the_range() {
     for view in [ViewMode::Timeline, ViewMode::Edit] {
-        let (mut app, track) = fixture();
+        let (mut app, _track) = fixture();
         let ctx = context();
         app.set_view_mode(view, &ctx);
         frame(&mut app, &ctx, vec![]);
@@ -460,11 +460,7 @@ fn loop_bar_clicks_toggle_on_release_in_both_views_without_changing_the_range() 
         app.session.project.transport.r#loop.end_frame = frames(5.0);
         frame(&mut app, &ctx, vec![]);
         let ruler = if view == ViewMode::Timeline {
-            let lane = app.lane_bounds[&track];
-            Rect::from_min_size(
-                Pos2::new(lane.left(), lane.top() - RULER_HEIGHT),
-                Vec2::new(lane.width(), RULER_HEIGHT),
-            )
+            app.arrangement.ruler_bounds
         } else {
             app.midi_editor.ruler_bounds
         };

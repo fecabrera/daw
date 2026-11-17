@@ -38,12 +38,14 @@ impl Project {
             clip.source_length(self.midi_frame(ticks))
                 .ok_or_else(|| Error("Beat source exceeds timing bounds".into()))
         };
+        let clock = self.musical_clock()?;
         let limits = match edge {
             ClipEdge::Right => {
                 let length = scaled(u32::from(MAX_BARS) * BAR_TICKS)?
                     .checked_sub(clip.source_offset_frame)
                     .ok_or_else(|| Error("Beat source offset exceeds its bounds".into()))?;
-                clip.start_frame.saturating_add(1)..=clip.start_frame.saturating_add(length)
+                clip.start_frame.saturating_add(1)
+                    ..=clock.frame_for_reference(clip.start_frame, length, self.tempo_bpm)?
             }
             ClipEdge::Left => {
                 // Hidden steps must also fit after prepending bars. Never discard them.
@@ -59,9 +61,16 @@ impl Project {
                 let padding = scaled(
                     (u32::from(source.pattern.bars) + u32::from(MAX_BARS) - occupied) * BAR_TICKS,
                 )? - scaled(source.pattern.length_ticks())?;
-                clip.start_frame
-                    .saturating_sub(clip.source_offset_frame.saturating_add(padding))
-                    ..=clip.end().saturating_sub(1)
+                u64::try_from(
+                    clock
+                        .frame_for_signed_reference(
+                            clip.start_frame,
+                            -i128::from(clip.source_offset_frame.saturating_add(padding)),
+                            self.tempo_bpm,
+                        )
+                        .max(0),
+                )
+                .unwrap_or(0)..=clip.end().saturating_sub(1)
             }
         };
         Ok(PatternTrimBounds {
@@ -107,7 +116,12 @@ impl Project {
         clip.length_frames = candidate.length_frames;
         let mut offset = i128::from(original.source_offset_frame);
         if edge == ClipEdge::Left {
-            offset += i128::from(candidate.start_frame) - i128::from(original.start_frame);
+            let c = self.musical_clock()?;
+            offset += (c.interval_quarters(original.start_frame, candidate.start_frame)
+                * 60.0
+                * f64::from(self.sample_rate_hz)
+                / f64::from(self.tempo_bpm))
+            .round() as i128;
         }
         let mut pattern = source.pattern.clone();
         if offset < 0 {
@@ -145,7 +159,7 @@ impl Project {
             .map_err(|_| Error("Beat source offset exceeds timing bounds".into()))?;
         let required = clip
             .source_offset_frame
-            .checked_add(clip.length_frames)
+            .checked_add(self.midi_reference_position(&clip, clip.end()))
             .ok_or_else(|| Error("Beat resize exceeds timing bounds".into()))?;
         while original
             .source_length(self.midi_frame(pattern.length_ticks()))

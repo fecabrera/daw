@@ -309,8 +309,10 @@ fn settings_dialog_fields_share_left_and_right_edges() {
                             _ => None,
                         })
                         .unwrap_or_else(|| panic!("Missing field: {label}"));
+                    // The dialog paints after clip headers that can overlap these coordinates.
                     shapes
                         .iter()
+                        .rev()
                         .find_map(|shape| match &shape.shape {
                             egui::Shape::Rect(rect)
                                 if rect.rect.contains(point)

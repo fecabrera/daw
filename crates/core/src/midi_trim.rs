@@ -54,17 +54,31 @@ impl Project {
         };
         let left = delta(start_tick)?;
         let right = delta(right_ticks)?;
-        let base = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
+        let musical = self.musical_clock()?;
+        let full_reference =
+            musical.reference_position(clip.start_frame, clip.end(), self.tempo_bpm);
+        let base = clip.repeat.map_or(full_reference, |r| r.length_frames);
         let length = u64::try_from(i128::from(base) + right - left)
             .ok()
             .filter(|n| *n > 0)
             .ok_or_else(range_error)?;
-        let full_length = u64::try_from(i128::from(clip.length_frames) + right - left)
+        let _full_length = u64::try_from(i128::from(full_reference) + right - left)
             .ok()
             .filter(|n| *n > 0)
             .ok_or_else(range_error)?;
-        let start_frame =
-            u64::try_from(i128::from(clip.start_frame) + left).map_err(|_| range_error())?;
+        let start_frame = u64::try_from(musical.frame_for_signed_reference(
+            clip.start_frame,
+            left,
+            self.tempo_bpm,
+        ))
+        .map_err(|_| range_error())?;
+        let end_frame =
+            u64::try_from(musical.frame_for_signed_reference(clip.end(), right, self.tempo_bpm))
+                .map_err(|_| range_error())?;
+        let actual_length = end_frame
+            .checked_sub(start_frame)
+            .filter(|l| *l > 0)
+            .ok_or_else(range_error)?;
         let frames_per_tick = f64::from(self.sample_rate_hz) * 60.0
             / (f64::from(self.tempo_bpm) * f64::from(MIDI_TICKS_PER_BEAT))
             * clip.stretch.map_or(1.0, |s| s.ratio());
@@ -124,9 +138,9 @@ impl Project {
         if let Some(repeat) = &mut clip.repeat {
             repeat.length_frames = length;
             repeat.phase_frame = repeat.phase_frame.min(length - 1);
-            clip.length_frames = full_length.max(length);
+            clip.length_frames = actual_length;
         } else {
-            clip.length_frames = full_length;
+            clip.length_frames = actual_length;
         }
         self.apply_placements(&[crate::ClipPlacement { track_id, clip }])
     }

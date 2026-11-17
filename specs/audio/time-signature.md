@@ -1,5 +1,9 @@
 # Project time signature
 
+This baseline now also supports [timing-map events](timing-maps.md). Its scalar
+value is the origin signature. Stopped toolbar edits target the event active at
+the playhead; playback is read-only. Each map event starts a new bar.
+
 ## Accepted behavior
 
 Place a `numerator/denominator` selector between Metronome and Tempo in every view. The shared timing section follows a standard vertical toolbar separator and orders Metronome, time signature, then Tempo. Reuse the bar.beat monitor painter: 13-point semibold Outfit, fixed-width digit slots, darker slash, shared toolbar padding and spacing. Each number is a separate vertical drag and double-click target with a tooltip and accessibility name.

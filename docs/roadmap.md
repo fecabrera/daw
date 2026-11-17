@@ -71,10 +71,10 @@ listed explicitly so completed Bounce work is not counted as pending.
 
 | Order | Milestone | Remaining feature work |
 | --- | --- | --- |
-| 7 | Arrangement markers | Named song sections, marker editing/navigation and saved markers. |
+| 7 | Arrangement markers | Implemented: named section blocks, one-bar creation, edge resizing, editing/navigation, persistence and history. Moving or copying complete sections remains later work. |
 | 8 | MIDI performance tools | Quantize, swing, humanization and controller/sustain editing. |
 | 9 | Bounce, freeze and stem export | Clip and complete-track Bounce are implemented. Explicit time-range Bounce, reversible instrument freeze and batch stem export remain pending. |
-| 10 | Tempo and time-signature maps | Tempo/signature changes at song positions, followed by tempo ramps. Global tempo and signature controls already exist. |
+| 10 | Tempo and time-signature maps | Step maps and Timeline lanes are implemented. Tempo ramps remain pending. |
 | 11 | Third-party plugin hosting | External instruments/effects, saved plugin state and automation. Existing standalone DAW effect plugins do not provide hosting. |
 
 Deliver markers before section editing, note timing tools before controller
@@ -97,6 +97,7 @@ not establish behavior on every supported platform or device.
 | Live MIDI and recording | Physical keyboard/sustain behavior, latency, device loss/reconnection, long sessions and audible instrument/effect transitions. |
 | Audio sidechain modulation | Source selection and mapping controls, readable meters, audible ducking and playback/export alignment. |
 | Clip and track Bounce | Native UI operation and listening checks for the rendered result. |
+| Markers and timing maps | Lane gestures, short/narrow layouts, audible tempo transitions, count-in/capture with hardware, and cross-platform playback/export checks. |
 
 Cross-platform native acceptance remains open, including Windows/Linux device
 and UI behavior. Capture and automation will need their own native acceptance

@@ -1276,7 +1276,7 @@ fn timeline_add_and_duplicate_buttons_work_with_focus_outside_tracks() {
                     } else {
                         47.0
                     },
-                app.lane_bounds[&tracks[0]].top() - RULER_HEIGHT / 2.0,
+                app.arrangement.ruler_bounds.center().y,
             );
             let before = app.session.project.clone();
             draw(
@@ -1364,7 +1364,7 @@ fn copy_plus_header_button_is_disabled_without_selection_and_duplicates_the_grou
     frame(&mut app, &ctx, vec![]);
     let point = Pos2::new(
         app.timeline_bounds.left() - 19.0,
-        app.lane_bounds[&tracks[0]].top() - RULER_HEIGHT / 2.0,
+        app.arrangement.ruler_bounds.center().y,
     );
     let before = format!("{:?}", app.session.project);
     frame(
@@ -1423,7 +1423,7 @@ fn open_add_track_dropdown(
 ) -> Vec<egui::epaint::ClippedShape> {
     let point = Pos2::new(
         app.timeline_bounds.left() - 47.0,
-        app.timeline_bounds.top() - RULER_HEIGHT / 2.0,
+        app.arrangement.ruler_bounds.center().y,
     );
     frame(
         app,
@@ -1539,7 +1539,7 @@ fn add_track_dropdown_dismissal_and_blocked_opening_preserve_the_project() {
         } else if mode == "outside" {
             let point = Pos2::new(
                 app.timeline_bounds.left() - 120.0,
-                app.timeline_bounds.top() - RULER_HEIGHT / 2.0,
+                app.arrangement.ruler_bounds.center().y,
             );
             frame(
                 &mut app,

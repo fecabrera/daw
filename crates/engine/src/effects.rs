@@ -176,6 +176,7 @@ impl RuntimeEffect {
         input: [f32; 2],
         frame: u64,
         tempo: f32,
+        musical: Option<daw_unit_core::MusicalPosition>,
         (values, sources): (
             &[daw_core::ModulationValue],
             Option<&daw_unit_core::ModulationSourceIndex>,
@@ -187,6 +188,7 @@ impl RuntimeEffect {
                 input,
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -197,6 +199,7 @@ impl RuntimeEffect {
                 input,
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -207,6 +210,7 @@ impl RuntimeEffect {
                 input,
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -217,6 +221,7 @@ impl RuntimeEffect {
                 input,
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -230,6 +235,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -243,6 +249,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -256,6 +263,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -269,6 +277,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -282,6 +291,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -295,6 +305,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -308,6 +319,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -321,6 +333,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -334,6 +347,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -347,6 +361,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -360,6 +375,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -373,6 +389,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -386,6 +403,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -399,6 +417,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -412,6 +431,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -425,6 +445,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    musical,
                     shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
@@ -620,6 +641,7 @@ impl RuntimeEffect {
 
 #[derive(Clone)]
 pub(super) struct EffectChain {
+    pub clock: Option<std::sync::Arc<daw_core::MusicalClock>>,
     index: std::collections::HashMap<Id, usize>,
     pub(super) mono: bool,
     pub(super) units: Vec<(Id, Option<RuntimeEffect>)>,
@@ -674,6 +696,7 @@ impl EffectChain {
         };
 
         Self {
+            clock: None,
             index: effects.iter().enumerate().map(|(i, e)| (e.id, i)).collect(),
             mono: false,
             output_taps: effects
@@ -1248,7 +1271,13 @@ impl EffectChain {
         }
         for ((_, unit), tap) in self.units.iter_mut().zip(&mut self.output_taps) {
             if let Some(unit) = unit {
-                input = unit.sample(input, frame, tempo, values);
+                let musical = self.clock.as_ref().map(|c| daw_unit_core::MusicalPosition {
+                    quarter: c.quarter_at(frame),
+                    note_origin: None,
+                    legato_origin: None,
+                });
+                let tempo = self.clock.as_ref().map_or(tempo, |c| c.tempo_at(frame));
+                input = unit.sample(input, frame, tempo, musical, values);
                 if let Some(tap) = tap
                     && tap.is_enabled()
                 {

@@ -22,6 +22,15 @@ pub(super) fn selected_track_header_background(ctx: &Context) -> Color32 {
     }
 }
 
+/// Supplied dark conductor fill; retain contrasting header surfaces in light themes.
+pub(super) fn arrangement_block_fill(ctx: &Context) -> Color32 {
+    if ctx.global_style().visuals.dark_mode {
+        unit_separator(ctx)
+    } else {
+        unit_header_fill(ctx, false)
+    }
+}
+
 /// Related clip colors resolved together for clips and their drag previews.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClipColors {

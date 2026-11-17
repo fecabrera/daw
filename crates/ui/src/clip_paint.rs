@@ -403,18 +403,39 @@ impl DawUi {
             block.max,
         );
         let (min_row, max_row) = pattern.bounds();
+        let clock = self
+            .session
+            .project
+            .musical_clock()
+            .expect("validated timing");
+        let reference_length = self
+            .session
+            .project
+            .midi_reference_position(clip, clip.end());
         let count = clip.repeat.map_or(1, |repeat| {
-            (clip.length_frames / repeat.length_frames).saturating_add(2)
+            (reference_length / repeat.length_frames).saturating_add(2)
         });
         // Limit painting to visible repetitions instead of iterating an entire long clip.
         let visible_start = ((painter.clip_rect().left() - body.left()).max(0.0) / self.view_zoom()
             * self.session.project.sample_rate_hz as f32) as u64;
-        let base = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
+        let visible_start = clock.reference_position(
+            clip.start_frame,
+            clip.start_frame.saturating_add(visible_start),
+            self.session.project.tempo_bpm,
+        );
+        let base = clip
+            .repeat
+            .map_or(reference_length, |r| r.length_frames)
+            .max(1);
         let first = visible_start / base;
-        let visible_count = (painter.clip_rect().width().max(0.0) / self.view_zoom()
-            * self.session.project.sample_rate_hz as f32) as u64
-            / base
-            + 3;
+        let visible_end = ((painter.clip_rect().right() - body.left()).max(0.0) / self.view_zoom()
+            * self.session.project.sample_rate_hz as f32) as u64;
+        let visible_end = clock.reference_position(
+            clip.start_frame,
+            clip.start_frame.saturating_add(visible_end),
+            self.session.project.tempo_bpm,
+        );
+        let visible_count = visible_end.saturating_sub(visible_start) / base + 3;
         let pixels_per_repeat = self.session.project.seconds(base) as f32 * self.view_zoom();
         let stride = (0.5 / pixels_per_repeat).ceil().max(1.0) as usize;
         for repetition in (first..count.min(first.saturating_add(visible_count))).step_by(stride) {
@@ -430,10 +451,7 @@ impl DawUi {
                     + i128::from(clip.repeat.map_or(0, |r| r.phase_frame))
                     - i128::from(repetition) * i128::from(base);
                 let left = origin + i128::from(visible_start);
-                let right = origin
-                    + ((painter.clip_rect().right() - body.left()).max(0.0) / self.view_zoom()
-                        * self.session.project.sample_rate_hz as f32)
-                        .ceil() as i128;
+                let right = origin + i128::from(visible_end);
                 let longest = i128::from(mapped(max_ticks).saturating_add(2));
                 let first = pattern
                     .partition_point(|note| i128::from(mapped(note.start_tick)) + longest < left);
@@ -468,14 +486,21 @@ impl DawUi {
                     i128::from(start) - i128::from(clip.source_offset_frame) - i128::from(phase)
                         + i128::from(repetition) * i128::from(base);
                 let finish = local + i128::from(end.saturating_sub(start));
-                if finish <= 0 || local >= i128::from(clip.length_frames) {
+                if finish <= 0 || local >= i128::from(reference_length) {
                     continue;
                 }
+                let actual = |reference: i128| {
+                    clock.frame_for_signed_reference(
+                        clip.start_frame,
+                        reference,
+                        self.session.project.tempo_bpm,
+                    ) - i128::from(clip.start_frame)
+                };
                 let x = body.left()
-                    + local.max(0) as f32 / self.session.project.sample_rate_hz as f32
+                    + actual(local.max(0)) as f32 / self.session.project.sample_rate_hz as f32
                         * self.view_zoom();
                 let right = body.left()
-                    + finish.min(i128::from(clip.length_frames)) as f32
+                    + actual(finish.min(i128::from(reference_length))) as f32
                         / self.session.project.sample_rate_hz as f32
                         * self.view_zoom();
                 if right < painter.clip_rect().left() || x > painter.clip_rect().right() {

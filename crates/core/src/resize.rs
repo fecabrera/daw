@@ -7,18 +7,17 @@ impl Clip {
         if self.end() <= start || self.start_frame >= end {
             return vec![self.clone()];
         }
-        let mut pieces = Vec::with_capacity(2);
-        if self.start_frame < start {
-            pieces.push(self.retained_range(self.start_frame, start));
-        }
-        if self.end() > end {
-            let mut right = self.retained_range(end, self.end());
-            if !pieces.is_empty() {
-                right.id = Id::new_v4();
-            }
-            pieces.push(right);
-        }
-        pieces
+        crate::frame_ranges::uncovered_ranges(self.start_frame, self.end(), start, end)
+            .into_iter()
+            .enumerate()
+            .map(|(index, (start, end))| {
+                let mut piece = self.retained_range(start, end);
+                if index > 0 {
+                    piece.id = Id::new_v4();
+                }
+                piece
+            })
+            .collect()
     }
 
     /// Keep a nonempty subrange without changing the remaining samples' mapping.
@@ -85,6 +84,7 @@ impl Project {
         update_stretch: bool,
         midi_rounding: bool,
     ) -> Result<()> {
+        let clock = crate::timing::ClipClock::new(self)?;
         let mut ids = HashSet::new();
         let mut order = Vec::new();
         for candidate in clips {
@@ -118,7 +118,18 @@ impl Project {
                 }
             }
             if update_stretch {
-                clip.stretch = candidate.stretch;
+                if self.timing.tempos.len() > 1
+                    && self
+                        .assets
+                        .iter()
+                        .any(|a| a.id == clip.asset_id && !a.is_audio())
+                {
+                    clip = self
+                        .stretched_clip(original, candidate.start_frame, candidate.length_frames)
+                        .ok_or_else(|| Error("Stretch exceeds musical source bounds".into()))?;
+                } else {
+                    clip.stretch = candidate.stretch;
+                }
                 // stretched_to scales saved durations; ordinary trim/loop paths retain them.
                 clip.fades = candidate.fades;
             }
@@ -180,7 +191,7 @@ impl Project {
                     if processed.contains(&clip.id) {
                         vec![clip]
                     } else {
-                        clip.uncovered_ranges(winner.start_frame, winner.end())
+                        clock.uncovered(&clip, winner.start_frame, winner.end())
                     }
                 })
                 .collect();

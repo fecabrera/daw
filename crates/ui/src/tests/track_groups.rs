@@ -733,10 +733,14 @@ fn track_type_icons_reuse_release_only_dragging_and_cancellation() {
 fn group_name_and_blank_header_drags_move_the_complete_subtree() {
     for start_x in [61.0, 130.0] {
         let (mut app, ctx, group, ids) = grouped_fixture();
+        // Keep the entire destination row visible below the taller metadata lanes.
+        app.timeline_effects_visible = false;
+        frame(&mut app, &ctx, vec![]);
         let original = app.session.project.clone();
         let header_left = app.timeline_bounds.left() - TRACK_WIDTH;
         let start = Pos2::new(header_left + start_x, app.lane_bounds[&group].top() + 18.0);
         let end = Pos2::new(header_left + 18.0, app.lane_bounds[&ids[2]].bottom() - 2.0);
+        assert!(app.timeline_bounds.y_range().contains(end.y));
         frame(
             &mut app,
             &ctx,

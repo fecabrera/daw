@@ -176,10 +176,53 @@ pub(super) fn panel_button(
     enabled: bool,
     color: Color32,
 ) -> Response {
+    panel_button_sized(
+        ui,
+        icon,
+        name,
+        enabled,
+        color,
+        Vec2::new(28.0, crate::toolbars::CONTROL_HEIGHT),
+        TOOLBAR_ICON_SIZE,
+    )
+}
+
+/// Compact panel action with the shared surface and 18-point control footprint.
+pub(super) fn compact_panel_button(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    enabled: bool,
+    color: Color32,
+) -> Response {
+    panel_button_sized(
+        ui,
+        icon,
+        name,
+        enabled,
+        color,
+        Vec2::splat(COMPACT_BUTTON_SIZE),
+        12.0,
+    )
+}
+
+fn panel_button_sized(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    enabled: bool,
+    color: Color32,
+    size: Vec2,
+    icon_size: f32,
+) -> Response {
     ui.scope(|ui| {
         crate::rows::panel_button_style(ui);
+        if size.y < crate::toolbars::CONTROL_HEIGHT {
+            ui.spacing_mut().interact_size = size;
+            ui.spacing_mut().button_padding = Vec2::splat(3.0);
+        }
         let image = icon
-            .size(TOOLBAR_ICON_SIZE)
+            .size(icon_size)
             .stroke_width(2.0)
             .color(color)
             .image()
@@ -187,7 +230,7 @@ pub(super) fn panel_button(
         let response = ui.add_enabled(
             enabled,
             egui::Button::image(image)
-                .min_size(Vec2::new(28.0, crate::toolbars::CONTROL_HEIGHT))
+                .min_size(size)
                 .stroke(egui::Stroke::NONE)
                 .corner_radius(5),
         );

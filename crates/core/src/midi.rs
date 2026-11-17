@@ -1,4 +1,6 @@
-use crate::{Asset, Clip, ClipEdge, Edit, Error, Id, Project, Result, Source, SourceMetadata};
+use crate::{
+    Asset, Clip, ClipEdge, Edit, Error, Id, MusicalClock, Project, Result, Source, SourceMetadata,
+};
 use serde::{Deserialize, Serialize};
 
 pub const MIDI_TICKS_PER_BEAT: u32 = 960;
@@ -10,6 +12,8 @@ pub fn transposed_midi_pitch(pitch: u8, transpose: i8) -> u8 {
 
 /// Map a visible MIDI clip edge to source ticks without limiting expansion to its source.
 pub struct MidiPatternBounds {
+    clock: MusicalClock,
+    reference_bpm: f32,
     edge: ClipEdge,
     edge_frame: u64,
     length_ticks: u32,
@@ -18,6 +22,9 @@ pub struct MidiPatternBounds {
     max_delta: i64,
 }
 impl MidiPatternBounds {
+    fn clock_rate(&self) -> u32 {
+        self.clock.sample_rate_hz()
+    }
     pub fn edge_frame(&self) -> u64 {
         self.edge_frame
     }
@@ -25,14 +32,22 @@ impl MidiPatternBounds {
         self.length_ticks
     }
     fn frame_at_delta(&self, delta: i64) -> u64 {
-        (i128::from(self.edge_frame) + (delta as f64 * self.frames_per_tick).round() as i128)
+        self.clock
+            .frame_for_signed_reference(
+                self.edge_frame,
+                (delta as f64 * self.frames_per_tick).round() as i128,
+                self.reference_bpm,
+            )
             .clamp(0, i128::from(u64::MAX)) as u64
     }
     pub fn frame_limits(&self) -> std::ops::RangeInclusive<u64> {
         self.frame_at_delta(self.min_delta)..=self.frame_at_delta(self.max_delta)
     }
     pub fn ticks_at_frame(&self, frame: u64) -> (i64, i64) {
-        let delta = ((i128::from(frame) - i128::from(self.edge_frame)) as f64
+        let delta = (self.clock.interval_quarters(self.edge_frame, frame)
+            * 60.0
+            * f64::from(self.clock_rate())
+            / f64::from(self.reference_bpm)
             / self.frames_per_tick)
             .round() as i64;
         let delta = delta.clamp(self.min_delta, self.max_delta);
@@ -152,8 +167,9 @@ impl Project {
         let frames_per_tick = f64::from(self.sample_rate_hz) * 60.0
             / (f64::from(self.tempo_bpm) * f64::from(MIDI_TICKS_PER_BEAT))
             * stretch;
-        let base_frames = clip.repeat.map_or(clip.length_frames, |r| r.length_frames);
-        let visible_ticks = (base_frames.min(clip.length_frames) as f64 / frames_per_tick)
+        let full_frames = self.midi_reference_position(clip, clip.end());
+        let base_frames = clip.repeat.map_or(full_frames, |r| r.length_frames);
+        let visible_ticks = (base_frames.min(full_frames) as f64 / frames_per_tick)
             .floor()
             .max(1.0) as i64;
         let inward = visible_ticks - 1;
@@ -180,6 +196,8 @@ impl Project {
             ),
         };
         Ok(MidiPatternBounds {
+            clock: self.musical_clock()?,
+            reference_bpm: self.tempo_bpm,
             edge,
             edge_frame,
             length_ticks: pattern.length_ticks,
@@ -287,6 +305,8 @@ impl Project {
     }
 
     pub(crate) fn bound_retimed_midi_sources(&mut self) -> Result<()> {
+        let clock = crate::timing::ClipClock::new(self)?;
+        let musical = self.musical_clock()?;
         for clip in self
             .tracks
             .iter_mut()
@@ -311,7 +331,11 @@ impl Project {
                     .phase_frame
                     .min(repeat.length_frames.saturating_sub(1));
             } else {
-                clip.length_frames = clip.length_frames.min(remaining);
+                if clock.length(clip) > remaining {
+                    clip.length_frames = musical
+                        .frame_for_reference(clip.start_frame, remaining, self.tempo_bpm)?
+                        .saturating_sub(clip.start_frame);
+                }
             }
         }
         Ok(())
@@ -364,7 +388,12 @@ impl Project {
             color: None,
             start_frame,
             source_offset_frame: 0,
-            length_frames: asset.decoded_frame_count,
+            length_frames: self
+                .musical_clock()?
+                .frame_for_reference(start_frame, asset.decoded_frame_count, self.tempo_bpm)?
+                .checked_sub(start_frame)
+                .filter(|n| *n > 0)
+                .ok_or_else(|| Error("MIDI clip exceeds timing bounds".into()))?,
             repeat: None,
             stretch: None,
             gain_db: 0.0,

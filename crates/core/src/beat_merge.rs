@@ -43,8 +43,8 @@ impl Project {
                 return Err(Error("Merge requires beat patterns with matching subdivision, stretch and instrument".into()));
             }
             let mut frames = vec![
-                clip.start_frame - first.start_frame,
-                clip.length_frames,
+                self.midi_reference_position(first, clip.start_frame),
+                self.midi_reference_position(clip, clip.end()),
                 clip.source_offset_frame,
             ];
             if let Some(repeat) = clip.repeat {
@@ -57,10 +57,12 @@ impl Project {
                 return Err(Error("Beat Merge requires grid-aligned clip bounds, source offsets and loops within 16 source bars".into()));
             }
         }
-        let length =
-            self.merge_beat_tick(first, clips.last().unwrap().end() - first.start_frame)?;
+        let length = self.merge_beat_tick(
+            first,
+            self.midi_reference_position(first, clips.last().unwrap().end()),
+        )?;
         let mut bars = length.div_ceil(BAR_TICKS).max(1) as u8;
-        let required = clips.last().unwrap().end() - first.start_frame;
+        let required = self.midi_reference_position(first, clips.last().unwrap().end());
         while first
             .source_length(self.midi_frame(u32::from(bars) * BAR_TICKS))
             .is_none_or(|frames| frames < required)
@@ -109,7 +111,7 @@ impl Project {
             };
             let mut window = (*clip).clone();
             window.repeat.get_or_insert(ClipLoop {
-                length_frames: clip.length_frames,
+                length_frames: self.midi_reference_position(clip, clip.end()),
                 phase_frame: 0,
             });
             let occurrences = note_occurrences(self, &window, &notes, remaining).map_err(|_| {
@@ -117,8 +119,12 @@ impl Project {
             })?;
             remaining -= occurrences.len();
             for occurrence in occurrences {
-                let start = self.merge_beat_tick(first, occurrence.start - first.start_frame)?;
-                let end = self.merge_beat_tick(first, occurrence.end - first.start_frame)?;
+                let start = self.merge_beat_tick(
+                    first,
+                    self.midi_reference_position(first, occurrence.start),
+                )?;
+                let end = self
+                    .merge_beat_tick(first, self.midi_reference_position(first, occurrence.end))?;
                 if !start.is_multiple_of(resolution.step_ticks())
                     || end - start != resolution.step_ticks()
                 {

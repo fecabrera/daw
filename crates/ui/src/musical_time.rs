@@ -107,6 +107,7 @@ pub fn size_boundaries(frame: u64, anchor: u64, length: u64) -> impl Iterator<It
 }
 
 pub struct Timeline {
+    clock: Option<std::sync::Arc<daw_core::MusicalClock>>,
     signature: TimeSignature,
     sample_rate_hz: u32,
     beats_per_second: f64,
@@ -141,6 +142,7 @@ impl Timeline {
     ) -> Self {
         let beats_per_second = f64::from(tempo_bpm) / 60.0;
         Self {
+            clock: None,
             signature: TimeSignature::default(),
             sample_rate_hz,
             beats_per_second,
@@ -149,6 +151,12 @@ impl Timeline {
         }
     }
 
+    pub fn with_clock(mut self, clock: std::sync::Arc<daw_core::MusicalClock>) -> Self {
+        if !clock.is_constant() {
+            self.clock = Some(clock);
+        }
+        self
+    }
     pub fn with_time_signature(mut self, signature: TimeSignature) -> Self {
         let ratio = f64::from(signature.denominator) / f64::from(self.signature.denominator);
         self.signature = signature;
@@ -214,12 +222,45 @@ impl Timeline {
         [self.bar_step(step), step.max(1.0), step]
     }
 
+    fn mapped_spacings(&self, frame: u64, clock: &daw_core::MusicalClock) -> [f64; 3] {
+        let sig = clock.signature_at(frame);
+        let beat = 4.0 / f64::from(sig.denominator);
+        let pixels = (self.pixels_per_beat * self.beats_per_second * 60.0
+            / f64::from(clock.tempo_at(frame))
+            * beat)
+            .max(0.001);
+        let step = 2_f64.powf((10.0 / pixels).log2().ceil()).max(1.0 / 16.0);
+        [
+            daw_core::MusicalClock::bar_quarters(sig)
+                * 2_f64.powf((step / f64::from(sig.numerator)).log2().ceil().max(0.0)),
+            step.max(1.0) * beat,
+            step * beat,
+        ]
+    }
     fn grid_target(
         &self,
         frame: u64,
         limits: std::ops::RangeInclusive<u64>,
         spacing: f64,
     ) -> Option<u64> {
+        if let Some(clock) = &self.clock {
+            let origin = clock.meter_origin_quarter(frame);
+            let priority = self
+                .grid_spacings()
+                .iter()
+                .position(|s| *s == spacing)
+                .unwrap_or(2);
+            let spacing = self.mapped_spacings(frame, clock)[priority];
+            let index = ((clock.quarter_at(frame) - origin) / spacing).floor();
+            let mut candidates: Vec<_> = [index, index + 1.0]
+                .into_iter()
+                .filter_map(|i| clock.ceil_frame_at_quarter(origin + i * spacing).ok())
+                .collect();
+            if let Some(next) = clock.next_signature_frame(frame) {
+                candidates.push(next);
+            }
+            return self.snap_anchor(frame, limits, candidates);
+        }
         let index = (self.beats(frame) / spacing).floor();
         self.snap_anchor(
             frame,
@@ -461,6 +502,9 @@ impl Timeline {
     }
 
     pub fn ticks(&self, width: f32) -> impl Iterator<Item = Tick> + '_ {
+        if let Some(clock) = &self.clock {
+            return self.mapped_ticks(width, clock).into_iter();
+        }
         let step = self.visible_step();
         let label_step = 2.0_f64
             .powf((80.0 / self.pixels_per_beat).log2().ceil())
@@ -478,36 +522,122 @@ impl Timeline {
         }
         beats.sort_by(f64::total_cmp);
         beats.dedup();
-        beats.into_iter().filter_map(move |beat| {
-            let x = (beat - self.scroll_beats) * self.pixels_per_beat;
-            if beat < 0.0 || x < 0.0 || x > f64::from(width) {
-                return None;
-            }
-            let whole_beat = beat.fract() == 0.0;
-            let bar = whole_beat && beat % beats_per_bar == 0.0;
-            let label = if label_step >= beats_per_bar {
-                (bar && beat % bar_labels == 0.0)
-                    .then(|| format!("{}", beat as u64 / u64::from(self.signature.numerator) + 1))
-            } else if whole_beat
-                && beat % beats_per_bar % label_step == 0.0
-                && (bar || beat % beats_per_bar + label_step <= beats_per_bar)
-            {
-                Some(format!(
-                    "{}.{}",
-                    beat as u64 / u64::from(self.signature.numerator) + 1,
-                    beat as u64 % u64::from(self.signature.numerator) + 1
-                ))
-            } else {
-                None
-            };
-            Some(Tick {
-                x: x as f32,
-                beat,
-                bar,
-                whole_beat,
-                label,
+        beats
+            .into_iter()
+            .filter_map(move |beat| {
+                let x = (beat - self.scroll_beats) * self.pixels_per_beat;
+                if beat < 0.0 || x < 0.0 || x > f64::from(width) {
+                    return None;
+                }
+                let whole_beat = beat.fract() == 0.0;
+                let bar = whole_beat && beat % beats_per_bar == 0.0;
+                let label = if label_step >= beats_per_bar {
+                    (bar && beat % bar_labels == 0.0).then(|| {
+                        format!("{}", beat as u64 / u64::from(self.signature.numerator) + 1)
+                    })
+                } else if whole_beat
+                    && beat % beats_per_bar % label_step == 0.0
+                    && (bar || beat % beats_per_bar + label_step <= beats_per_bar)
+                {
+                    Some(format!(
+                        "{}.{}",
+                        beat as u64 / u64::from(self.signature.numerator) + 1,
+                        beat as u64 % u64::from(self.signature.numerator) + 1
+                    ))
+                } else {
+                    None
+                };
+                Some(Tick {
+                    x: x as f32,
+                    beat,
+                    bar,
+                    whole_beat,
+                    label,
+                })
             })
-        })
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+    fn mapped_ticks(&self, width: f32, clock: &daw_core::MusicalClock) -> Vec<Tick> {
+        let start = self.frame_at_pixel(0.0).max(0) as u64;
+        let end = self
+            .frame_at_pixel(f64::from(width))
+            .clamp(0, i128::from(u64::MAX)) as u64;
+        let mut segment = start;
+        let mut ticks = Vec::new();
+        loop {
+            let next = clock
+                .next_signature_frame(segment)
+                .unwrap_or(u64::MAX)
+                .min(clock.next_tempo_frame(segment).unwrap_or(u64::MAX));
+            let stop = next.min(end);
+            let sig = clock.signature_at(segment);
+            let origin = clock.meter_origin_quarter(segment);
+            let beat_q = 4.0 / f64::from(sig.denominator);
+            let pixels_per_beat = self
+                .pixels_for_frames(
+                    (60.0 * f64::from(self.sample_rate_hz) / f64::from(clock.tempo_at(segment))
+                        * beat_q)
+                        .round() as i128,
+                )
+                .max(0.001);
+            let spacings = self.mapped_spacings(segment, clock);
+            for spacing in [spacings[2], spacings[0]] {
+                // A rounded event frame can sit just after the musical boundary
+                // whose ceil-frame is this same sample. Include that candidate
+                // and decide ownership in frames, rather than skipping its index.
+                let first = ((clock.quarter_at(segment) - origin) / spacing)
+                    .floor()
+                    .max(0.0);
+                let count = (((clock.quarter_at(stop) - origin) / spacing).floor() - first + 1.0)
+                    .clamp(0.0, 20000.0) as usize;
+                for i in 0..count {
+                    let q = origin + (first + i as f64) * spacing;
+                    let Ok(frame) = clock.ceil_frame_at_quarter(q) else {
+                        continue;
+                    };
+                    if frame < segment || frame > end || frame >= next {
+                        continue;
+                    }
+                    let beat = (q - origin) / beat_q;
+                    let whole_beat = (beat - beat.round()).abs() < 1e-7;
+                    let bar = whole_beat
+                        && (beat.round() as u64).is_multiple_of(u64::from(sig.numerator));
+                    let (number, part) = clock.position(frame);
+                    let label = if bar {
+                        Some(number.to_string())
+                    } else if whole_beat && pixels_per_beat >= 80.0 {
+                        Some(format!("{number}.{part}"))
+                    } else {
+                        None
+                    };
+                    ticks.push(Tick {
+                        x: self.pixel_at_frame(frame) as f32,
+                        beat,
+                        bar,
+                        whole_beat,
+                        label,
+                    });
+                }
+            }
+            if next > end || next == u64::MAX {
+                break;
+            }
+            segment = next;
+        }
+        ticks.sort_by(|a, b| a.x.total_cmp(&b.x));
+        ticks.dedup_by(|a, b| (a.x - b.x).abs() < 0.01);
+        let mut previous_label = f32::NEG_INFINITY;
+        for tick in &mut ticks {
+            if tick.label.is_some() {
+                if tick.x - previous_label < 80.0 {
+                    tick.label = None;
+                } else {
+                    previous_label = tick.x;
+                }
+            }
+        }
+        ticks
     }
 }
 
@@ -944,5 +1074,138 @@ mod ruler_color_tests {
                 }
             }
         }
+    }
+}
+
+/// Shared whole-BPM drag state. Retain subpixel motion between input frames.
+#[derive(Clone, Copy)]
+pub(super) struct TempoValueDrag {
+    raw: f64,
+    value: f32,
+}
+impl TempoValueDrag {
+    pub fn new(value: f32) -> Self {
+        Self {
+            raw: f64::from(value),
+            value,
+        }
+    }
+    pub fn update(&mut self, delta_y: f32, fine: bool) -> f32 {
+        if delta_y != 0.0 {
+            let sensitivity = if fine { 0.1 } else { 1.0 };
+            self.raw =
+                (self.raw - f64::from(delta_y) * sensitivity).clamp(1.0, f64::from(f32::MAX));
+            self.value = self.raw.round() as f32;
+        }
+        self.value
+    }
+}
+
+#[cfg(test)]
+mod mapped_tick_boundary_tests {
+    use super::*;
+    use daw_core::{Edit, Id, Project, TempoEvent};
+    use std::sync::Arc;
+
+    #[test]
+    fn rounded_tempo_boundaries_retain_bar_gridlines_and_ruler_labels() {
+        for sample_rate_hz in daw_core::SAMPLE_RATES {
+            let mut project = Project {
+                sample_rate_hz,
+                ..Default::default()
+            };
+            for (quarter, bpm) in [(4.0, 80.0), (8.0, 103.14), (12.0, 116.46)] {
+                let start_frame = project
+                    .musical_clock()
+                    .unwrap()
+                    .ceil_frame_at_quarter(quarter)
+                    .unwrap();
+                let mut events = project.tempo_events();
+                events.push(TempoEvent {
+                    id: Id::new_v4(),
+                    start_frame,
+                    bpm,
+                });
+                project.edit(Edit::SetTempoEvents { events }).unwrap();
+            }
+            let clock = Arc::new(project.musical_clock().unwrap());
+            let timeline = Timeline::at_sample_rate(project.tempo_bpm, 70.0, 0.0, sample_rate_hz)
+                .with_clock(clock.clone());
+            let ticks: Vec<_> = timeline.ticks(1150.0).collect();
+            for (quarter, label) in [(4.0, "2"), (8.0, "3"), (12.0, "4"), (16.0, "5")] {
+                let frame = clock.ceil_frame_at_quarter(quarter).unwrap();
+                let x = timeline.pixel_at_frame(frame) as f32;
+                assert!(
+                    ticks.iter().any(|tick| tick.bar
+                        && (tick.x - x).abs() < 0.01
+                        && tick.label.as_deref() == Some(label)),
+                    "missing bar {label} at {sample_rate_hz} Hz"
+                );
+            }
+            let boundary = clock.ceil_frame_at_quarter(12.0).unwrap();
+            for scroll_frame in [boundary - u64::from(sample_rate_hz), boundary] {
+                let timeline = Timeline::at_sample_rate(
+                    project.tempo_bpm,
+                    70.0,
+                    scroll_frame as f64 / f64::from(sample_rate_hz),
+                    sample_rate_hz,
+                )
+                .with_clock(clock.clone());
+                let x = timeline.pixel_at_frame(boundary) as f32;
+                let ticks: Vec<_> = timeline.ticks(1150.0).collect();
+                assert_eq!(
+                    ticks
+                        .iter()
+                        .filter(|tick| tick.bar && (tick.x - x).abs() < 0.01)
+                        .count(),
+                    1
+                );
+                assert!(ticks.iter().any(|tick| (tick.x-x).abs()<0.01 && tick.label.as_deref()==Some("4")));
+                let ctx = egui::Context::default();
+                let rect =
+                    egui::Rect::from_min_size(egui::pos2(20.0, 30.0), egui::vec2(1150.0, 90.0));
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(1280.0, 200.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| timeline.paint_grid(ui.painter(), rect),
+                );
+                output.textures_delta.clear();
+                assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,egui::Shape::LineSegment {points,stroke} if (points[0].x-(rect.left()+x)).abs()<0.01 && points[0].y==rect.top() && points[1].y==rect.bottom() && *stroke==egui::Stroke::new(1.0,crate::theme::palette(&ctx).border))));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tempo_value_drag_tests {
+    use super::TempoValueDrag;
+    #[test]
+    fn whole_steps_accumulate_subpixel_motion_and_preserve_stationary_values() {
+        let mut drag = TempoValueDrag::new(120.0);
+        for _ in 0..5 {
+            assert_eq!(drag.update(-0.2, false).fract(), 0.0);
+        }
+        assert_eq!(drag.update(0.0, false), 121.0);
+        for _ in 0..5 {
+            drag.update(0.2, false);
+        }
+        assert_eq!(drag.update(0.0, false), 120.0);
+        let mut drag = TempoValueDrag::new(137.23);
+        assert_eq!(drag.update(0.0, false), 137.23);
+        assert_eq!(drag.update(-0.4, false), 138.0);
+        assert_eq!(drag.update(0.7, false), 137.0);
+        assert_eq!(drag.update(1000.0, false), 1.0);
+        let mut fine = TempoValueDrag::new(120.0);
+        for _ in 0..10 {
+            assert_eq!(fine.update(-1.0, true).fract(), 0.0);
+        }
+        assert_eq!(fine.update(0.0, true), 121.0);
+        assert_eq!(fine.update(3.0, true), 121.0);
+        assert_eq!(fine.update(10.0, false), 111.0);
     }
 }

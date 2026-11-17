@@ -1882,6 +1882,7 @@ fn unit_header_click_keeps_timeline_colors_while_a_drag_is_only_armed() {
                         .unwrap()
                 };
                 let expected_category = category_paint(&baseline);
+                let ruler = app.arrangement.ruler_bounds;
                 let toolbar_paint = |shapes: &[egui::epaint::ClippedShape]| {
                     fn collect(shape: &egui::Shape, buttons: Rect, paints: &mut Vec<String>) {
                         match shape {
@@ -1913,8 +1914,8 @@ fn unit_header_click_keeps_timeline_colors_while_a_drag_is_only_armed() {
                         collect(
                             &shape.shape,
                             Rect::from_min_max(
-                                Pos2::new(block.left() - 85.0, block.top() - 40.0),
-                                block.left_top(),
+                                Pos2::new(block.left() - 85.0, ruler.top()),
+                                Pos2::new(block.left(), ruler.bottom()),
                             ),
                             &mut paints,
                         );

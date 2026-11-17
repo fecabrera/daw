@@ -122,7 +122,10 @@ impl DawUi {
                     } else {
                         entry.clip.start_frame
                     };
-                    let mut clip = entry.clip.stretched_to(start, length)?;
+                    let mut clip =
+                        self.session
+                            .project
+                            .stretched_clip(&entry.clip, start, length)?;
                     let source = self
                         .session
                         .project
@@ -130,7 +133,18 @@ impl DawUi {
                         .iter()
                         .find(|asset| asset.id == clip.asset_id)?;
                     let available = clip.source_length(source.decoded_frame_count)?;
-                    let used = clip.repeat.map_or(length, |repeat| repeat.length_frames);
+                    let used = clip.repeat.map_or_else(
+                        || {
+                            if source.is_audio() {
+                                length
+                            } else {
+                                self.session
+                                    .project
+                                    .midi_reference_position(&clip, clip.end())
+                            }
+                        },
+                        |repeat| repeat.length_frames,
+                    );
                     // Offset and repeat-base rounding can exceed the asset by one frame.
                     clip.source_offset_frame =
                         clip.source_offset_frame.min(available.checked_sub(used)?);

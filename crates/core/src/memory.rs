@@ -4,6 +4,14 @@ use daw_unit_core::memory::{effect_settings_bytes, vec_bytes};
 impl Project {
     pub fn memory_bytes(&self) -> u64 {
         std::mem::size_of::<Self>() as u64
+            + vec_bytes(&self.timing.tempos)
+            + vec_bytes(&self.timing.signatures)
+            + vec_bytes(&self.markers)
+            + self
+                .markers
+                .iter()
+                .map(|m| m.name.capacity() as u64)
+                .sum::<u64>()
             + self.name.capacity() as u64
             + effect_settings_bytes(&self.master.effects)
             + vec_bytes(&self.assets)

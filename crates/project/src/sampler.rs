@@ -19,11 +19,14 @@ impl Session {
                         .audio_asset(input.asset_id)
                         .is_some_and(|a| a.compound_audio.is_some());
             };
-            let Some(length) = s.output_frames(project.sample_rate_hz, project.tempo_bpm) else {
-                return true;
-            };
             !self.sampler_audio.get(&s.id).is_some_and(|prepared| {
-                prepared.matches(source, s, length, project.stretch_engine, notes)
+                sampler_lengths(project, s).is_ok_and(|lengths| {
+                    lengths.into_iter().all(|length| {
+                        prepared.duration(length).is_some_and(|variant| {
+                            variant.matches(source, s, length, project.stretch_engine, notes)
+                        })
+                    })
+                })
             })
         })
     }
@@ -209,7 +212,27 @@ impl Session {
             let length = s
                 .output_frames(self.project.sample_rate_hz, self.project.tempo_bpm)
                 .ok_or_else(|| error("Unsupported sampler duration"))?;
-            let prepared = prepare(source, s, length, &notes, self.sampler_audio.get(&s.id))?;
+            let previous = self.sampler_audio.get(&s.id);
+            let mut prepared = prepare(
+                source,
+                s,
+                length,
+                &notes,
+                previous.and_then(|p| p.duration(length)),
+            )?;
+            for variant_length in sampler_lengths(&self.project, s)? {
+                if variant_length == length {
+                    continue;
+                }
+                let variant = prepare(
+                    source,
+                    s,
+                    variant_length,
+                    &notes,
+                    previous.and_then(|p| p.duration(variant_length)),
+                )?;
+                prepared.add_duration(variant_length, variant);
+            }
             outputs.insert(s.id, prepared);
         }
         if cancelled() {
@@ -290,4 +313,19 @@ fn sampler_requests<'a>(
         }
     }
     requests
+}
+
+fn sampler_lengths(project: &Project, settings: &SamplerSettings) -> Result<Vec<u64>> {
+    let mut lengths: Vec<_> = project
+        .tempo_events()
+        .iter()
+        .map(|e| {
+            settings
+                .output_frames(project.sample_rate_hz, e.bpm)
+                .ok_or_else(|| error("Unsupported sampler duration in tempo map"))
+        })
+        .collect::<Result<_>>()?;
+    lengths.sort_unstable();
+    lengths.dedup();
+    Ok(lengths)
 }

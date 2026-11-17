@@ -38,6 +38,21 @@ impl Metronome {
     }
 
     pub fn next(&mut self, frame: Option<u64>, tempo: f64) -> f32 {
+        self.next_clock(frame, tempo, None)
+    }
+    pub fn next_mapped(&mut self, frame: Option<u64>, clock: &daw_core::MusicalClock) -> f32 {
+        self.next_clock(
+            frame,
+            frame.map_or(120.0, |f| f64::from(clock.tempo_at(f))),
+            Some(clock),
+        )
+    }
+    fn next_clock(
+        &mut self,
+        frame: Option<u64>,
+        tempo: f64,
+        clock: Option<&daw_core::MusicalClock>,
+    ) -> f32 {
         let fade = (self.rate / 200).max(1);
         let target = if self.enabled && frame.is_some() {
             1.0
@@ -59,7 +74,12 @@ impl Metronome {
                 self.transition = fade;
                 self.transition_from = self.previous;
             }
-            click_in_meter(frame, tempo, self.rate, self.signature)
+            if let Some(clock) = clock.filter(|c| !c.is_constant()) {
+                let (start, accent) = clock.beat_at(frame);
+                click_age(frame.saturating_sub(start) as f64, self.rate, accent)
+            } else {
+                click_in_meter(frame, tempo, self.rate, self.signature)
+            }
         } else {
             self.previous
         };
@@ -90,11 +110,14 @@ fn click_in_meter(frame: u64, tempo: f64, rate: u32, signature: daw_core::TimeSi
     let beat = ((frame as f64 + 0.5) / period).floor();
     let start = (beat * period).round();
     let age = (frame as f64 - start).max(0.0);
+    let accented = beat.rem_euclid(f64::from(signature.numerator)) == 0.0;
+    click_age(age, rate, accented)
+}
+fn click_age(age: f64, rate: u32, accented: bool) -> f32 {
     let duration = f64::from(rate) * 0.020;
     if age >= duration {
         return 0.0;
     }
-    let accented = beat.rem_euclid(f64::from(signature.numerator)) == 0.0;
     let frequency = if accented { 2400.0 } else { 1600.0 };
     // A 10 dB amplitude increase is 10^(10/20).
     let amplitude = if accented { 0.40 } else { 0.28 } * 3.162_277_660_168_379_5;

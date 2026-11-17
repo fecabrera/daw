@@ -50,11 +50,19 @@ pub enum ModulationBehavior {
     Contour,
     Continuous,
 }
+/// Integrated quarter-note position supplied by hosts with a tempo map.
+#[derive(Clone, Copy, Debug)]
+pub struct MusicalPosition {
+    pub quarter: f64,
+    pub note_origin: Option<f64>,
+    pub legato_origin: Option<f64>,
+}
 /// Absolute project position and prepared note origins. Negative origins retain trimmed-note phase.
 #[derive(Clone, Copy, Debug)]
 pub struct ModulationSourceContext {
     pub frame: u64,
     pub tempo_bpm: f32,
+    pub musical: Option<MusicalPosition>,
     pub note_origin: Option<i128>,
     pub legato_origin: Option<i128>,
 }
@@ -63,6 +71,7 @@ impl Default for ModulationSourceContext {
         Self {
             frame: 0,
             tempo_bpm: 120.0,
+            musical: None,
             note_origin: None,
             legato_origin: None,
         }
@@ -220,6 +229,7 @@ pub struct ModulationContext<'a> {
     pub shared_sources: Option<&'a super::ModulationSourceIndex>,
     pub frame: u64,
     pub tempo_bpm: f32,
+    pub musical: Option<MusicalPosition>,
     pub note_gate: f32,
     pub release_age: Option<u64>,
 }
@@ -228,6 +238,7 @@ impl Default for ModulationContext<'_> {
         Self {
             frame: 0,
             tempo_bpm: 120.0,
+            musical: None,
             local_sources: None,
             shared_sources: None,
             note_gate: 1.0,

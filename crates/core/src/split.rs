@@ -253,7 +253,7 @@ fn window_patterns(
     let boundary = raw_source(
         clip,
         clip.source_offset_frame
-            .saturating_add(at.saturating_sub(clip.start_frame)),
+            .saturating_add(project.midi_reference_position(clip, at)),
     );
     let mut left_notes = Vec::new();
     let mut right_notes = Vec::new();
@@ -350,7 +350,8 @@ fn crossing_note(project: &Project, clip: &Clip, pattern: &MidiPattern, at: u64)
     let Some(repeat) = clip.repeat.filter(|r| r.length_frames > 0) else {
         return false;
     };
-    let local = (u128::from(at - clip.start_frame) + u128::from(repeat.phase_frame))
+    let local = (u128::from(project.midi_reference_position(clip, at))
+        + u128::from(repeat.phase_frame))
         % u128::from(repeat.length_frames);
     pattern.notes.iter().any(|note| {
         repeat_note_bounds(project, clip, note)
@@ -382,10 +383,13 @@ pub(crate) fn note_occurrences(
         .repeat
         .filter(|r| r.length_frames > 0)
         .ok_or_else(|| Error("Expected a positive MIDI loop".into()))?;
+    let clock = project.musical_clock()?;
+    let mut reference_clip = clip.clone();
+    reference_clip.length_frames = project.midi_reference_position(clip, clip.end());
     let mut count = 0usize;
     for note in &pattern.notes {
         if let Some((start, end)) = repeat_note_bounds(project, clip, note) {
-            let range = repetitions(clip, start, end);
+            let range = repetitions(&reference_clip, start, end);
             let n = usize::try_from(range.end - range.start).map_err(|_| split_resource_error())?;
             count = count
                 .checked_add(n)
@@ -401,15 +405,19 @@ pub(crate) fn note_occurrences(
         let Some((start, end)) = repeat_note_bounds(project, clip, note) else {
             continue;
         };
-        for repetition in repetitions(clip, start, end) {
+        for repetition in repetitions(&reference_clip, start, end) {
             let shift =
                 repetition * i128::from(repeat.length_frames) - i128::from(repeat.phase_frame);
             let visible_start = (start + shift).max(0) as u64;
-            let visible_end = (end + shift).min(i128::from(clip.length_frames)) as u64;
+            let visible_end = (end + shift).min(i128::from(reference_clip.length_frames)) as u64;
             occurrences.push(Occurrence {
                 note: note.clone(),
-                start: clip.start_frame + visible_start,
-                end: clip.start_frame + visible_end,
+                start: clock.frame_for_reference(
+                    clip.start_frame,
+                    visible_start,
+                    project.tempo_bpm,
+                )?,
+                end: clock.frame_for_reference(clip.start_frame, visible_end, project.tempo_bpm)?,
             });
         }
     }
@@ -426,6 +434,7 @@ pub(crate) fn piece_pattern(
     mode: MidiNoteSplit,
     right_side: bool,
 ) -> Result<MidiPattern> {
+    let clock = project.musical_clock()?;
     let mut notes = Vec::new();
     let mut used = HashSet::new();
     notes
@@ -443,8 +452,14 @@ pub(crate) fn piece_pattern(
         if end <= start {
             continue;
         }
-        let start_tick = ticks_for_frames(project, start - piece_start);
-        let mut end_tick = ticks_for_frames(project, end - piece_start);
+        let start_tick = ticks_for_frames(
+            project,
+            clock.reference_position(piece_start, start, project.tempo_bpm),
+        );
+        let mut end_tick = ticks_for_frames(
+            project,
+            clock.reference_position(piece_start, end, project.tempo_bpm),
+        );
         if end_tick <= start_tick {
             end_tick = start_tick.saturating_add(1);
         }
@@ -464,7 +479,7 @@ pub(crate) fn piece_pattern(
             notes.push(note);
         }
     }
-    let frames = piece_end.saturating_sub(piece_start);
+    let frames = clock.reference_position(piece_start, piece_end, project.tempo_bpm);
     let mut length_ticks = ticks_for_frames(project, frames).max(1);
     if let Some(end) = notes
         .iter()

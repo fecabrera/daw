@@ -117,6 +117,16 @@ impl Chorus {
         tempo_bpm: f32,
         offsets: [f32; 8],
     ) -> [f32; 2] {
+        self.process_musical_at(input, frame, tempo_bpm, None, offsets)
+    }
+    fn process_musical_at(
+        &mut self,
+        input: [f32; 2],
+        frame: u64,
+        tempo_bpm: f32,
+        musical: Option<daw_unit_core::MusicalPosition>,
+        offsets: [f32; 8],
+    ) -> [f32; 2] {
         let p = self.parameters.each_mut().map(ModulationRamp::next_value);
         let o = self.external.process(offsets);
         let time = (f64::from(p[0]) + o[0]).clamp(5.0, 30.0);
@@ -144,7 +154,15 @@ impl Chorus {
         if self.last_frame != frame.checked_sub(1) {
             self.rate_phase = 0.0;
         }
-        self.phase = (self.clock.phase_at(frame, 0, base_rate) + self.rate_phase).rem_euclid(1.0);
+        let base_phase = if let Some(m) =
+            musical.filter(|_| self.rate_mode == daw_unit_core::LfoRateMode::Note)
+        {
+            self.clock
+                .phase_at_quarters(frame, 0, m.quarter, self.note_rate.beats(), base_rate)
+        } else {
+            self.clock.phase_at(frame, 0, base_rate)
+        };
+        self.phase = (base_phase + self.rate_phase).rem_euclid(1.0);
         self.rate_phase = (self.rate_phase + (rate - base_rate) / self.rate).rem_euclid(1.0);
         self.last_frame = Some(frame);
         self.next_frame = frame.saturating_add(1);
@@ -267,10 +285,11 @@ impl ModulationDestination for Chorus {
         inputs: &ModulationInputs,
         context: ModulationContext,
     ) -> Self::Audio {
-        self.process_modulated_at(
+        self.process_musical_at(
             input,
             context.frame,
             context.tempo_bpm,
+            context.musical,
             inputs.offsets(ModulationParameter::CHORUS),
         )
     }

@@ -59,9 +59,23 @@ impl LfoClock {
         self.correction = 0.0;
         self.remaining = 0;
     }
+    /// A map supplies integrated phase. Rate changes keep the shared correction lifecycle.
+    pub fn phase_at_quarters(
+        &mut self,
+        frame: u64,
+        origin: i128,
+        quarter: f64,
+        beats: f64,
+        rate: f64,
+    ) -> f64 {
+        self.phase_target(frame, origin, rate, (quarter / beats).rem_euclid(1.0))
+    }
     pub fn phase_at(&mut self, frame: u64, origin: i128, rate: f64) -> f64 {
         let elapsed = (i128::from(frame) - origin).max(0) as f64;
         let target = (elapsed * rate / self.sample_rate).rem_euclid(1.0);
+        self.phase_target(frame, origin, rate, target)
+    }
+    fn phase_target(&mut self, frame: u64, origin: i128, rate: f64, target: f64) -> f64 {
         let continuous = self.last_origin == origin
             && self
                 .last_frame
@@ -216,9 +230,26 @@ impl Lfo {
             _ => self.rate_phase = 0.0,
         }
         self.rate_last = Some((context.frame, origin, hz - base_hz));
-        let phase = self.clock.phase_at(context.frame, origin, base_hz)
-            + self.rate_phase
-            + self.phase.next();
+        let base_phase = if let Some(m) = context
+            .musical
+            .filter(|_| self.settings.rate_mode == daw_unit_core::LfoRateMode::Note)
+        {
+            let q_origin = match self.settings.restart {
+                LfoRestart::Transport => 0.0,
+                LfoRestart::Retrigger => m.note_origin.unwrap_or(0.0),
+                LfoRestart::Legato => m.legato_origin.unwrap_or(0.0),
+            };
+            self.clock.phase_at_quarters(
+                context.frame,
+                origin,
+                (m.quarter - q_origin).max(0.0),
+                self.settings.note_rate.beats(),
+                base_hz,
+            )
+        } else {
+            self.clock.phase_at(context.frame, origin, base_hz)
+        };
+        let phase = base_phase + self.rate_phase + self.phase.next();
         let depth = (self.depth.next() + self.offsets[0]).clamp(0.0, 1.0);
         self.effective = [depth as f32, hz as f32];
         for weight in &mut self.waves {

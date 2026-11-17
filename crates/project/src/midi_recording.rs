@@ -232,9 +232,9 @@ impl MidiCapture {
             self.close(token, end)?;
         }
         let project = &self.base.project;
+        let clock = project.musical_clock().map_err(|e| error(e.to_string()))?;
         let tick = |frame: u64| -> Result<u32> {
-            let ticks = frame.saturating_sub(origin) as f64 * f64::from(project.tempo_bpm) * 960.0
-                / (f64::from(project.sample_rate_hz) * 60.0);
+            let ticks = clock.interval_quarters(origin, frame).max(0.0) * 960.0;
             if !ticks.is_finite() || ticks > f64::from(u32::MAX - 1) {
                 return Err(error("Recorded MIDI timing exceeds pattern bounds"));
             }
@@ -263,7 +263,15 @@ impl MidiCapture {
                 });
             }
             // The shared forward conversion must contain the requested exclusive end.
-            while project.midi_frame(pattern.length_ticks) < end.saturating_sub(origin) {
+            while clock
+                .frame_for_reference(
+                    origin,
+                    project.midi_frame(pattern.length_ticks),
+                    project.tempo_bpm,
+                )
+                .map_err(error)?
+                < end
+            {
                 pattern.length_ticks = pattern
                     .length_ticks
                     .checked_add(1)
