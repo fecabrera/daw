@@ -69,6 +69,16 @@ jobs:
           dbus-run-session -- xvfb-run -a cargo run --locked -p daw-desktop -- --smoke-test 2>&1 | tee work/ci-logs/gtk-window.log
           cargo run --locked -p daw-desktop -- --font-license > work/ci-logs/font-license.log
 
+      - name: Check external plugin hosting with owned fixtures
+        id: plugin_hosting
+        run: |
+          cargo build --locked -p daw-desktop -p daw-cli -p daw-plugin-host-fixtures -p daw-plugin-scan -p daw-drive-clap -p daw-drive-vst3 2>&1 | tee work/ci-logs/hosting-build.log
+          cargo build --locked -p daw-engine --example native_fixture_check --example native_graph_check -p daw-plugin-host --example native_host_check --example native_preset_check 2>&1 | tee -a work/ci-logs/hosting-build.log
+          python tools/check_plugin_hosting.py 2>&1 | tee work/ci-logs/hosting-fixtures.log
+          python tools/check_plugin_scanner.py --embedded --scanner target/debug/daw-desktop${{ runner.os == 'Windows' && '.exe' || '' }} 2>&1 | tee work/ci-logs/hosting-embedded-desktop.log
+          python tools/check_plugin_scanner.py --embedded --scanner target/debug/daw-cli${{ runner.os == 'Windows' && '.exe' || '' }} 2>&1 | tee work/ci-logs/hosting-embedded-cli.log
+          python tools/check_plugin_scanner.py --host-check target/debug/examples/native_host_check${{ runner.os == 'Windows' && '.exe' || '' }} --graph-check target/debug/examples/native_graph_check${{ runner.os == 'Windows' && '.exe' || '' }} 2>&1 | tee work/ci-logs/hosting-drive.log
+
       - name: Check Intel macOS targets
         if: runner.os == 'macOS' && runner.arch == 'ARM64'
         run: |

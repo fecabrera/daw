@@ -10,6 +10,7 @@ before the command and its arguments.
 | Command | Purpose |
 | --- | --- |
 | [tracks](tracks.md) | List tracks, inspect a track name, or add an empty audio/MIDI/beat track. |
+| [plugins](plugins.md) | Discover installed VST3/CLAP descriptors; audio hosting remains pending. |
 | [collect-sources](collect-sources.md) | Copy original media into a saved project. |
 | [validate](validate.md) | Check a project and its referenced audio. |
 | [render](render.md) | Export the saved mix as WAV, MP3 or AAC. |

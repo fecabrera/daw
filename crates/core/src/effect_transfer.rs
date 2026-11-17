@@ -224,7 +224,18 @@ impl Project {
         units.iter().enumerate().all(|(index, id)| {
             !units[..index].contains(id)
                 && original.iter().find(|e| e.id == *id).is_some_and(|effect| {
-                    effect.unit.modulations().iter().all(|route| {
+                    let pcm = match &effect.unit {
+                        EffectSettings::Hosted(settings) => {
+                            settings.audio_inputs.iter().all(|input| {
+                                self.sidechain_source_available(
+                                    owner.unwrap_or(self.project_id),
+                                    input.source_track,
+                                )
+                            })
+                        }
+                        _ => true,
+                    };
+                    pcm && effect.unit.modulations().iter().all(|route| {
                         route.sidechain.is_none_or(|s| {
                             self.sidechain_source_available(
                                 owner.unwrap_or(self.project_id),
@@ -268,6 +279,14 @@ impl Project {
             || ids.iter().any(|id| !original.iter().any(|e| e.id == *id))
         {
             return Err(Error("Invalid effect group or insertion point".into()));
+        }
+        if duplicate
+            && original
+                .iter()
+                .filter(|e| ids.contains(&e.id))
+                .any(|e| !e.unit.can_duplicate_hosted())
+        {
+            return Err(Error("Plugin copy requires a current opaque state capture; parameter metadata cannot replace plugin state".into()));
         }
         let incoming: Vec<_> = original
             .iter()

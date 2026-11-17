@@ -85,6 +85,7 @@ impl EqSettings {
 /// Unknown effect payloads survive save/open and pass audio through.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectSettings {
+    Hosted(crate::HostedSettings),
     Eq3(EqSettings),
     Loudness(LoudnessSettings),
     MultibandEq(MultibandEqSettings),
@@ -119,6 +120,10 @@ struct StoredEffect {
 impl Serialize for EffectSettings {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let stored = match self {
+            Self::Hosted(settings) => StoredEffect {
+                type_id: crate::HOSTED_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
             Self::Loudness(settings) => StoredEffect {
                 type_id: LOUDNESS_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
@@ -214,7 +219,17 @@ impl Serialize for EffectSettings {
 impl<'de> Deserialize<'de> for EffectSettings {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let stored = StoredEffect::deserialize(deserializer)?;
-        if stored.type_id == LOUDNESS_TYPE_ID
+        if stored.type_id == crate::HOSTED_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_some_and(|v| v <= u64::from(crate::HOSTED_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::Hosted)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == LOUDNESS_TYPE_ID
             && stored
                 .state
                 .get("version")
@@ -437,6 +452,9 @@ impl EffectSettings {
     /// their existing bypass behavior; this does not add dry alignment latency.
     pub fn tail_frames(&self, sample_rate_hz: u32) -> u64 {
         match self {
+            Self::Hosted(s) => (u128::from(s.tail_frames) * u128::from(sample_rate_hz)
+                / u128::from(s.metadata_rate.max(1)))
+            .min(u128::from(u64::MAX)) as u64,
             Self::PlateReverb(s) => s.tail_frames(sample_rate_hz),
             Self::AmbientReverb(s) => s.tail_frames(sample_rate_hz),
             Self::ShimmerReverb(s) => s.tail_frames(sample_rate_hz),
@@ -468,6 +486,7 @@ impl EffectSettings {
     /// Destination-owned routes; all current effect destinations require shared sources.
     pub fn modulations(&self) -> &[crate::Modulation] {
         match self {
+            Self::Hosted(s) => &s.modulations,
             Self::AutoFilter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Filter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
@@ -495,6 +514,7 @@ impl EffectSettings {
     /// Mutable routes for identity remapping during host editing operations.
     pub fn modulations_mut(&mut self) -> &mut [crate::Modulation] {
         match self {
+            Self::Hosted(s) => &mut s.modulations,
             Self::AutoFilter(s) => &mut s.modulations,
             Self::Filter(s) => &mut s.modulations,
             Self::Drive(s) => &mut s.modulations,
@@ -521,6 +541,7 @@ impl EffectSettings {
 
     pub fn valid(&self) -> bool {
         match self {
+            Self::Hosted(s) => s.valid() && s.plugin.role == crate::HostedRole::Effect,
             Self::Loudness(s) => s.valid(),
             Self::MultibandEq(eq) => eq.valid(),
             Self::HarmonicLift(s) => s.valid(),
@@ -544,6 +565,7 @@ impl EffectSettings {
             Self::PlateReverb(settings) => settings.valid(),
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
+                    crate::HOSTED_TYPE_ID => Some(crate::HOSTED_STATE_VERSION),
                     LOUDNESS_TYPE_ID => Some(LOUDNESS_STATE_VERSION),
                     MULTIBAND_EQ_TYPE_ID => Some(MULTIBAND_EQ_STATE_VERSION),
                     HARMONIC_LIFT_TYPE_ID => Some(HARMONIC_LIFT_STATE_VERSION),
@@ -592,6 +614,9 @@ impl EffectInstance {
     }
     pub fn duplicate(&self) -> Self {
         let mut copy = self.clone();
+        if let EffectSettings::Hosted(s) = &mut copy.unit {
+            *s = s.duplicate();
+        }
         copy.id = uuid::Uuid::new_v4();
         for route in copy.unit.modulations_mut() {
             route.id = uuid::Uuid::new_v4();

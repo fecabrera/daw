@@ -15,8 +15,23 @@ pub(crate) fn validate_routes(
                 .chain(&l.oscillator_modulations)
                 .chain(l.sampler.iter().flat_map(|s| &s.modulations))
                 .chain(l.noise.iter().flat_map(|n| &n.modulations))
+                .chain(
+                    l.hosted
+                        .iter()
+                        .filter_map(|s| s.settings())
+                        .flat_map(|s| &s.modulations),
+                )
         })
     {
+        if route.parameter == daw_unit_core::ModulationParameter::HostedValue
+            && route
+                .source
+                .is_some_and(|source| !crate::effect_transfer::source_available(instrument, source))
+        {
+            return Err(Error(
+                "Hosted parameters require shared modulation sources".into(),
+            ));
+        }
         if route
             .source
             .is_some_and(|source| instrument.is_none_or(|i| i.modulation_source(source).is_none()))

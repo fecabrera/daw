@@ -81,6 +81,11 @@ Stem separation supports four or six stems using local HTDemucs models through C
 
 </details>
 
+External VST3 and CLAP effects and instruments use the shared renderer. The desktop
+discovers standard plugin folders and provides mapped controls, native editors,
+shared modulation and audio sidechains. See [External plugins](docs/plugins.md)
+for use and platform limits.
+
 ## Documentation
 
 - [User guide](docs/README.md): working with clips, instruments, modulation, and effects.

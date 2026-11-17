@@ -1,3 +1,7 @@
+mod hosted_panel;
+mod hosting;
+mod plugin_settings;
+pub use hosting::{PluginRequest, PluginSnapshot};
 mod midi;
 mod midi_service;
 mod midi_writer;
@@ -893,6 +897,7 @@ struct LoopDrag {
 }
 
 pub struct DawUi {
+    hosting: hosting::State,
     midi: midi::State,
     midi_after_take: Option<Action>,
     eq_graph_preview: eq_graph_preview::State,
@@ -1061,6 +1066,7 @@ pub struct DawUi {
 impl Default for DawUi {
     fn default() -> Self {
         Self {
+            hosting: Default::default(),
             midi: Default::default(),
             midi_after_take: None,
             eq_graph_preview: Default::default(),
@@ -1365,6 +1371,7 @@ impl DawUi {
         self.error = Some(error.to_string());
     }
     fn changed(&mut self) {
+        self.session.plugin_host = self.hosting.client.clone();
         self.repaint_until = Some(std::time::Instant::now() + Duration::from_millis(250));
         self.mark_dirty();
         self.sync_needed = true;
@@ -1492,6 +1499,9 @@ impl DawUi {
             self.unsaved_prompt = false;
             return;
         }
+        if self.defer_hosted(hosting::Deferred::Save(save_as)) {
+            return;
+        }
         let folder = self.session.folder.clone().unwrap();
         if self.pending.is_none() && !self.unsaved_prompt {
             self.save_snapshot(folder);
@@ -1518,6 +1528,12 @@ impl DawUi {
             self.unsaved_prompt = false;
             return;
         };
+        if self.defer_hosted(hosting::Deferred::SaveNamed(
+            name.clone(),
+            Some(parent.clone()),
+        )) {
+            return;
+        }
         let snapshot = match self.display_save_snapshot() {
             Ok(snapshot) => snapshot,
             Err(error) => {
@@ -1620,6 +1636,9 @@ impl DawUi {
         }
     }
     fn export(&mut self, path: PathBuf, overwrite: bool, settings: ExportSettings) {
+        if self.defer_hosted(hosting::Deferred::Export(path.clone(), overwrite, settings)) {
+            return;
+        }
         let mut session = self.session.clone();
         let status = export_status::ExportStatus::new(
             path.clone(),
@@ -2451,6 +2470,7 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.poll_hosting(ui.ctx());
         self.update_bounce_input_guard(ui.ctx());
         self.update_clip_edge_mode(ui);
         self.editor_transients
@@ -2902,7 +2922,8 @@ impl DawUi {
             }
             self.delete_clip_shortcut(&ctx, ui.is_enabled());
         }
-        if ctx.input(|i| !i.pointer.any_down() || !i.focused)
+        if self.hosting.gestures.is_empty()
+            && ctx.input(|i| !i.pointer.any_down() || !i.focused)
             && let Some(history) = &mut self.history
         {
             history.finish_group();
@@ -6265,6 +6286,7 @@ impl DawUi {
             let enabled =
                 self.job.is_none() && !self.separation_models.busy() && self.error.is_none();
             let mut audio = settings::AudioControls {
+                plugins: Some(&self.hosting.scan),
                 midi_devices: Some(&self.midi.devices),
                 midi_enabled: enabled && !self.midi.busy(),
                 midi_connected: self.midi.connected,
@@ -6284,6 +6306,12 @@ impl DawUi {
                 &mut audio,
             ) {
                 self.settings_open = false;
+            }
+            if audio.plugin_cancel_requested {
+                self.hosting.requests.push(PluginRequest::CancelScan);
+            }
+            if let Some(mode) = audio.plugin_action.take() {
+                self.hosting.requests.push(PluginRequest::Scan(mode));
             }
             let midi_panic_requested = audio.midi_panic_requested;
             let midi_retry_requested = audio.midi_retry_requested;

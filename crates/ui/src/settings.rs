@@ -146,6 +146,7 @@ impl TitlebarStyle {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
+    pub plugin_folders: Vec<daw_plugin_host::SearchRoot>,
     pub midi: crate::MidiPreferences,
     pub audio: daw_output::AudioSettings,
     pub audio_quality: daw_core::AudioQuality,
@@ -170,6 +171,12 @@ impl AppSettings {
         let Ok(mut settings) = serde_json::from_value::<Self>(value.clone()) else {
             return Self::default();
         };
+        settings.plugin_folders.retain(|r| r.path.is_absolute());
+        settings.plugin_folders.truncate(64);
+        let mut seen = std::collections::HashSet::new();
+        settings
+            .plugin_folders
+            .retain(|r| seen.insert((r.format, r.path.clone())));
         settings.midi.recording_offset_ms = settings.midi.recording_offset_ms.clamp(-200, 200);
         if settings.midi.count_in_bars == 0 {
             settings.midi.count_in_bars = 1;
@@ -310,6 +317,9 @@ fn model_row(
 /// Discovery data and actions for the main Settings device selectors.
 #[derive(Default)]
 pub struct AudioControls<'a> {
+    pub(super) plugins: Option<&'a crate::plugin_settings::ScanStatus>,
+    pub plugin_action: Option<daw_plugin_host::ScanMode>,
+    pub plugin_cancel_requested: bool,
     pub midi_devices: Option<&'a [crate::MidiDevice]>,
     pub midi_enabled: bool,
     pub midi_connected: bool,
@@ -332,14 +342,16 @@ enum Group {
     TimeStretch,
     Midi,
     StemSeparation,
+    Plugins,
 }
 impl Group {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::Appearance,
         Self::Playback,
         Self::TimeStretch,
         Self::Midi,
         Self::StemSeparation,
+        Self::Plugins,
     ];
     fn label(self) -> &'static str {
         match self {
@@ -348,8 +360,12 @@ impl Group {
             Self::TimeStretch => "Time stretch",
             Self::Midi => "MIDI",
             Self::StemSeparation => "Stem Separation",
+            Self::Plugins => "Plugins",
         }
     }
+}
+pub(super) fn select_plugins(ctx: &Context) {
+    ctx.data_mut(|d| d.insert_temp(group_id(), Group::Plugins));
 }
 fn group_id() -> egui::Id {
     egui::Id::new("app-settings-group")
@@ -857,6 +873,9 @@ pub fn show(
                                     Group::Playback => playback(ui, settings, audio, label_width),
                                     Group::TimeStretch => time_stretch(ui, settings, label_width),
                                     Group::Midi => midi(ui, settings, audio, label_width),
+                                    Group::Plugins => {
+                                        crate::plugin_settings::show(ui, settings, audio)
+                                    }
                                     Group::StemSeparation => separation(
                                         ui,
                                         models,
@@ -960,6 +979,7 @@ mod tests {
                 (Group::TimeStretch, "Default engine"),
                 (Group::Midi, "Split MIDI notes"),
                 (Group::StemSeparation, "CPU model"),
+                (Group::Plugins, "Default folders"),
                 (Group::Appearance, "Theme"),
             ] {
                 frame(&ctx, &mut settings, vec![]);
@@ -983,6 +1003,7 @@ mod tests {
                     "Default engine",
                     "Split MIDI notes",
                     "CPU model",
+                    "Default folders",
                 ] {
                     assert_eq!(
                         text(label),
@@ -1497,5 +1518,28 @@ mod tests {
         assert!(!egui::Popup::is_any_open(&ctx));
         frame(&ctx, &mut settings, vec![key(false)]);
         assert!(frame(&ctx, &mut settings, vec![key(true)]).0);
+    }
+    #[test]
+    fn plugin_folder_preferences_round_trip_and_reject_relative_or_duplicate_roots() {
+        let root = std::env::temp_dir().join("daw-plugin-preferences-test");
+        let folder = daw_plugin_host::SearchRoot {
+            format: daw_plugin_host::PluginFormat::Vst3,
+            path: root,
+        };
+        let settings = AppSettings {
+            plugin_folders: vec![folder.clone()],
+            ..Default::default()
+        };
+        assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
+        let mut value = serde_json::to_value(&settings).unwrap();
+        value["plugin_folders"] =
+            serde_json::json!([folder.clone(),folder,{"format":"clap","path":"relative"}]);
+        assert_eq!(
+            AppSettings::from_json(Some(&value.to_string()))
+                .plugin_folders
+                .len(),
+            1
+        );
+        assert!(AppSettings::from_json(Some("{}")).plugin_folders.is_empty());
     }
 }

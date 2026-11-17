@@ -2,6 +2,11 @@ mod bounce;
 mod captured_taps;
 pub use bounce::{BounceCapture, BounceFrame, bounce_tail_frames, offline_tail_cap};
 mod effect_updates;
+mod hosted_block;
+mod hosted_control_delay;
+mod hosted_graph;
+mod hosted_node;
+mod hosted_transport;
 pub use effect_updates::{EffectUpdate, EffectUpdateFallback};
 mod beat;
 mod beat_gain;
@@ -39,8 +44,17 @@ pub use transport_cache::{TransportCache, TransportCacheMemory};
 /// Maximum bounded PCM chunk accepted by note-audition hosts.
 pub const NOTE_AUDITION_MAX_CHUNK_FRAMES: usize = 1 << 20;
 
+/// Worker endpoint and immutable state owners. No mutable native instance is cloned.
+#[derive(Clone, Default)]
+pub struct ExternalPreparation {
+    pub host: Option<Arc<daw_plugin_host::HostClient>>,
+    pub states: daw_plugin_host::StateBank,
+    pub offline: bool,
+    pub publish: bool,
+}
 #[derive(Clone)]
 pub struct RenderPlan {
+    pub external: ExternalPreparation,
     pub beat_tracks: HashMap<Id, BeatVoicePlan>,
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
@@ -179,6 +193,10 @@ fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
 /// Stable identity for UI parameter telemetry. Layer IDs are scoped to their track.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModulationTarget {
+    Hosted {
+        unit: Id,
+        parameter: Id,
+    },
     Sidechain {
         route: Id,
     },
@@ -228,8 +246,8 @@ pub enum ModulationTarget {
 
 /// Clone only on control/workers: mutable DSP state is independent and meter handles detach.
 /// Immutable decoded/prepared audio remains shared.
-#[derive(Clone)]
 pub struct Renderer {
+    hosted: Option<hosted_graph::HostedGraph>,
     pub clock: Arc<daw_core::MusicalClock>,
     capture_controls: Option<Vec<Vec<daw_unit_core::ModulationValue>>>,
     /// Prepared model. Update only through an effect transaction or renderer inheritance.
@@ -286,8 +304,58 @@ struct TrackGains {
     peak: [f32; 2],
 }
 impl Renderer {
+    /// Worker-only built-in snapshot. Native processing state must be rebuilt
+    /// independently and replayed, so hosted graphs have no clone operation.
+    pub fn snapshot(&self) -> Option<Self> {
+        if self.hosted.is_some() {
+            return None;
+        }
+        Some(Self {
+            hosted: None,
+            clock: self.clock.clone(),
+            capture_controls: self.capture_controls.clone(),
+            plan: self.plan.clone(),
+            end_frame: self.end_frame,
+            recording: self.recording,
+            live_clock: self.live_clock,
+            monitor_only: self.monitor_only,
+            audio_tracks: self.audio_tracks.clone(),
+            track_index: self.track_index.clone(),
+            effect_tracks: self.effect_tracks.clone(),
+            playhead: self.playhead,
+            playing: self.playing,
+            paused: self.paused,
+            playback_start: self.playback_start,
+            ramp: self.ramp,
+            gains: self.gains.clone(),
+            effects: self.effects.clone(),
+            master_effects: self.master_effects.clone(),
+            alignment: self.alignment.clone(),
+            buses: self.buses.clone(),
+            sidechains: self.sidechains.clone(),
+            sidechain_post: self.sidechain_post.clone(),
+            midi: self.midi.clone(),
+            master: self.master,
+            master_target: self.master_target,
+            master_remaining: self.master_remaining,
+            transition: self.transition,
+            transition_from: self.transition_from,
+            previous: self.previous,
+            latent_held_mix: self.latent_held_mix,
+            source_fingerprint: self.source_fingerprint,
+            rendered_fingerprint: self.rendered_fingerprint,
+            effect_fingerprint: self.effect_fingerprint,
+            prime_offset: self.prime_offset,
+            prime_pending: self.prime_pending,
+            buffering: self.buffering,
+        })
+    }
     pub fn new(plan: RenderPlan) -> Self {
-        let plan = plan.prepare_beats();
+        Self::try_new(plan).expect("renderer preparation failed")
+    }
+    pub fn try_new(plan: RenderPlan) -> daw_plugin_host::Result<Self> {
+        let mut plan = plan.prepare_beats();
+        let mut native = hosted_node::HostedNode::prepare_instances(&mut plan)?;
         let clock = Arc::new(
             plan.project
                 .musical_clock()
@@ -445,6 +513,7 @@ impl Renderer {
         }
         let sidechain_post = vec![[0.0; 4]; plan.project.tracks.len()];
         let mut renderer = Self {
+            hosted: None,
             clock,
             sidechains,
             sidechain_post,
@@ -482,8 +551,14 @@ impl Renderer {
             prime_pending: false,
             buffering: false,
         };
+        if !renderer.plan.project.hosted_units().is_empty() {
+            renderer.hosted = Some(hosted_graph::HostedGraph::prepare(
+                &mut renderer,
+                &mut native,
+            )?);
+        }
         renderer.prime_latency(false, false);
-        renderer
+        Ok(renderer)
     }
     /// Read the last processed parameters without advancing DSP or allocating.
     /// Auto-filter returns cutoff L/R Hz, Q, level dB, wet fraction.
@@ -500,6 +575,9 @@ impl Renderer {
     /// and 11..27 for up to sixteen grain positions from one active voice.
     pub fn modulation_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {
         match target {
+            ModulationTarget::Hosted { unit, parameter } => {
+                self.hosted.as_ref()?.snapshot(unit, parameter)
+            }
             ModulationTarget::Sidechain { route } => {
                 self.sidechains.readings(route).map(parameter_snapshot)
             }
@@ -705,6 +783,10 @@ impl Renderer {
         id: Id,
         meter: std::sync::Arc<daw_unit_core::BandMeter<3>>,
     ) {
+        if let Some(graph) = &mut self.hosted {
+            graph.attach_effect_meter(id, meter.clone());
+        }
+
         self.master_effects.set_output_meter(id, &meter);
         for midi in self.midi.iter_mut().flatten() {
             midi.set_effect_output_meter(id, &meter);
@@ -788,7 +870,12 @@ impl Renderer {
         let old_loop = &old.plan.project.transport.r#loop;
         // A new/removed baked source changes ownership of source DSP history.
         // Compare cached worker tags; do not inspect source metadata on the callback.
-        self.rendered_fingerprint == old.rendered_fingerprint
+        self.hosted.as_ref().zip(old.hosted.as_ref()).map_or(
+            self.hosted.is_none() && old.hosted.is_none(),
+            |(next, previous)| {
+                next.compatible(previous) && self.source_fingerprint == old.source_fingerprint
+            },
+        ) && self.rendered_fingerprint == old.rendered_fingerprint
             && self.alignment.compatible(&old.alignment)
             && self.sidechains.compatible(&old.sidechains)
             && self.midi.iter().enumerate().all(|(index, runtime)| {
@@ -818,7 +905,8 @@ impl Renderer {
     /// Shared preparation admission for cache workers and direct reconstruction.
     /// A bus chain must retain the history of its complete child mix.
     fn needs_processing_history(&self) -> bool {
-        if self.sidechains.active()
+        if self.hosted.is_some()
+            || self.sidechains.active()
             || self
                 .plan
                 .project
@@ -854,12 +942,37 @@ impl Renderer {
     pub fn prepare_transport(&mut self, state: TransportState) {
         self.prepare_transport_cancellable(state, || false);
     }
+    pub fn try_prepare_transport_cancellable(
+        &mut self,
+        state: TransportState,
+        mut cancelled: impl FnMut() -> bool,
+    ) -> daw_plugin_host::Result<bool> {
+        if self.hosted.is_none() {
+            return Ok(self.prepare_transport_cancellable(state, cancelled));
+        }
+        let mut next = Self::try_new(self.plan.clone())?;
+        if !next.prepare_hosted_transport(state, &mut cancelled) {
+            return Ok(false);
+        }
+        if let Some(unit) = next.hosted_fault() {
+            return Err(daw_plugin_host::Error::Invalid(format!(
+                "Plugin history preparation failed in unit {unit}"
+            )));
+        }
+        *self = next;
+        Ok(true)
+    }
     /// Worker-only history replay. Cancellation is checked once per prepared block.
     pub fn prepare_transport_cancellable(
         &mut self,
         state: TransportState,
         mut cancelled: impl FnMut() -> bool,
     ) -> bool {
+        if self.hosted.is_some() {
+            return self
+                .try_prepare_transport_cancellable(state, cancelled)
+                .unwrap_or(false);
+        }
         self.playhead = state.frame;
         self.playing = state.playing;
         self.paused = state.paused;
@@ -1017,6 +1130,9 @@ impl Renderer {
             }
             g.remaining = fade_frames;
         }
+        if aligned && let (Some(next), Some(previous)) = (&mut self.hosted, &mut old.hosted) {
+            next.inherit(previous);
+        }
         if !aligned {
             self.reset_processing();
             self.prime_latency(self.playing || self.paused, true);
@@ -1072,6 +1188,27 @@ impl Renderer {
             .any(|runtime| runtime.audition_active())
     }
 
+    pub fn hosted_fault(&self) -> Option<Id> {
+        self.hosted.as_ref().and_then(|g| g.fault())
+    }
+    /// Conservative tail from measured native metadata and portable units.
+    pub fn offline_tail_frames(&self) -> u64 {
+        self.plan
+            .project
+            .all_effects()
+            .fold(0u64, |sum, e| {
+                sum.saturating_add(e.unit.tail_frames(self.plan.project.sample_rate_hz))
+            })
+            .saturating_add(
+                self.plan
+                    .project
+                    .hosted_units()
+                    .into_iter()
+                    .filter(|(_, s)| s.plugin.role == daw_unit_core::HostedRole::Instrument)
+                    .map(|(_, s)| s.tail_frames)
+                    .fold(0u64, u64::saturating_add),
+            )
+    }
     pub fn latency_frames(&self) -> u64 {
         self.alignment.total
     }
@@ -1096,6 +1233,9 @@ impl Renderer {
         frame
     }
     fn reset_processing(&mut self) {
+        if let Some(graph) = &mut self.hosted {
+            graph.invalidate();
+        }
         self.prime_offset = 0;
         self.prime_pending = true;
         self.alignment.reset();
@@ -1119,6 +1259,11 @@ impl Renderer {
         }
     }
     fn prime_latency(&mut self, live: bool, realtime: bool) {
+        if self.hosted.is_some() {
+            self.alignment.live = live;
+            self.prime_pending = false;
+            return;
+        }
         self.alignment.live = live;
         if self.alignment.total == 0 {
             self.prime_pending = false;
@@ -1147,11 +1292,33 @@ impl Renderer {
         self.prime_offset = 0;
     }
     pub fn seek(&mut self, frame: u64) {
+        self.try_seek(frame).expect("seek preparation failed");
+    }
+    /// Native seeks run on a worker with the main broker pumping. A fresh
+    /// instance and history replay replace unsupported native DSP snapshots.
+    pub fn try_seek(&mut self, frame: u64) -> daw_plugin_host::Result<()> {
+        if self
+            .hosted
+            .as_ref()
+            .is_some_and(|g| g.evaluated || frame > 0)
+        {
+            let mut next = Self::try_new(self.plan.clone())?;
+            let state = TransportState {
+                frame,
+                playing: self.playing,
+                paused: self.paused,
+                playback_start: self.playback_start,
+            };
+            next.prepare_hosted_transport(state, &mut || false);
+            *self = next;
+            return Ok(());
+        }
         self.reset_processing();
         self.playhead = frame;
         self.prime_latency(self.playing || self.paused, true);
         self.transition_from = self.previous;
         self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
+        Ok(())
     }
     /// Control-worker only; memory is included in renderer admission.
     pub fn prepare_live_midi(&mut self) {
@@ -1258,6 +1425,10 @@ impl Renderer {
         self.render_offline(out);
     }
     pub fn render_offline(&mut self, out: &mut [[f32; 2]]) {
+        if self.hosted.is_some() {
+            self.hosted_offline(out);
+            return;
+        }
         if self.prime_pending || (self.alignment.live && self.alignment.total > 0) {
             self.reset_processing();
             self.prime_latency(false, false);
@@ -1336,6 +1507,9 @@ impl Renderer {
             })
     }
     pub fn next_sample(&mut self) -> [f32; 2] {
+        if self.hosted.is_some() {
+            return self.hosted_sample();
+        }
         if self.playing {
             if self.prime_pending {
                 self.prime_latency(true, true);
@@ -1913,6 +2087,7 @@ mod tests {
             transpose: 0,
         });
         RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),

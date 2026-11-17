@@ -75,13 +75,14 @@ Open Settings from the app-name menu on macOS or File on Windows/Linux. Use Comm
 
 Choose a group in the left sidebar. The right panel shows only that group’s settings. The selected group is remembered during the app session; switching groups does not change preferences or modify the project.
 
-Settings groups controls into five categories:
+Settings groups controls into six categories:
 
 - **Appearance**: titlebar style where supported, theme, and accent color.
 - **Playback**: input/output devices, audio quality defaults, and seek cache profile.
 - **Time stretch**: the default engine for new projects.
 - **MIDI**: input device/channel, count-in, recording offset, Panic, retained-take retry, and note splitting.
 - **Stem Separation**: local model selection and validation.
+- **Plugins**: default and additional VST3/CLAP folders, scan/rescan, retry/cancel, and scan status.
 
 Choose **Dark**, **Light**, or **Mist** under **Appearance > Theme**. Light uses near-white backgrounds, white panels, and pale grey separators. Mist uses cool grey backgrounds and pale panels. All themes keep your selected accent and clip colors.
 

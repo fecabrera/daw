@@ -237,6 +237,20 @@ impl SaveSnapshot {
         store: &mut Store,
     ) -> Result<SavedSession> {
         self.session.project.validate().map_err(error)?;
+        let mut states = self.session.plugin_states.clone();
+        for owner in &self.protected {
+            states.merge(&owner.plugin_states);
+        }
+        for owner in std::iter::once(&self.session).chain(&self.protected) {
+            for (_, unit) in owner.project.hosted_units() {
+                if let Some(reference) = &unit.state {
+                    states
+                        .restore(unit.plugin.identity.format(), reference)
+                        .map_err(error)?;
+                }
+            }
+        }
+        states.save(folder).map_err(error)?;
         let canonical_folder = fs::canonicalize(folder).map_err(error)?;
         match fs::symlink_metadata(folder.join("project.json")) {
             Ok(metadata) if metadata.is_file() && !crate::file_publish::is_reparse(&metadata) => {}

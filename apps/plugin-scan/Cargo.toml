@@ -1,0 +1,10 @@
+[package]
+name = "daw-plugin-scan"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[dependencies]
+daw-plugin-host.workspace = true

@@ -72,6 +72,7 @@ pub struct ModulationSourceId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModulationParameter {
+    HostedValue,
     EnvelopeAttack,
     EnvelopeDecay,
     EnvelopeSustain,
@@ -373,6 +374,7 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::HostedValue => "Value",
             Self::HarmonicInput => "Wet Input",
             Self::HarmonicDrive => "Drive",
             Self::HarmonicPush => "Push",
@@ -495,6 +497,7 @@ impl ModulationParameter {
     }
     pub fn limit(self) -> f32 {
         match self {
+            Self::HostedValue => f32::MAX,
             Self::HarmonicInput | Self::HarmonicLimit => 24.0,
             Self::PlatePreDelay => 300.0,
             Self::PlateDecay => 6.0,

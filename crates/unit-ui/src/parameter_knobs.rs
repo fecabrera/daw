@@ -94,6 +94,7 @@ fn ott_frequency(low: bool) -> KnobSpec {
 }
 pub fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::HostedValue => KnobSpec::new("Value", 0.0..=1.0, 0.0, 0.01),
         Parameter::ShimmerSize => percent("Size", 0.75),
         Parameter::ShimmerVowel => percent("Position", 0.0),
         Parameter::ShimmerVowelAmount => percent("Amount", 0.0),
@@ -472,6 +473,14 @@ fn signed_pitch(value: f32) -> String {
 pub fn amount(parameter: Parameter) -> KnobSpec {
     let (mapping, format, endpoints): (AmountMapping, fn(f32) -> String, [&str; 2]) =
         match parameter {
+            Parameter::HostedValue => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.3}"),
+                ["−1", "+1"],
+            ),
             Parameter::ChorusDelay => (
                 AmountMapping::Offset {
                     origin: 5.0,

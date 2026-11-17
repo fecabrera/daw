@@ -51,7 +51,7 @@ fn disable(s: &mut S) {
         S::MultibandEq(s) => s.enabled = false,
         S::Exciter(s) => s.enabled = false,
         S::MultibandCompressor(s) => s.enabled = false,
-        S::Missing { .. } => unreachable!(),
+        S::Hosted(_) | S::Missing { .. } => unreachable!(),
     }
 }
 
@@ -65,7 +65,7 @@ fn all_effect_controls_preserve_history_without_construction_or_callback_heap_ca
         for _ in 0..1024 {
             active.next_sample();
         }
-        let mut old_reference = active.clone();
+        let mut old_reference = active.snapshot().expect("built-in snapshot");
         let mut next = plan.clone();
         disable(&mut next.project.tracks[0].effects[1].unit);
         let mut update =
@@ -111,7 +111,7 @@ fn structural_updates_prepare_only_new_processors_and_retain_surviving_histories
         }
         let mut update = daw_engine::EffectUpdate::prepare(&plan, next.clone()).unwrap();
         assert_eq!(update.prepared_processors(), usize::from(step == 1));
-        let mut reference_old = active.clone();
+        let mut reference_old = active.snapshot().expect("built-in snapshot");
         let mut expected = Renderer::new(next.clone());
         // Existing inheritance does not transfer Track <-> Master owners. For that case,
         // check the patch's retained tail and metadata instead of this legacy reference.
@@ -309,6 +309,7 @@ fn note_plan() -> RenderPlan {
         })
         .unwrap();
     RenderPlan {
+        external: Default::default(),
         project,
         beat_tracks: Default::default(),
         audio: Default::default(),
@@ -368,7 +369,7 @@ fn saved_layer_order_does_not_change_the_runtime_owner_of_a_control_update() {
     s.gain = 0.9;
     let mut update = daw_engine::EffectUpdate::prepare(&plan, next.clone()).unwrap();
     assert_eq!(update.prepared_processors(), 0);
-    let mut previous = active.clone();
+    let mut previous = active.snapshot().expect("built-in snapshot");
     let mut expected = Renderer::new(next);
     expected.inherit(&mut previous);
     realtime(|| active.apply_effect_update(&mut update));
@@ -420,7 +421,7 @@ fn internal_and_external_route_controls_preserve_smoothing_without_processor_pre
         next.project.tracks[0].effects[0].unit.modulations_mut()[0].amount = 0.8;
         let mut update = daw_engine::EffectUpdate::prepare(&plan, next.clone()).unwrap();
         assert_eq!(update.prepared_processors(), 0);
-        let mut previous = active.clone();
+        let mut previous = active.snapshot().expect("built-in snapshot");
         let mut expected = Renderer::new(next.clone());
         expected.inherit(&mut previous);
         realtime(|| active.apply_effect_update(&mut update));
@@ -501,6 +502,7 @@ fn beat_compilation_retains_derived_owners_for_effect_controls_and_reorders() {
         })
         .unwrap();
     let plan = RenderPlan {
+        external: Default::default(),
         project,
         beat_tracks: Default::default(),
         audio: Default::default(),
@@ -521,7 +523,7 @@ fn beat_compilation_retains_derived_owners_for_effect_controls_and_reorders() {
     for _ in 0..1000 {
         active.next_sample();
     }
-    let mut previous = active.clone();
+    let mut previous = active.snapshot().expect("built-in snapshot");
     let mut expected = Renderer::new(next.clone());
     expected.inherit(&mut previous);
     realtime(|| active.apply_effect_update(&mut update));

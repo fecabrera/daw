@@ -106,7 +106,7 @@ fn sampler_and_amplitude_taps_are_passive_separate_and_before_layer_gain() {
                 < 0.001
         );
         let held = amplitude.boost_peaks()[0].peak();
-        let mut snapshot = live.clone();
+        let mut snapshot = live.snapshot().expect("built-in snapshot");
         for _ in 0..512 {
             snapshot.next_sample();
         }
@@ -223,7 +223,7 @@ fn source_out_holds_reset_snapshots_detach_and_compatible_power_edits_allocate_n
         assert!(meter.boost_peaks()[0].peak() > 0.0);
         meter.boost_peaks()[0].reset_peak();
         let reading = meter.readings();
-        let mut snapshot = live.clone();
+        let mut snapshot = live.snapshot().expect("built-in snapshot");
         for _ in 0..512 {
             snapshot.next_sample();
         }

@@ -45,6 +45,27 @@ pub struct SessionHistory {
 }
 
 impl SessionHistory {
+    /// Bind a captured state to every still-matching owner, including an open
+    /// control gesture. Older parameter/preset revisions retain their own blobs.
+    pub fn apply_hosted_state(
+        &mut self,
+        before: &daw_core::HostedSettings,
+        reference: daw_core::HostedStateReference,
+        states: &daw_plugin_host::StateBank,
+    ) -> Result<()> {
+        for snapshot in std::iter::once(&mut self.current)
+            .chain(self.pending.iter_mut())
+            .chain(self.undo.iter_mut())
+            .chain(self.redo.iter_mut())
+        {
+            snapshot
+                .session
+                .apply_hosted_state(before, reference.clone(), states)?;
+            snapshot.model_bytes = snapshot_model_bytes(&snapshot.session);
+        }
+        self.enforce_memory_limit();
+        Ok(())
+    }
     pub(crate) fn collection_roots(
         &self,
     ) -> impl Iterator<Item = (crate::source_collection::SourceScope, &Session)> {
@@ -336,6 +357,12 @@ fn snapshot(session: &Session) -> Result<Snapshot> {
         }
     }
     next.retain_temporary_stems();
+    next.plugin_states.retain(
+        next.project
+            .hosted_units()
+            .into_iter()
+            .filter_map(|(_, s)| s.state.as_ref()),
+    );
     let model_bytes = snapshot_model_bytes(&next);
     Ok(Snapshot {
         session: next,
@@ -349,7 +376,8 @@ fn snapshot_model_bytes(session: &Session) -> u64 {
         &session.audio,
         &session.stretched_audio,
         &session.sampler_audio,
-    ) + session.compound_view_bytes()
+    ) + session.plugin_states.retained_bytes()
+        + session.compound_view_bytes()
         + session.temporary_stems_memory_bytes()
         + (session.missing_audio.capacity() * std::mem::size_of::<daw_core::Id>()) as u64
         + session.folder.as_ref().map_or(0, |p| p.capacity() as u64)

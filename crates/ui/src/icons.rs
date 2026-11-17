@@ -516,6 +516,36 @@ pub fn dot_toggle(
         .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
+/// Momentary unit-header action with the active modulation dot surface.
+pub(super) fn unit_header_action(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    hit_size: Vec2,
+) -> Response {
+    let (_, response) = ui.allocate_exact_size(hit_size, egui::Sense::click());
+    let color = crate::theme::palette(ui.ctx()).secondary;
+    paint_dot_toggle(ui, &response, crate::panels::UNIT_POWER_SIZE, true, color);
+    let mut foreground = crate::theme::contrast_color(color);
+    if !ui.is_enabled() {
+        foreground = foreground.gamma_multiply(0.5);
+    }
+    icon.size(8.0)
+        .stroke_width(1.5)
+        .color(foreground)
+        .image()
+        .alt_text(name)
+        .paint_at(
+            ui,
+            egui::Rect::from_center_size(response.rect.center(), Vec2::splat(8.0)),
+        );
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
+    response
+        .on_hover_text(name)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// Paint into an existing response so unit shells retain their stable interaction IDs.
 pub use daw_unit_ui::knobs::paint_dot_toggle;
 

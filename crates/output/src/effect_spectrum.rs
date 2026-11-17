@@ -58,6 +58,7 @@ mod tests {
                 .unwrap();
             project.master.effects.push(make());
             let plan = RenderPlan {
+                external: Default::default(),
                 project,
                 beat_tracks: Default::default(),
                 audio: Default::default(),

@@ -190,7 +190,14 @@ impl Session {
         clip.length_frames = gate;
         clip.transpose = transpose;
         session.prepare_stretches_cancellable(cancelled)?;
-        Ok((daw_engine::Renderer::new(session.plan()), gate))
+        Ok((
+            {
+                let mut plan = session.plan();
+                plan.external.publish = false;
+                daw_engine::Renderer::new(plan)
+            },
+            gate,
+        ))
     }
 
     fn render_audition(
@@ -257,7 +264,11 @@ impl Session {
         clip.length_frames = frames.min(maximum_gate).max(1);
         let length = clip.length_frames + rate;
         session.prepare_stretches_cancellable(cancelled)?;
-        let renderer = daw_engine::Renderer::new(session.plan());
+        let renderer = {
+            let mut plan = session.plan();
+            plan.external.publish = false;
+            daw_engine::Renderer::new(plan)
+        };
         Ok((renderer, length))
     }
 

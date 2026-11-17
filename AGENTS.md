@@ -88,6 +88,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/drive-editor` | Drive body bindings, bounded editor/control messages, gestures and instance appearance. No SDK or audio ownership. |
 | `crates/plugin-window` | Native child-window adapter over the selected egui backend. Keep platform parent handles, main-thread lifetime and display scaling here. |
 | `crates/plugin-support` | Format-neutral ABI containment, fixed atomic snapshots, and bounded UTF-8 text helpers. No SDK, DAW, window, or device dependencies. |
+| `crates/plugin-host` | Control-thread external plugin discovery, native executable checks, fingerprints, catalog cache and isolated scan supervision. Uses the existing narrow format bindings; no callback filesystem or loader work. Active-instance hosting remains pending. |
 | `crates/plugin-clap` | Narrow CLAP binding facade; reexports shared boundary helpers. No concrete unit, DAW, window, or device dependencies. |
 | `crates/plugin-auv2` | Locally generated Apple C bindings, checked native buffer views, Cocoa bridge and ABI containment; follow [AUv2 exports](specs/architecture/auv2-plugin-builds.md). |
 | `crates/plugin-vst3` | Narrow VST3 binding facade, platform TUID encoding, UTF-16 text and borrowed stream helpers. No concrete unit, DAW, window, or device dependencies. |
@@ -113,6 +114,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/ui` | egui application state, interactions, previews, reusable controls, and presentation. |
 | `apps/desktop` | Platform startup, GPU backend selection, and native menu, window, and file-drag adapters. Linux uses GTK GLArea/OpenGL with Custom/Native titlebar modes. Windows uses eframe Glow/OpenGL for native caption composition; macOS uses eframe wgpu. Keep OS-specific code here. |
 | `apps/cli` | clap arguments, diagnostics, and exit codes over the shared project/export APIs. Must remain usable without graphics or an audio device. |
+| `apps/plugin-scan` | Disposable main-thread VST3/CLAP factory inspection through plugin-host. Keep foreign factory calls inside this process; no project activation or editor creation during discovery. |
 | `plugins/drive` | Build-time Drive plugin manifest; stable public identities, parameter declarations, and two-strip panel bindings. |
 | `crates/*-plugin`, `crates/*-editor` | Independent typed contracts and native editor bindings for effect products; reuse bounded state exchange, portable DSP, shared controls, and meters. |
 | `plugins/<unit>`, `plugins/<unit>-clap`, `plugins/<unit>-vst3`, `plugins/<unit>-auv2` | Checked product manifests and independent export targets. Shared format boundaries compile through concrete dependency aliases. |

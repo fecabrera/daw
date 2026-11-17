@@ -506,7 +506,7 @@ impl PanelStyle {
         collapsed: &mut bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
-        self.unit_shell(ui, title, height, (enabled, collapsed), content)
+        self.unit_shell(ui, title, height, (enabled, collapsed), &[], content)
     }
 
     /// Lane units use the same floating shell and preserve the lane's allocated height.
@@ -519,7 +519,20 @@ impl PanelStyle {
         collapsed: &mut bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
-        self.unit_shell(ui, title, height, (enabled, collapsed), content)
+        self.unit_shell(ui, title, height, (enabled, collapsed), &[], content)
+    }
+
+    /// Native plugin actions share the header geometry and cannot start a unit drag.
+    pub fn unit_in_lane_with_actions<R>(
+        &self,
+        ui: &mut Ui,
+        title: (&str, bool),
+        height: f32,
+        states: (&mut bool, &mut bool),
+        actions: &[UnitHeaderAction<'_>],
+        content: impl FnOnce(&mut Ui) -> R,
+    ) -> UnitResponse<R> {
+        self.unit_shell(ui, title, height, states, actions, content)
     }
 
     fn unit_shell<R>(
@@ -528,6 +541,7 @@ impl PanelStyle {
         title: (&str, bool),
         height: f32,
         states: (&mut bool, &mut bool),
+        actions: &[UnitHeaderAction<'_>],
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
         let (enabled, collapsed) = states;
@@ -622,7 +636,15 @@ impl PanelStyle {
             entries.push((header_rect, unit_rect, modulation_header));
             data.insert_temp(key, (frame, entries));
         });
-        let interaction_rect = header_rect;
+        let action_height = HEADER_HEIGHT * actions.len() as f32;
+        let interaction_rect = if actions.is_empty() {
+            header_rect
+        } else {
+            Rect::from_min_max(
+                header_rect.min + Vec2::new(0.0, HEADER_HEIGHT + action_height),
+                header_rect.max,
+            )
+        };
         let mut header = ui.interact(interaction_rect, id, egui::Sense::click_and_drag());
         header.rect = header_rect;
         let power_rect = Rect::from_min_size(
@@ -668,7 +690,7 @@ impl PanelStyle {
         let palette = crate::theme::palette(ui.ctx());
         let header_text = unit_header_text(ui.ctx(), crate::unit_selection::is_selected(ui));
         let title_rect = Rect::from_min_max(
-            header_rect.min + Vec2::new(1.0, HEADER_HEIGHT + 1.0),
+            header_rect.min + Vec2::new(1.0, HEADER_HEIGHT + action_height + 1.0),
             header_rect.max - Vec2::splat(1.0),
         );
         let strip_title = if compact_title {
@@ -683,6 +705,23 @@ impl PanelStyle {
             palette.secondary
         };
         crate::icons::paint_dot_toggle(ui, &power, UNIT_POWER_SIZE, *enabled, color);
+        let header_actions = actions
+            .iter()
+            .enumerate()
+            .map(|(index, action)| {
+                let rect = power_rect.translate(Vec2::new(0.0, HEADER_HEIGHT * (index + 1) as f32));
+                let mut child = ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt((id, "action", index))
+                        .max_rect(rect),
+                );
+                child
+                    .add_enabled_ui(action.enabled, |ui| {
+                        crate::icons::unit_header_action(ui, action.icon, action.name, rect.size())
+                    })
+                    .inner
+            })
+            .collect();
         let action = if is_collapsed { "Expand" } else { "Collapse" };
         header.widget_info(|| {
             egui::WidgetInfo::labeled(
@@ -703,6 +742,7 @@ impl PanelStyle {
         }
         UnitResponse {
             inner: result.inner,
+            header_actions,
             modulation_header,
             response: result.response,
             header: header.on_hover_text(name),
@@ -740,8 +780,15 @@ impl PanelStyle {
 }
 
 /// The header remains available for unit context menus in either presentation.
+pub struct UnitHeaderAction<'a> {
+    pub icon: crate::icons::Lucide,
+    pub name: &'a str,
+    pub enabled: bool,
+}
+
 pub struct UnitResponse<R> {
     pub inner: Option<R>,
+    pub header_actions: Vec<Response>,
     pub response: Response,
     pub header: Response,
     pub power: Response,

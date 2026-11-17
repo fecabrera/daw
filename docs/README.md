@@ -31,6 +31,8 @@ you switch views or use a toolbar toggle. The panel items sit between the view
 choices and the full-screen command, with a divider on each side. Panels that
 need a selection retain their usual empty-selection prompts.
 
+- [External VST3 and CLAP plugins](plugins.md): effects, instruments, editors, modulation and audio sidechains.
+
 ## Instrument components
 
 - [Oscillator](instruments/oscillator.md)
@@ -92,7 +94,7 @@ need a selection retain their usual empty-selection prompts.
 - [Time stretching and offline pitch changes](audio/time-stretch.md).
 - [Projects, settings, and export](projects/README.md).
 - [Command-line interface](cli/README.md): track inspection, validation, source collection and export.
-- [Application Settings](projects/README.md#application-settings): Appearance, Playback, MIDI, and Stem Separation.
+- [Application Settings](projects/README.md#application-settings): Appearance, Playback, Time stretch, MIDI, Stem Separation, and Plugins.
 - [Audio devices](projects/README.md#audio-devices): output/input selection and output sample rate, bit depth, and buffer size.
 - [Seek cache profiles](projects/README.md#seek-cache-profiles): choose background CPU and memory use.
 - [Split MIDI notes](projects/README.md#split-midi-notes): choose how a note that crosses the playhead is divided.

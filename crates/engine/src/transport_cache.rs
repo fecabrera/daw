@@ -68,13 +68,14 @@ impl TransportCache {
                     })
             })
             .count();
-        let parallel_candidate = plan
-            .project
-            .tracks
-            .iter()
-            .filter(|t| !super::send_routing::is_bus(t.kind))
-            .count()
-            >= 2
+        let parallel_candidate = plan.project.hosted_units().is_empty()
+            && plan
+                .project
+                .tracks
+                .iter()
+                .filter(|t| !super::send_routing::is_bus(t.kind))
+                .count()
+                >= 2
             && (mode == PreparationMode::Parallel
                 || (complex_tracks >= 2
                     && std::thread::available_parallelism().is_ok_and(|n| n.get() >= 2)));
@@ -105,6 +106,11 @@ impl TransportCache {
     }
     fn configure(&mut self) {
         let policy = self.profile.policy();
+        if self.base.hosted.is_some() {
+            self.checkpoint_limit = 0;
+            self.interval = 1;
+            return;
+        }
         let owned = self.renderer_memory.owned_bytes().max(1);
         let entry = owned.saturating_add(2 * std::mem::size_of::<(u64, Renderer)>() as u64);
         self.checkpoint_limit = policy
@@ -174,11 +180,17 @@ impl TransportCache {
         }
     }
     fn start(&self, frame: u64) -> (u64, Renderer) {
+        if self.base.hosted.is_some() {
+            return (0, Renderer::new(self.base.plan.clone()));
+        }
         self.checkpoints
             .iter()
             .filter(|(at, _)| *at <= frame)
             .max_by_key(|(at, _)| *at)
-            .map_or_else(|| (0, self.base.clone()), |(at, r)| (*at, r.clone()))
+            .map_or_else(
+                || (0, self.base.snapshot().expect("built-in cache snapshot")),
+                |(at, r)| (*at, r.snapshot().expect("built-in checkpoint")),
+            )
     }
     fn replay(
         &mut self,
@@ -258,7 +270,8 @@ impl TransportCache {
                 if self.checkpoints.len() == self.checkpoint_limit {
                     self.checkpoints.pop_front();
                 }
-                self.checkpoints.push_back((end, renderer.clone()));
+                self.checkpoints
+                    .push_back((end, renderer.snapshot().expect("built-in checkpoint")));
             }
             frame = end;
         }
@@ -270,6 +283,12 @@ impl TransportCache {
         state: TransportState,
         mut cancelled: impl FnMut() -> bool,
     ) -> Option<Renderer> {
+        if self.base.hosted.is_some() {
+            let mut renderer = Renderer::try_new(self.base.plan.clone()).ok()?;
+            return renderer
+                .prepare_hosted_transport(state, &mut cancelled)
+                .then_some(renderer);
+        }
         let live = state.playing || state.paused;
         if self.live != live {
             self.live = live;
@@ -278,7 +297,7 @@ impl TransportCache {
             self.covered_frame = 0;
         }
         if !self.history {
-            let mut renderer = self.base.clone();
+            let mut renderer = self.base.snapshot().expect("built-in cache snapshot");
             return renderer
                 .prepare_transport_cancellable(state, cancelled)
                 .then_some(renderer);
@@ -429,6 +448,7 @@ mod tests {
                 .unwrap();
         }
         let plan = RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             project,
             audio: Default::default(),
@@ -464,6 +484,7 @@ mod tests {
     #[test]
     fn profile_changes_keep_valid_snapshots_and_trim_to_the_new_budget() {
         let plan = RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             project: Default::default(),
             audio: Default::default(),
@@ -472,7 +493,7 @@ mod tests {
         };
         let mut cache = TransportCache::with_profile(plan, CacheProfile::Responsive);
         cache.interval = 32;
-        let mut renderer = cache.base.clone();
+        let mut renderer = cache.base.snapshot().expect("built-in test snapshot");
         assert!(cache.replay(&mut renderer, 0, 4096, &mut || false));
         assert_eq!(cache.checkpoints.len(), 128);
         let frames: Vec<_> = cache.checkpoints.iter().map(|(at, _)| *at).collect();
@@ -506,6 +527,7 @@ mod tests {
             };
             let cache = TransportCache::with_profile(
                 RenderPlan {
+                    external: Default::default(),
                     beat_tracks: Default::default(),
                     project,
                     audio: Default::default(),
@@ -528,6 +550,7 @@ mod tests {
         let track = project.add_midi_track().unwrap();
         project.add_midi_pattern(track, 0).unwrap();
         let plan = RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             project,
             audio: Default::default(),
@@ -537,7 +560,7 @@ mod tests {
         let mut cache = TransportCache::new(plan);
         cache.checkpoint_limit = 2;
         cache.interval = 1;
-        let mut renderer = cache.base.clone();
+        let mut renderer = cache.base.snapshot().expect("built-in test snapshot");
         assert!(cache.replay(&mut renderer, 0, 10, &mut || false));
         assert_eq!(cache.memory_usage().checkpoint_count, 2);
         assert!(
@@ -553,6 +576,7 @@ mod tests {
     #[test]
     fn idle_warming_cancels_at_a_block_and_resumes_from_complete_history() {
         let plan = RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             project: Default::default(),
             audio: Default::default(),
@@ -580,6 +604,7 @@ mod tests {
     #[test]
     fn checkpoints_are_bounded_and_cancelled_warming_keeps_completed_states() {
         let plan = RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             project: Default::default(),
             audio: Default::default(),
@@ -589,7 +614,7 @@ mod tests {
         let mut cache = TransportCache::new(plan);
         // A one-frame spacing stresses eviction without a long DSP fixture.
         cache.interval = 1;
-        let mut renderer = cache.base.clone();
+        let mut renderer = cache.base.snapshot().expect("built-in test snapshot");
         assert!(cache.replay(&mut renderer, 0, 100, &mut || false));
         assert_eq!(
             cache.checkpoints.len(),

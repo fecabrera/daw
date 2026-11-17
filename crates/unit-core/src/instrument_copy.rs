@@ -9,6 +9,12 @@ impl InstrumentLayerSettings {
             .iter()
             .chain(self.sampler.iter().flat_map(|s| &s.modulations))
             .chain(self.noise.iter().flat_map(|s| &s.modulations))
+            .chain(
+                self.hosted
+                    .iter()
+                    .filter_map(|s| s.settings())
+                    .flat_map(|s| &s.modulations),
+            )
             .chain(&self.amplitude.modulations)
             .chain(&self.macro_module.modulations)
             .chain(self.envelopes.iter().flat_map(|s| &s.modulations))
@@ -78,6 +84,9 @@ impl InstrumentLayerSettings {
         if let Some(noise) = &mut copy.noise {
             noise.id = Uuid::new_v4();
         }
+        if let Some(hosted) = &mut copy.hosted {
+            *hosted = hosted.duplicate();
+        }
         for route in &mut copy.oscillator_modulations {
             route.target = route.target.map(|id| *oscillators.get(&id).unwrap_or(&id));
         }
@@ -146,6 +155,13 @@ fn routes(
         .iter_mut()
         .chain(layer.sampler.iter_mut().flat_map(|s| &mut s.modulations))
         .chain(layer.noise.iter_mut().flat_map(|n| &mut n.modulations))
+        .chain(
+            layer
+                .hosted
+                .iter_mut()
+                .filter_map(|s| s.settings_mut())
+                .flat_map(|s| &mut s.modulations),
+        )
         .chain(&mut layer.amplitude.modulations)
         .chain(&mut layer.macro_module.modulations)
         .chain(layer.envelopes.iter_mut().flat_map(|e| &mut e.modulations))
@@ -220,6 +236,24 @@ impl crate::InstrumentSettings {
             main: bus(outputs.next().unwrap()),
             lfo_lane: Box::new(bus(outputs.next().unwrap())),
             envelope_lane: Box::new(bus(outputs.next().unwrap())),
+        }
+    }
+}
+
+impl crate::InstrumentLayerSettings {
+    pub fn can_duplicate_hosted(&self) -> bool {
+        self.hosted
+            .as_ref()
+            .is_none_or(|s| s.settings().is_some_and(crate::HostedSettings::recallable))
+            && self.effects.iter().all(|e| e.unit.can_duplicate_hosted())
+    }
+}
+impl crate::EffectSettings {
+    pub fn can_duplicate_hosted(&self) -> bool {
+        match self {
+            Self::Hosted(s) => s.recallable(),
+            Self::Missing { type_id, .. } if type_id == crate::HOSTED_TYPE_ID => false,
+            _ => true,
         }
     }
 }

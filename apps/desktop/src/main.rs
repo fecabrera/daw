@@ -3,6 +3,7 @@
 mod app_icon;
 #[cfg(target_os = "linux")]
 mod gtk_host;
+mod hosting;
 #[cfg(target_os = "macos")]
 mod macos_file_drag;
 #[cfg(target_os = "macos")]
@@ -22,12 +23,19 @@ struct App {
     #[cfg(target_os = "macos")]
     titlebar: Option<macos_titlebar::Titlebar>,
     ui: daw_ui::DawUi,
+    hosting: hosting::Hosting,
     #[cfg(target_os = "macos")]
     menu: macos_menu::NativeMenu,
     #[cfg(target_os = "macos")]
     file_drag_pointer: Option<macos_file_drag::FileDragPointer>,
     #[cfg(target_os = "windows")]
     file_drag_pointer: Option<windows_file_drag::FileDragPointer>,
+}
+#[cfg(not(target_os = "linux"))]
+impl Drop for App {
+    fn drop(&mut self) {
+        self.hosting.shutdown(&mut self.ui);
+    }
 }
 #[cfg(not(target_os = "linux"))]
 impl eframe::App for App {
@@ -68,6 +76,7 @@ impl eframe::App for App {
         if let Some(titlebar) = &mut self.titlebar {
             titlebar.update(self.ui.settings().titlebar);
         }
+        self.hosting.update(&mut self.ui, ui.ctx());
         self.ui.show(ui);
         #[cfg(target_os = "macos")]
         if let Some(titlebar) = &self.titlebar {
@@ -83,11 +92,13 @@ impl eframe::App for App {
 }
 #[cfg(target_os = "linux")]
 fn main() -> gtk4::glib::ExitCode {
+    daw_plugin_host::dispatch_embedded_scan();
     gtk_host::run()
 }
 
 #[cfg(not(target_os = "linux"))]
 fn main() -> eframe::Result {
+    daw_plugin_host::dispatch_embedded_scan();
     daw_ui::configure_preparation_cache(daw_ui::preparation_cache_directory());
     if std::env::args_os()
         .nth(1)
@@ -144,7 +155,7 @@ fn main() -> eframe::Result {
                 ui.enable_midi(Box::new(midi::NativeMidi::default()), root);
             }
             #[cfg(target_os = "macos")]
-            let (ui, menu) = {
+            let (mut ui, menu) = {
                 let mut ui = ui;
                 let menu = macos_menu::NativeMenu::new(cc.egui_ctx.clone());
                 ui.use_native_menu();
@@ -161,7 +172,9 @@ fn main() -> eframe::Result {
                 settings.titlebar = daw_ui::settings::TitlebarStyle::Native;
                 ui.set_settings(&cc.egui_ctx, settings);
             }
+            let hosting = hosting::Hosting::new(&mut ui);
             Ok(Box::new(App {
+                hosting,
                 #[cfg(target_os = "macos")]
                 titlebar,
                 #[cfg(target_os = "windows")]

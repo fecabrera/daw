@@ -49,6 +49,12 @@ pub use daw_unit_core::{GrainWindow, GranulizerSettings};
 pub use daw_unit_core::{NoiseSettings, NoiseType};
 pub use daw_unit_core::{SATURATOR_TYPE_ID, SaturatorClipMode, SaturatorSettings, SaturatorShape};
 mod audio_sidechain;
+mod hosted;
+pub use daw_unit_core::{
+    HostedAudioInput, HostedInputChannels, HostedInputId, HostedParameterBinding, HostedRole,
+    HostedSettings, HostedSource, HostedStateBlob, HostedStateReference, PluginFormat,
+    PluginIdentity,
+};
 mod instrument_validation;
 mod memory;
 mod source_storage;
@@ -550,6 +556,7 @@ impl Project {
         self.track_audible(track.id)
     }
     pub fn validate(&self) -> Result<()> {
+        self.validate_hosted_units()?;
         self.display.validate()?;
         self.validate_track_groups()?;
         self.validate_sends()?;
@@ -841,6 +848,7 @@ impl Project {
 
     fn apply_edit(&mut self, command: Edit) -> Result<()> {
         match command {
+            Edit::SetHosted { unit_id, settings } => self.replace_hosted(unit_id, *settings)?,
             Edit::AddReturn { track_id, name } => self.insert_return(track_id, name)?,
             Edit::SetTrackSends { track_id, sends } => {
                 self.tracks
@@ -1194,6 +1202,7 @@ impl Project {
                 track_id,
                 new_track_id,
             } => {
+                self.check_hosted_track_copy(&[track_id])?;
                 if self
                     .tracks
                     .iter()
@@ -1325,6 +1334,10 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    SetHosted {
+        unit_id: Id,
+        settings: Box<HostedSettings>,
+    },
     SetMarkers {
         markers: Vec<ArrangementMarker>,
     },

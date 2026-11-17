@@ -29,15 +29,7 @@ pub(super) fn context(ctx: &Context) -> SourceContext {
 impl crate::DawUi {
     pub(super) fn sidechain_context(&self, ctx: &Context, destination: Id) {
         let project = &self.session.project;
-        let destination = project
-            .tracks
-            .iter()
-            .find(|t| {
-                t.beat.as_ref().is_some_and(|b| {
-                    b.output.id == destination || b.subtracks.iter().any(|s| s.id == destination)
-                })
-            })
-            .map_or(destination, |t| t.id);
+        let destination = project.audio_bus_owner(destination);
         let choices = choices(project, destination);
         let readings = project
             .audio_sidechain_routes()

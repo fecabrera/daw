@@ -269,12 +269,18 @@ impl DawUi {
     ) {
         let target = self.instrument_catalog_target();
         let enabled = allowed && self.effects_drag.is_none() && target.is_some();
-        let output = self.instrument_catalog.show(
+        self.instrument_catalog
+            .enable_external(target.is_some_and(|(track, owner)| {
+                self.session
+                    .project
+                    .instrument_settings(track)
+                    .is_some_and(|i| i.layers.iter().any(|l| l.id == owner))
+            }));
+        let output = self.instrument_catalog.show_with_header(
             ui,
             panel,
             bounds,
-            "Instrument components",
-            "components",
+            ("Instrument components", "components"),
             catalog::Interaction {
                 rows_enabled: enabled
                     && self.component_drag.as_ref().is_none_or(|drag| !drag.active),
@@ -286,7 +292,11 @@ impl DawUi {
                     && self.component_drag.is_none(),
                 empty_enabled: allowed,
             },
+            crate::hosting::browser_button,
         );
+        if let Some(identity) = output.external_add.clone() {
+            self.add_external_plugin(identity);
+        }
         if let Some((track, owner)) = target
             && let Some(settings) = self.session.project.instrument_snapshot(track)
         {
@@ -355,7 +365,9 @@ impl DawUi {
                 self.instrument_catalog_bounds.entries[*index] = response.rect;
             }
             for (index, response) in &output.folders {
-                self.instrument_catalog_bounds.folders[*index] = response.rect;
+                if let Some(bounds) = self.instrument_catalog_bounds.folders.get_mut(*index) {
+                    *bounds = response.rect;
+                }
             }
         }
         #[cfg(not(test))]
@@ -363,6 +375,7 @@ impl DawUi {
             let _ = output.header;
         }
         if enabled
+            && output.external_add.is_none()
             && (output.add_selected || output.double_clicked.is_some())
             && let Some((track_id, layer_id)) = target
         {
@@ -379,7 +392,7 @@ impl DawUi {
         }
     }
 
-    fn instrument_catalog_target(&self) -> Option<(Id, Id)> {
+    pub(super) fn instrument_catalog_target(&self) -> Option<(Id, Id)> {
         let track = self
             .session
             .project

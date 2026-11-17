@@ -34,7 +34,9 @@ impl SourceOutputTarget {
         }
     }
     pub fn for_layer(track: Id, layer: &InstrumentLayerSettings) -> Option<(Self, bool)> {
-        let (unit, enabled) = if let Some(n) = &layer.noise {
+        let (unit, enabled) = if let Some(s) = layer.hosted.as_ref().and_then(|s| s.settings()) {
+            (s.id, s.enabled)
+        } else if let Some(n) = &layer.noise {
             (n.id, n.enabled)
         } else if let Some(s) = &layer.sampler {
             (s.id, s.enabled)

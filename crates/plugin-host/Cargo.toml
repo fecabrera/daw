@@ -1,0 +1,29 @@
+[package]
+name = "daw-plugin-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[dependencies]
+daw-unit-core.workspace = true
+daw-plugin-clap.workspace = true
+daw-plugin-vst3.workspace = true
+libloading.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+rtrb.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_UI_Shell", "Win32_System_Com", "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+daw-drive.workspace = true
+daw-drive-plugin.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSURL", "NSError"] }

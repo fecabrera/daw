@@ -1,5 +1,8 @@
 # Iteration 1 validation
 
+- [External plugin hosting integration — 2026-11-17](external-plugin-hosting-integration-2026-11-17.md): active effects/instruments, controls/editors, modulation, PCM sidechains, state/history and native checks.
+- [External plugin hosting foundation — 2026-11-17](external-plugin-hosting-foundation-2026-11-17.md): earlier scanner-only checkpoint.
+
 - [Arrangement markers and timing maps — 2026-11-16](timing-maps-2026-11-16.md): shared clock, lanes, retiming, capture and validation evidence.
 
 - [Beat subtracks in Mixer — 2026-11-16](beat-mixer-2026-11-16.md): shared child strips, group hierarchy, isolated controls, undo, native layout checks and a Timeline gutter-divider follow-up.

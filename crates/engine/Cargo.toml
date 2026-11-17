@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+daw-plugin-host.workspace = true
 daw-loudness.workspace=true
 daw-plate-reverb.workspace = true
 daw-ambient-reverb.workspace = true
@@ -37,4 +38,6 @@ daw-limiter.workspace = true
 daw-ott.workspace = true
 
 [dev-dependencies]
+daw-plugin-host-fixtures.workspace = true
+daw-drive-plugin.workspace = true
 serde_json.workspace = true

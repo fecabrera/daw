@@ -9,6 +9,8 @@ rust-version.workspace = true
 gtk-titlebar = []
 
 [dependencies]
+daw-plugin-host.workspace = true
+daw-core.workspace = true
 daw-ui.workspace = true
 midir.workspace = true
 egui.workspace = true
@@ -21,14 +23,14 @@ wgpu = { version = "30", default-features = false, features = ["std", "metal", "
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.5"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSMenu", "NSMenuItem", "NSCell", "NSEvent", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSMenu", "NSMenuItem", "NSCell", "NSEvent", "NSView", "NSWindow", "objc2-core-foundation"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSObject", "NSString", "NSBundle"] }
 raw-window-handle = "0.6.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 eframe = { workspace = true, features = ["glow"] }
 raw-window-handle = "0.6.2"
-windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk4 = { version = "0.10", features = ["v4_8"] }

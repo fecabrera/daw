@@ -67,6 +67,7 @@ fn plan(waveform: Waveform, rate: u32) -> RenderPlan {
         .unwrap();
     project.tracks[0].clips[0].length_frames = project.midi_frame(3840);
     RenderPlan {
+        external: Default::default(),
         beat_tracks: Default::default(),
         project,
         audio: HashMap::new(),

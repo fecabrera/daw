@@ -257,6 +257,7 @@ pub(super) struct Target {
     pub parameter: ModulationParameter,
     pub id: Option<daw_core::Id>,
     pub label: String,
+    amount_limit: Option<f32>,
     group: Option<TargetGroup>,
     leaf: String,
 }
@@ -277,8 +278,13 @@ impl Target {
             id,
             leaf: label.clone(),
             label,
+            amount_limit: None,
             group: None,
         }
+    }
+    pub(super) fn with_amount_limit(mut self, limit: f32) -> Self {
+        self.amount_limit = Some(limit);
+        self
     }
     pub(super) fn strip(
         parameter: ModulationParameter,
@@ -294,6 +300,7 @@ impl Target {
             id: Some(id),
             label: format!("{name} · {leaf}"),
             leaf,
+            amount_limit: None,
             group: Some(TargetGroup { id, name, order }),
         }
     }
@@ -390,8 +397,28 @@ pub(super) fn targeted_body_with_sources<'a>(
                                                         &sources_for_target,
                                                     )
                                                 });
-                                                let spec =
-                                                    crate::parameter_knobs::amount(route.parameter);
+                                                let spec = targets
+                                                    .iter()
+                                                    .find(|t| {
+                                                        t.id == route.target
+                                                            && t.parameter == route.parameter
+                                                    })
+                                                    .and_then(|t| t.amount_limit)
+                                                    .map_or_else(
+                                                        || {
+                                                            crate::parameter_knobs::amount(
+                                                                route.parameter,
+                                                            )
+                                                        },
+                                                        |limit| {
+                                                            knobs::KnobSpec::new(
+                                                                "Amount",
+                                                                -limit..=limit,
+                                                                0.0,
+                                                                limit / 100.0,
+                                                            )
+                                                        },
+                                                    );
                                                 knobs::row(
                                                     ui,
                                                     &mut route.amount,
@@ -597,6 +624,7 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::HostedValue => offsets.map(|o| base + o),
         ModulationParameter::ShimmerPreDelay => offsets.map(|o| (base + o).clamp(0.0, 1000.0)),
         ModulationParameter::ShimmerSize
         | ModulationParameter::ShimmerVowel

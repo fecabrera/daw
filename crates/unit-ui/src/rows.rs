@@ -103,11 +103,15 @@ pub fn selector_row(
         |ui| {
             ui.set_min_height(crate::knobs::CHOICE_SIZE);
             ui.spacing_mut().item_spacing.y = f32::from(crate::theme::TOOLBAR_PADDING) * 0.5;
-            ui.label(
-                egui::RichText::new(label)
-                    .size(crate::layout::HEADER_FONT_SIZE)
-                    .color(crate::theme::palette(ui.ctx()).secondary),
-            );
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(label)
+                        .size(crate::layout::HEADER_FONT_SIZE)
+                        .color(crate::theme::palette(ui.ctx()).secondary),
+                )
+                .truncate(),
+            )
+            .on_hover_text(label);
             selector(ui)
         },
     )

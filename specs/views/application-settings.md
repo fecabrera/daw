@@ -1,7 +1,7 @@
 # Application Settings
 
 The shared Settings dialog has a left sidebar and a right content panel. List
-Appearance, Playback, Time stretch, MIDI and Stem Separation in their existing
+Appearance, Playback, Time stretch, MIDI, Stem Separation and Plugins in that
 order. Highlight the active group with the shared catalog selection style.
 Show only that group's controls and advice in the content panel.
 
@@ -34,3 +34,18 @@ Validate actual group clicks, exclusive page content, preference isolation,
 device selection and MIDI-note split interaction, theme/accent behavior, smaller
 windows and persistent Close/sidebar visibility. Separate native observations
 from headless geometry/interaction checks.
+
+## Plugins
+
+Keep discovery configuration in this page. Show the resolved standard folders,
+saved additional folders with their VST3/CLAP type, and scan status/failures.
+Default folders remain included. Additional paths are machine preferences, never
+project data. Share them with CLI discovery. Provide Scan folders, Rescan all,
+Retry failed and Cancel scan. Run traversal and isolated scan supervision on a
+worker; a scan or settings page change must not edit a project or stop playback.
+
+Plugin selection belongs in the existing catalogs. Both Effects and Instrument
+components have VST3 and CLAP folders. Filter effects and instruments into their
+respective catalogs and preserve native identities through refreshes. Reuse the
+catalog folder/row styling and keyboard navigation; double-click or Enter adds
+the selected external unit. A catalog Settings action opens this page directly.

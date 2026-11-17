@@ -2,6 +2,17 @@
 use crate::*;
 use std::collections::{HashMap, HashSet};
 impl Project {
+    pub fn audio_bus_owner(&self, id: Id) -> Id {
+        self.tracks
+            .iter()
+            .find(|t| {
+                t.beat
+                    .as_ref()
+                    .is_some_and(|b| b.output.id == id || b.subtracks.iter().any(|s| s.id == id))
+            })
+            .map_or(id, |t| t.id)
+    }
+
     /// Saved connection owners. Beat instruments resolve to their parent until compilation.
     pub fn audio_sidechain_routes(&self) -> Vec<(Id, Modulation)> {
         let mut routes = Vec::new();
@@ -52,6 +63,23 @@ impl Project {
                     .into_iter()
                     .filter_map(|(dest, r)| r.sidechain.map(|s| (s.track, dest))),
             )
+            .chain(self.hosted_units().into_iter().flat_map(|(owner, unit)| {
+                unit.audio_inputs
+                    .iter()
+                    .map(move |route| (route.source_track, owner))
+            }))
+            .chain(self.hosted_units().into_iter().flat_map(|(dest, unit)| {
+                unit.audio_inputs.iter().flat_map(move |route| {
+                    let provider = route.source_track;
+                    self.tracks
+                        .iter()
+                        .filter(move |t| {
+                            self.tracks.iter().any(|s| s.id == provider)
+                                && self.rendered_providers(t).contains(&provider)
+                        })
+                        .map(move |t| (t.id, dest))
+                })
+            }))
             .chain(
                 self.audio_sidechain_routes()
                     .into_iter()
@@ -123,6 +151,7 @@ impl Project {
     }
     /// Use this predicate for both source browsing and final transaction validation.
     pub fn sidechain_source_available(&self, destination: Id, source: Id) -> bool {
+        let destination = self.audio_bus_owner(destination);
         if source == destination
             || source == self.project_id
             || !self.tracks.iter().any(|t| t.id == source)

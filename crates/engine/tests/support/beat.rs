@@ -304,6 +304,7 @@ fn empty_beat_instruments_preserve_the_arranged_transport_duration() {
     let track = project.add_beat_track().unwrap();
     project.add_beat_pattern(track, 0).unwrap();
     let plan = RenderPlan {
+        external: Default::default(),
         project,
         beat_tracks: Default::default(),
         audio: Default::default(),

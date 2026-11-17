@@ -7,6 +7,7 @@ pub(super) struct LayerEffects {
     pub peak: [f32; 2],
     pub meter_sample: [f32; 2],
     pub source_output: Option<super::source_meters::SourceOutput>,
+    pub source_is_hosted: bool,
     pub amplitude_output: Option<super::source_meters::SourceOutput>,
     pub chain: super::effects::EffectChain,
     pub settings: Vec<EffectInstance>,
@@ -35,6 +36,7 @@ impl LayerEffects {
             peak: [0.0; 2],
             meter_sample: [0.0; 2],
             source_output: None,
+            source_is_hosted: false,
             amplitude_output: None,
             chain: super::effects::EffectChain::chain(Some(id), effects, rate, block),
             settings: effects.to_vec(),
@@ -102,7 +104,13 @@ pub(super) fn parallel_latency(instrument: &daw_core::InstrumentSettings, rate: 
     instrument
         .layers
         .iter()
-        .map(|l| super::latency::chain_frames(&l.effects, rate))
+        .map(|l| {
+            super::latency::chain_frames(&l.effects, rate)
+                + l.hosted
+                    .as_ref()
+                    .and_then(|s| s.settings())
+                    .map_or(0, |s| u64::from(s.latency_frames))
+        })
         .max()
         .unwrap_or(0)
 }

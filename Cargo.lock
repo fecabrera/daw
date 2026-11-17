@@ -1599,7 +1599,9 @@ dependencies = [
  "clap",
  "daw-core",
  "daw-media",
+ "daw-plugin-host",
  "daw-project",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1692,6 +1694,8 @@ dependencies = [
 name = "daw-desktop"
 version = "0.1.0"
 dependencies = [
+ "daw-core",
+ "daw-plugin-host",
  "daw-ui",
  "eframe",
  "egui",
@@ -1935,6 +1939,7 @@ dependencies = [
  "daw-core",
  "daw-direction-mixer",
  "daw-drive",
+ "daw-drive-plugin",
  "daw-envelope",
  "daw-equalizer",
  "daw-exciter",
@@ -1950,6 +1955,8 @@ dependencies = [
  "daw-oscillator",
  "daw-ott",
  "daw-plate-reverb",
+ "daw-plugin-host",
+ "daw-plugin-host-fixtures",
  "daw-sampler",
  "daw-saturator",
  "daw-shimmer-reverb",
@@ -2725,6 +2732,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-plugin-host"
+version = "0.1.0"
+dependencies = [
+ "daw-drive",
+ "daw-drive-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-vst3",
+ "daw-unit-core",
+ "libloading 0.8.9",
+ "objc2-foundation 0.3.2",
+ "rtrb",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "uuid",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "daw-plugin-host-fixtures"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-clap",
+ "daw-plugin-vst3",
+]
+
+[[package]]
+name = "daw-plugin-scan"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-host",
+]
+
+[[package]]
 name = "daw-plugin-support"
 version = "0.1.0"
 
@@ -2753,6 +2795,7 @@ dependencies = [
  "daw-engine",
  "daw-loudness",
  "daw-media",
+ "daw-plugin-host",
  "daw-separation",
  "daw-unit-core",
  "hound",
@@ -3027,6 +3070,7 @@ dependencies = [
  "daw-equalizer",
  "daw-media",
  "daw-output",
+ "daw-plugin-host",
  "daw-project",
  "daw-unit-core",
  "daw-unit-ui",

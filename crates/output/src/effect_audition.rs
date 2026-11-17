@@ -41,6 +41,7 @@ mod tests {
         let band = effect.unit.band_ids().next().unwrap();
         project.tracks[0].effects.push(effect);
         let mut plan = RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             project,
             audio: HashMap::new(),

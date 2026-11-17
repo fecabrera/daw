@@ -53,6 +53,7 @@ impl PowerMenu {
 
 pub(super) fn effect_enabled(settings: &mut EffectSettings) -> Option<&mut bool> {
     match settings {
+        EffectSettings::Hosted(s) => Some(&mut s.enabled),
         EffectSettings::Eq3(s) => Some(&mut s.enabled),
         EffectSettings::MultibandEq(s) => Some(&mut s.enabled),
         EffectSettings::Exciter(s) => Some(&mut s.enabled),
@@ -85,6 +86,11 @@ pub(super) fn layer_enabled(
     match unit {
         InstrumentComponent::Oscillators => Some(&mut owner.oscillator_enabled),
         InstrumentComponent::Sampler => owner.sampler.as_mut().map(|s| &mut s.enabled),
+        InstrumentComponent::Hosted => owner
+            .hosted
+            .as_mut()
+            .and_then(daw_core::HostedSource::settings_mut)
+            .map(|s| &mut s.enabled),
         InstrumentComponent::Noise => owner.noise.as_mut().map(|s| &mut s.enabled),
         InstrumentComponent::Amplitude => Some(&mut owner.amplitude.enabled),
         InstrumentComponent::Envelope(id) => owner

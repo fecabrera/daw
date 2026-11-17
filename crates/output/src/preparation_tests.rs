@@ -365,6 +365,7 @@ fn modulated_note_plan() -> RenderPlan {
         end_frame: 2400,
     };
     RenderPlan {
+        external: Default::default(),
         beat_tracks: Default::default(),
         project,
         audio: Default::default(),
@@ -755,7 +756,7 @@ fn renderer_memory_estimate_covers_clone_allocations_for_all_effects_and_modulat
     let memory = renderer.memory_usage();
     HEAP_BYTES.with(|n| n.set(0));
     COUNT_HEAP.with(|n| n.set(true));
-    let cloned = renderer.clone();
+    let cloned = renderer.snapshot().expect("built-in snapshot");
     COUNT_HEAP.with(|n| n.set(false));
     let actual = HEAP_BYTES.with(Cell::get) as u64;
     assert!(

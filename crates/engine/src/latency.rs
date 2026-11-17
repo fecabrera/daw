@@ -48,7 +48,8 @@ pub(super) fn track_frames(track: &daw_core::Track, rate: u32) -> u64 {
 pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
     effects
         .iter()
-        .map(|e| match e.unit {
+        .map(|e| match &e.unit {
+            EffectSettings::Hosted(s) => u64::from(s.latency_frames),
             EffectSettings::Limiter(_) => u64::from(daw_limiter::Limiter::latency_for_rate(rate)),
             EffectSettings::HarmonicLift(_) => {
                 u64::from(daw_harmonic_lift::HarmonicLift::LATENCY_FRAMES)
@@ -95,7 +96,8 @@ impl Alignment {
             .map(|(i, t)| (t.id, i))
             .collect();
         let specifications = super::audio_sidechain::specs(project);
-        let (subtree, input_frames, track_max) = if specifications.is_empty() {
+        let pcm = super::audio_sidechain::pcm_specs(project);
+        let (subtree, input_frames, track_max) = if specifications.is_empty() && pcm.is_empty() {
             let mut subtree: Vec<_> = project
                 .tracks
                 .iter()
@@ -167,7 +169,17 @@ impl Alignment {
                     })
                     .max()
                     .unwrap_or(0);
-                input_frames[i] = audio.max(control);
+                let pcm = pcm
+                    .iter()
+                    .filter(|s| s.destination == i)
+                    .filter_map(|s| {
+                        index
+                            .get(&s.source)
+                            .map(|&source| subtree[source].saturating_sub(s.stage))
+                    })
+                    .max()
+                    .unwrap_or(0);
+                input_frames[i] = audio.max(control).max(pcm);
                 subtree[i] = input_frames[i] + track_frames(&project.tracks[i], rate);
             }
             let track_max = project

@@ -42,9 +42,10 @@ fn assign<'a>(
     {
         route.source = None;
     }
-    route.amount = route
-        .amount
-        .clamp(-target.parameter.limit(), target.parameter.limit());
+    let limit = target
+        .amount_limit
+        .unwrap_or_else(|| target.parameter.limit());
+    route.amount = route.amount.clamp(-limit, limit);
 }
 fn leaf<'a>(
     ui: &mut Ui,

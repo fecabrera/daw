@@ -404,6 +404,7 @@ mod tests {
             tracks.push(id);
         }
         let plan = daw_engine::RenderPlan {
+            external: Default::default(),
             project,
             beat_tracks: Default::default(),
             audio: Default::default(),
@@ -597,6 +598,7 @@ mod tests {
             .effects
             .push(daw_core::EffectInstance::limiter());
         let plan = daw_engine::RenderPlan {
+            external: Default::default(),
             project,
             beat_tracks: Default::default(),
             audio: Default::default(),

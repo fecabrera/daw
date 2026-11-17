@@ -90,6 +90,7 @@ fn fixture(rate: u32, mono: bool) -> (RenderPlan, Vec<Id>) {
     project.validate().unwrap();
     (
         RenderPlan {
+            external: Default::default(),
             project,
             audio,
             stretched_audio: Default::default(),

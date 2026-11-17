@@ -323,6 +323,7 @@ fn audio_plan(rate: u32, tracks: usize, clips: usize) -> RenderPlan {
         })
         .collect();
     RenderPlan {
+            external: Default::default(),
         project,
         audio: HashMap::from([(
             id,
@@ -383,6 +384,7 @@ fn midi_plan(rate: u32, active: usize, capacity: usize, fx: usize) -> RenderPlan
             .push(effect([0, 3, 6, 1, 2, 4, 5, 7, 8][kind], true));
     }
     RenderPlan {
+            external: Default::default(),
         project: p,
         audio: HashMap::new(),
         stretched_audio: HashMap::new(),

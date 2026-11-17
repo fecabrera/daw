@@ -60,6 +60,7 @@ struct LayerVoice {
 }
 #[derive(Clone)]
 struct Voice {
+    generation: u64,
     active_last_sample: bool,
     sleeping: bool,
     panic_remaining: u32,
@@ -144,6 +145,7 @@ impl Voice {
             layer.mixed_transition_from = layer.mixed_output;
         }
         self.transition = self.fade_frames;
+        self.generation = self.generation.wrapping_add(1);
         self.current = Some(id);
         self.held_frames = 0;
         self.note_duration_frames = duration_frames;
@@ -489,7 +491,10 @@ impl LayerVoice {
 /// Center is unity per channel so legacy instruments retain their original gain and track pan.
 /// Muted and solo-excluded layers continue advancing all sources/envelopes with zero output.
 fn layer_gains(layer: &daw_core::InstrumentLayerSettings, any_solo: bool) -> [f32; 2] {
-    if (layer.sampler.is_none() && layer.noise.is_none() && !layer.oscillator_enabled)
+    if (layer.sampler.is_none()
+        && layer.noise.is_none()
+        && layer.hosted.is_none()
+        && !layer.oscillator_enabled)
         || !daw_core::mix_audible(layer.muted, layer.soloed, any_solo)
     {
         return [0.0; 2];
@@ -531,6 +536,9 @@ pub(crate) struct MidiTrackRuntime {
     // Regular buses follow canonical layer order; Main is always the final bus.
     pub(super) layer_effects: Vec<super::layer_effects::LayerEffects>,
     layer_samples: Vec<[f32; 2]>,
+    block_sources: bool,
+    block_output_gain: [f32; 2],
+    block_source_fade: f32,
     effect_latency: u64,
     envelope_history: bool,
     parallel_latency: u64,
@@ -922,8 +930,13 @@ impl MidiTrackRuntime {
                         layer_gains(l, any_solo),
                         project.sample_rate_hz,
                         project.buffer_size_frames,
-                        parallel_latency,
+                        parallel_latency
+                            - l.hosted
+                                .as_ref()
+                                .and_then(|s| s.settings())
+                                .map_or(0, |s| u64::from(s.latency_frames)),
                     );
+                    bus.source_is_hosted = l.hosted.is_some();
                     bus.source_output = super::SourceOutputTarget::for_layer(track.id, l).map(
                         |(target, enabled)| {
                             super::source_meters::SourceOutput::new(
@@ -960,6 +973,9 @@ impl MidiTrackRuntime {
                 }))
                 .collect(),
             layer_samples: vec![[0.0; 2]; layers.len()],
+            block_sources: false,
+            block_output_gain: [1.0; 2],
+            block_source_fade: 1.0,
             effect_latency,
             envelope_history: layers.iter().any(|l| {
                 // Noise RNG and color-filter state need exact worker replay too.
@@ -1006,6 +1022,7 @@ impl MidiTrackRuntime {
             }),
             voices: (0..voice_count.max(1))
                 .map(|_| Voice {
+                    generation: 0,
                     active_last_sample: false,
                     sleeping: true,
                     panic_remaining: 0,
@@ -1527,6 +1544,9 @@ impl MidiTrackRuntime {
             }
         }
         for bus in &mut self.layer_effects {
+            if self.block_sources && bus.source_is_hosted {
+                continue;
+            }
             for source in bus
                 .source_output
                 .iter_mut()
@@ -1536,6 +1556,13 @@ impl MidiTrackRuntime {
                     source.level.sample_output(source.sample);
                 }
             }
+        }
+        if self.block_sources {
+            self.block_source_fade = fade;
+            for source in &mut self.layer_samples {
+                *source = source.map(|v| v * fade);
+            }
+            return [0.0; 2];
         }
         if self.has_bus_effects {
             sum = [0.0; 2];
@@ -1572,6 +1599,29 @@ impl MidiTrackRuntime {
                 (&self.shared.values, Some(&self.shared.index)),
             )
             .0
+    }
+    /// The block host schedules voices and publishes shared providers once per
+    /// sample, then processes each layer and Output chain as complete blocks.
+    pub(super) fn collect_block_sources(&mut self, enabled: bool) {
+        self.block_sources = enabled;
+    }
+    pub(super) fn block_sources(&self) -> &[[f32; 2]] {
+        &self.layer_samples
+    }
+    pub(super) fn block_source_fade(&self) -> f32 {
+        self.block_source_fade
+    }
+    pub(super) fn block_output_gain(&self) -> [f32; 2] {
+        self.block_output_gain
+    }
+    pub(super) fn block_notes(&self) -> impl Iterator<Item = (Option<Id>, u8, f32, u64)> + '_ {
+        self.voices
+            .iter()
+            .chain(&self.live_voices)
+            .map(|v| (v.current, v.pitch, v.velocity, v.generation))
+    }
+    pub(super) fn block_note_capacity(&self) -> usize {
+        self.voices.len() + 128
     }
     pub fn needs_envelope_history(&self) -> bool {
         self.envelope_history
@@ -1906,6 +1956,7 @@ impl MidiTrackRuntime {
             }
             self.main_remaining -= 1;
         }
+        self.block_output_gain = self.main_gain;
         let sample = std::array::from_fn(|ch| sample[ch] * self.main_gain[ch]);
         for bus in &mut self.layer_effects {
             for (peak, value) in bus.peak.iter_mut().zip(bus.meter_sample) {
@@ -2389,6 +2440,9 @@ impl MidiTrackRuntime {
         let sample = std::array::from_fn(|ch| {
             sample[ch] * self.main_gain[ch] * if live_gain > 0.0 { 1.0 } else { clip_gain }
         });
+        self.block_output_gain = self
+            .main_gain
+            .map(|v| v * if live_gain > 0.0 { 1.0 } else { clip_gain });
         // Read-only pre-track monitoring: regular buses include clip gain; Output
         // includes its own gain/pan and clip gain. No monitor changes the audio sum.
         let regular = self.layer_samples.len();

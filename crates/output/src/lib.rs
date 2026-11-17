@@ -131,7 +131,7 @@ impl PreparedRenderer {
                     .ok_or_else(|| format!("Missing output meter binding for track {}", t.id))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut renderer = Renderer::new(plan);
+        let mut renderer = Renderer::try_new(plan).map_err(|e| e.to_string())?;
         renderer.prepare_live_midi();
         renderer.prepare_streaming()?;
         let memory =
@@ -502,7 +502,17 @@ fn modulation_meters(
         .audio_sidechain_routes()
         .into_iter()
         .map(|(_, r)| ModulationTarget::Sidechain { route: r.id });
+    let hosted = plan.project.hosted_units().into_iter().flat_map(|(_, s)| {
+        s.parameters
+            .iter()
+            .filter(|p| p.definition.accepts_modulation())
+            .map(move |p| ModulationTarget::Hosted {
+                unit: s.id,
+                parameter: p.target,
+            })
+    });
     effects
+        .chain(hosted)
         .chain(bands)
         .chain(sidechains)
         .chain(macros)
@@ -2011,6 +2021,7 @@ mod tests {
             transpose: 0,
         });
         RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
@@ -2278,6 +2289,7 @@ mod tests {
     #[test]
     fn track_meter_latches_stereo_and_follows_track_identity() {
         let mut plan = RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
@@ -2312,6 +2324,7 @@ mod tests {
     fn callback_resamples_without_device_and_retires_plans() {
         for rate in [44_100, 48_000, 96_000] {
             let plan = RenderPlan {
+                external: Default::default(),
                 beat_tracks: Default::default(),
                 sampler_audio: Default::default(),
                 stretched_audio: HashMap::new(),

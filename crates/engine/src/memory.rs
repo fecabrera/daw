@@ -106,7 +106,7 @@ impl Renderer {
         let mut shared = daw_media::AudioMemoryUsage::default();
         self.plan.visit_audio_memory(&mut shared);
         let mut usage = self.owned_memory();
-        usage.shared_audio_bytes = shared.bytes;
+        usage.shared_audio_bytes = shared.bytes + self.plan.external.states.retained_bytes();
         usage
     }
     /// Capacity accounting without a shared-media owner registry or allocation.
@@ -122,7 +122,8 @@ impl Renderer {
                     .iter()
                     .map(|t| t.heap_bytes())
                     .sum::<u64>(),
-            processor_bytes: self.clock.memory_bytes()
+            processor_bytes: self.hosted.as_ref().map_or(0, |g| g.heap_bytes())
+                + self.clock.memory_bytes()
                 + self.capture_controls.as_ref().map_or(0, |controls| {
                     vec_bytes(controls) + controls.iter().map(vec_bytes).sum::<u64>()
                 })
@@ -176,6 +177,7 @@ mod tests {
     #[test]
     fn checkpoint_reuse_requires_equal_processing_and_media_identity() {
         let mut a = RenderPlan {
+            external: Default::default(),
             beat_tracks: Default::default(),
             project: Project::default(),
             audio: Default::default(),

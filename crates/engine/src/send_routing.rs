@@ -115,6 +115,19 @@ impl Sends {
     pub(super) fn taps(&self) -> impl Iterator<Item = &super::captured_taps::Tap> {
         self.pre_taps.iter().flatten()
     }
+    pub(super) fn source_count(&self) -> usize {
+        self.sources.len()
+    }
+    pub(super) fn save_current(&self, out: &mut [[f32; 8]]) {
+        for (out, source) in out.iter_mut().zip(&self.sources) {
+            *out = source.current;
+        }
+    }
+    pub(super) fn load_current(&mut self, values: &[[f32; 8]]) {
+        for (source, value) in self.sources.iter_mut().zip(values) {
+            source.current = *value;
+        }
+    }
     pub fn advance(&mut self, live: bool) {
         for s in &mut self.sources {
             s.advance(live);

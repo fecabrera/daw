@@ -633,6 +633,18 @@ impl DawUi {
                                                                     let effect=layer.effects.iter_mut().find(|e|e.id==id).unwrap();
                                                                     Some(self.inline_layer_effect(ui,track.id,layer.id,effect,(height,compact),&modulation_sources))
                                                                 }
+                                                                daw_core::InstrumentComponent::Hosted => {
+                                                                    if layer.hosted.as_ref().is_some_and(|s|s.settings().is_none()) {
+                                                                        let result=crate::hosted_panel::missing(ui,compact,height);
+                                                                        self.start_installed_component_drag(ui,&result.header,&[result.power.rect],track.id,layer.id,component);
+                                                                        Some(result.response.rect)
+                                                                    } else {layer.hosted.as_mut().and_then(daw_core::HostedSource::settings_mut).map(|settings| {
+                                                                        let unit=settings.id;
+                                                                        let result = crate::hosted_panel::show(ui, settings, compact, height, &modulation_sources,|parameter|self.output.as_ref().and_then(|o|o.modulation_snapshot(daw_engine::ModulationTarget::Hosted {unit,parameter})));
+                                                                        self.start_installed_component_drag(ui, &result.header, &[result.power.rect], track.id, layer.id, component);
+                                                                        result.response.rect
+                                                                    })}
+                                                                }
                                                                 daw_core::InstrumentComponent::Noise => Some(self.noise_unit(ui, track.id, layer, &modulation_sources, height, compact)),
                                                                 daw_core::InstrumentComponent::Sampler => Some(self.sampler_unit(ui, &track, layer, &modulation_sources, height, compact)),
                                                                 daw_core::InstrumentComponent::Oscillators => {
@@ -884,9 +896,12 @@ impl DawUi {
             self.instrument_ui.selected_layers.clone(),
         );
         self.layer_reorder(ui, &mut settings, &reorder_rows, scroll.inner_rect);
-        if let Some(index) =
-            duplicate_layer.and_then(|id| settings.layers.iter().position(|l| l.id == id))
-        {
+        if let Some(index) = duplicate_layer.and_then(|id| {
+            settings
+                .layers
+                .iter()
+                .position(|l| l.id == id && l.can_duplicate_hosted())
+        }) {
             let copy = InstrumentLayerSettings::duplicate_group(&[&settings.layers[index]])
                 .pop()
                 .unwrap();
@@ -1176,6 +1191,10 @@ impl DawUi {
                         .iter()
                         .filter(|l| gesture.layers.contains(&l.id))
                         .collect();
+                    if originals.iter().any(|l| !l.can_duplicate_hosted()) {
+                        self.error = Some("Plugin copy requires a current state capture".into());
+                        return;
+                    }
                     InstrumentLayerSettings::duplicate_group(&originals)
                 } else {
                     let (moving, remaining): (Vec<_>, Vec<_>) =

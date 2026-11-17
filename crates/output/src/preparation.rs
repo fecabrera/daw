@@ -19,6 +19,7 @@ pub(super) fn initial_plan(plan: &RenderPlan) -> RenderPlan {
         ..Default::default()
     };
     RenderPlan {
+        external: Default::default(),
         project,
         beat_tracks: Default::default(),
         audio: Default::default(),
@@ -190,7 +191,9 @@ impl Worker {
                             .is_zero()
                         {
                             if needs_cache {
-                                if let Some(plan) = &cached_plan {
+                                if let Some(plan) = &cached_plan
+                                    && plan.project.hosted_units().is_empty()
+                                {
                                     cache = Some(daw_engine::TransportCache::with_profile(
                                         (**plan).clone(),
                                         controls.profile,
@@ -232,7 +235,10 @@ impl Worker {
                                 status.performance.cache(Default::default());
                                 cached_plan = Some(plan);
                             }
-                            needs_cache = cache.is_none();
+                            needs_cache = cache.is_none()
+                                && cached_plan
+                                    .as_ref()
+                                    .is_some_and(|p| p.project.hosted_units().is_empty());
                             if let Some(cache) = &cache {
                                 status.performance.cache(cache.memory_usage());
                             }
@@ -293,20 +299,38 @@ impl Worker {
                     renderer.revision = revision;
                     if let Some(transport) = transport {
                         needs_cache = false;
-                        let cache = cache.get_or_insert_with(|| {
-                            daw_engine::TransportCache::with_profile(
-                                renderer.plan.clone(),
-                                controls.profile,
-                            )
-                        });
-                        let Some(prepared) = cache.prepare(transport, || {
-                            let state = worker.0.lock().unwrap();
-                            state.closed || state.revision != revision
-                        }) else {
-                            continue;
-                        };
-                        status.performance.cache(cache.memory_usage());
-                        renderer.renderer = prepared;
+                        if !renderer.plan.project.hosted_units().is_empty() {
+                            let result = renderer.renderer.try_prepare_transport_cancellable(
+                                transport,
+                                || {
+                                    let state = worker.0.lock().unwrap();
+                                    state.closed || state.revision != revision
+                                },
+                            );
+                            match result {
+                                Ok(true) => {}
+                                Ok(false) => continue,
+                                Err(error) => {
+                                    publish_error(&worker, revision, error.to_string());
+                                    continue;
+                                }
+                            }
+                        } else {
+                            let cache = cache.get_or_insert_with(|| {
+                                daw_engine::TransportCache::with_profile(
+                                    renderer.plan.clone(),
+                                    controls.profile,
+                                )
+                            });
+                            let Some(prepared) = cache.prepare(transport, || {
+                                let state = worker.0.lock().unwrap();
+                                state.closed || state.revision != revision
+                            }) else {
+                                continue;
+                            };
+                            status.performance.cache(cache.memory_usage());
+                            renderer.renderer = prepared;
+                        }
                         if !transport.playing {
                             renderer.prepare_stopped_monitoring();
                         }
@@ -417,7 +441,9 @@ impl Worker {
                         wake_ui();
                     }
                     if cache.is_none() {
-                        needs_cache = cached_plan.is_some();
+                        needs_cache = cached_plan
+                            .as_ref()
+                            .is_some_and(|p| p.project.hosted_units().is_empty());
                     }
                     if let Some(cache) = &cache {
                         status.performance.cache(cache.memory_usage());
@@ -565,6 +591,7 @@ mod tests {
             project.master.gain_db = -(gain as f32);
             revision = worker.submit(
                 RenderPlan {
+                    external: Default::default(),
                     beat_tracks: Default::default(),
                     project: project.clone(),
                     audio: Default::default(),

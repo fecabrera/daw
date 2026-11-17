@@ -42,6 +42,7 @@ fn json_bytes(value: &serde_json::Value) -> u64 {
 impl EffectSettings {
     pub fn heap_bytes(&self) -> u64 {
         match self {
+            Self::Hosted(s) => s.heap_bytes(),
             Self::MultibandEq(s) => vec_bytes(&s.bands) + vec_bytes(&s.modulations),
             Self::HarmonicLift(s) => vec_bytes(&s.modulations),
             Self::MultibandCompressor(s) => {
@@ -106,6 +107,10 @@ impl InstrumentSettings {
                         + vec_bytes(&l.oscillators)
                         + vec_bytes(&l.oscillator_modulations)
                         + l.noise.as_ref().map_or(0, |n| vec_bytes(&n.modulations))
+                        + l.hosted.as_ref().map_or(0, |h| match h {
+                            HostedSource::Known(s) => s.heap_bytes(),
+                            HostedSource::Missing(v) => json_bytes(v),
+                        })
                         + vec_bytes(&l.amplitude.modulations)
                         + l.sampler.as_ref().map_or(0, |s| {
                             vec_bytes(&s.modulations)
@@ -118,6 +123,40 @@ impl InstrumentSettings {
                 .buses()
                 .map(InstrumentBusSettings::heap_bytes)
                 .sum::<u64>()
+    }
+}
+
+impl HostedSettings {
+    pub fn heap_bytes(&self) -> u64 {
+        self.plugin.name.capacity() as u64
+            + self.plugin.vendor.capacity() as u64
+            + self.plugin.version.capacity() as u64
+            + match &self.plugin.identity {
+                PluginIdentity::Clap(s) => s.capacity() as u64,
+                PluginIdentity::Vst3(_) => 0,
+            }
+            + vec_bytes(&self.parameters)
+            + self
+                .parameters
+                .iter()
+                .map(|p| (p.definition.name.capacity() + p.definition.module.capacity()) as u64)
+                .sum::<u64>()
+            + vec_bytes(&self.modulations)
+            + vec_bytes(&self.audio_inputs)
+            + self
+                .audio_inputs
+                .iter()
+                .map(|r| match &r.port {
+                    HostedInputId::Vst3 { layout, .. } => layout.capacity() as u64,
+                    _ => 0,
+                })
+                .sum::<u64>()
+            + self.state.as_ref().map_or(0, |s| {
+                s.component.sha256.capacity() as u64
+                    + s.controller
+                        .as_ref()
+                        .map_or(0, |b| b.sha256.capacity() as u64)
+            })
     }
 }
 

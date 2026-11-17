@@ -85,6 +85,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         })
         .collect();
     RenderPlan {
+        external: Default::default(),
         beat_tracks: Default::default(),
         project,
         audio: HashMap::from([(
@@ -1685,8 +1686,8 @@ fn worker_snapshots_preserve_every_effect_history_and_own_independent_state() {
         for _ in 0..4096 {
             renderer.next_sample();
         }
-        let mut snapshot = renderer.clone();
-        let mut independent = snapshot.clone();
+        let mut snapshot = renderer.snapshot().expect("built-in snapshot");
+        let mut independent = snapshot.snapshot().expect("built-in snapshot");
         for _ in 0..2048 {
             assert_eq!(renderer.next_sample(), snapshot.next_sample());
         }

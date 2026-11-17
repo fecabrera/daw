@@ -6,6 +6,10 @@ use std::collections::HashSet;
 #[derive(Default)]
 pub(super) struct Catalog {
     entries: Vec<(&'static str, &'static str)>,
+    external: Vec<daw_unit_core::HostedPluginDescriptor>,
+    external_selection: Option<daw_core::PluginIdentity>,
+    builtin_folders: usize,
+    external_enabled: bool,
     pub selection: HashSet<&'static str>,
     folders: Vec<Folder>,
     folder_filter: Option<usize>,
@@ -51,6 +55,8 @@ pub(super) struct Interaction {
 
 pub(super) struct Output {
     pub header: egui::Rect,
+    pub external_rows: Vec<(usize, Response)>,
+    pub external_add: Option<daw_core::PluginIdentity>,
     pub rows: Vec<(usize, Response)>,
     pub folders: Vec<(usize, Response)>,
     pub add_selected: bool,
@@ -116,9 +122,54 @@ impl Catalog {
                 open: false,
             })
             .collect();
+        self.builtin_folders = self.folders.len();
         self
     }
+    pub fn set_external(&mut self, mut plugins: Vec<daw_unit_core::HostedPluginDescriptor>) {
+        plugins.sort_by_cached_key(|p| p.name.to_lowercase());
+        let open: Vec<_> = self
+            .folders
+            .iter()
+            .skip(self.builtin_folders)
+            .map(|f| f.open)
+            .collect();
+        self.folders.truncate(self.builtin_folders);
+        self.external = plugins;
+        self.external_enabled = true;
+        for (slot, format) in [daw_core::PluginFormat::Vst3, daw_core::PluginFormat::Clap]
+            .into_iter()
+            .enumerate()
+        {
+            self.folders.push(Folder {
+                name: if format == daw_core::PluginFormat::Vst3 {
+                    "VST3"
+                } else {
+                    "CLAP"
+                },
+                entries: self
+                    .external
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, p)| {
+                        (p.identity.format() == format).then_some(self.entries.len() + i)
+                    })
+                    .collect(),
+                open: open.get(slot).copied().unwrap_or(false),
+            });
+        }
+        if let Some(selected) = &self.external_selection {
+            if let Some(index) = self.external.iter().position(|p| &p.identity == selected) {
+                self.cursor = Row::Entry(self.entries.len() + index);
+            } else {
+                self.external_selection = None;
+                self.cursor = Row::Folder(self.builtin_folders);
+            }
+        }
+    }
 
+    pub fn enable_external(&mut self, enabled: bool) {
+        self.external_enabled = enabled;
+    }
     /// Set up control tests that require visible entries; startup tests use the default.
     #[cfg(test)]
     pub fn expand_folders(&mut self) {
@@ -167,7 +218,12 @@ impl Catalog {
         self.visible_rows()
             .into_iter()
             .filter_map(|row| match row {
-                Row::Entry(index) if self.selection.contains(self.entries[index].0) => {
+                Row::Entry(index)
+                    if self
+                        .entries
+                        .get(index)
+                        .is_some_and(|e| self.selection.contains(e.0)) =>
+                {
                     Some(self.entries[index].0)
                 }
                 _ => None,
@@ -180,26 +236,20 @@ impl Catalog {
         if !open {
             // Hidden entries cannot be added or included in a later group drag.
             for &entry in &self.folders[index].entries {
-                self.selection.remove(self.entries[entry].0);
+                if let Some(e) = self.entries.get(entry) {
+                    self.selection.remove(e.0);
+                } else if self
+                    .external
+                    .get(entry - self.entries.len())
+                    .is_some_and(|p| self.external_selection.as_ref() == Some(&p.identity))
+                {
+                    self.external_selection = None;
+                }
             }
         }
         self.cursor = Row::Folder(index);
         self.anchor = self.cursor;
         self.range_base = None;
-    }
-
-    pub fn show(
-        &mut self,
-        ui: &mut Ui,
-        panel: &crate::panels::ControlPanel,
-        bounds: egui::Rect,
-        title: &str,
-        noun: &str,
-        interaction: Interaction,
-    ) -> Output {
-        self.show_with_header(ui, panel, bounds, (title, noun), interaction, |_| {
-            egui::Rect::NOTHING
-        })
     }
 
     pub fn show_with_header(
@@ -232,6 +282,12 @@ impl Catalog {
         let action = self.keyboard(ui, interaction.keyboard_enabled);
         let mut output = Output {
             header: header.response.rect,
+            external_rows: Vec::new(),
+            external_add: if action == Action::Add {
+                self.external_selection.clone()
+            } else {
+                None
+            },
             rows: Vec::with_capacity(self.entries.len()),
             folders: Vec::with_capacity(self.folders.len()),
             add_selected: action == Action::Add,
@@ -248,8 +304,14 @@ impl Catalog {
                         let response = ui
                             .push_id(
                                 match row {
-                                    Row::Folder(index) => ("catalog-folder", index),
-                                    Row::Entry(index) => ("catalog-entry", index),
+                                    Row::Folder(index) => egui::Id::new(("catalog-folder", index)),
+                                    Row::Entry(index) if index >= self.entries.len() => {
+                                        egui::Id::new((
+                                            "catalog-native-entry",
+                                            &self.external[index - self.entries.len()].identity,
+                                        ))
+                                    }
+                                    Row::Entry(index) => egui::Id::new(("catalog-entry", index)),
                                 },
                                 |ui| match row {
                                     Row::Folder(index) => {
@@ -263,17 +325,33 @@ impl Catalog {
                                         .inner
                                     }
                                     Row::Entry(index) => {
-                                        let (type_id, name) = self.entries[index];
-                                        ui.add_enabled_ui(interaction.rows_enabled, |ui| {
-                                            panel
-                                                .catalog_item(
-                                                    ui,
-                                                    name,
-                                                    self.selection.contains(type_id),
-                                                    !self.folders.is_empty(),
-                                                )
-                                                .on_hover_text(name)
-                                        })
+                                        let (name, selected) = if let Some((id, name)) =
+                                            self.entries.get(index)
+                                        {
+                                            (*name, self.selection.contains(id))
+                                        } else {
+                                            let entry = &self.external[index - self.entries.len()];
+                                            (
+                                                entry.name.as_str(),
+                                                self.external_selection.as_ref()
+                                                    == Some(&entry.identity),
+                                            )
+                                        };
+                                        ui.add_enabled_ui(
+                                            interaction.rows_enabled
+                                                && (index < self.entries.len()
+                                                    || self.external_enabled),
+                                            |ui| {
+                                                panel
+                                                    .catalog_item(
+                                                        ui,
+                                                        name,
+                                                        selected,
+                                                        !self.folders.is_empty(),
+                                                    )
+                                                    .on_hover_text(name)
+                                            },
+                                        )
                                         .inner
                                     }
                                 },
@@ -303,15 +381,26 @@ impl Catalog {
                         match row {
                             Row::Folder(index) => output.folders.push((index, response)),
                             Row::Entry(index) => {
-                                if (clicked || (action == Action::Move && self.cursor == row))
-                                    && self.selection.contains(self.entries[index].0)
-                                {
-                                    output.selected_entry = Some(index);
+                                if index >= self.entries.len() {
+                                    if clicked && response.double_clicked() {
+                                        output.external_add = Some(
+                                            self.external[index - self.entries.len()]
+                                                .identity
+                                                .clone(),
+                                        );
+                                    }
+                                    output.external_rows.push((index, response));
+                                } else {
+                                    if (clicked || (action == Action::Move && self.cursor == row))
+                                        && self.selection.contains(self.entries[index].0)
+                                    {
+                                        output.selected_entry = Some(index);
+                                    }
+                                    if clicked && response.double_clicked() {
+                                        output.double_clicked = Some(index);
+                                    }
+                                    output.rows.push((index, response));
                                 }
-                                if clicked && response.double_clicked() {
-                                    output.double_clicked = Some(index);
-                                }
-                                output.rows.push((index, response));
                             }
                         }
                     }
@@ -322,6 +411,7 @@ impl Catalog {
             .rows
             .iter()
             .chain(&output.folders)
+            .chain(&output.external_rows)
             .map(|(_, response)| response.rect.bottom())
             .fold(header.response.rect.bottom(), f32::max)
             .min(scroll.inner_rect.bottom());
@@ -333,6 +423,7 @@ impl Catalog {
                 .rows
                 .iter()
                 .chain(&output.folders)
+                .chain(&output.external_rows)
                 .any(|(_, row)| ui.rect_contains_pointer(row.rect))
             && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary))
         {
@@ -366,7 +457,7 @@ impl Catalog {
     }
 
     pub fn clear_if_unfocused(&mut self, ctx: &egui::Context, available: bool, dragging: bool) {
-        if self.selection.is_empty() {
+        if self.selection.is_empty() && self.external_selection.is_none() {
             return;
         }
         if self.selection_focus.lost(ctx, available, dragging) {
@@ -377,10 +468,23 @@ impl Catalog {
 
     pub fn clear(&mut self) {
         self.selection.clear();
+        self.external_selection = None;
         self.range_base = None;
     }
 
     pub fn click(&mut self, index: usize, shift: bool) {
+        if index >= self.entries.len() {
+            let identity = self.external[index - self.entries.len()].identity.clone();
+            let deselect = shift && self.external_selection.as_ref() == Some(&identity);
+            self.clear();
+            if !deselect {
+                self.external_selection = Some(identity);
+            }
+            self.cursor = Row::Entry(index);
+            self.anchor = self.cursor;
+            return;
+        }
+        self.external_selection = None;
         let type_id = self.entries[index].0;
         if shift {
             if !self.selection.remove(type_id) {
@@ -406,7 +510,9 @@ impl Catalog {
         });
         if !allowed
             || !owns_focus
-            || (self.selection.is_empty() && matches!(self.cursor, Row::Entry(_)))
+            || (self.selection.is_empty()
+                && self.external_selection.is_none()
+                && matches!(self.cursor, Row::Entry(_)))
         {
             return Action::None;
         }
@@ -450,7 +556,10 @@ impl Catalog {
                     return Action::Move;
                 }
             } else {
-                if enter && !self.selection.is_empty() {
+                if enter
+                    && (!self.selection.is_empty()
+                        || self.external_enabled && self.external_selection.is_some())
+                {
                     return Action::Add;
                 }
                 if let Row::Entry(entry) = self.cursor
@@ -486,7 +595,12 @@ impl Catalog {
         let Some(next) = movement else {
             return Action::None;
         };
-        if modifiers.shift {
+        if modifiers.shift && matches!(rows[next],Row::Entry(i) if i>=self.entries.len()) {
+            if let Row::Entry(index) = rows[next] {
+                self.click(index, true);
+            }
+        } else if modifiers.shift {
+            self.external_selection = None;
             let base = self
                 .range_base
                 .get_or_insert_with(|| self.selection.clone());
@@ -496,8 +610,10 @@ impl Catalog {
                 .position(|row| *row == self.anchor)
                 .unwrap_or(current);
             for row in &rows[anchor.min(next)..=anchor.max(next)] {
-                if let Row::Entry(index) = row {
-                    self.selection.insert(self.entries[*index].0);
+                if let Row::Entry(index) = row
+                    && let Some(entry) = self.entries.get(*index)
+                {
+                    self.selection.insert(entry.0);
                 }
             }
             self.cursor = rows[next];
@@ -525,5 +641,120 @@ impl Catalog {
     pub fn retain_focus_filter(&self, ui: &Ui) {
         let Some(id) = self.focus else { return };
         crate::selection_focus::retain_list_navigation(ui, id, !self.folders.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod plugin_tests {
+    use super::*;
+    use daw_plugin_host::*;
+    fn descriptor(
+        format: PluginFormat,
+        role: HostedRole,
+        name: &str,
+        tag: u8,
+    ) -> HostedPluginDescriptor {
+        HostedPluginDescriptor {
+            identity: if format == PluginFormat::Clap {
+                PluginIdentity::Clap(format!("org.daw.{tag}"))
+            } else {
+                PluginIdentity::Vst3([tag; 16])
+            },
+            name: name.into(),
+            vendor: "DAW".into(),
+            version: "1".into(),
+            role,
+        }
+    }
+    #[test]
+    fn catalogs_group_each_format_and_filter_roles_without_changing_the_project() {
+        let mut app = crate::DawUi::default();
+        let before = app.session.project.clone();
+        let plugins = vec![
+            descriptor(PluginFormat::Vst3, HostedRole::Effect, "Effect VST", 1),
+            descriptor(PluginFormat::Clap, HostedRole::Effect, "Effect CLAP", 2),
+            descriptor(
+                PluginFormat::Vst3,
+                HostedRole::Instrument,
+                "Instrument VST",
+                3,
+            ),
+            descriptor(
+                PluginFormat::Clap,
+                HostedRole::Instrument,
+                "Instrument CLAP",
+                4,
+            ),
+        ];
+        let mut registry = PluginRegistry::default();
+        for plugin in &plugins {
+            let path = std::path::PathBuf::from(format!(
+                "fixture-{}.{}",
+                plugin.name,
+                plugin.identity.format().extension()
+            ));
+            registry.entries.push(RegistryEntry {
+                candidate: PluginCandidate {
+                    format: plugin.identity.format(),
+                    path: path.clone(),
+                    executable: path,
+                    fingerprint: "a".repeat(64),
+                },
+                plugins: vec![plugin.clone()],
+                state: ScanState::Ready,
+                present: true,
+            });
+        }
+        app.set_plugin_catalog(&registry);
+        for (catalog, role) in [
+            (&app.effects_catalog, HostedRole::Effect),
+            (&app.instrument_catalog, HostedRole::Instrument),
+        ] {
+            assert_eq!(
+                catalog
+                    .folders
+                    .iter()
+                    .skip(catalog.builtin_folders)
+                    .map(|f| f.name)
+                    .collect::<Vec<_>>(),
+                ["VST3", "CLAP"]
+            );
+            assert_eq!(catalog.external.len(), 2);
+            assert!(catalog.external.iter().all(|p| p.role == role));
+            for (i, format) in [PluginFormat::Vst3, PluginFormat::Clap]
+                .into_iter()
+                .enumerate()
+            {
+                let folder = &catalog.folders[catalog.builtin_folders + i];
+                assert_eq!(folder.entries.len(), 1);
+                assert_eq!(
+                    catalog.external[folder.entries[0] - catalog.entries.len()]
+                        .identity
+                        .format(),
+                    format
+                );
+            }
+        }
+        assert_eq!(app.session.project, before);
+    }
+    #[test]
+    fn native_selection_survives_catalog_refresh_and_does_not_become_a_builtin_drag() {
+        let plugin = descriptor(PluginFormat::Clap, HostedRole::Effect, "Owned", 2);
+        let mut catalog =
+            Catalog::new([("builtin", "Built in")]).with_folders([("Builtin", vec!["builtin"])]);
+        catalog.set_external(vec![plugin.clone()]);
+        catalog.expand_folders();
+        catalog.click(1, false);
+        assert!(catalog.selected_types().is_empty());
+        assert_eq!(catalog.external_selection, Some(plugin.identity.clone()));
+        catalog.set_external(vec![
+            descriptor(PluginFormat::Clap, HostedRole::Effect, "Earlier", 3),
+            plugin.clone(),
+        ]);
+        assert_eq!(catalog.external_selection, Some(plugin.identity));
+        assert!(catalog.cursor == Row::Entry(2));
+        catalog.click(0, false);
+        assert_eq!(catalog.selected_types(), vec!["builtin"]);
+        assert!(catalog.external_selection.is_none());
     }
 }

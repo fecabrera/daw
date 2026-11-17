@@ -18,6 +18,8 @@ pub struct BounceCapture {
     pre_delay: latency::Delay,
     raw_delay: latency::Delay,
     latency: u64,
+    block_offset: usize,
+    block_count: usize,
     pre_capture: Option<super::captured_taps::Tap>,
     lineage: Vec<(Id, super::captured_taps::Tap, super::captured_taps::Tap)>,
     lineage_frames: Vec<([f32; 2], [f32; 2])>,
@@ -38,8 +40,29 @@ impl BounceCapture {
             t.muted = false;
             t.soloed = false;
         }
-        let reference = Renderer::new(plan);
-        let mut isolated = Renderer::new(isolated);
+        let mut reference = Renderer::try_new(plan).map_err(|e| e.to_string())?;
+        let mut isolated = Renderer::try_new(isolated).map_err(|e| e.to_string())?;
+        if reference.hosted.is_some() || isolated.hosted.is_some() {
+            // Both graphs must use the same block evaluator, including references
+            // whose retained content contains only built-in units.
+            for renderer in [&mut reference, &mut isolated] {
+                if renderer.hosted.is_none() {
+                    renderer.hosted = Some(
+                        super::hosted_graph::HostedGraph::prepare(
+                            renderer,
+                            &mut Default::default(),
+                        )
+                        .map_err(|e| e.to_string())?,
+                    );
+                }
+                let mut graph = renderer.hosted.take().unwrap();
+                graph.enable_capture(renderer, false);
+                renderer.hosted = Some(graph);
+            }
+            let mut graph = isolated.hosted.take().unwrap();
+            graph.enable_capture(&isolated, true);
+            isolated.hosted = Some(graph);
+        }
         let index = isolated
             .plan
             .project
@@ -99,6 +122,8 @@ impl BounceCapture {
             index,
             frame: 0,
             latency,
+            block_offset: 0,
+            block_count: 0,
             pre_capture,
             lineage,
             lineage_frames,
@@ -119,13 +144,46 @@ impl BounceCapture {
     /// Feed every prefix frame. `None` is pipeline priming, not missing content.
     pub fn next_frame(&mut self) -> Result<Option<BounceFrame>, String> {
         let frame = self.frame;
-        self.reference.offline_frame(frame, false, false);
-        if let Some(values) = &mut self.isolated.capture_controls {
-            for (to, from) in values.iter_mut().zip(&self.reference.sidechains.values) {
-                to.copy_from_slice(from);
+        if self.reference.hosted.is_some() {
+            let mut reference = self.reference.hosted.take().unwrap();
+            let mut isolated = self.isolated.hosted.take().unwrap();
+            if self.block_offset == self.block_count {
+                let maximum = reference.quantum.min(isolated.quantum);
+                let count = self
+                    .reference
+                    .hosted_quantum(&reference, frame, maximum, false)
+                    .min(
+                        self.isolated
+                            .hosted_quantum(&isolated, frame, maximum, false),
+                    );
+                reference.render(&mut self.reference, frame, count, false, true, false);
+                isolated.copy_capture(&reference);
+                isolated.render(&mut self.isolated, frame, count, false, true, false);
+                self.block_count = count;
+                self.block_offset = 0;
             }
+            reference.expose_capture(&mut self.reference, self.block_offset);
+            isolated.expose_capture(&mut self.isolated, self.block_offset);
+            self.block_offset += 1;
+            self.reference.hosted = Some(reference);
+            self.isolated.hosted = Some(isolated);
+            if self
+                .reference
+                .hosted_fault()
+                .or_else(|| self.isolated.hosted_fault())
+                .is_some()
+            {
+                return Err("Plugin processing failed during bounce".into());
+            }
+        } else {
+            self.reference.offline_frame(frame, false, false);
+            if let Some(values) = &mut self.isolated.capture_controls {
+                for (to, from) in values.iter_mut().zip(&self.reference.sidechains.values) {
+                    to.copy_from_slice(from);
+                }
+            }
+            self.isolated.offline_frame(frame, false, false);
         }
-        self.isolated.offline_frame(frame, false, false);
         let (raw, mono) = self.isolated.buses.raw[self.index];
         let track = &self.isolated.plan.project.tracks[self.index];
         let pan = track_processing::track_pan_coefficients(track)[usize::from(!mono)];

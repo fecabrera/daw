@@ -30,6 +30,7 @@ fn main() {
                     })
                     .collect();
                 let mut plan = RenderPlan {
+                    external: Default::default(),
                     project,
                     beat_tracks: Default::default(),
                     audio: Default::default(),

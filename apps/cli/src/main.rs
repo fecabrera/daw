@@ -1,4 +1,5 @@
 mod collect_sources;
+mod plugins;
 mod tracks;
 use clap::{Parser, Subcommand};
 use daw_media::{ExportFormat, ExportSettings, Mp3Bitrate, WavCodec};
@@ -15,6 +16,8 @@ struct Args {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Discover installed VST3/CLAP plugins using isolated scans.
+    Plugins(plugins::Args),
     /// List tracks, inspect an exact name, or add an empty named track.
     #[command(
         long_about = "List tracks or inspect saved metadata. Use --add NAME --type audio|midi|beat to append an empty track and save the project. Save and close the desktop project before adding tracks; there is no cross-process editor synchronization."
@@ -50,6 +53,9 @@ enum Command {
         project: PathBuf,
     },
     Render {
+        /// Render missing/quarantined plugins as delayed dry effects or silent instruments.
+        #[arg(long)]
+        allow_missing_plugins: bool,
         #[arg(long)]
         project: PathBuf,
         #[arg(long)]
@@ -65,12 +71,14 @@ enum Command {
     },
 }
 fn main() {
+    daw_plugin_host::dispatch_embedded_scan();
     daw_media::configure_preparation_cache(daw_media::preparation_cache_directory());
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let result = match Args::parse().command {
+        Command::Plugins(args) => plugins::run(args),
         Command::Tracks {
             project,
             track_name,
@@ -106,6 +114,7 @@ fn main() {
             );
         }),
         Command::Render {
+            allow_missing_plugins,
             project,
             output,
             overwrite,
@@ -122,14 +131,19 @@ fn main() {
                     for warning in &session.warnings {
                         eprintln!("Warning: {warning}");
                     }
-                    session
-                        .export_with_settings(&output, overwrite, settings)
-                        .map(|warnings| {
-                            warnings
-                                .into_iter()
-                                .filter(|w| !session.warnings.contains(w))
-                                .collect::<Vec<_>>()
-                        })
+                    plugins::render(
+                        session.clone(),
+                        &output,
+                        overwrite,
+                        settings,
+                        allow_missing_plugins,
+                    )
+                    .map(|warnings| {
+                        warnings
+                            .into_iter()
+                            .filter(|w| !session.warnings.contains(w))
+                            .collect::<Vec<_>>()
+                    })
                 })
                 .map(|warnings| {
                     for warning in warnings {

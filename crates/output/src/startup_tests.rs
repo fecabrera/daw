@@ -40,6 +40,7 @@ fn beat_plan() -> RenderPlan {
         .unwrap();
     project.transport.playhead_frame = 1200;
     RenderPlan {
+        external: Default::default(),
         project,
         beat_tracks: Default::default(),
         audio: Default::default(),

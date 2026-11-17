@@ -32,6 +32,44 @@ Keep the [media dependency notices](../../crates/media/assets/licenses), includi
 RealFFT, with separately distributed tools that use them. Retain the source and
 relinking materials required by the enabled backends.
 
+### Plugin catalog scanner
+
+The desktop and CLI include isolated scanning. Build the optional standalone
+scanner to run the native scanner checks:
+
+```sh
+cargo build --locked -p daw-cli -p daw-desktop -p daw-plugin-scan
+cargo build --locked -p daw-drive-clap -p daw-drive-vst3
+python3 tools/check_plugin_scanner.py
+```
+
+No scanner sidecar is required for normal desktop or CLI use. An explicit
+`daw-cli plugins --scanner PATH` selects an optional standalone helper.
+The native scanner check uses only the repository's Drive exports in
+temporary bundles; it does not scan the user's installed plugins. For a different
+target directory, pass the script's scanner and library options.
+
+The desktop searches default locations at startup and launches itself in scanner
+mode for each candidate. All desktop packagers include CLAP/VST3/libloading
+notices. Keep those notices with
+separately distributed CLI/scanner builds. See the [hosting specification](../../specs/architecture/external-plugin-hosting.md).
+
+Run owned native processing fixtures without loading user plugins:
+
+```sh
+cargo build --locked -p daw-plugin-host-fixtures
+cargo build --locked -p daw-engine --example native_fixture_check --example native_graph_check
+cargo build --locked -p daw-plugin-host --example native_host_check --example native_preset_check
+python3 tools/check_plugin_hosting.py
+python3 tools/check_plugin_scanner.py --host-check target/debug/examples/native_host_check --graph-check target/debug/examples/native_graph_check
+```
+
+Use `.exe` paths on Windows. On macOS, build
+`cargo build -p daw-desktop --example native_editor_check`, then pass
+`--editor-check target/debug/examples/native_editor_check` to the scanner check.
+This check requires actual desktop/GPU access. These tests cover owned fixtures;
+they do not establish general vendor compatibility or device deadlines.
+
 ## Audio cache and preparation benchmark
 
 Desktop and CLI startup enable the shared prepared-audio cache. Default directories are `~/Library/Caches/daw/prepared-audio-v1` on macOS, `%LOCALAPPDATA%/daw/prepared-audio-v1` on Windows, and `$XDG_CACHE_HOME/daw/prepared-audio-v1` on Linux (falling back to `~/.cache`). Set `DAW_AUDIO_CACHE` to override the directory. An empty value disables disk caching while keeping bounded memory reuse. Cache write failures fall back to normal preparation.

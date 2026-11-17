@@ -95,9 +95,13 @@ pub use drive::{
     DRIVE_TYPE_ID, DriveColorShape, DriveSettings,
 };
 mod effects;
+mod hosted;
+mod hosted_settings;
 pub use effects::{
     EQ_STATE_VERSION, EQ_TYPE_ID, EffectInstance, EffectSettings, EqBandSettings, EqSettings,
 };
+pub use hosted::*;
+pub use hosted_settings::*;
 mod envelope;
 pub use envelope::{
     CurveShape, EnvelopeSettings, EnvelopeStageSettings, EnvelopeTiming, MAX_ENVELOPE_TIME_MS,
@@ -132,7 +136,7 @@ impl Waveform {
 mod oscillator;
 pub use oscillator::{OscillatorSettings, OscillatorUnison};
 
-pub const INSTRUMENT_STATE_VERSION: u32 = 4;
+pub const INSTRUMENT_STATE_VERSION: u32 = 5;
 
 /// A parallel layer with per-voice sources and a shared stereo effect bus.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -153,6 +157,8 @@ pub struct InstrumentLayerSettings {
     pub sampler: Option<SamplerSettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub noise: Option<NoiseSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hosted: Option<HostedSource>,
     /// Unit enable states retain individual source switches and envelope settings.
     pub oscillator_enabled: bool,
     /// Gain after summing oscillator sources, before per-note Amplitude.
@@ -183,6 +189,7 @@ impl Default for InstrumentLayerSettings {
             oscillators: Vec::new(),
             sampler: None,
             noise: None,
+            hosted: None,
             oscillator_enabled: true,
             oscillator_level_db: 0.0,
             oscillator_pitch_semitones: 0.0,
@@ -210,14 +217,24 @@ impl InstrumentLayerSettings {
             && self.gain_db.is_finite()
             && 10.0_f32.powf(self.gain_db / 20.0).is_finite()
             && (-1.0..=1.0).contains(&self.pan)
-            && self
-                .sampler
-                .as_ref()
-                .is_none_or(|s| s.valid() && self.oscillators.is_empty() && self.noise.is_none())
-            && self
-                .noise
-                .as_ref()
-                .is_none_or(|n| n.valid() && self.oscillators.is_empty() && self.sampler.is_none())
+            && self.sampler.as_ref().is_none_or(|s| {
+                s.valid()
+                    && self.oscillators.is_empty()
+                    && self.noise.is_none()
+                    && self.hosted.is_none()
+            })
+            && self.noise.as_ref().is_none_or(|n| {
+                n.valid()
+                    && self.oscillators.is_empty()
+                    && self.sampler.is_none()
+                    && self.hosted.is_none()
+            })
+            && self.hosted.as_ref().is_none_or(|h| {
+                h.valid()
+                    && self.oscillators.is_empty()
+                    && self.sampler.is_none()
+                    && self.noise.is_none()
+            })
             && self.oscillator_cents.is_finite()
             && (-100.0..=100.0).contains(&self.oscillator_cents)
             && self.oscillator_pitch_semitones.is_finite()
@@ -274,6 +291,8 @@ impl InstrumentLayerSettings {
 // Missing names in existing version-2 instruments follow their original row positions.
 #[derive(Deserialize)]
 struct SavedLayer {
+    #[serde(default)]
+    hosted: Option<HostedSource>,
     #[serde(default)]
     effects: Vec<EffectInstance>,
     id: uuid::Uuid,
@@ -356,6 +375,7 @@ impl SavedLayer {
     fn into_settings(self, index: usize) -> InstrumentLayerSettings {
         let legacy = self.envelopes.is_none();
         let mut layer = InstrumentLayerSettings {
+            hosted: self.hosted,
             effects: self.effects,
             id: self.id,
             name: self.name.unwrap_or_else(|| format!("Layer {}", index + 1)),
@@ -638,7 +658,7 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
             oscillator::saved_oscillators(d).map(Some)
         }
         let saved = Saved::deserialize(deserializer)?;
-        if saved.version == INSTRUMENT_STATE_VERSION
+        if (4..=INSTRUMENT_STATE_VERSION).contains(&saved.version)
             && (saved.lfo_lane.is_none() || saved.envelope_lane.is_none())
         {
             return Err(serde::de::Error::custom(
@@ -652,7 +672,7 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
             let (lfo_lane, envelope_lane) =
                 Self::saved_modulation_lanes(&layers, &main, saved.lfo_lane, saved.envelope_lane);
             return Ok(Self {
-                version: if saved.version == 2 || saved.version == 3 {
+                version: if (2..=4).contains(&saved.version) {
                     INSTRUMENT_STATE_VERSION
                 } else {
                     saved.version

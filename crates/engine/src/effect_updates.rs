@@ -66,6 +66,11 @@ pub(super) fn fingerprint(plan: &RenderPlan) -> u64 {
         for effect in effects {
             effect.id.hash(&mut hash);
             match &effect.unit {
+                daw_core::EffectSettings::Hosted(s) => {
+                    daw_unit_core::HOSTED_TYPE_ID.hash(&mut hash);
+                    s.id.hash(&mut hash);
+                    s.plugin.identity.hash(&mut hash);
+                }
                 daw_core::EffectSettings::HarmonicLift(_) => {
                     daw_unit_core::HARMONIC_LIFT_TYPE_ID.hash(&mut hash)
                 }
@@ -242,6 +247,10 @@ impl EffectUpdate {
         previous: &RenderPlan,
         desired: RenderPlan,
     ) -> Result<Self, EffectUpdateFallback> {
+        if !previous.project.hosted_units().is_empty() || !desired.project.hosted_units().is_empty()
+        {
+            return Err(EffectUpdateFallback::Arrangement);
+        }
         let previous = previous.clone().prepare_beats();
         let desired = desired.prepare_beats();
         let mut a = previous.clone();

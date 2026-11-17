@@ -28,6 +28,7 @@ mod touch;
 
 struct State {
     ui: DawUi,
+    hosting: crate::hosting::Hosting,
     ctx: egui::Context,
     input: egui::RawInput,
     painter: Option<egui_glow::Painter>,
@@ -43,6 +44,12 @@ struct State {
     saved: String,
     last_saved: Instant,
     window: preferences::WindowState,
+}
+
+impl Drop for State {
+    fn drop(&mut self) {
+        self.hosting.shutdown(&mut self.ui);
+    }
 }
 
 pub fn run() -> glib::ExitCode {
@@ -147,7 +154,9 @@ fn build(
     {
         ui.enable_midi(Box::new(crate::midi::NativeMidi::default()), root);
     }
+    let hosting = crate::hosting::Hosting::new(&mut ui);
     let state = Rc::new(RefCell::new(State {
+        hosting,
         ui,
         ctx: ctx.clone(),
         input: Default::default(),
@@ -309,7 +318,9 @@ fn build(
             viewport.events.push(egui::ViewportEvent::Close);
             state.close_requested = false;
         }
-        let mut output = ctx.run_ui(input, |ui| state.ui.show(ui));
+        let State { hosting, ui, .. } = &mut *state;
+        hosting.update(ui, &ctx);
+        let mut output = ctx.run_ui(input, |surface| ui.show(surface));
         let primitives = ctx.tessellate(output.shapes, output.pixels_per_point);
         state.textures.apply(&output.textures_delta);
         if let Some(painter) = &mut state.painter {

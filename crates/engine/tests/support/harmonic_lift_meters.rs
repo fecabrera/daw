@@ -44,7 +44,7 @@ fn harmonic_branch_meters_publish_by_id_without_changing_audio_or_allocating() {
                 assert!(meter.boost_peaks()[0].peak() > 0.0);
             }
             let held = meters.each_ref().map(|m| m.boost_peaks()[0].peak());
-            let mut snapshot = live.clone();
+            let mut snapshot = live.snapshot().expect("built-in snapshot");
             for _ in 0..128 {
                 snapshot.next_sample();
             }

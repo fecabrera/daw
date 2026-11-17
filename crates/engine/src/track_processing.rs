@@ -87,13 +87,12 @@ pub(super) fn track_pan_coefficients(track: &daw_core::Track) -> [[f32; 2]; 2] {
 
 // Resolve channel semantics during preparation, never from instantaneous L/R
 // equality (a stereo signal can cross the centre without becoming a mono bus).
-pub(super) fn instrument_is_mono(
-    instrument: &daw_core::InstrumentSettings,
-    track_effects: &[daw_core::EffectInstance],
-) -> bool {
-    fn preserves_mono(effects: &[daw_core::EffectInstance]) -> bool {
-        use daw_core::EffectSettings as E;
-        effects.iter().all(|effect| match &effect.unit {
+pub(super) fn channel_shape(input: bool, effects: &[daw_core::EffectInstance]) -> bool {
+    use daw_core::EffectSettings as E;
+    effects
+        .iter()
+        .fold(input, |mono, effect| match &effect.unit {
+            E::Hosted(s) => s.output_channels == 1,
             E::DirectionMixer(_)
             | E::AutoFilter(_)
             | E::StereoSpread(_)
@@ -115,22 +114,30 @@ pub(super) fn instrument_is_mono(
             | E::Limiter(_)
             | E::Saturator(_)
             | E::Bitcrusher(_)
-            | E::Missing { .. } => true,
+            | E::Missing { .. } => mono,
         })
-    }
-    instrument.main.pan == 0.0
-        && preserves_mono(&instrument.main.effects)
-        && preserves_mono(track_effects)
-        && instrument.layers.iter().all(|layer| {
-            layer.pan == 0.0
-                && layer.sampler.as_ref().is_none_or(|s| s.input.is_none())
-                && layer.noise.is_none()
-                && preserves_mono(&layer.effects)
-                && layer
-                    .oscillators
-                    .iter()
-                    .all(|osc| osc.unison == daw_core::OscillatorUnison::Off)
-        })
+}
+
+pub(super) fn instrument_is_mono(
+    instrument: &daw_core::InstrumentSettings,
+    track_effects: &[daw_core::EffectInstance],
+) -> bool {
+    let layers = instrument.layers.iter().all(|layer| {
+        let source = layer.hosted.as_ref().map_or_else(
+            || {
+                layer.sampler.as_ref().is_none_or(|s| s.input.is_none())
+                    && layer.noise.is_none()
+                    && layer
+                        .oscillators
+                        .iter()
+                        .all(|s| s.unison == daw_core::OscillatorUnison::Off)
+            },
+            |s| s.settings().is_some_and(|s| s.output_channels == 1),
+        );
+        channel_shape(source, &layer.effects) && layer.pan == 0.0
+    });
+    let main = channel_shape(layers, &instrument.main.effects) && instrument.main.pan == 0.0;
+    channel_shape(main, track_effects)
 }
 
 #[cfg(test)]
@@ -174,6 +181,30 @@ mod channel_tests {
         assert!(!instrument_is_mono(
             &original,
             &[daw_core::EffectInstance::stereo_spread()]
+        ));
+    }
+    #[test]
+    fn native_mono_output_followed_by_a_stereo_unit_uses_balance() {
+        use daw_unit_core::{HostedPluginDescriptor, HostedRole, HostedSettings, PluginIdentity};
+        let mut settings = HostedSettings::new(
+            HostedPluginDescriptor {
+                identity: PluginIdentity::Clap("org.daw.shape".into()),
+                name: "Shape".into(),
+                vendor: "DAW".into(),
+                version: "1".into(),
+                role: HostedRole::Effect,
+            },
+            vec![],
+        );
+        settings.output_channels = 1;
+        let mono = daw_core::EffectInstance {
+            id: daw_core::Id::new_v4(),
+            unit: daw_core::EffectSettings::Hosted(settings),
+        };
+        assert!(channel_shape(false, std::slice::from_ref(&mono)));
+        assert!(!channel_shape(
+            false,
+            &[mono, daw_core::EffectInstance::stereo_spread()]
         ));
     }
 }

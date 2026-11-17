@@ -1,5 +1,11 @@
 # Modular audio units design and decisions
 
+External VST3/CLAP hosting is now accepted for implementation under the
+[external hosting contract](external-plugin-hosting.md). That document extends
+older built-in-only and deferred-plugin scope statements below. Active hosting,
+exclusive sources, mapped controls, native editors, modulation and PCM sidechains
+are integrated. Native release acceptance is recorded separately.
+
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/views/instrument.md).
 
 For a source-backed map of the current implementation and its review findings, see the [2026-10-19 architecture review](review-2026-10-19/README.md). This document retains dated design decisions; early proposals can be superseded by later entries.
@@ -62,7 +68,7 @@ D29 (2026-10-11) updates the MIDI voice scope: MIDI patterns support simultaneou
 
 D30 (2026-10-12) defines one source container per track: clip playback for Audio, one instrument for MIDI, and one beat instrument containing lanes for Beat. Reusable oscillator units belong inside an instrument. Each container exposes one audio output bus to track effects and gain/pan. This is the accepted target architecture; the MIDI source container now holds parallel layers with summed oscillator lists and optional amplitude envelopes under D32. Full graph containers remain pending.
 
-These decisions define the full target scope. Audio, MIDI and Beat tracks and their clip editors are implemented, including the [Beat MVP](../views/beat-model.md). Graph tools and plugin loading remain pending; Beat native platform acceptance remains open. The delivery schedule remains on the [MVP roadmap](mvp-scope.md#future-features).
+These decisions define the full target scope. Audio, MIDI and Beat tracks and their clip editors are implemented, including the [Beat MVP](../views/beat-model.md). Graph tools remain pending; external plugin hosting follows its contract; Beat native platform acceptance remains open. The delivery schedule remains on the [MVP roadmap](mvp-scope.md#future-features).
 
 D31 (2026-10-12) adds a per-note ADSR Envelope unit immediately to the right of Oscillator. Use equal-height shared unit panels, a single full-height divider in the panel-border color, and four 90-point stage strips with matching padding, separators, three control rows, and bottom labels. Attack/Decay/Release expose time, curve shape, and curve amount; Sustain exposes level only. Curve choices are Linear, Exponential, Logarithmic, and S-curve, with retained amount disabled for Linear. Use one shared instrument configuration and independent envelope state per note. See [Envelope unit](../instruments/midi-patterns.md#envelope-unit) for implemented ranges, defaults, migration, and lifecycle.
 
@@ -92,7 +98,7 @@ Accepted on 2026-10-11. Q01–Q10 are resolved for the MVP through D10 and D19�
 | Q04 | Mono/stereo audio, modulation signals, and sample-timed note/control events at the project rate. Reject graph cycles. Delay feedback is internal to the delay unit. | Graph-level feedback and additional port layouts. |
 | Q05 | Source/clip output → serial effects → gain/pan → track mix. Beat lanes pass through lane effects and lane gain/pan, then sum into parent effects and parent gain/pan. Serial Master effects precede Master gain and output meters. | Return feedback, sidechains and arbitrary routing. |
 | Q06 | Stop and seek reset voices and effects. Pause preserves state. Loop boundaries end active notes while effects continue. Mute suppresses output while processing continues. Smooth bypass changes and publish prepared graph replacements atomically. | More advanced transport-state restoration. |
-| Q07 | Built-in Limiter, Saturator and Multiband Exciter latency is reported, aligned across tracks/layers/Main/Master, and primed for playback/export. Other current units add no latency. Musical delay/reverb remain allowed; reported tails are capped at 10 seconds with a notice on truncation. | Arbitrary third-party/plugin latency. |
+| Q07 | Built-in Limiter, Saturator and Multiband Exciter latency is reported, aligned across tracks/layers/Main/Master, and primed for playback/export. External units report measured native latency. Other built-in units add no latency. Musical delay/reverb remain allowed; reported tails are capped at 10 seconds with a notice on truncation. | Unsupported native bus layouts. |
 | Q08 | Versioned unit IDs, parameters, connections, and presets. Pattern sources hold immutable note/step data; tracks and lanes own instrument/effect setups. Preserve and report missing-unit data. Missing instruments render silence; missing effects pass audio through. | Nested presets. |
 | Q09 | Reusable Rust crates and standalone tools share DSP implementations; UI/device adapters stay separate. | Standalone interface and packaging details. |
 | Q10 | FunDSP behind our API. Initial units: oscillators, noise, sample playback, envelope, LFO, filter, gain, delay, and simple reverb. | SoundFont instruments, spectral effects, and convolution. |
@@ -305,7 +311,7 @@ MIDI tracks support polyphony under D29; Beat lanes retain one active voice each
 
 Process stateful units in sequence with the same event timing in both modes. Stop and seek reset voices and effects; pause preserves state. End active notes at loop boundaries while effects continue. Mute suppresses output but keeps processing active. Seed handling and exact state initialization remain implementation details for repeatable exports.
 
-Rebuild affected units when the processing rate changes, using the existing preparation and atomic-publication pattern. Smooth bypass transitions and publish prepared graph replacements atomically. Earlier units add no latency. Limiter reports a fixed delay and uses shared track/Master alignment and preroll; arbitrary plugin latency remains deferred. Musical delay/reverb are allowed. Export reported tails up to 10 seconds and report truncation.
+Rebuild affected units when the processing rate changes, using the existing preparation and atomic-publication pattern. Smooth bypass transitions and publish prepared graph replacements atomically. Earlier units add no latency. Limiter reports a fixed delay and uses shared track/Master alignment and preroll; external plugin latency follows the hosting contract. Musical delay/reverb are allowed. Export reported tails up to 10 seconds and report truncation.
 
 ## Library findings and recommendations
 

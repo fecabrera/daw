@@ -90,7 +90,8 @@ try {
     foreach ($directory in @(
         'crates/ui/assets/licenses',
         'crates/unit-ui/assets/licenses',
-        'crates/media/assets/licenses',
+        'crates/media/assets/licenses', 'crates/plugin-host/assets/licenses',
+        'crates/plugin-clap/assets/licenses', 'crates/plugin-vst3/assets/licenses',
         'crates/oscillator/assets/licenses',
         'crates/equalizer/assets/licenses',
         'crates/timestretch/licenses',

@@ -15,6 +15,7 @@ def main():
         "clippy": "Clippy",
         "tests": "Workspace tests",
         "gtk_window": "Linux GTK window modes",
+        "plugin_hosting": "External plugin hosting",
         "cli": "Headless CLI",
         "windows_package": "Windows build and package",
         "macos_package": "macOS build and package",

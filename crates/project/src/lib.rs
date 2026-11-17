@@ -23,6 +23,7 @@ pub use separation::{PreparedSeparation, SeparationModels, SeparationProgress};
 mod inspection;
 pub use inspection::inspect_project;
 mod history;
+mod hosted;
 pub use history::{HistoryMemory, SessionHistory};
 mod audio_merge;
 mod clip_audio;
@@ -95,6 +96,8 @@ pub fn project_folder_name(name: &str) -> Result<&str> {
 
 #[derive(Clone, Default)]
 pub struct Session {
+    pub plugin_host: Option<std::sync::Arc<daw_plugin_host::HostClient>>,
+    pub plugin_states: daw_plugin_host::StateBank,
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
     pub sampler_audio: HashMap<Id, daw_media::PreparedSampler>,
@@ -215,6 +218,12 @@ impl Session {
 
     pub fn plan(&self) -> RenderPlan {
         RenderPlan {
+            external: daw_engine::ExternalPreparation {
+                host: self.plugin_host.clone(),
+                states: self.plugin_states.clone(),
+                offline: false,
+                publish: true,
+            },
             beat_tracks: Default::default(),
             project: self.project.clone(),
             audio: self.audio.clone(),
@@ -231,6 +240,8 @@ impl Session {
         let folder = absolute(folder)?;
         let (project, previous_stretch_revision) = inspection::load_manifest(&folder)?;
         let mut session = Self {
+            plugin_host: None,
+            plugin_states: Default::default(),
             project,
             audio: HashMap::new(),
             sampler_audio: Default::default(),
@@ -254,6 +265,14 @@ impl Session {
         session
             .warnings
             .extend(effect_warnings::missing(&session.project));
+        for (_, settings) in session.project.hosted_units() {
+            if let Some(reference) = &settings.state {
+                session
+                    .plugin_states
+                    .load(session.folder.as_deref().expect("opened folder"), reference)
+                    .map_err(error)?;
+            }
+        }
         Ok(ProjectDocument(session))
     }
     /// Worker-only completion of a document or edited model. Existing immutable buffers are reused.
@@ -554,16 +573,6 @@ impl Session {
         if arranged_end == 0 {
             return Err(error("Cannot export a project with no clips"));
         }
-        // Summing every bus is conservative for both serial and parallel chains.
-        // The common export policy caps appended tails at ten seconds.
-        let requested_tail = self.project.all_effects().fold(0_u64, |sum, effect| {
-            sum.saturating_add(effect.unit.tail_frames(self.project.sample_rate_hz))
-        });
-        let tail_cap = daw_engine::offline_tail_cap(self.project.sample_rate_hz);
-        let end = arranged_end
-            .checked_add(requested_tail.min(tail_cap))
-            .ok_or_else(|| error("Export duration exceeds the supported frame range"))?;
-        progress(0, end);
         let path = absolute(path)?;
         for asset in &self.project.assets {
             if !asset.is_file_audio() {
@@ -591,8 +600,17 @@ impl Session {
         let result = (|| {
             let mut snapshot = self.clone();
             snapshot.prepare_stretches()?;
-            let mut renderer = daw_engine::Renderer::new(snapshot.plan());
-            renderer.seek(0);
+            let mut plan = snapshot.plan();
+            plan.external.offline = true;
+            plan.external.publish = false;
+            let mut renderer = daw_engine::Renderer::try_new(plan).map_err(error)?;
+            renderer.try_seek(0).map_err(error)?;
+            let requested_tail = renderer.offline_tail_frames();
+            let tail_cap = daw_engine::offline_tail_cap(self.project.sample_rate_hz);
+            let end = arranged_end
+                .checked_add(requested_tail.min(tail_cap))
+                .ok_or_else(|| error("Export duration exceeds the supported frame range"))?;
+            progress(0, end);
             let mut encoder =
                 ExportEncoder::at_sample_rate(&temp, settings, self.project.sample_rate_hz)
                     .map_err(error)?;
@@ -602,6 +620,11 @@ impl Session {
             while position < end {
                 let count = (end - position).min(block_size as u64) as usize;
                 renderer.render_offline(&mut block[..count]);
+                if let Some(unit) = renderer.hosted_fault() {
+                    return Err(error(format!(
+                        "Plugin processing failed in unit {unit}; export was not published"
+                    )));
+                }
                 if let Some(message) = renderer.source_error() {
                     return Err(error(message));
                 }
@@ -618,7 +641,7 @@ impl Session {
             }
             let mut warnings = self.warnings.clone();
             if requested_tail > tail_cap {
-                warnings.push("Reverb tail limited to 10 seconds after the arrangement; the remaining tail was truncated".into());
+                warnings.push("Audio tail limited to 10 seconds after the arrangement; the remaining tail was truncated".into());
             }
             if clipped
                 && !(settings.format == ExportFormat::Wav

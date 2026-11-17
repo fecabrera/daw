@@ -399,12 +399,11 @@ impl DawUi {
                                 self.effects_editing_enabled(ui),
                             );
                         } else {
-                            let output = self.effects_catalog.show(
+                            let output = self.effects_catalog.show_with_header(
                                 ui,
                                 library,
                                 catalog_rect,
-                                "Effects",
-                                "effects",
+                                ("Effects", "effects"),
                                 catalog::Interaction {
                                     rows_enabled: allowed
                                         && self.effects_target().is_some()
@@ -425,8 +424,12 @@ impl DawUi {
                                             .is_none_or(|drag| !drag.active),
                                     empty_enabled: allowed,
                                 },
+                                crate::hosting::browser_button,
                             );
-                            if output.add_selected {
+                            if let Some(identity) = output.external_add.clone() {
+                                self.add_external_plugin(identity);
+                            }
+                            if output.add_selected && output.external_add.is_none() {
                                 self.add_catalog_effects(
                                     &mut effects,
                                     effects_catalog::instantiate(
@@ -520,7 +523,11 @@ impl DawUi {
                                 self.effects_bounds.library = catalog_rect;
                                 self.effects_bounds.header = output.header;
                                 for (index, response) in &output.folders {
-                                    self.effects_bounds.folders[*index] = response.rect;
+                                    if let Some(bounds) =
+                                        self.effects_bounds.folders.get_mut(*index)
+                                    {
+                                        *bounds = response.rect;
+                                    }
                                 }
                             }
                             #[cfg(not(test))]
@@ -927,6 +934,27 @@ impl DawUi {
                                         .and_then(|o| o.effect_output_meter(effect.id)),
                                 );
                                 match &mut effect.unit {
+                                    daw_core::EffectSettings::Hosted(settings) => {
+                                        let unit = settings.id;
+                                        let result = crate::hosted_panel::show(
+                                            ui,
+                                            settings,
+                                            compact,
+                                            height,
+                                            modulation_sources,
+                                            |parameter| {
+                                                self.output.as_ref().and_then(|o| {
+                                                    o.modulation_snapshot(
+                                                        daw_engine::ModulationTarget::Hosted {
+                                                            unit,
+                                                            parameter,
+                                                        },
+                                                    )
+                                                })
+                                            },
+                                        );
+                                        (result.header, result.power.rect)
+                                    }
                                     daw_core::EffectSettings::MultibandCompressor(settings) => {
                                         let (bounds, header) =
                                             crate::multiband_compressor_panel::show(

@@ -53,6 +53,7 @@ pub fn midi_project(rate: u32, tracks: usize, saturators: usize) -> RenderPlan {
             .unwrap();
     }
     RenderPlan {
+        external: Default::default(),
         beat_tracks: Default::default(),
         project,
         audio: Default::default(),

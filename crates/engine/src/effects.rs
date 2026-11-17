@@ -882,7 +882,9 @@ impl EffectChain {
                                         .collect(),
                                 ))
                             }
-                            EffectSettings::Missing { .. } => None,
+                            // Hosted units execute in the shared block chain, outside
+                            // this built-in sample kernel segment.
+                            EffectSettings::Hosted(_) | EffectSettings::Missing { .. } => None,
                             EffectSettings::Compressor(settings) => {
                                 Some(RuntimeEffect::Compressor(
                                     Box::new(Compressor::new(context, settings)),
@@ -1256,9 +1258,9 @@ impl EffectChain {
     }
     pub fn sample(
         &mut self,
-        mut input: [f32; 2],
+        input: [f32; 2],
         mono: Option<bool>,
-        mut frame: u64,
+        frame: u64,
         tempo: f32,
         loop_region: Option<(u64, u64)>,
         values: (
@@ -1269,7 +1271,37 @@ impl EffectChain {
         if let Some(mono) = mono {
             self.mono = mono;
         }
-        for ((_, unit), tap) in self.units.iter_mut().zip(&mut self.output_taps) {
+        self.sample_range(
+            input,
+            mono,
+            frame,
+            tempo,
+            loop_region,
+            values,
+            0..self.units.len(),
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn sample_range(
+        &mut self,
+        mut input: [f32; 2],
+        mono: Option<bool>,
+        mut frame: u64,
+        tempo: f32,
+        loop_region: Option<(u64, u64)>,
+        values: (
+            &[daw_core::ModulationValue],
+            Option<&daw_unit_core::ModulationSourceIndex>,
+        ),
+        range: std::ops::Range<usize>,
+    ) -> ([f32; 2], bool) {
+        if let Some(mono) = mono {
+            self.mono = mono;
+        }
+        for ((_, unit), tap) in self.units[range.clone()]
+            .iter_mut()
+            .zip(&mut self.output_taps[range])
+        {
             if let Some(unit) = unit {
                 let musical = self.clock.as_ref().map(|c| daw_unit_core::MusicalPosition {
                     quarter: c.quarter_at(frame),

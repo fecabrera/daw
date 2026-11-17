@@ -13,6 +13,7 @@ impl Renderer {
             .sidechains
             .taps_mut()
             .chain(self.buses.sends.taps_mut())
+            .chain(self.hosted.iter_mut().flat_map(|g| g.taps_mut()))
         {
             tap.reader.prepare_streaming().map_err(|e| e.to_string())?;
         }
@@ -27,6 +28,7 @@ impl Renderer {
                 self.sidechains
                     .taps()
                     .chain(self.buses.sends.taps())
+                    .chain(self.hosted.iter().flat_map(|g| g.taps()))
                     .find_map(|t| t.reader.source_error())
             })
     }
@@ -39,6 +41,7 @@ impl Renderer {
                 .sidechains
                 .taps()
                 .chain(self.buses.sends.taps())
+                .chain(self.hosted.iter().flat_map(|g| g.taps()))
                 .any(|t| t.reader.source_failed())
     }
     pub(super) fn streaming_ready(&mut self, frame: u64, region: Option<(u64, u64)>) -> bool {
@@ -61,6 +64,7 @@ impl Renderer {
             .sidechains
             .taps_mut()
             .chain(self.buses.sends.taps_mut())
+            .chain(self.hosted.iter_mut().flat_map(|g| g.taps_mut()))
         {
             ready &= tap.ready(frame, region);
         }

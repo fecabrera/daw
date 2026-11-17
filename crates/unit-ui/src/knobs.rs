@@ -285,6 +285,7 @@ pub struct Knob<'a> {
     spec: KnobSpec,
     modulation: Option<(&'a ModulationMarker, &'a mut bool)>,
     tooltip_name: Option<&'a str>,
+    value_text: Option<&'a str>,
 }
 impl<'a> Knob<'a> {
     pub fn new(value: &'a mut f32, spec: KnobSpec) -> Self {
@@ -293,6 +294,7 @@ impl<'a> Knob<'a> {
             spec,
             modulation: None,
             tooltip_name: None,
+            value_text: None,
         }
     }
 }
@@ -300,6 +302,11 @@ impl<'a> Knob<'a> {
     /// Add local identity to hover without changing the parameter's accessible name.
     pub fn tooltip_name(mut self, name: &'a str) -> Self {
         self.tooltip_name = Some(name);
+        self
+    }
+    /// Main-thread native formatting can supply a bounded cached value label.
+    pub fn value_text(mut self, value: &'a str) -> Self {
+        self.value_text = Some(value);
         self
     }
     pub fn modulated(mut self, marker: Option<&'a ModulationMarker>, open: &'a mut bool) -> Self {
@@ -315,6 +322,7 @@ impl Widget for Knob<'_> {
             self.spec,
             self.modulation,
             self.tooltip_name,
+            self.value_text,
         );
         crate::control_capture::record(ui, &response);
         response
@@ -658,6 +666,7 @@ fn base_knob(
     spec: KnobSpec,
     mut modulation: Option<(&ModulationMarker, &mut bool)>,
     tooltip_name: Option<&str>,
+    value_text: Option<&str>,
 ) -> Response {
     let natural_size = if spec.diagram.is_some()
         || spec.value_label.is_some()
@@ -1023,7 +1032,7 @@ fn base_knob(
             );
         }
     }
-    let tooltip_value = (spec.format)(*value);
+    let tooltip_value = value_text.map_or_else(|| (spec.format)(*value), str::to_owned);
     let tooltip_ui = |ui: &mut Ui| {
         let [name, value] = [
             format!("{}:", tooltip_name.unwrap_or(spec.name)),

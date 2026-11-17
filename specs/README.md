@@ -6,6 +6,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 ## Architecture and baseline
 
+- [External plugin hosting](architecture/external-plugin-hosting.md): accepted complete scope, scanner foundations and remaining runtime integration; [acceptance gates](acceptance/external-plugin-hosting.md).
+
 - [Windows/Linux desktop packaging](architecture/windows-linux-packaging.md): local working-tree ZIPs and distribution source packages.
 - [macOS application packaging](architecture/macos-packaging.md): local working-tree bundles and distribution source packages.
 - [Desktop application icons](architecture/app-icons.md): platform artwork, exports and launcher integration.

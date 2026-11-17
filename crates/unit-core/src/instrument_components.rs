@@ -9,6 +9,7 @@ pub enum InstrumentComponent {
     Oscillators,
     Sampler,
     Noise,
+    Hosted,
     /// An individual source strip can transfer, but is not a component unit in this order.
     Oscillator(Uuid),
     Envelope(Uuid),
@@ -22,7 +23,7 @@ impl InstrumentComponent {
     pub fn is_source(self) -> bool {
         matches!(
             self,
-            Self::Oscillators | Self::Sampler | Self::Noise | Self::Oscillator(_)
+            Self::Oscillators | Self::Sampler | Self::Noise | Self::Hosted | Self::Oscillator(_)
         )
     }
 }
@@ -146,6 +147,7 @@ fn remove_providers(
             }
             InstrumentComponent::Macros => macros.present = false,
             InstrumentComponent::Noise
+            | InstrumentComponent::Hosted
             | InstrumentComponent::Sampler
             | InstrumentComponent::Oscillators
             | InstrumentComponent::Oscillator(_)
@@ -160,6 +162,7 @@ impl InstrumentLayerSettings {
         std::iter::once(InstrumentComponent::Oscillators)
             .chain(self.sampler.as_ref().map(|_| InstrumentComponent::Sampler))
             .chain(self.noise.as_ref().map(|_| InstrumentComponent::Noise))
+            .chain(self.hosted.as_ref().map(|_| InstrumentComponent::Hosted))
             .chain(
                 self.envelopes
                     .iter()
@@ -178,6 +181,7 @@ impl InstrumentLayerSettings {
         match unit {
             InstrumentComponent::Sampler => self.sampler.is_some(),
             InstrumentComponent::Noise => self.noise.is_some(),
+            InstrumentComponent::Hosted => self.hosted.is_some(),
             InstrumentComponent::Oscillators => !self.oscillators.is_empty(),
             InstrumentComponent::Envelope(id) => {
                 self.envelopes.iter().any(|e| e.id == id && e.present)
@@ -199,6 +203,18 @@ impl InstrumentLayerSettings {
         self.retained_units()
             .into_iter()
             .filter(|c| matches!(c, InstrumentComponent::Effect(_)) || self.has_component(*c))
+            .filter(|c| {
+                self.hosted.is_none()
+                    || match c {
+                        InstrumentComponent::Amplitude => false,
+                        InstrumentComponent::Envelope(id) => self
+                            .envelopes
+                            .iter()
+                            .find(|e| e.id == *id)
+                            .is_none_or(|e| e.mode != crate::EnvelopeMode::PerNote),
+                        _ => true,
+                    }
+            })
             .collect()
     }
     /// Includes hidden retained controls, but only installed audio sources.
@@ -214,6 +230,7 @@ impl InstrumentLayerSettings {
         self.oscillator_modulations.clear();
         self.sampler = None;
         self.noise = None;
+        self.hosted = None;
         self.prune_component_order();
     }
     /// Remove installed units together. Retained providers/stages keep their IDs and settings.
@@ -242,6 +259,10 @@ impl InstrumentLayerSettings {
         }
         if units.contains(&InstrumentComponent::Noise) {
             self.noise = None;
+            self.prune_component_order();
+        }
+        if units.contains(&InstrumentComponent::Hosted) {
+            self.hosted = None;
             self.prune_component_order();
         }
         if units.contains(&InstrumentComponent::Amplitude) {

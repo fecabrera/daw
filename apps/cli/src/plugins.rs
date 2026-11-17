@@ -1,0 +1,192 @@
+use daw_plugin_host::{
+    PluginRegistry, RegistryLock, ScanState, configured_search_roots, default_registry_path,
+    discover, scan_isolated,
+};
+use std::{io::Write, path::PathBuf, time::Duration};
+
+#[derive(clap::Args)]
+pub struct Args {
+    /// Read only the saved catalog; do not search directories or load plugin code.
+    #[arg(long, conflicts_with_all = ["retry_failed", "rescan", "clear_cache"])]
+    cached: bool,
+    /// Rescan unchanged modules, including previously failed modules.
+    #[arg(long)]
+    rescan: bool,
+    /// Rebuild the local catalog from installed files. Project data is unaffected.
+    #[arg(long)]
+    clear_cache: bool,
+    /// Retry unchanged modules that failed a previous scan.
+    #[arg(long)]
+    retry_failed: bool,
+    /// Write the catalog as JSON.
+    #[arg(long)]
+    json: bool,
+    /// Catalog cache file; defaults to the platform cache directory.
+    #[arg(long)]
+    cache: Option<PathBuf>,
+    /// Optional standalone scanner executable; defaults to this CLI in scanner mode.
+    #[arg(long)]
+    scanner: Option<PathBuf>,
+}
+pub fn run(args: Args) -> daw_project::Result<()> {
+    run_inner(args).map_err(|e| daw_project::Error(e.to_string()))
+}
+fn run_inner(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    let cache = args.cache.map(Ok).unwrap_or_else(default_registry_path)?;
+    let _lock = if args.cached {
+        None
+    } else {
+        Some(RegistryLock::acquire(&cache)?)
+    };
+    let mut registry = match PluginRegistry::load(&cache) {
+        Ok(registry) => registry,
+        Err(e) if !args.cached => {
+            eprintln!("Warning: Rebuilding plugin catalog: {e}");
+            PluginRegistry::default()
+        }
+        Err(e) => return Err(e.into()),
+    };
+    if args.clear_cache {
+        registry = PluginRegistry::default();
+    } else if args.rescan {
+        registry.request_rescan();
+    }
+    if !args.cached {
+        let scanner = match args.scanner {
+            Some(p) => p,
+            None => std::env::current_exe()?,
+        };
+        if !scanner.is_file() {
+            return Err("The scanner executable does not exist. Check --scanner.".into());
+        }
+        let discovery = discover(&configured_search_roots()?);
+        for warning in &discovery.warnings {
+            eprintln!("Warning: {warning}");
+        }
+        let scratch = cache
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join(format!("scan-{}", std::process::id()));
+        let result = registry.refresh(
+            &discovery,
+            &cache,
+            args.retry_failed || args.rescan,
+            || false,
+            |candidate| {
+                scan_isolated(
+                    &scanner,
+                    candidate,
+                    &scratch,
+                    Duration::from_secs(10),
+                    || false,
+                )
+            },
+        );
+        let _ = std::fs::remove_dir(&scratch);
+        result?;
+    }
+    let output = if args.json {
+        format!("{}\n", serde_json::to_string_pretty(&registry)?)
+    } else {
+        describe(&registry)
+    };
+    match std::io::stdout().lock().write_all(output.as_bytes()) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+fn describe(registry: &PluginRegistry) -> String {
+    let mut output = String::new();
+    for entry in &registry.entries {
+        if !entry.present {
+            continue;
+        }
+        if let ScanState::Quarantined(reason) = &entry.state {
+            output.push_str(&format!(
+                "Unavailable\t{}\t{reason}\n",
+                entry.candidate.path.display()
+            ));
+            continue;
+        }
+        if entry.state != ScanState::Ready {
+            output.push_str(&format!("Pending\t{}\n", entry.candidate.path.display()));
+            continue;
+        }
+        for plugin in &entry.plugins {
+            let active = registry
+                .resolve(&plugin.identity)
+                .is_some_and(|(c, _)| c.path == entry.candidate.path);
+            output.push_str(&format!(
+                "{}\t{:?}\t{}\t{}\t{}\n",
+                plugin.identity.format().extension().to_ascii_uppercase(),
+                plugin.role,
+                plugin.name,
+                if active { "available" } else { "shadowed" },
+                entry.candidate.path.display()
+            ));
+        }
+    }
+    if output.is_empty() {
+        output.push_str("No scanned VST3 or CLAP plugins.\n");
+    }
+    output
+}
+
+pub fn render(
+    session: daw_project::Session,
+    output: &std::path::Path,
+    overwrite: bool,
+    settings: daw_media::ExportSettings,
+    allow_missing: bool,
+) -> daw_project::Result<Vec<String>> {
+    if session.project.hosted_units().is_empty() && !session.project.has_unsupported_hosted() {
+        return session.export_with_settings(output, overwrite, settings);
+    }
+    let scanner = std::env::current_exe().map_err(|e| daw_project::Error(e.to_string()))?;
+    let (registry, warnings) = daw_plugin_host::refresh_default_registry(&scanner, || false)
+        .map_err(|e| daw_project::Error(e.to_string()))?;
+    for warning in warnings {
+        eprintln!("Warning: {warning}");
+    }
+    if session.project.has_unsupported_hosted() {
+        if !allow_missing {
+            return Err(daw_project::Error(
+                "The project contains an unsupported saved plugin version".into(),
+            ));
+        }
+        eprintln!(
+            "Warning: unsupported saved plugin units use dry effects or silent sources in this degraded render"
+        );
+    }
+    let missing: Vec<_> = session
+        .project
+        .hosted_units()
+        .into_iter()
+        .filter(|(_, s)| registry.resolve(&s.plugin.identity).is_none())
+        .map(|(_, s)| s.plugin.identity.clone())
+        .collect();
+    if !allow_missing && !missing.is_empty() {
+        return Err(daw_project::Error("Required plugins are missing or quarantined; use --allow-missing-plugins only for an explicit degraded render".into()));
+    }
+    let (mut service, client) = daw_plugin_host::HostService::new(registry);
+    let client = if allow_missing {
+        for (_, unit) in session
+            .project
+            .hosted_units()
+            .into_iter()
+            .filter(|(_, s)| missing.contains(&s.plugin.identity))
+        {
+            eprintln!(
+                "Warning: degraded render of {} ({:?}): delayed dry effect or silent instrument",
+                unit.plugin.name, unit.id
+            );
+        }
+        std::sync::Arc::new(client.allow_missing(missing))
+    } else {
+        client
+    };
+    let mut session = session;
+    session.plugin_host = Some(client);
+    service.run(move || session.export_with_settings(output, overwrite, settings))
+}

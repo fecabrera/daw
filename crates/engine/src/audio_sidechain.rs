@@ -59,7 +59,16 @@ pub(super) fn specs(project: &Project) -> Vec<Spec> {
                             stage: 0,
                         }),
                 );
-                chain(&mut out, destination, &l.effects, 0, rate);
+                chain(
+                    &mut out,
+                    destination,
+                    &l.effects,
+                    l.hosted
+                        .as_ref()
+                        .and_then(|s| s.settings())
+                        .map_or(0, |s| u64::from(s.latency_frames)),
+                    rate,
+                );
             }
             for b in i.buses() {
                 out.extend(
@@ -80,12 +89,7 @@ pub(super) fn specs(project: &Project) -> Vec<Spec> {
                         }),
                 );
             }
-            let layer_max = i
-                .layers
-                .iter()
-                .map(|l| latency::chain_frames(&l.effects, rate))
-                .max()
-                .unwrap_or(0);
+            let layer_max = super::layer_effects::parallel_latency(i, rate);
             chain(&mut out, destination, &i.main.effects, layer_max, rate);
         }
         let instrument = t
@@ -104,9 +108,36 @@ pub(super) fn specs(project: &Project) -> Vec<Spec> {
     out
 }
 #[derive(Clone)]
-struct Contribution {
-    source: usize,
-    tap: super::captured_taps::Tap,
+pub(super) struct Contribution {
+    pub source: usize,
+    pub tap: super::captured_taps::Tap,
+}
+impl Contribution {
+    pub fn prepare(plan: &RenderPlan, provider: Id, tap: SidechainTap, delay: u64) -> Vec<Self> {
+        plan.project
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(source, track)| {
+                let tap = super::captured_taps::Tap::new(
+                    plan,
+                    track,
+                    |r| {
+                        r.feeds.iter().find(|f| f.provider == provider).map(|f| {
+                            if tap == SidechainTap::PreFader {
+                                f.raw_asset
+                            } else {
+                                f.post_asset
+                            }
+                        })
+                    },
+                    0,
+                    delay,
+                )?;
+                Some(Self { source, tap })
+            })
+            .collect()
+    }
 }
 #[derive(Clone)]
 struct Edge {
@@ -165,34 +196,10 @@ impl Sidechains {
                 spec.route.id,
                 (spec.destination, this.edges[spec.destination].len()),
             );
-            let captured = if source.is_none() {
-                Vec::new()
+            let captured = if source.is_some() {
+                Contribution::prepare(plan, settings.track, settings.tap, time + spec.stage)
             } else {
-                p.tracks
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, track)| {
-                        let tap = super::captured_taps::Tap::new(
-                            plan,
-                            track,
-                            |r| {
-                                r.feeds
-                                    .iter()
-                                    .find(|f| f.provider == settings.track)
-                                    .map(|f| {
-                                        if settings.tap == SidechainTap::PreFader {
-                                            f.raw_asset
-                                        } else {
-                                            f.post_asset
-                                        }
-                                    })
-                            },
-                            0,
-                            time + spec.stage,
-                        )?;
-                        Some(Contribution { source: index, tap })
-                    })
-                    .collect()
+                Vec::new()
             };
             this.edges[spec.destination].push(Edge {
                 captured,
@@ -361,4 +368,80 @@ impl Sidechains {
                 })
                 .sum::<u64>()
     }
+}
+
+/// Raw PCM dependencies are separate from control followers. Stages use the
+/// same input-clock origin as modulation routes and native transport.
+pub(super) struct PcmSpec {
+    pub destination: usize,
+    pub source: Id,
+    pub stage: u64,
+}
+pub(super) fn pcm_specs(project: &Project) -> Vec<PcmSpec> {
+    fn chain(
+        out: &mut Vec<PcmSpec>,
+        effects: &[daw_core::EffectInstance],
+        destination: usize,
+        mut stage: u64,
+        rate: u32,
+    ) {
+        for effect in effects {
+            if let daw_core::EffectSettings::Hosted(settings) = &effect.unit {
+                out.extend(settings.audio_inputs.iter().map(|r| PcmSpec {
+                    destination,
+                    source: r.source_track,
+                    stage,
+                }));
+            }
+            stage += latency::chain_frames(std::slice::from_ref(effect), rate);
+        }
+    }
+    let rate = project.sample_rate_hz;
+    let mut out = Vec::new();
+    for (destination, track) in project.tracks.iter().enumerate() {
+        if let Some(instrument) = &track.instrument {
+            for layer in &instrument.layers {
+                let source = layer.hosted.as_ref().and_then(|s| s.settings());
+                if let Some(settings) = source {
+                    out.extend(settings.audio_inputs.iter().map(|r| PcmSpec {
+                        destination,
+                        source: r.source_track,
+                        stage: 0,
+                    }));
+                }
+                chain(
+                    &mut out,
+                    &layer.effects,
+                    destination,
+                    source.map_or(0, |s| u64::from(s.latency_frames)),
+                    rate,
+                );
+            }
+            chain(
+                &mut out,
+                &instrument.main.effects,
+                destination,
+                super::layer_effects::parallel_latency(instrument, rate),
+                rate,
+            );
+        }
+        chain(
+            &mut out,
+            &track.effects,
+            destination,
+            track
+                .instrument
+                .as_ref()
+                .map_or(0, |i| super::layer_effects::latency(i, rate)),
+            rate,
+        );
+    }
+    chain(
+        &mut out,
+        &project.master.effects,
+        project.tracks.len(),
+        0,
+        rate,
+    );
+    out
 }

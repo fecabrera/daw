@@ -431,6 +431,12 @@ impl Project {
     }
     pub(crate) fn duplicate_group(&mut self, id: Id, new_id: Id) -> Result<()> {
         let range = self.track_subtree(id)?;
+        self.check_hosted_track_copy(
+            &self.tracks[range.clone()]
+                .iter()
+                .map(|t| t.id)
+                .collect::<Vec<_>>(),
+        )?;
         let ids: HashMap<_, _> = self.tracks[range.clone()]
             .iter()
             .map(|t| (t.id, if t.id == id { new_id } else { Id::new_v4() }))

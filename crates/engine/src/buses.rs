@@ -80,7 +80,13 @@ impl Buses {
     }
 }
 impl TrackGains {
-    fn apply(&mut self, source: [f32; 2], mono: bool, live: bool, ramp: f32) -> [f32; 2] {
+    pub(super) fn apply(
+        &mut self,
+        source: [f32; 2],
+        mono: bool,
+        live: bool,
+        ramp: f32,
+    ) -> [f32; 2] {
         if live && self.remaining > 0 {
             for ch in 0..4 {
                 self.value[ch] += (self.target[ch] - self.value[ch]) / self.remaining as f32;
