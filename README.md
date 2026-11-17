@@ -5,13 +5,21 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 ![Timeline during playback, with audio, MIDI and beat tracks and a track effects chain](docs/assets/screenshots/timeline-playback.png)
 
 <p align="center">
+<a href="https://github.com/fecabrera/daw/commits/main/">
 <img alt="GitHub last commit (branch)" src="https://img.shields.io/github/last-commit/fecabrera/daw/main">
+</a>
 
+<a href="https://github.com/fecabrera/daw/actions">
 <img alt="GitHub branch check suites" src="https://img.shields.io/github/check-suites/fecabrera/daw/main">
+</a>
 
+<a href="Cargo.toml">
 <img alt="Deps.rs Repository Dependencies" src="https://img.shields.io/deps-rs/repo/github/fecabrera/daw">
+</a>
 
+<a href="LICENSE">
 <img alt="GitHub License" src="https://img.shields.io/github/license/fecabrera/daw">
+</a>
 </p>
 
 
