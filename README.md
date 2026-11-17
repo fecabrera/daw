@@ -2,12 +2,21 @@
 
 A desktop digital audio workstation for macOS, Windows and Linux, written in Rust. It imports external WAV, MP3, AAC, and Opus sources, and shares its rendering engine with a headless command-line interface.
 
-## Screenshots
-
 ![Timeline during playback, with audio, MIDI and beat tracks and a track effects chain](docs/assets/screenshots/timeline-playback.png)
 
+<p align="center">
+<img alt="GitHub last commit (branch)" src="https://img.shields.io/github/last-commit/fecabrera/daw/main">
+
+<img alt="GitHub branch check suites" src="https://img.shields.io/github/check-suites/fecabrera/daw/main">
+
+<img alt="Deps.rs Repository Dependencies" src="https://img.shields.io/deps-rs/repo/github/fecabrera/daw">
+
+<img alt="GitHub License" src="https://img.shields.io/github/license/fecabrera/daw">
+</p>
+
+
 <details>
-<summary>More screenshots</summary>
+<summary><h2>More screenshots</h2></summary>
 
 **[Timeline](docs/views/timeline.md) with master effects**
 
@@ -35,7 +44,8 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 </details>
 
-## Current features
+<details>
+<summary><h2>Features</h2></summary>
 
 - **Bounce:** [render selected clips or complete tracks](docs/editing/bounce.md) to new audio tracks while retaining the disabled originals.
 - **Timeline:** arrange, trim, loop, stretch, transpose, split, merge, move, copy, and duplicate audio, MIDI and beat clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog. Audio clips support editable fades and adjacent crossfades.
@@ -60,6 +70,8 @@ Audio, MIDI and Beat workflows are available in four views: **Timeline**, **Inst
 Normal imports retain external references; included recordings stay inside the project folder. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
 
 Stem separation supports four or six stems using local HTDemucs models through Charon, with CoreML on Apple Silicon macOS and CPU on supported platforms. Either validated model enables separation; CoreML takes priority, with optional CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
+
+</details>
 
 ## Documentation
 
