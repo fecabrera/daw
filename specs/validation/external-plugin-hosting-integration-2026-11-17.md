@@ -93,6 +93,27 @@ and teardown now use pools confined to the current call.
 - Formatting and strict workspace Clippy passed. Both the debug and release
   workspace suites passed with `--locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`.
 
+## Linux graph check timeout
+
+The Linux ARM64 container reproduced the CI timeout with the dev build of
+`native_graph_check`. CLAP reached the 88.2 kHz, 4,096-frame case before the
+120-second timeout. The run used 119 seconds of user CPU time. The debug Drive
+CLAP binary was 154 MiB. The graph check fingerprints the bundle during
+discovery and before each of its two native loads in all 18 cases.
+
+CI now builds the graph check with `--profile test`, which retains debug
+assertions. The graph check logs each rate and buffer size as it begins. With the
+same debug plugin binaries, the Linux ARM64 scanner, graph and host checks
+passed for both formats in 114 seconds total. The per-graph limit remains 120
+seconds. The same sequence passed on macOS arm64. The Linux x86-64 GitHub
+runner was outside this verification.
+
+Formatting, strict workspace Clippy and `git diff --check` passed on macOS.
+The debug and release runs both passed:
+
+- `cargo test --locked --offline --workspace`
+- `cargo test --locked --offline --workspace --release`
+
 ## Limits
 
 Rust allocator guards observe host and Rust fixture heap operations. They cannot

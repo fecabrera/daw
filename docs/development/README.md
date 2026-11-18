@@ -58,11 +58,15 @@ Run owned native processing fixtures without loading user plugins:
 
 ```sh
 cargo build --locked -p daw-plugin-host-fixtures
-cargo build --locked -p daw-engine --example native_fixture_check --example native_graph_check
+cargo build --locked -p daw-engine --example native_fixture_check
+cargo build --locked --profile test -p daw-engine --example native_graph_check
 cargo build --locked -p daw-plugin-host --example native_host_check --example native_preset_check
 python3 tools/check_plugin_hosting.py
 python3 tools/check_plugin_scanner.py --host-check target/debug/examples/native_host_check --graph-check target/debug/examples/native_graph_check
 ```
+
+The test profile keeps debug assertions enabled and speeds up repeated
+fingerprinting of the debug plugin bundles. The example stays in `target/debug/examples`.
 
 Use `.exe` paths on Windows. On macOS, build
 `cargo build -p daw-desktop --example native_editor_check`, then pass

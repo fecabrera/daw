@@ -33,6 +33,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut service, client) = HostService::new(registry);
     for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
         for block in [32, 512, 4096] {
+            eprintln!("Checking {format:?} graph at {rate} Hz with a {block}-frame buffer");
             let mut state = daw_drive_plugin::PluginState::default();
             state.set(daw_drive_plugin::Parameter::Gain, 0.6)?;
             state.set(daw_drive_plugin::Parameter::Volume, -3.0)?;

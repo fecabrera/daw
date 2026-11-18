@@ -54,7 +54,7 @@ def main():
             assert record["name"] == "Drive" and record["role"] == "effect", record
             expected = "io.github.fecabrera.daw.drive" if kind == "clap" else [0xF3, 0x99, 0xB9, 0x2B, 0x5D, 0x26, 0x4C, 0x7D, 0x98, 0xC6, 0xDE, 0x3C, 0x26, 0x54, 0xD5, 0x34]
             assert record["identity"] == {"format": kind, "id": expected}, record
-            print(f"PASS: {kind.upper()} native module entry, factory enumeration, identity and unload")
+            print(f"PASS: {kind.upper()} native module entry, factory enumeration, identity and unload", flush=True)
             if args.editor_check:
                 subprocess.run([str(args.editor_check.resolve(strict=True)), kind, str(bundle)], check=True, timeout=60)
             if args.graph_check:

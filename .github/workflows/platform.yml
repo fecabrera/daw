@@ -73,7 +73,9 @@ jobs:
         id: plugin_hosting
         run: |
           cargo build --locked -p daw-desktop -p daw-cli -p daw-plugin-host-fixtures -p daw-plugin-scan -p daw-drive-clap -p daw-drive-vst3 2>&1 | tee work/ci-logs/hosting-build.log
-          cargo build --locked -p daw-engine --example native_fixture_check --example native_graph_check -p daw-plugin-host --example native_host_check --example native_preset_check 2>&1 | tee -a work/ci-logs/hosting-build.log
+          cargo build --locked -p daw-engine --example native_fixture_check -p daw-plugin-host --example native_host_check --example native_preset_check 2>&1 | tee -a work/ci-logs/hosting-build.log
+          # The graph matrix fingerprints the full debug bundle on every load.
+          cargo build --locked --profile test -p daw-engine --example native_graph_check 2>&1 | tee -a work/ci-logs/hosting-build.log
           python tools/check_plugin_hosting.py 2>&1 | tee work/ci-logs/hosting-fixtures.log
           python tools/check_plugin_scanner.py --embedded --scanner target/debug/daw-desktop${{ runner.os == 'Windows' && '.exe' || '' }} 2>&1 | tee work/ci-logs/hosting-embedded-desktop.log
           python tools/check_plugin_scanner.py --embedded --scanner target/debug/daw-cli${{ runner.os == 'Windows' && '.exe' || '' }} 2>&1 | tee work/ci-logs/hosting-embedded-cli.log
