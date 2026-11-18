@@ -45,7 +45,7 @@ Retry failed and Cancel scan. Run traversal and isolated scan supervision on a
 worker; a scan or settings page change must not edit a project or stop playback.
 
 Plugin selection belongs in the existing catalogs. Both Effects and Instrument
-components have VST3 and CLAP folders. Filter effects and instruments into their
-respective catalogs and preserve native identities through refreshes. Reuse the
-catalog folder/row styling and keyboard navigation; double-click or Enter adds
-the selected external unit.
+components have VST3 and CLAP folders below a divider. Show effects and
+instruments in their respective catalogs and preserve their identities on
+refresh. Use the shared catalog styling and keyboard navigation. Double-click
+or press Enter to add the selected external unit.

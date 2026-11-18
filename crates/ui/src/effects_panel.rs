@@ -10,6 +10,12 @@ pub(super) struct UnitLane<'a> {
     pub sources: &'a [crate::modulation_panel::Source],
 }
 
+enum LaneMenuAction {
+    Add(catalog::Item),
+    SetCollapsed(bool),
+    Hide,
+}
+
 struct LaneInteraction {
     allowed: bool,
     request_focus: bool,
@@ -811,6 +817,7 @@ impl DawUi {
             self.effects_bounds.lane_viewport = scrolled.inner_rect.intersect(strip);
             self.effects_bounds.lane_scroll = scrolled.state.offset.x;
         }
+        self.effects_lane_menu(ui, strip, target, effects, &slots, allowed);
         if allowed
             && self.effects_drag.is_none()
             && lane.rect_contains_pointer(scrolled.inner_rect.intersect(strip))
@@ -865,6 +872,93 @@ impl DawUi {
             effects.retain(|effect| effect.id != id);
         }
         None
+    }
+
+    fn effects_lane_menu(
+        &mut self,
+        ui: &egui::Ui,
+        bounds: Rect,
+        target: Option<EffectTarget>,
+        effects: &mut Vec<daw_core::EffectInstance>,
+        slots: &[(Id, Rect)],
+        allowed: bool,
+    ) {
+        let allowed = allowed
+            && self.effects_drag.is_none()
+            && self.view_panel_enabled(ViewPanel::EffectsLane, ui.ctx());
+        let response = ui.interact(
+            bounds,
+            ui.id().with(("effects-lane-menu", target)),
+            Sense::hover(),
+        );
+        let open = allowed
+            && ui.rect_contains_pointer(bounds)
+            && ui.input(|input| {
+                input.pointer.secondary_clicked()
+                    && input
+                        .pointer
+                        .interact_pos()
+                        .is_some_and(|point| !slots.iter().any(|(_, rect)| rect.contains(point)))
+            });
+        let action = menus::ContextMenu::new(&response)
+            .open_memory(if allowed {
+                open.then_some(egui::SetOpenCommand::Bool(true))
+            } else {
+                Some(egui::SetOpenCommand::Bool(false))
+            })
+            .show(|ui| {
+                let mut action = None;
+                ui.add_enabled_ui(target.is_some(), |ui| {
+                    menus::submenu(ui, "Add", |ui| {
+                        action = self
+                            .effects_catalog
+                            .add_menu(ui, |id| self.can_install_external_effect(id))
+                            .map(LaneMenuAction::Add);
+                    });
+                });
+                menus::separator(ui);
+                for (label, collapsed) in [("Expand all", false), ("Collapse all", true)] {
+                    if ui
+                        .add_enabled(!effects.is_empty(), menus::action_button(label))
+                        .clicked()
+                    {
+                        action = Some(LaneMenuAction::SetCollapsed(collapsed));
+                    }
+                }
+                menus::separator(ui);
+                if ui.add(menus::action_button("Hide effects lane")).clicked() {
+                    action = Some(LaneMenuAction::Hide);
+                }
+                action
+            })
+            .and_then(|menu| menu.inner);
+        if let Some(action) = action {
+            egui::Popup::close_id(ui.ctx(), egui::Popup::default_response_id(&response));
+            match action {
+                LaneMenuAction::Add(catalog::Item::Builtin(id)) => {
+                    effects.extend(effects_catalog::instantiate(&[id]));
+                }
+                LaneMenuAction::Add(catalog::Item::External(id)) => {
+                    if let Some(target) = target {
+                        self.install_external_effect(
+                            id,
+                            target,
+                            effects.len(),
+                            effects.iter().map(|effect| effect.id).collect(),
+                            None,
+                        );
+                    }
+                }
+                LaneMenuAction::SetCollapsed(collapsed) => {
+                    for effect in effects {
+                        if let Some(panel) = effect.unit.collapsed_mut() {
+                            *panel = collapsed;
+                        }
+                    }
+                }
+                LaneMenuAction::Hide => self.toggle_view_panel(ViewPanel::EffectsLane, ui.ctx()),
+            }
+        }
     }
 
     pub(super) fn effect_units(

@@ -448,6 +448,35 @@ impl<'de> Deserialize<'de> for EffectSettings {
     }
 }
 impl EffectSettings {
+    /// Saved panel state for effects with a unit panel.
+    pub fn collapsed_mut(&mut self) -> Option<&mut bool> {
+        match self {
+            Self::Hosted(settings) => Some(&mut settings.collapsed),
+            Self::Eq3(settings) => Some(&mut settings.collapsed),
+            Self::Loudness(settings) => Some(&mut settings.collapsed),
+            Self::MultibandEq(settings) => Some(&mut settings.collapsed),
+            Self::Exciter(settings) => Some(&mut settings.collapsed),
+            Self::MultibandCompressor(settings) => Some(&mut settings.collapsed),
+            Self::HarmonicLift(settings) => Some(&mut settings.collapsed),
+            Self::Drive(settings) => Some(&mut settings.collapsed),
+            Self::DriveV2(settings) => Some(&mut settings.collapsed),
+            Self::AutoFilter(settings) => Some(&mut settings.collapsed),
+            Self::Filter(settings) => Some(&mut settings.collapsed),
+            Self::Compressor(settings) => Some(&mut settings.collapsed),
+            Self::Ott(settings) => Some(&mut settings.collapsed),
+            Self::Limiter(settings) => Some(&mut settings.collapsed),
+            Self::DirectionMixer(settings) => Some(&mut settings.collapsed),
+            Self::StereoSpread(settings) => Some(&mut settings.collapsed),
+            Self::Saturator(settings) => Some(&mut settings.collapsed),
+            Self::Bitcrusher(settings) => Some(&mut settings.collapsed),
+            Self::Chorus(settings) => Some(&mut settings.collapsed),
+            Self::AmbientReverb(settings) => Some(&mut settings.collapsed),
+            Self::ShimmerReverb(settings) => Some(&mut settings.collapsed),
+            Self::PlateReverb(settings) => Some(&mut settings.collapsed),
+            Self::Missing { .. } => None,
+        }
+    }
+
     /// Conservative tail budget, in project-rate frames. Unknown units retain
     /// their existing bypass behavior; this does not add dry alignment latency.
     pub fn tail_frames(&self, sample_rate_hz: u32) -> u64 {

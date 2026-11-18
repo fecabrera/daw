@@ -3759,6 +3759,112 @@ fn timeline_track_click_switches_effect_chain_and_retains_state_across_view_chan
     assert_eq!(app.effects_bounds.drive_units.len(), 1);
 }
 #[test]
+fn effects_lane_menu_adds_by_catalog_folder_and_controls_the_whole_lane() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    app.set_effects_catalog_visible(false);
+    app.effects_catalog.set_external(Vec::new());
+    frame(&mut app, &ctx, vec![]);
+    let size = Vec2::new(1280.0, 800.0);
+    let text = |shapes: &[egui::epaint::ClippedShape], label: &str| {
+        shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    Some(text.pos + text.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing menu item {label}"))
+    };
+    let open = |app: &mut DawUi, pos: Pos2| {
+        for pressed in [true, false] {
+            frame(
+                app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+        }
+        assert!(egui::Popup::is_any_open(&ctx), "menu at {pos:?}");
+        frame_shapes(app, &ctx, vec![], size)
+    };
+    let lane = app.effects_bounds.lane_viewport;
+    let menu = open(
+        &mut app,
+        Pos2::new(lane.left() + lane.width() * 0.4, lane.center().y),
+    );
+    let before = app.session.project.clone();
+    let add = text(&menu, "Add");
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(add)]);
+    let folders = frame_shapes(&mut app, &ctx, vec![], size);
+    let names = [
+        "EQ",
+        "Filters",
+        "Dynamics",
+        "Distortion",
+        "Imaging",
+        "Reverb",
+        "Analysis",
+        "VST3",
+        "CLAP",
+    ];
+    let positions: Vec<_> = names.iter().map(|name| text(&folders, name)).collect();
+    assert!(positions.windows(2).all(|pair| pair[0].y < pair[1].y));
+    let gap = positions[7].y - positions[6].y;
+    assert!(gap > positions[6].y - positions[5].y);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(positions[0])],
+    );
+    let eq = frame_shapes(&mut app, &ctx, vec![], size);
+    assert_eq!(app.session.project, before);
+    click(&mut app, &ctx, text(&eq, "3-band EQ"));
+    assert!(matches!(
+        app.session.project.tracks[0].effects[0].unit,
+        daw_core::EffectSettings::Eq3(_)
+    ));
+    assert!(!egui::Popup::is_any_open(&ctx));
+
+    app.session.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::drive());
+    frame(&mut app, &ctx, vec![]);
+    let chain = |app: &DawUi| {
+        app.effect_chain(daw_core::EffectChainTarget::Track(track))
+            .unwrap()
+            .0
+            .to_vec()
+    };
+    let original = chain(&app);
+    for (label, collapsed) in [("Collapse all", true), ("Expand all", false)] {
+        let toolbar = app.effects_bounds.lane_toolbar.center();
+        let menu = open(&mut app, toolbar);
+        click(&mut app, &ctx, text(&menu, label));
+        let mut expected = original.clone();
+        for effect in &mut expected {
+            *effect.unit.collapsed_mut().unwrap() = collapsed;
+        }
+        assert_eq!(chain(&app), expected);
+    }
+    let project = app.session.project.clone();
+    let toolbar = app.effects_bounds.lane_toolbar.center();
+    let menu = open(&mut app, toolbar);
+    click(&mut app, &ctx, text(&menu, "Hide effects lane"));
+    assert!(!app.effects_lane_visible());
+    assert_eq!(app.session.project, project);
+}
+
+#[test]
 fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
     for (view, master) in [
         (ViewMode::Timeline, false),

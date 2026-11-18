@@ -36,6 +36,10 @@ Select All changes only the unit selection. It does not select units in other la
 
 Envelope, LFO, Macro, and Amplitude retain settings when removed; add them from the catalog to restore them. Removing Oscillator discards its sources and pitch connections. Removing Sampler discards its sample settings. Removing a component does not delete its external recording.
 
+Right-click empty space in the effects lane or its toolbar to add an effect,
+expand or collapse all units, or hide the lane. **Add** uses the catalog folders and order,
+with a divider above VST3 and CLAP. Use **View > Effects Lane** to show it again.
+
 ## Enable or disable
 
 Right-click an installed effect or component header. The first menu item is **Disable** when every target is on, or **Enable** when any target is off. Opening a selected unit's menu applies this action to all selected units in that lane. Opening an unselected unit's menu targets only that unit.

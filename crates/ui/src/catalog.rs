@@ -53,6 +53,11 @@ pub(super) struct Interaction {
     pub empty_enabled: bool,
 }
 
+pub(super) enum Item {
+    Builtin(&'static str),
+    External(daw_core::PluginIdentity),
+}
+
 pub(super) struct Output {
     pub header: egui::Rect,
     pub external_rows: Vec<(usize, Response)>,
@@ -316,6 +321,16 @@ impl Catalog {
             .show(ui, |ui| {
                 panel.catalog_body(ui, |ui| {
                     for row in self.visible_rows() {
+                        if self.folder_filter.is_none()
+                            && self.builtin_folders > 0
+                            && row == Row::Folder(self.builtin_folders)
+                        {
+                            let (divider, _) = ui.allocate_exact_size(
+                                egui::vec2(ui.available_width(), 1.0),
+                                egui::Sense::hover(),
+                            );
+                            crate::panels::ControlPanel::row_dividers(ui, divider, true, false);
+                        }
                         // Scope IDs by identity so collapsing an earlier folder cannot move focus.
                         let response = ui
                             .push_id(
@@ -447,6 +462,41 @@ impl Catalog {
             ui.ctx().request_repaint();
         }
         output
+    }
+
+    /// Use the full catalog order, independent of expansion and selection.
+    pub fn add_menu(
+        &self,
+        ui: &mut Ui,
+        can_load: impl Fn(&daw_core::PluginIdentity) -> bool,
+    ) -> Option<Item> {
+        let mut selected = None;
+        for (index, folder) in self.folders.iter().enumerate() {
+            if index == self.builtin_folders && index > 0 {
+                crate::menus::separator(ui);
+            }
+            ui.add_enabled_ui(!folder.entries.is_empty(), |ui| {
+                crate::menus::submenu(ui, folder.name, |ui| {
+                    for &index in &folder.entries {
+                        if let Some(&(id, name)) = self.entries.get(index) {
+                            if ui.add(crate::menus::action_button(name)).clicked() {
+                                selected = Some(Item::Builtin(id));
+                            }
+                        } else if let Some(entry) = self.external.get(index - self.entries.len())
+                            && ui
+                                .add_enabled(
+                                    can_load(&entry.identity),
+                                    crate::menus::action_button(&entry.name),
+                                )
+                                .clicked()
+                        {
+                            selected = Some(Item::External(entry.identity.clone()));
+                        }
+                    }
+                });
+            });
+        }
+        selected
     }
 
     pub fn begin_frame(&mut self, ui: &Ui, bounds: egui::Rect) {

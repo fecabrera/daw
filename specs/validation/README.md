@@ -17,6 +17,20 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Effects lane context menu — 2026-11-17
+
+The egui interaction test checks the catalog folder order and divider, adds a
+built-in effect, expands and collapses the chain, and hides the lane. The macOS
+UI suite passed 1,079 tests with 3 ignored. Formatting, strict workspace Clippy,
+and the signed local macOS debug bundle passed. Native pointer gestures and
+adding an installed plug-in through this menu were not checked.
+
+The unfiltered debug and release workspace runs stopped when macOS rejected
+registration in `native_audio_component_registration_and_host_calls`.
+
+- Debug passed with `cargo test --offline --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`.
+- Release passed with `cargo test --offline --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`.
+
 ## Light theme controls and Mixer headers — 2026-11-17
 
 Light uses darker shared fills for framed controls, knob faces, unit headers,

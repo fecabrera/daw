@@ -4,20 +4,6 @@
 use crate::toolbars;
 use crate::{DawUi, icons, menus, theme};
 
-fn submenu(ui: &mut egui::Ui, label: &str, content: impl FnOnce(&mut egui::Ui)) {
-    egui::containers::menu::SubMenuButton::from_button(
-        egui::Button::new(label)
-            .right_text(
-                icons::Lucide::ChevronRight
-                    .size(icons::TOOLBAR_ICON_SIZE)
-                    .image(),
-            )
-            .image_tint_follows_text_color(true),
-    )
-    .config(egui::containers::menu::MenuConfig::new().style(menus::popup_style))
-    .ui(ui, |ui| menus::layout(ui, menus::MIN_WIDTH, content));
-}
-
 #[cfg(test)]
 mod tests;
 
@@ -48,11 +34,11 @@ impl DawUi {
             .style(menus::popup_style)
             .show(|ui| {
                 menus::layout(ui, menus::MIN_WIDTH, |ui| {
-                    submenu(ui, "File", |ui| self.file_menu(ui));
-                    submenu(ui, "Edit", |ui| self.edit_menu(ui));
-                    submenu(ui, "Clip", |ui| self.clip_menu(ui));
-                    submenu(ui, "Track", |ui| self.track_menu(ui));
-                    submenu(ui, "View", |ui| self.view_menu(ui));
+                    menus::submenu(ui, "File", |ui| self.file_menu(ui));
+                    menus::submenu(ui, "Edit", |ui| self.edit_menu(ui));
+                    menus::submenu(ui, "Clip", |ui| self.clip_menu(ui));
+                    menus::submenu(ui, "Track", |ui| self.track_menu(ui));
+                    menus::submenu(ui, "View", |ui| self.view_menu(ui));
                 });
             });
         menu
