@@ -18,7 +18,7 @@ fn setup(theme: settings::ColorTheme) -> (DawUi, egui::Context, [Id; 2]) {
         },
     );
     app.set_view_mode(ViewMode::Instrument, &ctx);
-    app.timeline_effects_visible = false;
+    app.effects_lane_open = false;
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     (app, ctx, owners)

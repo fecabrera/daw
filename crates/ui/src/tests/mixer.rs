@@ -330,6 +330,7 @@ fn replace_text(app: &mut DawUi, ctx: &egui::Context, text: &str) {
 #[test]
 fn mixer_numeric_controls_commit_cancel_and_reject_invalid_values() {
     let (mut app, track) = fixture();
+    app.set_effects_lane_visible(false);
     app.view_mode = crate::mixer::ViewMode::Mixer;
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
@@ -528,6 +529,7 @@ fn menu_and_native_view_dispatch_share_guards_and_draft_cleanup() {
 #[test]
 fn strips_scroll_in_project_order_with_master_pinned_during_resize() {
     let mut app = DawUi::default();
+    app.set_effects_lane_visible(false);
     let tracks: Vec<_> = (0..20)
         .map(|_| app.session.project.add_track().unwrap())
         .collect();
@@ -917,6 +919,7 @@ fn mode_toolbar_uses_platform_titlebar_placement_and_modal_guards() {
 fn fader_scales_fit_the_strips_and_silence_survives_view_changes() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, track) = fixture();
+        app.set_effects_lane_visible(false);
         let ctx = context();
         app.set_settings(
             &ctx,
@@ -1226,11 +1229,11 @@ fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
         };
         assert!(has(&shapes, "Select an instrument track"));
         assert!(!has(&shapes, "Add source"));
-        let point = label_point(&mut app, &ctx, "Select instrument track", None);
+        let point = app.track_browser.bounds.toggle.center();
         click(&mut app, &ctx, point);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(has(&shapes, "MIDI only"));
-        assert!(!has(&shapes, "Audio only"));
+        assert!(has(&shapes, "Audio only"));
         let point = label_point(&mut app, &ctx, "MIDI only", None);
         click(&mut app, &ctx, point);
         assert_eq!(app.selected_track, Some(midi));

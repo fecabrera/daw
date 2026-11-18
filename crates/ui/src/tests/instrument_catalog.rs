@@ -113,6 +113,9 @@ fn both_catalogs_start_collapsed_and_retain_independent_expansion_choices() {
                 },
             );
             app.set_view_mode(view, &ctx);
+            if view == ViewMode::Instrument {
+                app.set_effects_catalog_visible(true);
+            }
             frame(&mut app, &ctx, vec![]);
             app.dirty = false;
             let original = serde_json::to_value(&app.session.project).unwrap();
@@ -147,8 +150,7 @@ fn both_catalogs_start_collapsed_and_retain_independent_expansion_choices() {
             assert!(app.effects_bounds.entry.is_positive());
             app.set_view_mode(ViewMode::Instrument, &ctx);
             frame(&mut app, &ctx, vec![]);
-            let toggle = app.instrument_catalog_bounds.toggle.center();
-            click(&mut app, &ctx, toggle, false);
+            open(&mut app, &ctx);
             assert!(
                 app.instrument_catalog_bounds
                     .folders
@@ -195,8 +197,10 @@ fn both_catalogs_start_collapsed_and_retain_independent_expansion_choices() {
 }
 
 fn open(app: &mut DawUi, ctx: &egui::Context) {
-    let point = app.instrument_catalog_bounds.toggle.center();
-    click(app, ctx, point, false);
+    if !app.instrument_catalog_visible {
+        let point = app.instrument_catalog_bounds.toggle.center();
+        click(app, ctx, point, false);
+    }
     assert!(app.instrument_catalog_visible);
 }
 
@@ -248,7 +252,7 @@ fn instrument_catalog_is_exclusive_and_reuses_the_control_panel_in_both_themes()
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, _, _) = fixture(theme);
         let original = serde_json::to_value(&app.session.project).unwrap();
-        let effects = app.effects_bounds.library;
+        let catalog = app.instrument_catalog_bounds.library;
         let toggle = app.instrument_catalog_bounds.toggle;
         assert_eq!(toggle.size(), Vec2::splat(24.0));
         assert_eq!(toggle.left(), app.effects_bounds.library_toggle.left());
@@ -256,17 +260,18 @@ fn instrument_catalog_is_exclusive_and_reuses_the_control_panel_in_both_themes()
             app.effects_bounds.library_toggle.top() - toggle.bottom(),
             7.0
         );
-        open(&mut app, &ctx);
+        assert!(app.instrument_catalog_visible);
         assert!(!app.instrument_effects_catalog_visible);
         assert_eq!(app.effects_bounds.library, Rect::NOTHING);
-        assert_eq!(app.instrument_catalog_bounds.library, effects);
+        assert!(catalog.is_positive());
         assert_eq!(
             app.midi_editor.instrument_header_bounds.left(),
-            effects.right()
+            catalog.right()
         );
         let point = app.effects_bounds.library_toggle.center();
         click(&mut app, &ctx, point, false);
         assert!(app.instrument_effects_catalog_visible);
+        assert_eq!(app.effects_bounds.library, catalog);
         assert!(!app.instrument_catalog_visible);
         assert_eq!(app.instrument_catalog_bounds.library, Rect::NOTHING);
         open(&mut app, &ctx);
@@ -570,7 +575,7 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
             for fast in [false, true] {
                 for label in [false, true] {
                     let (mut app, ctx, _, layers) = fixture(theme);
-                    app.timeline_effects_visible = false;
+                    app.effects_lane_open = false;
                     for layer in &mut app.session.project.tracks[0]
                         .instrument
                         .as_mut()

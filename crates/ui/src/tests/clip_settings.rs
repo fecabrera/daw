@@ -245,7 +245,7 @@ fn right_clip_settings_coexists_with_catalogs_and_edits_the_selected_clip() {
     click(&mut app, &ctx, toggle.center());
     assert!(app.clip_settings_visible);
     assert!(app.timeline_catalog_visible);
-    assert!(!app.instrument_catalog_visible);
+    assert!(!app.view_panel_selected(ViewPanel::Components));
     assert!(!app.dirty);
     assert!(app.effects_bounds.library.is_positive());
     assert_eq!(
@@ -419,7 +419,6 @@ fn right_clip_settings_coexists_with_catalogs_and_edits_the_selected_clip() {
     let clip_toggle = app.effects_bounds.clip_settings_toggle;
     assert_eq!(library.top() - components.bottom(), 7.0);
     assert_eq!(clip_toggle, Rect::NOTHING);
-    click(&mut app, &ctx, components.center());
     assert!(app.instrument_catalog_visible);
     assert!(!app.clip_settings_visible);
     assert_eq!(app.effects_bounds.clip_settings, Rect::NOTHING);

@@ -734,7 +734,7 @@ fn group_name_and_blank_header_drags_move_the_complete_subtree() {
     for start_x in [61.0, 130.0] {
         let (mut app, ctx, group, ids) = grouped_fixture();
         // Keep the entire destination row visible below the taller metadata lanes.
-        app.timeline_effects_visible = false;
+        app.effects_lane_open = false;
         frame(&mut app, &ctx, vec![]);
         let original = app.session.project.clone();
         let header_left = app.timeline_bounds.left() - TRACK_WIDTH;
@@ -959,7 +959,7 @@ fn scrolled_groups_retain_offscreen_headers_and_virtual_child_bounds_without_out
         .unwrap();
     app.select_track(group, false);
     let ctx = context();
-    app.timeline_effects_visible = false;
+    app.effects_lane_open = false;
     frame(&mut app, &ctx, vec![]);
     let point = app.lane_bounds[&ids[0]].min + Vec2::splat(20.0);
     frame(

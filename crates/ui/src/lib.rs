@@ -937,7 +937,7 @@ pub struct DawUi {
     clip_settings_draft: Option<clip_settings::FieldEdit>,
     clip_transpose_drag: Option<clip_settings::TransposeDrag>,
     clip_settings_change: Option<clip_settings::DragChange>,
-    timeline_effects_visible: bool,
+    effects_lane_open: bool,
     effects_lane_focus: selection_focus::SelectionFocus,
     effects_drag: Option<effects_reorder::EffectDrag>,
     selected_effects: HashSet<Id>,
@@ -1078,7 +1078,7 @@ impl Default for DawUi {
             chords: Default::default(),
             effects_catalog: effects_catalog::catalog(),
             instrument_catalog: instrument_catalog::catalog(),
-            instrument_catalog_visible: false,
+            instrument_catalog_visible: true,
             track_browser: Default::default(),
             exciter_audition: Default::default(),
             component_drag: None,
@@ -1086,7 +1086,7 @@ impl Default for DawUi {
             #[cfg(test)]
             instrument_catalog_bounds: Default::default(),
             timeline_catalog_visible: true,
-            instrument_effects_catalog_visible: true,
+            instrument_effects_catalog_visible: false,
             editor_effects: Default::default(),
             mixer_effects: Default::default(),
             clip_settings_visible: false,
@@ -1097,7 +1097,7 @@ impl Default for DawUi {
             clip_settings_draft: None,
             clip_transpose_drag: None,
             clip_settings_change: None,
-            timeline_effects_visible: true,
+            effects_lane_open: true,
             master_selected: false,
             return_bank_height: 180.0,
             timeline_returns_visible: true,
@@ -3580,11 +3580,6 @@ impl DawUi {
                 self.job.is_none() && !self.midi.busy() && !self.is_playing(),
                 |ui| self.tempo_control(ui),
             );
-            if self.view_mode == ViewMode::Instrument {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.track_control(ui);
-                });
-            }
             #[cfg(test)]
             {
                 self.mixer_returns_bounds = Rect::NOTHING;

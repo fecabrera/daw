@@ -29,7 +29,7 @@ The attached images establish creation placement and step-sequencer interaction.
 | --- | --- | --- |
 | Timeline | Normal track header, beat clips, existing track effects lane and arrangement gestures. | Pattern content appears inside beat clips; no extra project-track rows. |
 | Editor | Existing selected-track overview and clip selection. | One lower-editor row per subtrack, with shared headers/mix controls and step toggles across time. |
-| Instrument | Beat track is selectable through the shared track browser and compatible instrument selector. Parent effects retain their existing target. | One expandable group per subtrack. Its compact header has no units; its children are source layers, LFO, Envelope and Output. One fixed overall Output follows all groups. |
+| Instrument | Select a beat track through the shared Tracks panel. Parent effects retain their existing target. | One expandable group per subtrack. Its compact header has no units; its children are source layers, LFO, Envelope and Output. One fixed overall Output follows all groups. |
 | Mixer | Existing gain, pan, Mute/Solo, meter and track effects behavior. | No separate Mixer strips. |
 
 Instrument group structure:

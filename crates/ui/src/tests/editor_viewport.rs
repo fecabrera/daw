@@ -658,7 +658,7 @@ fn midi_pattern_header_selection_respects_settings_and_window_focus() {
     frame(&mut app, &ctx, vec![]);
     let point = app.midi_editor.pattern_header_bounds[&second].center();
     for pressed in [true, false] {
-        let _ = ctx.run_ui(
+        let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
                 focused: false,
@@ -667,6 +667,7 @@ fn midi_pattern_header_selection_respects_settings_and_window_focus() {
             },
             |ui| app.show(ui),
         );
+        output.textures_delta.clear();
     }
     assert_eq!(app.selected_clip, Some(first));
     app.settings_open = true;

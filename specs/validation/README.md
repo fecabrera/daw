@@ -17,6 +17,20 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Instrument navigation and shared Effects lane — 2026-11-18
+
+Instrument uses the Tracks panel for track selection and opens Instrument
+components by default. Timeline, Instrument, Editor and Mixer share the Effects
+lane visibility. Tests cover track selection and clip preservation, catalog
+defaults and exclusivity, and Effects lane visibility across view switches.
+
+Formatting, strict workspace Clippy and `git diff --check` passed on macOS.
+
+- `cargo test --locked --offline --workspace` passed.
+- `cargo test --locked --offline --workspace --release` passed.
+
+Both runs passed 1,082 UI tests with 3 ignored. Native visual checks were not run.
+
 ## Pinned Instrument modulation lanes — 2026-11-18
 
 LFO and Envelope stay directly above Output when regular layers scroll. A

@@ -1065,7 +1065,7 @@ fn timeline_track_and_master_selection_uses_fill_without_outline() {
             );
             app.select_track(track, false);
             app.master_selected = master;
-            app.timeline_effects_visible = false;
+            app.effects_lane_open = false;
             app.set_view_mode(ViewMode::Timeline, &ctx);
             frame(&mut app, &ctx, vec![]);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));

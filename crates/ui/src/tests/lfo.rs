@@ -282,8 +282,6 @@ fn lfo_catalog_enter_and_drag_share_the_existing_component_actions() {
         .lfo_lane
         .id;
     app.instrument_ui.select_layer(owner);
-    let point = app.instrument_catalog_bounds.toggle.center();
-    click(&mut app, &ctx, point, false);
     let row = app.instrument_catalog_bounds.entries[2].center();
     click(&mut app, &ctx, row, false);
     key(&mut app, &ctx, egui::Key::Enter, false, false);

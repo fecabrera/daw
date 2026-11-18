@@ -142,6 +142,7 @@ fn categorized_catalog_fixture(
         &ctx,
     );
     app.master_selected = target == "master";
+    app.set_effects_catalog_visible(true);
     frame(&mut app, &ctx, vec![]);
     if target == "instrument" {
         app.instrument_ui.selected_layer = Some(
@@ -3880,6 +3881,7 @@ fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
         let ctx = context();
         app.select_track(track, false);
         app.set_view_mode(view, &ctx);
+        app.set_effects_catalog_visible(true);
         frame(&mut app, &ctx, vec![]);
         if master {
             let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
@@ -4063,7 +4065,7 @@ fn timeline_toolbar_toggles_keep_selected_fill_and_hover_only_when_unselected() 
         for lane_button in [false, true] {
             for selected in [true, false] {
                 app.timeline_catalog_visible = selected;
-                app.timeline_effects_visible = selected;
+                app.effects_lane_open = selected;
                 let away = Pos2::new(1000.0, 300.0);
                 let shapes = frame_shapes(
                     &mut app,
@@ -4200,7 +4202,7 @@ fn timeline_library_toggle_respects_disabled_modal_and_effect_drag_guards() {
                 output.textures_delta.clear();
             }
             assert!(app.timeline_catalog_visible, "{guard}");
-            assert!(app.timeline_effects_visible, "{guard}");
+            assert!(app.effects_lane_open, "{guard}");
             assert_eq!(
                 serde_json::to_string(&app.session.project).unwrap(),
                 original,
@@ -4248,7 +4250,7 @@ fn timeline_lane_toggle_reclaims_height_and_preserves_effects_across_view_change
                 end_click_sequence(&mut app, &ctx);
                 click(&mut app, &ctx, toggle.center());
                 frame(&mut app, &ctx, vec![]);
-                assert!(!app.timeline_effects_visible);
+                assert!(!app.effects_lane_open);
                 assert_eq!(app.timeline_catalog_visible, catalog);
                 assert!(app.selected_effects.is_empty());
                 assert!(app.effects_drag.is_none());
@@ -4285,16 +4287,16 @@ fn timeline_lane_toggle_reclaims_height_and_preserves_effects_across_view_change
                 app.set_view_mode(ViewMode::Mixer, &ctx);
                 frame(&mut app, &ctx, vec![]);
                 assert!(!app.mixer_bounds.is_empty());
-                assert!(!app.timeline_effects_visible);
+                assert!(!app.effects_lane_open);
                 assert_eq!(app.timeline_catalog_visible, catalog);
                 app.set_view_mode(ViewMode::Timeline, &ctx);
                 frame(&mut app, &ctx, vec![]);
                 assert!(!app.effects_bounds.strip.is_positive());
-                assert!(!app.timeline_effects_visible);
+                assert!(!app.effects_lane_open);
                 end_click_sequence(&mut app, &ctx);
                 click(&mut app, &ctx, toggle.center());
                 frame(&mut app, &ctx, vec![]);
-                assert!(app.timeline_effects_visible);
+                assert!(app.effects_lane_open);
                 assert_eq!(app.effects_bounds.strip, lane);
                 assert_eq!(app.scrollbar_bounds, scrollbar);
                 assert_eq!(app.master_bounds, master);
@@ -4329,7 +4331,7 @@ fn hidden_timeline_lane_keeps_catalog_addition_without_dragging_into_stale_bound
     library_key(&mut app, &ctx, egui::Key::Enter, false);
     assert_eq!(app.session.project.tracks[0].effects.len(), 1);
     assert!(!app.effects_bounds.strip.is_positive());
-    assert!(!app.timeline_effects_visible);
+    assert!(!app.effects_lane_open);
     end_click_sequence(&mut app, &ctx);
     click(&mut app, &ctx, toggle);
     frame(&mut app, &ctx, vec![]);
@@ -4347,7 +4349,7 @@ fn timeline_tracks_share_one_left_divider_with_catalog_or_toolbar() {
                     app.selected_track = None;
                     app.selected_tracks.clear();
                     app.timeline_catalog_visible = catalog;
-                    app.timeline_effects_visible = lane;
+                    app.effects_lane_open = lane;
                     let ctx = context();
                     ctx.set_pixels_per_point(scale);
                     app.set_settings(
@@ -4607,6 +4609,7 @@ fn instrument_has_independent_catalog_and_shared_effects_lane_visibility() {
         frame(&mut app, &ctx, vec![]);
         assert!(!app.lane_bounds.is_empty());
         app.set_view_mode(ViewMode::Instrument, &ctx);
+        app.toggle_view_panel(ViewPanel::EffectsCatalog, &ctx);
         frame(&mut app, &ctx, vec![]);
         let original = serde_json::to_value(&app.session.project).unwrap();
         app.dirty = false;
@@ -4641,7 +4644,7 @@ fn instrument_has_independent_catalog_and_shared_effects_lane_visibility() {
         assert!(app.effects_bounds.chain.is_empty());
         app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
-        assert!(app.timeline_catalog_visible && !app.timeline_effects_visible);
+        assert!(app.timeline_catalog_visible && !app.effects_lane_open);
         app.set_view_mode(ViewMode::Instrument, &ctx);
         frame(&mut app, &ctx, vec![]);
         click(&mut app, &ctx, library);
@@ -4699,6 +4702,7 @@ fn effects_lane_toolbar_stays_pinned_and_edits_saved_compact_state() {
                 },
                 &ctx,
             );
+            app.set_effects_catalog_visible(true);
             frame(&mut app, &ctx, vec![]);
             let owner = app.effects_target().unwrap();
             let rail = app.effects_bounds.lane_toolbar;
@@ -5656,7 +5660,7 @@ fn layer_effect_library_drag_targets_empty_layers_without_the_bottom_lane() {
         .unwrap()
         .layers
         .push(layer);
-    app.timeline_effects_visible = false;
+    app.effects_lane_open = false;
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     let start = app.effects_bounds.drive_entry.center();
@@ -6026,7 +6030,7 @@ fn inline_effects_keep_the_component_boundary_on_regular_layers_and_main() {
             for collapsed in [false, true] {
                 for main in [false, true] {
                     let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
-                    app.timeline_effects_visible = false;
+                    app.effects_lane_open = false;
                     let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
                     let owner;
                     if main {
@@ -7293,7 +7297,7 @@ fn effect_out_strips_hide_output_rails_and_preserve_gap_and_reduction_meters() {
 }
 
 #[test]
-fn editor_and_mixer_share_workspace_toolbar_and_remember_independent_visibility() {
+fn editor_and_mixer_keep_separate_catalogs_and_share_effects_lane_visibility() {
     for mode in [ViewMode::Edit, ViewMode::Mixer] {
         for color_theme in settings::ColorTheme::ALL {
             let (mut app, track) = fixture();
@@ -7309,7 +7313,7 @@ fn editor_and_mixer_share_workspace_toolbar_and_remember_independent_visibility(
             app.set_view_mode(mode, &ctx);
             let before = app.session.project.clone();
             frame(&mut app, &ctx, vec![]);
-            assert!(!app.effects_catalog_visible() && !app.effects_lane_visible());
+            assert!(!app.effects_catalog_visible() && app.effects_lane_visible());
             assert!(app.effects_bounds.toolbar.is_positive());
             assert_eq!(app.effects_bounds.toolbar.width(), timeline_toolbar::WIDTH);
             assert!(!app.effects_bounds.clip_settings_toggle.is_positive());
@@ -7319,9 +7323,7 @@ fn editor_and_mixer_share_workspace_toolbar_and_remember_independent_visibility(
                 mode == ViewMode::Edit
             );
             let library = app.effects_bounds.library_toggle.center();
-            let lane = app.effects_bounds.lane_toggle.center();
             click(&mut app, &ctx, library);
-            click(&mut app, &ctx, lane);
             for size in [Vec2::new(1280.0, 800.0), Vec2::new(900.0, 500.0)] {
                 let shapes = frame_shapes(&mut app, &ctx, vec![], size);
                 let rail = app.effects_bounds.toolbar;
@@ -7356,7 +7358,7 @@ fn editor_and_mixer_share_workspace_toolbar_and_remember_independent_visibility(
             }
             app.set_view_mode(ViewMode::Timeline, &ctx);
             frame(&mut app, &ctx, vec![]);
-            assert!(app.timeline_catalog_visible && app.timeline_effects_visible);
+            assert!(app.timeline_catalog_visible && app.effects_lane_open);
             let other = if mode == ViewMode::Edit {
                 ViewMode::Mixer
             } else {
@@ -7364,10 +7366,22 @@ fn editor_and_mixer_share_workspace_toolbar_and_remember_independent_visibility(
             };
             app.set_view_mode(other, &ctx);
             frame(&mut app, &ctx, vec![]);
-            assert!(!app.effects_catalog_visible() && !app.effects_lane_visible());
+            assert!(!app.effects_catalog_visible() && app.effects_lane_visible());
+            let lane = app.effects_bounds.lane_toggle.center();
+            click(&mut app, &ctx, lane);
+            for view in ViewMode::ALL {
+                app.set_view_mode(view, &ctx);
+                frame(&mut app, &ctx, vec![]);
+                assert!(!app.effects_lane_visible());
+                assert_eq!(app.effects_bounds.strip, Rect::NOTHING);
+            }
             app.set_view_mode(mode, &ctx);
             frame(&mut app, &ctx, vec![]);
-            assert!(app.effects_catalog_visible() && app.effects_lane_visible());
+            assert!(app.effects_catalog_visible() && !app.effects_lane_visible());
+            app.toggle_view_panel(ViewPanel::EffectsLane, &ctx);
+            app.set_view_mode(other, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.effects_catalog_visible() && app.effects_lane_visible());
             assert_eq!(app.session.project, before);
             assert!(!app.dirty);
         }
@@ -7386,7 +7400,6 @@ fn editor_and_mixer_catalog_add_and_lane_controls_use_the_selected_effect_chain(
         let library = app.effects_bounds.library_toggle.center();
         click(&mut app, &ctx, library);
         let lane = app.effects_bounds.lane_toggle.center();
-        click(&mut app, &ctx, lane);
         assert!(
             app.effects_bounds.entry.is_positive(),
             "{mode:?}: catalog entry"
@@ -7449,7 +7462,7 @@ fn editor_and_mixer_toolbar_toggles_respect_blocked_editing() {
         app.settings_open = true;
         click(&mut app, &ctx, library);
         click(&mut app, &ctx, lane);
-        assert!(!app.effects_catalog_visible() && !app.effects_lane_visible());
+        assert!(!app.effects_catalog_visible() && app.effects_lane_visible());
         app.settings_open = false;
         frame(&mut app, &ctx, vec![]);
         click(&mut app, &ctx, library);

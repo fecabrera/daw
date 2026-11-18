@@ -121,6 +121,7 @@ fn check_clip_peaks(app: &DawUi, shapes: &[egui::epaint::ClippedShape], body: Re
 fn audio_editor_waveform_follows_primary_selection_zoom_scroll_and_playhead() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, track, _first) = audio_fixture();
+        app.set_effects_lane_visible(false);
         if color_theme == settings::ColorTheme::Dark {
             let asset = &mut app.session.project.assets[0];
             asset.source_metadata.channels = 1;

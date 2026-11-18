@@ -1535,8 +1535,7 @@ fn upper_toolbar_panels_remain_independent_across_all_views() {
     let (mut app, ctx, _) = fixture();
     let original = app.session.project.clone();
     frame(&mut app, &ctx, vec![]);
-    let components = app.instrument_catalog_bounds.toggle.center();
-    click(&mut app, &ctx, components);
+    assert!(app.instrument_catalog_bounds.library.is_positive());
     for view in [ViewMode::Timeline, ViewMode::Edit, ViewMode::Mixer] {
         app.set_view_mode(view, &ctx);
         frame(&mut app, &ctx, vec![]);

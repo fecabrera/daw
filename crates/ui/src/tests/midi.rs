@@ -249,7 +249,7 @@ pub(super) fn layer_header_fixture()
 -> (DawUi, egui::Context, Vec<daw_core::InstrumentLayerSettings>) {
     let (mut app, _, _, _) = fixture();
     // Leave room for direct gestures on multiple rows above the pinned Main bus.
-    app.timeline_effects_visible = false;
+    app.effects_lane_open = false;
     let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
     settings.layers[0].name = "Lead".into();
     let mut second = daw_core::InstrumentLayerSettings {
@@ -1177,7 +1177,7 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
     for area in ["icon", "name", "blank", "inset", "gutter", "body"] {
         for action in ["commit", "escape", "window", "outside", "same", "disabled"] {
             let (mut app, ctx, layers) = layer_header_fixture();
-            app.timeline_effects_visible = false;
+            app.effects_lane_open = false;
             frame(&mut app, &ctx, vec![]);
             app.dirty = false;
             let bounds = &app.midi_editor.layer_bounds[&layers[0].id];
@@ -1817,7 +1817,7 @@ fn dragging_layers_scrolls_the_rows_while_the_instrument_header_stays_fixed() {
 fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let mut app = DawUi {
-            timeline_effects_visible: false,
+            effects_lane_open: false,
             ..Default::default()
         };
         let track = app.session.project.add_midi_track().unwrap();
@@ -2259,7 +2259,7 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
     }
     for collapsed in [false, true] {
         let (mut app, _, _, _) = fixture();
-        app.timeline_effects_visible = false;
+        app.effects_lane_open = false;
         let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
         settings.layers[0].envelopes[0].settings.attack.time_ms = 75.0;
         settings
@@ -3234,7 +3234,7 @@ fn midi_tracks_units_editor_and_clip_copy_use_shared_actions() {
     );
 }
 #[test]
-fn track_dropdown_and_editor_browser_switch_tracks_without_changing_the_project() {
+fn instrument_and_editor_tracks_panels_switch_tracks_without_changing_the_project() {
     let (mut app, first, first_clip, _) = fixture();
     let second = app.session.project.add_midi_track().unwrap();
     let second_clip = app
@@ -3274,7 +3274,7 @@ fn track_dropdown_and_editor_browser_switch_tracks_without_changing_the_project(
         // Edit still follows the active clip after selecting a track in Instrument.
         let current = "Lead";
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let point = shapes
+        let current_name = shapes
             .iter()
             .filter_map(|s| match &s.shape {
                 egui::Shape::Text(t) if t.galley.text() == current => {
@@ -3282,20 +3282,16 @@ fn track_dropdown_and_editor_browser_switch_tracks_without_changing_the_project(
                 }
                 _ => None,
             })
-            .min_by(|a, b| a.y.total_cmp(&b.y))
-            .unwrap();
+            .min_by(|a, b| a.y.total_cmp(&b.y));
         if mode == ViewMode::Edit {
+            let point = current_name.unwrap();
             assert!(app.midi_editor.name_bounds.contains(point));
             assert!(point.x < app.midi_editor.track_bounds.left());
             assert!(app.midi_editor.track_bounds.y_range().contains(point.y));
         } else {
-            assert!(point.y < 130.0);
+            assert!(current_name.is_none_or(|point| point.y >= app.effects_bounds.toolbar.top()));
         }
-        let target = if mode == ViewMode::Edit {
-            app.track_browser.bounds.toggle.center()
-        } else {
-            point
-        };
+        let target = app.track_browser.bounds.toggle.center();
         click_note_or_lane(&mut app, &ctx, target);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let bass = shapes
@@ -5646,6 +5642,7 @@ fn shift_marquee_toggles_from_its_original_selection_and_retains_notes_outside_t
 fn shift_marquee_deduplicates_repetitions_and_cancels_back_to_the_previous_selection() {
     for cancel in [false, true] {
         let (mut app, track, first, note) = fixture();
+        app.set_effects_lane_visible(false);
         let source = app.session.project.tracks[0].clips[0].clone();
         app.session.project.tracks[0].clips[0].repeat = Some(daw_core::ClipLoop {
             length_frames: 48_000,

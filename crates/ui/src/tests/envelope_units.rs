@@ -19,11 +19,8 @@ fn fixture(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id) {
         },
     );
     app.set_view_mode(ViewMode::Instrument, &ctx);
+    app.instrument_catalog_visible = false;
     frame(&mut app, &ctx, vec![]);
-    if app.timeline_catalog_visible {
-        let point = app.effects_bounds.library_toggle.center();
-        click(&mut app, &ctx, point, false);
-    }
     (app, ctx, layer)
 }
 pub(super) fn label(shapes: &[egui::epaint::ClippedShape], text: &str) -> Pos2 {
@@ -1645,7 +1642,7 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for main in [false, true] {
             let (mut app, ctx, layer) = fixture(theme);
-            app.timeline_effects_visible = false;
+            app.effects_lane_open = false;
             let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
             i.main.macro_module.add();
             let macro_source = daw_core::ModulationSourceId {

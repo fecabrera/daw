@@ -275,7 +275,7 @@ fn beat_mixer_tracks_current_lane_order_and_removal_without_stale_strip_ids() {
     click(
         &mut app,
         &ctx,
-        Pos2::new(child.center().x, child.top() + 160.0),
+        Pos2::new(child.center().x, child.top() + 18.0),
     );
     app.perform_track_action(TrackAction::Delete, &ctx);
     frame(&mut app, &ctx, vec![]);

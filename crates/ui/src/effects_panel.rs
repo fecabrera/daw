@@ -156,7 +156,6 @@ impl Default for EffectsUiBounds {
 #[derive(Default)]
 pub(super) struct Visibility {
     pub catalog: bool,
-    pub lane: bool,
     pub chords: bool,
 }
 
@@ -172,7 +171,12 @@ impl DawUi {
 
     pub(super) fn set_effects_catalog_visible(&mut self, visible: bool) {
         match self.view_mode {
-            ViewMode::Instrument => self.instrument_effects_catalog_visible = visible,
+            ViewMode::Instrument => {
+                self.instrument_effects_catalog_visible = visible;
+                if visible {
+                    self.instrument_catalog_visible = false;
+                }
+            }
             ViewMode::Edit => self.editor_effects.catalog = visible,
             ViewMode::Mixer => self.mixer_effects.catalog = visible,
             _ => self.timeline_catalog_visible = visible,
@@ -180,19 +184,11 @@ impl DawUi {
     }
 
     pub(super) fn effects_lane_visible(&self) -> bool {
-        match self.view_mode {
-            ViewMode::Edit => self.editor_effects.lane,
-            ViewMode::Mixer => self.mixer_effects.lane,
-            _ => self.timeline_effects_visible,
-        }
+        self.effects_lane_open
     }
 
     pub(super) fn set_effects_lane_visible(&mut self, visible: bool) {
-        match self.view_mode {
-            ViewMode::Edit => self.editor_effects.lane = visible,
-            ViewMode::Mixer => self.mixer_effects.lane = visible,
-            _ => self.timeline_effects_visible = visible,
-        }
+        self.effects_lane_open = visible;
     }
 
     pub(super) fn chords_visible(&self) -> bool {

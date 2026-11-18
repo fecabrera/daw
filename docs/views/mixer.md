@@ -12,7 +12,9 @@ returns them to the bottom of the full-height toolbar.
 
 ## Effects toolbar
 
-Use the left **Effects** button to show the effects catalog and the bottom **Effects lane** button to show the selected track’s or Master’s effect chain. These panels start closed and remember their visibility independently of Editor and Timeline. Mixer has no Clip settings, Chords or Instrument components button.
+Use the left **Effects** button to open Mixer’s effects catalog. Use the bottom
+**Effects lane** button to show the selected track’s or Master’s effect chain.
+The lane starts open and its visibility carries across all views.
 
 Select a track, group, beat subtrack or Master to change the effect target. A beat subtrack targets its instrument Output effects; its parent targets the beat-track effects. Add effects from the catalog and use the same unit controls, reordering and compact mode as Timeline. The lane sits below the mixer; Master stays pinned at the right of the mixer area when shown. Toggling panels changes only the workspace layout.
 

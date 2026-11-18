@@ -725,6 +725,7 @@ fn both_track_menus_open_rename_on_release_and_show_its_shortcut() {
             let (mut app, tracks, clips) = multi_clip_fixture();
             let ctx = context();
             app.view_mode = mode;
+            app.set_effects_lane_visible(false);
             app.select_clip(clips[0], tracks[0], false);
             frame(&mut app, &ctx, vec![]);
             let shapes = if contextual {

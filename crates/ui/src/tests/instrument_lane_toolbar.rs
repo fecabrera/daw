@@ -255,7 +255,7 @@ fn output_toolbar_shares_one_top_separator_with_the_whole_pinned_row() {
                         mode: daw_core::EnvelopeMode::Legato,
                         ..Default::default()
                     });
-                    app.timeline_effects_visible = effects_visible;
+                    app.effects_lane_open = effects_visible;
                     app.select_track(track, false);
                     let ctx = context();
                     app.set_settings(

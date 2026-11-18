@@ -227,8 +227,6 @@ fn output_accepts_macros_and_rejects_sources_and_dedicated_lane_providers() {
         .main
         .id;
     app.instrument_ui.select_layer(main);
-    let toggle = app.instrument_catalog_bounds.toggle.center();
-    click(&mut app, &ctx, toggle, false);
     for index in 0..crate::instrument_catalog::ENTRIES.len() {
         let point = app.instrument_catalog_bounds.entries[index].center();
         click(&mut app, &ctx, point, false);
@@ -253,14 +251,12 @@ fn empty_main_accepts_catalog_drops_across_its_label_and_body() {
                 for label in [false, true] {
                     for fast in [false, true] {
                         let (mut app, ctx, _) = setup(theme);
-                        app.timeline_effects_visible = false;
+                        app.effects_lane_open = false;
                         let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
                         i.layers[0].collapsed = true;
                         i.main.collapsed = compact;
                         let main = i.main.id;
                         frame(&mut app, &ctx, vec![]);
-                        let toggle = app.instrument_catalog_bounds.toggle.center();
-                        click(&mut app, &ctx, toggle, false);
                         app.dirty = false;
                         let original = serde_json::to_value(&app.session.project).unwrap();
                         let source = app.instrument_catalog_bounds.entries[index].center();
@@ -329,7 +325,7 @@ fn layer_and_main_selection_uses_backgrounds_without_outlines() {
         for compact in [false, true] {
             for main in [false, true] {
                 let (mut app, ctx, _) = setup(theme);
-                app.timeline_effects_visible = false;
+                app.effects_lane_open = false;
                 let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
                 i.layers[0].collapsed = compact;
                 i.main.collapsed = compact;
@@ -363,7 +359,7 @@ fn every_first_component_shares_one_divider_with_the_layers_column() {
                             continue;
                         }
                         let (mut app, ctx, _) = setup(theme);
-                        app.timeline_effects_visible = false;
+                        app.effects_lane_open = false;
                         let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
                         let owner = if main {
                             instrument.main.id
@@ -480,7 +476,7 @@ fn main_components_share_the_bottom_separator_with_the_lane_or_status_panel() {
                         collapsed,
                         ..Default::default()
                     });
-                    app.timeline_effects_visible = effects_visible;
+                    app.effects_lane_open = effects_visible;
                     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                     let headers = &app.instrument_ui.main_bounds.envelopes;
                     let x = headers[0].center().x;
@@ -519,7 +515,7 @@ fn main_components_share_the_bottom_separator_with_the_lane_or_status_panel() {
 fn fixed_layers_header_keeps_its_separator_above_scrolled_content() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, _) = setup(color_theme);
-        app.timeline_effects_visible = false;
+        app.effects_lane_open = false;
         let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
         i.layers
             .extend((0..5).map(|_| daw_core::InstrumentLayerSettings::default()));
@@ -618,7 +614,7 @@ fn main_top_separator_shares_the_last_layers_bottom_pixel() {
         for compact in [false, true] {
             for collapsed in [false, true] {
                 let (mut app, ctx, _) = setup(color_theme);
-                app.timeline_effects_visible = false;
+                app.effects_lane_open = false;
                 let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
                 i.layers
                     .extend((0..4).map(|_| daw_core::InstrumentLayerSettings::default()));
@@ -704,7 +700,7 @@ fn main_unit_header_fills_reach_the_shared_top_edge_without_moving_controls() {
             for collapsed in [false, true] {
                 for enabled in [false, true] {
                     let (mut app, ctx, _) = setup(color_theme);
-                    app.timeline_effects_visible = false;
+                    app.effects_lane_open = false;
                     let bus = &mut app.session.project.tracks[0]
                         .instrument
                         .as_mut()

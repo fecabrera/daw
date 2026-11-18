@@ -2,7 +2,7 @@
 
 ## Scope and composition
 
-Instrument adds a List Tree **Tracks** toggle above Instrument components and Effects in the existing left toolbar. It starts closed. Track navigation, components and effects share one 250-point `ControlPanel`; opening one closes the others in Instrument. Editor reuses the same Tracks toggle and browser; Tracks, Effects and Chords share its catalog space. Browser visibility starts closed and is independent in Instrument and Editor. Tree expansion and navigation use the shared state. Other views keep their existing toolbar controls. The shared workspace retains its single top border and bottom effects lane.
+Instrument has a List Tree **Tracks** toggle above Instrument components and Effects in the left toolbar. Instrument components opens by default. Tracks, components and effects share one 250-point `ControlPanel`. Opening one closes the others. Editor reuses the same Tracks toggle and browser. Tracks, Effects and Chords share its catalog space. Browser visibility starts closed and is independent in Instrument and Editor. Both use the same tree expansion and navigation. The shared workspace retains its single top border and bottom effects lane.
 
 [`track_browser.rs`](../../crates/ui/src/track_browser.rs) owns dynamic tree rows, browser-only expansion, cursor and focus. Reuse `ControlPanel::catalog_body` and the common catalog row painter for small text, rounded selected fill, row padding/margins, four-point gaps and keyboard focus appearance. Root audio/MIDI rows use the existing Audio Lines/Keyboard Music icons. Group and beat-parent rows use the shared Chevron Right/Down disclosure without a folder icon. Each nesting level adds one icon slot of label indentation; rows keep full shared hit/selection bounds. Keep dynamic names and stable project/track UUIDs separate from static catalog registration.
 
@@ -10,7 +10,7 @@ Instrument adds a List Tree **Tracks** toggle above Instrument components and Ef
 
 Read all project tracks in validated parent-before-child order, including unused/empty tracks and groups. Derive visible rows from browser expansion, independently of saved `group_collapsed`. Preserve sibling order and arbitrary nested groups. Groups start closed; beat parents start open; retain choices through panel/view toggles. Reconcile deleted group IDs and clear expansion/cursor/focus when the project identity changes. Do not serialize navigation or create history edits.
 
-Clicking a group or beat-parent chevron toggles its children without changing selection or saved collapse state. Clicking the name selects that project track. Clicking an audio/MIDI row uses shared single-track selection, leaves the view and clip selection unchanged, and retires stale layer/component gestures and targets. MIDI rows show that track's existing instrument. Audio rows keep the existing no-MIDI-instrument presentation and use their shared track effects lane. This extends the historical MIDI-only Instrument effects target; the top MIDI dropdown retains its current filter. Reuse the effects workspace's same-frame target refresh before painting the bottom chain.
+Clicking a group or beat-parent chevron toggles its children without changing selection or saved collapse state. Clicking the name selects that project track. Clicking an audio/MIDI row uses shared single-track selection, leaves the view and clip selection unchanged, and retires stale layer/component gestures and targets. MIDI rows show that track's existing instrument. Audio rows keep the existing no-MIDI-instrument presentation and use their shared track effects lane. Use the Tracks panel for pointer-based track selection in Instrument. Reuse the effects workspace's same-frame target refresh before painting the bottom chain.
 
 In Editor, select the track and its earliest clip through the shared editor-selection helper. An empty track clears clip selection. Highlight the active editor track, including when a retained clip belongs to a different track than the Instrument selection. Group disclosures do not change the editing context. Keep the Editor view and project data unchanged. Its options-panel track header reuses Timeline's `track_name` label and icon, including name editing, truncation and one/two-row geometry, instead of a track dropdown.
 
@@ -60,13 +60,10 @@ popup anchoring and release-only actions. Explicitly borderless icon buttons kee
 styles; framed buttons follow the shared theme. M/S also uses this shared surface style while retaining its paired outer
 corners, separator, text and dimensions.
 
-Mixer + Send buttons and the Instrument view's top track selector reuse the same
-panel surface style, with no divider. Preserve their previous sizes and spacing.
-For + Send, retain its existing button padding while drawing an empty stroke
-and 5-point corners. Keep its action popup outside the styled
-button scope. The Instrument selector retains canonical `menus::Dropdown`, its
-arrow, width, text and guards; restore the original visuals and canonical popup
-style inside the menu so only its collapsed surface changes. All framed dropdowns and send-row destination groups now follow the shared
+Mixer + Send buttons reuse the same panel surface style with no divider.
+Preserve their sizes, spacing and padding. Use an empty stroke and 5-point
+corners. Keep the action popup outside the styled button scope.
+All framed dropdowns and send-row destination groups follow the shared
 [default control surface](dropdowns.md#default-framed-control-surfaces).
 
 ## Layer header typography

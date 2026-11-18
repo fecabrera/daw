@@ -2,7 +2,8 @@
 
 MIDI tracks have an **R** button in its own group after M/S on the same row. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
 
-The left toolbar lists **Tracks**, **Instrument components**, and **Effects**. The Instrument components button shows a keyboard with a music note.
+The left toolbar lists **Tracks**, **Instrument components**, and **Effects**. Instrument components opens by default. Its button shows a keyboard with a music note.
+The bottom **Effects lane** toggle shares its open or closed state with the other views.
 
 An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline, Instrument, Editor or Mixer to add effects.
 
@@ -20,7 +21,7 @@ Use **Tracks** in the left toolbar to open the project track list. [Editor](edit
 
 Click a group chevron to expand or collapse it; click its name to select the group. Groups start collapsed and retain their browser choices while the project is open. These choices do not change group collapse state in Timeline or Mixer. Nested groups are supported.
 
-Click an audio, MIDI or beat track to select it without leaving Instrument. MIDI tracks show their instrument layers; audio tracks have no MIDI instrument, but their track effects remain available in the bottom lane. Existing clip selection stays unchanged. The top track dropdown supports MIDI and beat tracks and uses the shared rounded, borderless panel style. Beat parents show only their final Output. Expand a beat parent in Tracks and select a subtrack to open its [Layers page](beat-editor.md#instrument-layers-and-output), with its own source layers, LFO, Envelope and Output. Beat parents start expanded.
+Click an audio, MIDI or beat track in **Tracks** to select it without leaving Instrument. MIDI tracks show their instrument layers. For audio tracks, use the effects lane at the bottom. The existing clip selection stays in place. Beat parents show only their final Output. Expand a beat parent in Tracks and select a subtrack to open its [Layers page](beat-editor.md#instrument-layers-and-output), with its own source layers, LFO, Envelope and Output. Beat parents start expanded.
 
 Each row has compact **M** and **S** controls at the right. They edit that row's output without changing selection. Use the header Plus menu, or right-click blank space in Tracks, to add audio, MIDI or beat tracks or an empty group without changing view. With a beat selected, the Plus menu also offers **Add subtrack**. Right-click a beat parent and choose **Add subtrack** to add directly to that beat. The Track menubar also includes **Add group** and **Add subtrack**; Add subtrack requires a selected beat.
 

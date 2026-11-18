@@ -208,7 +208,6 @@ fn panel_menu_clicks_share_catalog_exclusivity_and_toolbar_state() {
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     app.set_view_mode(ViewMode::Instrument, &ctx);
-    app.toggle_view_panel(ViewPanel::Components, &ctx);
     assert!(app.view_panel_selected(ViewPanel::Components));
     assert!(!app.view_panel_selected(ViewPanel::EffectsCatalog));
     let output = menu_frame(&mut app, &ctx, vec![]);

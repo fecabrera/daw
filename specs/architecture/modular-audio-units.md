@@ -723,7 +723,7 @@ For control width `C` and single-strip width `W`, the shared gap is `(W - C) / 2
 
 ## Instrument project track browser — 2026-10-29
 
-Instrument now exposes all project tracks and nested groups through a left-toolbar Tracks panel using shared catalog rows. Browser expansion is UI state, independent of saved track-group collapse. Selecting audio/MIDI rows retains Instrument view and clip selection, and updates the shared effects lane. This extends the historical MIDI-only Instrument effects target; the existing top MIDI selector remains filtered. See the [track browser contract](../views/instrument-tracks.md) for composition, guards, navigation and acceptance. No unit DSP, saved schema or project edits are added by browsing.
+Instrument exposes all project tracks and nested groups through a left-toolbar Tracks panel using shared catalog rows. Browser expansion is UI state, independent of saved track-group collapse. Selecting audio/MIDI rows retains Instrument view and clip selection, and updates the shared effects lane. See the [track browser contract](../views/instrument-tracks.md) for composition, guards, navigation and acceptance. No unit DSP, saved schema or project edits are added by browsing.
 
 
 ## Beat subtrack groups — 2026-10-31

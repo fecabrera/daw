@@ -29,6 +29,9 @@ existing preferences. Preserve the existing Clip Settings reset on leaving
 Timeline. Catalogs and inspectors may still show their existing empty-selection
 placeholders; menu availability matches the corresponding toolbar panel.
 
+The Effects Lane starts open and shares one visibility setting across Timeline,
+Instrument, Editor and Mixer. Each view remembers its own catalog choice.
+
 ## Shared state and dispatch
 
 `daw_ui::ViewPanel` owns stable panel metadata and the view-availability matrix.

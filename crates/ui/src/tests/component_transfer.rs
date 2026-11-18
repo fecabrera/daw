@@ -26,8 +26,8 @@ fn setup(theme: settings::ColorTheme, compact: bool) -> (DawUi, egui::Context, [
         },
     );
     app.set_view_mode(ViewMode::Instrument, &ctx);
-    app.set_effects_catalog_visible(false);
-    app.timeline_effects_visible = false;
+    app.instrument_catalog_visible = false;
+    app.effects_lane_open = false;
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     (app, ctx, owners)
@@ -870,7 +870,7 @@ fn shared_modulation_strips_reorder_on_amplitude_filter_drive_and_oscillator() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for kind in 0..4 {
             let (mut app, ctx, owners) = setup(theme, true);
-            app.timeline_effects_visible = true;
+            app.effects_lane_open = true;
             let l = &mut app.session.project.tracks[0]
                 .instrument
                 .as_mut()

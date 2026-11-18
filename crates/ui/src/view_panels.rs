@@ -136,9 +136,6 @@ impl DawUi {
                     self.set_tracks_panel_visible(false);
                     self.set_chords_visible(false);
                     self.chords.catalog.clear();
-                    if self.view_mode == ViewMode::Instrument {
-                        self.instrument_catalog_visible = false;
-                    }
                     self.instrument_catalog.clear();
                 }
             }
