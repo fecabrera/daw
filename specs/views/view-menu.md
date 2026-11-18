@@ -14,10 +14,12 @@ in-app menu sends the equivalent viewport command.
 | Effects Catalog | All |
 | Chords | Timeline, Editor |
 | Clip Settings | Timeline |
-| Track Mixer | Timeline |
+| Track Mixer | Timeline, Instrument |
 | Effects Lane | All |
 | Returns | Timeline, Mixer |
 | Master | Timeline, Mixer |
+| LFO / Envelopes | Instrument |
+| Instrument Output | Instrument |
 
 Keep unavailable panel entries visible, disabled and unchecked. A supported
 panel's checkmark reads the current view's actual visibility, including when a
@@ -55,7 +57,8 @@ The right Timeline rail has Clip Settings followed by Track Mixer (sliders icon)
 Both use the shared View-panel dispatcher and gesture/job/dialog guards. These
 inspectors are mutually exclusive; opening Track Mixer cancels unconfirmed clip
 settings. Left catalogs remain independent. Track Mixer starts hidden and retains
-its choice across view switches in the app session. It is absent outside Timeline.
+its choice across view switches in the app session. Instrument has a separate
+visibility choice for the same panel.
 
 Reserve two standard Mixer strip widths (120 logical points each) outside the
 Timeline canvas and drop bounds. Keep the right rail available when the inspector
@@ -100,3 +103,21 @@ to visible and retain them across view switches for the app session. Hidden
 Timeline Returns reserve no bank height; hidden Master reserves no pinned row
 height. Do not paint or interact with hidden rows, their dividers or drop targets.
 Keep selection, project history, audio routing and processing unchanged.
+
+## Instrument right toolbar
+
+Reserve a standard-width right toolbar outside the Instrument lanes and their
+drop targets. Place Track Mixer at the top and LFO / Envelopes above Instrument
+Output at the bottom of the upper workspace. Keep the existing lane-specific
+collapse buttons inside the Instrument canvas.
+
+Use the shared Track Mixer panel for the primary project track and its output
+bus. Start it closed and preserve its Instrument visibility across view switches
+independently of Timeline. Constrain its width to leave room for the Instrument
+labels and lane toolbar. Scroll its strips when space is limited.
+
+Start both lane visibility toggles enabled. LFO / Envelopes hides the two
+dedicated instrument-wide modulation lanes. Instrument Output hides the pinned
+Output lane, including the final Output on a beat parent. Hidden lanes reserve
+no space and expose no canvas controls or drop targets. Restore their saved
+collapse state on show. These controls affect only workspace visibility.

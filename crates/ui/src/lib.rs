@@ -113,6 +113,7 @@ mod instrument_component_drag;
 mod instrument_main;
 mod instrument_panel;
 mod instrument_selection;
+mod instrument_workspace;
 mod job_report;
 pub mod knobs;
 mod lane_toolbar;
@@ -930,6 +931,9 @@ pub struct DawUi {
     mixer_effects: effects_panel::Visibility,
     clip_settings_visible: bool,
     track_mixer_visible: bool,
+    instrument_track_mixer_visible: bool,
+    instrument_modulation_visible: bool,
+    instrument_output_visible: bool,
     clip_settings_draft: Option<clip_settings::FieldEdit>,
     clip_transpose_drag: Option<clip_settings::TransposeDrag>,
     clip_settings_change: Option<clip_settings::DragChange>,
@@ -1087,6 +1091,9 @@ impl Default for DawUi {
             mixer_effects: Default::default(),
             clip_settings_visible: false,
             track_mixer_visible: false,
+            instrument_track_mixer_visible: false,
+            instrument_modulation_visible: true,
+            instrument_output_visible: true,
             clip_settings_draft: None,
             clip_transpose_drag: None,
             clip_settings_change: None,
@@ -4646,7 +4653,8 @@ impl DawUi {
         Some(response)
     }
     fn track_name_label(&mut self, ui: &mut egui::Ui, track: &daw_core::Track, mixer: bool) {
-        let inspector = mixer && self.view_mode == ViewMode::Timeline;
+        let inspector =
+            mixer && matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument);
         let reorder = (!mixer && self.view_mode == ViewMode::Timeline)
             || (self.view_mode == ViewMode::Mixer && track.kind == daw_core::TrackKind::Return);
         let font_size = if mixer {

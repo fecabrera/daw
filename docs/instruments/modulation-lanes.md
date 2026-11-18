@@ -1,6 +1,6 @@
 # Instrument modulation lanes
 
-Each MIDI instrument has an **LFO** lane and an **Envelope** lane. They belong to the whole instrument and appear after its regular layers, before Output. They scroll vertically with the layers. Output stays pinned at the bottom.
+Each MIDI instrument has an **LFO** lane and an **Envelope** lane. They belong to the whole instrument. Both stay pinned directly above Output while the regular layers scroll. When space is tight, scroll over the pinned lanes to reach their controls.
 
 Select a lane, then add its component from Modulators in the Instrument components catalog. Double-click an entry, select it and press Enter, or drag it onto the lane's label or body. The LFO lane accepts only LFOs. The Envelope lane accepts only envelopes. A mixed catalog selection containing an unsupported type makes no addition to these lanes. Regular layers and Output no longer accept these two component types.
 

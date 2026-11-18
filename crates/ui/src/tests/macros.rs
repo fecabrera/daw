@@ -560,6 +560,8 @@ fn macro_order_release_preserves_controls_and_history() {
     for compact in [false, true] {
         let mut app = DawUi::default();
         let ctx = context();
+        let size = Vec2::new(1280.0, 1000.0);
+        ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
         let track = app.session.project.add_midi_track().unwrap();
         let layer = &mut app.session.project.tracks[0]
             .instrument
@@ -582,7 +584,7 @@ fn macro_order_release_preserves_controls_and_history() {
             .collapsed = compact;
         app.select_track(track, false);
         app.set_view_mode(ViewMode::Instrument, &ctx);
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         let start = text_rect(&shapes, "Macro 1").center();
         let end = text_rect(&shapes, "Macro 3").right_center() + Vec2::new(5.0, 0.0);
         app.history = None;

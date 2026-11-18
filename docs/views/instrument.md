@@ -6,6 +6,14 @@ The left toolbar lists **Tracks**, **Instrument components**, and **Effects**. T
 
 An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline, Instrument, Editor or Mixer to add effects.
 
+## Right toolbar
+
+Use **Track Mixer** at the top to show the selected track and its output bus.
+It starts closed and remembers its visibility separately from Timeline.
+Use **LFO / Envelopes** and **Instrument Output** at the bottom to show or hide
+those lanes. Both start visible. Hidden lanes continue processing.
+The same commands are available in **View**.
+
 ## Project tracks
 
 Use **Tracks** in the left toolbar to open the project track list. [Editor](editor.md) reuses this list with its own visibility toggle. It shows audio, MIDI and beat icons, with group chevrons and indented children in project order. Tracks, Instrument components and Effects share the same panel space; opening one hides the other.
@@ -49,7 +57,7 @@ With an audio track, group, Master, or no track selected, the Layers panel remai
 
 A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain one of Oscillator, Sampler, Granulizer, or Noise. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a compatible lane.
 
-Layer names use the same semibold text as track headers. Layers show a waveform icon before their names. Output uses a merge icon with its arrow pointing right. Click a regular layer header to select it. Shift-click toggles layers in the selection. Each selected layer has a highlighted background without a selection outline. LFO and Envelope have dedicated [instrument-wide lanes](../instruments/modulation-lanes.md) after the regular layers. Each accepts only its own provider type. They have no audio mix controls. Output is selected separately and stays pinned at the bottom.
+Layer names use the same semibold text as track headers. Layers show a waveform icon before their names. Output uses a merge icon with its arrow pointing right. Click a regular layer header to select it. Shift-click toggles layers in the selection. Each selected layer has a highlighted background without a selection outline. The dedicated [LFO and Envelope lanes](../instruments/modulation-lanes.md) stay pinned directly above Output while regular layers scroll. Each accepts only its own provider type. They have no audio mix controls. Output is selected separately and stays pinned at the bottom.
 
 Right-click a regular layer header for **Rename layer**, **Duplicate layer**, and **Delete layer**. Duplicate inserts a copy immediately after that layer and selects it when ready. Delete is disabled for the last layer. Rename shows its Command+R/Ctrl+R shortcut and opens the name editor; press Enter to apply or Escape to cancel. With a regular layer selected in Instrument, Command+R on macOS or Ctrl+R on Windows/Linux opens that layer’s name editor. With several layers selected, it renames the primary layer. Track, subtrack and layer names use the same text input, with the whole name selected when editing starts. Moving focus away cancels the rename.
 

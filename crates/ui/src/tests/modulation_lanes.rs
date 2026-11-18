@@ -107,7 +107,7 @@ fn provider_lanes_share_unit_bodies_toolbar_power_and_saved_presentation() {
             assert_eq!(b.row.height(), panels::unit_height(false));
             assert_eq!(b.toolbar.width(), lane_toolbar::WIDTH);
             assert_eq!(b.collapse.size(), Vec2::splat(icons::TOOLBAR_BUTTON_SIZE));
-            let top = b.row.top() + 0.5;
+            let top = b.row.top() - 0.5;
             let stroke = Stroke::new(1.0, theme::palette(&ctx).border);
             let separators: Vec<_> = shapes
                 .iter()
@@ -224,6 +224,7 @@ fn lane_unit_selection_delete_undo_and_invalid_cross_lane_drop_reuse_shared_gest
 #[test]
 fn lfo_lane_header_reordering_commits_on_release_and_undo_restores_order() {
     let (mut app, ctx, owners) = setup(settings::ColorTheme::Light);
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(1600.0, 800.0)));
     add_component(&mut app, &ctx, owners[0], 2);
     add_component(&mut app, &ctx, owners[0], 2);
     let before = app.session.project.clone();
@@ -234,6 +235,12 @@ fn lfo_lane_header_reordering_commits_on_release_and_undo_restores_order() {
     let end = Pos2::new(
         unit_panel(&ctx, bounds.lfos[1]).right() - 3.0,
         bounds.lfos[1].center().y,
+    );
+    assert!(
+        app.instrument_ui
+            .component_viewports
+            .iter()
+            .any(|(id, viewport)| *id == owners[0] && viewport.contains(end))
     );
     frame(
         &mut app,

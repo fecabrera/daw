@@ -164,7 +164,12 @@ impl DawUi {
                 .vline(rect.left() + 0.5, header_top..=rect.bottom(), border);
         }
         // The right toolbar owns the single outer divider in both workspaces.
-        if target.is_master() && !matches!(self.view_mode, ViewMode::Timeline | ViewMode::Mixer) {
+        if target.is_master()
+            && !matches!(
+                self.view_mode,
+                ViewMode::Timeline | ViewMode::Mixer | ViewMode::Instrument
+            )
+        {
             ui.painter()
                 .vline(rect.right() - 0.5, rect.y_range(), border);
         }

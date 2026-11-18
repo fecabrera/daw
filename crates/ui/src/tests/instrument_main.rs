@@ -126,11 +126,17 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
                 .all(|r| r.top() >= app.instrument_ui.main_bounds.collapse.bottom() + 4.0)
         );
         let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        let [lfo, envelope] = [instrument.lfo_lane.id, instrument.envelope_lane.id];
         instrument
             .layers
             .extend((0..8).map(|_| daw_core::InstrumentLayerSettings::default()));
         frame(&mut app, &ctx, vec![]);
         let viewport = app.instrument_catalog_bounds.layer_viewport;
+        let lfo_row = app.instrument_ui.modulation_lane_bounds[&lfo].row;
+        let envelope_row = app.instrument_ui.modulation_lane_bounds[&envelope].row;
+        assert_eq!(lfo_row.bottom(), envelope_row.top());
+        assert_eq!(envelope_row.bottom(), main.top());
+        assert!(viewport.bottom() <= lfo_row.top());
         frame(
             &mut app,
             &ctx,
@@ -149,7 +155,11 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
         }
         assert!(app.instrument_catalog_bounds.layer_scroll > 0.0);
         assert_eq!(app.instrument_ui.main_bounds.row, main);
-        assert!(app.instrument_catalog_bounds.layer_viewport.bottom() <= main.top() + 1.0);
+        assert_eq!(app.instrument_ui.modulation_lane_bounds[&lfo].row, lfo_row);
+        assert_eq!(
+            app.instrument_ui.modulation_lane_bounds[&envelope].row,
+            envelope_row
+        );
         let gain = app.instrument_ui.main_bounds.mix[0].center();
         click(&mut app, &ctx, gain, false);
         key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
@@ -553,6 +563,53 @@ fn fixed_layers_header_keeps_its_separator_above_scrolled_content() {
         }));
         assert!(!app.dirty);
     }
+}
+
+#[test]
+fn expanded_modulation_lanes_scroll_in_their_own_pinned_space() {
+    let (mut app, ctx, _) = setup(settings::ColorTheme::Dark);
+    let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    instrument.lfo_lane.collapsed = false;
+    instrument.envelope_lane.collapsed = false;
+    let envelope = instrument.envelope_lane.id;
+    let size = Vec2::new(1000.0, 600.0);
+    frame_sized(&mut app, &ctx, vec![], size);
+    let output = app.instrument_ui.main_bounds.row;
+    let regular = app.instrument_catalog_bounds.layer_viewport;
+    let envelope_header = app.instrument_ui.modulation_lane_bounds[&envelope].label;
+    assert!(regular.height() >= ROW_HEIGHT);
+    assert!(envelope_header.bottom() > output.top());
+    let pointer = Pos2::new(
+        envelope_header.center().x,
+        (regular.bottom() + output.top()) * 0.5,
+    );
+    frame_sized(
+        &mut app,
+        &ctx,
+        vec![
+            egui::Event::PointerMoved(pointer),
+            egui::Event::MouseWheel {
+                phase: egui::TouchPhase::Move,
+                unit: egui::MouseWheelUnit::Point,
+                delta: Vec2::new(0.0, -10000.0),
+                modifiers: Default::default(),
+            },
+        ],
+        size,
+    );
+    for _ in 0..10 {
+        frame_sized(&mut app, &ctx, vec![], size);
+    }
+    assert_eq!(app.instrument_ui.main_bounds.row, output);
+    assert_eq!(app.instrument_catalog_bounds.layer_viewport, regular);
+    assert_eq!(app.instrument_catalog_bounds.layer_scroll, 0.0);
+    assert!(
+        app.instrument_ui.modulation_lane_bounds[&envelope]
+            .label
+            .bottom()
+            <= output.top() + 1.0
+    );
+    assert!(!app.dirty);
 }
 
 #[test]

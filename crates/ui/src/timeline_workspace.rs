@@ -7,13 +7,7 @@ impl DawUi {
         ui: &mut egui::Ui,
     ) -> Option<(effects_panel::EffectTarget, Rect)> {
         let bounds = ui.max_rect();
-        let rail = Rect::from_min_max(
-            Pos2::new(
-                (bounds.right() - timeline_toolbar::WIDTH).max(bounds.left()),
-                bounds.top(),
-            ),
-            bounds.max,
-        );
+        let rail = timeline_toolbar::right_bounds(bounds);
         let allowed = self.effects_editing_enabled(ui)
             && !self.strip_dragging
             && self.component_drag.is_none()
@@ -78,30 +72,37 @@ impl DawUi {
             }
         }
         if self.track_mixer_visible {
-            ui.painter()
-                .rect_filled(settings, 0.0, theme::palette(ui.ctx()).panel);
-            let mut inspector = ui.new_child(
-                egui::UiBuilder::new()
-                    .id_salt("timeline-track-mixer")
-                    .max_rect(settings)
-                    .layout(egui::Layout::top_down(egui::Align::Min)),
-            );
-            inspector.set_clip_rect(settings.intersect(ui.clip_rect()));
-            inspector.add_enabled_ui(allowed, |ui| self.timeline_track_mixer(ui));
-            ui.painter().vline(
-                settings.left() + 0.5,
-                settings.y_range(),
-                Stroke::new(1.0, theme::palette(ui.ctx()).border),
-            );
-            #[cfg(test)]
-            {
-                self.effects_bounds.track_mixer = settings;
-            }
+            self.track_mixer_panel(ui, settings, allowed);
         }
         target
     }
 
-    fn timeline_track_mixer(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn track_mixer_panel(&mut self, ui: &mut egui::Ui, bounds: Rect, enabled: bool) {
+        if bounds.width() <= 0.0 {
+            return;
+        }
+        ui.painter()
+            .rect_filled(bounds, 0.0, theme::palette(ui.ctx()).panel);
+        let mut inspector = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("timeline-track-mixer")
+                .max_rect(bounds)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        inspector.set_clip_rect(bounds.intersect(ui.clip_rect()));
+        inspector.add_enabled_ui(enabled, |ui| self.track_mixer_strips(ui));
+        ui.painter().vline(
+            bounds.left() + 0.5,
+            bounds.y_range(),
+            Stroke::new(1.0, theme::palette(ui.ctx()).border),
+        );
+        #[cfg(test)]
+        {
+            self.effects_bounds.track_mixer = bounds;
+        }
+    }
+
+    fn track_mixer_strips(&mut self, ui: &mut egui::Ui) {
         #[cfg(test)]
         {
             self.mixer_bounds.clear();

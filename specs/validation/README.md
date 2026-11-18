@@ -17,6 +17,36 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Pinned Instrument modulation lanes — 2026-11-18
+
+LFO and Envelope stay directly above Output when regular layers scroll. A
+separate scroll area exposes both modulation lanes when space is limited.
+The egui tests check fixed positions, shared separators, and independent
+scrolling in a short window. The Macro and Oscillator interaction tests use
+taller fixtures to keep their controls visible.
+
+Formatting, strict workspace Clippy and `git diff --check` passed on macOS.
+
+- `cargo test --locked --offline --workspace` passed.
+- `cargo test --locked --offline --workspace --release` passed.
+
+Each run passed 1,082 UI tests with 3 ignored. Native visual checks were not run.
+
+## Instrument right toolbar — 2026-11-18
+
+The Instrument rail uses the shared Track Mixer panel and separate visibility
+controls for the instrument-wide LFO and Envelope lanes and the Output lane.
+The egui tests cover toolbar clicks, lane space, independent mixer visibility,
+placement above the effects lane, and beat-parent Output. The LFO reorder test
+uses a wide enough viewport to drop past the second unit.
+
+Formatting, strict workspace Clippy and `git diff --check` passed on macOS.
+
+- `cargo test --locked --offline --workspace` passed.
+- `cargo test --locked --offline --workspace --release` passed.
+
+Each run passed 1,081 UI tests with 3 ignored. Native visual checks were not run.
+
 ## Tracks panel R button — 2026-11-18
 
 Set the R button to the same 16-point square size and vertical center as Mute

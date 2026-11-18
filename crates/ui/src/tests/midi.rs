@@ -2913,6 +2913,8 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
             .oscillators
             .push(Default::default());
         let ctx = context();
+        let size = Vec2::new(1280.0, 1000.0);
+        ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
         ctx.set_visuals(if dark {
             egui::Visuals::dark()
         } else {
@@ -2934,7 +2936,7 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
             assert!(button.top() > column.top() + 3.0 * knobs::CHOICE_SIZE);
         }
         assert_eq!(app.midi_editor.oscillator_power_bounds.len(), 2);
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         for (index, (column, button)) in app
             .midi_editor
             .oscillator_bounds
@@ -3113,7 +3115,7 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
             &mut app,
             &ctx,
             vec![egui::Event::PointerMoved(Pos2::new(1000.0, 700.0))],
-            Vec2::new(1280.0, 800.0),
+            size,
         );
         assert!(!idle_shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if add_strip.contains_rect(r.rect) && r.fill != egui::Color32::TRANSPARENT)));
         let palette = theme::palette(&ctx);
@@ -3153,7 +3155,7 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
             &mut app,
             &ctx,
             vec![egui::Event::PointerMoved(Pos2::new(1000.0, 700.0))],
-            Vec2::new(1280.0, 800.0),
+            size,
         );
         assert!(
             muted_shapes

@@ -27,6 +27,117 @@ fn label(output: &egui::FullOutput, label: &str) -> Pos2 {
 }
 
 #[test]
+fn instrument_right_toolbar_controls_the_mixer_and_lane_visibility_independently() {
+    let mut app = DawUi::default();
+    let track = app.session.project.add_midi_track().unwrap();
+    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+    let modulation = [instrument.lfo_lane.id, instrument.envelope_lane.id];
+    let layer = instrument.layers[0].id;
+    let ctx = context();
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    app.set_effects_lane_visible(false);
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    let selection = app.instrument_ui.selected_layer;
+    let mixer_toggle = app.effects_bounds.track_mixer_toggle;
+    let modulation_toggle = app.instrument_catalog_bounds.modulation_toggle;
+    let output_toggle = app.instrument_catalog_bounds.output_toggle;
+    assert_eq!(mixer_toggle.center().x, modulation_toggle.center().x);
+    assert_eq!(modulation_toggle.center().x, output_toggle.center().x);
+    assert!(mixer_toggle.bottom() < modulation_toggle.top());
+    assert!(modulation_toggle.bottom() < output_toggle.top());
+    assert!(app.effects_bounds.track_mixer.is_negative());
+    assert!(
+        modulation
+            .iter()
+            .all(|id| app.instrument_ui.modulation_lane_bounds.contains_key(id))
+    );
+    let visible_viewport = app.instrument_catalog_bounds.layer_viewport;
+
+    let click = |app: &mut DawUi, rect: Rect| {
+        let point = rect.center();
+        frame(
+            app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(app, &ctx, vec![button(point, false)]);
+    };
+    click(&mut app, mixer_toggle);
+    let panel = app.effects_bounds.track_mixer;
+    assert!(app.view_panel_selected(ViewPanel::TrackMixer));
+    assert_eq!(panel.width(), 2.0 * crate::mixer::STRIP_WIDTH);
+    assert_eq!(app.mixer_bounds[&track].right(), app.master_bounds.left());
+    assert!(app.midi_editor.layer_bounds[&layer].toolbar.right() <= panel.left());
+    assert!(
+        app.instrument_ui
+            .component_viewports
+            .iter()
+            .all(|(_, rect)| rect.right() <= panel.left())
+    );
+
+    click(&mut app, modulation_toggle);
+    assert!(!app.view_panel_selected(ViewPanel::ModulationLanes));
+    assert!(app.instrument_ui.modulation_lane_bounds.is_empty());
+    assert!(!app.instrument_ui.main_bounds.row.is_negative());
+    click(&mut app, output_toggle);
+    assert!(!app.view_panel_selected(ViewPanel::InstrumentOutput));
+    assert!(app.instrument_ui.main_bounds.row.is_negative());
+    assert!(app.instrument_catalog_bounds.layer_viewport.bottom() > visible_viewport.bottom());
+    assert!(app.view_panel_selected(ViewPanel::TrackMixer));
+
+    app.toggle_view_panel(ViewPanel::EffectsLane, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.effects_bounds.strip.is_positive());
+    assert!(app.instrument_catalog_bounds.output_toggle.bottom() < app.effects_bounds.strip.top());
+    assert_eq!(app.effects_bounds.track_mixer_toggle, mixer_toggle);
+
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    assert!(!app.view_panel_selected(ViewPanel::TrackMixer));
+    app.toggle_view_panel(ViewPanel::ClipSettings, &ctx);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    assert!(app.view_panel_selected(ViewPanel::TrackMixer));
+    assert!(!app.view_panel_selected(ViewPanel::ModulationLanes));
+    assert!(!app.view_panel_selected(ViewPanel::InstrumentOutput));
+    app.toggle_view_panel(ViewPanel::ModulationLanes, &ctx);
+    app.toggle_view_panel(ViewPanel::InstrumentOutput, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(
+        modulation
+            .iter()
+            .all(|id| app.instrument_ui.modulation_lane_bounds.contains_key(id))
+    );
+    assert!(!app.instrument_ui.main_bounds.row.is_negative());
+    assert_eq!(app.instrument_ui.selected_layer, selection);
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn instrument_output_toggle_hides_the_beat_parent_lane() {
+    let mut app = DawUi::default();
+    let beat = app.session.project.add_beat_track().unwrap();
+    let output = app.session.project.beat(beat).unwrap().output.id;
+    let ctx = context();
+    app.select_track(beat, false);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.beat_ui.final_output.is_some());
+    let before = app.session.project.clone();
+    app.toggle_view_panel(ViewPanel::InstrumentOutput, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.beat_ui.final_output.is_none());
+    assert!(app.instrument_ui.component_viewports.is_empty());
+    assert_eq!(app.selected_instrument_owner(), Some(output));
+    app.toggle_view_panel(ViewPanel::InstrumentOutput, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.beat_ui.final_output.is_some());
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
 fn panel_menu_availability_and_checks_follow_the_current_view() {
     let (mut app, _) = fixture();
     let ctx = context();
@@ -35,19 +146,27 @@ fn panel_menu_availability_and_checks_follow_the_current_view() {
     for (view, enabled) in [
         (
             ViewMode::Timeline,
-            [false, false, true, true, true, true, true, true, true],
+            [
+                false, false, true, true, true, true, true, true, true, false, false,
+            ],
         ),
         (
             ViewMode::Instrument,
-            [true, true, true, false, false, false, true, false, false],
+            [
+                true, true, true, false, false, true, true, false, false, true, true,
+            ],
         ),
         (
             ViewMode::Edit,
-            [true, false, true, true, false, false, true, false, false],
+            [
+                true, false, true, true, false, false, true, false, false, false, false,
+            ],
         ),
         (
             ViewMode::Mixer,
-            [false, false, true, false, false, false, true, true, true],
+            [
+                false, false, true, false, false, false, true, true, true, false, false,
+            ],
         ),
     ] {
         app.set_view_mode(view, &ctx);

@@ -4,6 +4,26 @@ use egui::{Rect, Stroke, Ui, Vec2};
 pub(super) const WIDTH: f32 = toolbars::HEIGHT;
 pub(super) const BUTTON_SIZE: f32 = icons::TOOLBAR_BUTTON_SIZE;
 
+pub(super) fn right_bounds(workspace: Rect) -> Rect {
+    Rect::from_min_max(
+        egui::pos2(
+            (workspace.right() - WIDTH).max(workspace.left()),
+            workspace.top(),
+        ),
+        workspace.max,
+    )
+}
+
+pub(super) fn paint_right_rail(ui: &Ui, bounds: Rect) {
+    let palette = theme::palette(ui.ctx());
+    ui.painter().rect_filled(bounds, 0.0, palette.panel);
+    ui.painter().vline(
+        bounds.left() + 0.5,
+        bounds.y_range(),
+        Stroke::new(1.0, palette.border),
+    );
+}
+
 pub(super) struct Buttons {
     pub tracks: Option<egui::Response>,
     pub library: egui::Response,
@@ -124,13 +144,7 @@ pub(super) fn right_panels(
     mixer_selected: bool,
     enabled: bool,
 ) -> (egui::Response, egui::Response) {
-    let palette = theme::palette(ui.ctx());
-    ui.painter().rect_filled(bounds, 0.0, palette.panel);
-    ui.painter().vline(
-        bounds.left() + 0.5,
-        bounds.y_range(),
-        Stroke::new(1.0, palette.border),
-    );
+    paint_right_rail(ui, bounds);
     let inset = (WIDTH - BUTTON_SIZE) * 0.5;
     let mut rail = ui.new_child(
         egui::UiBuilder::new()

@@ -578,7 +578,7 @@ impl DawUi {
                                 self.timeline_bounds = Rect::NOTHING;
                                 self.lane_bounds.clear();
                                 self.file_drop_target = None;
-                                self.instrument_view(ui);
+                                self.instrument_workspace(ui);
                             }
                             ViewMode::Timeline => timeline_drop = self.timeline_workspace(ui),
                             ViewMode::Edit => self.edit_view(ui),

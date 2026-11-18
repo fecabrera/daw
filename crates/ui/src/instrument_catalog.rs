@@ -232,6 +232,8 @@ fn can_add_registered(
 #[cfg(test)]
 pub(crate) struct Bounds {
     pub toggle: Rect,
+    pub modulation_toggle: Rect,
+    pub output_toggle: Rect,
     pub library: Rect,
     pub header: Rect,
     pub entries: [Rect; ENTRIES.len()],
@@ -247,6 +249,8 @@ impl Default for Bounds {
     fn default() -> Self {
         Self {
             toggle: Rect::NOTHING,
+            modulation_toggle: Rect::NOTHING,
+            output_toggle: Rect::NOTHING,
             library: Rect::NOTHING,
             header: Rect::NOTHING,
             entries: [Rect::NOTHING; ENTRIES.len()],

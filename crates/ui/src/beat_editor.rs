@@ -1403,6 +1403,9 @@ impl DawUi {
             }
             return;
         }
+        if !self.instrument_output_visible {
+            return;
+        }
         let original = self.session.project.beat(track).unwrap().output.clone();
         let mut settings = self.session.project.instrument_snapshot(output).unwrap();
         self.activate_component_drag(ui);

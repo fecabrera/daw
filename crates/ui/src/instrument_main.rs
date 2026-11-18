@@ -129,7 +129,7 @@ impl DawUi {
                     ui, toolbar, &mut bus.collapsed,
                     !self.instrument_ui.has_layer_gesture() && !self.instrument_ui.editing_name()
                         && self.editing_enabled() && ui.input(|input| input.focused),
-                    if output {[icons::Lucide::ArrowUpFromLine, icons::Lucide::ArrowDownFromLine]} else {[icons::Lucide::ArrowDownFromLine,icons::Lucide::ArrowUpFromLine]},
+                    [icons::Lucide::ArrowUpFromLine, icons::Lucide::ArrowDownFromLine],
                     [if output {"Expand Output"} else {"Expand modulation lane"}, if output {"Collapse Output"} else {"Collapse modulation lane"}],
                 );
                 if collapse.clicked() { ui.ctx().request_repaint(); }
@@ -275,8 +275,6 @@ impl DawUi {
         });
         if output {
             panels::ControlPanel::pinned_row_divider(ui, rect);
-        } else {
-            panels::ControlPanel::row_dividers(ui, rect, true, true);
         }
         ui.advance_cursor_after_rect(rect);
         #[cfg(test)]
