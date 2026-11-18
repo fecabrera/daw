@@ -44,6 +44,8 @@ fn mute_solo_arm_with_size(
                         })
                         .inner;
                     ui.scope(|ui| {
+                        ui.spacing_mut().button_padding = egui::Vec2::new(2.0, 0.0);
+                        ui.spacing_mut().interact_size = egui::Vec2::splat(size);
                         rows::panel_button_style(ui);
                         let font_size = if size == toolbars::CONTROL_HEIGHT {
                             egui::TextStyle::Small.resolve(ui.style()).size
@@ -295,7 +297,12 @@ mod tests {
 
     #[test]
     fn midi_arm_uses_a_separate_group_on_the_mute_solo_row() {
-        for fallback in [false, true] {
+        for (size, fallback) in [
+            (toolbars::CONTROL_HEIGHT, false),
+            (toolbars::CONTROL_HEIGHT, true),
+            (BROWSER_BUTTON_SIZE, false),
+            (BROWSER_BUTTON_SIZE, true),
+        ] {
             let ctx = egui::Context::default();
             crate::fonts::configure(&ctx);
             crate::theme::configure(&ctx);
@@ -311,7 +318,7 @@ mod tests {
                     &mut false,
                     &mut false,
                     ["Mute", "Solo"],
-                    22.0,
+                    size,
                     Some(&mut arm),
                 )
                 .map(|r| r.rect);
@@ -341,13 +348,15 @@ mod tests {
                 .iter()
                 .find_map(|shape| match &shape.shape {
                     egui::Shape::Rect(rect)
-                        if rect.rect.contains(r) && (rect.rect.width() - 22.0).abs() < 0.1 =>
+                        if rect.rect.contains(r) && (rect.rect.width() - size).abs() < 0.1 =>
                     {
                         Some(rect)
                     }
                     _ => None,
                 })
                 .expect("R has its own button surface");
+            assert_eq!(surface.rect.size(), Vec2::splat(size));
+            assert_eq!(surface.rect.center().y, buttons[1].center().y);
             assert!(
                 (surface.rect.left() - buttons[1].right() - GROUP_GAP).abs() < 0.1,
                 "R group gap: {}",

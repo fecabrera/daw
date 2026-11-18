@@ -20,6 +20,9 @@ Use Up/Down for bounded visible-row navigation, selecting track rows and focusin
 
 Keep the existing catalog row height, Small name text, margins and four-point row gaps. Reserve a fixed right-aligned 33-point control area for Mute and Solo: two 16-point square buttons with 9-point labels and a 1-point divider. Do not show Pan or Gain knobs in Instrument or Editor Tracks rows. Retain saved gain and pan values when editing M/S. Names truncate before the controls. Control presses must not select rows, disclose children or arm reorder gestures. Project rows edit their existing mix stage; subtracks use `BeatEdit::SetMix` and their canonical Main bus. Do not add a gain stage.
 
+On MIDI rows, place the separate 16-point R button to the right of Mute and Solo.
+Center all three buttons on the same row and reserve space for R and its gap.
+
 Show expanded beat subtracks in saved order, indented under the parent. Keep `selected_track` on the real project parent and use stable subtrack IDs for the active instrument. Selecting a child opens the standard MIDI Layers body, including its Layers header/Plus, local providers and pinned Output. Selecting the parent shows only the final beat Output. No simultaneous nested Instrument groups remain. In Editor, selecting another child of the open beat parent retains the active clip and step grid. Disclosure retains the current owner and does not edit the project.
 
 ## Reordering and group membership

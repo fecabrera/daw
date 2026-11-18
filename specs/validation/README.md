@@ -17,6 +17,20 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Tracks panel R button — 2026-11-18
+
+Set the R button to the same 16-point square size and vertical center as Mute
+and Solo in Instrument and Editor. The regression checks its size, alignment,
+gap and fallback MIDI color at both compact and standard sizes.
+
+All 33 Tracks panel tests and six mix-control-filtered tests passed on macOS.
+Formatting, strict workspace Clippy and `git diff --check` passed.
+
+- `cargo test --locked --offline --workspace` passed.
+- `cargo test --locked --offline --workspace --release` passed.
+
+Both runs passed 1,079 UI tests with 3 ignored. Native visual checks were not run.
+
 ## File dialog and dependency updates — 2026-11-18
 
 Updated rfd to 0.18.0, indicatif to 0.18.6, async-executor to 1.14.1,
