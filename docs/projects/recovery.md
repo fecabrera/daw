@@ -21,7 +21,8 @@ external; restore missing files before retrying. Recovery cannot replace a delet
 external recording. Discard removes only recognized private recovery data. It does
 not delete manually saved projects or source recordings.
 
-Recovery uses bounded metadata and journal storage. The app refuses a new take
+Recovery uses bounded metadata and journal storage. Empty workspaces use no
+recovery slots. The app refuses a new take
 when it cannot reserve recovery capacity. Disk and permission failures appear as
 errors. Retained interrupted takes remain protected until publication or explicit
 discard. Recovery is a safeguard; keep separate backups of important projects.

@@ -11,6 +11,7 @@ use std::{
 };
 
 const LIMIT: u64 = 512 * 1024 * 1024;
+const WORKSPACE_LIMIT: u64 = 20;
 #[derive(Clone)]
 pub struct RecoveryStore {
     pub folder: PathBuf,
@@ -352,6 +353,7 @@ impl RecoveryStore {
             .ok_or_else(|| error("Missing recovery root"))?;
         let mut workspaces = 0_u64;
         let mut bytes = 0_u64;
+        let mut current_counted = false;
         for owner in fs::read_dir(root).map_err(error)? {
             let path = owner.map_err(error)?.path();
             if ordinary(&path, true).is_err()
@@ -359,11 +361,13 @@ impl RecoveryStore {
             {
                 continue;
             }
-            if path.join("clean-exit").exists() && !path.join("active-take").exists() {
+            let active_take = path.join("active-take").exists();
+            if path.join("clean-exit").exists() && !active_take {
                 continue;
             }
-            workspaces += 1;
-            for entry in Self::entries(&path)? {
+            let entries = Self::entries(&path)?;
+            let mut has_recovery = active_take || !entries.is_empty();
+            for entry in entries {
                 bytes = bytes.saturating_add(
                     fs::metadata(entry.generation.join("project.json"))
                         .map_err(error)?
@@ -373,11 +377,18 @@ impl RecoveryStore {
             for item in fs::read_dir(&path).map_err(error)? {
                 let p = item.map_err(error)?.path();
                 if p.extension().is_some_and(|e| e == "journal") && ordinary(&p, false).is_ok() {
+                    has_recovery = true;
                     bytes = bytes.saturating_add(fs::metadata(p).map_err(error)?.len());
                 }
             }
+            if has_recovery {
+                workspaces += 1;
+                current_counted |= path == self.folder;
+            }
         }
-        if workspaces > 20 || bytes.saturating_add(reserve) > 512 * 1024 * 1024 {
+        // The next write needs a slot even when its workspace starts empty.
+        workspaces += u64::from(!current_counted);
+        if workspaces > WORKSPACE_LIMIT || bytes.saturating_add(reserve) > LIMIT {
             return Err(error(
                 "Recovery storage limit reached. Recover or discard older work before recording.",
             ));
@@ -672,6 +683,41 @@ mod tests {
         drop(store);
         fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn empty_workspaces_do_not_consume_recording_slots() {
+        let root = std::env::temp_dir().join(format!("daw-recovery-slots-{}", Id::new_v4()));
+        let empty: Vec<_> = (0..23)
+            .map(|_| RecoveryStore::create(&root).unwrap())
+            .collect();
+        fs::write(empty[0].folder.join("discard-old-project"), b"closed").unwrap();
+        let session = Session::default();
+        let current = RecoveryStore::create(&root).unwrap();
+        current.reserve_take(&session.project).unwrap();
+
+        let entry = current
+            .checkpoint(session.save_snapshot(None).unwrap(), 1, None, None)
+            .unwrap();
+        let manifest = entry.generation.join("project.json");
+        let original = fs::read(&manifest).unwrap();
+        let journal = empty[0].folder.join("take-test.journal");
+        fs::write(&journal, b"journal data").unwrap();
+        // An interrupted take still occupies its workspace even if its
+        // journal or checkpoint cannot currently be read.
+        for store in &empty[1..19] {
+            fs::write(store.folder.join("active-take"), b"interrupted").unwrap();
+        }
+        current.reserve_take(&session.project).unwrap();
+        assert!(empty[19].reserve_take(&session.project).is_err());
+        assert_eq!(fs::read(manifest).unwrap(), original);
+        assert_eq!(fs::read(journal).unwrap(), b"journal data");
+        assert!(empty[1].folder.join("active-take").exists());
+        assert!(empty[22].folder.join("owner").exists());
+
+        drop(current);
+        drop(empty);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     struct SelfTest;
     impl SelfTest {
         fn entries(store: &RecoveryStore) -> Vec<RecoveryEntry> {
