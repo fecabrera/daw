@@ -1,4 +1,5 @@
 //! Application-main native service pump, catalog refresh and editor ownership.
+#[path = "hosting/window.rs"]
 mod window;
 use daw_core::Id;
 use daw_plugin_host::*;

@@ -92,7 +92,6 @@ impl eframe::App for App {
 }
 #[cfg(target_os = "linux")]
 fn main() -> gtk4::glib::ExitCode {
-    daw_plugin_host::dispatch_embedded_scan();
     gtk_host::run()
 }
 

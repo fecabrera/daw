@@ -53,6 +53,7 @@ impl Drop for State {
 }
 
 pub fn run() -> glib::ExitCode {
+    daw_plugin_host::dispatch_embedded_scan();
     if std::env::args_os()
         .nth(1)
         .is_some_and(|arg| arg == "--font-license")

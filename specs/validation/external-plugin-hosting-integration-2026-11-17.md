@@ -62,6 +62,22 @@ export crates. The component lookup returns null. The cause is not established.
 No AUv2 code or test was changed to suppress this failure. No full workspace PASS
 is claimed.
 
+## Linux GTK launcher follow-up
+
+The GTK compatibility example shares the desktop hosting module and starts the
+embedded scanner through the same GTK entry point. The CLAP parameter text buffer
+uses the platform's C character type.
+
+`cargo check --locked -p daw-desktop --bin daw-desktop --example gtk_titlebar`
+passed on Linux ARM64 with Rust 1.97.0. The x86-64 Docker run stopped before
+compilation because the emulator crashed while starting Rust. The GTK window
+and plug-in editor were not exercised.
+
+Workspace Clippy and focused desktop and plug-in host tests passed on macOS.
+Both workspace runs used `--locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`.
+The debug run passed before the C character type change. The focused debug tests
+and the release workspace run passed with the final change.
+
 ## Limits
 
 Rust allocator guards observe host and Rust fixture heap operations. They cannot

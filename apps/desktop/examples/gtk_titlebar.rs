@@ -8,6 +8,10 @@ mod app_icon;
 mod gtk_host;
 
 #[cfg(target_os = "linux")]
+#[path = "../src/hosting.rs"]
+mod hosting;
+
+#[cfg(target_os = "linux")]
 #[path = "../src/midi.rs"]
 mod midi;
 

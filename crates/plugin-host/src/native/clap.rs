@@ -615,7 +615,7 @@ impl ClapInstance {
         if extension.is_null() {
             return Err(Error::Invalid("Plugin has no parameter formatter".into()));
         }
-        let mut buffer = [0i8; 4096];
+        let mut buffer: [c_char; 4096] = [0; 4096];
         if !unsafe {
             (*extension).value_to_text.is_some_and(|format| {
                 format(
