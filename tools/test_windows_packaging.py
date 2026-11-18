@@ -21,6 +21,8 @@ NOTICE_DIRS = (
     'crates/media/assets/licenses', 'crates/oscillator/assets/licenses',
     'crates/equalizer/assets/licenses', 'crates/timestretch/licenses',
     'crates/separation/assets/licenses',
+    'crates/plugin-host/assets/licenses', 'crates/plugin-clap/assets/licenses',
+    'crates/plugin-vst3/assets/licenses',
 )
 
 

@@ -28,7 +28,9 @@ def fixture():
                           'crates/ui/assets/licenses', 'crates/unit-ui/assets/licenses',
                           'crates/separation/assets/licenses', 'crates/media/assets/licenses',
                           'crates/timestretch/licenses', 'crates/oscillator/assets/licenses',
-                          'crates/equalizer/assets/licenses', 'crates/ui/assets/app-icon'):
+                          'crates/equalizer/assets/licenses', 'crates/ui/assets/app-icon',
+                          'crates/plugin-host/assets/licenses', 'crates/plugin-clap/assets/licenses',
+                          'crates/plugin-vst3/assets/licenses'):
             shutil.copytree(ROOT / directory, root / directory)
         (root / 'fixture.c').write_text('int main(void) { return 0; }\n')
         seed = base / 'native executable'

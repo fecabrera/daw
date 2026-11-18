@@ -39,7 +39,14 @@ class DesktopPackagingTests(unittest.TestCase):
                         shutil.copy(ROOT / 'tools/build_desktop.py', root / 'tools/build_desktop.py')
                         shutil.copy(ROOT / 'tools/runtime_notices.json', root / 'tools/runtime_notices.json')
                         shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
-                        for directory in ('crates/unit-ui/assets/fonts', 'crates/ui/assets/icons', 'crates/ui/assets/licenses', 'crates/unit-ui/assets/licenses', 'crates/separation/assets/licenses', 'crates/media/assets/licenses', 'crates/timestretch/licenses', 'crates/oscillator/assets/licenses', 'crates/equalizer/assets/licenses'):
+                        for directory in (
+                            'crates/unit-ui/assets/fonts', 'crates/ui/assets/icons',
+                            'crates/ui/assets/licenses', 'crates/unit-ui/assets/licenses',
+                            'crates/separation/assets/licenses', 'crates/media/assets/licenses',
+                            'crates/timestretch/licenses', 'crates/oscillator/assets/licenses',
+                            'crates/equalizer/assets/licenses', 'crates/plugin-host/assets/licenses',
+                            'crates/plugin-clap/assets/licenses', 'crates/plugin-vst3/assets/licenses',
+                        ):
                             shutil.copytree(ROOT / directory, root / directory)
                         shutil.copytree(ROOT / 'crates/ui/assets/app-icon', root / 'crates/ui/assets/app-icon')
                         default = root / 'target' / profile
@@ -99,7 +106,12 @@ if ('--sign' in sys.argv and os.environ.get('FAIL_APP_SIGN')) or ('--verify' in 
                         subprocess.run(['git', 'init', '-q', str(root)], check=True)
                         subprocess.run(['git', '-C', str(root), '-c', 'core.autocrlf=false', 'add', 'tools', 'crates', 'LICENSE', '.cargo'], check=True)
                         subprocess.run(['git', '-C', str(root), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
-                        subprocess.run(['sh', str(root / 'tools' / script.name), profile], cwd=root, env=env, check=True, capture_output=True)
+                        def package(*args):
+                            result = subprocess.run(['sh', str(root / 'tools' / script.name), *args],
+                                                    cwd=root, env=env, capture_output=True, text=True)
+                            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+                        package(profile)
                         if platform == 'macos':
                             data = (default / 'DAW.app/Contents/MacOS/daw-desktop').read_bytes()
                             source = default / 'DAW.app/Contents/Resources'
@@ -170,8 +182,7 @@ if ('--sign' in sys.argv and os.environ.get('FAIL_APP_SIGN')) or ('--verify' in 
                         self.assertIn(b'Commit tracked changes', rejected.stderr)
                         shutil.rmtree(root / '.git')
                         local_arguments = ['--local'] if profile == 'debug' else ['release', '--local']
-                        subprocess.run(['sh', str(root / 'tools' / script.name), *local_arguments],
-                                       cwd=root, env=env, check=True, capture_output=True)
+                        package(*local_arguments)
 
                         def local_contents():
                             if platform == 'macos':
@@ -200,8 +211,7 @@ if ('--sign' in sys.argv and os.environ.get('FAIL_APP_SIGN')) or ('--verify' in 
                         if platform == 'linux':
                             self.assertIn('share/icons/hicolor/scalable/apps/org.daw.DAW.svg', contents)
                             self.assertIn('LINUX-REQUIREMENTS.txt', contents)
-                        subprocess.run(['sh', str(root / 'tools' / script.name), '--local', profile],
-                                       cwd=root, env=env, check=True, capture_output=True)
+                        package('--local', profile)
                         previous = local_contents()
                         previous_zip = (default / 'DAW-linux-x64.zip').read_bytes() if platform == 'linux' else None
                         for failure in ('FAIL_CARGO_BUILD', 'OMIT_CARGO_ARTIFACT', 'FAIL_ICON_COPY'):
