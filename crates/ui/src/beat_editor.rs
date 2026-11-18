@@ -1412,12 +1412,6 @@ impl DawUi {
         let panel = panels::ControlPanel::begin(ui, ui.max_rect());
         let header = panel.header(ui, "Output", |_| {});
         panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
-        let available = ui.available_rect_before_wrap();
-        let height = panels::unit_height(original.collapsed).min(available.height());
-        let rect = Rect::from_min_max(
-            Pos2::new(available.left(), available.bottom() - height),
-            available.max,
-        );
         self.instrument_ui.clear_layout();
         self.instrument_ui.track = Some(owner);
         #[cfg(test)]
@@ -1425,7 +1419,6 @@ impl DawUi {
             self.midi_editor.layer_bounds.clear();
             self.midi_editor.add_layer_bounds = Rect::NOTHING;
         }
-        self.instrument_ui.component_viewports.push((owner, rect));
         self.sidechain_context(ui.ctx(), owner);
         let mut sources = modulation_panel::sources(Some(&settings));
         crate::audio_sidechain::append_sources(&mut sources, &self.session.project);
@@ -1433,20 +1426,40 @@ impl DawUi {
         for (_, sources) in &mut providers {
             crate::audio_sidechain::append_sources(sources, &self.session.project);
         }
-        self.instrument_main(
+        let scroll = egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .id_salt(("beat-output", owner))
+            .show(ui, |ui| {
+                let rect = Rect::from_min_size(
+                    ui.next_widget_position(),
+                    Vec2::new(
+                        ui.available_width(),
+                        panels::unit_height(original.collapsed),
+                    ),
+                );
+                self.instrument_main(
+                    ui,
+                    owner,
+                    &mut settings.main,
+                    crate::instrument_main::LaneRow {
+                        rect,
+                        kind: None,
+                        shared_sources: &[],
+                    },
+                    &sources,
+                    &providers,
+                );
+                rect
+            });
+        let rect = scroll.inner;
+        let target = Rect::from_min_max(rect.min, lane_toolbar::bounds(rect).left_bottom());
+        let handled = self.finish_instrument_components(
             ui,
             owner,
-            &mut settings.main,
-            crate::instrument_main::LaneRow {
-                rect,
-                kind: None,
-                shared_sources: &[],
-            },
-            &sources,
-            &providers,
+            &mut settings,
+            &[(owner, target)],
+            scroll.inner_rect,
         );
-        let handled =
-            self.finish_instrument_components(ui, owner, &mut settings, &[(owner, rect)], rect);
         if !handled && settings.main != original {
             self.edit_beat(track, BeatEdit::SetOutput(Box::new(settings.main)));
         }
@@ -1455,7 +1468,6 @@ impl DawUi {
             self.beat_ui.final_output = Some(rect);
         }
         panel.finish(ui);
-        ui.advance_cursor_after_rect(available);
     }
 }
 /// Exact audible interval in beats, shared with placeholder geometry.

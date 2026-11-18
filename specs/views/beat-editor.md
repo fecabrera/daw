@@ -50,7 +50,7 @@ see [beat subtrack strips](mixer.md#beat-subtrack-strips).
 | B33 | Beat subtracks are instruments, not audio tracks or separate audio/MIDI lane types. | Add one instrument subtrack directly. Choose Sampler/Oscillator/other supported sources inside its layers; preserve the same subtrack identity when sources change. |
 | B34 | Reject beat clip moves, copies and paste between different beat tracks for now. | Preserve stable subtrack bindings; do not match rows by name or position or silently copy instruments. Same-track operations remain allowed. |
 | B35 | Retain steps hidden by a shorter or coarser grid. | Hidden steps are silent and return at their original tick and velocity when the grid includes them again. |
-| B36 | Beat and MIDI Instrument pages use the same layout shell. | Share header/Plus geometry, the left control-column fill and divider, lane toolbars and pinned Output position. A selected subtrack uses the MIDI Layers header and Plus. The beat parent shows only final Output. This supersedes the earlier Subtracks header on 2026-11-01. |
+| B36 | Beat and MIDI Instrument pages use the same layout shell. | Share header/Plus geometry, the left control-column fill and divider, lane toolbars and a shared Layers scroll area. A selected subtrack uses the MIDI Layers header and Plus. The beat parent shows only final Output. This supersedes the earlier Subtracks header on 2026-11-01. |
 
 Audio tracks accept effects only. MIDI tracks accept sources and effects. These shared rules and the unit architecture are defined in [Modular audio units design and decisions](../architecture/modular-audio-units.md). Beat tracks support effects on each lane and on the parent track.
 
@@ -207,7 +207,7 @@ project data, add hits, or start subtrack reordering.
 
 ### Selected subtrack and final Output
 
-Instrument and Editor share the [Tracks hierarchy](instrument-tracks.md). Beat parents disclose compact subtrack rows. A selected subtrack uses the standard MIDI instrument body without group indentation or a surrounding group header: Layers title and Plus, source layers, local LFO/Envelope lanes, and pinned Output. Cache presentation state by owner, but expose drop geometry only for the visible owner. Selecting another owner clears hidden layer selection. Keep all processing state in the shared project.
+Instrument and Editor share the [Tracks hierarchy](instrument-tracks.md). Beat parents disclose compact subtrack rows. A selected subtrack uses the standard MIDI instrument body without group indentation or a surrounding group header: Layers title and Plus, source layers, local LFO/Envelope lanes, and Output in one vertical scroll area. Cache presentation state by owner, but expose drop geometry only for the visible owner. Selecting another owner clears hidden layer selection. Keep all processing state in the shared project.
 
 Selecting the beat parent shows only its final Output and targets that bus for compatible catalog units. There are no kit-wide source, LFO or Envelope rows or Add layer action. The parent remains the selected real project track for effects and arrangement. Source/sample navigation must select the matching subtrack owner when opening a nested instrument. Parent disclosure is independent of Output collapse and does not change audio/history.
 

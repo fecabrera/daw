@@ -7,7 +7,7 @@ Use **Multiband EQ** for targeted tonal corrections, resonant cuts and boosts, a
 The band, **+**, and **Out** strips follow the Oscillator layout. Each band has a Mode dropdown above three smaller knobs in one column.
 Expanded band labels align with the **Response** and **Out** footers.
 
-The **Response** graph sits before the band strips and spans the three standard control rows. It shows each band's response, the combined EQ curve, and a live output spectrum. The combined curve and unselected band points use the unselected unit-header text color. The selected point uses the accent color; disabled bands and units remain muted. The spectrum uses both stereo channels, moves smoothly between analysis updates, and draws a rounded contour without adding peaks between measured bins. It clears when the unit is off. Compact and collapsed units hide the graph.
+The **Response** graph sits before the band strips and spans the three standard control rows. It shows each band's response, the combined EQ curve, and a live output spectrum. The combined curve and unselected band points use the unselected unit-header text color. The selected point uses the accent color; disabled bands and units remain muted. The spectrum uses both stereo channels, moves smoothly between analysis updates, and draws a rounded contour without adding peaks between measured bins. It clears when the unit is off. Compact mode keeps a read-only response graph and live output spectrum. Expand the row to edit the graph.
 
 The spectrum uses the same resolution across the full frequency range. It appears
 after about 0.1 seconds of processed audio and updates about every 22 ms. At a

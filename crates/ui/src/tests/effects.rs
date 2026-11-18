@@ -6850,6 +6850,9 @@ fn inline_effects_move_before_macro_and_components_move_across_effects() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for main in [false, true] {
             let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
+            ctx.data_mut(|data| {
+                data.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(1280.0, 1100.0))
+            });
             let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
             let effect = daw_core::EffectInstance::auto_filter();
             let id = effect.id;

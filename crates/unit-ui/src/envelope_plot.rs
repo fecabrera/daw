@@ -111,19 +111,11 @@ pub fn show(
         spectrum_graph::WIDTH,
         egui::UiBuilder::new(),
         |ui| {
-            let chart_height = if compact {
-                height
-            } else {
-                3.0 * crate::knobs::CHOICE_SIZE + 2.0 * f32::from(theme::TOOLBAR_PADDING)
-            };
-            let (chart, _) = ui.allocate_exact_size(
-                Vec2::new(ui.available_width(), chart_height),
-                Sense::hover(),
-            );
+            let chart = spectrum_graph::chart(ui, height, compact);
             if ui.is_rect_visible(chart) {
                 let (painter, grid) = spectrum_graph::surface(ui, chart);
                 let plot = chart.shrink2(if compact {
-                    Vec2::new(9.0, 4.0)
+                    spectrum_graph::COMPACT_PLOT_INSET
                 } else {
                     Vec2::new(24.0, 17.0)
                 });

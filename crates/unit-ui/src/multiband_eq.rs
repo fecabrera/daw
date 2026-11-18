@@ -316,8 +316,15 @@ pub fn show(
     };
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(crate::theme::TOOLBAR_PADDING));
-        bounds.graph =
-            crate::eq_graph::show(ui, settings, dimensions.1, !dimensions.0, controls.graph);
+        bounds.graph = crate::eq_graph::show(
+            ui,
+            settings,
+            (
+                crate::spectrum_graph::Presentation::from_compact(dimensions.0),
+                dimensions.1,
+            ),
+            controls.graph,
+        );
         for (i, band) in settings.bands.iter_mut().enumerate() {
             let mut unused = false;
             let empty = std::array::from_fn(|_| None);

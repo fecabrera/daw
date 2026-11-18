@@ -28,7 +28,10 @@ fn open_menu(app: &mut DawUi, ctx: &egui::Context, pos: Pos2, label: &str) -> Po
             ],
         );
     }
-    let shapes = frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0));
+    let size = ctx
+        .data(|data| data.get_temp::<Vec2>(egui::Id::new("test-frame-size")))
+        .unwrap_or(Vec2::new(1280.0, 800.0));
+    let shapes = frame_shapes(app, ctx, vec![], size);
     let item = shapes
         .iter()
         .find_map(|s| match &s.shape {
@@ -89,6 +92,9 @@ fn component_power_menu_changes_selected_group_and_undoes_together() {
             let second = if main { C::Macros } else { C::Amplitude };
             app.select_track(track, false);
             let ctx = context();
+            ctx.data_mut(|data| {
+                data.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(1280.0, 1100.0))
+            });
             app.set_view_mode(ViewMode::Instrument, &ctx);
             for _ in 0..3 {
                 frame(&mut app, &ctx, vec![]);

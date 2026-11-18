@@ -1,5 +1,5 @@
 //! Shared EQ graph. DAW hosts stage transient plans; native editors publish bounded host gestures.
-use crate::{drag::AxisLock, layout, rows, theme};
+use crate::{drag::AxisLock, layout, rows, spectrum_graph, spectrum_graph::Presentation, theme};
 use daw_unit_core::{FrequencyResponse, MultibandEqBand, MultibandEqSettings, SpectrumReading};
 use egui::{Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 pub const WIDTH: f32 = crate::spectrum_graph::WIDTH;
@@ -67,11 +67,10 @@ fn point(rect: Rect, b: &MultibandEqBand) -> Pos2 {
 pub fn show(
     ui: &mut Ui,
     s: &mut MultibandEqSettings,
-    height: f32,
-    visible: bool,
+    dimensions: (Presentation, f32),
     input: Input<'_>,
 ) -> Bounds {
-    show_inner(ui, s, height, visible, input, None)
+    show_inner(ui, s, dimensions, input, None)
 }
 type FixedResponse = fn(&daw_unit_core::EqSettings, u32) -> [Vec<f32>; 3];
 pub struct FixedInput<'a> {
@@ -84,8 +83,7 @@ pub struct FixedInput<'a> {
 pub fn show_equalizer(
     ui: &mut Ui,
     settings: &mut daw_unit_core::EqSettings,
-    height: f32,
-    visible: bool,
+    dimensions: (Presentation, f32),
     input: FixedInput<'_>,
 ) -> Bounds {
     let mut mapped = fixed_view(settings);
@@ -93,8 +91,7 @@ pub fn show_equalizer(
     let bounds = show_inner(
         ui,
         &mut mapped,
-        height,
-        visible,
+        dimensions,
         Input {
             live_edits: input.live_edits,
             spectrum: input.spectrum,
@@ -156,11 +153,12 @@ type FixedState<'a> = (
 fn show_inner(
     ui: &mut Ui,
     s: &mut MultibandEqSettings,
-    height: f32,
-    visible: bool,
+    dimensions: (Presentation, f32),
     input: Input<'_>,
     fixed: Option<FixedState<'_>>,
 ) -> Bounds {
+    let (presentation, height) = dimensions;
+    let compact = presentation == Presentation::Compact;
     let id = ui.make_persistent_id("eq-graph-drag");
     let selection = ui.make_persistent_id("eq-graph-selection");
     let spectrum_id = ui.make_persistent_id("eq-spectrum-display");
@@ -179,7 +177,7 @@ fn show_inner(
             || s.bands.iter().find(|b| b.id == d.id) != expected
             || d.enabled != s.enabled
     });
-    let cancelled = !visible
+    let cancelled = presentation != Presentation::Expanded
         || !ui.is_enabled()
         || ui.input(|i| !i.focused || i.key_pressed(egui::Key::Escape))
         || drag.as_ref().is_some_and(|d| frame > d.frame + 1);
@@ -194,7 +192,7 @@ fn show_inner(
         }
         drag = None;
     }
-    if !visible {
+    if presentation == Presentation::Hidden {
         crate::eq_spectrum::clear(ui, spectrum_id);
         ui.data_mut(|d| d.remove::<Drag>(id));
         return Bounds::default();
@@ -202,170 +200,171 @@ fn show_inner(
     let mut selected = ui.data(|d| d.get_temp::<daw_unit_core::ModulationTargetId>(selection));
     let mut bounds = Bounds::default();
     let strip = layout::unit_strip_with_width(ui, height, WIDTH, egui::UiBuilder::new(), |ui| {
-        let (chart, _) = ui.allocate_exact_size(
-            Vec2::new(
-                WIDTH - 2.0 * f32::from(layout::PANEL_MARGIN),
-                3.0 * crate::knobs::CHOICE_SIZE + 2.0 * f32::from(theme::TOOLBAR_PADDING),
-            ),
-            Sense::hover(),
+        let chart = spectrum_graph::chart(ui, height, compact);
+        let plot = spectrum_graph::axes(
+            ui,
+            chart,
+            (-24.0, 24.0),
+            &[-24.0, -12.0, 0.0, 12.0, 24.0],
+            compact,
         );
-        let plot = chart.shrink2(Vec2::new(24.0, 17.0));
         bounds.plot = plot;
         let palette = theme::palette(ui.ctx());
         let accent = theme::accent(ui.ctx());
         let painter = ui.painter_at(chart);
-        crate::spectrum_graph::axes(ui, chart, (-24.0, 24.0), &[-24.0, -12.0, 0.0, 12.0, 24.0]);
         let font = egui::FontId::proportional(9.0);
         let p = ui.painter_at(plot);
         crate::spectrum_graph::paint(ui, spectrum_id, plot, input.spectrum, s.enabled);
-        for (i, b) in s.bands.iter().enumerate() {
-            let node = point(
-                plot,
-                drag.as_ref()
+        if !compact {
+            for (i, b) in s.bands.iter().enumerate() {
+                let node = point(
+                    plot,
+                    drag.as_ref()
+                        .filter(|d| d.id == b.id)
+                        .map_or(b, |d| &d.preview),
+                );
+                let rect = Rect::from_center_size(node, Vec2::splat((node_radius(i) + 3.0) * 2.0));
+                bounds.nodes.push(rect);
+                let shown = drag
+                    .as_ref()
                     .filter(|d| d.id == b.id)
-                    .map_or(b, |d| &d.preview),
-            );
-            let rect = Rect::from_center_size(node, Vec2::splat((node_radius(i) + 3.0) * 2.0));
-            bounds.nodes.push(rect);
-            let shown = drag
-                .as_ref()
-                .filter(|d| d.id == b.id)
-                .map_or(b, |d| &d.preview);
-            let gain = if shown.mode.uses_gain() {
-                format!(" · Gain: {:+.1} dB", shown.gain_db)
-            } else {
-                String::new()
-            };
-            let label = if fixed.is_some() {
-                ["Low", "Mid", "High"][i].to_owned()
-            } else {
-                format!("Band {}", i + 1)
-            };
-            let description = if fixed.is_some() && i == 1 {
-                format!("{label} · Gain: {:+.1} dB", shown.gain_db)
-            } else {
-                format!(
-                    "{label} · Frequency: {}{gain} · Q: {:.2}",
-                    crate::knobs::format_frequency(shown.frequency_hz),
-                    shown.q
-                )
-            };
-            let response = ui
-                .interact(
-                    rect,
-                    ui.id().with(("eq-point", b.id)),
-                    Sense::click_and_drag(),
-                )
-                .on_hover_cursor(egui::CursorIcon::Grab)
-                .on_hover_text(&description);
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(
-                    egui::WidgetType::DragValue,
-                    response.enabled(),
-                    &description,
-                )
-            });
-            if response.clicked() || response.drag_started() {
-                selected = Some(b.id);
-            }
-            if response.drag_started()
-                && drag.is_none()
-                && ui.is_enabled()
-                && ui.input(|i| i.focused)
-            {
-                let last = ui.input(|i| i.pointer.press_origin()).unwrap_or(node);
-                drag = Some(Drag {
-                    bands: s.bands.clone(),
-                    enabled: s.enabled,
-                    id: b.id,
-                    preview: b.clone(),
-                    anchor: b.clone(),
-                    last,
-                    direction: AxisLock::new(last, true),
-                    offset: [0.0; 2],
-                    q: ui.input(|i| i.modifiers.command),
-                    frame,
+                    .map_or(b, |d| &d.preview);
+                let gain = if shown.mode.uses_gain() {
+                    format!(" · Gain: {:+.1} dB", shown.gain_db)
+                } else {
+                    String::new()
+                };
+                let label = if fixed.is_some() {
+                    ["Low", "Mid", "High"][i].to_owned()
+                } else {
+                    format!("Band {}", i + 1)
+                };
+                let description = if fixed.is_some() && i == 1 {
+                    format!("{label} · Gain: {:+.1} dB", shown.gain_db)
+                } else {
+                    format!(
+                        "{label} · Frequency: {}{gain} · Q: {:.2}",
+                        crate::knobs::format_frequency(shown.frequency_hz),
+                        shown.q
+                    )
+                };
+                let response = ui
+                    .interact(
+                        rect,
+                        ui.id().with(("eq-point", b.id)),
+                        Sense::click_and_drag(),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::Grab)
+                    .on_hover_text(&description);
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::DragValue,
+                        response.enabled(),
+                        &description,
+                    )
                 });
-            }
-            if let Some(d) = &mut drag
-                && d.id == b.id
-            {
-                let frequency_available = fixed.is_none() || i != 1;
-                let q = ui.input(|i| i.modifiers.command);
-                if q != d.q {
-                    // Start the new mode at the current draft, without applying
-                    // the previous mode's displacement to another parameter.
-                    d.anchor = d.preview.clone();
-                    d.offset = [0.0; 2];
-                    d.q = q;
-                    d.direction = AxisLock::new(d.last, true);
+                if response.clicked() || response.drag_started() {
+                    selected = Some(b.id);
                 }
-                if let Some(pointer) = ui.input(|i| i.pointer.interact_pos()) {
-                    let delta = if !d.q && frequency_available && b.mode.uses_gain() {
-                        d.direction.delta(pointer)
-                    } else {
-                        pointer - d.last
-                    } * ui.input(|i| if i.modifiers.shift { 0.1 } else { 1.0 });
-                    d.last = pointer;
-                    d.offset[0] += f64::from(delta.x);
-                    d.offset[1] += f64::from(delta.y);
-                    for value in &mut d.offset {
-                        if value.abs() < 1e-6 {
-                            *value = 0.0;
-                        }
-                    }
-                    let original = &d.anchor;
-                    if d.q && frequency_available {
-                        d.preview.q = (f64::from(original.q)
-                            * 100_f64.powf(
-                                d.offset[0] / f64::from(plot.width())
-                                    - d.offset[1] / f64::from(plot.height()),
-                            ))
-                        .clamp(0.1, 10.0) as f32;
-                    } else if !d.q {
-                        if frequency_available {
-                            d.preview.frequency_hz = (f64::from(original.frequency_hz)
-                                * 1000_f64.powf(d.offset[0] / f64::from(plot.width())))
-                            .clamp(20.0, 20_000.0)
-                                as f32;
-                        }
-                        if d.preview.mode.uses_gain() {
-                            d.preview.gain_db = (f64::from(original.gain_db)
-                                - 48.0 * d.offset[1] / f64::from(plot.height()))
-                            .clamp(-24.0, 24.0)
-                                as f32;
-                        }
-                    }
+                if response.drag_started()
+                    && drag.is_none()
+                    && ui.is_enabled()
+                    && ui.input(|i| i.focused)
+                {
+                    let last = ui.input(|i| i.pointer.press_origin()).unwrap_or(node);
+                    drag = Some(Drag {
+                        bands: s.bands.clone(),
+                        enabled: s.enabled,
+                        id: b.id,
+                        preview: b.clone(),
+                        anchor: b.clone(),
+                        last,
+                        direction: AxisLock::new(last, true),
+                        offset: [0.0; 2],
+                        q: ui.input(|i| i.modifiers.command),
+                        frame,
+                    });
                 }
-                d.frame = frame;
-                if input.live_edits || !ui.input(|i| i.pointer.primary_down()) {
-                    for (parameter, before, after) in [
-                        (1, b.frequency_hz, d.preview.frequency_hz),
-                        (0, b.gain_db, d.preview.gain_db),
-                        (2, b.q, d.preview.q),
-                    ] {
-                        // Keep any opened host gestures active across mode
-                        // switches. Otherwise a delayed host snapshot can replace
-                        // the previous mode's values and cancel this drag.
-                        if before != after || input.live_edits {
-                            let mut r = response.clone();
-                            if before != after {
-                                r.mark_changed();
+                if let Some(d) = &mut drag
+                    && d.id == b.id
+                {
+                    let frequency_available = fixed.is_none() || i != 1;
+                    let q = ui.input(|i| i.modifiers.command);
+                    if q != d.q {
+                        // Start the new mode at the current draft, without applying
+                        // the previous mode's displacement to another parameter.
+                        d.anchor = d.preview.clone();
+                        d.offset = [0.0; 2];
+                        d.q = q;
+                        d.direction = AxisLock::new(d.last, true);
+                    }
+                    if let Some(pointer) = ui.input(|i| i.pointer.interact_pos()) {
+                        let delta = if !d.q && frequency_available && b.mode.uses_gain() {
+                            d.direction.delta(pointer)
+                        } else {
+                            pointer - d.last
+                        } * ui.input(|i| if i.modifiers.shift { 0.1 } else { 1.0 });
+                        d.last = pointer;
+                        d.offset[0] += f64::from(delta.x);
+                        d.offset[1] += f64::from(delta.y);
+                        for value in &mut d.offset {
+                            if value.abs() < 1e-6 {
+                                *value = 0.0;
                             }
-                            bounds.edits.push((b.id, parameter, r));
+                        }
+                        let original = &d.anchor;
+                        if d.q && frequency_available {
+                            d.preview.q = (f64::from(original.q)
+                                * 100_f64.powf(
+                                    d.offset[0] / f64::from(plot.width())
+                                        - d.offset[1] / f64::from(plot.height()),
+                                ))
+                            .clamp(0.1, 10.0) as f32;
+                        } else if !d.q {
+                            if frequency_available {
+                                d.preview.frequency_hz = (f64::from(original.frequency_hz)
+                                    * 1000_f64.powf(d.offset[0] / f64::from(plot.width())))
+                                .clamp(20.0, 20_000.0)
+                                    as f32;
+                            }
+                            if d.preview.mode.uses_gain() {
+                                d.preview.gain_db = (f64::from(original.gain_db)
+                                    - 48.0 * d.offset[1] / f64::from(plot.height()))
+                                .clamp(-24.0, 24.0)
+                                    as f32;
+                            }
+                        }
+                    }
+                    d.frame = frame;
+                    if input.live_edits || !ui.input(|i| i.pointer.primary_down()) {
+                        for (parameter, before, after) in [
+                            (1, b.frequency_hz, d.preview.frequency_hz),
+                            (0, b.gain_db, d.preview.gain_db),
+                            (2, b.q, d.preview.q),
+                        ] {
+                            // Keep any opened host gestures active across mode
+                            // switches. Otherwise a delayed host snapshot can replace
+                            // the previous mode's values and cancel this drag.
+                            if before != after || input.live_edits {
+                                let mut r = response.clone();
+                                if before != after {
+                                    r.mark_changed();
+                                }
+                                bounds.edits.push((b.id, parameter, r));
+                            }
                         }
                     }
                 }
             }
-        }
-        if drag.is_none()
-            && ui.is_enabled()
-            && ui.input(|i| i.pointer.primary_clicked())
-            && ui
-                .input(|i| i.pointer.interact_pos())
-                .is_some_and(|p| !bounds.nodes.iter().any(|r| r.contains(p)))
-        {
-            selected = None;
+            if drag.is_none()
+                && ui.is_enabled()
+                && ui.input(|i| i.pointer.primary_clicked())
+                && ui
+                    .input(|i| i.pointer.interact_pos())
+                    .is_some_and(|p| !bounds.nodes.iter().any(|r| r.contains(p)))
+            {
+                selected = None;
+            }
         }
         let view: Vec<_> = s
             .bands
@@ -458,61 +457,63 @@ fn show_inner(
                 .collect(),
             Stroke::new(1.5, palette.secondary),
         ));
-        for (i, b) in view.iter().enumerate() {
-            let base = drag
-                .as_ref()
-                .filter(|d| d.id == b.id)
-                .map_or(&s.bands[i], |d| &d.preview);
-            let center = point(plot, base);
-            let color = crate::spectrum_graph::band_handle(
-                ui,
-                &painter,
-                center,
-                node_radius(i),
-                selected == Some(b.id),
-                s.enabled && b.enabled,
-            );
-            painter.text(
-                center,
-                egui::Align2::CENTER_CENTER,
-                (i + 1).to_string(),
-                egui::FontId::proportional(9.0),
-                color,
-            );
-        }
-        if let Some(selected) = selected
-            && let Some(base) = s.bands.iter().find(|b| b.id == selected)
-        {
-            let b = drag
-                .as_ref()
-                .filter(|d| d.id == selected)
-                .map_or(base, |d| &d.preview);
-            let index = s.bands.iter().position(|v| v.id == selected).unwrap() + 1;
-            let gain = if b.mode.uses_gain() {
-                format!(" · {:+.1} dB", b.gain_db)
-            } else {
-                String::new()
-            };
-            painter.text(
-                chart.right_top() + Vec2::new(-2.0, 1.0),
-                egui::Align2::RIGHT_TOP,
-                if fixed.is_some() && index == 2 {
-                    format!("Mid · {:+.1} dB", b.gain_db)
+        if !compact {
+            for (i, b) in view.iter().enumerate() {
+                let base = drag
+                    .as_ref()
+                    .filter(|d| d.id == b.id)
+                    .map_or(&s.bands[i], |d| &d.preview);
+                let center = point(plot, base);
+                let color = crate::spectrum_graph::band_handle(
+                    ui,
+                    &painter,
+                    center,
+                    node_radius(i),
+                    selected == Some(b.id),
+                    s.enabled && b.enabled,
+                );
+                painter.text(
+                    center,
+                    egui::Align2::CENTER_CENTER,
+                    (i + 1).to_string(),
+                    egui::FontId::proportional(9.0),
+                    color,
+                );
+            }
+            if let Some(selected) = selected
+                && let Some(base) = s.bands.iter().find(|b| b.id == selected)
+            {
+                let b = drag
+                    .as_ref()
+                    .filter(|d| d.id == selected)
+                    .map_or(base, |d| &d.preview);
+                let index = s.bands.iter().position(|v| v.id == selected).unwrap() + 1;
+                let gain = if b.mode.uses_gain() {
+                    format!(" · {:+.1} dB", b.gain_db)
                 } else {
-                    let label = if fixed.is_some() {
-                        ["Low", "Mid", "High"][index - 1].to_owned()
+                    String::new()
+                };
+                painter.text(
+                    chart.right_top() + Vec2::new(-2.0, 1.0),
+                    egui::Align2::RIGHT_TOP,
+                    if fixed.is_some() && index == 2 {
+                        format!("Mid · {:+.1} dB", b.gain_db)
                     } else {
-                        format!("B{index}")
-                    };
-                    format!(
-                        "{label} · {}{gain} · Q{:.2}",
-                        crate::knobs::format_frequency(b.frequency_hz),
-                        b.q
-                    )
-                },
-                font.clone(),
-                palette.secondary,
-            );
+                        let label = if fixed.is_some() {
+                            ["Low", "Mid", "High"][index - 1].to_owned()
+                        } else {
+                            format!("B{index}")
+                        };
+                        format!(
+                            "{label} · {}{gain} · Q{:.2}",
+                            crate::knobs::format_frequency(b.frequency_hz),
+                            b.q
+                        )
+                    },
+                    font.clone(),
+                    palette.secondary,
+                );
+            }
         }
         if let Some(d) = &drag
             && ui.input(|i| i.pointer.primary_down())
@@ -532,9 +533,11 @@ fn show_inner(
             }
         }
         // The normal item gap already separates the graph from its footer.
-        rows::centered(ui, layout::COMPACT_BUTTON_SIZE, |ui| {
-            rows::unit_label(ui, "Response")
-        });
+        if !compact {
+            rows::centered(ui, layout::COMPACT_BUTTON_SIZE, |ui| {
+                rows::unit_label(ui, "Response")
+            });
+        }
     });
     bounds.section = strip.response.rect;
     bounds.selected = selected;
@@ -585,8 +588,14 @@ mod tests {
                 result = Some(show(
                     ui,
                     s,
-                    layout::unit_control_height(),
-                    visible,
+                    (
+                        if visible {
+                            Presentation::Expanded
+                        } else {
+                            Presentation::Hidden
+                        },
+                        layout::unit_control_height(),
+                    ),
                     Input {
                         live_edits: false,
                         spectrum: None,

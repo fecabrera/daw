@@ -26,8 +26,7 @@ fn draw(
             bounds = show_equalizer(
                 ui,
                 s,
-                layout::unit_control_height(),
-                true,
+                (Presentation::Expanded, layout::unit_control_height()),
                 FixedInput {
                     live_edits: live,
                     spectrum: None,

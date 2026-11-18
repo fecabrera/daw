@@ -1,4 +1,4 @@
-//! Shared fixed-lane rows. Only Output adds audio mix controls and a pinned separator.
+//! Shared instrument-wide rows. Output also provides audio mix controls.
 use super::*;
 use daw_core::InstrumentBusSettings;
 
@@ -129,7 +129,7 @@ impl DawUi {
                     ui, toolbar, &mut bus.collapsed,
                     !self.instrument_ui.has_layer_gesture() && !self.instrument_ui.editing_name()
                         && self.editing_enabled() && ui.input(|input| input.focused),
-                    [icons::Lucide::ArrowUpFromLine, icons::Lucide::ArrowDownFromLine],
+                    [icons::Lucide::ArrowDownFromLine, icons::Lucide::ArrowUpFromLine],
                     [if output {"Expand Output"} else {"Expand modulation lane"}, if output {"Collapse Output"} else {"Collapse modulation lane"}],
                 );
                 if collapse.clicked() { ui.ctx().request_repaint(); }
@@ -274,9 +274,7 @@ impl DawUi {
                 ui.advance_cursor_after_rect(toolbar);
             });
         });
-        if output {
-            panels::ControlPanel::pinned_row_divider(ui, rect);
-        }
+        panels::ControlPanel::row_dividers(ui, rect, true, false);
         ui.advance_cursor_after_rect(rect);
         #[cfg(test)]
         {

@@ -90,7 +90,7 @@ fn output_header_uses_merge_icon_and_keeps_layer_spacing_and_fixed_bus_identity(
     }
 }
 #[test]
-fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
+fn output_scrolls_with_layers_and_reuses_mix_controls_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, _) = setup(theme);
         let main = app.instrument_ui.main_bounds.row;
@@ -134,8 +134,9 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
         let viewport = app.instrument_catalog_bounds.layer_viewport;
         let lfo_row = app.instrument_ui.modulation_lane_bounds[&lfo].row;
         let envelope_row = app.instrument_ui.modulation_lane_bounds[&envelope].row;
-        assert_eq!(lfo_row.bottom(), envelope_row.top());
-        assert_eq!(envelope_row.bottom(), main.top());
+        let main = app.instrument_ui.main_bounds.row;
+        assert_eq!(lfo_row.bottom() - 1.0, envelope_row.top());
+        assert_eq!(envelope_row.bottom() - 1.0, main.top());
         assert!(viewport.bottom() <= lfo_row.top());
         frame(
             &mut app,
@@ -145,7 +146,7 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
                 egui::Event::MouseWheel {
                     phase: egui::TouchPhase::Move,
                     unit: egui::MouseWheelUnit::Point,
-                    delta: Vec2::new(0.0, -500.0),
+                    delta: Vec2::new(0.0, -10000.0),
                     modifiers: Default::default(),
                 },
             ],
@@ -154,11 +155,17 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
             frame(&mut app, &ctx, vec![]);
         }
         assert!(app.instrument_catalog_bounds.layer_scroll > 0.0);
-        assert_eq!(app.instrument_ui.main_bounds.row, main);
-        assert_eq!(app.instrument_ui.modulation_lane_bounds[&lfo].row, lfo_row);
+        let scrolled_output = app.instrument_ui.main_bounds.row;
+        assert!(viewport.contains_rect(scrolled_output));
+        assert!(scrolled_output.top() < main.top());
+        let offset = Vec2::new(0.0, scrolled_output.top() - main.top());
+        assert_eq!(
+            app.instrument_ui.modulation_lane_bounds[&lfo].row,
+            lfo_row.translate(offset)
+        );
         assert_eq!(
             app.instrument_ui.modulation_lane_bounds[&envelope].row,
-            envelope_row
+            envelope_row.translate(offset)
         );
         let gain = app.instrument_ui.main_bounds.mix[0].center();
         click(&mut app, &ctx, gain, false);
@@ -191,7 +198,10 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
                 .main
                 .collapsed
         );
-        assert_eq!(app.instrument_ui.main_bounds.row.bottom(), main.bottom());
+        assert_eq!(
+            app.instrument_ui.main_bounds.row.top(),
+            scrolled_output.top()
+        );
         assert_eq!(
             app.instrument_ui.main_bounds.row.height(),
             panels::unit_height(false)
@@ -562,28 +572,35 @@ fn fixed_layers_header_keeps_its_separator_above_scrolled_content() {
 }
 
 #[test]
-fn expanded_modulation_lanes_scroll_in_their_own_pinned_space() {
+fn expanded_modulation_lanes_share_the_regular_layer_scroll_viewport() {
     let (mut app, ctx, _) = setup(settings::ColorTheme::Dark);
     let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
     instrument.lfo_lane.collapsed = false;
     instrument.envelope_lane.collapsed = false;
+    let layer = instrument.layers[0].id;
+    let lfo = instrument.lfo_lane.id;
     let envelope = instrument.envelope_lane.id;
     let size = Vec2::new(1000.0, 600.0);
     frame_sized(&mut app, &ctx, vec![], size);
-    let output = app.instrument_ui.main_bounds.row;
-    let regular = app.instrument_catalog_bounds.layer_viewport;
-    let envelope_header = app.instrument_ui.modulation_lane_bounds[&envelope].label;
-    assert!(regular.height() >= ROW_HEIGHT);
-    assert!(envelope_header.bottom() > output.top());
-    let pointer = Pos2::new(
-        envelope_header.center().x,
-        (regular.bottom() + output.top()) * 0.5,
-    );
+    let rows = |app: &DawUi| {
+        [
+            app.midi_editor.layer_bounds[&layer].row,
+            app.instrument_ui.modulation_lane_bounds[&lfo].row,
+            app.instrument_ui.modulation_lane_bounds[&envelope].row,
+            app.instrument_ui.main_bounds.row,
+        ]
+    };
+    let before = rows(&app);
+    let viewport = app.instrument_catalog_bounds.layer_viewport;
+    assert!(before[3].top() >= viewport.bottom());
+    for pair in before.windows(2) {
+        assert_eq!(pair[0].bottom() - 1.0, pair[1].top());
+    }
     frame_sized(
         &mut app,
         &ctx,
         vec![
-            egui::Event::PointerMoved(pointer),
+            egui::Event::PointerMoved(viewport.center()),
             egui::Event::MouseWheel {
                 phase: egui::TouchPhase::Move,
                 unit: egui::MouseWheelUnit::Point,
@@ -596,15 +613,14 @@ fn expanded_modulation_lanes_scroll_in_their_own_pinned_space() {
     for _ in 0..10 {
         frame_sized(&mut app, &ctx, vec![], size);
     }
-    assert_eq!(app.instrument_ui.main_bounds.row, output);
-    assert_eq!(app.instrument_catalog_bounds.layer_viewport, regular);
-    assert_eq!(app.instrument_catalog_bounds.layer_scroll, 0.0);
-    assert!(
-        app.instrument_ui.modulation_lane_bounds[&envelope]
-            .label
-            .bottom()
-            <= output.top() + 1.0
-    );
+    let after = rows(&app);
+    let offset = Vec2::new(0.0, after[3].top() - before[3].top());
+    assert!(offset.y < 0.0);
+    for (before, after) in before.into_iter().zip(after) {
+        assert_eq!(before.translate(offset), after);
+    }
+    assert!(viewport.contains_rect(after[3]));
+    assert_eq!(app.instrument_catalog_bounds.layer_viewport, viewport);
     assert!(!app.dirty);
 }
 
@@ -662,7 +678,7 @@ fn main_top_separator_shares_the_last_layers_bottom_pixel() {
                     .collect::<Vec<_>>();
                 assert!(!ys.is_empty());
                 assert!(
-                    ys.iter().all(|y| *y == main.top() - 0.5),
+                    ys.iter().all(|y| *y == main.top() + 0.5),
                     "one shared pixel, got {ys:?}"
                 );
                 let header = app.instrument_ui.main_bounds.envelopes[0];
@@ -675,7 +691,7 @@ fn main_top_separator_shares_the_last_layers_bottom_pixel() {
                                 && points[1].x > cx
                                 && points
                                     .iter()
-                                    .all(|p| (p.y - (main.top() + 0.5)).abs() < 0.1)
+                                    .all(|p| (p.y - (main.top() - 0.5)).abs() < 0.1)
                         }
                         egui::Shape::Rect(r) => {
                             r.stroke.width > 0.0

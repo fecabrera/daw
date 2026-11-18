@@ -21,8 +21,7 @@ pub(super) fn show(
 ) -> Response {
     let colors = theme::palette(ui.ctx());
     ui.painter().rect_filled(bounds, 0.0, colors.panel);
-    // Pinned Output shares the preceding scroll region's bottom pixel.
-    // Its row owner paints that separator after the lane content.
+    // The instrument-wide row owner paints the shared separator after its content.
     let shared_top = ui
         .stack()
         .iter()

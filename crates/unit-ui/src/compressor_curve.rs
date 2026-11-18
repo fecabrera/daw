@@ -1,5 +1,7 @@
 //! Compressor transfer curve, detector marker and one atomic two-parameter draft.
-use crate::{control_capture, layout, meters, rows, spectrum_graph, theme};
+use crate::{
+    control_capture, layout, meters, rows, spectrum_graph, spectrum_graph::Presentation, theme,
+};
 use daw_unit_core::{CompressorSettings, compressor_shaped_gain_reduction_db};
 use egui::{Pos2, Rect, Response, Ui, Vec2};
 // Include the lowest possible knee edge: -60 dB threshold - 24/2 dB knee.
@@ -67,10 +69,12 @@ fn apply(s: &mut CompressorSettings, p: [f32; 2]) {
 pub fn show(
     ui: &mut Ui,
     s: &mut CompressorSettings,
-    dimensions: (bool, f32),
+    dimensions: (Presentation, f32),
     input: Input,
     reduction: meters::GainReduction<'_>,
 ) -> Bounds {
+    let (presentation, height) = dimensions;
+    let compact = presentation == Presentation::Compact;
     let id = ui.id().with("compressor-curve-drag");
     let selection = ui.id().with("compressor-curve-selection");
     let frame = ui.ctx().cumulative_frame_nr();
@@ -84,7 +88,7 @@ pub fn show(
         // Ignore only our own in-flight values; all other controls invalidate a draft.
         *s != expected && (!d.cancelled || *s != d.before)
     });
-    let cancel = dimensions.0
+    let cancel = presentation != Presentation::Expanded
         || !ui.is_enabled()
         || ui.input(|i| !i.focused || i.key_pressed(egui::Key::Escape))
         || drag.as_ref().is_some_and(|d| frame > d.frame + 1);
@@ -104,33 +108,36 @@ pub fn show(
         }
     }
     let mut bounds = Bounds::default();
-    if !dimensions.0 {
+    if presentation != Presentation::Hidden {
         bounds.section = layout::unit_strip_with_width(
             ui,
-            dimensions.1,
+            height,
             spectrum_graph::WIDTH,
             egui::UiBuilder::new(),
             |ui| {
                 let start = ui.cursor().top();
-                let (chart, _) = ui.allocate_exact_size(
-                    Vec2::new(
-                        spectrum_graph::WIDTH - 2.0 * f32::from(layout::PANEL_MARGIN),
-                        3.0 * crate::knobs::CHOICE_SIZE + 2.0 * f32::from(theme::TOOLBAR_PADDING),
-                    ),
-                    egui::Sense::hover(),
-                );
-                let mut plot = chart.shrink2(Vec2::new(24.0, 17.0));
-                plot.max.x -= 24.0;
+                let chart = spectrum_graph::chart(ui, height, compact);
+                let plot = if compact {
+                    chart.shrink2(spectrum_graph::COMPACT_PLOT_INSET)
+                } else {
+                    let mut plot = chart.shrink2(Vec2::new(24.0, 17.0));
+                    plot.max.x -= 24.0;
+                    plot
+                };
                 bounds.plot = plot;
                 let palette = theme::palette(ui.ctx());
                 let (p, grid) = spectrum_graph::surface(ui, chart);
-                bounds.reduction_meter =
-                    Rect::from_x_y_ranges(chart.right() - 28.0..=chart.right(), chart.y_range());
-                meters::gain_reduction_vertical(
-                    ui,
-                    bounds.reduction_meter,
-                    reduction.for_unit(s.enabled),
-                );
+                if !compact {
+                    bounds.reduction_meter = Rect::from_x_y_ranges(
+                        chart.right() - 28.0..=chart.right(),
+                        chart.y_range(),
+                    );
+                    meters::gain_reduction_vertical(
+                        ui,
+                        bounds.reduction_meter,
+                        reduction.for_unit(s.enabled),
+                    );
+                }
                 if s.enabled
                     && let Some(history) = input.history.as_ref()
                 {
@@ -140,7 +147,7 @@ pub fn show(
                     let pos = point(plot, db, db);
                     p.vline(pos.x, plot.y_range(), grid);
                     p.hline(plot.x_range(), pos.y, grid);
-                    if [-72.0, -24.0, 0.0, 12.0].contains(&db) {
+                    if !compact && [-72.0, -24.0, 0.0, 12.0].contains(&db) {
                         let text = format!("{db:+.0}");
                         p.text(
                             egui::pos2(pos.x, plot.bottom() + 4.0),
@@ -157,6 +164,10 @@ pub fn show(
                             palette.secondary,
                         );
                     }
+                }
+                if compact {
+                    paint_curve(ui, plot, s, parameters(s), false, input.detector_level);
+                    return;
                 }
                 let view = drag
                     .as_ref()
@@ -233,37 +244,7 @@ pub fn show(
                     .as_ref()
                     .filter(|d| !d.cancelled)
                     .map_or(parameters(s), |d| d.preview);
-                let painter = ui.painter_at(plot);
-                painter.line_segment(
-                    [point(plot, MIN, MIN), point(plot, MAX, MAX)],
-                    egui::Stroke::new(1.0, palette.secondary.gamma_multiply(0.15)),
-                );
-                painter.add(egui::Shape::line(
-                    (0..161)
-                        .map(|i| {
-                            let x = MIN + (MAX - MIN) * i as f32 / 160.0;
-                            point(plot, x, output(x, view, s.knee_db, s.curve))
-                        })
-                        .collect(),
-                    egui::Stroke::new(
-                        spectrum_graph::CURVE_STROKE_WIDTH,
-                        if selected && s.enabled {
-                            theme::accent(ui.ctx()).gamma_multiply(0.65)
-                        } else {
-                            palette.secondary
-                        },
-                    ),
-                ));
-                if s.enabled && input.detector_level.is_finite() && input.detector_level > 1e-3 {
-                    let db = (20.0 * input.detector_level.log10()).clamp(MIN, MAX);
-                    painter.circle_filled(
-                        point(plot, db, output(db, view, s.knee_db, s.curve)),
-                        2.5,
-                        theme::accent(ui.ctx()),
-                    );
-                    ui.ctx()
-                        .request_repaint_after(std::time::Duration::from_millis(16));
-                }
+                paint_curve(ui, plot, s, view, selected, input.detector_level);
                 let node = point(plot, view[0], output(view[0], view, s.knee_db, s.curve));
                 bounds.handle = Rect::from_center_size(node, Vec2::splat(17.0));
                 spectrum_graph::band_handle(ui, &p, node, 5.5, selected, s.enabled);
@@ -291,8 +272,7 @@ pub fn show(
                     bounds.preview = None;
                 }
                 ui.add_space(
-                    (dimensions.1 - layout::COMPACT_BUTTON_SIZE - (ui.cursor().top() - start))
-                        .max(0.0),
+                    (height - layout::COMPACT_BUTTON_SIZE - (ui.cursor().top() - start)).max(0.0),
                 );
                 rows::centered(ui, layout::COMPACT_BUTTON_SIZE, |ui| {
                     rows::unit_label(ui, "Curve").on_hover_text("Input/output curve")
@@ -311,6 +291,47 @@ pub fn show(
         data.insert_temp(selection, selected);
     });
     bounds
+}
+fn paint_curve(
+    ui: &Ui,
+    plot: Rect,
+    s: &CompressorSettings,
+    view: [f32; 2],
+    selected: bool,
+    detector_level: f32,
+) {
+    let palette = theme::palette(ui.ctx());
+    let painter = ui.painter_at(plot);
+    painter.line_segment(
+        [point(plot, MIN, MIN), point(plot, MAX, MAX)],
+        egui::Stroke::new(1.0, palette.secondary.gamma_multiply(0.15)),
+    );
+    painter.add(egui::Shape::line(
+        (0..161)
+            .map(|i| {
+                let x = MIN + (MAX - MIN) * i as f32 / 160.0;
+                point(plot, x, output(x, view, s.knee_db, s.curve))
+            })
+            .collect(),
+        egui::Stroke::new(
+            spectrum_graph::CURVE_STROKE_WIDTH,
+            if selected && s.enabled {
+                theme::accent(ui.ctx()).gamma_multiply(0.65)
+            } else {
+                palette.secondary
+            },
+        ),
+    ));
+    if s.enabled && detector_level.is_finite() && detector_level > 1e-3 {
+        let db = (20.0 * detector_level.log10()).clamp(MIN, MAX);
+        painter.circle_filled(
+            point(plot, db, output(db, view, s.knee_db, s.curve)),
+            2.5,
+            theme::accent(ui.ctx()),
+        );
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(16));
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -351,7 +372,14 @@ mod tests {
                         show(
                             ui,
                             s,
-                            (compact, layout::unit_control_height()),
+                            (
+                                Presentation::from_compact(compact),
+                                if compact {
+                                    34.0
+                                } else {
+                                    layout::unit_control_height()
+                                },
+                            ),
                             Input {
                                 live_edits: live,
                                 detector_level: 0.5,
@@ -623,12 +651,20 @@ mod tests {
                     out.textures_delta.clear();
                     let b = bounds.unwrap();
                     assert_eq!(s, before);
-                    if compact {
-                        assert_eq!(b.graph.section, Rect::NOTHING);
-                        continue;
-                    }
                     assert!(b.graph.section.right() <= b.sections[0].left());
                     assert!((b.graph.section.width() - spectrum_graph::WIDTH).abs() < 0.01);
+                    assert_eq!(b.graph.section.y_range(), b.sections[0].y_range());
+                    if compact {
+                        assert!(b.graph.section.contains_rect(b.graph.plot));
+                        assert!(b.graph.plot.is_positive());
+                        assert_eq!(b.graph.handle, Rect::NOTHING);
+                        assert_eq!(b.graph.reduction_meter, Rect::NOTHING);
+                        assert!(b.graph.preview.is_none());
+                        assert!(out.shapes.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::Path(path) if path.points.len() == 161
+                                && path.points.iter().all(|point| b.graph.plot.contains(*point)))));
+                        continue;
+                    }
                     assert!(b.graph.section.contains_rect(b.graph.reduction_meter));
                     assert!(b.graph.plot.right() < b.graph.reduction_meter.left());
                     assert_ne!(b.controls[2][2], b.graph.reduction_meter);

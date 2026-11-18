@@ -396,15 +396,24 @@ mod tests {
             crate::fonts::configure(&ctx);
             ctx.set_theme(theme);
             let mut settings = MultibandEqSettings::default();
-            let bounds = frame(&ctx, &mut settings, vec![], false);
-            for strip in bounds.bands.iter().chain(std::iter::once(&bounds.output)) {
-                assert_eq!(bounds.graph.section.top(), strip.top());
-                assert_eq!(bounds.graph.section.bottom(), strip.bottom());
+            for compact in [false, true] {
+                let bounds = frame(&ctx, &mut settings, vec![], compact);
+                for strip in bounds.bands.iter().chain(std::iter::once(&bounds.output)) {
+                    assert_eq!(bounds.graph.section.top(), strip.top());
+                    assert_eq!(bounds.graph.section.bottom(), strip.bottom());
+                }
+                assert_eq!(
+                    bounds.graph.section.width(),
+                    daw_unit_ui::spectrum_graph::WIDTH
+                );
+                assert!(bounds.graph.section.right() <= bounds.bands[0].left());
+                assert!(bounds.graph.plot.is_positive());
+                assert_eq!(bounds.graph.nodes.is_empty(), compact);
+                assert_eq!(
+                    bounds.header.height(),
+                    panels::unit_height(compact) - 2.0 * panels::UNIT_VERTICAL_MARGIN
+                );
             }
-            assert_eq!(
-                bounds.header.height(),
-                panels::unit_height(false) - 2.0 * panels::UNIT_VERTICAL_MARGIN
-            );
         }
     }
     fn click(ctx: &egui::Context, s: &mut MultibandEqSettings, point: egui::Pos2) {

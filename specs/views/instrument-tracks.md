@@ -23,7 +23,7 @@ Keep the existing catalog row height, Small name text, margins and four-point ro
 On MIDI rows, place the separate 16-point R button to the right of Mute and Solo.
 Center all three buttons on the same row and reserve space for R and its gap.
 
-Show expanded beat subtracks in saved order, indented under the parent. Keep `selected_track` on the real project parent and use stable subtrack IDs for the active instrument. Selecting a child opens the standard MIDI Layers body, including its Layers header/Plus, local providers and pinned Output. Selecting the parent shows only the final beat Output. No simultaneous nested Instrument groups remain. In Editor, selecting another child of the open beat parent retains the active clip and step grid. Disclosure retains the current owner and does not edit the project.
+Show expanded beat subtracks in saved order, indented under the parent. Keep `selected_track` on the real project parent and use stable subtrack IDs for the active instrument. Selecting a child opens the standard MIDI Layers body, including its Layers header/Plus, local providers and Output in one scroll area. Selecting the parent shows only the final beat Output. No simultaneous nested Instrument groups remain. In Editor, selecting another child of the open beat parent retains the active clip and step grid. Disclosure retains the current owner and does not edit the project.
 
 ## Reordering and group membership
 

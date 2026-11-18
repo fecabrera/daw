@@ -242,7 +242,7 @@ fn provider_lanes_share_unit_bodies_toolbar_power_and_saved_presentation() {
             assert_eq!(b.row.height(), panels::unit_height(false));
             assert_eq!(b.toolbar.width(), lane_toolbar::WIDTH);
             assert_eq!(b.collapse.size(), Vec2::splat(icons::TOOLBAR_BUTTON_SIZE));
-            let top = b.row.top() - 0.5;
+            let top = b.row.top() + 0.5;
             let stroke = Stroke::new(1.0, theme::palette(&ctx).border);
             let separators: Vec<_> = shapes
                 .iter()

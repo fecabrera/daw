@@ -18,7 +18,7 @@ A band's footer power button cuts that range rather than bypassing its Gain. Low
 
 ## Response graph
 
-The expanded unit shows the combined response, each band's response and a live output spectrum, using the same graph style as Multiband EQ. The response includes band cuts. The spectrum clears when the unit is off or playback stops. Compact and collapsed units hide the graph.
+The expanded unit shows the combined response, each band's response and a live output spectrum, using the same graph style as Multiband EQ. The response includes band cuts. The spectrum clears when the unit is off or playback stops. Compact mode keeps a read-only response graph and live output spectrum. Expand the row to edit the graph.
 
 Drag Low or High left or right to change Frequency, or up or down to change Gain. The first drag direction selects the control. Move at least 12 points across the other axis to switch. Hold Command on macOS or Ctrl on Windows/Linux to adjust Q. You can switch modes without releasing the mouse. Mid moves vertically to change Gain. Its frequency follows the outer bands. Hold Shift for fine adjustment.
 

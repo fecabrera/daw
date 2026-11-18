@@ -147,7 +147,7 @@ pub(crate) fn show(
                 ),
                 egui::Sense::hover(),
             );
-            let plot = graph::axes(ui, chart, (-90.0, 0.0), &[-90.0, -60.0, -30.0, 0.0]);
+            let plot = graph::axes(ui, chart, (-90.0, 0.0), &[-90.0, -60.0, -30.0, 0.0], false);
             bounds.plot = plot;
             graph::paint(ui, spectrum_id, plot, reading, s.enabled);
             for threshold in [false, true] {

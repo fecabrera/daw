@@ -60,7 +60,8 @@ can follow with a delay in large projects. Standalone plugins use host gestures
 for both parameters; the host controls its undo grouping.
 
 The curve follows the manual settings. Modulation remains visible in the knobs
-and actual gain-reduction reading. Compact and collapsed units hide the graph.
+and actual gain-reduction reading. Compact mode keeps a read-only Curve strip
+with the live dot and history. Expand the row to edit the graph or use the GR meter.
 Unit power off hides the detector dot; the preview adds no latency. The existing Comp, Response and Out controls stay available.
 
 ## Gain-reduction meter

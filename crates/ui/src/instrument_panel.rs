@@ -396,34 +396,10 @@ impl DawUi {
         if header.as_ref().is_some_and(|h| h.inner.clicked()) {
             self.append_instrument_layer(&mut settings);
         }
-        // Reserve the fixed lanes at the bottom before laying out the regular layers.
-        let main_label_height = panels::unit_height(settings.main.collapsed);
-        let main_height = if self.instrument_output_visible {
-            main_label_height.min(ui.available_height())
-        } else {
-            0.0
-        };
-        let main_rect = Rect::from_min_max(
-            Pos2::new(ui.max_rect().left(), ui.max_rect().bottom() - main_height),
-            ui.max_rect().max,
-        );
-        let above_output = (ui.available_height() - main_height).max(0.0);
-        let regular_min = panels::unit_height(true).min(above_output * 0.5);
-        let modulation_height = if self.instrument_modulation_visible {
-            (panels::unit_height(settings.lfo_lane.collapsed)
-                + panels::unit_height(settings.envelope_lane.collapsed))
-            .min(above_output - regular_min)
-        } else {
-            0.0
-        };
-        let modulation_rect = Rect::from_min_max(
-            main_rect.left_top() - Vec2::new(0.0, modulation_height),
-            main_rect.right_top(),
-        );
         let count = settings.layers.len();
-        let mut layer_rows = Vec::new();
+        let mut reorder_rows = Vec::new();
+        let mut lane_rows = Vec::new();
         let scroll = egui::ScrollArea::vertical()
-            .max_height(above_output - modulation_height)
             .auto_shrink([false, false])
             .id_salt(("instrument-layers", track.id))
             .show(ui, |ui| {
@@ -838,8 +814,10 @@ impl DawUi {
                                 self.instrument_ui.track_effects_target = false;
                                 ui.ctx().request_repaint();
                             }
-                            layer_rows.push((layer.id, row.response.rect));
-                            panels::ControlPanel::row_dividers(ui, row.response.rect, true, true);
+                            reorder_rows.push((layer.id, row.response.rect));
+                            let last = reorder_rows.len() == count
+                                && !self.instrument_modulation_visible && !self.instrument_output_visible;
+                            panels::ControlPanel::row_dividers(ui, row.response.rect, true, last);
                             #[cfg(test)]
                             {
                                 self.midi_editor
@@ -850,89 +828,57 @@ impl DawUi {
                             }
                         });
                     }
+                    for (bus, kind, visible) in [
+                        (settings.lfo_lane.as_mut(), Some(daw_core::ModulationLaneKind::Lfo), self.instrument_modulation_visible),
+                        (settings.envelope_lane.as_mut(), Some(daw_core::ModulationLaneKind::Envelope), self.instrument_modulation_visible),
+                        (&mut settings.main, None, self.instrument_output_visible),
+                    ] {
+                        if visible {
+                            let rect = Rect::from_min_size(
+                                ui.next_widget_position(),
+                                Vec2::new(ui.available_width(), panels::unit_height(bus.collapsed)),
+                            );
+                            self.instrument_main(
+                                ui,
+                                track.id,
+                                bus,
+                                crate::instrument_main::LaneRow {
+                                    rect,
+                                    kind,
+                                    shared_sources: &shared_sources,
+                                },
+                                &modulation_sources,
+                                &provider_sources,
+                            );
+                            lane_rows.push((bus.id, rect));
+                        }
+                    }
                 });
             });
-        self.instrument_ui.source_drop_rows = layer_rows
+        self.instrument_ui.source_drop_rows = reorder_rows
             .iter()
             .map(|(id, rect)| (*id, rect.intersect(scroll.inner_rect)))
             .collect();
-        let reorder_rows = layer_rows.clone();
-        for (_, rect) in &mut layer_rows {
-            *rect = Rect::from_min_max(rect.min, lane_toolbar::bounds(*rect).left_bottom())
-                .intersect(scroll.inner_rect);
-        }
-        if modulation_height > 0.0 {
-            let mut modulation = ui.new_child(
-                egui::UiBuilder::new()
-                    .id_salt(("instrument-modulation", track.id))
-                    .max_rect(modulation_rect)
-                    .layout(egui::Layout::top_down(egui::Align::Min)),
-            );
-            modulation.set_clip_rect(modulation_rect.intersect(ui.clip_rect()));
-            modulation.spacing_mut().item_spacing.y = 0.0;
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(&mut modulation, |ui| {
-                    if self.component_drag.as_ref().is_some_and(|drag| drag.active) {
-                        self.scroll_layer_drag(ui);
-                    }
-                    for (index, (bus, kind)) in [
-                        (&mut settings.lfo_lane, daw_core::ModulationLaneKind::Lfo),
-                        (
-                            &mut settings.envelope_lane,
-                            daw_core::ModulationLaneKind::Envelope,
-                        ),
-                    ]
-                    .into_iter()
-                    .enumerate()
-                    {
-                        let rect = Rect::from_min_size(
-                            ui.next_widget_position(),
-                            Vec2::new(ui.available_width(), panels::unit_height(bus.collapsed)),
-                        );
-                        self.instrument_main(
-                            ui,
-                            track.id,
-                            bus,
-                            crate::instrument_main::LaneRow {
-                                rect,
-                                kind: Some(kind),
-                                shared_sources: &shared_sources,
-                            },
-                            &modulation_sources,
-                            &provider_sources,
-                        );
-                        if index > 0 {
-                            panels::ControlPanel::pinned_row_divider(ui, rect);
-                        }
-                        layer_rows.push((
-                            bus.id,
-                            Rect::from_min_max(rect.min, lane_toolbar::bounds(rect).left_bottom())
-                                .intersect(ui.clip_rect())
-                                .intersect(modulation_rect),
-                        ));
-                    }
-                });
-            panels::ControlPanel::pinned_row_divider(ui, modulation_rect);
-        }
-        if self.instrument_output_visible {
-            self.instrument_main(
-                ui,
-                track.id,
-                &mut settings.main,
-                crate::instrument_main::LaneRow {
-                    rect: main_rect,
-                    kind: None,
-                    shared_sources: &shared_sources,
-                },
-                &modulation_sources,
-                &provider_sources,
-            );
-            layer_rows.push((
-                settings.main.id,
-                Rect::from_min_max(main_rect.min, lane_toolbar::bounds(main_rect).left_bottom()),
-            ));
-        }
+        let reorder_viewport = lane_rows.first().map_or(scroll.inner_rect, |(_, row)| {
+            Rect::from_min_max(
+                scroll.inner_rect.min,
+                Pos2::new(
+                    scroll.inner_rect.right(),
+                    scroll.inner_rect.bottom().min(row.top()),
+                ),
+            )
+        });
+        let layer_rows: Vec<_> = reorder_rows
+            .iter()
+            .chain(&lane_rows)
+            .map(|(id, rect)| {
+                (
+                    *id,
+                    Rect::from_min_max(rect.min, lane_toolbar::bounds(*rect).left_bottom())
+                        .intersect(scroll.inner_rect),
+                )
+            })
+            .collect();
         control_panel.finish(ui);
         if group {
             panels::ControlPanel::row_left_divider(ui, column, ui.clip_rect());
@@ -956,7 +902,7 @@ impl DawUi {
                 track.id,
                 &mut settings,
                 &layer_rows,
-                Rect::from_min_max(scroll.inner_rect.min, main_rect.max),
+                scroll.inner_rect,
             )
         {
             return;
@@ -965,7 +911,7 @@ impl DawUi {
             self.instrument_ui.selected_layer,
             self.instrument_ui.selected_layers.clone(),
         );
-        self.layer_reorder(ui, &mut settings, &reorder_rows, scroll.inner_rect);
+        self.layer_reorder(ui, &mut settings, &reorder_rows, reorder_viewport);
         if let Some(index) = duplicate_layer.and_then(|id| {
             settings
                 .layers

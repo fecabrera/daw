@@ -201,6 +201,8 @@ fn selected_effect_outlines_stop_at_their_lane_toolbar() {
         effects.extend((0..8).map(|_| daw_core::EffectInstance::drive()));
         app.select_track(track, false);
         let ctx = context();
+        let size = Vec2::new(1280.0, 1100.0);
+        ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
         app.set_view_mode(ViewMode::Instrument, &ctx);
         frame(&mut app, &ctx, vec![]);
         let viewport = app
@@ -222,7 +224,7 @@ fn selected_effect_outlines_stop_at_their_lane_toolbar() {
         let point = unit_slot_point(rect);
         super::instrument_catalog::click(&mut app, &ctx, point, false);
         assert!(app.selected_effects.contains(&effect));
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         let outlines: Vec<_> = shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))).collect();
         assert!(outlines.is_empty());
         assert!(
@@ -234,7 +236,7 @@ fn selected_effect_outlines_stop_at_their_lane_toolbar() {
 }
 
 #[test]
-fn output_toolbar_shares_one_top_separator_with_the_whole_pinned_row() {
+fn output_toolbar_shares_one_top_separator_with_the_whole_row() {
     for theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -298,7 +300,7 @@ fn output_toolbar_shares_one_top_separator_with_the_whole_pinned_row() {
                         assert!(
                             lines
                                 .iter()
-                                .all(|y| (*y - (bounds.row.top() - 0.5)).abs() < 0.01),
+                                .all(|y| (*y - (bounds.row.top() + 0.5)).abs() < 0.01),
                             "duplicate Output edge at {x}: {lines:?}"
                         );
                     }

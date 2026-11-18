@@ -4,6 +4,38 @@ use daw_unit_core::{SpectrumCache, SpectrumMeter, SpectrumReading};
 use egui::{Id, Rect, Stroke, Ui, Vec2};
 pub const WIDTH: f32 = 3.0 * layout::UNIT_STRIP_WIDTH;
 pub(crate) const CURVE_STROKE_WIDTH: f32 = 1.5;
+pub(crate) const COMPACT_PLOT_INSET: Vec2 = Vec2::new(9.0, 4.0);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Presentation {
+    Expanded,
+    Compact,
+    Hidden,
+}
+
+impl Presentation {
+    pub(crate) fn from_compact(compact: bool) -> Self {
+        if compact {
+            Self::Compact
+        } else {
+            Self::Expanded
+        }
+    }
+}
+
+pub(crate) fn chart(ui: &mut Ui, height: f32, compact: bool) -> Rect {
+    let height = if compact {
+        height
+    } else {
+        3.0 * crate::knobs::CHOICE_SIZE + 2.0 * f32::from(theme::TOOLBAR_PADDING)
+    };
+    ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), height),
+        egui::Sense::hover(),
+    )
+    .0
+}
+
 pub fn frequency_x(plot: Rect, hz: f32) -> f32 {
     plot.left() + plot.width() * (hz.clamp(20.0, 20000.0) / 20.0).ln() / 1000.0_f32.ln()
 }
@@ -23,8 +55,12 @@ pub(crate) fn surface(ui: &Ui, chart: Rect) -> (egui::Painter, Stroke) {
     let grid = Stroke::new(1.0, palette.secondary.gamma_multiply(0.12));
     (p, grid)
 }
-pub(crate) fn axes(ui: &Ui, chart: Rect, range: (f32, f32), ticks: &[f32]) -> Rect {
-    let plot = chart.shrink2(Vec2::new(24.0, 17.0));
+pub(crate) fn axes(ui: &Ui, chart: Rect, range: (f32, f32), ticks: &[f32], compact: bool) -> Rect {
+    let plot = chart.shrink2(if compact {
+        COMPACT_PLOT_INSET
+    } else {
+        Vec2::new(24.0, 17.0)
+    });
     let palette = theme::palette(ui.ctx());
     let (p, grid) = surface(ui, chart);
     let font = egui::FontId::proportional(9.0);
@@ -32,7 +68,7 @@ pub(crate) fn axes(ui: &Ui, chart: Rect, range: (f32, f32), ticks: &[f32]) -> Re
         20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0,
     ] {
         p.vline(frequency_x(plot, hz), plot.y_range(), grid);
-        if [20.0, 100.0, 1000.0, 10000.0, 20000.0].contains(&hz) {
+        if !compact && [20.0, 100.0, 1000.0, 10000.0, 20000.0].contains(&hz) {
             let label = if hz >= 1000.0 {
                 format!("{:.0}k", hz / 1000.0)
             } else {
@@ -58,13 +94,15 @@ pub(crate) fn axes(ui: &Ui, chart: Rect, range: (f32, f32), ticks: &[f32]) -> Re
                 grid
             },
         );
-        p.text(
-            egui::pos2(plot.left() - 4.0, y),
-            egui::Align2::RIGHT_CENTER,
-            format!("{db:+.0}"),
-            font.clone(),
-            palette.secondary,
-        );
+        if !compact {
+            p.text(
+                egui::pos2(plot.left() - 4.0, y),
+                egui::Align2::RIGHT_CENTER,
+                format!("{db:+.0}"),
+                font.clone(),
+                palette.secondary,
+            );
+        }
     }
     plot
 }

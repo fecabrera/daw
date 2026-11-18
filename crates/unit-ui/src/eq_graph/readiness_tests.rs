@@ -22,8 +22,14 @@ fn draw(
             bounds = show(
                 ui,
                 settings,
-                layout::unit_control_height(),
-                visible,
+                (
+                    if visible {
+                        Presentation::Expanded
+                    } else {
+                        Presentation::Hidden
+                    },
+                    layout::unit_control_height(),
+                ),
                 Input {
                     live_edits: false,
                     spectrum: reading,

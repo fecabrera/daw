@@ -1242,7 +1242,21 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
                 }
                 _ => (),
             }
-            frame(&mut app, &ctx, vec![button(end, false)]);
+            let release = if action == "commit" {
+                let last_row = app.midi_editor.layer_bounds[&layers[2].id].row;
+                let viewport = app.instrument_catalog_bounds.layer_viewport;
+                Pos2::new(
+                    end.x,
+                    (last_row.bottom() - 6.0).min(viewport.bottom() - 2.0),
+                )
+            } else {
+                end
+            };
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(release), button(release, false)],
+            );
             let expected = if action == "commit" {
                 vec![layers[1].clone(), layers[2].clone(), layers[0].clone()]
             } else {

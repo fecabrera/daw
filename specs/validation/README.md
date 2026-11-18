@@ -36,6 +36,33 @@ The affected tests were repeated after replacing a redundant clone with a copy.
 
 Native visual and audio device checks remain open.
 
+## Compact Compressor and EQ graphs — 2026-11-18
+
+Compressor, 3-band EQ, and Multiband EQ retain their leading 270-point plot
+strips at both row heights. The compact plots reuse the Envelope insets
+and display live monitoring. The expanded row provides handles and labels.
+UI tests cover strip width, alignment, visible plot bounds, and read-only
+compact behavior.
+
+The shared unit UI suite passed all 82 tests. The DAW UI suite passed 1,080
+tests with 3 ignored.
+
+## Shared Instrument lane scrolling — 2026-11-18
+
+The regular layers, LFO, Envelope, and Output share one vertical viewport.
+The Layers header stays fixed. Tests check the row order, matching scroll
+displacement in a short window, Output controls after scrolling, pane
+visibility, shared dividers, and valid drop targets. The beat parent's
+Output sits below its heading.
+
+The DAW UI suite passed 1,080 tests with 3 ignored. Formatting, strict
+workspace Clippy, and `git diff --check` passed on macOS.
+
+- `cargo test --locked --offline --workspace` passed with both changes.
+- `cargo test --locked --offline --workspace --release` passed with both changes.
+
+Native visual verification remains open.
+
 ## Envelope Shape plot — 2026-11-18
 
 Shape appears before Timing and the ADSR strips at both row heights. The
@@ -115,6 +142,8 @@ Formatting, strict workspace Clippy and `git diff --check` passed on macOS.
 Both runs passed 1,082 UI tests with 3 ignored. Native visual checks were not run.
 
 ## Pinned Instrument modulation lanes — 2026-11-18
+
+The shared Instrument scroll area supersedes this layout.
 
 LFO and Envelope stay directly above Output when regular layers scroll. A
 separate scroll area exposes both modulation lanes when space is limited.

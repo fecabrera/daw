@@ -86,7 +86,19 @@ pub(crate) fn show(
             .for_unit(settings.enabled);
         let curve = ui
             .push_id(id, |ui| {
-                compressor_curve::show(ui, &mut settings, dimensions, input, reduction)
+                use crate::spectrum_graph::Presentation;
+                let presentation = if dimensions.0 {
+                    Presentation::Hidden
+                } else {
+                    Presentation::Expanded
+                };
+                compressor_curve::show(
+                    ui,
+                    &mut settings,
+                    (presentation, dimensions.1),
+                    input,
+                    reduction,
+                )
             })
             .inner;
         s.bands[index].threshold_db = settings.threshold_db;

@@ -215,6 +215,21 @@ mod tests {
                             output.textures_delta.clear();
                             let bounds = bounds.unwrap();
                             assert_eq!(settings, original);
+                            if collapsed {
+                                assert_eq!(bounds.graph.section, Rect::NOTHING);
+                            } else {
+                                assert_eq!(
+                                    bounds.graph.section.width(),
+                                    daw_unit_ui::spectrum_graph::WIDTH
+                                );
+                                assert_eq!(
+                                    bounds.graph.section.y_range(),
+                                    bounds.sections[0].y_range()
+                                );
+                                assert!(bounds.graph.section.right() <= bounds.sections[0].left());
+                                assert!(bounds.graph.plot.is_positive());
+                                assert_eq!(bounds.graph.nodes.is_empty(), compact);
+                            }
                             for index in 0..3 {
                                 let rail = bounds.meters[index];
                                 if compact || collapsed {

@@ -6,7 +6,7 @@ Double-click **Compressor** in Timeline or Instrument’s Effects catalog to app
 
 ## Controls
 
-A 270-point Curve strip precedes three 90-point control strips. The control strips have three aligned rows. Their footers read **Comp**, **Response**, and **Out**. Compact mode retains the header and control footers and hides Curve. There are no separate strip power switches.
+A 270-point Curve strip precedes three 90-point control strips. The control strips have three aligned rows. Their footers read **Comp**, **Response**, and **Out**. Compact mode retains the header, control footers, and the read-only Curve strip at the same width. There are no separate strip power switches.
 
 | Comp | Response | Out |
 | --- | --- | --- |
@@ -151,8 +151,9 @@ Reuse shared `GainReduction` masking, accessibility, tooltip and click reset and
 `vertical_peak_marker` for held reduction, clamped inside the rail at either end.
 The meter has no parameter binding and never marks a response or project changed.
 Use `Bounds.graph.reduction_meter` for native reset and bypass adapters.
-`Bounds.controls[2][2]` belongs to Detection in Out. Compact/collapsed views hide
-the graph and its meter together.
+`Bounds.controls[2][2]` belongs to Detection in Out. Compact mode uses the shared Envelope plot insets and keeps the curve, history,
+and detector marker. Axis labels, the Curve footer, the drag handle, and the GR
+meter appear only in expanded mode. Horizontal collapse hides the body.
 
 
 ## Post-knee Curve control — 2026-11-13

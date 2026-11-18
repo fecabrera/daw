@@ -84,7 +84,10 @@ fn instrument_right_toolbar_controls_the_mixer_and_lane_visibility_independently
     click(&mut app, output_toggle);
     assert!(!app.view_panel_selected(ViewPanel::InstrumentOutput));
     assert!(app.instrument_ui.main_bounds.row.is_negative());
-    assert!(app.instrument_catalog_bounds.layer_viewport.bottom() > visible_viewport.bottom());
+    assert_eq!(
+        app.instrument_catalog_bounds.layer_viewport.bottom(),
+        visible_viewport.bottom()
+    );
     assert!(app.view_panel_selected(ViewPanel::TrackMixer));
 
     app.toggle_view_panel(ViewPanel::EffectsLane, &ctx);
@@ -122,8 +125,12 @@ fn instrument_output_toggle_hides_the_beat_parent_lane() {
     let ctx = context();
     app.select_track(beat, false);
     app.set_view_mode(ViewMode::Instrument, &ctx);
-    frame(&mut app, &ctx, vec![]);
-    assert!(app.beat_ui.final_output.is_some());
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let row = app.beat_ui.final_output.unwrap();
+    assert!(shapes.iter().any(|item| matches!(&item.shape,
+        egui::Shape::Text(text) if text.galley.text() == "Output"
+            && (0.0..=toolbars::HEIGHT).contains(&(row.top() - text.pos.y))
+    )));
     let before = app.session.project.clone();
     app.toggle_view_panel(ViewPanel::InstrumentOutput, &ctx);
     frame(&mut app, &ctx, vec![]);

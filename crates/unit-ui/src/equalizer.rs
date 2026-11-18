@@ -78,8 +78,15 @@ pub fn show(
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
 
         if let Some(graph) = graph {
-            bounds.graph =
-                crate::eq_graph::show_equalizer(ui, settings, body_height, !compact, graph);
+            bounds.graph = crate::eq_graph::show_equalizer(
+                ui,
+                settings,
+                (
+                    crate::spectrum_graph::Presentation::from_compact(compact),
+                    body_height,
+                ),
+                graph,
+            );
         }
         for (index, name) in ["Low", "Mid", "High"].into_iter().enumerate() {
             let mut preview = bounds

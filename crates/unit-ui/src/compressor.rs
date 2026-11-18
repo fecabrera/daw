@@ -106,7 +106,10 @@ pub fn show(
         bounds.graph = crate::compressor_curve::show(
             ui,
             settings,
-            (compact, body_height),
+            (
+                crate::spectrum_graph::Presentation::from_compact(compact),
+                body_height,
+            ),
             controls.graph,
             controls.reduction,
         );
