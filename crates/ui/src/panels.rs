@@ -644,7 +644,10 @@ impl PanelStyle {
             entries.push((header_rect, unit_rect, modulation_header));
             data.insert_temp(key, (frame, entries));
         });
-        let action_height = HEADER_HEIGHT * actions.len() as f32;
+        // Match the visible inset above Power inside the header.
+        let dot_inset = (HEADER_HEIGHT - UNIT_POWER_SIZE) * 0.5;
+        let button_step = UNIT_POWER_SIZE + dot_inset;
+        let action_height = button_step * actions.len() as f32;
         let interaction_rect = if actions.is_empty() {
             header_rect
         } else {
@@ -655,10 +658,17 @@ impl PanelStyle {
         };
         let mut header = ui.interact(interaction_rect, id, egui::Sense::click_and_drag());
         header.rect = header_rect;
-        let power_rect = Rect::from_min_size(
+        let mut power_rect = Rect::from_min_size(
             header_rect.min + Vec2::new((UNIT_LEFT_HEADER_WIDTH - HEADER_HEIGHT + 2.0) * 0.5, 1.0),
             Vec2::splat(HEADER_HEIGHT - 2.0),
         );
+        if !actions.is_empty() {
+            // Keep neighboring hit areas separate while leaving their dots centered.
+            power_rect = Rect::from_center_size(
+                power_rect.center(),
+                Vec2::new(power_rect.width(), button_step),
+            );
+        }
         let power = ui.interact(power_rect, id.with("power"), egui::Sense::click());
         power.widget_info(|| {
             egui::WidgetInfo::selected(
@@ -717,7 +727,7 @@ impl PanelStyle {
             .iter()
             .enumerate()
             .map(|(index, action)| {
-                let rect = power_rect.translate(Vec2::new(0.0, HEADER_HEIGHT * (index + 1) as f32));
+                let rect = power_rect.translate(Vec2::new(0.0, button_step * (index + 1) as f32));
                 let mut child = ui.new_child(
                     egui::UiBuilder::new()
                         .id_salt((id, "action", index))

@@ -669,6 +669,7 @@ mod tests {
         let id = settings.id;
         let mut frame = |events: Vec<egui::Event>| {
             let mut bounds = Vec::new();
+            let mut header_top = 0.0;
             let mut output = ctx.run_ui(
                 egui::RawInput {
                     focused: true,
@@ -681,22 +682,46 @@ mod tests {
                 },
                 |ui| {
                     let result = show(ui, &mut settings, false, 240.0, &[], |_| None);
+                    header_top = result.header.rect.top();
                     assert_eq!(result.header_actions.len(), 2);
                     bounds.push(result.power.rect);
                     bounds.extend(result.header_actions.iter().map(|r| r.rect));
                     for rect in &bounds {
                         assert!(result.header.rect.contains_rect(*rect));
+                        assert_eq!(rect.size(), egui::vec2(panels::HEADER_HEIGHT - 2.0, 17.0));
+                    }
+                    for pair in bounds.windows(2) {
+                        assert_eq!(pair[0].center().x, pair[1].center().x);
+                        assert!(pair[0].bottom() <= pair[1].top());
                     }
                 },
             );
             output.textures_delta.clear();
+            let dots: Vec<_> = bounds
+                .iter()
+                .map(|bounds| {
+                    output
+                        .shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Circle(dot)
+                                if dot.center == bounds.center() && dot.stroke.width > 0.0 =>
+                            {
+                                let radius = dot.radius + dot.stroke.width * 0.5;
+                                Some((dot.center.y - radius, dot.center.y + radius))
+                            }
+                            _ => None,
+                        })
+                        .expect("painted header dot")
+                })
+                .collect();
+            assert_eq!(dots[0].0 - header_top, 7.0);
+            for pair in dots.windows(2) {
+                assert_eq!(pair[1].0 - pair[0].1, 7.0);
+            }
             (bounds, settings.enabled, settings.collapsed)
         };
         let (bounds, _, _) = frame(Vec::new());
-        for pair in bounds.windows(2) {
-            assert_eq!(pair[0].center().x, pair[1].center().x);
-            assert!((pair[1].center().y - pair[0].center().y - panels::HEADER_HEIGHT).abs() < 0.1);
-        }
         for index in [1, 2, 2] {
             let pos = bounds[index].center();
             frame(vec![

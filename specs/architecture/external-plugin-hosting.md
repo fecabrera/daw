@@ -190,9 +190,11 @@ Long selector names truncate and retain their full hover text.
 ### Header actions
 
 Regular-size hosted units place two momentary icon buttons below the header's
-Power control: Lucide Maximize2 opens the editor and RefreshCcw reloads captured
-state. Both use the active modulation dot surface, centered 8-point artwork and
-the shared 22-point hit area. The shared shell reserves their slots above the
+Power control. Lucide Maximize2 opens the editor and RefreshCcw reloads captured
+state. Both use the active modulation dot surface and centered 8-point artwork.
+Use a 7-point gap between adjacent dots to match the visible inset from the
+header top to Power. Give each button a 22-by-17-point hit area. The shared
+shell reserves their slots above the
 vertical unit title and excludes them from collapse and drag handling. They
 remain available when the regular-size unit is collapsed and follow availability,
 UI enable and focus guards. Compact lane presentation keeps its existing hidden

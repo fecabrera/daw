@@ -114,6 +114,18 @@ The debug and release runs both passed:
 - `cargo test --locked --offline --workspace`
 - `cargo test --locked --offline --workspace --release`
 
+## Hosted header button spacing
+
+Adjacent painted header dots have a single 7-point edge-to-edge gap, equal to
+the visible inset from the header top to Power. The focused regression
+measures the painted edges and checks separate 22-by-17-point hit areas and
+action dispatch.
+
+Formatting and workspace Clippy passed on macOS. The spacing change passed
+`cargo test --locked --offline --workspace` in debug and
+`cargo test --locked --offline --workspace --release` in release. Native visual
+verification of the current build was outside these checks.
+
 ## Limits
 
 Rust allocator guards observe host and Rust fixture heap operations. They cannot

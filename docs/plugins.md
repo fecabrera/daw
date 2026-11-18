@@ -30,8 +30,11 @@ copies require a current opaque state capture and receive new identities.
 
 Use **Open plugin editor** below Power in the unit header to open the plugin's
 own interface. Its small maximize icon uses the filled modulation-button style.
-The refresh icon below it is **Reload last captured plugin state**. Mapped and
-native edits use the same project history. Reload creates a fresh instance from the last captured
+The refresh icon below it is **Reload last captured plugin state**. Each pair
+of adjacent header buttons has a 7-point gap between the dot edges. This matches
+the visible space above Power inside the header. Mapped and
+native edits use the same project history.
+Reload creates a fresh instance from the last captured
 state. State capture can briefly ramp a unit to dry audio or silence. Save and
 export wait for current captures. A plugin without state support opens at defaults;
 its panel shows **State recall unavailable** and exact copying is unavailable.
