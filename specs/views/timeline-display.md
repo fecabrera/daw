@@ -50,11 +50,11 @@ Returns and tracks without sends retain an empty middle row.
 
 The optional `Project.display` metadata contains `track_height` (legacy strings
 compact/regular/large, or a numeric size from 1 to 3), `horizontal_zoom` (logical
-points per second),
-`horizontal_scroll_seconds`, and `vertical_scroll_points` for Timeline. Reject
-nonfinite heights and values outside 1…3 during project validation. Missing
-metadata or missing fields uses Regular, 70 pt/s and zero offsets. Reject
-non-finite/non-positive zoom and non-finite/negative offsets on validation.
+points per second), `horizontal_scroll_seconds`, `vertical_scroll_points`, and
+`arrangement_expanded`. Missing values default to Regular, 70 pt/s, zero offsets,
+and collapsed arrangement lanes. Validation rejects nonfinite heights and
+heights outside 1…3, nonfinite or non-positive zoom, and nonfinite or negative
+offsets.
 Fit all can produce positive zoom outside manual slider limits; retain it.
 
 Capture current display state in regular Save, blocking Save, Save As and

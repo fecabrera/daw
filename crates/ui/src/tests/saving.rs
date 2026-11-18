@@ -353,7 +353,9 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
         app.session.project.add_midi_track().unwrap();
     }
     let original = app.session.project.clone();
-    for size in [1.0, 1.5, 2.0, 2.75, 3.0, 3.5, 4.0] {
+    for (index, size) in [1.0, 1.5, 2.0, 2.75, 3.0, 3.5, 4.0].into_iter().enumerate() {
+        let expanded = index % 2 == 0;
+        app.arrangement.collapsed = !expanded;
         let expected = size * knobs::SIZE + 14.0;
         app.timeline_track_size = size;
         app.zoom = 150.0;
@@ -362,13 +364,19 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
         let before_save = app.session.project.clone();
         let written = app.display_save_snapshot().unwrap().save(&folder).unwrap();
         assert_eq!(written.session.project.display.horizontal_zoom, 150.0);
+        assert_eq!(
+            written.session.project.display.arrangement_expanded,
+            expanded
+        );
         assert_eq!(app.session.project, before_save);
         assert!(!app.dirty);
         app.apply_saved_sources(&written).unwrap();
         assert_eq!(app.session.project.display, written.session.project.display);
         assert_eq!((app.zoom, app.scroll), (150.0, 8.0));
         let mut reopened = DawUi::default();
+        reopened.arrangement.collapsed = expanded;
         reopened.install_loaded_session(Session::open(&folder).unwrap(), false);
+        assert_eq!(reopened.arrangement.collapsed, !expanded);
         assert_eq!(reopened.timeline_track_size, size);
         assert_eq!(reopened.track_row_height(), expected);
         assert_eq!(

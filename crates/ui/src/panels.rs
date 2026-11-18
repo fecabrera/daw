@@ -139,18 +139,26 @@ impl ControlPanel {
         title: &str,
         actions: impl FnOnce(&mut Ui) -> R,
     ) -> egui::InnerResponse<R> {
+        self.header_row(ui, |ui| {
+            ui.label(egui::RichText::new(title).font(crate::fonts::semibold(
+                egui::TextStyle::Body.resolve(ui.style()).size,
+            )));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), actions)
+                .inner
+        })
+    }
+
+    pub(super) fn header_row<R>(
+        &self,
+        ui: &mut Ui,
+        controls: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<R> {
         ui.allocate_ui_with_layout(
             Vec2::new(self.rect.width(), crate::toolbars::HEIGHT),
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
                 ui.set_min_width(self.rect.width());
-                crate::toolbars::Toolbar::row(ui, |ui| {
-                    ui.label(egui::RichText::new(title).font(crate::fonts::semibold(
-                        egui::TextStyle::Body.resolve(ui.style()).size,
-                    )));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), actions)
-                        .inner
-                })
+                crate::toolbars::Toolbar::row(ui, controls)
             },
         )
         .inner

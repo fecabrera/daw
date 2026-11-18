@@ -715,6 +715,7 @@ fn collection_saves_live_display_for_copy_and_zero_copy_without_history_edits() 
                     horizontal_zoom: zoom,
                     horizontal_scroll_seconds: scroll,
                     vertical_scroll_points: vertical,
+                    arrangement_expanded: false,
                 }
             );
             assert_eq!(app.session.project.display, saved.display);

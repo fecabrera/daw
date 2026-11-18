@@ -4382,8 +4382,9 @@ impl DawUi {
     }
     fn ruler(&mut self, ui: &mut egui::Ui, control_panel: &panels::ControlPanel) {
         rows::centered(ui, RULER_HEIGHT, |ui| {
-            control_panel.header(ui, "Tracks", |ui| {
+            control_panel.header_row(ui, |ui| {
                 self.unit_header_press_style(ui);
+                self.add_track_dropdown(ui);
                 if icons::panel_button(
                     ui,
                     icons::Lucide::CopyPlus,
@@ -4395,7 +4396,9 @@ impl DawUi {
                 {
                     self.perform_track_action(TrackAction::Duplicate, ui.ctx());
                 }
-                self.add_track_dropdown(ui);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.arrangement_toggle(ui);
+                });
             });
             self.arrangement.ruler_bounds = self.time_ruler(ui);
         });
@@ -11382,7 +11385,9 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let add = Pos2::new(
-            app.timeline_bounds.left() - 19.0 - 28.0 - f32::from(theme::TOOLBAR_PADDING),
+            app.arrangement.ruler_bounds.left() - TRACK_WIDTH
+                + f32::from(theme::TOOLBAR_PADDING)
+                + 14.0,
             app.arrangement.ruler_bounds.center().y,
         );
         for expected in 2..=8 {

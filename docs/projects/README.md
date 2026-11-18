@@ -34,7 +34,8 @@ Sample-rate conversion rejects extreme floating-point sample magnitudes above 1e
 
 ## Collect project sources
 
-Collection also saves the current Timeline track size, zoom and scroll positions.
+Collection also saves the current Timeline track size, zoom, scroll positions,
+and whether arrangement lanes are expanded.
 
 For headless collection, save and close the desktop project, then use the [collect-sources CLI command](../cli/collect-sources.md). It collects saved assets without desktop Undo/Redo history.
 

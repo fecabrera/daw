@@ -69,6 +69,7 @@ pub struct ProjectDisplay {
     pub horizontal_zoom: f32,
     pub horizontal_scroll_seconds: f64,
     pub vertical_scroll_points: f32,
+    pub arrangement_expanded: bool,
 }
 impl Default for ProjectDisplay {
     fn default() -> Self {
@@ -77,6 +78,7 @@ impl Default for ProjectDisplay {
             horizontal_zoom: 70.0,
             horizontal_scroll_seconds: 0.0,
             vertical_scroll_points: 0.0,
+            arrangement_expanded: false,
         }
     }
 }
@@ -108,6 +110,7 @@ mod tests {
                 horizontal_zoom: 160.0,
                 horizontal_scroll_seconds: 12.5,
                 vertical_scroll_points: 300.0,
+                arrangement_expanded: true,
             },
             ..Default::default()
         };
@@ -117,6 +120,18 @@ mod tests {
                 .unwrap()
                 .display,
             project.display
+        );
+        encoded["display"]
+            .as_object_mut()
+            .unwrap()
+            .remove("arrangement_expanded");
+        let restored = serde_json::from_value::<crate::Project>(encoded.clone()).unwrap();
+        assert_eq!(
+            restored.display,
+            ProjectDisplay {
+                arrangement_expanded: false,
+                ..project.display
+            }
         );
         encoded.as_object_mut().unwrap().remove("display");
         assert_eq!(

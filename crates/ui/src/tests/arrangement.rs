@@ -1,9 +1,104 @@
 use super::*;
 use daw_core::{ArrangementMarker, TempoEvent};
 
+fn expanded_fixture() -> (DawUi, Id) {
+    let (mut app, track) = fixture();
+    app.arrangement.collapsed = false;
+    (app, track)
+}
+
+#[test]
+fn track_toolbar_collapses_arrangement_without_leaving_a_row() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    let ruler = app.arrangement.ruler_bounds;
+    assert_eq!(app.lane_bounds[&track].top(), ruler.bottom());
+    let open_top = ruler.bottom() + 3.0 * beat_editor::SUBTRACK_LANE_HEIGHT;
+    let project = app.session.project.clone();
+    let toggle = Pos2::new(
+        ruler.left() - f32::from(theme::TOOLBAR_PADDING) - 14.0,
+        ruler.center().y,
+    );
+    for expected_top in [open_top, ruler.bottom()] {
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(toggle), button(toggle, true)],
+        );
+        frame(&mut app, &ctx, vec![button(toggle, false)]);
+        assert_eq!(app.lane_bounds[&track].top(), expected_top);
+        assert_eq!(app.arrangement.ruler_bounds, ruler);
+        assert_eq!(app.session.project, project);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn lane_headers_use_semibold_labels_and_offer_only_visibility_actions() {
+    let size = Vec2::new(1280.0, 800.0);
+    let names = ["Markers", "Tempo", "Signature"];
+    for lane in 0..names.len() {
+        let (mut app, track) = expanded_fixture();
+        let ctx = context();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+        for name in names {
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Text(text) if text.galley.text() == name
+                    && text.galley.job.sections[0].format.font_id == fonts::semibold(12.0))));
+        }
+        let ruler = app.arrangement.ruler_bounds;
+        let point = Pos2::new(
+            ruler.left() - TRACK_WIDTH + 25.0,
+            ruler.bottom() + (lane as f32 + 0.5) * beat_editor::SUBTRACK_LANE_HEIGHT,
+        );
+        let track_top = app.lane_bounds[&track].top();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        assert!(!app.arrangement.collapsed);
+        assert_eq!(app.lane_bounds[&track].top(), track_top);
+
+        let secondary = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        frame(&mut app, &ctx, vec![secondary(true)]);
+        frame(&mut app, &ctx, vec![secondary(false)]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+        assert!(egui::Popup::is_any_open(&ctx));
+        let labels: Vec<_> = shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) => Some(text.galley.text()),
+                _ => None,
+            })
+            .collect();
+        for name in names {
+            assert_eq!(labels.iter().filter(|&&label| label == name).count(), 2);
+        }
+        for removed in [
+            "Collapse lanes",
+            "Previous marker",
+            "Next marker",
+            "Add section at playhead",
+            "Add tempo point at playhead",
+            "Add time signature at playhead",
+        ] {
+            assert!(!labels.contains(&removed));
+        }
+        assert!(!app.dirty);
+    }
+}
+
 #[test]
 fn metadata_lanes_follow_the_ruler_and_marker_drags_commit_or_cancel() {
-    let (mut app, track) = fixture();
+    let (mut app, track) = expanded_fixture();
     let marker = Id::new_v4();
     app.session.project.markers = vec![ArrangementMarker {
         id: marker,
@@ -120,7 +215,7 @@ fn new_sections_have_default_names_and_rename_inline_with_commit_and_cancel() {
             modifiers: Default::default(),
         }
     }
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let ruler = app.arrangement.ruler_bounds;
@@ -166,7 +261,7 @@ fn new_sections_have_default_names_and_rename_inline_with_commit_and_cancel() {
 
 #[test]
 fn section_edges_resize_on_release_and_cancel_without_changing_tracks() {
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     let marker = ArrangementMarker {
         id: Id::new_v4(),
         start_frame: 48_000,
@@ -237,7 +332,7 @@ fn section_edges_resize_on_release_and_cancel_without_changing_tracks() {
 #[test]
 fn signature_edges_move_shared_boundaries_and_keep_origin_fixed() {
     use daw_core::{SignatureEvent, TimeSignature};
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     let mut events = app.session.project.signature_events();
     events.push(SignatureEvent {
         id: Id::new_v4(),
@@ -307,7 +402,7 @@ fn signature_edges_move_shared_boundaries_and_keep_origin_fixed() {
 
 #[test]
 fn section_selection_reuses_unit_header_typography_shift_and_empty_space_rules() {
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     let originals: Vec<_> = [(48_000, "Alpha"), (144_000, "Beta")]
         .into_iter()
         .map(|(start_frame, name)| ArrangementMarker {
@@ -433,7 +528,7 @@ fn section_selection_reuses_unit_header_typography_shift_and_empty_space_rules()
 
 #[test]
 fn section_shared_boundary_can_remove_its_owner_and_ordinary_edges_overwrite() {
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     let originals: Vec<_> = [48_000, 96_000, 144_000]
         .into_iter()
         .map(|start_frame| ArrangementMarker {
@@ -485,7 +580,7 @@ fn section_shared_boundary_can_remove_its_owner_and_ordinary_edges_overwrite() {
 #[test]
 fn signature_spans_remain_continuous_through_resize_and_the_final_value_fills_the_lane() {
     use daw_core::{SignatureEvent, TimeSignature};
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     let mut events = app.session.project.signature_events();
     for (start_frame, numerator) in [(96_000, 3), (192_000, 5)] {
         events.push(SignatureEvent {
@@ -596,7 +691,7 @@ fn tempo_key(key: egui::Key) -> egui::Event {
 }
 #[test]
 fn tempo_double_click_creates_points_without_dialog_and_delete_targets_the_clicked_point() {
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let tracks = app.session.project.tracks.clone();
@@ -660,7 +755,7 @@ fn tempo_double_click_creates_points_without_dialog_and_delete_targets_the_click
 }
 #[test]
 fn tempo_vertical_drag_previews_then_commits_and_allows_vertical_release_outside_the_row() {
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     let mut events = app.session.project.tempo_events();
     let id = Id::new_v4();
     events.push(TempoEvent {
@@ -754,6 +849,7 @@ fn tempo_vertical_drag_previews_then_commits_and_allows_vertical_release_outside
 #[test]
 fn origin_tempo_point_changes_bpm_without_moving_and_stays_positive() {
     let mut app = DawUi::default();
+    app.arrangement.collapsed = false;
     let ctx = context();
     let point = tempo_point(&mut app, &ctx, 0) + Vec2::new(2.0, 0.0);
     let up = point + Vec2::new(35.0, -10.0);
@@ -782,7 +878,7 @@ fn origin_tempo_point_changes_bpm_without_moving_and_stays_positive() {
 
 #[test]
 fn horizontal_tempo_point_drag_preserves_fractional_bpm_exactly() {
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     let mut events = app.session.project.tempo_events();
     events.push(TempoEvent {
         id: Id::new_v4(),
@@ -818,7 +914,7 @@ fn horizontal_tempo_point_drag_preserves_fractional_bpm_exactly() {
 #[test]
 fn tempo_direction_lock_ignores_perpendicular_jitter_on_both_axes() {
     for vertical in [true, false] {
-        let (mut app, _) = fixture();
+        let (mut app, _) = expanded_fixture();
         let mut events = app.session.project.tempo_events();
         events.push(TempoEvent {
             id: Id::new_v4(),
@@ -858,7 +954,7 @@ fn tempo_direction_lock_ignores_perpendicular_jitter_on_both_axes() {
 #[test]
 fn tempo_direction_lock_switches_after_deliberate_cross_axis_motion_without_replaying_jitter() {
     for vertical_first in [true, false] {
-        let (mut app, _) = fixture();
+        let (mut app, _) = expanded_fixture();
         let mut events = app.session.project.tempo_events();
         events.push(TempoEvent {
             id: Id::new_v4(),
@@ -918,7 +1014,7 @@ fn tempo_direction_lock_switches_after_deliberate_cross_axis_motion_without_repl
 #[test]
 fn lane_plus_buttons_add_at_the_playhead_without_collapsing_or_opening_dialogs() {
     for lane in 0..3 {
-        let (mut app, track) = fixture();
+        let (mut app, track) = expanded_fixture();
         app.session.project.transport.playhead_frame = 48_000;
         if lane == 1 {
             let mut events = app.session.project.tempo_events();
@@ -1008,7 +1104,7 @@ fn lane_plus_buttons_add_at_the_playhead_without_collapsing_or_opening_dialogs()
 }
 #[test]
 fn lane_plus_buttons_are_disabled_during_conflicting_jobs() {
-    let (mut app, _) = fixture();
+    let (mut app, _) = expanded_fixture();
     app.session.project.transport.playhead_frame = 48_000;
     let before = app.session.project.clone();
     let ctx = context();

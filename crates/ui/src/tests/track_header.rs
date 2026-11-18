@@ -823,19 +823,18 @@ fn tracks_and_layers_share_the_control_panel_surface_header_and_final_border() {
                         }),
                     "only flush selection can paint above the shared column border"
                 );
-                let title = if view == ViewMode::Timeline {
-                    "Tracks"
-                } else {
-                    "Layers"
-                };
-                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                    egui::Shape::Text(text) if text.galley.text() == title
-                        && (text.pos.x - column.left() - f32::from(theme::TOOLBAR_PADDING)).abs() < 0.1)));
                 if view == ViewMode::Timeline {
+                    assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Text(text) if text.galley.text() == "Tracks"
+                            && column.x_range().contains(text.pos.x)
+                            && app.arrangement.ruler_bounds.y_range().contains(text.pos.y))));
                     assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
                         egui::Shape::Rect(rect) if rect.stroke == theme::selection_outline(&ctx)
                             && rect.rect.right() == column.right())));
                 } else {
+                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Text(text) if text.galley.text() == "Layers"
+                            && (text.pos.x - column.left() - f32::from(theme::TOOLBAR_PADDING)).abs() < 0.1)));
                     assert_eq!(
                         app.midi_editor.instrument_header_bounds.width(),
                         column.width()

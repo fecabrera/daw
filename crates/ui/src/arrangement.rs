@@ -56,7 +56,7 @@ struct Drag {
 pub(super) struct State {
     pub(super) ruler_bounds: Rect,
     visible: [bool; 3],
-    collapsed: bool,
+    pub(super) collapsed: bool,
     drag: Option<Drag>,
     draft: Option<Draft>,
     rename: Option<SectionRename>,
@@ -69,7 +69,7 @@ impl Default for State {
         Self {
             ruler_bounds: Rect::NOTHING,
             visible: [true; 3],
-            collapsed: false,
+            collapsed: !daw_core::ProjectDisplay::default().arrangement_expanded,
             drag: None,
             draft: None,
             rename: None,
@@ -243,13 +243,33 @@ impl DawUi {
         }
         true
     }
+    pub(super) fn arrangement_toggle(&mut self, ui: &mut egui::Ui) {
+        let (icon, label) = if self.arrangement.collapsed {
+            (icons::Lucide::PanelTopOpen, "Expand arrangement lanes")
+        } else {
+            (icons::Lucide::PanelTopClose, "Collapse arrangement lanes")
+        };
+        if icons::panel_button(ui, icon, label, true, theme::palette(ui.ctx()).text).clicked() {
+            self.arrangement.collapsed = !self.arrangement.collapsed;
+        }
+    }
+
     pub(super) fn arrangement_view_menu(&mut self, ui: &mut egui::Ui) {
         ui.menu_button("Arrangement lanes", |ui| {
             ui.checkbox(&mut self.arrangement.collapsed, "Collapse lanes");
-            for (i, label) in ["Markers", "Tempo", "Signature"].iter().enumerate() {
-                ui.checkbox(&mut self.arrangement.visible[i], *label);
-            }
+            self.arrangement_visibility_menu(ui);
         });
+    }
+
+    fn arrangement_visibility_menu(&mut self, ui: &mut egui::Ui) {
+        for (visible, label) in
+            self.arrangement
+                .visible
+                .iter_mut()
+                .zip(["Markers", "Tempo", "Signature"])
+        {
+            ui.checkbox(visible, label);
+        }
     }
     pub(super) fn arrangement_has_focus(&self, ctx: &egui::Context) -> bool {
         self.arrangement
@@ -271,15 +291,21 @@ impl DawUi {
         {
             self.arrangement.drag = None;
         }
-        let palette = theme::palette(ui.ctx());
-        let compact = self.arrangement.collapsed
+        if self.arrangement.collapsed
             || content_bottom - ui.cursor().top() < 160.0
-            || !self.arrangement.visible.iter().any(|v| *v);
+            || !self.arrangement.visible.iter().any(|visible| *visible)
+        {
+            self.arrangement.drag = None;
+            self.arrangement.rename = None;
+            self.arrangement.focus = None;
+            return;
+        }
+
+        let palette = theme::palette(ui.ctx());
         let timeline = self.musical_timeline();
         let editable = ui.is_enabled() && self.edit_environment_available() && !self.is_playing();
         if self.arrangement.drag.as_ref().is_some_and(|d| {
             !editable
-                || compact
                 || !self.arrangement.visible[match d.item.kind {
                     Kind::Marker => 0,
                     Kind::Tempo => 1,
@@ -300,7 +326,6 @@ impl DawUi {
         self.arrangement.selection.retain(|key| valid.contains(key));
         if self.arrangement.rename.as_ref().is_some_and(|r| {
             !editable
-                || compact
                 || !self.arrangement.visible[0]
                 || r.project != self.session.project.project_id
                 || !self
@@ -344,10 +369,7 @@ impl DawUi {
         ];
         let mut first_row = true;
         for (index, (kind, name)) in rows.into_iter().enumerate() {
-            if compact && index > 0 {
-                break;
-            }
-            if !compact && !self.arrangement.visible[index] {
+            if !self.arrangement.visible[index] {
                 continue;
             }
             let (row, _) = ui.allocate_exact_size(
@@ -366,12 +388,11 @@ impl DawUi {
                 panels::ControlPanel::pinned_row_divider(ui, row);
                 first_row = false;
             }
-            let label = if compact { "Arrangement ▸" } else { name };
             ui.painter().text(
                 header.left_center() + Vec2::new(8.0, 0.0),
                 egui::Align2::LEFT_CENTER,
-                label,
-                egui::FontId::proportional(12.0),
+                name,
+                crate::fonts::semibold(12.0),
                 palette.text,
             );
             let add_name = match kind {
@@ -384,49 +405,17 @@ impl DawUi {
                 Vec2::splat(icons::COMPACT_BUTTON_SIZE),
             );
             let h = ui.interact(
-                if compact {
-                    header
-                } else {
-                    Rect::from_min_max(
-                        header.min,
-                        Pos2::new(add_rect.left() - 4.0, header.bottom()),
-                    )
-                },
+                Rect::from_min_max(
+                    header.min,
+                    Pos2::new(add_rect.left() - 4.0, header.bottom()),
+                ),
                 ui.id().with(("arrangement-header", index)),
                 Sense::click(),
             );
             h.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
             });
-            if h.clicked() {
-                self.arrangement.collapsed = !self.arrangement.collapsed;
-            }
-            h.context_menu(|ui| {
-                if ui
-                    .add_enabled(editable, egui::Button::new(add_name))
-                    .clicked()
-                {
-                    self.add_arrangement_at_playhead(kind);
-                    self.arrangement.focus = Some(h.id);
-                    h.request_focus();
-                    ui.close();
-                }
-                ui.checkbox(&mut self.arrangement.collapsed, "Collapse lanes");
-                for (i, label) in ["Markers", "Tempo", "Signature"].iter().enumerate() {
-                    ui.checkbox(&mut self.arrangement.visible[i], *label);
-                }
-                if ui.button("Previous marker").clicked() {
-                    self.navigate_marker(false);
-                    ui.close();
-                }
-                if ui.button("Next marker").clicked() {
-                    self.navigate_marker(true);
-                    ui.close();
-                }
-            });
-            if compact {
-                continue;
-            }
+            h.context_menu(|ui| self.arrangement_visibility_menu(ui));
             let mut add_ui = ui.new_child(
                 egui::UiBuilder::new()
                     .id_salt(("arrangement-add", index))
@@ -782,26 +771,6 @@ impl DawUi {
             && !self.arrangement_has_focus(ui.ctx())
         {
             self.arrangement.rename = None;
-        }
-    }
-    fn navigate_marker(&mut self, next: bool) {
-        let frame = self.session.project.transport.playhead_frame;
-        let markers = &self.session.project.markers;
-        let target = if next {
-            markers
-                .iter()
-                .filter(|m| m.start_frame > frame)
-                .map(|m| m.start_frame)
-                .min()
-        } else {
-            markers
-                .iter()
-                .filter(|m| m.start_frame < frame)
-                .map(|m| m.start_frame)
-                .max()
-        };
-        if let Some(frame) = target {
-            self.seek(frame);
         }
     }
     pub(super) fn arrangement_dialog(&mut self, ctx: &egui::Context) {

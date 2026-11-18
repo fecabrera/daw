@@ -94,9 +94,11 @@ without metadata lanes. Sampler's local source view retains its source clock.
 
 Double-click empty lane space or use its menu to add. Each expanded lane header
 has a right-aligned shared compact Lucide Plus panel button (18-point square,
-12-point artwork), vertically centered with an 8-point right inset. Exclude its hit area from the collapse control. The button
-and header context Add share `add_arrangement_at_playhead`, use the exact stopped
-playhead frame and retain the existing edit/job/playback guards. Marker creation
+12-point artwork), vertically centered with an 8-point right inset. Lane labels
+use 12-point semibold text. The header context menu lists only lane visibility.
+Primary clicks on the label have no action. The Plus button calls
+`add_arrangement_at_playhead` at the exact stopped playhead frame and keeps the
+existing edit, job and playback guards. Marker creation
 uses New section and one bar. Tempo/signature additions immediately inherit the
 active value without a dialog; an existing event at that frame is selected.
 Select the added item and retain metadata keyboard focus. Each successful addition is one Undo step. Marker creation commits immediately with `New section`, a one-bar
@@ -106,7 +108,7 @@ unit-header font and `panels::unit_header_text`: secondary text when unselected,
 normal text when selected, unchanged fill and no selected outline. Reuse
 `unit_selection::select` for plain/Shift clicks and its select-all helper.
 Empty lane clicks clear selection. Selection stays in UI state without seeking
-or editing the project. Context-menu Seek here and previous/next commands seek.
+or editing the project. The section context menu offers Seek here.
 Keyboard/context Delete removes the selected metadata through one guarded batch,
 retaining the tempo/signature origin. Input fields keep their keys.
 
@@ -162,9 +164,10 @@ the committed clock and commits once on release. Shift bypasses snapping.
 Escape, focus loss, outside release, a changed revision or a conflicting job
 cancels the drag. Origin event positions remain fixed. Focused metadata Delete removes
 only the metadata event. Coincident markers are available in the context menu.
-Previous/next navigation seeks strictly before/after the playhead without wrap.
-View > Arrangement lanes controls visibility/collapse. Short viewports show a
-collapsed row. Stopped transport tempo/signature controls edit the event active
+The track toolbar has Add and Duplicate at the left and an arrangement toggle
+at the right. View > Arrangement lanes also controls visibility and collapse.
+Arrangement lanes start collapsed. Save stores the expanded or collapsed state
+with the project. Collapsed lanes and lanes hidden by short viewports use no row. Stopped transport tempo/signature controls edit the event active
 at the playhead; playback makes these controls read-only.
 
 ## Acceptance

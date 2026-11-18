@@ -14,11 +14,13 @@ impl DawUi {
             horizontal_zoom: self.zoom,
             horizontal_scroll_seconds: self.scroll,
             vertical_scroll_points: self.timeline_vertical_scroll,
+            arrangement_expanded: !self.arrangement.collapsed,
         }
     }
 
     pub(super) fn restore_project_display(&mut self) {
         let display = self.session.project.display;
+        self.arrangement.collapsed = !display.arrangement_expanded;
         self.timeline_track_size = display.track_height.value();
         self.zoom = display.horizontal_zoom;
         self.scroll = display.horizontal_scroll_seconds;

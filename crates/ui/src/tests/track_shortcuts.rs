@@ -1269,15 +1269,7 @@ fn timeline_add_and_duplicate_buttons_work_with_focus_outside_tracks() {
                 app.track_action_enabled(TrackAction::Rename, &ctx),
                 selected
             );
-            let point = Pos2::new(
-                app.timeline_bounds.left()
-                    - if action == TrackAction::Duplicate {
-                        19.0
-                    } else {
-                        47.0
-                    },
-                app.arrangement.ruler_bounds.center().y,
-            );
+            let point = track_toolbar_point(&app, action == TrackAction::Duplicate);
             let before = app.session.project.clone();
             draw(
                 &mut app,
@@ -1362,10 +1354,7 @@ fn copy_plus_header_button_is_disabled_without_selection_and_duplicates_the_grou
     let (mut app, tracks, clips) = multi_clip_fixture();
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
-    let point = Pos2::new(
-        app.timeline_bounds.left() - 19.0,
-        app.arrangement.ruler_bounds.center().y,
-    );
+    let point = track_toolbar_point(&app, true);
     let before = format!("{:?}", app.session.project);
     frame(
         &mut app,
@@ -1417,14 +1406,21 @@ fn empty_tracks_point(app: &DawUi) -> Pos2 {
     )
 }
 
+fn track_toolbar_point(app: &DawUi, duplicate: bool) -> Pos2 {
+    let ruler = app.arrangement.ruler_bounds;
+    let padding = f32::from(theme::TOOLBAR_PADDING);
+    let offset = if duplicate { 28.0 + padding } else { 0.0 };
+    Pos2::new(
+        ruler.left() - TRACK_WIDTH + padding + 14.0 + offset,
+        ruler.center().y,
+    )
+}
+
 fn open_add_track_dropdown(
     app: &mut DawUi,
     ctx: &egui::Context,
 ) -> Vec<egui::epaint::ClippedShape> {
-    let point = Pos2::new(
-        app.timeline_bounds.left() - 47.0,
-        app.arrangement.ruler_bounds.center().y,
-    );
+    let point = track_toolbar_point(app, false);
     frame(
         app,
         ctx,

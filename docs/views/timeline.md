@@ -33,8 +33,7 @@ Section and signature labels use the unit-header text style. Click to select
 one block; Shift-click toggles blocks in the selection. Selected labels become
 brighter. Clicking empty lane space clears selection. Selection does not seek
 or edit the project. Delete removes the selected blocks in one Undo step.
-Right-click a section and choose **Seek here** to seek to it. The lane header
-menu also has Previous marker and Next marker.
+Right-click a section and choose **Seek here** to seek to it.
 
 Section and signature edges follow clip resize rules. Expanding over a neighbor
 trims its covered edge or removes it when fully covered. Drag the dividing line
@@ -52,7 +51,10 @@ standard small-text size.
 Release applies the edit. Shift bypasses snapping. Escape, focus loss or release
 outside the lane cancels. The tempo and signature at the song origin can change
 but cannot move or be deleted. Coincident markers are listed in the context menu.
-Use **View > Arrangement lanes** to hide or collapse lanes.
+Use the arrangement button at the right of the track toolbar to collapse or
+restore the lanes. They start collapsed and use no row. Save or Save As stores
+the expanded or collapsed state with the project. Right-click a lane header or
+use **View > Arrangement lanes** to choose which lanes to show.
 
 Tempo changes preserve musical positions for sections, clips and loop endpoints.
 Audio clip lengths stay fixed. MIDI notes follow the tempo map, including held
@@ -75,7 +77,8 @@ Selected tracks use background highlights without a selection outline. Each sele
 
 Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Their names use the same spacing as group headers. Track gain and pan, and Master gain, use compact knobs without text-entry fields. Compact tracks use one row: icon, name, Mute, Solo, then meters. Pan and Gain are hidden in this compact mode, including Master gain. In the expanded layout, the second row places Mute and Solo at the left; Pan then Gain sit at the right, immediately before the level meters. Master uses one row, with its gain knob on the right before the meters when track headers are expanded. Level meter rails align with the top and bottom padding of the other header controls. Hover or drag a knob to see its value in the tooltip. Master's meters align with the track meters at the right of the control column. Drag an audio or MIDI icon, track name, or blank header area to move the track. Release applies the move; Escape or focus loss cancels it.
 
-The Tracks header’s Add and Duplicate buttons use the same rounded, borderless style as M/S buttons. Their actions and spacing stay the same.
+Add and Duplicate sit on the left of the track toolbar. The arrangement toggle
+sits on the right. These buttons share the rounded, borderless M/S style.
 
 Click the arrow beside a beat track to show or hide its subtracks. They start collapsed. Subtracks appear inside the parent, with the same indentation and selection style as track groups. Each row has Mute, Solo, Pan, Gain and level meters shared with Editor and Instrument. Subtrack names use the same hoverable name buttons as other tracks. A single click selects; double-click the name to rename it. Click a subtrack header to select it; Shift-click selects several. Escape clears subtrack selection. The child timeline lanes stay empty; arrange clips on the parent and edit beat hits in Editor. The project saves each beat folder’s open/closed state. Expanding or collapsing it supports Undo/Redo, like track groups.
 
