@@ -76,6 +76,19 @@ pub(super) struct Bindings {
     pub live_pitches: daw_engine::LiveMidiPitches,
 }
 impl Bindings {
+    /// Attach shared handle families. Constructors own the ordered track meters.
+    pub(super) fn attach(&self, renderer: &mut PreparedRenderer) {
+        effect_audition::bind(renderer, &self.exciter_solos);
+        bind_effect_meters(renderer, &self.effects);
+        bind_band_meters(renderer, &self.bands);
+        effect_spectrum::bind(renderer, &self.spectra);
+        bind_output_meters(renderer, &self.outputs);
+        bind_loudness_meters(renderer, &self.loudness);
+        source_meters::bind(renderer, &self.sources);
+        renderer.layer_meters = self.layers.clone();
+        renderer.bind_modulation(&self.modulation);
+        renderer.bind_live_midi_pitches(&self.live_pitches);
+    }
     pub fn prepare(plan: &RenderPlan, previous: &Self) -> Self {
         Self {
             tracks: track_meters(plan, &previous.tracks),
@@ -412,16 +425,7 @@ impl Worker {
                         continue;
                     }
                     renderer.reset_track_peaks();
-                    effect_audition::bind(&mut renderer, &bindings.exciter_solos);
-                    bind_effect_meters(&mut renderer, &bindings.effects);
-                    bind_band_meters(&mut renderer, &bindings.bands);
-                    effect_spectrum::bind(&mut renderer, &bindings.spectra);
-                    bind_output_meters(&mut renderer, &bindings.outputs);
-                    bind_loudness_meters(&mut renderer, &bindings.loudness);
-                    source_meters::bind(&mut renderer, &bindings.sources);
-                    renderer.layer_meters = bindings.layers.clone();
-                    renderer.bind_modulation(&bindings.modulation);
-                    renderer.bind_live_midi_pitches(&bindings.live_pitches);
+                    bindings.attach(&mut renderer);
                     renderer.ready_at = Some(std::time::Instant::now());
                     let ready = Ready {
                         revision,

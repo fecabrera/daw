@@ -1,5 +1,5 @@
 use daw_core::Clip;
-use daw_media::AudioData;
+use daw_media::{AudioData, PEAK_BLOCK_FRAMES};
 
 /// Paint linked mono/stereo peaks with the same channel layout in clips and sample previews.
 pub(super) fn paint(
@@ -104,7 +104,7 @@ pub(super) fn paint_source_peaks_with_gain(
     if !body.intersect(painter.clip_rect()).is_positive() {
         return;
     }
-    if audio.disk.is_some() && frames_per_pixel < 256. {
+    if audio.disk.is_some() && frames_per_pixel < PEAK_BLOCK_FRAMES as f64 {
         painter
             .ctx()
             .request_repaint_after(std::time::Duration::from_millis(50));
@@ -230,19 +230,19 @@ fn source_extrema(audio: &AudioData, start: u64, count: u64, channel: usize) -> 
     let mut position = start.min(audio.frame_count()) as usize;
     let mut result = [0.0_f32; 2];
     while position < end {
-        // Cache full 256-frame blocks; inspect partial boundary blocks exactly.
-        if position.is_multiple_of(256)
-            && end - position >= 256
-            && let Some(peak) = audio.peaks.get(position / 256)
+        // Cache full peak blocks; inspect partial boundary blocks exactly.
+        if position.is_multiple_of(PEAK_BLOCK_FRAMES)
+            && end - position >= PEAK_BLOCK_FRAMES
+            && let Some(peak) = audio.peaks.get(position / PEAK_BLOCK_FRAMES)
         {
             result[0] = result[0].min(peak[channel][0]);
             result[1] = result[1].max(peak[channel][1]);
-            position += 256;
+            position += PEAK_BLOCK_FRAMES;
         } else {
             if let Some(sample) = audio.preview_sample(position as u64) {
                 result[0] = result[0].min(sample[channel]);
                 result[1] = result[1].max(sample[channel]);
-            } else if let Some(peak) = audio.peaks.get(position / 256) {
+            } else if let Some(peak) = audio.peaks.get(position / PEAK_BLOCK_FRAMES) {
                 result[0] = result[0].min(peak[channel][0]);
                 result[1] = result[1].max(peak[channel][1]);
             }
@@ -260,7 +260,7 @@ mod tests {
 
     fn audio(samples: Vec<[f32; 2]>) -> AudioData {
         let peaks = samples
-            .chunks(256)
+            .chunks(PEAK_BLOCK_FRAMES)
             .map(|chunk| {
                 let mut peak = [[0.0_f32; 2]; 2];
                 for sample in chunk {

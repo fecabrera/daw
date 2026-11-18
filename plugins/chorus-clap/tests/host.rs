@@ -4,6 +4,8 @@ use daw_chorus_clap as plugin_export;
 include!("../../drive-clap/tests/host/support.rs");
 #[path = "../../filter-clap/tests/host/cases.rs"]
 mod cases;
+#[path = "../../test_support/transport.rs"]
+mod transport;
 
 #[test]
 fn host_tempo_position_and_seeks_match_the_portable_clock() {
@@ -20,17 +22,7 @@ fn host_tempo_position_and_seeks_match_the_portable_clock() {
         },
         &state.to_settings(),
     );
-    let mut next_frame = 0;
-    for (frame, tempo, playing) in [
-        (48000, 90.0, true),
-        (96000, 180.0, true),
-        (12000, 110.0, true),
-        (12000, 110.0, false),
-        (12000, 110.0, false),
-        (72000, 110.0, true),
-    ] {
-        let effective_frame = if playing { frame } else { next_frame };
-        next_frame = effective_frame + 512;
+    for (frame, tempo, playing, effective_frame) in transport::SEEK_AND_TEMPO {
         let mut left: Vec<_> = (0..512).map(|i| (i as f32 * 0.17).sin() * 0.4).collect();
         let mut right = left.iter().map(|v| -0.37 * v).collect::<Vec<_>>();
         let mut expected = (Vec::new(), Vec::new());

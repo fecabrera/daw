@@ -35,7 +35,7 @@ impl Ott {
         for parameter in &mut self.parameters {
             parameter.advance();
         }
-        let mut p = self.parameters.each_ref().map(|p| p.value);
+        let mut p = self.parameters.each_ref().map(|p| p.value());
         // Preserve unmodulated crossover arithmetic. Only a moved pair needs projection.
         if offsets[0] != 0.0 || offsets[1] != 0.0 {
             let low = (p[0] + offsets[0] * std::f32::consts::LN_2)

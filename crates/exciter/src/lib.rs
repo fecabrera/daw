@@ -1,5 +1,5 @@
 //! Parallel harmonic residuals over phase-matched fourth-order crossover bands.
-use daw_filter::crossover::LinkwitzRileySplit as Split;
+use daw_filter::crossover::CrossoverBank;
 use daw_saturator::oversampling::{LATENCY, Oversampling};
 use daw_unit_core::{
     EffectUnit, ExciterBand, ExciterMode, ExciterSettings, LevelMonitor, ModulationContext,
@@ -257,11 +257,7 @@ impl ModulationDestination for Output {
 pub struct Exciter {
     bands: Vec<RoutedDestination<Band>>,
     output: RoutedDestination<Output>,
-    // [current log Hz, target log Hz] share one clock to preserve boundary order.
-    frequencies: Vec<[f32; 2]>,
-    crossover_left: u32,
-    splits: Vec<Split>,
-    compensation: Vec<Vec<Split>>,
+    crossover: CrossoverBank,
     dry: [[f32; 2]; LATENCY],
     cursor: usize,
     bypass: Ramp,
@@ -292,21 +288,7 @@ impl Exciter {
                 &s.modulations,
                 c.sample_rate_hz,
             ),
-            splits: frequencies
-                .iter()
-                .map(|f| Split::new(c.sample_rate_hz, *f))
-                .collect(),
-            compensation: (0..s.bands.len())
-                .map(|i| {
-                    frequencies
-                        .iter()
-                        .skip(i + 1)
-                        .map(|f| Split::new(c.sample_rate_hz, *f))
-                        .collect()
-                })
-                .collect(),
-            frequencies: frequencies.iter().map(|f| [f.ln(); 2]).collect(),
-            crossover_left: 0,
+            crossover: CrossoverBank::new(c.sample_rate_hz, &frequencies, s.bands.len()),
             dry: [[0.0; 2]; LATENCY],
             cursor: 0,
             bypass: Ramp::new(f32::from(s.enabled)),
@@ -340,17 +322,8 @@ impl Exciter {
         for (b, s) in self.bands.iter_mut().zip(&s.bands) {
             b.destination.retarget(s, self.fade_frames);
         }
-        if self
-            .frequencies
-            .iter()
-            .zip(&s.bands)
-            .any(|(f, b)| f[1] != b.upper_hz.ln())
-        {
-            for (f, b) in self.frequencies.iter_mut().zip(&s.bands) {
-                f[1] = b.upper_hz.ln();
-            }
-            self.crossover_left = self.fade_frames;
-        }
+        self.crossover
+            .retarget(s.bands.iter().map(|band| band.upper_hz), self.fade_frames);
         for (r, v) in self
             .output
             .destination
@@ -401,23 +374,8 @@ impl Exciter {
         let target = self.bypass.target();
         self.bypass = previous.bypass;
         self.bypass.set(target, self.fade_frames);
-        if self.splits.len() == previous.splits.len() {
-            std::mem::swap(&mut self.splits, &mut previous.splits);
-            std::mem::swap(&mut self.compensation, &mut previous.compensation);
-            let unchanged = self
-                .frequencies
-                .iter()
-                .zip(&previous.frequencies)
-                .all(|(a, b)| a[1] == b[1]);
-            for (next, old) in self.frequencies.iter_mut().zip(&previous.frequencies) {
-                next[0] = old[0];
-            }
-            self.crossover_left = if unchanged {
-                previous.crossover_left
-            } else {
-                self.fade_frames
-            };
-        }
+        self.crossover
+            .inherit(&mut previous.crossover, self.fade_frames);
         let enabled = self.monitor.is_enabled();
         std::mem::swap(&mut self.monitor, &mut previous.monitor);
         self.monitor.set_enabled(enabled);
@@ -438,34 +396,14 @@ impl Exciter {
                 .as_ref()
                 .is_some_and(|s| s.load(Ordering::Relaxed))
         });
-        for (i, f) in self.frequencies.iter_mut().enumerate() {
-            if self.crossover_left > 0 {
-                f[0] += (f[1] - f[0]) / self.crossover_left as f32;
-            }
-            let frequency = f[0].exp();
-            self.splits[i].configure(frequency);
-            // A lower branch receives the same smoothed boundary as the later split.
-            for (row_index, row) in self.compensation.iter_mut().enumerate().take(i) {
-                row[i - row_index - 1].configure(frequency);
-            }
-        }
-        self.crossover_left = self.crossover_left.saturating_sub(1);
+        let active_bands = self.bands.len();
+        self.crossover.advance(active_bands);
         // Keep crossover state finite even for extreme finite host samples.
         let mut rest = input.map(|v| v.clamp(-1e12, 1e12));
         let mut delta = [0.0_f64; 2];
         let mut solo_dry = [0.0_f64; 2];
         for (i, band) in self.bands.iter_mut().enumerate() {
-            let mut sample = if let Some(split) = self.splits.get_mut(i) {
-                let (low, high) = split.sample(rest);
-                rest = high;
-                low
-            } else {
-                rest
-            };
-            for split in &mut self.compensation[i] {
-                let (low, high) = split.sample(sample);
-                sample = std::array::from_fn(|ch| low[ch] + high[ch]);
-            }
+            let sample = self.crossover.sample_band(&mut rest, i, active_bands);
             band.process([0.0; 2], shared, context);
             let b = &mut band.destination;
             let solo = b.solo.as_ref().is_some_and(|s| s.load(Ordering::Relaxed));
@@ -535,16 +473,7 @@ impl EffectUnit for Exciter {
             r.reset();
         }
         self.output.destination.external.reset();
-        for f in &mut self.frequencies {
-            f[0] = f[1];
-        }
-        self.crossover_left = 0;
-        for s in &mut self.splits {
-            s.reset();
-        }
-        for s in self.compensation.iter_mut().flatten() {
-            s.reset();
-        }
+        self.crossover.reset();
     }
     fn heap_bytes(&self) -> u64 {
         daw_unit_core::memory::vec_bytes(&self.bands)
@@ -554,14 +483,7 @@ impl EffectUnit for Exciter {
                 .map(RoutedDestination::heap_bytes)
                 .sum::<u64>()
             + self.output.heap_bytes()
-            + daw_unit_core::memory::vec_bytes(&self.frequencies)
-            + daw_unit_core::memory::vec_bytes(&self.splits)
-            + daw_unit_core::memory::vec_bytes(&self.compensation)
-            + self
-                .compensation
-                .iter()
-                .map(daw_unit_core::memory::vec_bytes)
-                .sum::<u64>()
+            + self.crossover.heap_bytes()
     }
 }
 

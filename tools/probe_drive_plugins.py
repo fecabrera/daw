@@ -19,6 +19,8 @@ import shutil
 import subprocess
 import sys
 
+from drive_check_support import owned_scratch, run_logged
+
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "drive_plugin_phase0"
 SOURCES = json.loads((TOOL / "sources.json").read_text())
@@ -56,32 +58,15 @@ def assess_baseline(baseline: dict, budgets: dict) -> dict:
 
 
 def prepare_work_directory(path: Path, root: Path = ROOT) -> Path:
-    root = root.resolve()
-    work = path.resolve()
-    if not work.is_relative_to(root / "work") or work == root / "work":
-        raise ValueError("Scratch directory must be a dedicated directory under the repository's ignored work/")
-    work.mkdir(parents=True, exist_ok=True)
-    marker = work / ".drive-plugin-phase0"
-    signature = "DAW Drive Phase 0 scratch v1\n"
-    if marker.exists():
-        if marker.read_text() != signature:
-            raise ValueError("Scratch directory has an unrecognized ownership marker")
-    elif any(work.iterdir()):
-        raise ValueError("Retaining unmarked scratch contents; choose a fresh --work-dir")
-    else:
-        marker.write_text(signature)
-    return work
+    return owned_scratch(
+        path, root.resolve(), ".drive-plugin-phase0", "DAW Drive Phase 0 scratch v1\n",
+        outside="Scratch directory must be a dedicated directory under the repository's ignored work/",
+        unrecognized="Scratch directory has an unrecognized ownership marker",
+    )
 
 
 def run(command: list[str], log: Path, env: dict[str, str], *, cwd: Path = ROOT) -> str:
-    log.parent.mkdir(parents=True, exist_ok=True)
-    print("Running " + " ".join(str(arg) for arg in command[:3]), flush=True)
-    result = subprocess.run(command, cwd=cwd, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    log.write_text(result.stdout)
-    log.with_suffix(log.suffix + ".stderr").write_text(result.stderr)
-    if result.returncode:
-        raise RuntimeError(f"Command failed ({result.returncode}); inspect {log} and its .stderr file")
-    return result.stdout
+    return run_logged(command, log, env, cwd=cwd, create_parent=True, preview_count=3)
 
 
 def prepare_source(name: str, source: dict, work: Path, env: dict[str, str], fetch: bool) -> None:

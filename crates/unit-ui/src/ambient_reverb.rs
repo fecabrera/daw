@@ -35,6 +35,40 @@ pub fn show(
         for section in 0..STRIP_COUNT {
             let strip =
                 panels::unit_strip(ui, height, egui::UiBuilder::new().id_salt(section), |ui| {
+                    let filter = match section {
+                        2 => Some((
+                            crate::reverb_controls::FilterStrip {
+                                high_pass: true,
+                                enabled: &mut s.highpass_enabled,
+                                value: &mut s.tone,
+                                parameter: P::AmbientTone,
+                                slope: &mut s.highpass_slope,
+                                marker: markers[2].as_ref(),
+                                modulation_open: &mut s.modulation_open,
+                            },
+                            [2, 8, 9],
+                        )),
+                        3 => Some((
+                            crate::reverb_controls::FilterStrip {
+                                high_pass: false,
+                                enabled: &mut s.lowpass_enabled,
+                                value: &mut s.lowpass_hz,
+                                parameter: P::PlateLowPass,
+                                slope: &mut s.lowpass_slope,
+                                marker: markers[7].as_ref(),
+                                modulation_open: &mut s.modulation_open,
+                            },
+                            [10, 11, 12],
+                        )),
+                        _ => None,
+                    };
+                    if let Some((filter, slots)) = filter {
+                        for (slot, rect) in slots.into_iter().zip(filter.show(ui, compact, height))
+                        {
+                            b.controls[slot] = rect;
+                        }
+                        return;
+                    }
                     if !compact {
                         for row in 0..3 {
                             let mut control = |ui: &mut Ui, s: &mut Settings| match (section, row) {
@@ -74,28 +108,6 @@ pub fn show(
                                     b.controls[7] = r.rect;
                                     r
                                 }
-                                (2, 0) => {
-                                    let r = ui.add_enabled(
-                                        s.highpass_enabled,
-                                        Knob::new(
-                                            &mut s.tone,
-                                            parameter_knobs::destination(P::AmbientTone),
-                                        )
-                                        .modulated(markers[2].as_ref(), &mut s.modulation_open),
-                                    );
-                                    b.controls[2] = r.rect;
-                                    r
-                                }
-                                (2, 2) => {
-                                    let r = crate::reverb_controls::filter_slope(
-                                        ui,
-                                        &mut s.highpass_slope,
-                                        s.highpass_enabled,
-                                        "High-pass slope",
-                                    );
-                                    b.controls[9] = r.rect;
-                                    r
-                                }
                                 (1, 2) => {
                                     let r = ui.add_enabled(
                                         true,
@@ -108,29 +120,7 @@ pub fn show(
                                     b.controls[3] = r.rect;
                                     r
                                 }
-                                (3, 0) => {
-                                    let r = ui.add_enabled(
-                                        s.lowpass_enabled,
-                                        Knob::new(
-                                            &mut s.lowpass_hz,
-                                            parameter_knobs::destination(P::PlateLowPass),
-                                        )
-                                        .modulated(markers[7].as_ref(), &mut s.modulation_open),
-                                    );
-                                    b.controls[10] = r.rect;
-                                    r
-                                }
-                                (3, 2) => {
-                                    let r = crate::reverb_controls::filter_slope(
-                                        ui,
-                                        &mut s.lowpass_slope,
-                                        s.lowpass_enabled,
-                                        "Low-pass slope",
-                                    );
-                                    b.controls[12] = r.rect;
-                                    r
-                                }
-                                (0, 1) | (0, 2) | (2, 1) | (3, 1) => ui.allocate_response(
+                                (0, 1) | (0, 2) => ui.allocate_response(
                                     egui::vec2(ui.available_width(), knobs::CHOICE_SIZE),
                                     egui::Sense::hover(),
                                 ),
@@ -172,10 +162,7 @@ pub fn show(
                                 }
                                 _ => unreachable!(),
                             };
-                            if matches!(
-                                (section, row),
-                                (0, 0) | (0, 1) | (0, 2) | (2, 1) | (2, 2) | (3, 1) | (3, 2)
-                            ) {
+                            if matches!((section, row), (0, 0) | (0, 1) | (0, 2)) {
                                 control(ui, s);
                             } else {
                                 knobs::row(ui, s, knobs::CHOICE_SIZE, control);
@@ -189,28 +176,7 @@ pub fn show(
                         } else {
                             panels::COMPACT_BUTTON_SIZE
                         },
-                        |ui| {
-                            let power = match section {
-                                2 => {
-                                    Some(("Hi-Pass", "Toggle Hi-Pass", &mut s.highpass_enabled, 8))
-                                }
-                                3 => {
-                                    Some(("Lo-Pass", "Toggle Lo-Pass", &mut s.lowpass_enabled, 11))
-                                }
-                                _ => None,
-                            };
-                            if let Some((label, tooltip, enabled, slot)) = power {
-                                let mut response = rows::power_label(ui, label, tooltip, *enabled);
-                                b.controls[slot] = response.rect;
-                                if response.clicked() {
-                                    *enabled = !*enabled;
-                                    response.mark_changed();
-                                }
-                                response
-                            } else {
-                                rows::unit_label(ui, ["Options", "Reverb", "", "", "Out"][section])
-                            }
-                        },
+                        |ui| rows::unit_label(ui, ["Options", "Reverb", "", "", "Out"][section]),
                     );
                 })
                 .response

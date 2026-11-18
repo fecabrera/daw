@@ -34,7 +34,7 @@ impl Compressor {
         for parameter in &mut self.parameters {
             parameter.advance();
         }
-        let mut p = self.parameters.each_ref().map(|p| p.value);
+        let mut p = self.parameters.each_ref().map(|p| p.value());
         p[0] = (p[0] + offsets[0]).clamp(-60.0, 0.0);
         // Preserve the legacy slope arithmetic exactly when the ratio offset is neutral.
         if offsets[1] != 0.0 {

@@ -1,110 +1,20 @@
 use daw_core::*;
 use daw_engine::{RenderPlan, Renderer};
-use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
-use std::collections::HashMap;
-thread_local! { static TRACK_ALLOCATIONS: Cell<bool> = const { Cell::new(false) }; static ALLOCATIONS: Cell<usize> = const { Cell::new(0) }; }
-struct CountingAllocator;
-// SAFETY: This allocator forwards unchanged layouts and pointers to System.
-unsafe impl GlobalAlloc for CountingAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        TRACK_ALLOCATIONS.with(|enabled| {
-            if enabled.get() {
-                ALLOCATIONS.with(|count| count.set(count.get() + 1));
-            }
-        });
-        unsafe { System.alloc(layout) }
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        TRACK_ALLOCATIONS.with(|enabled| {
-            if enabled.get() {
-                ALLOCATIONS.with(|count| count.set(count.get() + 1));
-            }
-        });
-        unsafe { System.dealloc(ptr, layout) }
-    }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-        TRACK_ALLOCATIONS.with(|enabled| {
-            if enabled.get() {
-                ALLOCATIONS.with(|count| count.set(count.get() + 1));
-            }
-        });
-        unsafe { System.realloc(ptr, layout, size) }
-    }
-}
+#[path = "support/allocations.rs"]
+mod allocations;
+use allocations::{ALLOCATIONS, CountingAllocator, TRACK_ALLOCATIONS};
+
 #[global_allocator]
-static ALLOCATOR: CountingAllocator = CountingAllocator;
-use daw_media::AudioData;
+static ALLOCATOR: CountingAllocator<true> = CountingAllocator;
 use std::sync::Arc;
-fn plan(rate: u32, mono: bool) -> RenderPlan {
-    let mut project = Project {
-        sample_rate_hz: rate,
-        ..Project::default()
-    };
-    project.add_track().unwrap();
-    let id = Id::new_v4();
-    let metadata = SourceMetadata {
-        sample_rate_hz: rate,
-        channels: if mono { 1 } else { 2 },
-        sample_format: "ieee_float".into(),
-        bits_per_sample: 32,
-    };
-    project.assets.push(Asset {
-        id,
-        name: "tone".into(),
-        midi_pattern: None,
-        rendered_audio: None,
-        compound_audio: None,
-        beat_pattern: None,
-        source: Source {
-            kind: "external".into(),
-            path: "/tone.wav".into(),
-            storage: None,
-            path_kind: "absolute".into(),
-        },
-        source_metadata: metadata.clone(),
-        decoded_frame_count: 8192,
-    });
-    project.tracks[0].clips.push(Clip {
-        channels: Default::default(),
-        fades: Default::default(),
-        muted: false,
-        id: Id::new_v4(),
-        asset_id: id,
-        name: "tone".into(),
-        color: None,
-        start_frame: 0,
-        source_offset_frame: 0,
-        length_frames: 8192,
-        repeat: None,
-        stretch: None,
-        gain_db: 0.0,
-        transpose: 0,
-    });
-    let samples = (0..8192)
-        .map(|frame| {
-            let sample = (frame as f32 * 1000.0 * std::f32::consts::TAU / rate as f32).sin() * 0.1;
-            [sample, if mono { sample } else { -sample * 0.5 }]
-        })
-        .collect();
-    RenderPlan {
-        external: Default::default(),
-        beat_tracks: Default::default(),
-        project,
-        audio: HashMap::from([(
-            id,
-            AudioData {
-                disk: None,
-                sample_rate_hz: rate,
-                metadata,
-                samples: Arc::new(samples),
-                peaks: Arc::new(vec![]),
-            },
-        )]),
-        sampler_audio: Default::default(),
-        stretched_audio: HashMap::new(),
-    }
-}
+#[path = "support/midi_plan.rs"]
+mod midi_fixture;
+#[path = "support/tone.rs"]
+mod tone;
+#[path = "support/tone_parity.rs"]
+mod tone_parity;
+use tone::plan;
 fn configured() -> EffectInstance {
     let mut e = EffectInstance::multiband_compressor();
     let EffectSettings::MultibandCompressor(s) = &mut e.unit else {
@@ -119,49 +29,7 @@ fn configured() -> EffectInstance {
 }
 #[test]
 fn live_offline_blocks_seek_and_latency_match_on_tracks_and_master_at_every_rate() {
-    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
-        for master in [false, true] {
-            let mut p = plan(rate, false);
-            let effect = configured();
-            let id = effect.id;
-            if master {
-                p.project.master.effects.push(effect);
-            } else {
-                p.project.tracks[0].effects.push(effect);
-            }
-            p.project.validate().unwrap();
-            let mut expected = vec![[0.0; 2]; 8192];
-            Renderer::new(p.clone()).render_offline(&mut expected);
-            let mut live = Renderer::new(p.clone());
-            assert_eq!(live.latency_frames(), 0);
-            live.play();
-            for (i, want) in expected.iter().enumerate() {
-                let actual = live.next_sample();
-                if i > rate as usize / 200 {
-                    assert!((actual[0] - want[0]).abs() < 1e-6);
-                }
-            }
-            assert!(expected.iter().any(|v| v[0].abs() > 0.01));
-            assert!(
-                live.modulation_snapshot(daw_engine::ModulationTarget::Effect(id))
-                    .is_some()
-            );
-            if rate == 48000 {
-                for block in [32, 512, 4096] {
-                    let mut renderer = Renderer::new(p.clone());
-                    let mut out = vec![[0.0; 2]; 8192];
-                    for (i, chunk) in out.chunks_mut(block).enumerate() {
-                        renderer.render_offline_at((i * block) as u64, chunk);
-                    }
-                    assert_eq!(out, expected);
-                }
-                let mut renderer = Renderer::new(p);
-                let mut seek = vec![[0.0; 2]; 1024];
-                renderer.render_offline_at(4096, &mut seek);
-                assert_eq!(seek, expected[4096..5120]);
-            }
-        }
-    }
+    tone_parity::check(configured, 0);
 }
 #[test]
 fn live_solo_never_changes_a_new_offline_renderer_and_callback_updates_do_not_allocate_or_retire() {
@@ -216,51 +84,7 @@ fn live_solo_never_changes_a_new_offline_renderer_and_callback_updates_do_not_al
 }
 
 fn midi_plan(rate: u32) -> RenderPlan {
-    let mut project = Project {
-        sample_rate_hz: rate,
-        ..Project::default()
-    };
-    let track = project.add_midi_track().unwrap();
-    project.tracks[0].instrument = Some(OscillatorSettings::default().into());
-    project.tracks[0].instrument.as_mut().unwrap().layers[0].oscillators[0].waveform =
-        Waveform::Sine;
-    // Existing oscillator tests isolate source/mixer behavior using the legacy gate.
-    project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0].settings =
-        EnvelopeSettings::legacy();
-    let clip = project.add_midi_pattern(track, 0).unwrap();
-    project
-        .edit(Edit::ReplaceMidiPattern {
-            clip_id: clip,
-            pattern: MidiPattern {
-                length_ticks: 3840,
-                notes: vec![
-                    MidiNote {
-                        id: Id::from_u128(1),
-                        start_tick: 0,
-                        length_ticks: 960,
-                        pitch: 69,
-                        velocity: 127,
-                    },
-                    MidiNote {
-                        id: Id::from_u128(2),
-                        start_tick: 480,
-                        length_ticks: 1440,
-                        pitch: 72,
-                        velocity: 100,
-                    },
-                ],
-            },
-        })
-        .unwrap();
-    project.tracks[0].clips[0].length_frames = project.midi_frame(3840);
-    RenderPlan {
-        external: Default::default(),
-        beat_tracks: Default::default(),
-        project,
-        audio: HashMap::new(),
-        sampler_audio: Default::default(),
-        stretched_audio: HashMap::new(),
-    }
+    midi_fixture::plan(Waveform::Sine, rate)
 }
 #[test]
 fn every_instrument_bus_receives_the_same_live_only_solo_and_output_meter_binding() {

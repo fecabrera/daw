@@ -1,5 +1,5 @@
 //! Narrow VST3 bindings and main-thread stream/identifier helpers.
-pub use daw_plugin_support::{boundary, write_text};
+pub use daw_plugin_support::{allocation_probe, boundary, write_text};
 use std::{
     io::{self, Read, Write},
     marker::PhantomData,

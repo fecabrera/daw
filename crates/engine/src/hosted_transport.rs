@@ -146,10 +146,7 @@ impl Renderer {
         let fade = (self.plan.project.sample_rate_hz / 200).max(1) as f32;
         let target = if self.playing || monitor { 1.0 } else { 0.0 };
         self.ramp += (target - self.ramp).clamp(-1.0 / fade, 1.0 / fade);
-        if self.master_remaining > 0 {
-            self.master += (self.master_target - self.master) / self.master_remaining as f32;
-            self.master_remaining -= 1;
-        }
+        self.advance_live_master();
         sample = sample.map(|v| {
             v * self.master
                 * if !self.playing && monitor {
@@ -158,15 +155,7 @@ impl Renderer {
                     self.ramp
                 }
         });
-        if self.transition > 0 {
-            let progress = 1.0 - self.transition as f32 / fade;
-            for (ch, value) in sample.iter_mut().enumerate() {
-                *value = self.transition_from[ch] * (1.0 - progress) + *value * progress;
-            }
-            self.transition -= 1;
-        }
-        self.previous = sample;
-        sample
+        self.finish_live_sample(sample, fade)
     }
     pub(super) fn prepare_hosted_transport(
         &mut self,

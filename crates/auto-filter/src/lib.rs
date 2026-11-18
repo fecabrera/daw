@@ -1,46 +1,12 @@
 //! Transport-locked stereo auto-filter. FunDSP supplies Simper SVF coefficients;
 //! the shared integrator state exposes all four shapes without parallel filters.
 use daw_filter::Filter;
+use daw_unit_core::ramps::LinearRamp64 as Ramp;
 use daw_unit_core::{
     AUTO_FILTER_TYPE_ID, AutoFilterSettings, EffectUnit, LfoRateMode, PortKind, ProcessingContext,
     UnitDescriptor,
 };
 
-#[derive(Clone, Copy)]
-struct Ramp {
-    value: f64,
-    target: f64,
-    remaining: u32,
-}
-impl Ramp {
-    fn new(value: f64) -> Self {
-        Self {
-            value,
-            target: value,
-            remaining: 0,
-        }
-    }
-    fn retarget(&mut self, target: f64, frames: u32) {
-        if self.target != target {
-            self.target = target;
-            self.remaining = frames;
-        }
-    }
-    fn next(&mut self) -> f64 {
-        if self.remaining > 0 {
-            self.value += (self.target - self.value) / f64::from(self.remaining);
-            self.remaining -= 1;
-        }
-        self.value
-    }
-    fn reset(&mut self) {
-        self.value = self.target;
-        self.remaining = 0;
-    }
-}
-fn weights<const N: usize>(index: usize) -> [Ramp; N] {
-    std::array::from_fn(|i| Ramp::new(f64::from(i == index)))
-}
 use daw_lfo::waveform as wave;
 
 #[derive(Clone)]
@@ -81,7 +47,7 @@ impl AutoFilter {
             lfo_mix: Ramp::new(f64::from(settings.lfo_enabled)),
             sync_phase: Ramp::new(f64::from(settings.sync_phase_degrees) / 360.0),
             stereo_phase: Ramp::new(f64::from(settings.stereo_phase_degrees) / 360.0),
-            waves: weights(settings.wave.index()),
+            waves: Ramp::weights(settings.wave.index()),
             rate_mode: settings.rate_mode,
             rate_hz: settings.rate_hz,
             note_beats: settings.note_rate.beats(),
@@ -193,17 +159,17 @@ impl AutoFilter {
         let [strength, sync, stereo] = self
             .lfo_offsets
             .process([offsets[4], offsets[5], offsets[6]]);
-        let strength = (self.depth.next() + strength).clamp(0.0, 6.0);
-        let sync = (self.sync_phase.next() + sync / 360.0).clamp(-0.5, 0.5);
-        let stereo = (self.stereo_phase.next() + stereo / 360.0).clamp(-0.5, 0.5);
+        let strength = (self.depth.next_value() + strength).clamp(0.0, 6.0);
+        let sync = (self.sync_phase.next_value() + sync / 360.0).clamp(-0.5, 0.5);
+        let stereo = (self.stereo_phase.next_value() + stereo / 360.0).clamp(-0.5, 0.5);
         self.effective_lfo = [
             strength as f32,
             (sync * 360.0) as f32,
             (stereo * 360.0) as f32,
         ];
         let phase = self.musical_phase(frame, tempo_bpm, musical);
-        let depth = strength * self.lfo_mix.next();
-        let waves: [f64; 5] = std::array::from_fn(|i| self.waves[i].next());
+        let depth = strength * self.lfo_mix.next_value();
+        let waves: [f64; 5] = std::array::from_fn(|i| self.waves[i].next_value());
         let mut cutoff_offsets = [0.0; 2];
         for (ch, cutoff_offset) in cutoff_offsets.iter_mut().enumerate() {
             let channel_phase = phase + sync + if ch == 1 { stereo } else { 0.0 };
@@ -251,9 +217,9 @@ impl EffectUnit for AutoFilter {
         }
         self.lfo_offsets.reset();
         self.effective_lfo = [
-            self.depth.target as f32,
-            (self.sync_phase.target * 360.0) as f32,
-            (self.stereo_phase.target * 360.0) as f32,
+            self.depth.target() as f32,
+            (self.sync_phase.target() * 360.0) as f32,
+            (self.stereo_phase.target() * 360.0) as f32,
         ];
         self.filter.reset();
         self.clock.reset();

@@ -139,13 +139,13 @@ impl EffectUnit for DriveV2 {
         }
         let p = self.core.effective_parameters();
         self.effective = [
-            db(self.input.value),
+            db(self.input.value()),
             p[1],
             p[2],
             p[3],
             p[4],
-            db(self.level.value),
-            self.blend.value,
+            db(self.level.value()),
+            self.blend.value(),
         ];
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
@@ -178,9 +178,9 @@ impl ModulationDestination for DriveV2 {
                 m.offset(ModulationParameter::DryWet),
             ])
             .map(|v| v as f32);
-        let input_gain = gain(self.input.value, offsets[0]);
-        let level = gain(self.level.value, offsets[1]);
-        let blend = (self.blend.value + offsets[2]).clamp(0.0, 1.0);
+        let input_gain = gain(self.input.value(), offsets[0]);
+        let level = gain(self.level.value(), offsets[1]);
+        let blend = (self.blend.value() + offsets[2]).clamp(0.0, 1.0);
         let dry = input.map(|v| v * input_gain);
         let wet = self.core.process_tone(
             dry,
@@ -191,8 +191,8 @@ impl ModulationDestination for DriveV2 {
                 m.offset(ModulationParameter::ColorStrength),
                 m.offset(ModulationParameter::ColorFrequency),
             ],
-            self.hard.value,
-            self.tube.value,
+            self.hard.value(),
+            self.tube.value(),
         );
         let processed = self.core.effective_parameters();
         self.effective = [
@@ -211,7 +211,7 @@ impl ModulationDestination for DriveV2 {
             } else {
                 mix(dry[i], wet[i], blend) * level
             };
-            mix(input[i], mixed, self.bypass.value)
+            mix(input[i], mixed, self.bypass.value())
         });
         self.monitor.sample_output(output);
         output

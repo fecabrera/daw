@@ -32,13 +32,16 @@ pub fn render(
     model
         .meter_reset
         .fetch_or(b.actions, std::sync::atomic::Ordering::Release);
+    let mut after = None;
     Bounds {
         sections: b.sections,
         controls: std::array::from_fn(|i| {
             control_capture::at(&c, b.controls[i]).map(|mut r| {
                 if before.get(P::ALL[i + 1])
-                    != daw_drive_plugin::PluginState::from_settings(s)
-                        .unwrap()
+                    != after
+                        .get_or_insert_with(|| {
+                            daw_drive_plugin::PluginState::from_settings(s).unwrap()
+                        })
                         .get(P::ALL[i + 1])
                 {
                     r.mark_changed();

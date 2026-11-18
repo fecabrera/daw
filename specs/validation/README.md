@@ -17,6 +17,33 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Shared code from the duplication audit — 2026-11-18
+
+Implemented findings F01–F27 from the independent duplication audit. The
+changes share code for clip geometry and retiming, peak preparation, live
+rendering and meter bindings, DSP kernels, plugin state and configuration,
+test fixtures, and package tools.
+
+- Formatting, strict workspace Clippy, and `git diff --check` passed.
+- `cargo test --workspace --locked --offline` passed on macOS with 3,640
+  tests passed and 22 ignored.
+- `cargo test --workspace --release --locked --offline` passed on macOS with
+  3,640 tests passed and 22 ignored.
+- The CLI built with `cargo build --locked --offline -p daw-cli` and passed
+  `python3 tools/check_cli.py`.
+- The Python tool suite and the shared Drive checker test passed. The
+  Windows PowerShell packaging test was skipped on macOS. The macOS notice
+  staging comparison matched all 292 files byte for byte.
+- The Phase 0 and Phase 4 macOS hosts compiled with the pinned CLAP and VST3
+  SDKs. The Phase 0 ABI probes ran for both formats. The Phase 4 GUI test
+  could not obtain foreground focus in this session.
+- Drive CLAP and VST3 passed loaded instrumented and regular artifact parity
+  checks with zero callback allocations or deallocations. Each passed all
+  eight callback timing cases when run without concurrent builds. The
+  pinned VST3 validator passed all 47 checks. The pinned CLAP
+  validator returned 32 passes, 11 skips, and the expected rejection at
+  8 kHz, outside the supported sample-rate set.
+
 ## EQ drag direction and previews — 2026-11-18
 
 Both EQ graphs share the Envelope and tempo point axis lock for Frequency

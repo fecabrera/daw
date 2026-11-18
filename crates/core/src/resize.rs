@@ -4,6 +4,15 @@ use std::collections::HashSet;
 impl Clip {
     /// Remove a covered range, retaining both sides when the coverage is internal.
     pub(crate) fn uncovered_ranges(&self, start: u64, end: u64) -> Vec<Self> {
+        self.uncovered_with(start, end, |start, end| self.retained_range(start, end))
+    }
+
+    pub(crate) fn uncovered_with(
+        &self,
+        start: u64,
+        end: u64,
+        retain: impl Fn(u64, u64) -> Self,
+    ) -> Vec<Self> {
         if self.end() <= start || self.start_frame >= end {
             return vec![self.clone()];
         }
@@ -11,7 +20,7 @@ impl Clip {
             .into_iter()
             .enumerate()
             .map(|(index, (start, end))| {
-                let mut piece = self.retained_range(start, end);
+                let mut piece = retain(start, end);
                 if index > 0 {
                     piece.id = Id::new_v4();
                 }

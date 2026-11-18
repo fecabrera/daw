@@ -153,39 +153,16 @@ impl PluginState {
     /// is rejected. Each format adapter supplies a reader bounded to its payload.
     pub fn read_from(reader: &mut impl Read) -> Result<Self, StateError> {
         let mut buffer = [0; MAX_STATE_BYTES + 1];
-        let mut length = 0;
-        for _ in 0..2 * (MAX_STATE_BYTES + 1) {
-            match reader.read(&mut buffer[length..]) {
-                Ok(0) => return Self::decode(&buffer[..length]),
-                Ok(count) => {
-                    length += count;
-                    if length > MAX_STATE_BYTES {
-                        return Err(StateError::InvalidEnvelope);
-                    }
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Err(StateError::InvalidEnvelope)
+        let length = daw_plugin_support::state_io::read_payload(reader, &mut buffer)?
+            .ok_or(StateError::InvalidEnvelope)?;
+        Self::decode(&buffer[..length])
     }
     /// Complete short writes with bounded retries; zero writes are failures.
     pub fn write_to(&self, writer: &mut impl Write) -> Result<(), StateError> {
-        let bytes = self.encode();
-        let mut offset = 0;
-        for _ in 0..2 * MAX_STATE_BYTES {
-            match writer.write(&bytes[offset..]) {
-                Ok(0) => return Err(std::io::Error::from(std::io::ErrorKind::WriteZero).into()),
-                Ok(count) => {
-                    offset += count;
-                    if offset == MAX_STATE_BYTES {
-                        return Ok(());
-                    }
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-                Err(error) => return Err(error.into()),
-            }
+        if daw_plugin_support::state_io::write_payload(writer, &self.encode())? {
+            Ok(())
+        } else {
+            Err(StateError::InvalidEnvelope)
         }
-        Err(StateError::InvalidEnvelope)
     }
 }

@@ -1,37 +1,6 @@
 //! A per-voice amplitude stage. Hosts supply a resolved envelope factor and note gate.
+use daw_unit_core::ModulationRamp as Ramp;
 use daw_unit_core::{AmplitudeSettings, ProcessingContext};
-#[derive(Clone, Copy)]
-struct Ramp {
-    value: f32,
-    target: f32,
-    left: u32,
-}
-impl Ramp {
-    fn new(value: f32) -> Self {
-        Self {
-            value,
-            target: value,
-            left: 0,
-        }
-    }
-    fn set(&mut self, value: f32, frames: u32) {
-        if self.target != value {
-            self.target = value;
-            self.left = frames;
-        }
-    }
-    fn next(&mut self) -> f32 {
-        if self.left > 0 {
-            self.value += (self.target - self.value) / self.left as f32;
-            self.left -= 1;
-        }
-        self.value
-    }
-    fn reset(&mut self) {
-        self.value = self.target;
-        self.left = 0;
-    }
-}
 #[derive(Clone)]
 pub struct Amplitude {
     level: Ramp,
@@ -66,8 +35,8 @@ impl Amplitude {
             .set(f32::from(settings.present && settings.enabled), self.frames);
     }
     pub fn retarget(&mut self, next: &Self) {
-        self.level.set(next.level.target, self.frames);
-        self.mix.set(next.mix.target, self.frames);
+        self.level.set(next.level.target(), self.frames);
+        self.mix.set(next.mix.target(), self.frames);
     }
     pub fn reset(&mut self) {
         self.level.reset();
@@ -79,8 +48,8 @@ impl Amplitude {
         self.effective_gain
     }
     pub fn process(&mut self, input: f32, factor: f32, gate: f32) -> f32 {
-        let level = self.level.next();
-        let mix = self.mix.next();
+        let level = self.level.next_value();
+        let mix = self.mix.next_value();
         let shape = if mix >= 1.0 {
             factor * level
         } else if mix <= 0.0 {

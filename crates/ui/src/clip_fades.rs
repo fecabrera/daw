@@ -2,6 +2,15 @@
 use super::*;
 use daw_core::ClipFade;
 
+// The side is the fade owner's edge, which faces into the host clip.
+fn adjoins(host: &Clip, owner: &Clip, left: bool) -> bool {
+    if left {
+        owner.start_frame == host.end()
+    } else {
+        owner.end() == host.start_frame
+    }
+}
+
 pub(super) const WAVEFORM_TOP: f32 = 30.0;
 
 fn selected_fade(fades: &mut daw_core::ClipFades, left: bool) -> &mut daw_core::ClipFade {
@@ -360,13 +369,7 @@ impl DawUi {
             let same_track = self.session.project.tracks.iter().any(|t| {
                 t.clips.iter().any(|c| c.id == clip.id) && t.clips.iter().any(|c| c.id == other.id)
             });
-            if !same_track
-                || !(if left {
-                    other.start_frame == clip.end()
-                } else {
-                    other.end() == clip.start_frame
-                })
-            {
+            if !same_track || !adjoins(clip, other, left) {
                 continue;
             }
             let mut next = self.fade_drag_value_for(drag, other, ctx);
@@ -410,12 +413,8 @@ impl DawUi {
         }
         let fades = self.visible_fades(clip, painter.ctx());
         let rate = self.session.project.sample_rate_hz;
-        for (left, mut fade) in [(true, fades.fade_in), (false, fades.fade_out)] {
-            fade.length_frames = fade.length_frames.min(self.session.project.clip_fade_limit(
-                clip.id,
-                left,
-                fade.crossfade,
-            ));
+        for (left, fade) in [(true, fades.fade_in), (false, fades.fade_out)] {
+            let fade = self.bounded_fade(clip.id, left, fade);
             let (endpoint, _) = points(block, fade, left, self.view_zoom(), rate);
             if fade.length_frames > 0 {
                 let curve = curve_points(block, fade, left, endpoint);
@@ -465,6 +464,35 @@ impl DawUi {
             }
         }
     }
+    fn bounded_fade(&self, owner: Id, left: bool, mut fade: ClipFade) -> ClipFade {
+        fade.length_frames = fade.length_frames.min(self.session.project.clip_fade_limit(
+            owner,
+            left,
+            fade.crossfade,
+        ));
+        fade
+    }
+
+    fn visible_crossfade(&self, owner: &Clip, left: bool, ctx: &egui::Context) -> Option<ClipFade> {
+        let mut fades = self.visible_fades(owner, ctx);
+        let fade = *selected_fade(&mut fades, left);
+        fade.crossfade
+            .then(|| self.bounded_fade(owner.id, left, fade))
+    }
+
+    fn clip_rect_relative_to(&self, block: Rect, origin: &Clip, target: &Clip) -> Rect {
+        let delta = (target.start_frame as f64 - origin.start_frame as f64)
+            / f64::from(self.session.project.sample_rate_hz)
+            * f64::from(self.view_zoom());
+        Rect::from_min_size(
+            block.min + Vec2::new(delta as f32, 0.0),
+            Vec2::new(
+                self.session.project.seconds(target.length_frames) as f32 * self.view_zoom(),
+                block.height(),
+            ),
+        )
+    }
+
     /// Controls use the lane clip, not the clip body, and are drawn last so
     /// their squares/circles remain whole at shared boundaries in either order.
     pub(super) fn crossfade_click_owner(
@@ -485,20 +513,14 @@ impl DawUi {
             .iter()
             .find(|track| track.id == track_id)?;
         for other in &track.clips {
-            let fades = self.visible_fades(other, ctx);
-            for (left, fade) in [(true, fades.fade_in), (false, fades.fade_out)] {
-                if !fade.crossfade
-                    || !(if left {
-                        other.start_frame == clip.end()
-                    } else {
-                        other.end() == clip.start_frame
-                    })
-                {
+            for left in [true, false] {
+                if !adjoins(clip, other, left) {
                     continue;
                 }
-                let length = fade
-                    .length_frames
-                    .min(self.session.project.clip_fade_limit(other.id, left, true));
+                let Some(fade) = self.visible_crossfade(other, left, ctx) else {
+                    continue;
+                };
+                let length = fade.length_frames;
                 let width = self.session.project.seconds(length) as f32 * self.view_zoom();
                 if length > 0
                     && (if left {
@@ -551,12 +573,8 @@ impl DawUi {
             return;
         }
         let fades = self.visible_fades(clip, painter.ctx());
-        for (left, mut fade) in [(true, fades.fade_in), (false, fades.fade_out)] {
-            fade.length_frames = fade.length_frames.min(self.session.project.clip_fade_limit(
-                clip.id,
-                left,
-                fade.crossfade,
-            ));
+        for (left, fade) in [(true, fades.fade_in), (false, fades.fade_out)] {
+            let fade = self.bounded_fade(clip.id, left, fade);
             let (handle, midpoint) = points(
                 block,
                 fade,
@@ -588,21 +606,10 @@ impl DawUi {
         let painter =
             painter.with_clip_rect(block.expand(HANDLE_RADIUS).intersect(painter.clip_rect()));
         for other in &track.clips {
-            if other.id == clip.id
-                || !(other.end() == clip.start_frame || other.start_frame == clip.end())
-            {
+            if other.id == clip.id || !(adjoins(clip, other, false) || adjoins(clip, other, true)) {
                 continue;
             }
-            let delta = (other.start_frame as f64 - clip.start_frame as f64)
-                / f64::from(self.session.project.sample_rate_hz)
-                * f64::from(self.view_zoom());
-            let rect = Rect::from_min_size(
-                block.min + Vec2::new(delta as f32, 0.0),
-                Vec2::new(
-                    self.session.project.seconds(other.length_frames) as f32 * self.view_zoom(),
-                    block.height(),
-                ),
-            );
+            let rect = self.clip_rect_relative_to(block, clip, other);
             self.paint_clip_fade_controls(&painter, rect, other);
         }
     }
@@ -624,24 +631,19 @@ impl DawUi {
             return block;
         };
         let width = |owner: &Clip, left: bool| {
-            let mut fades = self.visible_fades(owner, ctx);
-            let fade = selected_fade(&mut fades, left);
-            if !fade.crossfade {
-                return 0.0;
-            }
-            let frames = fade
-                .length_frames
-                .min(self.session.project.clip_fade_limit(owner.id, left, true));
-            self.session.project.seconds(frames) as f32 * self.view_zoom()
+            self.visible_crossfade(owner, left, ctx)
+                .map_or(0.0, |fade| {
+                    self.session.project.seconds(fade.length_frames) as f32 * self.view_zoom()
+                })
         };
         let mut rect = block;
         rect.min.x -= width(clip, true);
         rect.max.x += width(clip, false);
         for other in &track.clips {
-            if other.end() == clip.start_frame {
+            if adjoins(clip, other, false) {
                 rect.min.x += width(other, false);
             }
-            if other.start_frame == clip.end() {
+            if adjoins(clip, other, true) {
                 rect.max.x -= width(other, true);
             }
         }
@@ -665,19 +667,10 @@ impl DawUi {
         };
         for other in &track.clips {
             let fades = self.visible_fades(other, painter.ctx());
-            if (other.end() == clip.start_frame && fades.fade_out.crossfade)
-                || (other.start_frame == clip.end() && fades.fade_in.crossfade)
+            if (adjoins(clip, other, false) && fades.fade_out.crossfade)
+                || (adjoins(clip, other, true) && fades.fade_in.crossfade)
             {
-                let delta = (other.start_frame as f64 - clip.start_frame as f64)
-                    / f64::from(self.session.project.sample_rate_hz)
-                    * f64::from(self.view_zoom());
-                let rect = Rect::from_min_size(
-                    block.min + Vec2::new(delta as f32, 0.0),
-                    Vec2::new(
-                        self.session.project.seconds(other.length_frames) as f32 * self.view_zoom(),
-                        block.height(),
-                    ),
-                );
+                let rect = self.clip_rect_relative_to(block, clip, other);
                 let painter = painter.with_clip_rect(painter.clip_rect().intersect(block));
                 let colors = theme::clip_colors(track.color, other.color);
                 let colors = if other.muted {
@@ -708,11 +701,7 @@ impl DawUi {
     ) -> impl Fn(u64) -> f32 + use<> {
         let mut fades = self.visible_fades(clip, ctx);
         for (left, fade) in [(true, &mut fades.fade_in), (false, &mut fades.fade_out)] {
-            fade.length_frames = fade.length_frames.min(self.session.project.clip_fade_limit(
-                clip.id,
-                left,
-                fade.crossfade,
-            ));
+            *fade = self.bounded_fade(clip.id, left, *fade);
         }
         let mut neighbors = [None; 2];
         if let Some(track) = self
@@ -723,21 +712,13 @@ impl DawUi {
             .find(|t| t.clips.iter().any(|c| c.id == clip.id))
         {
             for other in &track.clips {
-                let other_fades = self.visible_fades(other, ctx);
-                for (left, mut fade) in [(true, other_fades.fade_in), (false, other_fades.fade_out)]
-                {
-                    if !fade.crossfade
-                        || !(if left {
-                            other.start_frame == clip.end()
-                        } else {
-                            other.end() == clip.start_frame
-                        })
-                    {
+                for left in [true, false] {
+                    if !adjoins(clip, other, left) {
                         continue;
                     }
-                    fade.length_frames = fade
-                        .length_frames
-                        .min(self.session.project.clip_fade_limit(other.id, left, true));
+                    let Some(fade) = self.visible_crossfade(other, left, ctx) else {
+                        continue;
+                    };
                     if fade.length_frames > 0 {
                         neighbors[usize::from(left)] = Some((left, fade));
                     }
@@ -797,20 +778,14 @@ impl DawUi {
             return;
         };
         for other in &track.clips {
-            let fades = self.visible_fades(other, painter.ctx());
-            for (left, fade) in [(true, fades.fade_in), (false, fades.fade_out)] {
-                if !fade.crossfade
-                    || !(if left {
-                        other.start_frame == clip.end()
-                    } else {
-                        other.end() == clip.start_frame
-                    })
-                {
+            for left in [true, false] {
+                if !adjoins(clip, other, left) {
                     continue;
                 }
-                let length = fade
-                    .length_frames
-                    .min(self.session.project.clip_fade_limit(other.id, left, true));
+                let Some(fade) = self.visible_crossfade(other, left, painter.ctx()) else {
+                    continue;
+                };
+                let length = fade.length_frames;
                 if length == 0 {
                     continue;
                 }
@@ -818,17 +793,7 @@ impl DawUi {
                     continue;
                 };
                 let visual = &source.clip;
-                let delta = (visual.start_frame as f64 - clip.start_frame as f64)
-                    / f64::from(self.session.project.sample_rate_hz)
-                    * f64::from(self.view_zoom());
-                let rect = Rect::from_min_size(
-                    block.min + Vec2::new(delta as f32, 0.0),
-                    Vec2::new(
-                        self.session.project.seconds(visual.length_frames) as f32
-                            * self.view_zoom(),
-                        block.height(),
-                    ),
-                );
+                let rect = self.clip_rect_relative_to(block, clip, visual);
                 let body = Rect::from_min_max(
                     Pos2::new(rect.left(), (rect.top() + WAVEFORM_TOP).min(rect.bottom())),
                     rect.max,

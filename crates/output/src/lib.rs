@@ -588,18 +588,8 @@ pub struct AudioOutput {
     published_plans: std::collections::VecDeque<PublishedPlan>,
     pub status: Arc<Status>,
     pub description: String,
-    track_meters: HashMap<Id, Arc<StereoMeter>>,
-    layer_meters: layer_meters::Layers,
-    effect_meters: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
-    exciter_solos: effect_audition::Solos,
-    output_meters: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
-    loudness_meters: HashMap<Id, Arc<daw_unit_core::LoudnessMeter>>,
-    source_meters: source_meters::Sources,
-    band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
-    spectra: effect_spectrum::Spectra,
+    bindings: preparation::Bindings,
     spectrum_cache: std::cell::RefCell<HashMap<Id, daw_unit_core::SpectrumCache>>,
-    modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
-    live_pitches: daw_engine::LiveMidiPitches,
 }
 /// Device-independent, worker-owned seek preparation. It can start after project
 /// load and transfer to device output without discarding completed checkpoints.
@@ -689,19 +679,7 @@ impl AudioOutput {
             None => AudioPreparation::new(plan.clone())?,
         };
         let status = preparation.status.clone();
-        let preparation::Bindings {
-            tracks: meters,
-            layers,
-            effects: reductions,
-            exciter_solos,
-            outputs,
-            loudness,
-            sources,
-            bands: changes,
-            spectra,
-            modulation,
-            live_pitches,
-        } = preparation::Bindings::prepare(&plan, &Default::default());
+        let bindings = preparation::Bindings::prepare(&plan, &Default::default());
         // Retried stream construction happens before playback; each attempt receives fresh queues.
         let build = |cfg: &cpal::StreamConfig| -> Result<BuiltStream, String> {
             let (commands, consumer) = RingBuffer::new(32);
@@ -709,16 +687,7 @@ impl AudioOutput {
             let mut state = Callback::initial(&plan, consumer, retire, status.clone(), rate)?;
             let audition = state.audition_sender.take().unwrap();
             let effect_retired = state.effect_receiver.take().unwrap();
-            effect_audition::bind(&mut state.renderer, &exciter_solos);
-            bind_effect_meters(&mut state.renderer, &reductions);
-            bind_band_meters(&mut state.renderer, &changes);
-            effect_spectrum::bind(&mut state.renderer, &spectra);
-            bind_output_meters(&mut state.renderer, &outputs);
-            bind_loudness_meters(&mut state.renderer, &loudness);
-            source_meters::bind(&mut state.renderer, &sources);
-            state.renderer.layer_meters = layers.clone();
-            state.renderer.bind_modulation(&modulation);
-            state.renderer.bind_live_midi_pitches(&live_pitches);
+            bindings.attach(&mut state.renderer);
             macro_rules! stream {
                 ($t:ty) => {
                     build_stream::<$t>(&device, cfg, state, status.clone())
@@ -795,18 +764,8 @@ impl AudioOutput {
             published_plans: Default::default(),
             status,
             description,
-            track_meters: meters,
-            layer_meters: layers,
-            effect_meters: reductions,
-            exciter_solos,
-            band_meters: changes,
-            spectra,
+            bindings,
             spectrum_cache: Default::default(),
-            output_meters: outputs,
-            loudness_meters: loudness,
-            source_meters: sources,
-            modulation_meters: modulation,
-            live_pitches,
         };
         output.prepare(Some(initial_transport));
         Ok(output)
@@ -826,25 +785,10 @@ impl AudioOutput {
 
     /// UI state only; changes never enter the project, history or export renderer.
     pub fn set_exciter_solos(&self, selected: &std::collections::HashSet<(Id, Id)>) {
-        for (key, flag) in &self.exciter_solos {
+        for (key, flag) in &self.bindings.exciter_solos {
             if let ModulationTarget::EffectBand { effect, band } = *key {
                 flag.store(selected.contains(&(effect, band)), Ordering::Relaxed);
             }
-        }
-    }
-    fn bindings(&self) -> preparation::Bindings {
-        preparation::Bindings {
-            tracks: self.track_meters.clone(),
-            layers: self.layer_meters.clone(),
-            effects: self.effect_meters.clone(),
-            exciter_solos: self.exciter_solos.clone(),
-            bands: self.band_meters.clone(),
-            spectra: self.spectra.clone(),
-            outputs: self.output_meters.clone(),
-            loudness: self.loudness_meters.clone(),
-            sources: self.source_meters.clone(),
-            modulation: self.modulation_meters.clone(),
-            live_pitches: self.live_pitches.clone(),
         }
     }
     /// Coalesced live input: no command allocation, queue growth, preparation or voice restart.
@@ -856,12 +800,16 @@ impl AudioOutput {
         pitch: u8,
         active: bool,
     ) -> bool {
-        self.live_pitches.set(track, clip, note, pitch, active)
+        self.bindings
+            .live_pitches
+            .set(track, clip, note, pitch, active)
     }
     /// Roll back a released preview against the complete playback schedule.
     /// Newer active drags remain in control of their mailboxes.
     pub fn restore_released_midi_pitch(&self, track: Id, clip: Id, note: Id) {
-        self.live_pitches.restore_released(track, clip, note);
+        self.bindings
+            .live_pitches
+            .restore_released(track, clip, note);
     }
     pub fn configure_cache(&self, profile: daw_engine::CacheProfile, editing: bool) {
         self.preparation.configure_cache(profile, editing);
@@ -921,9 +869,9 @@ impl AudioOutput {
             self.resume_needs_preparation = true;
         }
         self.preparation_failed = false;
-        self.prepare_revision = self
-            .preparation
-            .submit(self.plan.clone(), self.bindings(), state);
+        self.prepare_revision =
+            self.preparation
+                .submit(self.plan.clone(), self.bindings.clone(), state);
         self.status
             .requested_revision
             .store(self.prepare_revision, Ordering::Release);
@@ -992,7 +940,7 @@ impl AudioOutput {
             base_publication: self.active_publication,
             previous,
             desired: self.plan.clone(),
-            bindings: self.bindings(),
+            bindings: self.bindings.clone(),
             partial_only: false,
         });
     }
@@ -1005,7 +953,7 @@ impl AudioOutput {
                 base_publication: self.active_publication,
                 previous,
                 desired: self.plan.clone(),
-                bindings: self.bindings(),
+                bindings: self.bindings.clone(),
                 partial_only,
             });
         }
@@ -1020,15 +968,15 @@ impl AudioOutput {
         self.controls.set_waker(move || controls_wake());
     }
     pub fn track_meter(&self, id: Id) -> Option<&StereoMeter> {
-        self.track_meters.get(&id).map(AsRef::as_ref)
+        self.bindings.tracks.get(&id).map(AsRef::as_ref)
     }
     /// Post-fader instrument bus monitor, scoped by track and layer/Output identity.
     pub fn layer_meter(&self, track: Id, layer: Id) -> Option<&StereoMeter> {
-        self.layer_meters.get(&(track, layer)).map(AsRef::as_ref)
+        self.bindings.layers.get(&(track, layer)).map(AsRef::as_ref)
     }
     /// Display-only block snapshots. No synthetic animation when playback is stopped.
     pub fn effect_spectrum(&self, effect: Id) -> Option<daw_unit_core::SpectrumReading> {
-        let meter = self.spectra.get(&effect)?;
+        let meter = self.bindings.spectra.get(&effect)?;
         let mut caches = self.spectrum_cache.borrow_mut();
         let cache = caches.entry(effect).or_default();
         if !self.status.playing.load(Ordering::Relaxed) {
@@ -1054,7 +1002,7 @@ impl AudioOutput {
         if !self.status.playing.load(Ordering::Relaxed) {
             return None;
         }
-        let meter = self.modulation_meters.get(&key)?;
+        let meter = self.bindings.modulation.get(&key)?;
         let values = std::array::from_fn(|i| f32::from_bits(meter[i].load(Ordering::Relaxed)));
         values[0].is_finite().then_some(values)
     }
@@ -1062,18 +1010,20 @@ impl AudioOutput {
         if !self.status.playing.load(Ordering::Relaxed) {
             return 0.0;
         }
-        self.effect_meters
+        self.bindings
+            .effects
             .get(&id)
             .map_or(0.0, |meter| meter.reading())
     }
     /// Held readings remain available while paused/stopped and while panels are hidden.
     pub fn gain_reduction_meter(&self, id: Id) -> Option<&daw_unit_core::PeakMeter> {
-        self.effect_meters.get(&id).map(AsRef::as_ref)
+        self.bindings.effects.get(&id).map(AsRef::as_ref)
     }
     /// Detector input envelope for the compressor transfer-curve marker.
     /// Audio-clocked sweep remains available while paused or the panel is hidden.
     pub fn compressor_history(&self, id: Id) -> Option<daw_unit_core::LevelHistoryReading> {
-        self.band_meters
+        self.bindings
+            .bands
             .get(&ModulationTarget::Effect(id))?
             .history()?
             .reading()
@@ -1086,7 +1036,8 @@ impl AudioOutput {
     }
     /// Independent OTT band holds, also available while paused/stopped.
     pub fn ott_gain_change_meter(&self, id: Id) -> Option<&daw_unit_core::BandMeter<3>> {
-        self.band_meters
+        self.bindings
+            .bands
             .get(&ModulationTarget::Effect(id))
             .map(AsRef::as_ref)
     }
@@ -1095,7 +1046,8 @@ impl AudioOutput {
         if !self.status.playing.load(Ordering::Relaxed) {
             return 0.0;
         }
-        self.source_meters
+        self.bindings
+            .sources
             .get(&target)
             .map_or(0.0, |m| m.readings()[0])
     }
@@ -1103,13 +1055,16 @@ impl AudioOutput {
         &self,
         target: daw_engine::SourceOutputTarget,
     ) -> Option<&daw_unit_core::PeakHold> {
-        self.source_meters.get(&target).map(|m| &m.boost_peaks()[0])
+        self.bindings
+            .sources
+            .get(&target)
+            .map(|m| &m.boost_peaks()[0])
     }
     pub fn source_output_meter(
         &self,
         target: daw_engine::SourceOutputTarget,
     ) -> Option<&daw_unit_core::BandMeter<3>> {
-        self.source_meters.get(&target).map(AsRef::as_ref)
+        self.bindings.sources.get(&target).map(AsRef::as_ref)
     }
     pub fn source_output_levels(&self, target: daw_engine::SourceOutputTarget) -> [f32; 2] {
         if !self.status.playing.load(Ordering::Relaxed) {
@@ -1121,9 +1076,10 @@ impl AudioOutput {
         })
     }
     pub fn effect_output_meter(&self, id: Id) -> Option<&daw_unit_core::BandMeter<3>> {
-        self.output_meters
+        self.bindings
+            .outputs
             .get(&id)
-            .or_else(|| self.band_meters.get(&ModulationTarget::Effect(id)))
+            .or_else(|| self.bindings.bands.get(&ModulationTarget::Effect(id)))
             .map(AsRef::as_ref)
     }
     pub fn effect_output_levels(&self, id: Id) -> [f32; 2] {
@@ -1137,12 +1093,13 @@ impl AudioOutput {
     }
     /// Held effect output peak, retained while paused/stopped and resettable by the UI.
     pub fn loudness_meter(&self, id: Id) -> Option<&daw_unit_core::LoudnessMeter> {
-        self.loudness_meters.get(&id).map(AsRef::as_ref)
+        self.bindings.loudness.get(&id).map(AsRef::as_ref)
     }
     pub fn effect_output_peak(&self, id: Id) -> Option<&daw_unit_core::PeakHold> {
-        self.output_meters
+        self.bindings
+            .outputs
             .get(&id)
-            .or_else(|| self.band_meters.get(&ModulationTarget::Effect(id)))
+            .or_else(|| self.bindings.bands.get(&ModulationTarget::Effect(id)))
             .map(|m| &m.boost_peaks()[0])
     }
     /// Current linear output level; stopped or absent outputs show silence.
@@ -1150,7 +1107,8 @@ impl AudioOutput {
         if !self.status.playing.load(Ordering::Relaxed) {
             return 0.0;
         }
-        self.output_meters
+        self.bindings
+            .outputs
             .get(&id)
             .map_or_else(|| self.band_monitor_values(id)[0], |m| m.readings()[0])
     }
@@ -1162,7 +1120,8 @@ impl AudioOutput {
         if !self.status.playing.load(Ordering::Relaxed) {
             return 0.0;
         }
-        self.band_meters
+        self.bindings
+            .bands
             .get(&ModulationTarget::EffectBand { effect, band })
             .map_or(0.0, |m| m.readings()[0])
     }
@@ -1172,7 +1131,8 @@ impl AudioOutput {
         band: Id,
     ) -> (f32, Option<daw_unit_core::LevelHistoryReading>) {
         let curve = self
-            .band_meters
+            .bindings
+            .bands
             .get(&ModulationTarget::EffectBand { effect, band })
             .and_then(|m| m.curve());
         let level = if self.status.playing.load(Ordering::Relaxed) {
@@ -1190,12 +1150,14 @@ impl AudioOutput {
         effect: Id,
         band: Id,
     ) -> Option<&daw_unit_core::PeakHold> {
-        self.band_meters
+        self.bindings
+            .bands
             .get(&ModulationTarget::EffectBand { effect, band })
             .map(|m| &m.boost_peaks()[0])
     }
     pub fn individual_band_peak(&self, effect: Id, band: Id) -> Option<&daw_unit_core::PeakHold> {
-        self.band_meters
+        self.bindings
+            .bands
             .get(&ModulationTarget::EffectBand { effect, band })
             .and_then(|m| m.curve())
             .and_then(|m| m.curve_reduction())
@@ -1205,7 +1167,8 @@ impl AudioOutput {
         if !self.status.playing.load(Ordering::Relaxed) {
             return 0.0;
         }
-        self.band_meters
+        self.bindings
+            .bands
             .get(&ModulationTarget::EffectBand { effect, band })
             .and_then(|m| m.curve())
             .and_then(|m| m.curve_reduction())
@@ -1215,7 +1178,8 @@ impl AudioOutput {
         if !self.status.playing.load(Ordering::Relaxed) {
             return [0.0; 3];
         }
-        self.band_meters
+        self.bindings
+            .bands
             .get(&ModulationTarget::Effect(id))
             .map_or([0.0; 3], |meter| meter.readings())
     }
@@ -1319,20 +1283,10 @@ impl AudioOutput {
             && self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire)
     }
     fn publish_bindings(&mut self, ready: preparation::Bindings) {
-        self.track_meters = ready.tracks;
-        self.layer_meters = ready.layers;
-        self.effect_meters = ready.effects;
-        self.exciter_solos = ready.exciter_solos;
-        self.band_meters = ready.bands;
-        self.spectra = ready.spectra;
+        self.bindings = ready;
         self.spectrum_cache
             .borrow_mut()
-            .retain(|id, _| self.spectra.contains_key(id));
-        self.output_meters = ready.outputs;
-        self.loudness_meters = ready.loudness;
-        self.source_meters = ready.sources;
-        self.modulation_meters = ready.modulation;
-        self.live_pitches = ready.live_pitches;
+            .retain(|id, _| self.bindings.spectra.contains_key(id));
     }
     fn acknowledge_processing(&mut self) {
         let publication = self.status.processing_publication.load(Ordering::Acquire);
@@ -1464,7 +1418,7 @@ impl AudioOutput {
                     preparation::Ready {
                         revision: old.revision,
                         renderer: old,
-                        bindings: self.bindings(),
+                        bindings: self.bindings.clone(),
                     },
                     transport,
                 );

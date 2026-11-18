@@ -2728,10 +2728,42 @@ fn silent_oscillator_survives_save_reopen_playback_and_float_export() {
     );
 }
 
+fn assert_float_export_parity(
+    session: &Session,
+    output: &std::path::Path,
+) -> (Vec<[f32; 2]>, Vec<f32>) {
+    use daw_media::{ExportSettings, WavCodec};
+
+    session
+        .export_with_settings(
+            output,
+            false,
+            ExportSettings {
+                wav_codec: WavCodec::Float32,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let exported: Vec<f32> = hound::WavReader::open(output)
+        .unwrap()
+        .samples::<f32>()
+        .map(Result::unwrap)
+        .collect();
+    let mut rendered = vec![[0.0; 2]; session.project.end() as usize];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut rendered);
+    assert!(
+        exported
+            .iter()
+            .copied()
+            .eq(rendered.iter().flatten().copied()),
+        "export must match rendered PCM"
+    );
+    (rendered, exported)
+}
+
 #[test]
 fn eq_save_reopen_save_as_rate_change_and_float_export_use_the_same_settings_and_audio() {
     use daw_core::{EffectInstance, EffectSettings};
-    use daw_media::{ExportSettings, WavCodec};
     let fixture = Fixture::new();
     let source = fixture.wav("eq-source.wav", 48000, 2, 32, true);
     let bytes = fs::read(&source).unwrap();
@@ -2766,27 +2798,7 @@ fn eq_save_reopen_save_as_rate_change_and_float_export_use_the_same_settings_and
     assert_eq!(changed.project.tracks[0].effects, vec![eq]);
     assert!(changed.project.tracks[0].effects_compact);
     let output = fixture.0.join("equalized.wav");
-    loaded
-        .export_with_settings(
-            &output,
-            false,
-            ExportSettings {
-                wav_codec: WavCodec::Float32,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    let exported: Vec<f32> = hound::WavReader::open(output)
-        .unwrap()
-        .samples::<f32>()
-        .map(Result::unwrap)
-        .collect();
-    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
-    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
-    assert_eq!(
-        exported,
-        rendered.iter().flatten().copied().collect::<Vec<_>>()
-    );
+    let (rendered, _) = assert_float_export_parity(&loaded, &output);
     let mut dry = loaded.clone();
     dry.project.tracks[0].effects.clear();
     let mut dry_audio = vec![[0.0; 2]; rendered.len()];
@@ -2798,7 +2810,6 @@ fn eq_save_reopen_save_as_rate_change_and_float_export_use_the_same_settings_and
 #[test]
 fn drive_save_reopen_save_as_rate_change_and_float_export_preserve_the_effect() {
     use daw_core::{DriveColorShape, EffectInstance, EffectSettings};
-    use daw_media::{ExportSettings, WavCodec};
     let fixture = Fixture::new();
     let source = fixture.wav("drive-source.wav", 48000, 2, 32, true);
     let bytes = fs::read(&source).unwrap();
@@ -2835,27 +2846,7 @@ fn drive_save_reopen_save_as_rate_change_and_float_export_preserve_the_effect() 
     let changed = loaded.with_audio_settings(96000, 128).unwrap();
     assert_eq!(changed.project.tracks[0].effects, vec![drive]);
     let output = fixture.0.join("driven.wav");
-    loaded
-        .export_with_settings(
-            &output,
-            false,
-            ExportSettings {
-                wav_codec: WavCodec::Float32,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    let exported: Vec<f32> = hound::WavReader::open(output)
-        .unwrap()
-        .samples::<f32>()
-        .map(Result::unwrap)
-        .collect();
-    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
-    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
-    assert_eq!(
-        exported,
-        rendered.iter().flatten().copied().collect::<Vec<_>>()
-    );
+    let (rendered, _) = assert_float_export_parity(&loaded, &output);
     let mut dry = loaded.clone();
     dry.project.tracks[0].effects.clear();
     let mut dry_audio = vec![[0.0; 2]; rendered.len()];
@@ -2872,7 +2863,6 @@ fn drive_save_reopen_save_as_rate_change_and_float_export_preserve_the_effect() 
 #[test]
 fn auto_filter_save_reopen_rate_change_and_float_export_preserve_the_effect() {
     use daw_core::{EffectInstance, EffectSettings, LfoRateMode, LfoWave, NoteRate};
-    use daw_media::{ExportSettings, WavCodec};
     let fixture = Fixture::new();
     let source = fixture.wav("auto-filter-source.wav", 48000, 2, 32, true);
     let bytes = fs::read(&source).unwrap();
@@ -2913,27 +2903,7 @@ fn auto_filter_save_reopen_rate_change_and_float_export_preserve_the_effect() {
     let changed = loaded.with_audio_settings(96000, 128).unwrap();
     assert_eq!(changed.project.tracks[0].effects, vec![drive]);
     let output = fixture.0.join("filtered.wav");
-    loaded
-        .export_with_settings(
-            &output,
-            false,
-            ExportSettings {
-                wav_codec: WavCodec::Float32,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    let exported: Vec<f32> = hound::WavReader::open(output)
-        .unwrap()
-        .samples::<f32>()
-        .map(Result::unwrap)
-        .collect();
-    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
-    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
-    assert_eq!(
-        exported,
-        rendered.iter().flatten().copied().collect::<Vec<_>>()
-    );
+    let (rendered, _) = assert_float_export_parity(&loaded, &output);
     let mut dry = loaded.clone();
     dry.project.tracks[0].effects.clear();
     let mut dry_audio = vec![[0.0; 2]; rendered.len()];
@@ -2950,7 +2920,6 @@ fn auto_filter_save_reopen_rate_change_and_float_export_preserve_the_effect() {
 #[test]
 fn compressor_save_open_save_as_rate_change_and_export_keep_settings_and_audio() {
     use daw_core::{CompressorDetection, EffectInstance, EffectSettings};
-    use daw_media::{ExportSettings, WavCodec};
     let fixture = Fixture::new();
     let source = fixture.wav("compressor-source.wav", 48000, 2, 32, true);
     let original = fs::read(&source).unwrap();
@@ -2987,27 +2956,7 @@ fn compressor_save_open_save_as_rate_change_and_export_keep_settings_and_audio()
     let changed = loaded.with_audio_settings(96000, 128).unwrap();
     assert_eq!(changed.project.tracks[0].effects, vec![effect]);
     let output = fixture.0.join("compressed.wav");
-    loaded
-        .export_with_settings(
-            &output,
-            false,
-            ExportSettings {
-                wav_codec: WavCodec::Float32,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    let exported: Vec<f32> = hound::WavReader::open(output)
-        .unwrap()
-        .samples::<f32>()
-        .map(Result::unwrap)
-        .collect();
-    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
-    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
-    assert_eq!(
-        exported,
-        rendered.iter().flatten().copied().collect::<Vec<_>>()
-    );
+    let (rendered, _) = assert_float_export_parity(&loaded, &output);
     let mut dry = loaded;
     dry.project.tracks[0].effects.clear();
     let mut dry_audio = vec![[0.0; 2]; rendered.len()];
@@ -3024,7 +2973,6 @@ fn compressor_save_open_save_as_rate_change_and_export_keep_settings_and_audio()
 #[test]
 fn ott_save_open_save_as_rate_change_and_export_keep_settings_and_audio() {
     use daw_core::{CompressorDetection, EffectInstance, EffectSettings};
-    use daw_media::{ExportSettings, WavCodec};
     let fixture = Fixture::new();
     let source = fixture.wav("ott-source.wav", 48000, 2, 32, true);
     let original = fs::read(&source).unwrap();
@@ -3063,27 +3011,7 @@ fn ott_save_open_save_as_rate_change_and_export_keep_settings_and_audio() {
     let changed = loaded.with_audio_settings(96000, 128).unwrap();
     assert_eq!(changed.project.tracks[0].effects, vec![effect]);
     let output = fixture.0.join("compressed.wav");
-    loaded
-        .export_with_settings(
-            &output,
-            false,
-            ExportSettings {
-                wav_codec: WavCodec::Float32,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    let exported: Vec<f32> = hound::WavReader::open(output)
-        .unwrap()
-        .samples::<f32>()
-        .map(Result::unwrap)
-        .collect();
-    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
-    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
-    assert_eq!(
-        exported,
-        rendered.iter().flatten().copied().collect::<Vec<_>>()
-    );
+    let (rendered, _) = assert_float_export_parity(&loaded, &output);
     let mut dry = loaded;
     dry.project.tracks[0].effects.clear();
     let mut dry_audio = vec![[0.0; 2]; rendered.len()];
@@ -3100,7 +3028,6 @@ fn ott_save_open_save_as_rate_change_and_export_keep_settings_and_audio() {
 #[test]
 fn master_effects_save_open_rate_change_and_export_use_the_master_bus() {
     use daw_core::{CompressorDetection, EffectInstance, EffectSettings};
-    use daw_media::{ExportSettings, WavCodec};
     let fixture = Fixture::new();
     let source = fixture.wav("compressor-source.wav", 48000, 2, 32, true);
     let original = fs::read(&source).unwrap();
@@ -3136,27 +3063,7 @@ fn master_effects_save_open_rate_change_and_export_use_the_master_bus() {
     let changed = loaded.with_audio_settings(96000, 128).unwrap();
     assert_eq!(changed.project.master.effects, vec![effect]);
     let output = fixture.0.join("compressed.wav");
-    loaded
-        .export_with_settings(
-            &output,
-            false,
-            ExportSettings {
-                wav_codec: WavCodec::Float32,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    let exported: Vec<f32> = hound::WavReader::open(output)
-        .unwrap()
-        .samples::<f32>()
-        .map(Result::unwrap)
-        .collect();
-    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
-    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
-    assert_eq!(
-        exported,
-        rendered.iter().flatten().copied().collect::<Vec<_>>()
-    );
+    let (rendered, _) = assert_float_export_parity(&loaded, &output);
     let mut dry = loaded;
     dry.project.master.effects.clear();
     let mut dry_audio = vec![[0.0; 2]; rendered.len()];
@@ -3194,7 +3101,6 @@ fn master_effects_save_open_rate_change_and_export_use_the_master_bus() {
 #[test]
 fn limiter_save_open_rate_change_and_export_keep_the_ceiling_and_exact_frame_count() {
     use daw_core::{EffectInstance, EffectSettings, LimiterMode, LimiterRouting};
-    use daw_media::{ExportSettings, WavCodec};
     let fixture = Fixture::new();
     let source = fixture.wav("limiter.wav", 48000, 2, 32, true);
     let original = fs::read(&source).unwrap();
@@ -3230,32 +3136,12 @@ fn limiter_save_open_rate_change_and_export_keep_the_ceiling_and_exact_frame_cou
         let output = fixture
             .0
             .join(format!("limited-{}.wav", loaded.project.sample_rate_hz));
-        loaded
-            .export_with_settings(
-                &output,
-                false,
-                ExportSettings {
-                    wav_codec: WavCodec::Float32,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        let exported: Vec<f32> = hound::WavReader::open(output)
-            .unwrap()
-            .samples::<f32>()
-            .map(Result::unwrap)
-            .collect();
+        let (_, exported) = assert_float_export_parity(&loaded, &output);
         assert_eq!(exported.len(), loaded.project.end() as usize * 2);
         assert!(
             exported
                 .iter()
                 .all(|v| v.is_finite() && v.abs() <= 10_f32.powf(-6.0 / 20.0))
-        );
-        let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
-        daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
-        assert_eq!(
-            exported,
-            rendered.iter().flatten().copied().collect::<Vec<_>>()
         );
     }
     assert_eq!(fs::read(source).unwrap(), original);

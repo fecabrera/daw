@@ -37,7 +37,8 @@ class DesktopPackagingTests(unittest.TestCase):
                         shutil.copy(script, root / 'tools' / script.name)
                         shutil.copy(ROOT / 'tools/package_sources.py', root / 'tools/package_sources.py')
                         shutil.copy(ROOT / 'tools/build_desktop.py', root / 'tools/build_desktop.py')
-                        shutil.copy(ROOT / 'tools/runtime_notices.json', root / 'tools/runtime_notices.json')
+                        for name in ('runtime_notices.json', 'copy_desktop_notices.sh', 'desktop_notices.txt'):
+                            shutil.copy(ROOT / 'tools' / name, root / 'tools' / name)
                         shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
                         for directory in (
                             'crates/unit-ui/assets/fonts', 'crates/ui/assets/icons',

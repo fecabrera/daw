@@ -1,80 +1,16 @@
 use daw_core::*;
 use daw_engine::{RenderPlan, Renderer};
-use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::collections::HashMap;
-thread_local! { static TRACK_ALLOCATIONS: Cell<bool> = const { Cell::new(false) }; static ALLOCATIONS: Cell<usize> = const { Cell::new(0) }; }
-struct CountingAllocator;
-// SAFETY: This allocator forwards unchanged layouts and pointers to System.
-unsafe impl GlobalAlloc for CountingAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        TRACK_ALLOCATIONS.with(|enabled| {
-            if enabled.get() {
-                ALLOCATIONS.with(|count| count.set(count.get() + 1));
-            }
-        });
-        unsafe { System.alloc(layout) }
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        unsafe { System.dealloc(ptr, layout) }
-    }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-        TRACK_ALLOCATIONS.with(|enabled| {
-            if enabled.get() {
-                ALLOCATIONS.with(|count| count.set(count.get() + 1));
-            }
-        });
-        unsafe { System.realloc(ptr, layout, size) }
-    }
-}
+#[path = "support/allocations.rs"]
+mod allocations;
+use allocations::{ALLOCATIONS, CountingAllocator, TRACK_ALLOCATIONS};
+
 #[global_allocator]
-static ALLOCATOR: CountingAllocator = CountingAllocator;
-fn plan(waveform: Waveform, rate: u32) -> RenderPlan {
-    let mut project = Project {
-        sample_rate_hz: rate,
-        ..Project::default()
-    };
-    let track = project.add_midi_track().unwrap();
-    project.tracks[0].instrument = Some(OscillatorSettings::default().into());
-    project.tracks[0].instrument.as_mut().unwrap().layers[0].oscillators[0].waveform = waveform;
-    // Existing oscillator tests isolate source/mixer behavior using the legacy gate.
-    project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0].settings =
-        EnvelopeSettings::legacy();
-    let clip = project.add_midi_pattern(track, 0).unwrap();
-    project
-        .edit(Edit::ReplaceMidiPattern {
-            clip_id: clip,
-            pattern: MidiPattern {
-                length_ticks: 3840,
-                notes: vec![
-                    MidiNote {
-                        id: Id::from_u128(1),
-                        start_tick: 0,
-                        length_ticks: 960,
-                        pitch: 69,
-                        velocity: 127,
-                    },
-                    MidiNote {
-                        id: Id::from_u128(2),
-                        start_tick: 480,
-                        length_ticks: 1440,
-                        pitch: 72,
-                        velocity: 100,
-                    },
-                ],
-            },
-        })
-        .unwrap();
-    project.tracks[0].clips[0].length_frames = project.midi_frame(3840);
-    RenderPlan {
-        external: Default::default(),
-        beat_tracks: Default::default(),
-        project,
-        audio: HashMap::new(),
-        sampler_audio: Default::default(),
-        stretched_audio: HashMap::new(),
-    }
-}
+static ALLOCATOR: CountingAllocator<false> = CountingAllocator;
+#[path = "support/midi_plan.rs"]
+mod midi_fixture;
+use midi_fixture::plan;
 
 #[test]
 fn layer_meters_follow_stereo_bus_mix_and_output_before_track_controls_without_allocations() {

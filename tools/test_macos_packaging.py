@@ -21,7 +21,8 @@ def fixture():
         base = Path(temporary)
         root = base / 'repository'
         (root / 'tools').mkdir(parents=True)
-        for name in ('package_macos.sh', 'package_macos_dmg.sh', 'build_desktop.py', 'package_sources.py', 'runtime_notices.json'):
+        for name in ('package_macos.sh', 'package_macos_dmg.sh', 'build_desktop.py', 'package_sources.py', 'runtime_notices.json',
+                     'copy_desktop_notices.sh', 'desktop_notices.txt'):
             shutil.copy(ROOT / 'tools' / name, root / 'tools' / name)
         shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
         for directory in ('crates/unit-ui/assets/fonts', 'crates/ui/assets/icons',

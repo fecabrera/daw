@@ -28,14 +28,17 @@ pub fn render(
             level,
         )
     });
+    let mut after = None;
     Bounds {
         sections: b.sections,
         controls: std::array::from_fn(|i| {
             control_capture::at(&c, b.controls[i]).map(|mut r| {
                 let parameter = P::ALL[i + 1];
                 if before.get(parameter)
-                    != daw_drive_plugin::PluginState::from_settings(s)
-                        .unwrap()
+                    != after
+                        .get_or_insert_with(|| {
+                            daw_drive_plugin::PluginState::from_settings(s).unwrap()
+                        })
                         .get(parameter)
                 {
                     r.mark_changed();

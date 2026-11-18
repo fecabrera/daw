@@ -448,17 +448,8 @@ fn stretch_audio_inner(
 
 pub fn prepared_audio(audio: &AudioData, samples: Vec<[f32; 2]>) -> AudioData {
     let peaks = samples
-        .chunks(256)
-        .map(|chunk| {
-            let mut peak = [[0.0_f32; 2]; 2];
-            for sample in chunk {
-                for channel in 0..2 {
-                    peak[channel][0] = peak[channel][0].min(sample[channel]);
-                    peak[channel][1] = peak[channel][1].max(sample[channel]);
-                }
-            }
-            peak
-        })
+        .chunks(crate::PEAK_BLOCK_FRAMES)
+        .map(|chunk| crate::peak_for_chunk(chunk, [[0.0; 2]; 2]))
         .collect();
     let prepared = AudioData {
         disk: None,

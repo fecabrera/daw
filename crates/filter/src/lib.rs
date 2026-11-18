@@ -1,45 +1,11 @@
 //! Portable stereo filter shared by Filter and Auto-filter. No internal clock or LFO.
 pub mod crossover;
+use daw_unit_core::ramps::LinearRamp64 as Ramp;
 use daw_unit_core::{
     EffectUnit, FILTER_TYPE_ID, FilterSettings, PortKind, ProcessingContext, UnitDescriptor,
 };
-#[derive(Clone, Copy)]
-struct Ramp {
-    value: f64,
-    target: f64,
-    remaining: u32,
-}
-impl Ramp {
-    fn new(value: f64) -> Self {
-        Self {
-            value,
-            target: value,
-            remaining: 0,
-        }
-    }
-    fn retarget(&mut self, target: f64, frames: u32) {
-        if self.target != target {
-            self.target = target;
-            self.remaining = frames;
-        }
-    }
-    fn next(&mut self) -> f64 {
-        if self.remaining > 0 {
-            self.value += (self.target - self.value) / f64::from(self.remaining);
-            self.remaining -= 1;
-        }
-        self.value
-    }
-    fn reset(&mut self) {
-        self.value = self.target;
-        self.remaining = 0;
-    }
-}
 pub mod svf;
 use svf::StateVariableFilter;
-fn weights<const N: usize>(index: usize) -> [Ramp; N] {
-    std::array::from_fn(|i| Ramp::new(f64::from(i == index)))
-}
 
 #[derive(Clone)]
 pub struct Filter {
@@ -68,7 +34,7 @@ impl Filter {
             level: Ramp::new(10_f64.powf(f64::from(settings.level_db) / 20.0)),
             wet: Ramp::new(settings.dry_wet.into()),
             mix: Ramp::new(f64::from(settings.enabled)),
-            shapes: weights(settings.shape.index()),
+            shapes: Ramp::weights(settings.shape.index()),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: [
                 settings.frequency_hz,
@@ -119,18 +85,18 @@ impl Filter {
         cutoff_offsets: [f64; 2],
     ) -> [f32; 2] {
         let offsets = self.external.process(offsets);
-        let frequency = self.frequency_log.next();
-        let q = (self.q.next() + offsets[1]).clamp(0.1, 10.0);
-        let shapes = std::array::from_fn(|i| self.shapes[i].next());
-        let level = self.level.next();
+        let frequency = self.frequency_log.next_value();
+        let q = (self.q.next_value() + offsets[1]).clamp(0.1, 10.0);
+        let shapes = std::array::from_fn(|i| self.shapes[i].next_value());
+        let level = self.level.next_value();
         let level = if offsets[2] == 0.0 {
             level
         } else {
             (level * 10.0_f64.powf(offsets[2].clamp(-96.0, 96.0) / 20.0))
                 .min(10.0_f64.powf(12.0 / 20.0))
         };
-        let wet = (self.wet.next() + offsets[3]).clamp(0.0, 1.0);
-        let mix = self.mix.next();
+        let wet = (self.wet.next_value() + offsets[3]).clamp(0.0, 1.0);
+        let mix = self.mix.next_value();
         self.effective[2..].copy_from_slice(&[q as f32, level as f32, wet as f32]);
         let mut output = [0.0; 2];
         for ch in 0..2 {
@@ -174,11 +140,11 @@ impl EffectUnit for Filter {
         self.filters = std::array::from_fn(|_| StateVariableFilter::default());
         self.external.reset();
         self.effective = [
-            2.0_f64.powf(self.frequency_log.value) as f32,
-            2.0_f64.powf(self.frequency_log.value) as f32,
-            self.q.value as f32,
-            self.level.value as f32,
-            self.wet.value as f32,
+            2.0_f64.powf(self.frequency_log.value()) as f32,
+            2.0_f64.powf(self.frequency_log.value()) as f32,
+            self.q.value() as f32,
+            self.level.value() as f32,
+            self.wet.value() as f32,
         ];
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {

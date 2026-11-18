@@ -1,6 +1,6 @@
 use crate::{Dsp, Parameter, ParameterError, PluginState};
+pub use daw_plugin_support::SUPPORTED_RATES;
 use daw_unit_core::{EffectUnit, ProcessingContext};
-pub const SUPPORTED_RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConfigurationError;
 impl std::fmt::Display for ConfigurationError {
@@ -21,11 +21,7 @@ impl Processor {
         maximum: u32,
         state: PluginState,
     ) -> Result<Self, ConfigurationError> {
-        if !SUPPORTED_RATES.iter().any(|r| f64::from(*r) == rate)
-            || minimum == 0
-            || minimum > maximum
-            || maximum > i32::MAX as u32
-        {
+        if !daw_plugin_support::valid_processing_configuration(rate, minimum, maximum) {
             return Err(ConfigurationError);
         }
         let slots: [_; 64] = std::array::from_fn(|i| crate::mapping::band(&state, i));

@@ -11,6 +11,7 @@ mod macos_menu;
 #[cfg(target_os = "macos")]
 mod macos_titlebar;
 mod midi;
+mod ui_startup;
 #[cfg(target_os = "windows")]
 mod windows_file_drag;
 #[cfg(target_os = "windows")]
@@ -137,19 +138,12 @@ fn main() -> eframe::Result {
         "DAW",
         options,
         Box::new(move |cc| {
-            daw_ui::theme::configure(&cc.egui_ctx);
-            daw_ui::fonts::configure(&cc.egui_ctx);
-            daw_ui::icons::configure(&cc.egui_ctx);
+            crate::ui_startup::configure_context(&cc.egui_ctx);
             let stored = cc
                 .storage
                 .and_then(|storage| storage.get_string(daw_ui::settings::STORAGE_KEY));
             let settings = daw_ui::settings::AppSettings::from_json(stored.as_deref());
-            let mut ui = daw_ui::DawUi::new_with_project_defaults(
-                project,
-                settings.audio_quality,
-                settings.default_stretch_engine,
-            );
-            ui.set_settings(&cc.egui_ctx, settings);
+            let mut ui = crate::ui_startup::create_ui(&cc.egui_ctx, project, settings);
             if let Some(root) = midi::recovery_root() {
                 ui.enable_midi(Box::new(midi::NativeMidi::default()), root);
             }

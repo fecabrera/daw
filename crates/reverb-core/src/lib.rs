@@ -81,35 +81,60 @@ impl Noise {
 
 /// Bounded stereo fractional delay. Construction and clearing belong off audio.
 #[derive(Clone)]
-pub struct Delay {
-    samples: Vec<[f64; 2]>,
-    cursor: usize,
-    valid_frames: usize,
-}
+pub struct Delay(DelayRing<2>);
+
 impl Delay {
     /// Reserve at least one sample of delay plus interpolation guard storage.
     pub fn new(maximum_frames: usize) -> Self {
+        Self(DelayRing::new(maximum_frames.max(1).saturating_add(2)))
+    }
+    pub fn heap_bytes(&self) -> usize {
+        self.0.heap_bytes()
+    }
+    pub fn reset(&mut self) {
+        self.0.reset();
+    }
+    pub fn read(&self, delay_frames: f64) -> [f64; 2] {
+        self.0.read(if delay_frames.is_finite() {
+            delay_frames
+        } else {
+            1.0
+        })
+    }
+    pub fn write(&mut self, sample: [f64; 2]) {
+        self.0
+            .write(sample.map(|v| if v.is_finite() { v } else { 0.0 }));
+    }
+}
+
+/// Prepared fractional delay ring. Callers own input sanitization policy.
+#[derive(Clone)]
+pub struct DelayRing<const CHANNELS: usize> {
+    samples: Vec<[f64; CHANNELS]>,
+    cursor: usize,
+    valid_frames: usize,
+}
+
+impl<const CHANNELS: usize> DelayRing<CHANNELS> {
+    /// Allocate the prepared capacity including the two interpolation guard frames.
+    pub fn new(capacity: usize) -> Self {
+        assert!(capacity >= 3);
         Self {
-            samples: vec![[0.0; 2]; maximum_frames.max(1).saturating_add(2)],
+            samples: vec![[0.0; CHANNELS]; capacity],
             cursor: 0,
             valid_frames: 0,
         }
     }
     pub fn heap_bytes(&self) -> usize {
-        self.samples.capacity() * size_of::<[f64; 2]>()
+        self.samples.capacity() * size_of::<[f64; CHANNELS]>()
     }
     /// Logical clearing is constant time; old samples remain inaccessible.
     pub fn reset(&mut self) {
         self.cursor = 0;
         self.valid_frames = 0;
     }
-    pub fn read(&self, delay_frames: f64) -> [f64; 2] {
-        let delay = if delay_frames.is_finite() {
-            delay_frames
-        } else {
-            1.0
-        }
-        .clamp(1.0, (self.samples.len() - 2) as f64);
+    pub fn read(&self, delay_frames: f64) -> [f64; CHANNELS] {
+        let delay = delay_frames.clamp(1.0, (self.samples.len() - 2) as f64);
         let whole = delay.floor() as usize;
         let fraction = delay - whole as f64;
         let a = (self.cursor + self.samples.len() - whole) % self.samples.len();
@@ -128,8 +153,8 @@ impl Delay {
             recent * (1.0 - fraction) + older * fraction
         })
     }
-    pub fn write(&mut self, sample: [f64; 2]) {
-        self.samples[self.cursor] = sample.map(|v| if v.is_finite() { v } else { 0.0 });
+    pub fn write(&mut self, sample: [f64; CHANNELS]) {
+        self.samples[self.cursor] = sample;
         self.cursor = (self.cursor + 1) % self.samples.len();
         self.valid_frames = (self.valid_frames + 1).min(self.samples.len());
     }

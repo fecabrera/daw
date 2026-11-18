@@ -1,6 +1,24 @@
 use super::*;
 
 impl DawUi {
+    pub(super) fn perform_track_row_action(
+        &mut self,
+        track: Id,
+        action: TrackAction,
+        ctx: &egui::Context,
+    ) {
+        if matches!(
+            action,
+            TrackAction::Add | TrackAction::AddMidi | TrackAction::AddBeat | TrackAction::AddGroup
+        ) {
+            self.add_track_to_group_from_menu(track, action, ctx);
+        } else if action == TrackAction::AddSubtrack {
+            self.add_subtrack_from_menu(track, ctx);
+        } else {
+            self.perform_track_action(action, ctx);
+        }
+    }
+
     pub(super) fn track_selected(&self, id: Id) -> bool {
         self.selected_track == Some(id) || self.selected_tracks.contains(&id)
     }

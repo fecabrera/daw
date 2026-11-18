@@ -1592,10 +1592,7 @@ impl Renderer {
             self.monitor_only = false;
             self.live_clock = self.live_clock.wrapping_add(1);
         }
-        if self.master_remaining > 0 {
-            self.master += (self.master_target - self.master) / self.master_remaining as f32;
-            self.master_remaining -= 1;
-        }
+        self.advance_live_master();
         for x in &mut mix {
             *x *= self.master
                 * if !self.playing && live {
@@ -1604,6 +1601,17 @@ impl Renderer {
                     self.ramp
                 };
         }
+        self.finish_live_sample(mix, fade_frames)
+    }
+
+    fn advance_live_master(&mut self) {
+        if self.master_remaining > 0 {
+            self.master += (self.master_target - self.master) / self.master_remaining as f32;
+            self.master_remaining -= 1;
+        }
+    }
+
+    fn finish_live_sample(&mut self, mut mix: [f32; 2], fade_frames: f32) -> [f32; 2] {
         if self.transition > 0 {
             let progress = 1.0 - self.transition as f32 / fade_frames;
             for (ch, value) in mix.iter_mut().enumerate() {

@@ -483,6 +483,30 @@ impl AudioTrack {
         prepared.fingerprint_id = std::hash::Hasher::finish(&hash);
         prepared
     }
+    fn continuation_position(&self, index: usize, signed: i128) -> i128 {
+        self.contexts[index]
+            .as_ref()
+            .map_or(signed, |context| signed + i128::from(context.start_frame))
+    }
+
+    fn continuation_audio<'a>(
+        context: &'a Option<daw_media::PreparedSourceContext>,
+        audio: &'a Option<AudioData>,
+    ) -> Option<&'a AudioData> {
+        context
+            .as_ref()
+            .map(|context| &context.audio)
+            .or(audio.as_ref())
+    }
+
+    fn continuation_reader(&self, index: usize) -> Option<usize> {
+        if self.contexts[index].is_some() {
+            self.context_readers[index]
+        } else {
+            self.reader_indices[index]
+        }
+    }
+
     pub fn worker_window_available(&mut self, frame: u64) -> bool {
         if let Some(index) = self.ranges.at(frame) {
             let position = self.clips[index].source_frame(frame - self.clips[index].start_frame);
@@ -493,7 +517,7 @@ impl AudioTrack {
         if let Some(t) = self.transition_ranges.at(frame) {
             let transition = &self.transitions[t];
             let owner = transition.owner;
-            let position = transition_position(transition, &self.clips[owner], frame);
+            let position = signed_source_position(&self.clips[owner], i128::from(frame));
             if !self.worker_clip_available(owner, position, true) {
                 return false;
             }
@@ -508,7 +532,7 @@ impl AudioTrack {
             return u64::try_from(position).is_ok_and(|p| source.worker_window_available(p));
         }
         if continuation && let Some(context) = &self.contexts[index] {
-            let point = position + i128::from(context.start_frame);
+            let point = self.continuation_position(index, position);
             return point >= 0 && point < i128::from(context.audio.frame_count());
         }
         self.audio[index]
@@ -524,10 +548,7 @@ impl AudioTrack {
             return Ok(([0.; 2], None));
         };
         let clip = &self.clips[index];
-        let local = frame - i128::from(clip.start_frame);
-        let signed = clip
-            .extended_source_frame(local)
-            .map_or_else(|| i128::from(clip.source_offset_frame) + local, i128::from);
+        let signed = signed_source_position(clip, frame);
         if !self.worker_clip_available(index, signed, true) {
             return Err("Compound continuation source range is unavailable".into());
         }
@@ -535,22 +556,13 @@ impl AudioTrack {
         if clip.muted {
             return Ok(([0.; 2], None));
         }
-        let position = self.contexts[index]
-            .as_ref()
-            .map_or(signed, |c| signed + i128::from(c.start_frame))
-            .max(0) as u64;
+        let position = self.continuation_position(index, signed).max(0) as u64;
         let (value, mono) = if let Some(source) = &mut self.compounds[index] {
             source.sample(&[], position, false)
-        } else if let Some(audio) = self.contexts[index]
-            .as_ref()
-            .map(|c| &c.audio)
-            .or(self.audio[index].as_ref())
+        } else if let Some(audio) =
+            Self::continuation_audio(&self.contexts[index], &self.audio[index])
         {
-            let reader = if self.contexts[index].is_some() {
-                self.context_readers[index]
-            } else {
-                self.reader_indices[index]
-            };
+            let reader = self.continuation_reader(index);
             let value = if let Some(reader) = reader {
                 self.readers[reader]
                     .sample(position)
@@ -667,19 +679,12 @@ impl AudioTrack {
         if let Some(i) = self.transition_ranges.at(frame) {
             let t = &self.transitions[i];
             let clip = &clips[t.owner];
-            let signed = transition_position(t, clip, frame);
-            let position = self.contexts[t.owner]
-                .as_ref()
-                .map_or(signed, |c| signed + i128::from(c.start_frame))
-                .max(0) as u64;
+            let signed = signed_source_position(clip, i128::from(frame));
+            let position = self.continuation_position(t.owner, signed).max(0) as u64;
             if let Some(source) = &mut self.compounds[t.owner] {
                 return source.ready(&[], position, None) && primary;
             }
-            if let Some(reader) = if self.contexts[t.owner].is_some() {
-                self.context_readers[t.owner]
-            } else {
-                self.reader_indices[t.owner]
-            } {
+            if let Some(reader) = self.continuation_reader(t.owner) {
                 let ready = self.readers[reader].ready(position, None);
                 self.staged_continuation = self.readers[reader]
                     .try_live_sample(position)
@@ -700,24 +705,14 @@ impl AudioTrack {
         if let Some(i) = self.transition_ranges.at(frame) {
             let t = &self.transitions[i];
             let clip = &clips[t.owner];
-            let signed = transition_position(t, clip, frame);
-            let position = self.contexts[t.owner]
-                .as_ref()
-                .map_or(signed, |c| signed + i128::from(c.start_frame))
-                .max(0) as u64;
+            let signed = signed_source_position(clip, i128::from(frame));
+            let position = self.continuation_position(t.owner, signed).max(0) as u64;
             let (extra, extra_mono) = if let Some(source) = &mut self.compounds[t.owner] {
                 source.sample(&[], position, realtime)
             } else {
-                let audio = self.contexts[t.owner]
-                    .as_ref()
-                    .map(|c| &c.audio)
-                    .or(self.audio[t.owner].as_ref())
+                let audio = Self::continuation_audio(&self.contexts[t.owner], &self.audio[t.owner])
                     .unwrap();
-                let reader = if self.contexts[t.owner].is_some() {
-                    self.context_readers[t.owner]
-                } else {
-                    self.reader_indices[t.owner]
-                };
+                let reader = self.continuation_reader(t.owner);
                 let extra = if let Some(reader) = reader {
                     if realtime {
                         self.staged_continuation
@@ -778,13 +773,18 @@ impl AudioTrack {
         let index = self.ranges.at(frame)?;
         let clip = &self.clips[index];
         let local = frame - clip.start_frame;
+        Some(self.primary_envelope(index, local, clip.source_frame(local)))
+    }
+
+    fn primary_envelope(&self, index: usize, local: u64, position: u64) -> f32 {
+        let clip = &self.clips[index];
         let clock = &self.clocks[index][0];
         let mut gain = self.envelopes[index]
             .gain(local + clock.offset, clock.length_frames, self.rate)
             .min(repeat_fade(
                 self.baked_loops[index],
                 clip,
-                clip.source_frame(local),
+                position,
                 self.rate,
             ));
         for stage in &self.clocks[index][1..] {
@@ -792,7 +792,7 @@ impl AudioTrack {
                 .fades
                 .gain(local + stage.offset, stage.length_frames, self.rate);
         }
-        Some(gain)
+        gain
     }
     fn sample_primary(&mut self, frame: u64, realtime: bool) -> ([f32; 2], Option<bool>) {
         let clips = &self.clips;
@@ -802,20 +802,7 @@ impl AudioTrack {
         let clip = &clips[index];
         let local = frame - clip.start_frame;
         let position = clip.source_frame(local);
-        let clock = &self.clocks[index][0];
-        let mut fade = self.envelopes[index]
-            .gain(local + clock.offset, clock.length_frames, self.rate)
-            .min(repeat_fade(
-                self.baked_loops[index],
-                clip,
-                position,
-                self.rate,
-            ));
-        for stage in &self.clocks[index][1..] {
-            fade *= stage
-                .fades
-                .gain(local + stage.offset, stage.length_frames, self.rate);
-        }
+        let mut fade = self.primary_envelope(index, local, position);
         if let Some(source) = &mut self.compounds[index] {
             let intrinsic = source.envelope_at(position);
             let (value, mono) = source.sample(&[], position, realtime);
@@ -910,8 +897,8 @@ fn audio_source_missing(plan: &RenderPlan, clip: &daw_core::Clip) -> bool {
     }
     false
 }
-fn transition_position(_t: &Transition, clip: &daw_core::Clip, frame: u64) -> i128 {
-    let local = i128::from(frame) - i128::from(clip.start_frame);
+fn signed_source_position(clip: &daw_core::Clip, frame: i128) -> i128 {
+    let local = frame - i128::from(clip.start_frame);
     clip.extended_source_frame(local)
         .map_or_else(|| i128::from(clip.source_offset_frame) + local, i128::from)
 }

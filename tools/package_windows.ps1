@@ -78,31 +78,18 @@ try {
     Copy-Item -LiteralPath $executable -Destination (Join-Path $packageDirectory 'daw-desktop.exe')
     Copy-Item -LiteralPath 'LICENSE' -Destination (Join-Path $packageDirectory 'LICENSE.txt')
 
-    $namedNotices = @{
-        'crates/unit-ui/assets/fonts/OFL.txt' = 'Outfit-OFL.txt'
-        'crates/unit-ui/assets/fonts/Hack-LICENSE.txt' = 'Hack-LICENSE.txt'
-        'crates/ui/assets/icons/LUCIDE-LICENSE.txt' = 'LUCIDE-LICENSE.txt'
-        'crates/ui/assets/icons/EGUI-LUCIDE-LICENSE.txt' = 'EGUI-LUCIDE-LICENSE.txt'
-    }
-    foreach ($source in $namedNotices.Keys) {
-        Copy-Item -LiteralPath $source -Destination (Join-Path $licenseDirectory $namedNotices[$source])
-    }
-    foreach ($directory in @(
-        'crates/ui/assets/licenses',
-        'crates/unit-ui/assets/licenses',
-        'crates/media/assets/licenses', 'crates/plugin-host/assets/licenses',
-        'crates/plugin-clap/assets/licenses', 'crates/plugin-vst3/assets/licenses',
-        'crates/oscillator/assets/licenses',
-        'crates/equalizer/assets/licenses',
-        'crates/timestretch/licenses',
-        'crates/separation/assets/licenses'
-    )) {
-        $notices = @(Get-ChildItem -LiteralPath $directory -Filter '*.txt' -File)
-        if ($notices.Count -eq 0) {
-            throw "No dependency notices found in $directory."
-        }
-        foreach ($notice in $notices) {
-            Copy-Item -LiteralPath $notice.FullName -Destination $licenseDirectory -Force
+    foreach ($entry in Get-Content -LiteralPath 'tools/desktop_notices.txt') {
+        $source, $name = $entry -split '\|', 2
+        if ($name) {
+            Copy-Item -LiteralPath $source -Destination (Join-Path $licenseDirectory $name)
+        } else {
+            $notices = @(Get-ChildItem -LiteralPath $source -Filter '*.txt' -File)
+            if ($notices.Count -eq 0) {
+                throw "No dependency notices found in $source."
+            }
+            foreach ($notice in $notices) {
+                Copy-Item -LiteralPath $notice.FullName -Destination $licenseDirectory -Force
+            }
         }
     }
 

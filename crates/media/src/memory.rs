@@ -65,7 +65,7 @@ impl AudioReservation {
             .checked_mul(8)
             .and_then(|n| {
                 frames
-                    .div_ceil(256)
+                    .div_ceil(crate::PEAK_BLOCK_FRAMES as u64)
                     .checked_mul(16)
                     .and_then(|p| n.checked_add(p))
             })
@@ -133,8 +133,10 @@ mod tests {
             let ratio = daw_core::ClipStretch::new(1, 8).unwrap();
             let scratch =
                 crate::stretch::integrated_scratch(48000, 3_000_000, ratio, pitch).unwrap();
-            let required =
-                24_000_000 * 8 + 24_000_000_u64.div_ceil(256) * 16 + scratch + 16 * 1024 * 1024;
+            let required = 24_000_000 * 8
+                + 24_000_000_u64.div_ceil(crate::PEAK_BLOCK_FRAMES as u64) * 16
+                + scratch
+                + 16 * 1024 * 1024;
             // Known simultaneous copied input, f64 overlap and f32 return alone.
             assert!(required >= 600_000_000);
             let mut state = State {

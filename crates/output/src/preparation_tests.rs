@@ -1022,18 +1022,8 @@ pub(super) fn controlled_output(rate: u32) -> (AudioOutput, Callback) {
         published_plans: Default::default(),
         status,
         description: String::new(),
-        track_meters: bindings.tracks,
-        layer_meters: bindings.layers,
-        effect_meters: bindings.effects,
-        exciter_solos: bindings.exciter_solos,
-        output_meters: bindings.outputs,
-        loudness_meters: bindings.loudness,
-        source_meters: bindings.sources,
-        band_meters: bindings.bands,
+        bindings,
         spectrum_cache: Default::default(),
-        spectra: bindings.spectra,
-        modulation_meters: bindings.modulation,
-        live_pitches: bindings.live_pitches,
     };
     (output, callback)
 }
@@ -1093,7 +1083,7 @@ fn public_stop_silences_audio_before_worker_completion_and_survives_failure() {
             assert_eq!(playing.frame, return_frame);
             assert_eq!(playing.playback_start, Some(return_frame));
             let worker = preparation::Worker::new(output.status.clone()).unwrap();
-            worker.submit(output.plan.clone(), output.bindings(), Some(playing));
+            worker.submit(output.plan.clone(), output.bindings.clone(), Some(playing));
             let mut prepared = ready(&worker);
             prepared.revision = output.prepare_revision;
             prepared.renderer.revision = output.prepare_revision;

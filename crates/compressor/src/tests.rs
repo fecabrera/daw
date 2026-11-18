@@ -347,20 +347,20 @@ fn shaped_curve_changes_audio_and_retargets_without_resetting_the_detector_or_ot
         settings.threshold_db = -24.0;
         processor.retarget(&settings);
         processor.process_sample([1.0; 2]);
-        let remaining = processor.parameters[0].remaining;
-        let threshold = processor.parameters[0].value;
+        let remaining = processor.parameters[0].remaining_frames();
+        let threshold = processor.parameters[0].value();
         assert!(remaining > 0);
         let reduction = processor.gain_reduction_db();
         let before = processor.effective_parameters();
         settings.curve = 1.0;
         processor.retarget(&settings);
         assert_eq!(processor.gain_reduction_db(), reduction);
-        assert_eq!(processor.parameters[0].remaining, remaining);
-        assert_eq!(processor.parameters[0].value, threshold);
+        assert_eq!(processor.parameters[0].remaining_frames(), remaining);
+        assert_eq!(processor.parameters[0].value(), threshold);
         processor.process_sample([1.0; 2]);
         let after = processor.effective_parameters();
         assert_eq!(after[1..7], before[1..7]);
-        assert_eq!(processor.parameters[0].remaining, remaining - 1);
+        assert_eq!(processor.parameters[0].remaining_frames(), remaining - 1);
         assert!(after[7] > 0.0 && after[7] < 1.0);
         for _ in 0..rate / 100 {
             processor.process_sample([1.0; 2]);

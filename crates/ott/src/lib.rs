@@ -1,5 +1,6 @@
 //! Three-band upward/downward compression with private FunDSP crossovers and detectors.
 use daw_filter::crossover::LinkwitzRileySplit as Split;
+use daw_unit_core::ramps::ExactRamp32 as Ramp;
 use daw_unit_core::{
     BandMeter, CompressorDetection, EffectUnit, LevelMonitor, OTT_TYPE_ID, OttBandSettings,
     OttSettings, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
@@ -12,40 +13,6 @@ use std::sync::atomic::Ordering;
 
 const RMS: Meter = Meter::Rms(0.01);
 
-#[derive(Clone)]
-struct Ramp {
-    value: f32,
-    target: f32,
-    remaining: u32,
-}
-impl Ramp {
-    fn new(value: f32) -> Self {
-        Self {
-            value,
-            target: value,
-            remaining: 0,
-        }
-    }
-    fn retarget(&mut self, target: f32, frames: u32) {
-        if self.target != target {
-            self.target = target;
-            self.remaining = frames;
-        }
-    }
-    fn advance(&mut self) {
-        if self.remaining > 0 {
-            self.value += (self.target - self.value) / self.remaining as f32;
-            self.remaining -= 1;
-            if self.remaining == 0 {
-                self.value = self.target;
-            }
-        }
-    }
-    fn reset(&mut self) {
-        self.value = self.target;
-        self.remaining = 0;
-    }
-}
 fn amplitude(db: f32) -> f64 {
     10_f64.powf(f64::from(db) / 20.0)
 }
@@ -115,7 +82,7 @@ impl Band {
         for p in &mut self.parameters {
             p.advance();
         }
-        let mut p = self.parameters.each_ref().map(|p| p.value);
+        let mut p = self.parameters.each_ref().map(|p| p.value());
         p[0] = (p[0] + offsets[0]).clamp(0.0, 1.0);
         for i in 1..=2 {
             p[i] = (p[i] + offsets[i]).clamp(-24.0, 24.0);
@@ -160,7 +127,7 @@ impl Band {
         for p in &mut self.parameters {
             p.reset();
         }
-        self.effective = self.parameters.each_ref().map(|p| p.value);
+        self.effective = self.parameters.each_ref().map(|p| p.value());
         for state in &mut self.rms {
             state.reset(RMS);
         }
@@ -215,7 +182,7 @@ impl Ott {
         let crossover_changed = self.parameters[..2]
             .iter()
             .zip(values)
-            .any(|(p, target)| p.target != target);
+            .any(|(p, target)| p.target() != target);
         for (p, target) in self.parameters.iter_mut().zip(values) {
             p.retarget(target, self.fade_frames);
         }
@@ -223,7 +190,7 @@ impl Ott {
         // could make their intermediate values cross during rapid consecutive edits.
         if crossover_changed {
             for p in &mut self.parameters[..2] {
-                p.remaining = self.fade_frames;
+                p.restart(self.fade_frames);
             }
         }
         for (band, settings) in self.bands.iter_mut().zip(settings.bands) {
@@ -231,7 +198,7 @@ impl Ott {
         }
     }
     pub fn gain_change_db(&self) -> [f32; 3] {
-        std::array::from_fn(|i| self.bands[i].change_db() * self.parameters[5].value)
+        std::array::from_fn(|i| self.bands[i].change_db() * self.parameters[5].value())
     }
     /// Attach on the control thread. Positive values mean boost, negative values reduction.
     pub fn set_gain_change_meter(&mut self, meter: Arc<[AtomicU32; 3]>) {
@@ -264,7 +231,7 @@ impl EffectUnit for Ott {
             p.reset();
         }
         self.external.reset();
-        self.effective = self.parameters.each_ref().map(|p| p.value);
+        self.effective = self.parameters.each_ref().map(|p| p.value());
         for split in &mut self.splits {
             split.reset();
         }

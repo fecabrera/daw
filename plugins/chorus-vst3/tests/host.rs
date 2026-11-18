@@ -4,6 +4,8 @@ use daw_chorus_vst3 as plugin_export;
 include!("../../drive-vst3/tests/host/support.rs");
 #[path = "../../filter-vst3/tests/host/cases.rs"]
 mod cases;
+#[path = "../../test_support/transport.rs"]
+mod transport;
 
 #[test]
 fn host_tempo_position_and_seeks_match_the_portable_clock() {
@@ -20,17 +22,7 @@ fn host_tempo_position_and_seeks_match_the_portable_clock() {
         },
         &state.to_settings(),
     );
-    let mut next_frame = 0;
-    for (frame, tempo, playing) in [
-        (48000, 90.0, true),
-        (96000, 180.0, true),
-        (12000, 110.0, true),
-        (12000, 110.0, false),
-        (12000, 110.0, false),
-        (72000, 110.0, true),
-    ] {
-        let effective_frame = if playing { frame } else { next_frame };
-        next_frame = effective_frame + 512;
+    for (frame, tempo, playing, effective_frame) in transport::SEEK_AND_TEMPO {
         let mut left: Vec<_> = (0..512).map(|i| (i as f32 * 0.17).sin() * 0.4).collect();
         let mut right = left.iter().map(|v| -0.37 * v).collect::<Vec<_>>();
         let mut expected = (Vec::new(), Vec::new());
@@ -85,23 +77,18 @@ fn offline_context_uses_the_host_position_without_a_playing_flag() {
     let mut transport: ProcessContext = unsafe { std::mem::zeroed() };
     transport.state = ProcessContext_::StatesAndFlags_::kTempoValid as _;
     transport.tempo = 90.0;
-    transport.projectTimeSamples = 48000;
     transport.sampleRate = 48000.0;
-    for block in 0..4 {
+    for frame in transport::OFFLINE_FRAMES {
         let mut left = vec![0.4; 512];
         let mut right = vec![-0.2; 512];
         let mut expected = (Vec::new(), Vec::new());
         for i in 0..512 {
-            let output = direct.process_modulated_at(
-                [left[i], right[i]],
-                48000 + block * 512 + i as u64,
-                90.0,
-                [0.0; 8],
-            );
+            let output =
+                direct.process_modulated_at([left[i], right[i]], frame + i as u64, 90.0, [0.0; 8]);
             expected.0.push(output[0]);
             expected.1.push(output[1]);
         }
-        transport.projectTimeSamples = 48000 + block as i64 * 512;
+        transport.projectTimeSamples = frame as i64;
         let actual = run_with_transport(
             &plugin,
             &mut left,

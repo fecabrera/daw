@@ -1,4 +1,5 @@
 //! Linked stereo feed-forward compressor. FunDSP detector types remain private.
+use daw_unit_core::ramps::ExactRamp32 as Ramp;
 use daw_unit_core::{
     BandMeter, COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings, EffectUnit,
     LevelMonitor, PeakMeter, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
@@ -14,40 +15,6 @@ mod modulation_tests;
 
 const RMS: Meter = Meter::Rms(0.01);
 
-#[derive(Clone)]
-struct Ramp {
-    value: f32,
-    target: f32,
-    remaining: u32,
-}
-impl Ramp {
-    fn new(value: f32) -> Self {
-        Self {
-            value,
-            target: value,
-            remaining: 0,
-        }
-    }
-    fn retarget(&mut self, target: f32, frames: u32) {
-        if self.target != target {
-            self.target = target;
-            self.remaining = frames;
-        }
-    }
-    fn advance(&mut self) {
-        if self.remaining > 0 {
-            self.value += (self.target - self.value) / self.remaining as f32;
-            self.remaining -= 1;
-            if self.remaining == 0 {
-                self.value = self.target;
-            }
-        }
-    }
-    fn reset(&mut self) {
-        self.value = self.target;
-        self.remaining = 0;
-    }
-}
 fn amplitude(db: f32) -> f32 {
     10_f32.powf(db / 20.0)
 }
@@ -144,7 +111,7 @@ impl Compressor {
     }
     /// Compression before the dry/wet blend, zero when bypassed.
     pub fn gain_reduction_db(&self) -> f32 {
-        self.reduction_db as f32 * self.parameters[8].value
+        self.reduction_db as f32 * self.parameters[8].value()
     }
     fn configure(&mut self, times: [f32; 2]) {
         for (index, time) in times.into_iter().enumerate() {
@@ -193,7 +160,7 @@ impl EffectUnit for Compressor {
         }
         self.reduction_db = 0.0;
         self.external.reset();
-        self.effective = self.parameters.each_ref().map(|p| p.value);
+        self.effective = self.parameters.each_ref().map(|p| p.value());
         self.configure([self.effective[3], self.effective[4]]);
         self.output_monitor.reset();
         self.curve_monitor.reset();

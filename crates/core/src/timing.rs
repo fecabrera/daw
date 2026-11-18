@@ -1,5 +1,5 @@
 //! Frame-owned conductor events and one compiled musical clock.
-use crate::{Error, Id, Project, Result, TimeSignature, TrackKind};
+use crate::{Asset, Clip, Error, Id, Project, Result, TimeSignature, TrackKind};
 use serde::{Deserialize, Serialize};
 
 pub const TIMING_EVENT_LIMIT: usize = 4096;
@@ -72,6 +72,39 @@ pub struct MusicalClock {
     tempos: Vec<TempoSegment>,
     meters: Vec<MeterSegment>,
 }
+/// Retime source coordinates on the reference tempo, independently of timeline reprojection.
+pub(super) fn retime_pattern_source(
+    clip: &mut Clip,
+    ratio: f64,
+    checked_frame: impl Fn(f64) -> Result<u64>,
+) -> Result<()> {
+    let scale = |frame: u64| checked_frame((frame as f64 * ratio).round());
+    clip.source_offset_frame = scale(clip.source_offset_frame)?;
+    if let Some(repeat) = &mut clip.repeat {
+        repeat.length_frames = scale(repeat.length_frames)?;
+        repeat.phase_frame = scale(repeat.phase_frame)?;
+    }
+    Ok(())
+}
+
+pub(super) fn retime_pattern_assets(
+    assets: &mut [Asset],
+    rate: u32,
+    bpm: f32,
+    checked_frame: impl Fn(f64) -> Result<u64>,
+) -> Result<()> {
+    for asset in assets {
+        if let Some(ticks) = asset.pattern_length_ticks() {
+            asset.decoded_frame_count = checked_frame(
+                (f64::from(ticks) * f64::from(rate) * 60.0
+                    / (f64::from(bpm) * f64::from(crate::MIDI_TICKS_PER_BEAT)))
+                .round(),
+            )?;
+        }
+    }
+    Ok(())
+}
+
 fn checked_frame(value: f64) -> Result<u64> {
     if value.is_finite() && value >= 0.0 && value < u64::MAX as f64 {
         Ok(value as u64)
@@ -434,27 +467,17 @@ impl Project {
                         .checked_sub(start)
                         .filter(|v| *v > 0)
                         .ok_or_else(|| Error("Tempo edit makes a pattern clip empty".into()))?;
-                    clip.source_offset_frame =
-                        checked_frame((clip.source_offset_frame as f64 * reference_ratio).round())?;
-                    if let Some(r) = &mut clip.repeat {
-                        r.length_frames =
-                            checked_frame((r.length_frames as f64 * reference_ratio).round())?;
-                        r.phase_frame =
-                            checked_frame((r.phase_frame as f64 * reference_ratio).round())?;
-                    }
+                    retime_pattern_source(clip, reference_ratio, checked_frame)?;
                 }
                 clip.start_frame = start;
             }
         }
-        for asset in &mut self.assets {
-            if let Some(ticks) = asset.pattern_length_ticks() {
-                asset.decoded_frame_count = checked_frame(
-                    (f64::from(ticks) * f64::from(self.sample_rate_hz) * 60.0
-                        / (f64::from(self.tempo_bpm) * f64::from(crate::MIDI_TICKS_PER_BEAT)))
-                    .round(),
-                )?;
-            }
-        }
+        retime_pattern_assets(
+            &mut self.assets,
+            self.sample_rate_hz,
+            self.tempo_bpm,
+            checked_frame,
+        )?;
         self.bound_retimed_midi_sources()?;
         self.transport.r#loop.start_frame =
             next.ceil_frame_at_quarter(old.quarter_at(self.transport.r#loop.start_frame))?;
@@ -544,20 +567,7 @@ impl ClipClock {
         if self.clock.is_constant() || !self.patterns.contains(&clip.asset_id) {
             return clip.uncovered_ranges(start, end);
         }
-        if clip.end() <= start || clip.start_frame >= end {
-            return vec![clip.clone()];
-        }
-        crate::frame_ranges::uncovered_ranges(clip.start_frame, clip.end(), start, end)
-            .into_iter()
-            .enumerate()
-            .map(|(index, (start, end))| {
-                let mut piece = self.retained(clip, start, end);
-                if index > 0 {
-                    piece.id = Id::new_v4();
-                }
-                piece
-            })
-            .collect()
+        clip.uncovered_with(start, end, |start, end| self.retained(clip, start, end))
     }
 }
 

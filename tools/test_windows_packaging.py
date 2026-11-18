@@ -32,7 +32,8 @@ class WindowsPackagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='windows packaging 音 % # ') as temporary:
             root = Path(temporary)
             (root / 'tools').mkdir()
-            shutil.copy(ROOT / 'tools/package_windows.ps1', root / 'tools/package_windows.ps1')
+            for name in ('package_windows.ps1', 'desktop_notices.txt'):
+                shutil.copy(ROOT / 'tools' / name, root / 'tools' / name)
             shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
             for directory in NOTICE_DIRS:
                 shutil.copytree(ROOT / directory, root / directory)

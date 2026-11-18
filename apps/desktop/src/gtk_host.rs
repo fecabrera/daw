@@ -127,9 +127,7 @@ fn build(
     window.set_child(Some(&overlay));
 
     let ctx = egui::Context::default();
-    daw_ui::theme::configure(&ctx);
-    daw_ui::fonts::configure(&ctx);
-    daw_ui::icons::configure(&ctx);
+    crate::ui_startup::configure_context(&ctx);
     titlebar::enable_linux_custom(&ctx);
     let loaded = if smoke.is_some() {
         preferences::Loaded::default()
@@ -144,12 +142,7 @@ fn build(
     if loaded.window.fullscreen {
         window.fullscreen();
     }
-    let mut ui = DawUi::new_with_project_defaults(
-        project,
-        settings.audio_quality,
-        settings.default_stretch_engine,
-    );
-    ui.set_settings(&ctx, settings);
+    let mut ui = crate::ui_startup::create_ui(&ctx, project, settings);
     if smoke.is_none()
         && let Some(root) = crate::midi::recovery_root()
     {

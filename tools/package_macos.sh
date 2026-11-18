@@ -69,21 +69,8 @@ mv -f "$temporary_executable" "$bundle/Contents/MacOS/daw-desktop"
 # Remove the obsolete helper when rebuilding an existing local bundle.
 rm -f "$bundle/Contents/MacOS/daw-plugin-scan"
 cp LICENSE "$bundle/Contents/Resources/LICENSE.txt"
-cp crates/unit-ui/assets/fonts/OFL.txt "$bundle/Contents/Resources/licenses/Outfit-OFL.txt"
 rm -f "$bundle/Contents/Resources/licenses/DM-Sans-OFL.txt"
-cp crates/unit-ui/assets/fonts/Hack-LICENSE.txt "$bundle/Contents/Resources/licenses/Hack-LICENSE.txt"
-cp crates/ui/assets/icons/LUCIDE-LICENSE.txt "$bundle/Contents/Resources/licenses/LUCIDE-LICENSE.txt"
-cp crates/ui/assets/icons/EGUI-LUCIDE-LICENSE.txt "$bundle/Contents/Resources/licenses/EGUI-LUCIDE-LICENSE.txt"
-cp crates/ui/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
-cp crates/unit-ui/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
-cp crates/separation/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
-cp crates/plugin-clap/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
-cp crates/plugin-vst3/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
-cp crates/plugin-host/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
-cp crates/media/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
-cp crates/timestretch/licenses/*.txt "$bundle/Contents/Resources/licenses/"
-cp crates/oscillator/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
-cp crates/equalizer/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
+sh tools/copy_desktop_notices.sh "$bundle/Contents/Resources/licenses"
 cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

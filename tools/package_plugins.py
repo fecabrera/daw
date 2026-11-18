@@ -19,6 +19,18 @@ TARGETS = {
 }
 
 
+def copy_preview_notices(root, notices, format_name, *, merge=False):
+    notices.mkdir(parents=True, exist_ok=merge)
+    shutil.copy2(root / "LICENSE", notices / "DAW-LICENSE.txt")
+    for crate, name in ((f"plugin-{format_name}", format_name), ("equalizer", "dsp"),
+                        ("oscillator", "oscillator-dsp"), ("plugin-window", "window"),
+                        ("unit-ui", "fallback-fonts"), ("ui", "ui")):
+        shutil.copytree(root / f"crates/{crate}/assets/licenses", notices / name, dirs_exist_ok=merge)
+    for source_name, destination in (("OFL.txt", "Outfit-OFL.txt"),
+                                     ("Hack-LICENSE.txt", "Hack-LICENSE.txt")):
+        shutil.copy2(root / "crates/unit-ui/assets/fonts" / source_name, notices / destination)
+
+
 def finalize_macos_bundle(bundle, binary):
     """Relocate and seal a complete development bundle, including its resources.
 
@@ -144,15 +156,7 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
             (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
         notices = (bundle / "Contents/Resources/licenses" if bundle.is_dir()
                    else content / "licenses")
-        notices.mkdir(parents=True)
-        shutil.copy2(root / "LICENSE", notices / "DAW-LICENSE.txt")
-        for crate, name in ((f"plugin-{format_name}", format_name), ("equalizer", "dsp"),
-                            ("oscillator", "oscillator-dsp"), ("plugin-window", "window"),
-                            ("unit-ui", "fallback-fonts"), ("ui", "ui")):
-            shutil.copytree(root / f"crates/{crate}/assets/licenses", notices / name)
-        for source_name, destination in (("OFL.txt", "Outfit-OFL.txt"),
-                                         ("Hack-LICENSE.txt", "Hack-LICENSE.txt")):
-            shutil.copy2(root / "crates/unit-ui/assets/fonts" / source_name, notices / destination)
+        copy_preview_notices(root, notices, format_name)
         if system == "macos":
             # Sign after the plist and every resource are final, before hashing/ZIP.
             finalize_macos_bundle(bundle, binary)

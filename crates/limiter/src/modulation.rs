@@ -19,7 +19,7 @@ impl Limiter {
     /// Offsets in LIMITER order: dB, release octaves, lookahead ms, ceiling dB.
     pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 4]) -> [f32; 2] {
         let offsets = self.external.process(offsets);
-        let mut p = self.parameters.each_mut().map(Ramp::tick);
+        let mut p = self.parameters.each_mut().map(Ramp::next_value);
         // Keep neutral arithmetic sample-exact. Both gain targets remain finite and bounded.
         for (index, offset, max) in [(0, offsets[0], 24.0), (3, offsets[3], 0.0)] {
             if offset != 0.0 {

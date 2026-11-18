@@ -48,14 +48,7 @@ cp docs/development/linux-runtime.txt "$package/LINUX-REQUIREMENTS.txt"
 mkdir -p "$package/share/applications" "$package/share/icons"
 cp crates/ui/assets/app-icon/org.daw.DAW.desktop "$package/share/applications/"
 cp -R crates/ui/assets/app-icon/hicolor "$package/share/icons/"
-cp crates/unit-ui/assets/fonts/OFL.txt "$package/licenses/Outfit-OFL.txt"
-cp crates/unit-ui/assets/fonts/Hack-LICENSE.txt "$package/licenses/Hack-LICENSE.txt"
-cp crates/ui/assets/icons/LUCIDE-LICENSE.txt "$package/licenses/LUCIDE-LICENSE.txt"
-cp crates/ui/assets/icons/EGUI-LUCIDE-LICENSE.txt "$package/licenses/EGUI-LUCIDE-LICENSE.txt"
-for directory in crates/ui/assets/licenses crates/unit-ui/assets/licenses crates/media/assets/licenses \
-  crates/plugin-clap/assets/licenses crates/plugin-vst3/assets/licenses crates/plugin-host/assets/licenses crates/oscillator/assets/licenses crates/equalizer/assets/licenses crates/timestretch/licenses crates/separation/assets/licenses; do
-  cp "$directory"/*.txt "$package/licenses/"
-done
+sh tools/copy_desktop_notices.sh "$package/licenses"
 if [ "$local_build" = 1 ]; then
   cat > "$package/LOCAL-BUILD.txt" <<'NOTE'
 Local development build from the current working tree, including uncommitted changes.

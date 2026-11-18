@@ -144,7 +144,7 @@ fn bypass_and_parameter_updates_finish_in_five_ms_and_reset_is_deterministic() {
         assert!(
             drive
                 .ramps()
-                .all(|ramp| ramp.remaining == 0 && ramp.value == ramp.target)
+                .all(|ramp| ramp.remaining_frames() == 0 && ramp.value() == ramp.target())
         );
         assert_eq!(drive.process_sample([0.2, -0.1]), [0.2, -0.1]);
         settings.enabled = true;
@@ -166,16 +166,16 @@ fn presentation_and_unrelated_edits_preserve_in_flight_ramps() {
     for _ in 0..60 {
         drive.process_sample([0.1; 2]);
     }
-    let remaining = drive.gain.remaining;
+    let remaining = drive.gain.remaining_frames();
     settings.collapsed = true;
     settings.volume_db = -6.0;
     drive.retarget(&settings);
-    assert_eq!(drive.gain.remaining, remaining);
+    assert_eq!(drive.gain.remaining_frames(), remaining);
     for _ in 0..remaining {
         drive.process_sample([0.1; 2]);
     }
-    assert_eq!(drive.gain.value, 1.0);
-    assert!(drive.volume.remaining > 0);
+    assert_eq!(drive.gain.value(), 1.0);
+    assert!(drive.volume.remaining_frames() > 0);
 }
 #[test]
 fn maximum_controls_remain_finite_with_high_level_stereo_input() {

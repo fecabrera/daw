@@ -16,6 +16,10 @@ mod hosting;
 mod midi;
 
 #[cfg(target_os = "linux")]
+#[path = "../src/ui_startup.rs"]
+mod ui_startup;
+
+#[cfg(target_os = "linux")]
 fn main() -> gtk4::glib::ExitCode {
     gtk_host::run()
 }

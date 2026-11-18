@@ -38,6 +38,65 @@ pub(crate) fn switch(
     .inner
 }
 
+pub(crate) struct FilterStrip<'a> {
+    pub high_pass: bool,
+    pub enabled: &'a mut bool,
+    pub value: &'a mut f32,
+    pub parameter: daw_unit_core::ModulationParameter,
+    pub slope: &'a mut daw_unit_core::ReverbFilterSlope,
+    pub marker: Option<&'a crate::knobs::ModulationMarker>,
+    pub modulation_open: &'a mut bool,
+}
+
+impl FilterStrip<'_> {
+    pub fn show(self, ui: &mut Ui, compact: bool, height: f32) -> [egui::Rect; 3] {
+        use crate::knobs::{self, Knob};
+        let (label, toggle, slope_label) = if self.high_pass {
+            ("Hi-Pass", "Toggle Hi-Pass", "High-pass slope")
+        } else {
+            ("Lo-Pass", "Toggle Lo-Pass", "Low-pass slope")
+        };
+        let mut bounds = [egui::Rect::NOTHING; 3];
+        if !compact {
+            knobs::row(ui, &mut (), knobs::CHOICE_SIZE, |ui, _| {
+                let response = ui.add_enabled(
+                    *self.enabled,
+                    Knob::new(
+                        self.value,
+                        crate::parameter_knobs::destination(self.parameter),
+                    )
+                    .modulated(self.marker, self.modulation_open),
+                );
+                bounds[0] = response.rect;
+                response
+            });
+            ui.allocate_response(
+                egui::vec2(ui.available_width(), knobs::CHOICE_SIZE),
+                egui::Sense::hover(),
+            );
+            bounds[2] = filter_slope(ui, self.slope, *self.enabled, slope_label).rect;
+        }
+        rows::centered(
+            ui,
+            if compact {
+                height
+            } else {
+                layout::COMPACT_BUTTON_SIZE
+            },
+            |ui| {
+                let mut response = rows::power_label(ui, label, toggle, *self.enabled);
+                bounds[1] = response.rect;
+                if response.clicked() {
+                    *self.enabled = !*self.enabled;
+                    response.mark_changed();
+                }
+                response
+            },
+        );
+        bounds
+    }
+}
+
 pub(crate) fn filter_slope(
     ui: &mut Ui,
     value: &mut daw_unit_core::ReverbFilterSlope,

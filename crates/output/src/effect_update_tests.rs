@@ -674,7 +674,7 @@ fn rejecting_a_duplicate_revision_cannot_erase_the_applied_publication_before_ac
     let previous = output.plan.clone();
     let mut desired = (*previous).clone();
     desired.project.tracks[0].effects.push(E::drive());
-    let bindings = preparation::Bindings::prepare(&desired, &output.bindings());
+    let bindings = preparation::Bindings::prepare(&desired, &output.bindings);
     output.prepare_revision = 1;
     output.status.requested_revision.store(1, Ordering::Release);
     for publication in [1, 2] {

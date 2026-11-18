@@ -1,4 +1,5 @@
 //! Portable normalized LFO source and the clock/wave primitives shared by Auto-filter.
+use daw_unit_core::ramps::LinearRamp64 as Ramp;
 use daw_unit_core::{
     LfoPolarity, LfoRateMode, LfoRestart, LfoSettings, ModulationBehavior, ModulationContext,
     ModulationDestination, ModulationDestinationSettings, ModulationInputs,
@@ -101,38 +102,6 @@ impl LfoClock {
         phase
     }
 }
-#[derive(Clone, Copy)]
-struct Ramp {
-    value: f64,
-    target: f64,
-    remaining: u32,
-}
-impl Ramp {
-    fn new(value: f64) -> Self {
-        Self {
-            value,
-            target: value,
-            remaining: 0,
-        }
-    }
-    fn set(&mut self, target: f64, frames: u32) {
-        if self.target != target {
-            self.target = target;
-            self.remaining = frames;
-        }
-    }
-    fn next(&mut self) -> f64 {
-        if self.remaining > 0 {
-            self.value += (self.target - self.value) / f64::from(self.remaining);
-            self.remaining -= 1;
-        }
-        self.value
-    }
-    fn reset(&mut self) {
-        self.value = self.target;
-        self.remaining = 0;
-    }
-}
 #[derive(Clone)]
 pub struct Lfo {
     settings: LfoSettings,
@@ -155,7 +124,7 @@ impl Lfo {
             settings,
             clock: LfoClock::new(context),
             fade: (context.sample_rate_hz / 200).max(1),
-            waves: std::array::from_fn(|i| Ramp::new(f64::from(i == settings.wave.index()))),
+            waves: Ramp::weights(settings.wave.index()),
             phase: Ramp::new(f64::from(settings.phase_degrees) / 360.0),
             smoothing: Ramp::new(f64::from(settings.smooth_ms)),
             depth: Ramp::new(f64::from(settings.depth)),
@@ -181,12 +150,13 @@ impl Lfo {
     }
     pub fn set_settings(&mut self, settings: LfoSettings) {
         for (i, ramp) in self.waves.iter_mut().enumerate() {
-            ramp.set(f64::from(i == settings.wave.index()), self.fade);
+            ramp.retarget(f64::from(i == settings.wave.index()), self.fade);
         }
         self.phase
-            .set(f64::from(settings.phase_degrees) / 360.0, self.fade);
-        self.smoothing.set(f64::from(settings.smooth_ms), self.fade);
-        self.depth.set(f64::from(settings.depth), self.fade);
+            .retarget(f64::from(settings.phase_degrees) / 360.0, self.fade);
+        self.smoothing
+            .retarget(f64::from(settings.smooth_ms), self.fade);
+        self.depth.retarget(f64::from(settings.depth), self.fade);
         self.settings = settings;
     }
     pub fn reset(&mut self) {
@@ -249,13 +219,13 @@ impl Lfo {
         } else {
             self.clock.phase_at(context.frame, origin, base_hz)
         };
-        let phase = base_phase + self.rate_phase + self.phase.next();
-        let depth = (self.depth.next() + self.offsets[0]).clamp(0.0, 1.0);
+        let phase = base_phase + self.rate_phase + self.phase.next_value();
+        let depth = (self.depth.next_value() + self.offsets[0]).clamp(0.0, 1.0);
         self.effective = [depth as f32, hz as f32];
         for weight in &mut self.waves {
-            weight.next();
+            weight.next_value();
         }
-        let ms = self.smoothing.next();
+        let ms = self.smoothing.next_value();
         let smoothed = periodic_value(&self.waves, phase, hz, ms);
         let value = match self.settings.polarity {
             LfoPolarity::Unipolar => (smoothed + 1.0) * 0.5,
@@ -270,14 +240,14 @@ fn periodic_value(waves: &[Ramp; 5], phase: f64, hz: f64, ms: f64) -> f64 {
         return waves
             .iter()
             .enumerate()
-            .map(|(i, w)| w.value * waveform(i, phase))
+            .map(|(i, w)| w.value() * waveform(i, phase))
             .sum();
     }
     waves
         .iter()
         .enumerate()
-        .filter(|(_, w)| w.value != 0.0)
-        .map(|(i, w)| w.value * smooth_wave(i, phase, hz, ms / 1000.0))
+        .filter(|(_, w)| w.value() != 0.0)
+        .map(|(i, w)| w.value() * smooth_wave(i, phase, hz, ms / 1000.0))
         .sum::<f64>()
         .clamp(-1.0, 1.0)
 }

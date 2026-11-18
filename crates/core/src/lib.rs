@@ -1075,30 +1075,18 @@ impl Project {
                             if matches!(track.kind, TrackKind::Midi | TrackKind::Beat) {
                                 clip.length_frames =
                                     checked_frame((clip.length_frames as f64 * ratio).round())?;
-                                clip.source_offset_frame = checked_frame(
-                                    (clip.source_offset_frame as f64 * ratio).round(),
-                                )?;
-                                if let Some(repeat) = &mut clip.repeat {
-                                    repeat.length_frames = checked_frame(
-                                        (repeat.length_frames as f64 * ratio).round(),
-                                    )?;
-                                    repeat.phase_frame =
-                                        checked_frame((repeat.phase_frame as f64 * ratio).round())?;
-                                }
+                                timing::retime_pattern_source(clip, ratio, checked_frame)?;
                             }
                             clip.start_frame =
                                 checked_frame((clip.start_frame as f64 * ratio).round())?;
                         }
                     }
-                    for asset in &mut self.assets {
-                        if let Some(length_ticks) = asset.pattern_length_ticks() {
-                            asset.decoded_frame_count = checked_frame(
-                                (f64::from(length_ticks) * f64::from(self.sample_rate_hz) * 60.0
-                                    / (f64::from(bpm) * f64::from(MIDI_TICKS_PER_BEAT)))
-                                .round(),
-                            )?;
-                        }
-                    }
+                    timing::retime_pattern_assets(
+                        &mut self.assets,
+                        self.sample_rate_hz,
+                        bpm,
+                        checked_frame,
+                    )?;
                     self.bound_retimed_midi_sources()?;
                     for marker in &mut self.markers {
                         let end = marker

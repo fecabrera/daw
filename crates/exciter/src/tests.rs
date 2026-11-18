@@ -266,7 +266,7 @@ fn rapid_boundary_retargets_preserve_order_with_one_shared_clock() {
         u.retarget(&s);
         for i in 0..(step % 13 + 1) {
             assert!(u.process_sample([tone(i, 43), 0.0])[0].is_finite());
-            assert!(u.frequencies.windows(2).all(|f| f[0][0] < f[1][0]));
+            assert!(u.crossover.current_log_cutoffs().is_sorted_by(|a, b| a < b));
         }
     }
 }

@@ -1,9 +1,23 @@
 //! Format-neutral ABI containment, atomic publication, and bounded text helpers.
+pub mod allocation_probe;
+pub mod state_io;
+
 use std::{
     ffi::c_char,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::atomic::{AtomicU64, Ordering},
 };
+
+/// Sample rates supported by the standalone plugin processors.
+pub const SUPPORTED_RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
+
+/// Validate host processing bounds before constructing a processor.
+pub fn valid_processing_configuration(rate: f64, minimum: u32, maximum: u32) -> bool {
+    SUPPORTED_RATES.iter().any(|&r| f64::from(r) == rate)
+        && minimum != 0
+        && minimum <= maximum
+        && maximum <= i32::MAX as u32
+}
 
 /// No panic may escape a C callback. Unexpected panic payloads are deliberately
 /// leaked, rather than retiring an arbitrary final owner on the audio thread.

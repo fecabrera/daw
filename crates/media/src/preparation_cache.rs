@@ -285,7 +285,7 @@ fn read(path: &Path, key: Key, cancelled: &impl Fn() -> bool) -> Result<AudioDat
     {
         return Err(io("Invalid audio cache dimensions"));
     }
-    let peaks = frames.div_ceil(256);
+    let peaks = frames.div_ceil(crate::PEAK_BLOCK_FRAMES as u64);
     let expected = frames
         .checked_mul(8)
         .and_then(|n| peaks.checked_mul(16).and_then(|p| n.checked_add(p)))

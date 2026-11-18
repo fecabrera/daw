@@ -3,44 +3,32 @@
 from __future__ import annotations
 import argparse
 from collections import Counter
-import hashlib
 import json
 import os
 from pathlib import Path
 import platform
 import plistlib
 import shutil
-import subprocess
 import sys
-from package_plugins import finalize_macos_bundle
+from drive_artifact_check import build_artifact, check_artifact, collect_report
+from drive_check_support import owned_scratch, run_logged
+from package_plugins import copy_preview_notices, finalize_macos_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN = {"daw-desktop", "daw-cli", "daw-core", "daw-ui", "daw-engine", "daw-project", "daw-output", "daw-media", "daw-separation", "cpal", "rfd", "eframe"}
 SIGNATURE = "DAW Drive CLAP Phase 2 scratch v1\n"
 
 def scratch(path: Path) -> Path:
-    path = path.resolve()
-    if path == ROOT / "work" or not path.is_relative_to(ROOT / "work"):
-        raise ValueError("Choose a dedicated scratch directory under ignored work/")
-    path.mkdir(parents=True, exist_ok=True)
-    marker = path / ".drive-clap-phase2"
-    if marker.exists():
-        if marker.read_text() != SIGNATURE:
-            raise ValueError("Unrecognized scratch ownership marker")
-    elif any(path.iterdir()):
-        raise ValueError("Retaining unmarked scratch contents; choose a fresh --work-dir")
-    else:
-        marker.write_text(SIGNATURE)
-    return path
+    return owned_scratch(
+        path, ROOT, ".drive-clap-phase2", SIGNATURE,
+        outside="Choose a dedicated scratch directory under ignored work/",
+        unrecognized="Unrecognized scratch ownership marker",
+    )
+
 
 def run(command: list[str], log: Path, env: dict, allowed=(0,)) -> str:
-    print("Running " + " ".join(map(str, command[:4])), flush=True)
-    result = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True)
-    log.write_text(result.stdout)
-    log.with_suffix(log.suffix + ".stderr").write_text(result.stderr)
-    if result.returncode not in allowed:
-        raise RuntimeError(f"Command failed ({result.returncode}); inspect {log} and its .stderr file")
-    return result.stdout
+    return run_logged(command, log, env, cwd=ROOT, allowed=allowed)
+
 
 def assess_validator(results: list[dict]) -> dict:
     failed = [row for row in results if row["status"]["code"] not in ("success", "skipped")]
@@ -68,25 +56,8 @@ def main() -> int:
     if version != "clap-validator 0.4.1":
         raise ValueError("This check records clap-validator 0.4.1; select that version explicitly")
     env.pop("CARGO_BUILD_TARGET", None)  # This runner executes native binaries.
-    cargo = ["cargo"]
-    target = work / "target"
-    offline = [] if args.fetch else ["--offline"]
-    build = cargo + ["build", "-p", "daw-drive-clap", "--release", "--locked", "--target-dir", str(target)] + offline
-    artifact = {"Darwin": "libdaw_drive_clap.dylib", "Linux": "libdaw_drive_clap.so", "Windows": "daw_drive_clap.dll"}.get(platform.system())
-    if artifact is None:
-        raise ValueError("Unsupported development build platform")
-    run(build + ["--features", "allocation-check"], work / "instrumented-build.log", env)
-    instrumented = work / ("allocation-check-" + artifact)
-    shutil.copy2(target / "release" / artifact, instrumented)
-    tests = cargo + ["test", "-p", "daw-drive-clap", "--release", "--locked", "--target-dir", str(target)] + offline + ["--test", "host"]
-    test_env = dict(env, DRIVE_CLAP_TEST_LIBRARY=str(instrumented), DRIVE_CLAP_REQUIRE_ALLOCATION_CHECK="1")
-    run(tests, work / "allocation-parity-tests.log", test_env)
-    output = run(build + ["--message-format=json"], work / "targeted-build.jsonl", env)
-    names = {row["target"]["name"].replace("_", "-") for line in output.splitlines() if (row := json.loads(line)).get("reason") == "compiler-artifact"}
-    if names & FORBIDDEN:
-        raise RuntimeError("Unexpected DAW/device/window artifact targets: " + ", ".join(sorted(names & FORBIDDEN)))
-    metadata = json.loads(run(cargo + ["metadata", "--no-deps", "--locked", "--format-version", "1"] + offline, work / "metadata.json", env))
-    plugin_version = next(p["version"] for p in metadata["packages"] if p["name"] == "daw-drive-plugin")
+    artifact, tests, names, plugin_version = build_artifact(
+        "clap", work, env, args.fetch, FORBIDDEN, run)
     bundle = work / "Drive.clap"
     if platform.system() == "Darwin":
         binary = bundle / "Contents/MacOS/Drive"
@@ -96,35 +67,15 @@ def main() -> int:
     else:
         binary = bundle
         notices = work / "notices"
-    shutil.copy2(target / "release" / artifact, binary)
-    notices.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(ROOT / "LICENSE", notices / "DAW-LICENSE.txt")
-    for source, name in [("crates/plugin-clap/assets/licenses", "clap"), ("crates/equalizer/assets/licenses", "dsp"), ("crates/oscillator/assets/licenses", "oscillator-dsp")]:
-        shutil.copytree(ROOT / source, notices / name, dirs_exist_ok=True)
-    for source, name in [("crates/plugin-window/assets/licenses", "window"), ("crates/unit-ui/assets/licenses", "fallback-fonts"), ("crates/ui/assets/licenses", "ui")]:
-        shutil.copytree(ROOT / source, notices / name, dirs_exist_ok=True)
-    for source in ["crates/unit-ui/assets/fonts/OFL.txt", "crates/unit-ui/assets/fonts/Hack-LICENSE.txt"]:
-        shutil.copy2(ROOT / source, notices / ("Outfit-OFL.txt" if source.endswith("OFL.txt") else "Hack-LICENSE.txt"))
+    shutil.copy2(artifact, binary)
+    copy_preview_notices(ROOT, notices, "clap", merge=True)
     (notices / "DEVELOPMENT.txt").write_text("Drive editor development artifact. Complete release dependency/notice audit, native accessibility, platform and external-host checks remain gates. Not a release package.\n")
     if platform.system() == "Darwin":
         finalize_macos_bundle(bundle, binary)
-    normal_env = dict(env, DRIVE_CLAP_TEST_LIBRARY=str(binary))
-    normal_env.pop("DRIVE_CLAP_REQUIRE_ALLOCATION_CHECK", None)
-    run(tests, work / "artifact-parity-tests.log", normal_env)
-    bench_env = dict(normal_env, DRIVE_CLAP_BENCH_REPORT=str(work / "callback-budgets.json"))
-    run(tests + ["performance::callback_cpu_budget", "--", "--ignored"], work / "callback-budget-tests.log", bench_env)
+    check_artifact("clap", work, env, binary, tests, run)
     raw = json.loads(run([str(validator), "validate", "--json", str(bundle)], work / "validator.json", env, allowed=(0, 1)))
     assessment = assess_validator(raw["results"])
-    hardware = {}
-    if platform.system() == "Darwin":
-        for key in ["machdep.cpu.brand_string", "hw.ncpu", "hw.memsize"]:
-            query = subprocess.run(["sysctl", "-n", key], text=True, capture_output=True)
-            hardware[key] = query.stdout.strip() if query.returncode == 0 else "unavailable"
-    compiler = run(["rustc", "--version"], work / "rustc.log", env).strip()
-    report = {"schema_version": 1, "run_completed": True, "rustc": compiler, "hardware": hardware, "profile": "release, thin LTO, one codegen unit", "platform": platform.system(), "architecture": platform.machine(), "plugin_version": plugin_version,
-              "validator": {"version": version, **assessment}, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-              "callback_budgets": json.loads((work / "callback-budgets.json").read_text()), "instrumented_and_normal_binary_abi_tests_passed": True,
-              "audio_thread_rust_allocations_and_deallocations": 0, "allocator_positive_control_passed": True, "artifact_targets": sorted(names), "editor_present": True, "external_daw_checked": False, "release_ready": False}
+    report = collect_report(work, env, binary, names, plugin_version, version, assessment, run)
     (work / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({"report": str(work / "report.json"), "validator": assessment, "release_ready": False}, indent=2))
     if not assessment["all_passed"] and (args.strict_validator or not assessment["only_failure_is_outside_six_rate_contract"]):

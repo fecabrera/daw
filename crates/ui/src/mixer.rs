@@ -551,19 +551,7 @@ impl DawUi {
             );
         }
         if let Some((track, action)) = action {
-            if matches!(
-                action,
-                TrackAction::Add
-                    | TrackAction::AddMidi
-                    | TrackAction::AddBeat
-                    | TrackAction::AddGroup
-            ) {
-                self.add_track_to_group_from_menu(track, action, ui.ctx());
-            } else if action == TrackAction::AddSubtrack {
-                self.add_subtrack_from_menu(track, ui.ctx());
-            } else {
-                self.perform_track_action(action, ui.ctx());
-            }
+            self.perform_track_row_action(track, action, ui.ctx());
         }
     }
 

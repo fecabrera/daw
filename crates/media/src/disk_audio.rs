@@ -433,7 +433,7 @@ pub struct DiskAudioWriter {
 }
 impl DiskAudioWriter {
     pub fn new(expected_frames: u64) -> Result<Self> {
-        let peak_count = expected_frames.div_ceil(256);
+        let peak_count = expected_frames.div_ceil(crate::PEAK_BLOCK_FRAMES as u64);
         let scratch = peak_count
             .checked_mul(16)
             .and_then(|n| n.checked_add(8192 * 8))
@@ -455,7 +455,7 @@ impl DiskAudioWriter {
             expected_frames: Some(expected_frames),
             peak_memory: Vec::new(),
             _memory: memory,
-            peak: [[f32::INFINITY, f32::NEG_INFINITY]; 2],
+            peak: crate::EMPTY_PEAK,
             peak_frames: 0,
         })
     }
@@ -493,15 +493,14 @@ impl DiskAudioWriter {
                 if frame.iter().any(|s| !s.is_finite()) {
                     return Err(Error("Disk audio contains non-finite samples".into()));
                 }
-                for (ch, sample) in frame.iter().enumerate() {
+                for sample in frame {
                     self.bytes.extend_from_slice(&sample.to_le_bytes());
-                    self.peak[ch][0] = self.peak[ch][0].min(*sample);
-                    self.peak[ch][1] = self.peak[ch][1].max(*sample);
                 }
+                crate::include_peak_frame(&mut self.peak, *frame);
                 self.peak_frames += 1;
-                if self.peak_frames == 256 {
+                if self.peak_frames == crate::PEAK_BLOCK_FRAMES {
                     self.push_peak()?;
-                    self.peak = [[f32::INFINITY, f32::NEG_INFINITY]; 2];
+                    self.peak = crate::EMPTY_PEAK;
                     self.peak_frames = 0;
                 }
             }

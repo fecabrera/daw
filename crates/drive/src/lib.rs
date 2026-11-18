@@ -1,5 +1,6 @@
 //! Stereo soft-clipping drive with pre-clipping color and post-clipping tone.
 //! FunDSP filter types stay private; callback operations do not allocate or block.
+use daw_unit_core::ramps::ExactRamp32 as Ramp;
 use daw_unit_core::{
     DRIVE_TYPE_ID, DriveSettings, EffectUnit, LevelMonitor, PortKind, ProcessingContext,
     UnitDescriptor,
@@ -9,41 +10,6 @@ use std::sync::{Arc, atomic::AtomicU32};
 
 mod v2;
 pub use v2::DriveV2;
-
-#[derive(Clone)]
-struct Ramp {
-    value: f32,
-    target: f32,
-    remaining: u32,
-}
-impl Ramp {
-    fn new(value: f32) -> Self {
-        Self {
-            value,
-            target: value,
-            remaining: 0,
-        }
-    }
-    fn retarget(&mut self, target: f32, frames: u32) {
-        if self.target != target {
-            self.target = target;
-            self.remaining = frames;
-        }
-    }
-    fn advance(&mut self) {
-        if self.remaining > 0 {
-            self.value += (self.target - self.value) / self.remaining as f32;
-            self.remaining -= 1;
-            if self.remaining == 0 {
-                self.value = self.target;
-            }
-        }
-    }
-    fn reset(&mut self) {
-        self.value = self.target;
-        self.remaining = 0;
-    }
-}
 
 type Bell = FixedSvf<f64, BellMode<f64>>;
 type Bass = FixedSvf<f64, LowshelfMode<f64>>;
@@ -140,10 +106,10 @@ impl Drive {
 
     fn base_parameters(&self) -> [f32; 4] {
         [
-            self.gain.value,
-            self.tone.value,
-            self.strength.value,
-            self.frequency_log.value,
+            self.gain.value(),
+            self.tone.value(),
+            self.strength.value(),
+            self.frequency_log.value(),
         ]
     }
     fn configure(&mut self, values: [f32; 4]) {
@@ -222,7 +188,7 @@ impl EffectUnit for Drive {
             filter.reset();
         }
         self.external.reset();
-        self.effective[0] = self.volume.value;
+        self.effective[0] = self.volume.value();
         self.configure(self.base_parameters());
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
@@ -279,9 +245,9 @@ impl Drive {
                 .clamp(250.0_f32.ln(), 2000.0_f32.ln()),
         ]);
         let volume = if offsets[0] == 0.0 {
-            self.volume.value
+            self.volume.value()
         } else {
-            (self.volume.value * amplitude(offsets[0].clamp(-96.0, 96.0))).min(amplitude(12.0))
+            (self.volume.value() * amplitude(offsets[0].clamp(-96.0, 96.0))).min(amplitude(12.0))
         };
         self.effective[0] = volume;
         std::array::from_fn(|channel| {
@@ -296,7 +262,7 @@ impl Drive {
             let color = branches
                 .into_iter()
                 .zip(&self.colors)
-                .map(|(sample, weight)| sample * weight.value)
+                .map(|(sample, weight)| sample * weight.value())
                 .sum::<f32>();
             let clipped = if self.clipping < 1e-4 {
                 color
@@ -335,7 +301,7 @@ impl Drive {
                 tone
             } else {
                 let wet = tone * volume;
-                dry + (wet - dry) * self.mix.value
+                dry + (wet - dry) * self.mix.value()
             }
         })
     }

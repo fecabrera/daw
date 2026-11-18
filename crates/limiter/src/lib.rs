@@ -1,4 +1,5 @@
 //! Stereo limiter with fixed host-compensated latency and allocation-free processing.
+use daw_unit_core::ramps::LinearRamp64 as Ramp;
 use daw_unit_core::{
     BandMeter, EffectUnit, LIMITER_TYPE_ID, LevelMonitor, LimiterMode, LimiterRouting,
     LimiterSettings, PeakMeter, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
@@ -11,34 +12,6 @@ mod true_peak;
 struct Frame {
     dry: [f64; 2],
     wet: [f64; 2],
-}
-#[derive(Clone, Copy)]
-struct Ramp {
-    value: f64,
-    target: f64,
-    remaining: u32,
-}
-impl Ramp {
-    fn new(value: f64) -> Self {
-        Self {
-            value,
-            target: value,
-            remaining: 0,
-        }
-    }
-    fn retarget(&mut self, target: f64, frames: u32) {
-        if self.target != target {
-            self.target = target;
-            self.remaining = frames;
-        }
-    }
-    fn tick(&mut self) -> f64 {
-        if self.remaining > 0 {
-            self.value += (self.target - self.value) / f64::from(self.remaining);
-            self.remaining -= 1;
-        }
-        self.value
-    }
 }
 fn amplitude(db: f32) -> f64 {
     10_f64.powf(f64::from(db) / 20.0)
@@ -187,11 +160,10 @@ impl EffectUnit for Limiter {
         self.peaks.fill([0.0; 3]);
         self.index = 0;
         for p in &mut self.parameters {
-            p.value = p.target;
-            p.remaining = 0;
+            p.reset();
         }
         self.external.reset();
-        self.effective = self.parameters.each_ref().map(|p| p.value);
+        self.effective = self.parameters.each_ref().map(|p| p.value());
         self.gains = [1.0; 3];
         self.guard.reset();
         self.reduction_db = 0.0;

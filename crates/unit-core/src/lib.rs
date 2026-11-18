@@ -52,6 +52,7 @@ mod auto_filter;
 mod filter;
 pub use filter::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
 mod modulation;
+pub mod ramps;
 pub use modulation::*;
 mod audio_sidechain;
 pub use audio_sidechain::*;
