@@ -79,12 +79,19 @@ Normal imports retain external references; included recordings stay inside the p
 
 Stem separation supports four or six stems using local HTDemucs models through Charon, with CoreML on Apple Silicon macOS and CPU on supported platforms. Either validated model enables separation; CoreML takes priority, with optional CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
 
-</details>
-
 External VST3 and CLAP effects and instruments use the shared renderer. The desktop
 discovers standard plugin folders and provides mapped controls, native editors,
 shared modulation and audio sidechains. See [External plugins](docs/plugins.md)
 for use and platform limits.
+</details>
+
+<details>
+<summary><h2>Status and planned work</h2></summary>
+
+Most of the features are experimental, including (but not limited to) the project manifest format and the layout of both the main application and the effects.
+
+Pending feature work includes audio recording and monitoring, timeline automation, advanced beat editing, additional effects and custom instrument routing. The [features and roadmap](docs/roadmap.md) separates implemented milestones, remaining feature work and native acceptance checks.
+</details>
 
 ## Documentation
 
@@ -97,12 +104,6 @@ for use and platform limits.
 - [Implementation specifications](specs/README.md): architecture, data formats, requirements, and acceptance criteria.
 - [Validation records](specs/validation/README.md): completed checks and remaining verification limits.
 - [Repository instructions](AGENTS.md): contribution rules and development workflows.
-
-## Status and planned work
-
-Most of the features are experimental, including (but not limited to) the project manifest format and the layout of both the main application and the effects.
-
-Pending feature work includes audio recording and monitoring, timeline automation, advanced beat editing, additional effects and custom instrument routing. The [features and roadmap](docs/roadmap.md) separates implemented milestones, remaining feature work and native acceptance checks.
 
 ## AI disclosure
 
