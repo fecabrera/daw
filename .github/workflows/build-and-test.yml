@@ -13,6 +13,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependency-audit:
+    name: Cargo Deny
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Cargo Deny 0.21.0
+        run: |
+          cargo --version
+          archive=cargo-deny-0.21.0-x86_64-unknown-linux-musl.tar.gz
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.21.0/$archive" \
+            --output "$archive"
+          printf '%s  %s\n' 'a2170b854ff697e79e39c4c538981c9c1bdd803addbae6719a4cb66b4585a903' "$archive" \
+            | sha256sum -c -
+          tar -xzf "$archive"
+          printf '%s\n' "$RUNNER_TEMP/${archive%.tar.gz}" >> "$GITHUB_PATH"
+
+      - name: Report workspace license findings
+        continue-on-error: true
+        run: |
+          mkdir -p work/ci-logs
+          cargo deny --locked --workspace --color never check --show-stats licenses \
+            2>&1 | tee work/ci-logs/cargo-deny-licenses.log
+
+      - name: Check advisories by shipped target
+        run: |
+          mkdir -p work/ci-logs
+          failed=0
+          for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc x86_64-unknown-linux-gnu; do
+            echo "::group::Cargo Deny advisories for $target"
+            if ! cargo deny --locked --workspace --color never --target "$target" check --show-stats advisories \
+              2>&1 | tee "work/ci-logs/cargo-deny-advisories-$target.log"; then
+              failed=1
+            fi
+            echo '::endgroup::'
+          done
+          exit "$failed"
+
+      - name: Upload dependency audit logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-cargo-deny
+          path: work/ci-logs/cargo-deny-*.log
+          if-no-files-found: warn
+          retention-days: 14
+
   platform:
     name: ${{ matrix.platform }}
     strategy:

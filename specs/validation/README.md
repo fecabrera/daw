@@ -17,6 +17,31 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## File dialog and dependency updates — 2026-11-18
+
+Updated rfd to 0.18.0, indicatif to 0.18.6, async-executor to 1.14.1,
+and clipboard-win to 5.4.3. Rfd uses the Linux D-Bus client library for
+portal requests. Indicatif uses unit-prefix in place of number_prefix.
+
+- The rebuilt macOS debug app opened a copied project through the native
+  folder picker and wrote a valid WAV through the native Save panel.
+- A Linux ARM64 smoke test called rfd with a test XDG portal. Audio file
+  selection, folder selection, save destination, and cancellation returned the
+  expected results. A live Linux desktop portal and native Windows dialogs
+  were outside this check.
+- `cargo test --locked --offline -p daw-separation` passed eight tests, including
+  native CPU and CoreML tests, fallback, and four- and six-stem fixtures.
+  The opt-in project test separated synthetic audio with local HTDemucs models
+  through CPU and CoreML in separate runs, then saved and reopened the results.
+  No model weights or test audio from those runs were added to the repository.
+- The locked cargo-deny advisory check passed separately for macOS ARM64 and
+  x86-64, Linux x86-64, and Windows x86-64. The combined graph still reported
+  the three AccessKit D-Bus maintenance advisories and the four Rubber Band
+  and LAME license errors.
+- Formatting and strict workspace Clippy passed. Debug and release workspace
+  tests passed with `--locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`.
+  The macOS disk image fixture passed on rerun with disk device access.
+
 ## Effects lane context menu — 2026-11-17
 
 The egui interaction test checks the catalog folder order and divider, adds a

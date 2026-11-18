@@ -84,6 +84,23 @@ It builds the release example, generates temporary audio under ignored `work/aud
 
 The macOS and Linux desktop packagers explicitly build into the repository's `target/` directory. They explicitly select the native Rust host target, overriding `CARGO_BUILD_TARGET` and Cargo `build.target`, as well as `CARGO_TARGET_DIR` and `build.target-dir`. They read and validate the executable path reported by Cargo. The executable is built under `target/<host>/<profile>/`; package output paths remain unchanged.
 
+## Dependency checks in CI
+
+The Test and build workflow runs Cargo Deny 0.21.0. Advisory failures fail the
+Cargo Deny job. It checks macOS ARM64, macOS x86-64, Windows x86-64, and Linux
+x86-64 in separate commands so dependencies for different targets do not mix.
+The workspace license report uses [deny.toml](../../deny.toml) and remains
+visible in the job log and the `logs-cargo-deny` artifact. License findings
+do not fail the job. This includes the current Rubber Band and LAME findings.
+
+To reproduce the Linux advisory check and the workspace license report locally,
+run these commands with Cargo Deny installed:
+
+```sh
+cargo deny --locked --workspace --target x86_64-unknown-linux-gnu check advisories
+cargo deny --locked --workspace check licenses
+```
+
 ## Corresponding source in desktop packages
 
 Distribution packaging requires Python 3, Git, Cargo and a clean committed tracked tree.

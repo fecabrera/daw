@@ -3,7 +3,7 @@ Stem-separation dependency source notice
 Charon source: https://github.com/Valkyra-Labs/charon-audio
 Pinned commit: bc045cd80f009ea863772c5afef15928101df66f
 Local compatibility patch: vendor/charon-audio/DAW-PATCH.md in the DAW source.
-The patch resets automatic device selection before explicit providers; inference and DSP are unchanged.
+The patch resets automatic device selection before explicit providers and updates the progress-bar dependency. Inference and DSP are unchanged.
 
 ort-sys source patch: https://github.com/pykeio/ort/tree/f2a5f73c9dd9ff3682303481cc792bf4669e3e94
 The patch keeps binding version 2.0.0-rc.13 and selects checksum-pinned native 1.31.0 artifacts.
@@ -23,7 +23,7 @@ built 0.7.7: https://github.com/lukaslueg/built (MIT)
 
 byteorder 1.5.0: https://github.com/BurntSushi/byteorder (Unlicense OR MIT)
 
-console 0.15.11: https://github.com/console-rs/console (MIT)
+console 0.16.6: https://github.com/console-rs/console (MIT)
 
 core-foundation 0.10.1: https://github.com/servo/core-foundation-rs (MIT OR Apache-2.0)
 
@@ -61,7 +61,7 @@ http 1.5.0: https://github.com/hyperium/http (MIT OR Apache-2.0)
 
 httparse 1.10.1: https://github.com/seanmonstar/httparse (MIT OR Apache-2.0)
 
-indicatif 0.17.11: https://github.com/console-rs/indicatif (MIT)
+indicatif 0.18.6: https://github.com/console-rs/indicatif (MIT)
 
 lzma-rust2 0.15.8: https://github.com/hasenbanck/lzma-rust2/ (Apache-2.0)
 
@@ -74,8 +74,6 @@ native-tls 0.2.18: https://github.com/rust-native-tls/rust-native-tls (MIT OR Ap
 ndarray 0.15.6: https://github.com/rust-ndarray/ndarray (MIT OR Apache-2.0)
 
 ndarray 0.17.2: https://github.com/rust-ndarray/ndarray (MIT OR Apache-2.0)
-
-number_prefix 0.4.0: https://github.com/ogham/rust-number-prefix (MIT)
 
 openssl 0.10.81: https://github.com/rust-openssl/rust-openssl (Apache-2.0)
 
@@ -112,6 +110,8 @@ security-framework 3.7.0: https://github.com/kornelski/rust-security-framework (
 security-framework-sys 2.17.0: https://github.com/kornelski/rust-security-framework (MIT OR Apache-2.0)
 
 seq-macro 0.3.6: https://github.com/dtolnay/seq-macro (MIT OR Apache-2.0)
+
+unit-prefix 0.5.2: https://codeberg.org/commons-rs/unit-prefix (MIT)
 
 ureq 3.5.0: https://github.com/algesten/ureq (MIT OR Apache-2.0)
 

@@ -3,6 +3,7 @@ name = "daw-desktop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license = "BSD-2-Clause"
 
 # Compatibility with the former GTK experiment command; GTK is always used on Linux.
 [features]

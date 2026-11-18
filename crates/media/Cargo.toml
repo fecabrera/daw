@@ -3,6 +3,7 @@ name = "daw-media"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license = "BSD-2-Clause"
 
 [dependencies]
 audio-analysis.workspace = true

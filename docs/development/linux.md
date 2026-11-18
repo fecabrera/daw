@@ -4,7 +4,7 @@
 
 Run commands from the repository root.
 
-Install Rust through Rustup, a C++ compiler, CMake, Clang/libclang, GTK 4.8 or newer development libraries, ALSA development libraries, pkg-config, and OpenSSL development headers (for build-time runtime downloads). Ensure the XDG Desktop Portal service is available for file dialogs. Package names depend on your distribution.
+Install Rust through Rustup, a C++ compiler, CMake, Clang/libclang, GTK 4.8 or newer development libraries, ALSA development libraries, pkg-config, and OpenSSL development headers (for build-time runtime downloads). File dialogs use the XDG Desktop Portal service and the D-Bus client library (`libdbus-1.so.3`). Package names depend on your distribution.
 
 ```sh
 cargo build -p daw-desktop
@@ -32,7 +32,8 @@ it only after packaging succeeds. Extract it and run `DAW/daw-desktop`. Keep
 `DAW/LICENSE.txt` and `DAW/licenses` with the executable. The archive preserves
 executable permissions and includes the same dependency notices as the other
 packages. It does not bundle system libraries: the destination needs compatible
-C/C++ runtime, GTK 4.8 or newer, OpenGL 3.3, ALSA, and a desktop portal for dialogs.
+C/C++ runtime, GTK 4.8 or newer, OpenGL 3.3, ALSA, and the D-Bus client library
+and XDG Desktop Portal for file dialogs.
 
 Desktop downloads also contain the exact [corresponding source and relinking
 materials](README.md#corresponding-source-in-desktop-packages). Distribution packaging requires

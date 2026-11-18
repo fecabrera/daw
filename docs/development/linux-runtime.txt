@@ -1,8 +1,8 @@
 DAW for Linux
 
-Requires GTK 4.8 or newer, desktop OpenGL 3.3, ALSA, a compatible C/C++
-runtime, and an XDG Desktop Portal service for file dialogs. System libraries
-are not bundled. Run ./daw-desktop from this directory.
+Requires GTK 4.8 or newer, desktop OpenGL 3.3, ALSA, and a compatible C/C++
+runtime. File dialogs use an XDG Desktop Portal service and libdbus-1.so.3.
+Install these system libraries separately. Run ./daw-desktop from this directory.
 
 Settings > Appearance > Titlebar selects Custom or Native. Custom places real
 GTK window buttons alongside the app controls. Native uses a regular titlebar.

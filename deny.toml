@@ -1,0 +1,70 @@
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "0BSD",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "ISC",
+    "BSL-1.0",
+    "Zlib",
+    "Apache-2.0 WITH LLVM-exception",
+]
+
+# Egui's bundled fallback fonts. Keep their notices with desktop and plugins.
+[[licenses.exceptions]]
+crate = "epaint_default_fonts@=0.36.2"
+allow = ["OFL-1.1", "Ubuntu-font-1.0"]
+
+# Stem model cache lookup through dirs-sys.
+[[licenses.exceptions]]
+crate = "option-ext@=0.2.0"
+allow = ["MPL-2.0"]
+
+# Audio decoding. Keep the covered source, including the local MP4 patch,
+# available to recipients of the release packages.
+[[licenses.exceptions]]
+crate = "symphonia@=0.5.5"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "symphonia-bundle-mp3@=0.5.5"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "symphonia-codec-aac@=0.5.5"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "symphonia-codec-pcm@=0.5.5"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "symphonia-core@=0.5.5"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "symphonia-format-isomp4@=0.5.5"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "symphonia-format-ogg@=0.5.5"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "symphonia-format-riff@=0.5.5"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "symphonia-metadata@=0.5.5"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "symphonia-utils-xiph@=0.5.5"
+allow = ["MPL-2.0"]
+
+# Certificate data used by the ONNX Runtime build-time downloader.
+[[licenses.exceptions]]
+crate = "webpki-root-certs@=1.0.10"
+allow = ["CDLA-Permissive-2.0"]
