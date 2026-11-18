@@ -8197,7 +8197,7 @@ mod tests {
         assert!(app.selected_clips.is_empty());
         assert!(app.selected_clip.is_none());
     }
-    fn context() -> egui::Context {
+    pub(super) fn context() -> egui::Context {
         let ctx = egui::Context::default();
         theme::configure(&ctx);
         fonts::configure(&ctx);
@@ -9773,7 +9773,7 @@ mod tests {
             }
         }
     }
-    fn frame(app: &mut DawUi, ctx: &egui::Context, events: Vec<egui::Event>) {
+    pub(super) fn frame(app: &mut DawUi, ctx: &egui::Context, events: Vec<egui::Event>) {
         let size = ctx
             .data(|d| d.get_temp::<Vec2>(egui::Id::new("test-frame-size")))
             .unwrap_or(Vec2::new(1280.0, 800.0));
@@ -9800,7 +9800,7 @@ mod tests {
         output.textures_delta.clear();
         output.shapes
     }
-    fn button(pos: Pos2, pressed: bool) -> egui::Event {
+    pub(super) fn button(pos: Pos2, pressed: bool) -> egui::Event {
         egui::Event::PointerButton {
             pos,
             button: egui::PointerButton::Primary,

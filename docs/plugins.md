@@ -8,9 +8,10 @@ Install plugins for the same processor architecture as the DAW.
 Select the destination effects lane or regular instrument layer. Expand **VST3**
 or **CLAP** inside the **Effects** catalog or **Instrument components** catalog.
 Effects lists effect plugins; Instrument components lists instrument plugins.
-Double-click a plugin, or select it and press Enter, to add it. Effects use the
-existing serial chains. An instrument replaces the layer's source and receives
-polyphonic notes from MIDI, beat patterns and live input. Its internal voices
+Drag an effect into a track, Master, or instrument layer effect lane. The
+insertion line shows where it will go. The effect appears after it loads.
+You can also double-click a plugin or select it and press Enter. An instrument
+replaces the layer's source and receives polyphonic notes from MIDI, beat patterns and live input. Its internal voices
 belong to the plugin. Built-in per-note amplitude and envelope settings remain
 dormant while an external instrument owns the layer.
 

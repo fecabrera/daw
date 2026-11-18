@@ -97,6 +97,22 @@ impl Catalog {
         }
     }
 
+    pub fn external_identity(&self, index: usize) -> Option<&daw_core::PluginIdentity> {
+        self.external
+            .get(index.checked_sub(self.entries.len())?)
+            .map(|entry| &entry.identity)
+    }
+
+    pub fn select_external_dragged(&mut self, identity: &daw_core::PluginIdentity) {
+        if let Some(index) = self
+            .external
+            .iter()
+            .position(|entry| &entry.identity == identity)
+        {
+            self.click(self.entries.len() + index, false);
+        }
+    }
+
     pub fn new(entries: impl IntoIterator<Item = (&'static str, &'static str)>) -> Self {
         Self {
             entries: entries.into_iter().collect(),

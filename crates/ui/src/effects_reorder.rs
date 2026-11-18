@@ -21,16 +21,20 @@ enum DragSource {
         types: Vec<&'static str>,
         index: usize,
     },
+    External(daw_core::PluginIdentity),
 }
 impl EffectDrag {
     pub fn is_library(&self) -> bool {
-        matches!(self.source, DragSource::Library { .. })
+        matches!(
+            self.source,
+            DragSource::Library { .. } | DragSource::External(_)
+        )
     }
     #[cfg(test)]
     pub fn chain_unit(&self) -> Option<Id> {
         match self.source {
             DragSource::Chain { unit, .. } => Some(unit),
-            DragSource::Library { .. } => None,
+            DragSource::Library { .. } | DragSource::External(_) => None,
         }
     }
 }
@@ -58,6 +62,8 @@ impl DawUi {
                 || (!self.effects_lane_visible()
                     && !matches!(drag.target, EffectTarget::Layer { .. })
                     && !(self.view_mode == ViewMode::Instrument && drag.is_library()))
+                || matches!(&drag.source, DragSource::External(identity)
+                    if !self.can_install_external_effect(identity))
                 || self.view_mode != drag.view
                 || match drag.target {
                     EffectTarget::Layer { track, .. } => {
@@ -150,6 +156,47 @@ impl DawUi {
         }
     }
 
+    pub(super) fn start_external_effect_drag(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        index: usize,
+    ) {
+        if self.effects_drag.is_some() {
+            return;
+        }
+        let Some(origin) = drag::press_origin(ui, response) else {
+            return;
+        };
+        let Some(identity) = self.effects_catalog.external_identity(index).cloned() else {
+            return;
+        };
+        if !self.can_install_external_effect(&identity) {
+            return;
+        }
+        let Some(target) = self
+            .effect_catalog_target()
+            .or_else(|| self.effects_target())
+        else {
+            return;
+        };
+        let Some((effects, _)) = self.effect_chain(target) else {
+            return;
+        };
+        let order = effects.iter().map(|effect| effect.id).collect();
+        self.effects_catalog.focus_row(ui, response);
+        self.effects_drag = Some(EffectDrag {
+            target,
+            view: self.view_mode,
+            source: DragSource::External(identity),
+            origin,
+            focus: response.id,
+            active: false,
+            timeline_hover: false,
+            order,
+        });
+    }
+
     fn activate_effect_drag(&mut self, ui: &egui::Ui) -> bool {
         let Some(drag) = &mut self.effects_drag else {
             return false;
@@ -166,6 +213,9 @@ impl DawUi {
                     }
                     DragSource::Library { index, .. } => {
                         self.effects_catalog.select_dragged(*index);
+                    }
+                    DragSource::External(identity) => {
+                        self.effects_catalog.select_external_dragged(identity);
                     }
                 }
             } else {
@@ -394,6 +444,12 @@ impl DawUi {
             return None;
         }
         let transfer = match drag.source {
+            DragSource::External(identity) => {
+                let (effects, _) = self.effect_chain(destination)?;
+                let order = effects.iter().map(|effect| effect.id).collect();
+                self.install_external_effect(identity, destination, index, order, before);
+                return None;
+            }
             DragSource::Chain { units, .. } => self.session.project.transfer_effects(
                 drag.target,
                 destination,
@@ -456,7 +512,7 @@ impl DawUi {
             .map(|pointer| {
                 let slot = drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r));
                 match &drag.source {
-                    DragSource::Library { .. } => (slot, slot, true),
+                    DragSource::Library { .. } | DragSource::External(_) => (slot, slot, true),
                     DragSource::Chain { .. } if duplicate => (slot, slot, true),
                     DragSource::Chain { units, .. } => {
                         let (index, changed) = drag::group_insertion(&drag.order, units, slot);
@@ -488,6 +544,15 @@ impl DawUi {
             drag::restore_focus(ui.ctx(), drag.focus);
             if let Some((_, index, true)) = target {
                 match drag.source {
+                    DragSource::External(identity) => {
+                        self.install_external_effect(
+                            identity,
+                            drag.target,
+                            index,
+                            drag.order,
+                            None,
+                        );
+                    }
                     DragSource::Library { types, .. } => {
                         let added: Vec<_> = effects_catalog::instantiate(&types).collect();
                         effects.splice(index..index, added);

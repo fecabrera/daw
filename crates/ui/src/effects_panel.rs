@@ -35,6 +35,7 @@ pub(crate) struct EffectsUiBounds {
     pub strip: Rect,
     pub scrollbar: Rect,
     pub entry: Rect,
+    pub external_entry: Rect,
     pub drive_entry: Rect,
     pub drive_v2_entry: Rect,
     pub auto_filter_entry: Rect,
@@ -100,6 +101,7 @@ impl Default for EffectsUiBounds {
             strip: Rect::NOTHING,
             scrollbar: Rect::NOTHING,
             entry: Rect::NOTHING,
+            external_entry: Rect::NOTHING,
             drive_entry: Rect::NOTHING,
             drive_v2_entry: Rect::NOTHING,
             auto_filter_entry: Rect::NOTHING,
@@ -355,6 +357,7 @@ impl DawUi {
         {
             self.effects_bounds.folders = [Rect::NOTHING; effects_catalog::CATEGORY_COUNT];
             self.effects_bounds.library = Rect::NOTHING;
+            self.effects_bounds.external_entry = Rect::NOTHING;
             self.effects_bounds.clip_settings = Rect::NOTHING;
             self.effects_bounds.clip_name = Rect::NOTHING;
             self.effects_bounds.clip_source = Rect::NOTHING;
@@ -426,6 +429,10 @@ impl DawUi {
                                 },
                                 crate::hosting::browser_button,
                             );
+                            #[cfg(test)]
+                            if let Some((_, response)) = output.external_rows.first() {
+                                self.effects_bounds.external_entry = response.rect;
+                            }
                             if let Some(identity) = output.external_add.clone() {
                                 self.add_external_plugin(identity);
                             }
@@ -442,6 +449,11 @@ impl DawUi {
                                     &mut effects,
                                     vec![(effects_catalog::ENTRIES[index].make)()],
                                 );
+                            }
+                            if allowed && (lane_visible || self.view_mode == ViewMode::Instrument) {
+                                for (index, response) in &output.external_rows {
+                                    self.start_external_effect_drag(ui, response, *index);
+                                }
                             }
                             for &(index, ref response) in &output.rows {
                                 if allowed

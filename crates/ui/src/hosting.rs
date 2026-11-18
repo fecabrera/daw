@@ -20,10 +20,14 @@ pub enum PluginRequest {
     Scan(daw_plugin_host::ScanMode),
     CancelScan,
 }
-#[derive(Clone, Copy)]
 enum Target {
-    Effects(EffectChainTarget),
+    Effects(EffectChainTarget, Option<EffectInsertion>),
     Source { track: Id, layer: Id },
+}
+struct EffectInsertion {
+    index: usize,
+    order: Vec<Id>,
+    inline_before: Option<daw_core::InstrumentComponent>,
 }
 struct Installation {
     project: Id,
@@ -470,19 +474,15 @@ impl DawUi {
                 match result {
                     Ok(installed) => {
                         let settings = installed.settings;
-                        self.set_plugin_metadata(ctx, settings.id, installed.metadata);
-                        self.session.plugin_states.merge(&installed.states);
                         match installation.target {
-                            Target::Effects(target) => {
-                                if let Some((effects, compact)) =
-                                    self.session.project.effect_chain(target)
+                            Target::Effects(target, insertion) => {
+                                let id = settings.id;
+                                if let Some(edit) =
+                                    self.installed_effect_edit(target, insertion, settings)
                                 {
-                                    let mut effects = effects.to_vec();
-                                    effects.push(daw_core::EffectInstance {
-                                        id: Id::new_v4(),
-                                        unit: daw_core::EffectSettings::Hosted(settings),
-                                    });
-                                    self.edit(target.edit(effects, compact));
+                                    self.set_plugin_metadata(ctx, id, installed.metadata);
+                                    self.session.plugin_states.merge(&installed.states);
+                                    self.edit(edit);
                                 }
                             }
                             Target::Source { track, layer } => {
@@ -491,6 +491,8 @@ impl DawUi {
                                     && let Some(destination) =
                                         instrument.layers.iter_mut().find(|l| l.id == layer)
                                 {
+                                    self.set_plugin_metadata(ctx, settings.id, installed.metadata);
+                                    self.session.plugin_states.merge(&installed.states);
                                     destination.clear_sources();
                                     destination.hosted =
                                         Some(daw_core::HostedSource::Known(settings));
@@ -519,6 +521,89 @@ impl DawUi {
             }
         }
     }
+    fn installed_effect_edit(
+        &mut self,
+        target: EffectChainTarget,
+        insertion: Option<EffectInsertion>,
+        settings: HostedSettings,
+    ) -> Option<Edit> {
+        let (effects, compact) = self.effect_chain(target)?;
+        if insertion.as_ref().is_some_and(|slot| {
+            slot.index > effects.len()
+                || !effects
+                    .iter()
+                    .map(|effect| effect.id)
+                    .eq(slot.order.iter().copied())
+        }) {
+            // Another edit changed the chain while the plugin was loading.
+            return None;
+        }
+        let mut effects = effects.to_vec();
+        let id = Id::new_v4();
+        let index = insertion.as_ref().map_or(effects.len(), |slot| slot.index);
+        effects.insert(
+            index,
+            daw_core::EffectInstance {
+                id,
+                unit: daw_core::EffectSettings::Hosted(settings),
+            },
+        );
+        let edit = target.edit(effects, compact);
+        if let Some(slot) = insertion
+            && matches!(target, EffectChainTarget::Layer { .. })
+        {
+            match self.session.project.position_inline_effects(
+                daw_core::EffectTransfer {
+                    edit,
+                    selected: vec![id],
+                },
+                target,
+                slot.inline_before,
+            ) {
+                Ok(transfer) => Some(transfer.edit),
+                Err(error) => {
+                    self.fail(error);
+                    None
+                }
+            }
+        } else {
+            Some(edit)
+        }
+    }
+
+    pub(super) fn can_install_external_effect(&self, identity: &PluginIdentity) -> bool {
+        self.hosting.client.is_some()
+            && self.hosting.installation.is_none()
+            && self
+                .hosting
+                .catalog
+                .iter()
+                .any(|plugin| &plugin.identity == identity && plugin.role == HostedRole::Effect)
+    }
+
+    pub(super) fn install_external_effect(
+        &mut self,
+        identity: PluginIdentity,
+        target: EffectChainTarget,
+        index: usize,
+        order: Vec<Id>,
+        inline_before: Option<daw_core::InstrumentComponent>,
+    ) {
+        if self.can_install_external_effect(&identity) {
+            self.request_plugin_install(
+                identity,
+                Target::Effects(
+                    target,
+                    Some(EffectInsertion {
+                        index,
+                        order,
+                        inline_before,
+                    }),
+                ),
+            );
+        }
+    }
+
     pub(super) fn add_external_plugin(&mut self, identity: PluginIdentity) {
         if self.hosting.installation.is_some() {
             return;
@@ -531,7 +616,9 @@ impl DawUi {
             .cloned();
         if let Some(plugin) = plugin {
             let target = match plugin.role {
-                HostedRole::Effect => self.effects_target().map(Target::Effects),
+                HostedRole::Effect => self
+                    .effect_catalog_target()
+                    .map(|target| Target::Effects(target, None)),
                 HostedRole::Instrument => {
                     self.instrument_catalog_target().and_then(|(track, layer)| {
                         self.session
@@ -547,21 +634,25 @@ impl DawUi {
                 self.fail("Select an effect lane, or a regular MIDI/beat layer for an instrument");
                 return;
             };
-            if let Some(client) = &self.hosting.client {
-                match client.install(
-                    plugin.identity,
-                    self.session.project.sample_rate_hz,
-                    self.session.project.buffer_size_frames,
-                ) {
-                    Ok(receipt) => {
-                        self.hosting.installation = Some(Installation {
-                            project: self.session.project.project_id,
-                            target,
-                            receipt,
-                        })
-                    }
-                    Err(error) => self.fail(error),
+            self.request_plugin_install(plugin.identity, target);
+        }
+    }
+
+    fn request_plugin_install(&mut self, identity: PluginIdentity, target: Target) {
+        if let Some(client) = &self.hosting.client {
+            match client.install(
+                identity,
+                self.session.project.sample_rate_hz,
+                self.session.project.buffer_size_frames,
+            ) {
+                Ok(receipt) => {
+                    self.hosting.installation = Some(Installation {
+                        project: self.session.project.project_id,
+                        target,
+                        receipt,
+                    });
                 }
+                Err(error) => self.fail(error),
             }
         }
     }
@@ -573,6 +664,143 @@ mod tests {
     use daw_unit_core::{
         HostedParameter, HostedParameterBinding, HostedParameterDomain, HostedPluginDescriptor,
     };
+    #[test]
+    fn external_effect_drop_loads_only_on_release_and_inserts_at_the_preview() {
+        use crate::tests::{button, context, frame};
+        for (identity, format_index, inline) in [
+            (PluginIdentity::Vst3([1; 16]), 0, false),
+            (PluginIdentity::Clap("org.daw.drop-test".into()), 1, false),
+            (
+                PluginIdentity::Clap("org.daw.layer-drop-test".into()),
+                1,
+                true,
+            ),
+        ] {
+            let ctx = context();
+            let mut app = DawUi::default();
+            let original = daw_core::EffectInstance::drive();
+            let (track, target) = if inline {
+                let track = app.session.project.add_midi_track().unwrap();
+                let layer = &mut app.session.project.tracks[0]
+                    .instrument
+                    .as_mut()
+                    .unwrap()
+                    .layers[0];
+                layer.effects.push(original.clone());
+                (
+                    track,
+                    EffectChainTarget::Layer {
+                        track,
+                        layer: layer.id,
+                    },
+                )
+            } else {
+                let track = app.session.project.add_track().unwrap();
+                app.session.project.tracks[0].effects.push(original.clone());
+                (track, EffectChainTarget::Track(track))
+            };
+            let other = app.session.project.add_track().unwrap();
+            app.select_track(track, false);
+            if inline {
+                app.set_view_mode(ViewMode::Instrument, &ctx);
+            }
+            app.set_effects_lane_visible(!inline);
+            app.set_effects_catalog_visible(true);
+            let (_host, client) = daw_plugin_host::HostService::new(Default::default());
+            app.enable_plugin_hosting(client);
+            let plugin = HostedPluginDescriptor {
+                identity: identity.clone(),
+                name: "Drop test".into(),
+                vendor: "DAW".into(),
+                version: "1".into(),
+                role: HostedRole::Effect,
+            };
+            app.hosting.catalog.push(plugin.clone());
+            app.effects_catalog.set_external(vec![plugin.clone()]);
+            app.effects_catalog
+                .filter_folder(Some(crate::effects_catalog::CATEGORY_COUNT + format_index));
+            frame(&mut app, &ctx, vec![]);
+            assert!(
+                app.effects_bounds.external_entry.is_positive(),
+                "{identity:?}"
+            );
+            let start = app.effects_bounds.external_entry.center();
+            let end = if inline {
+                let (_, _, rect) = app
+                    .instrument_ui
+                    .effect_slots
+                    .iter()
+                    .find(|(_, id, _)| *id == original.id)
+                    .unwrap();
+                Pos2::new(rect.left() + 2.0, rect.center().y)
+            } else {
+                let lane = app.effects_bounds.lane_viewport;
+                Pos2::new(
+                    app.effects_bounds.chain[0].1.left().max(lane.left()) + 2.0,
+                    lane.center().y,
+                )
+            };
+            let before = app.session.project.clone();
+            for release in [app.effects_bounds.library.center(), end] {
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start)]);
+                assert!(
+                    app.effects_editing_available(&ctx),
+                    "effect editing blocked: {:?}",
+                    app.error
+                );
+                assert!(app.can_install_external_effect(&identity));
+                frame(&mut app, &ctx, vec![button(start, true)]);
+                assert!(
+                    app.effects_drag.is_some(),
+                    "press failed for {identity:?} at {start:?}"
+                );
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(release)]);
+                assert!(
+                    app.effects_drag
+                        .as_ref()
+                        .is_some_and(|drag| drag.active && drag.is_library()),
+                    "motion failed for {identity:?} from {start:?} to {release:?}"
+                );
+                assert!(app.hosting.installation.is_none());
+                assert_eq!(app.session.project, before);
+                frame(&mut app, &ctx, vec![button(release, false)]);
+                assert!(app.effects_drag.is_none());
+                assert_eq!(app.session.project, before);
+            }
+            let pending = app
+                .hosting
+                .installation
+                .as_mut()
+                .expect("valid drop requests a load");
+            let (send, receive) = mpsc::channel();
+            pending.receipt = receive;
+            app.select_track(other, false);
+            send.send(Ok(InstalledPlugin {
+                settings: HostedSettings::new(plugin, Vec::new()),
+                states: StateBank::default(),
+                metadata: NativeMetadata {
+                    sample_rate_hz: 48000,
+                    parameters: Vec::new(),
+                    inputs: Vec::new(),
+                    outputs: Vec::new(),
+                    latency_frames: 0,
+                    tail_frames: 0,
+                    state_supported: false,
+                    editor_supported: false,
+                },
+            }))
+            .unwrap();
+            app.poll_hosting(&ctx);
+            let (effects, _) = app.effect_chain(target).unwrap();
+            assert_eq!(effects.len(), 2, "{:?}", app.error);
+            assert!(
+                matches!(&effects[0].unit, daw_core::EffectSettings::Hosted(s) if s.plugin.identity == identity)
+            );
+            assert_eq!(effects[1], original);
+            assert!(app.session.project.tracks[1].effects.is_empty());
+        }
+    }
+
     #[test]
     fn native_preset_values_and_opaque_receipt_form_one_undo_step() {
         let mut app = DawUi {
