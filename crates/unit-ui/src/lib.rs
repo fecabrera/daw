@@ -4,6 +4,7 @@ mod compressor_graph;
 mod compressor_views;
 pub mod drive;
 pub mod drive_v2;
+pub mod envelope_plot;
 pub mod eq_graph;
 mod eq_spectrum;
 pub mod fonts;

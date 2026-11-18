@@ -299,7 +299,7 @@ fn compressor_crossover_graph_previews_without_edits_and_commits_one_undo_step()
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
             assert_eq!(settings(&app, master), original);
             assert!(!app.dirty);
-            let preview = app.eq_graph_preview.published_plan(&app.session);
+            let preview = app.graph_preview.published_plan(&app.session);
             let target = if master {
                 daw_core::EffectChainTarget::Master
             } else {
@@ -386,7 +386,7 @@ fn compressor_threshold_graph_previews_without_edits_and_commits_one_undo_step()
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
             assert_eq!(settings(&app, master), original);
             assert!(!app.dirty);
-            let preview = app.eq_graph_preview.published_plan(&app.session);
+            let preview = app.graph_preview.published_plan(&app.session);
             let target = if master {
                 daw_core::EffectChainTarget::Master
             } else {
@@ -471,7 +471,7 @@ fn compressor_curve_previews_without_edits_and_commits_one_undo_step() {
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
             assert_eq!(settings(&app, master), original);
             assert!(!app.dirty);
-            let preview = app.eq_graph_preview.published_plan(&app.session);
+            let preview = app.graph_preview.published_plan(&app.session);
             let target = if master {
                 daw_core::EffectChainTarget::Master
             } else {

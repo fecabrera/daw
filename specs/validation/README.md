@@ -17,6 +17,70 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Envelope Shape plot — 2026-11-18
+
+Shape appears before Timing and the ADSR strips at both row heights. The
+expanded plot shares the Compressor width and stroke. It labels the stages
+and level, and supports dragging Attack, Decay and Sustain, and Release. The
+live dot uses the processed stage position and level from the engine.
+
+The focused egui checks cover drag preview, commit on release, Escape
+cancellation, and marker position and visibility. The Envelope and engine
+checks cover ADSR stage readings and snapshot publication.
+
+Formatting, strict workspace Clippy, and `git diff --check` passed on macOS.
+The standalone DAW UI run passed 1,082 tests with 3 ignored. It checked that
+Shape precedes Timing in both themes. The CLI build and `tools/check_cli.py`
+smoke check passed.
+
+- `cargo test --locked --offline --workspace` passed.
+- `cargo test --locked --offline --workspace --release` passed.
+
+Native visual verification remains open.
+
+### Curve color follow-up
+
+The Envelope curve uses the Compressor's gray stroke color. The selected
+handle applies the accent to its assigned stages. Decay and Sustain share
+one handle. Release has its own handle. The live dot keeps the
+accent. All 79 shared unit UI tests passed. The Envelope plot test checks
+the idle and hover states, all three handle selections, and drag cancellation.
+Formatting, strict workspace Clippy, and `git diff --check` passed on macOS.
+
+- `cargo test --locked --offline --workspace` passed.
+- `cargo test --locked --offline --workspace --release` passed.
+
+Native visual verification remains open.
+
+### Decay and Sustain drag direction
+
+The middle handle and tempo points share one axis lock. The Envelope UI
+test starts with a mostly vertical drag, checks that horizontal motion
+below 12 points leaves Decay fixed, and checks that crossing the threshold
+adjusts Decay while Sustain holds its preview value. The shared tests cover
+direction changes in both directions and the vertical-only tempo origin.
+All 82 shared unit UI tests and 22 tempo-related UI tests passed. Formatting,
+strict workspace Clippy, and `git diff --check` passed on macOS.
+
+- `cargo test --locked --offline --workspace` passed.
+- `cargo test --locked --offline --workspace --release` passed.
+
+Native visual verification remains open.
+
+### Envelope drag audio and knob preview
+
+The integration test drags Sustain and checks the displayed knob value,
+a change in rendered audio through Amplitude, and the saved project before
+release. It checks restoration on Escape and a single Undo after release.
+The focused plot tests and all 1,080 DAW UI tests passed, with 3 UI tests
+ignored. Formatting, strict workspace Clippy, and `git diff --check` passed
+on macOS.
+
+- `cargo test --locked --offline --workspace` passed.
+- `cargo test --locked --offline --workspace --release` passed.
+
+Native audio device and visual verification remain open.
+
 ## Instrument navigation and shared Effects lane — 2026-11-18
 
 Instrument uses the Tracks panel for track selection and opens Instrument

@@ -331,7 +331,7 @@ fn eq_band_reorder_works_in_regular_layer_and_output_lanes() {
 }
 
 #[test]
-fn multiband_eq_graph_preview_is_atomic_cancellable_and_one_undo_step() {
+fn multiband_graph_preview_is_atomic_cancellable_and_one_undo_step() {
     for master in [false, true] {
         for cancel in [false, true] {
             let (mut app, ctx) = fixture(false, master);
@@ -362,7 +362,7 @@ fn multiband_eq_graph_preview_is_atomic_cancellable_and_one_undo_step() {
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
             assert_eq!(settings(&app), &original);
             assert!(!app.dirty);
-            let preview_plan = app.eq_graph_preview.published_plan(&app.session);
+            let preview_plan = app.graph_preview.published_plan(&app.session);
             let target = if master {
                 daw_core::EffectChainTarget::Master
             } else {
@@ -403,7 +403,7 @@ fn multiband_eq_graph_preview_is_atomic_cancellable_and_one_undo_step() {
             if cancel {
                 assert_eq!(settings(&app), &original);
                 assert!(!app.dirty);
-                let restored = app.eq_graph_preview.published_plan(&app.session);
+                let restored = app.graph_preview.published_plan(&app.session);
                 let (chain, _) = restored.project.effect_chain(target).unwrap();
                 let daw_core::EffectSettings::MultibandEq(actual) = &chain[0].unit else {
                     panic!()
@@ -477,7 +477,7 @@ fn three_band_graph_preview_commits_one_undo_step_or_restores_on_cancel() {
             } else {
                 daw_core::EffectChainTarget::Track(app.session.project.tracks[0].id)
             };
-            let preview = app.eq_graph_preview.published_plan(&app.session);
+            let preview = app.graph_preview.published_plan(&app.session);
             let (chain, _) = preview.project.effect_chain(target).unwrap();
             let daw_core::EffectSettings::Eq3(settings) = &chain[0].unit else {
                 panic!()
@@ -502,7 +502,7 @@ fn three_band_graph_preview_commits_one_undo_step_or_restores_on_cancel() {
             if cancel {
                 assert_eq!(fixed(&app), &original);
                 assert!(!app.dirty);
-                let restored = app.eq_graph_preview.published_plan(&app.session);
+                let restored = app.graph_preview.published_plan(&app.session);
                 let (chain, _) = restored.project.effect_chain(target).unwrap();
                 let daw_core::EffectSettings::Eq3(actual) = &chain[0].unit else {
                     panic!()

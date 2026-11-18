@@ -3,6 +3,7 @@ use crate::{layout, theme};
 use daw_unit_core::{SpectrumCache, SpectrumMeter, SpectrumReading};
 use egui::{Id, Rect, Stroke, Ui, Vec2};
 pub const WIDTH: f32 = 3.0 * layout::UNIT_STRIP_WIDTH;
+pub(crate) const CURVE_STROKE_WIDTH: f32 = 1.5;
 pub fn frequency_x(plot: Rect, hz: f32) -> f32 {
     plot.left() + plot.width() * (hz.clamp(20.0, 20000.0) / 20.0).ln() / 1000.0_f32.ln()
 }
@@ -15,12 +16,17 @@ pub fn cached_reading(ui: &Ui, meter: &SpectrumMeter) -> Option<SpectrumReading>
     ui.data_mut(|d| d.insert_temp(id, cache));
     reading
 }
-pub(crate) fn axes(ui: &Ui, chart: Rect, range: (f32, f32), ticks: &[f32]) -> Rect {
-    let plot = chart.shrink2(Vec2::new(24.0, 17.0));
+pub(crate) fn surface(ui: &Ui, chart: Rect) -> (egui::Painter, Stroke) {
     let palette = theme::palette(ui.ctx());
     let p = ui.painter_at(chart);
     p.rect_filled(chart, 2.0, palette.background);
     let grid = Stroke::new(1.0, palette.secondary.gamma_multiply(0.12));
+    (p, grid)
+}
+pub(crate) fn axes(ui: &Ui, chart: Rect, range: (f32, f32), ticks: &[f32]) -> Rect {
+    let plot = chart.shrink2(Vec2::new(24.0, 17.0));
+    let palette = theme::palette(ui.ctx());
+    let (p, grid) = surface(ui, chart);
     let font = egui::FontId::proportional(9.0);
     for hz in [
         20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0,

@@ -29,9 +29,81 @@ pub fn restore_focus(ctx: &Context, focus: egui::Id) {
     ctx.memory_mut(|memory| memory.request_focus(focus));
 }
 
+#[derive(Clone, Copy)]
 pub enum Axis {
     Horizontal,
     Vertical,
+}
+
+// Logical points: exceed the point hit target before changing drag direction.
+const AXIS_SWITCH_DISTANCE: f32 = 12.0;
+/// Locks a drag to its first dominant axis until the pointer crosses the other axis tolerance.
+#[derive(Clone, Copy)]
+pub struct AxisLock {
+    axis: Option<Axis>,
+    anchor: Pos2,
+    previous: Pos2,
+    effective: Pos2,
+    horizontal: bool,
+}
+impl AxisLock {
+    pub fn new(origin: Pos2, horizontal: bool) -> Self {
+        Self {
+            axis: None,
+            anchor: origin,
+            previous: origin,
+            effective: origin,
+            horizontal,
+        }
+    }
+    pub fn update(&mut self, pointer: Pos2) -> Pos2 {
+        if pointer == self.previous {
+            return self.effective;
+        }
+        let delta = pointer - self.previous;
+        let Some(axis) = self.axis else {
+            let axis = if self.horizontal && delta.x.abs() > delta.y.abs() {
+                Axis::Horizontal
+            } else {
+                Axis::Vertical
+            };
+            self.axis = Some(axis);
+            self.anchor = pointer;
+            match axis {
+                Axis::Horizontal => self.effective.x += delta.x,
+                Axis::Vertical => self.effective.y += delta.y,
+            }
+            self.previous = pointer;
+            return self.effective;
+        };
+        let cross = match axis {
+            Axis::Horizontal => pointer.y - self.anchor.y,
+            Axis::Vertical => pointer.x - self.anchor.x,
+        };
+        if self.horizontal && cross.abs() >= AXIS_SWITCH_DISTANCE {
+            // Consume the tolerance before switching; never apply ignored motion
+            // all at once to the other parameter.
+            let excess = cross - cross.signum() * AXIS_SWITCH_DISTANCE;
+            self.axis = Some(match axis {
+                Axis::Horizontal => {
+                    self.effective.y += excess;
+                    Axis::Vertical
+                }
+                Axis::Vertical => {
+                    self.effective.x += excess;
+                    Axis::Horizontal
+                }
+            });
+            self.anchor = pointer;
+        } else {
+            match axis {
+                Axis::Horizontal => self.effective.x += delta.x,
+                Axis::Vertical => self.effective.y += delta.y,
+            }
+        }
+        self.previous = pointer;
+        self.effective
+    }
 }
 
 /// Scroll the containing viewport while the pointer is held near an edge.
@@ -112,4 +184,52 @@ pub fn insertion_line(ui: &Ui, slots: &[egui::Rect], slot: usize, viewport: egui
         viewport.y_range(),
         egui::Stroke::new(2.0, crate::theme::accent(ui.ctx())),
     );
+}
+
+#[cfg(test)]
+mod direction_tests {
+    use super::*;
+    #[test]
+    fn initial_direction_ignores_jitter_and_switches_only_after_tolerance() {
+        let mut drag = AxisLock::new(Pos2::ZERO, true);
+        assert_eq!(drag.update(Pos2::new(0.0, -10.0)), Pos2::new(0.0, -10.0));
+        assert_eq!(drag.update(Pos2::new(10.0, -20.0)), Pos2::new(0.0, -20.0));
+        assert_eq!(drag.update(Pos2::new(20.0, -21.0)), Pos2::new(8.0, -20.0));
+        assert_eq!(drag.update(Pos2::new(25.0, -19.0)), Pos2::new(13.0, -20.0));
+        assert_eq!(drag.update(Pos2::new(27.0, 0.0)), Pos2::new(13.0, -11.0));
+        assert_eq!(drag.update(Pos2::new(28.0, 1.0)), Pos2::new(13.0, -10.0));
+        let mut drag = AxisLock::new(Pos2::ZERO, true);
+        assert_eq!(drag.update(Pos2::new(10.0, 0.0)), Pos2::new(10.0, 0.0));
+        assert_eq!(drag.update(Pos2::new(20.0, 11.0)), Pos2::new(20.0, 0.0));
+        assert_eq!(drag.update(Pos2::new(21.0, 12.0)), Pos2::new(20.0, 0.0));
+        assert_eq!(drag.update(Pos2::new(22.0, 14.0)), Pos2::new(20.0, 2.0));
+    }
+    #[test]
+    fn first_large_diagonal_move_chooses_the_dominant_axis_and_stationary_frames_do_not_switch_it()
+    {
+        let mut horizontal = AxisLock::new(Pos2::ZERO, true);
+        assert_eq!(horizontal.update(Pos2::ZERO), Pos2::ZERO);
+        assert_eq!(
+            horizontal.update(Pos2::new(30.0, 20.0)),
+            Pos2::new(30.0, 0.0)
+        );
+        assert_eq!(
+            horizontal.update(Pos2::new(30.0, 20.0)),
+            Pos2::new(30.0, 0.0)
+        );
+        assert_eq!(
+            horizontal.update(Pos2::new(31.0, 25.0)),
+            Pos2::new(31.0, 0.0)
+        );
+        let mut vertical = AxisLock::new(Pos2::ZERO, true);
+        assert_eq!(vertical.update(Pos2::new(20.0, 30.0)), Pos2::new(0.0, 30.0));
+        assert_eq!(vertical.update(Pos2::new(20.0, 30.0)), Pos2::new(0.0, 30.0));
+        assert_eq!(vertical.update(Pos2::new(25.0, 31.0)), Pos2::new(0.0, 31.0));
+    }
+    #[test]
+    fn origin_point_remains_vertical_even_with_large_horizontal_movement() {
+        let mut drag = AxisLock::new(Pos2::new(2.0, 10.0), false);
+        assert_eq!(drag.update(Pos2::new(40.0, 0.0)), Pos2::new(2.0, 0.0));
+        assert_eq!(drag.update(Pos2::new(-40.0, 20.0)), Pos2::new(2.0, 20.0));
+    }
 }

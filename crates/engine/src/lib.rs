@@ -185,6 +185,8 @@ pub fn pan_coefficients(pan: f32, mono: bool) -> [f32; 2] {
 /// Capacity for the largest current set of processed destination controls.
 // Reserve complete parameter/grain snapshots without per-unit callback storage.
 pub const MODULATION_SNAPSHOT_SIZE: usize = 32;
+/// Envelope readings after the nine min/max parameter pairs.
+pub const ENVELOPE_PLOT_POSITION: std::ops::Range<usize> = 18..20;
 pub type ModulationSnapshot = [f32; MODULATION_SNAPSHOT_SIZE];
 fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
     std::array::from_fn(|i| values.get(i).copied().unwrap_or(f32::NAN))

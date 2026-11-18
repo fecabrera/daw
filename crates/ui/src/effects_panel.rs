@@ -1119,7 +1119,7 @@ impl DawUi {
                                                 settings.bands.iter().find(|b| b.id == band)
                                             && before.upper_hz != hz
                                         {
-                                            self.eq_graph_preview.offer_compressor(
+                                            self.graph_preview.offer_compressor(
                                                 ui.ctx().cumulative_frame_nr(),
                                                 self.session.project.project_id,
                                                 target,
@@ -1135,7 +1135,7 @@ impl DawUi {
                                                 settings.bands.iter().find(|b| b.id == band)
                                             && before.threshold_db != hz
                                         {
-                                            self.eq_graph_preview.offer_compressor_threshold(
+                                            self.graph_preview.offer_compressor_threshold(
                                                 ui.ctx().cumulative_frame_nr(),
                                                 self.session.project.project_id,
                                                 target,
@@ -1150,7 +1150,7 @@ impl DawUi {
                                             && let Some(before) =
                                                 settings.bands.iter().find(|b| b.id == band)
                                         {
-                                            self.eq_graph_preview.offer_compressor_curve(
+                                            self.graph_preview.offer_compressor_curve(
                                                 ui.ctx().cumulative_frame_nr(),
                                                 self.session.project.project_id,
                                                 target,
@@ -1257,7 +1257,7 @@ impl DawUi {
                                                 settings.bands.iter().find(|b| b.id == preview.id)
                                             && before != preview
                                         {
-                                            self.eq_graph_preview.offer(
+                                            self.graph_preview.offer(
                                                 ui.ctx().cumulative_frame_nr(),
                                                 self.session.project.project_id,
                                                 target,
@@ -1298,7 +1298,7 @@ impl DawUi {
                                         if let (Some(target), Some(preview)) =
                                             (target, _bounds.graph.preview.as_ref())
                                         {
-                                            self.eq_graph_preview.offer_equalizer(
+                                            self.graph_preview.offer_equalizer(
                                                 ui.ctx().cumulative_frame_nr(),
                                                 self.session.project.project_id,
                                                 target,
@@ -1703,7 +1703,7 @@ impl DawUi {
                                                 (target, _bounds.graph.preview)
                                             && [settings.threshold_db, settings.ratio] != parameters
                                         {
-                                            self.eq_graph_preview.offer_curve(
+                                            self.graph_preview.offer_curve(
                                                 ui.ctx().cumulative_frame_nr(),
                                                 self.session.project.project_id,
                                                 target,

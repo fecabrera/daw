@@ -6,6 +6,25 @@ An Envelope changes a control value over a note's life. Select the instrument-wi
 
 Attack raises the value, Decay moves it toward Sustain, Sustain holds it while the note continues, and Release lowers it after note-off. Curve selectors change the stage shapes.
 
+The first strip, **Shape**, shows the envelope contour at both row heights.
+In the expanded row, the horizontal labels mark Attack, Decay, Sustain, and
+Release. The vertical labels show the envelope level. Drag the peak left or
+right to change Attack. Drag the start of Sustain left or right to change
+Decay, or up or down to change the Sustain level. Drag the start of Release
+left to lengthen Release or right to shorten it. The knobs and the Envelope's
+effect on sound follow the drag. Release the pointer to save one undoable
+change or press Escape to restore the previous values.
+Selecting a handle highlights its part of the gray curve. The middle handle
+highlights Decay and Sustain. The right handle highlights Release.
+
+The middle handle follows the first drag direction. Move at least 12 points
+across the other axis to switch between Decay time and Sustain level.
+
+During playback or live MIDI input, a dot shows the actual stage progress and level.
+For Per note mode, the dot shows one active voice. The dot disappears when
+the Envelope is idle or off. Note timing previews use a one-second reference
+note. The Sustain width is a guide for the held stage.
+
 Time timing sets Attack and Decay in milliseconds. Note timing sets them as percentages of the triggering note's complete duration. Release remains in milliseconds. A 100% note-relative Attack rises across the full note duration; 0% Decay reaches Sustain immediately after Attack.
 
 Hold Shift while dragging an Attack, Decay, or Release millisecond knob for fine adjustment at 100× lower sensitivity. You can press or release Shift during a drag without a jump.

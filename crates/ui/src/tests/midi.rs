@@ -6979,7 +6979,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
             assert!(app.dirty);
             frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 1400.0));
         }
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 800.0));
         let mut expected = expanded.clone();
         for layer in &mut expected.tracks[0].instrument.as_mut().unwrap().layers {
             layer.collapsed = true;

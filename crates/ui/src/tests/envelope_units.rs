@@ -65,15 +65,13 @@ pub(super) fn source_submenu(
     ctx: &egui::Context,
     group: &str,
 ) -> Vec<egui::epaint::ClippedShape> {
-    let root = frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0));
+    let size = ctx
+        .data(|data| data.get_temp::<Vec2>(egui::Id::new("test-frame-size")))
+        .unwrap_or(Vec2::new(1280.0, 800.0));
+    let root = frame_shapes(app, ctx, vec![], size);
     let point = popup_label(&root, group);
     click(app, ctx, point, false);
-    frame_shapes(
-        app,
-        ctx,
-        vec![egui::Event::PointerMoved(point)],
-        Vec2::new(1280.0, 800.0),
-    )
+    frame_shapes(app, ctx, vec![egui::Event::PointerMoved(point)], size)
 }
 fn add_legacy_envelope(app: &mut DawUi, ctx: &egui::Context, layer: Id) {
     let l = app.session.project.tracks[0]
@@ -95,8 +93,12 @@ fn add_legacy_envelope(app: &mut DawUi, ctx: &egui::Context, layer: Id) {
 fn legacy_envelope_panels_keep_independent_settings_power_and_collapse() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
+        let size = Vec2::new(1800.0, 800.0);
+        ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
         add_legacy_envelope(&mut app, &ctx, layer);
         add_legacy_envelope(&mut app, &ctx, layer);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+        assert!(label(&shapes, "Shape").x < label(&shapes, "Timing").x);
         let bounds = &app.midi_editor.layer_bounds[&layer];
         assert_eq!(
             bounds.envelope_panel.size(),
@@ -162,6 +164,8 @@ fn legacy_envelope_panels_keep_independent_settings_power_and_collapse() {
 fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
+        let size = Vec2::new(1600.0, 800.0);
+        ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
         add_legacy_envelope(&mut app, &ctx, layer);
         add_component(&mut app, &ctx, layer, 3);
         app.dirty = false;
@@ -191,7 +195,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         );
         let expanded = app.midi_editor.layer_bounds[&layer].amplitude_header;
         assert!(unit_panel(&ctx, expanded).width() > closed_panel.width());
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         label(&shapes, "Level");
         label(&shapes, "0.0 dB");
         let add = Pos2::new(
@@ -210,7 +214,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
                 .len(),
             1
         );
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         let none = label(&shapes, "None");
         click(&mut app, &ctx, none, false);
         let shapes = source_submenu(&mut app, &ctx, "Layer 1");
@@ -236,7 +240,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         );
         assert_eq!(settings.amplitude.modulations[0].amount, 0.0);
         // Destination controls keep independent route state and use the shared knob/power gestures.
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         let amount = label(&shapes, "+0.0%") + Vec2::new(0.0, 20.0);
         click(&mut app, &ctx, amount, false);
         key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
@@ -253,7 +257,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
             .abs()
                 < 1e-6
         );
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         let footer = label(&shapes, "Mod 1");
         click(&mut app, &ctx, footer - Vec2::new(32.0, 0.0), false);
         let route = app.session.project.tracks[0]
@@ -311,7 +315,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
                 ],
             );
         }
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         let remove = label(&shapes, "Remove modulation");
         click(&mut app, &ctx, remove, false);
         let routes = &app.session.project.tracks[0]
@@ -323,7 +327,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
             .modulations;
         assert_eq!(routes.len(), 1);
         assert_ne!(routes[0].id, route.id);
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         let footer = label(&shapes, "Mod 1");
         let level = label(&shapes, "Level");
         assert!(
@@ -347,7 +351,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
                 .height(),
             panels::unit_height(true) - 2.0 * panels::UNIT_VERTICAL_MARGIN
         );
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         label(&shapes, "Mod 1");
         let level = label(&shapes, "Level");
         assert!(
@@ -1642,6 +1646,8 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for main in [false, true] {
             let (mut app, ctx, layer) = fixture(theme);
+            let size = Vec2::new(1800.0, 800.0);
+            ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
             app.effects_lane_open = false;
             let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
             i.main.macro_module.add();
@@ -1669,7 +1675,7 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
                 i.layers[0].envelopes.push(e);
             }
             frame(&mut app, &ctx, vec![]);
-            let footer_shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let footer_shapes = frame_shapes(&mut app, &ctx, vec![], size);
             for label in ["Timing", "Attack", "Decay", "Sustain", "Release"] {
                 assert_footer_semibold(&footer_shapes, label);
             }
@@ -1700,7 +1706,7 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
             };
             assert!(get(&app).modulation_open);
             assert!(app.dirty);
-            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
             label(&shapes, "×1");
             label(&shapes, "×1/64");
             label(&shapes, "×64");
@@ -1708,7 +1714,7 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
             label(&shapes, "Destination");
             let none = label(&shapes, "None");
             click(&mut app, &ctx, none, false);
-            let popup = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let popup = frame_shapes(&mut app, &ctx, vec![], size);
             let _ = popup;
             let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
             let available = crate::modulation_panel::provider_sources(instrument);
@@ -1746,7 +1752,7 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
             click(&mut app, &ctx, toggle, false);
             assert!(!get(&app).modulation_open);
             let attack = Pos2::new(
-                rect.left() + panels::HEADER_HEIGHT + 135.0,
+                rect.left() + panels::HEADER_HEIGHT + daw_unit_ui::spectrum_graph::WIDTH + 135.0,
                 rect.top() + 1.0 + 10.0 + knobs::CHOICE_SIZE * 0.5,
             );
             let marker = knobs::modulation_marker_rect(Rect::from_center_size(

@@ -123,8 +123,7 @@ pub fn show(
                 plot.max.x -= 24.0;
                 bounds.plot = plot;
                 let palette = theme::palette(ui.ctx());
-                let p = ui.painter_at(chart);
-                p.rect_filled(chart, 2.0, palette.background);
+                let (p, grid) = spectrum_graph::surface(ui, chart);
                 bounds.reduction_meter =
                     Rect::from_x_y_ranges(chart.right() - 28.0..=chart.right(), chart.y_range());
                 meters::gain_reduction_vertical(
@@ -137,7 +136,6 @@ pub fn show(
                 {
                     crate::compressor_history::paint(ui, plot, history);
                 }
-                let grid = egui::Stroke::new(1.0, palette.secondary.gamma_multiply(0.12));
                 for db in [-72.0, -60.0, -48.0, -36.0, -24.0, -12.0, 0.0, 12.0] {
                     let pos = point(plot, db, db);
                     p.vline(pos.x, plot.y_range(), grid);
@@ -248,7 +246,7 @@ pub fn show(
                         })
                         .collect(),
                     egui::Stroke::new(
-                        1.5,
+                        spectrum_graph::CURVE_STROKE_WIDTH,
                         if selected && s.enabled {
                             theme::accent(ui.ctx()).gamma_multiply(0.65)
                         } else {

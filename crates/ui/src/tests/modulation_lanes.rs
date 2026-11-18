@@ -23,6 +23,141 @@ fn setup(theme: settings::ColorTheme) -> (DawUi, egui::Context, [Id; 2]) {
     app.dirty = false;
     (app, ctx, owners)
 }
+
+#[test]
+fn envelope_plot_previews_sound_and_knobs_then_commits_once_or_restores() {
+    for cancel in [false, true] {
+        let (mut app, ctx, [_, lane]) = setup(settings::ColorTheme::Dark);
+        let track = app.session.project.tracks[0].id;
+        let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        let envelope = daw_core::EnvelopeInstance::default();
+        let source = ModulationSourceId {
+            layer: lane,
+            unit: envelope.id,
+        };
+        instrument.envelope_lane.collapsed = false;
+        instrument.envelope_lane.envelopes.push(envelope);
+        let layer = &mut instrument.layers[0];
+        layer.oscillators.push(Default::default());
+        layer.amplitude.present = true;
+        layer.amplitude.modulations.push(daw_core::Modulation {
+            source: Some(source),
+            amount: 1.0,
+            ..daw_core::Modulation::new(daw_core::ModulationParameter::Amplitude)
+        });
+        let clip_id = app.session.project.add_midi_pattern(track, 0).unwrap();
+        app.session
+            .project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id,
+                pattern: daw_core::MidiPattern {
+                    length_ticks: 960,
+                    notes: vec![daw_core::MidiNote {
+                        id: Id::new_v4(),
+                        start_tick: 0,
+                        length_ticks: 960,
+                        pitch: 69,
+                        velocity: 127,
+                    }],
+                },
+            })
+            .unwrap();
+        app.history = None;
+        let original = app.session.project.clone();
+        let size = Vec2::new(1600.0, 1200.0);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+        let header = app.instrument_ui.modulation_lane_bounds[&lane].envelopes[0];
+        let plot_strip = Rect::from_min_size(
+            Pos2::new(header.right(), header.top()),
+            Vec2::new(daw_unit_ui::spectrum_graph::WIDTH, header.height()),
+        );
+        let sustain = shapes
+            .iter()
+            .filter_map(|item| match &item.shape {
+                egui::Shape::Circle(circle)
+                    if circle.radius == 5.5
+                        && circle.stroke == egui::Stroke::NONE
+                        && plot_strip.contains(circle.center) =>
+                {
+                    Some(circle.center)
+                }
+                _ => None,
+            })
+            .nth(1)
+            .unwrap();
+        let end = sustain + Vec2::new(0.0, 30.0);
+        frame_shapes(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(sustain), button(sustain, true)],
+            size,
+        );
+        let shapes = frame_shapes(&mut app, &ctx, vec![egui::Event::PointerMoved(end)], size);
+        assert_eq!(app.session.project, original);
+        assert!(!app.dirty);
+        let plan = app.graph_preview.published_plan(&app.session);
+        let preview = plan
+            .project
+            .instrument_settings(track)
+            .unwrap()
+            .envelope_destinations()
+            .find(|(id, _)| *id == source)
+            .unwrap()
+            .1
+            .settings;
+        assert!(
+            preview.sustain < 0.8,
+            "Expected sustain preview after dragging from {sustain:?}. UI error: {:?}",
+            app.error
+        );
+        let knob =
+            super::envelope_units::label(&shapes, &format!("{:.0}%", preview.sustain * 100.0));
+        assert!(
+            app.instrument_ui.modulation_lane_bounds[&lane].envelope_stages[0][2].contains(knob)
+        );
+
+        let sustain_peak = |plan| {
+            let mut renderer = daw_engine::Renderer::new(plan);
+            let mut samples = vec![[0.0; 2]; 8000];
+            renderer.render_offline(&mut samples);
+            samples[6000..]
+                .iter()
+                .map(|s| s[0].abs())
+                .fold(0.0_f32, f32::max)
+        };
+        let base_peak = sustain_peak(app.session.plan());
+        assert!(base_peak > 0.0);
+        assert!(sustain_peak(plan) < base_peak);
+
+        if cancel {
+            frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }],
+                size,
+            );
+        }
+        frame_shapes(&mut app, &ctx, vec![button(end, false)], size);
+        let plan = app.graph_preview.published_plan(&app.session);
+        assert_eq!(plan.project, app.session.project);
+        if cancel {
+            assert_eq!(app.session.project, original);
+            assert!(!app.dirty);
+        } else {
+            assert_ne!(app.session.project, original);
+            assert!(app.dirty);
+            app.perform_history_action(crate::history::HistoryAction::Undo, &ctx);
+            assert_eq!(app.session.project, original);
+        }
+    }
+}
+
 #[test]
 fn instrument_wide_lanes_accept_only_their_registered_provider_type_from_the_catalog() {
     for theme in [

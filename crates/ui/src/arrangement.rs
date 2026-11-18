@@ -706,7 +706,10 @@ impl DawUi {
                                 tempo::TempoGesture {
                                     initial_bpm: event.bpm,
                                     value: musical_time::TempoValueDrag::new(event.bpm),
-                                    direction: tempo::TempoDirection::new(press, item.frame > 0),
+                                    direction: daw_unit_ui::drag::AxisLock::new(
+                                        press,
+                                        item.frame > 0,
+                                    ),
                                     bpm: event.bpm,
                                     previous_y: press.y,
                                     range: tempo::value_range(&tempos),

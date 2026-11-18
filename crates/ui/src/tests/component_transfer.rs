@@ -1,6 +1,8 @@
 use super::*;
 use daw_core::InstrumentComponent;
 
+const ORDER_SIZE: Vec2 = Vec2::new(1600.0, 800.0);
+
 fn setup(theme: settings::ColorTheme, compact: bool) -> (DawUi, egui::Context, [Id; 2]) {
     let mut app = DawUi::default();
     let track = app.session.project.add_midi_track().unwrap();
@@ -70,6 +72,7 @@ fn order_setup(
     collapsed: bool,
 ) -> (DawUi, egui::Context, Id, InstrumentComponent) {
     let (mut app, ctx, owners) = setup(theme, compact);
+    ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), ORDER_SIZE));
     let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
     i.layers[1].collapsed = true;
     i.layers[0].oscillators.truncate(1);
@@ -135,7 +138,7 @@ fn component_units_reorder_with_effects_lane_preview_and_sources_pinned_first() 
                                 &mut app,
                                 &ctx,
                                 vec![egui::Event::PointerMoved(end)],
-                                Vec2::new(1280.0, 800.0),
+                                ORDER_SIZE,
                             );
                             assert_eq!(app.instrument_catalog_bounds.drop_target, Some(owner));
                             assert_eq!(
@@ -262,10 +265,7 @@ fn component_reorder_no_op_cancel_and_pinned_source_drags_stay_clean() {
                     let mut output = ctx.run_ui(
                         egui::RawInput {
                             focused: false,
-                            screen_rect: Some(Rect::from_min_size(
-                                Pos2::ZERO,
-                                egui::vec2(1280.0, 800.0),
-                            )),
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, ORDER_SIZE)),
                             ..Default::default()
                         },
                         |ui| app.show(ui),
@@ -400,7 +400,7 @@ fn component_click_selection_keeps_no_outline_and_stays_out_of_project_data() {
                         HashSet::from([(owner, moving)]),
                         "main {main} compact {compact} collapsed {collapsed}"
                     );
-                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], ORDER_SIZE);
                     let header = app
                         .instrument_ui
                         .component_bounds
@@ -1122,7 +1122,7 @@ fn component_group_shift_selection_toggles_replaces_and_stays_in_one_lane() {
                 app.instrument_ui.selected_components,
                 HashSet::from([(owner, first), (owner, last)])
             );
-            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let shapes = frame_shapes(&mut app, &ctx, vec![], ORDER_SIZE);
             for unit in [first, last] {
                 let rect = app
                     .instrument_ui
@@ -1217,7 +1217,7 @@ fn component_groups_reorder_in_lane_order_with_effect_previews_and_pinned_source
                                 &mut app,
                                 &ctx,
                                 vec![egui::Event::PointerMoved(end)],
-                                Vec2::new(1280.0, 800.0),
+                                ORDER_SIZE,
                             );
                             assert_eq!(
                                 app.instrument_ui.selected_components,
@@ -1728,7 +1728,7 @@ fn component_delete_respects_focus_text_modifiers_modal_and_drag_guards() {
         let mut output = ctx.run_ui(
             egui::RawInput {
                 focused: guard != "window",
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, ORDER_SIZE)),
                 events: vec![
                     egui::Event::ModifiersChanged(modifiers),
                     component_delete_key(egui::Key::Delete, guard == "repeat", modifiers),

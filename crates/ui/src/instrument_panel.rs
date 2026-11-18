@@ -678,16 +678,17 @@ impl DawUi {
                                                                     let instance = &mut layer.envelopes[index];
                                                                     let shared_only = shared_sources.contains(&daw_core::ModulationSourceId { layer: layer.id, unit: id });
                                                                     envelope_panel::unit(ui, instance, index + 1, shared_only, height, compact, envelope_panel::Controls { sources: provider_sources.iter().find(|(id, _)| id.layer == layer.id && id.unit == instance.id).map_or(&[], |(_, sources)| sources.as_slice()), live: self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Envelope { track: track.id, layer: layer.id, unit: instance.id })) }).map(|unit| {
+                                                                        self.offer_envelope_preview(ui, track.id, layer.id, instance, unit.inner.as_ref());
                                                                         self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, component);
                                                                         let rect = unit.response.rect;
                                                                         if index == 0 {
                                                                             envelope_rect = rect;
                                                                             envelope_header = unit.header.rect;
                                                                             envelope_power = unit.power.rect;
-                                                                            envelope_stages = unit.inner.unwrap_or([Rect::NOTHING; 4]);
+                                                                            envelope_stages = unit.inner.as_ref().map_or([Rect::NOTHING; 4], |body| body.stages);
                                                                         }
                                                                         #[cfg(test)] if index == 1 {
-                                                                            filter_envelope = (rect, unit.header.rect, unit.power.rect, unit.inner.unwrap_or([Rect::NOTHING; 4]));
+                                                                            filter_envelope = (rect, unit.header.rect, unit.power.rect, unit.inner.as_ref().map_or([Rect::NOTHING; 4], |body| body.stages));
                                                                         }
                                                                         rect
                                                                     })

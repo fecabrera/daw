@@ -11,6 +11,38 @@ pub(super) struct Controls<'a> {
     pub live: Option<daw_engine::ModulationSnapshot>,
 }
 
+pub(super) struct Body {
+    pub stages: [Rect; 4],
+    pub preview: Option<EnvelopeSettings>,
+}
+
+impl crate::DawUi {
+    pub(super) fn offer_envelope_preview(
+        &mut self,
+        ui: &Ui,
+        track: daw_core::Id,
+        layer: daw_core::Id,
+        envelope: &daw_core::EnvelopeInstance,
+        body: Option<&Body>,
+    ) {
+        if let Some(settings) = body.and_then(|body| body.preview) {
+            self.graph_preview.offer_envelope(
+                ui.ctx().cumulative_frame_nr(),
+                crate::graph_preview::EnvelopePreview {
+                    project: self.session.project.project_id,
+                    track,
+                    source: daw_core::ModulationSourceId {
+                        layer,
+                        unit: envelope.id,
+                    },
+                    before: envelope.settings,
+                    settings,
+                },
+            );
+        }
+    }
+}
+
 /// A generic note-driven modulator. Connections belong to the receiving unit.
 pub(super) fn unit(
     ui: &mut Ui,
@@ -20,7 +52,7 @@ pub(super) fn unit(
     height: f32,
     compact: bool,
     controls: Controls<'_>,
-) -> Option<panels::UnitResponse<[Rect; 4]>> {
+) -> Option<panels::UnitResponse<Body>> {
     if !envelope.present {
         return None;
     }
@@ -80,7 +112,7 @@ pub(super) fn body_height(compact: bool) -> f32 {
     }
 }
 
-/// One timing/mode column precedes the four stage containers; all share the oscillator geometry.
+/// The Shape strip precedes the timing and stage controls.
 pub(super) fn body(
     ui: &mut Ui,
     envelope: &mut daw_core::EnvelopeInstance,
@@ -88,33 +120,48 @@ pub(super) fn body(
     margin: i8,
     compact: bool,
     controls: &Controls,
-) -> [Rect; 4] {
+) -> Body {
     let defaults = EnvelopeSettings::default();
-    let base = envelope.settings.parameter_values();
-    let markers: Vec<_> = Parameter::ENVELOPE
-        .iter()
-        .enumerate()
-        .map(|(index, &parameter)| {
-            modulation_panel::marker(
-                &envelope.modulations,
-                controls.sources,
-                parameter,
-                base[index],
-                envelope.enabled,
-                None,
-                [
-                    controls.live.map(|v| v[index * 2]),
-                    controls.live.map(|v| v[index * 2 + 1]),
-                ],
-            )
-        })
-        .collect();
     let open = envelope.modulation_open;
-    let settings = &mut envelope.settings;
+    let mut settings = envelope.settings;
     let mode = &mut envelope.mode;
+    let live = controls.live.map(|snapshot| {
+        let start = daw_engine::ENVELOPE_PLOT_POSITION.start;
+        [snapshot[start], snapshot[start + 1]]
+    });
     let mut bounds = [Rect::NOTHING; 4];
+    let mut preview = None;
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+        preview = daw_unit_ui::envelope_plot::show(
+            ui,
+            (compact, body_height(compact)),
+            &mut settings,
+            envelope.enabled,
+            live,
+        );
+        if let Some(value) = preview {
+            settings = value;
+        }
+        let base = settings.parameter_values();
+        let markers: Vec<_> = Parameter::ENVELOPE
+            .iter()
+            .enumerate()
+            .map(|(index, &parameter)| {
+                modulation_panel::marker(
+                    &envelope.modulations,
+                    controls.sources,
+                    parameter,
+                    base[index],
+                    envelope.enabled,
+                    None,
+                    [
+                        controls.live.map(|v| v[index * 2]),
+                        controls.live.map(|v| v[index * 2 + 1]),
+                    ],
+                )
+            })
+            .collect();
         daw_unit_ui::layout::unit_strip_frame(ui)
             .inner_margin(margin)
             .show(ui, |ui| {
@@ -254,7 +301,13 @@ pub(super) fn body(
             );
         }
     });
-    bounds
+    if preview.is_none() {
+        envelope.settings = settings;
+    }
+    Body {
+        stages: bounds,
+        preview,
+    }
 }
 
 fn parameter_knob(

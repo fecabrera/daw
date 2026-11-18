@@ -8,7 +8,7 @@ mod midi_writer;
 pub use midi::{Preferences as MidiPreferences, TransportAction};
 pub use midi_service::{MidiBackend, MidiDevice, MidiIngress};
 mod bounce;
-mod eq_graph_preview;
+mod graph_preview;
 mod time_signature_control;
 mod view_panels;
 pub use view_panels::ViewPanel;
@@ -901,7 +901,7 @@ pub struct DawUi {
     hosting: hosting::State,
     midi: midi::State,
     midi_after_take: Option<Action>,
-    eq_graph_preview: eq_graph_preview::State,
+    graph_preview: graph_preview::State,
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
     editor_transients: editor_transients::State,
@@ -1073,7 +1073,7 @@ impl Default for DawUi {
             hosting: Default::default(),
             midi: Default::default(),
             midi_after_take: None,
-            eq_graph_preview: Default::default(),
+            graph_preview: Default::default(),
             view_mode: mixer::ViewMode::default(),
             chords: Default::default(),
             effects_catalog: effects_catalog::catalog(),
@@ -2793,16 +2793,16 @@ impl DawUi {
         strip_reorder::end_frame(&ctx);
         self.strip_dragging = strip_reorder::dragging(&ctx);
         let wanted = self
-            .eq_graph_preview
+            .graph_preview
             .desired(&self.session.project, ctx.cumulative_frame_nr());
         if (self.sync_needed
             || self
-                .eq_graph_preview
+                .graph_preview
                 .needs_sync(&wanted, self.output.is_some()))
             && self.bounce_pending.is_none()
             && !self.reconcile_background_media()
         {
-            match eq_graph_preview::State::plan(&self.session, wanted.as_ref()) {
+            match graph_preview::State::plan(&self.session, wanted.as_ref()) {
                 Ok(plan) => {
                     let success = self
                         .output
@@ -2810,7 +2810,7 @@ impl DawUi {
                         .is_none_or(|output| output.sync(plan).is_ok());
                     if success {
                         self.sync_needed = false;
-                        self.eq_graph_preview.synced(wanted, self.output.is_some());
+                        self.graph_preview.synced(wanted, self.output.is_some());
                     }
                 }
                 Err(error) => self.error = Some(error),

@@ -4462,6 +4462,15 @@ fn envelope_destinations_share_graph_rendering_history_and_live_route_updates() 
         let reading = a.modulation_snapshot(key).unwrap();
         assert!(reading[0] > 100.0 && reading[1] <= 200.0);
         assert!(reading[8] > 0.5 && reading[9] <= 0.75);
+        let position = &reading[daw_engine::ENVELOPE_PLOT_POSITION];
+        assert!(position[0] > 0.0 && position[0] < 3.0);
+        assert!(position[1] > 0.0 && position[1] <= 1.0);
+        let idle = Renderer::new(p.clone());
+        assert!(idle.modulation_snapshot(key).is_none_or(|snapshot| {
+            snapshot[daw_engine::ENVELOPE_PLOT_POSITION]
+                .iter()
+                .all(|value| value.is_nan())
+        }));
         let mut sought = Renderer::new(p.clone());
         let state = daw_engine::TransportState {
             frame: 6000,

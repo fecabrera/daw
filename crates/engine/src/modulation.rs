@@ -420,11 +420,11 @@ impl SharedControls {
             };
         }
     }
-    pub fn envelope_values(&self, id: ModulationSourceId) -> Option<[f32; 9]> {
+    pub fn envelope(&self, id: ModulationSourceId) -> Option<&daw_envelope::Envelope> {
         self.controls
             .iter()
             .find(|e| e.source == id)
-            .map(|e| e.envelope.modulation_values())
+            .map(|e| &e.envelope)
     }
     pub fn provider_values(&self, id: ModulationSourceId) -> Option<[f32; 2]> {
         self.providers

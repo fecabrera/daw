@@ -120,6 +120,28 @@ fn envelope(settings: EnvelopeSettings, rate: u32) -> Envelope {
 }
 
 #[test]
+fn plot_position_reports_processed_stage_progress_and_level() {
+    let settings = settings();
+    let mut e = envelope(settings, 48_000);
+    assert_eq!(e.plot_position(), None);
+    e.note_on();
+    let attack = settings.attack.frames(48_000);
+    e.advance(attack / 2);
+    assert_eq!(e.plot_position(), Some([0.5, 0.5]));
+    let decay = settings.decay.frames(48_000);
+    e.advance(attack / 2 + decay / 2);
+    assert_eq!(e.plot_position(), Some([1.5, e.level()]));
+    e.advance(decay / 2);
+    assert_eq!(e.plot_position(), Some([2.5, settings.sustain]));
+    e.note_off();
+    let release = settings.release.frames(48_000);
+    e.advance(release / 2);
+    assert_eq!(e.plot_position(), Some([3.5, e.level()]));
+    e.advance(release / 2);
+    assert_eq!(e.plot_position(), None);
+}
+
+#[test]
 fn adsr_reaches_endpoints_at_the_configured_times_at_all_project_rates() {
     for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {
         let settings = settings();

@@ -92,6 +92,17 @@ impl Envelope {
     pub fn stage(&self) -> Stage {
         self.stage
     }
+    /// The active ADSR position in stage coordinates and its current level.
+    pub fn plot_position(&self) -> Option<[f32; 2]> {
+        let position = match self.stage {
+            Stage::Idle => return None,
+            Stage::Attack => self.progress(),
+            Stage::Decay => 1.0 + self.progress(),
+            Stage::Sustain => 2.5,
+            Stage::Release => 3.0 + self.progress(),
+        };
+        Some([position, self.level])
+    }
     pub fn is_idle(&self) -> bool {
         self.stage == Stage::Idle
     }

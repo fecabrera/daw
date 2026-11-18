@@ -1663,7 +1663,8 @@ impl MidiTrackRuntime {
     pub fn envelope_snapshot(&self, id: ModulationSourceId) -> Option<super::ModulationSnapshot> {
         let mut range = [f32::NAN; super::MODULATION_SNAPSHOT_SIZE];
         let mut found = false;
-        let readings = self.shared.envelope_values(id).into_iter().chain(
+        let mut position = None;
+        let readings = self.shared.envelope(id).into_iter().chain(
             self.voices
                 .iter()
                 .filter(|v| v.active_last_sample)
@@ -1671,12 +1672,13 @@ impl MidiTrackRuntime {
                     v.controls
                         .iter()
                         .find(|e| e.source == id)
-                        .map(|e| e.envelope.modulation_values())
+                        .map(|e| &e.envelope)
                 }),
         );
-        for values in readings {
+        for envelope in readings {
             found = true;
-            for (index, value) in values.into_iter().enumerate() {
+            position = position.or_else(|| envelope.plot_position());
+            for (index, value) in envelope.modulation_values().into_iter().enumerate() {
                 for edge in 0..2 {
                     let slot = index * 2 + edge;
                     if !range[slot].is_finite() {
@@ -1688,6 +1690,9 @@ impl MidiTrackRuntime {
                     }
                 }
             }
+        }
+        if let Some(position) = position {
+            range[super::ENVELOPE_PLOT_POSITION].copy_from_slice(&position);
         }
         found.then_some(range)
     }

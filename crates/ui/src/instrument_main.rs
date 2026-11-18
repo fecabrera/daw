@@ -223,8 +223,9 @@ impl DawUi {
                                         let id = bus.envelopes[index].id;
                                         crate::envelope_panel::unit(ui, &mut bus.envelopes[index], index + 1, output || shared_sources.contains(&daw_core::ModulationSourceId {layer:bus.id,unit:id}), height, compact, crate::envelope_panel::Controls { sources: provider_sources.iter().find(|(source, _)| source.layer == bus.id && source.unit == id).map_or(&[], |(_, sources)| sources.as_slice()), live: self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Envelope { track, layer: bus.id, unit: id })) })
                                         }.map(|unit| {
+                                            self.offer_envelope_preview(ui, track, bus.id, &bus.envelopes[index], unit.inner.as_ref());
                                             self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track, bus.id, component);
-                                            #[cfg(test)] {bounds.envelopes.push(unit.header.rect);bounds.powers.push(unit.power.rect);bounds.envelope_stages.push(unit.inner.unwrap_or([Rect::NOTHING;4]));}
+                                            #[cfg(test)] {bounds.envelopes.push(unit.header.rect);bounds.powers.push(unit.power.rect);bounds.envelope_stages.push(unit.inner.as_ref().map_or([Rect::NOTHING; 4], |body| body.stages));}
                                             unit.response.rect
                                         })
                                     }

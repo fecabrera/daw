@@ -32,7 +32,36 @@ Envelope instances now belong to the fixed instrument-wide [Envelope lane](modul
 
 Envelope reuses the common header toggle, connection body, Source/Destination labels, amount adapters, source filters, strip reorder, and knob markers. Base and Amount knobs share destination definitions. Mode choices reject incompatible scope changes. Saved open state follows moves, copies, and save/reopen.
 
-`ModulationTarget::Envelope { track, layer, unit }` uses the existing prepared snapshot handles. Nine pairs of native minimum/maximum readings use slots 0–17; slot 18 stays unavailable. Shared Envelopes publish one effective value per pair; local Envelopes aggregate active voices. The UI does not run another Envelope. Shape/Mode/Timing do not occupy telemetry slots.
+`ModulationTarget::Envelope { track, layer, unit }` uses the existing prepared
+snapshot handles. Nine pairs of native minimum/maximum readings use slots 0–17.
+Shared Envelopes publish one effective value per pair. Local Envelopes aggregate
+active voices. Slots 18 and 19 publish stage position and current level for a
+shared Envelope or the first active voice with a running per-note Envelope.
+Publish NaN in both slots when idle. Callback collection adds no allocations.
+
+Draw Shape as the first strip in both row heights. Use the shared plot surface,
+Compressor strip width and curve stroke, and the portable curve evaluator.
+Label the expanded plot with stage initials and normalized level percentages.
+Use the Compressor's gray curve color. When a handle is selected, paint its
+assigned stages with the theme accent. Highlight Attack for its handle,
+Decay and Sustain for their shared handle, and Release for its handle.
+Use shared plot handles for Attack time, Decay time and Sustain level, and
+Release time. Reuse the [tempo point axis lock](../audio/timing-maps.md) for
+the Decay and Sustain handle. Lock to the dominant axis of the first
+recognized drag sample. Switch at 12 logical points of perpendicular motion
+from the latest lock position and apply only the excess. Preserve the current
+timing mode and parameter limits. During a drag, draw the knobs from the
+preview settings and publish those settings through the shared graph render
+plan worker. Identify the Envelope by project, track, owner, and unit IDs.
+Keep the saved project and history at their original state until release.
+Commit through the existing instrument edit on release. Withdraw the preview
+on Escape, focus loss, or when the owning plot is no longer available. Keep
+the compact plot display-only.
+
+Use saved ADSR settings for the contour outside a drag and the
+published stage and level for its live dot. Hide the dot when the unit is idle
+or off. Use a one-second reference note in Note mode and reserve display space
+for Sustain. The UI does not run another Envelope.
 
 Envelope component copies get new provider and route IDs, retaining source assignments. Legacy provider moves remap Envelope consumers through the same transfer helper as other destinations. Global lane units reorder or copy only within their matching lane. Source/mode incompatibility rejects the whole transaction. No source or route identity depends on display order.
 
