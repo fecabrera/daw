@@ -364,9 +364,6 @@ impl Group {
         }
     }
 }
-pub(super) fn select_plugins(ctx: &Context) {
-    ctx.data_mut(|d| d.insert_temp(group_id(), Group::Plugins));
-}
 fn group_id() -> egui::Id {
     egui::Id::new("app-settings-group")
 }

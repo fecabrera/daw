@@ -427,7 +427,7 @@ impl DawUi {
                                             .is_none_or(|drag| !drag.active),
                                     empty_enabled: allowed,
                                 },
-                                crate::hosting::browser_button,
+                                |_| egui::Rect::NOTHING,
                             );
                             #[cfg(test)]
                             if let Some((_, response)) = output.external_rows.first() {

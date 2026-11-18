@@ -48,4 +48,4 @@ Plugin selection belongs in the existing catalogs. Both Effects and Instrument
 components have VST3 and CLAP folders. Filter effects and instruments into their
 respective catalogs and preserve native identities through refreshes. Reuse the
 catalog folder/row styling and keyboard navigation; double-click or Enter adds
-the selected external unit. A catalog Settings action opens this page directly.
+the selected external unit.

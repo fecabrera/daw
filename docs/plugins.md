@@ -18,8 +18,7 @@ dormant while an external instrument owns the layer.
 Open **App Settings > Plugins** to inspect default folders, add or remove extra
 VST3/CLAP folders, scan, rescan, retry failures or cancel a scan. Folder choices
 are saved on this computer and shared with CLI scans and rendering. Default
-folders stay enabled. The status list shows modules and scan failures. The
-catalog's **Settings** button opens this page directly.
+folders stay enabled. The status list shows modules and scan failures.
 
 Mapped parameters use the standard unit controls in 90-point strips, with three
 named control rows and a semibold footer. Audio inputs use the same row layout.

@@ -292,7 +292,7 @@ impl DawUi {
                     && self.component_drag.is_none(),
                 empty_enabled: allowed,
             },
-            crate::hosting::browser_button,
+            |_| egui::Rect::NOTHING,
         );
         if let Some(identity) = output.external_add.clone() {
             self.add_external_plugin(identity);

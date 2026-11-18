@@ -55,16 +55,6 @@ struct Barrier {
     remaining: std::collections::HashSet<Id>,
     action: Deferred,
 }
-pub(super) fn browser_button(ui: &mut egui::Ui) -> egui::Rect {
-    let response = ui
-        .small_button("Settings")
-        .on_hover_text("Plugin folders and scanning");
-    if response.clicked() {
-        ui.ctx()
-            .data_mut(|d| d.insert_temp(egui::Id::new("external-plugin-settings"), true));
-    }
-    response.rect
-}
 pub(super) fn parameter_text(ctx: &egui::Context, unit: Id, parameter: u32, value: f64) -> String {
     ctx.data(|d| {
         d.get_temp::<(u64, String)>(egui::Id::new(("external-value-text", unit, parameter)))
@@ -449,13 +439,6 @@ impl DawUi {
                 }
             }
             self.hosting.resuming = false;
-        }
-        if ctx
-            .data_mut(|d| d.remove_temp::<bool>(egui::Id::new("external-plugin-settings")))
-            .unwrap_or(false)
-        {
-            crate::settings::select_plugins(ctx);
-            self.open_settings();
         }
         let ready = self
             .hosting
