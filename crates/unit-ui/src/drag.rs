@@ -56,6 +56,12 @@ impl AxisLock {
             horizontal,
         }
     }
+
+    pub(crate) fn delta(&mut self, pointer: Pos2) -> Vec2 {
+        let before = self.effective;
+        self.update(pointer) - before
+    }
+
     pub fn update(&mut self, pointer: Pos2) -> Pos2 {
         if pointer == self.previous {
             return self.effective;

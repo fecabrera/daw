@@ -321,11 +321,17 @@ pub fn show(
         for (i, band) in settings.bands.iter_mut().enumerate() {
             let mut unused = false;
             let empty = std::array::from_fn(|_| None);
+            let mut preview = bounds
+                .graph
+                .preview
+                .as_ref()
+                .filter(|draft| !controls.graph.live_edits && draft.id == band.id)
+                .cloned();
             let b = ui
                 .push_id(band.id, |ui| {
                     self::band(
                         ui,
-                        band,
+                        preview.as_mut().unwrap_or(band),
                         i,
                         dimensions,
                         controls.markers.get(i).unwrap_or(&empty),

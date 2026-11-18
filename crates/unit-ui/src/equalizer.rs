@@ -72,6 +72,7 @@ pub fn show(
         meters: [Rect::NOTHING; 3],
     };
     let margin = crate::layout::PANEL_MARGIN;
+    let staged = graph.as_ref().is_some_and(|graph| !graph.live_edits);
 
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
@@ -81,6 +82,16 @@ pub fn show(
                 crate::eq_graph::show_equalizer(ui, settings, body_height, !compact, graph);
         }
         for (index, name) in ["Low", "Mid", "High"].into_iter().enumerate() {
+            let mut preview = bounds
+                .graph
+                .preview
+                .as_ref()
+                .filter(|draft| staged && draft.id.as_u128() == index as u128 + 1)
+                .map(|draft| {
+                    let mut band = settings.bands[index];
+                    crate::eq_graph::apply_fixed_parameters(&mut band, index, draft);
+                    band
+                });
             let strip = ui
                 .push_id(index, |ui| {
                     crate::layout::unit_strip_frame(ui)
@@ -93,7 +104,7 @@ pub fn show(
                                 if !compact {
                                     bounds.knobs[index] = controls(
                                         ui,
-                                        band,
+                                        preview.as_mut().unwrap_or(&mut *band),
                                         index,
                                         markers,
                                         &mut settings.modulation_open,

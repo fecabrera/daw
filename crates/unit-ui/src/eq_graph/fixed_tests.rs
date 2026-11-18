@@ -66,7 +66,21 @@ fn fixed_graph_edits_outer_frequency_gain_q_and_mid_gain_without_touching_legacy
                 false,
                 live,
             );
-            let next = start + Vec2::new(20.0, -12.0);
+            let first = start + Vec2::new(4.0, -18.0);
+            let draft = draw(
+                &ctx,
+                &mut settings,
+                vec![egui::Event::PointerMoved(first)],
+                false,
+                live,
+            )
+            .preview
+            .unwrap();
+            assert!(draft.gain_db > before.bands[index].gain_db);
+            if index != 1 {
+                assert_eq!(draft.frequency_hz, before.bands[index].frequency_hz);
+            }
+            let next = start + Vec2::new(20.0, -20.0);
             let b = draw(
                 &ctx,
                 &mut settings,

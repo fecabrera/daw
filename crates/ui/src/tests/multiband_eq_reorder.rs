@@ -59,6 +59,16 @@ fn button(p: Pos2, pressed: bool) -> egui::Event {
         modifiers: Default::default(),
     }
 }
+fn assert_knob_label(shapes: &[egui::epaint::ClippedShape], knob: Rect, expected: &str) {
+    assert!(
+        shapes.iter().any(|item| {
+            matches!(&item.shape, egui::Shape::Text(text)
+                if text.galley.text() == expected
+                    && knob.expand2(Vec2::new(0.0, 8.0)).contains(text.pos + text.galley.size() * 0.5))
+        }),
+        "Expected {expected} on knob {knob:?}"
+    );
+}
 fn points(app: &DawUi) -> (Pos2, Pos2) {
     let b = &app.effects_bounds.multiband_eq_units[0];
     // The label beside Power is noninteractive strip space, as on Oscillator.
@@ -337,12 +347,14 @@ fn multiband_graph_preview_is_atomic_cancellable_and_one_undo_step() {
             let (mut app, ctx) = fixture(false, master);
             let original = settings(&app).clone();
             let start = app.effects_bounds.multiband_eq_units[0].graph.nodes[0].center();
-            let mut end = start + Vec2::new(20.0, -15.0);
+            let first = start + Vec2::new(20.0, -4.0);
+            let mut end = first + Vec2::new(2.0, -20.0);
             frame(
                 &mut app,
                 &ctx,
                 vec![egui::Event::PointerMoved(start), button(start, true)],
             );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(first)]);
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
             let command = egui::Modifiers {
                 command: true,
@@ -359,7 +371,12 @@ fn multiband_graph_preview_is_atomic_cancellable_and_one_undo_step() {
                 vec![egui::Event::ModifiersChanged(Default::default())],
             );
             end += Vec2::new(5.0, -3.0);
-            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end)],
+                Vec2::new(1280.0, 800.0),
+            );
             assert_eq!(settings(&app), &original);
             assert!(!app.dirty);
             let preview_plan = app.graph_preview.published_plan(&app.session);
@@ -375,6 +392,15 @@ fn multiband_graph_preview_is_atomic_cancellable_and_one_undo_step() {
             assert!(preview.bands[0].frequency_hz > original.bands[0].frequency_hz);
             assert!(preview.bands[0].gain_db > original.bands[0].gain_db);
             assert!(preview.bands[0].q > original.bands[0].q);
+            let knobs = app.effects_bounds.multiband_eq_units[0].knobs[0];
+            let band = &preview.bands[0];
+            assert_knob_label(
+                &shapes,
+                knobs[1],
+                &daw_unit_ui::knobs::format_frequency(band.frequency_hz),
+            );
+            assert_knob_label(&shapes, knobs[2], &format!("{:.1} dB", band.gain_db));
+            assert_knob_label(&shapes, knobs[3], &format!("Q {:.2}", band.q));
             let renderer = daw_engine::Renderer::new(preview_plan.clone());
             let actual = renderer
                 .modulation_snapshot(daw_engine::ModulationTarget::EffectBand {
@@ -456,7 +482,9 @@ fn three_band_graph_preview_commits_one_undo_step_or_restores_on_cancel() {
                 &ctx,
                 vec![egui::Event::PointerMoved(start), button(start, true)],
             );
-            let next = start + Vec2::new(20.0, -15.0);
+            let first = start + Vec2::new(4.0, -18.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(first)]);
+            let next = first + Vec2::new(20.0, -2.0);
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(next)]);
             frame(
                 &mut app,
@@ -469,7 +497,12 @@ fn three_band_graph_preview_commits_one_undo_step_or_restores_on_cancel() {
                 })],
             );
             let end = next + Vec2::new(10.0, -5.0);
-            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end)],
+                Vec2::new(1280.0, 800.0),
+            );
             assert_eq!(fixed(&app), &original);
             assert!(!app.dirty);
             let target = if master {
@@ -485,6 +518,15 @@ fn three_band_graph_preview_commits_one_undo_step_or_restores_on_cancel() {
             assert!(settings.bands[0].gain_db > original.bands[0].gain_db);
             assert!(settings.bands[0].frequency_hz > original.bands[0].frequency_hz);
             assert!(settings.bands[0].q > original.bands[0].q);
+            let knobs = app.effects_bounds.units[0].knobs[0];
+            let band = &settings.bands[0];
+            assert_knob_label(&shapes, knobs[0], &format!("{:.1} dB", band.gain_db));
+            assert_knob_label(
+                &shapes,
+                knobs[1],
+                &daw_unit_ui::knobs::format_frequency(band.frequency_hz),
+            );
+            assert_knob_label(&shapes, knobs[2], &format!("Q {:.2}", band.q));
             if cancel {
                 frame(
                     &mut app,

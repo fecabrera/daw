@@ -779,11 +779,13 @@ mod graph_binding_tests {
                     ..Default::default()
                 })
             };
-            let first = start + egui::vec2(14.0, -8.0);
+            let horizontal = start + egui::vec2(14.0, -2.0);
+            let first = horizontal + egui::vec2(0.0, -16.0);
             let second = first + egui::vec2(10.0, -5.0);
             let end = second + egui::vec2(6.0, -4.0);
             for events in [
                 vec![egui::Event::PointerMoved(start), pointer(start, true)],
+                vec![egui::Event::PointerMoved(horizontal)],
                 vec![egui::Event::PointerMoved(first)],
                 vec![command(true)],
                 vec![egui::Event::PointerMoved(second)],
@@ -864,7 +866,8 @@ mod graph_binding_tests {
                 })
                 .unwrap();
             out.textures_delta.clear();
-            let end = start + egui::vec2(22.0, -16.0);
+            let horizontal = start + egui::vec2(22.0, -2.0);
+            let end = horizontal + egui::vec2(0.0, -16.0);
             let mut out = frame(
                 &ctx,
                 &mut editor,
@@ -879,6 +882,13 @@ mod graph_binding_tests {
                 ],
             );
             out.textures_delta.clear();
+            frame(
+                &ctx,
+                &mut editor,
+                vec![egui::Event::PointerMoved(horizontal)],
+            )
+            .textures_delta
+            .clear();
             let mut out = frame(&ctx, &mut editor, vec![egui::Event::PointerMoved(end)]);
             out.textures_delta.clear();
             let mut events = Vec::new();

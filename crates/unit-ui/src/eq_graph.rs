@@ -1,5 +1,5 @@
 //! Shared EQ graph. DAW hosts stage transient plans; native editors publish bounded host gestures.
-use crate::{layout, rows, theme};
+use crate::{drag::AxisLock, layout, rows, theme};
 use daw_unit_core::{FrequencyResponse, MultibandEqBand, MultibandEqSettings, SpectrumReading};
 use egui::{Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 pub const WIDTH: f32 = crate::spectrum_graph::WIDTH;
@@ -22,6 +22,7 @@ struct Drag {
     preview: MultibandEqBand,
     anchor: MultibandEqBand,
     last: Pos2,
+    direction: AxisLock,
     offset: [f64; 2],
     q: bool,
     frame: u64,
@@ -105,13 +106,20 @@ pub fn show_equalizer(
         Some((&original, input.response, input.effective)),
     );
     for (i, b) in mapped.bands.iter().enumerate() {
-        settings.bands[i].gain_db = b.gain_db;
-        if i != 1 {
-            settings.bands[i].frequency_hz = b.frequency_hz;
-            settings.bands[i].q = b.q;
-        }
+        apply_fixed_parameters(&mut settings.bands[i], i, b);
     }
     bounds
+}
+pub(crate) fn apply_fixed_parameters(
+    band: &mut daw_unit_core::EqBandSettings,
+    index: usize,
+    preview: &MultibandEqBand,
+) {
+    band.gain_db = preview.gain_db;
+    if index != 1 {
+        band.frequency_hz = preview.frequency_hz;
+        band.q = preview.q;
+    }
 }
 fn fixed_view(s: &daw_unit_core::EqSettings) -> MultibandEqSettings {
     MultibandEqSettings {
@@ -273,6 +281,7 @@ fn show_inner(
                     preview: b.clone(),
                     anchor: b.clone(),
                     last,
+                    direction: AxisLock::new(last, true),
                     offset: [0.0; 2],
                     q: ui.input(|i| i.modifiers.command),
                     frame,
@@ -281,6 +290,7 @@ fn show_inner(
             if let Some(d) = &mut drag
                 && d.id == b.id
             {
+                let frequency_available = fixed.is_none() || i != 1;
                 let q = ui.input(|i| i.modifiers.command);
                 if q != d.q {
                     // Start the new mode at the current draft, without applying
@@ -288,10 +298,14 @@ fn show_inner(
                     d.anchor = d.preview.clone();
                     d.offset = [0.0; 2];
                     d.q = q;
+                    d.direction = AxisLock::new(d.last, true);
                 }
                 if let Some(pointer) = ui.input(|i| i.pointer.interact_pos()) {
-                    let delta = (pointer - d.last)
-                        * ui.input(|i| if i.modifiers.shift { 0.1 } else { 1.0 });
+                    let delta = if !d.q && frequency_available && b.mode.uses_gain() {
+                        d.direction.delta(pointer)
+                    } else {
+                        pointer - d.last
+                    } * ui.input(|i| if i.modifiers.shift { 0.1 } else { 1.0 });
                     d.last = pointer;
                     d.offset[0] += f64::from(delta.x);
                     d.offset[1] += f64::from(delta.y);
@@ -301,7 +315,7 @@ fn show_inner(
                         }
                     }
                     let original = &d.anchor;
-                    if d.q && !(fixed.is_some() && i == 1) {
+                    if d.q && frequency_available {
                         d.preview.q = (f64::from(original.q)
                             * 100_f64.powf(
                                 d.offset[0] / f64::from(plot.width())
@@ -309,7 +323,7 @@ fn show_inner(
                             ))
                         .clamp(0.1, 10.0) as f32;
                     } else if !d.q {
-                        if !(fixed.is_some() && i == 1) {
+                        if frequency_available {
                             d.preview.frequency_hz = (f64::from(original.frequency_hz)
                                 * 1000_f64.powf(d.offset[0] / f64::from(plot.width())))
                             .clamp(20.0, 20_000.0)
@@ -385,11 +399,7 @@ fn show_inner(
         let fixed_curves = fixed.map(|(base, response, effective)| {
             let mut base = base.clone();
             for (i, b) in view.iter().enumerate() {
-                base.bands[i].gain_db = b.gain_db;
-                if i != 1 {
-                    base.bands[i].frequency_hz = b.frequency_hz;
-                    base.bands[i].q = b.q;
-                }
+                apply_fixed_parameters(&mut base.bands[i], i, b);
             }
             if drag.is_none()
                 && let Some(v) = effective.filter(|v| v.iter().all(|x| x.is_finite()))
@@ -678,14 +688,42 @@ mod tests {
                 true,
                 false,
             );
-            frame(
+            let first = frame(
+                &ctx,
+                &mut s,
+                vec![egui::Event::PointerMoved(start + Vec2::new(20.0, -5.0))],
+                true,
+                true,
+                false,
+            )
+            .preview
+            .unwrap();
+            assert!(first.frequency_hz > original.bands[0].frequency_hz);
+            assert_eq!(first.gain_db, original.bands[0].gain_db);
+            let below_tolerance = frame(
+                &ctx,
+                &mut s,
+                vec![egui::Event::PointerMoved(start + Vec2::new(22.0, -16.0))],
+                true,
+                true,
+                false,
+            )
+            .preview
+            .unwrap();
+            assert_eq!(below_tolerance.gain_db, first.gain_db);
+            assert!(below_tolerance.frequency_hz > first.frequency_hz);
+            let switched = frame(
                 &ctx,
                 &mut s,
                 vec![egui::Event::PointerMoved(end)],
                 true,
                 true,
                 false,
-            );
+            )
+            .preview
+            .unwrap();
+            assert_eq!(switched.frequency_hz, below_tolerance.frequency_hz);
+            assert!(switched.gain_db > below_tolerance.gain_db);
             assert_eq!(s, original);
             if cancel == "external" {
                 s.bands[0].q = 2.0;

@@ -17,6 +17,25 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## EQ drag direction and previews — 2026-11-18
+
+Both EQ graphs share the Envelope and tempo point axis lock for Frequency
+and Gain. The tests check motion below and above the 12-point switch
+threshold in both directions. They also check Q mode switches, single-axis
+bands, the knob values during the drag, the published audio plan, Escape,
+and one Undo step on release. The standalone Multiband EQ editor tests check
+balanced host parameter gestures and restoration after cancellation.
+
+The affected crates passed 82 shared unit UI tests, 14 standalone editor
+tests, and 1,080 DAW UI tests, with 3 DAW UI tests ignored.
+Formatting, strict workspace Clippy, and `git diff --check` passed on macOS.
+The affected tests were repeated after replacing a redundant clone with a copy.
+
+- `cargo test --locked --offline --workspace` passed.
+- `cargo test --locked --offline --workspace --release` passed.
+
+Native visual and audio device checks remain open.
+
 ## Envelope Shape plot — 2026-11-18
 
 Shape appears before Timing and the ADSR strips at both row heights. The
