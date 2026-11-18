@@ -655,6 +655,7 @@ impl NativeHost {
         if queue.slots() == 0 {
             return Err(Error::Invalid("Plugin control queue is full".into()));
         }
+        let _scope = main_loop::MainFrame::new();
         instance.backend.borrow().set_base(parameter.id, value)?;
         queue
             .push(NativeEvent::Parameter {
@@ -702,6 +703,7 @@ impl NativeHost {
                 "Plugin state capture is waiting for a processing boundary".into(),
             ));
         }
+        let _scope = main_loop::MainFrame::new();
         // Absolute VST3 modulation and CLAP automation are transient. Restore the
         // manual bases before asking the plugin for its opaque project state.
         if let Some(parameters) = i.shared.parameters.get() {
@@ -767,10 +769,13 @@ impl NativeHost {
         {
             return Err(Error::Invalid("Invalid parameter text request".into()));
         }
+        let _scope = main_loop::MainFrame::new();
         instance.backend.borrow().text(parameter, value)
     }
     pub fn parameter_value(&self, id: uuid::Uuid, parameter: u32) -> Result<f64> {
-        self.instance(id)?.backend.borrow().value(parameter)
+        let instance = self.instance(id)?;
+        let _scope = main_loop::MainFrame::new();
+        instance.backend.borrow().value(parameter)
     }
     /// Parent must remain alive until close_editor completes. Native handles stay in desktop.
     /// # Safety
@@ -781,38 +786,42 @@ impl NativeHost {
         parent: NativeParent,
         scale: f64,
     ) -> Result<(u32, u32)> {
-        unsafe {
-            self.instance(id)?
-                .backend
-                .borrow_mut()
-                .open_editor(parent, scale)
-        }
+        let instance = self.instance(id)?;
+        let _scope = main_loop::MainFrame::new();
+        unsafe { instance.backend.borrow_mut().open_editor(parent, scale) }
     }
     pub fn resize_editor(&self, id: uuid::Uuid, width: u32, height: u32) -> Result<(u32, u32)> {
         if !(1..=16384).contains(&width) || !(1..=16384).contains(&height) {
             return Err(Error::Invalid("Invalid native editor size".into()));
         }
-        self.instance(id)?
-            .backend
-            .borrow_mut()
-            .resize_editor(width, height)
+        let instance = self.instance(id)?;
+        let _scope = main_loop::MainFrame::new();
+        instance.backend.borrow_mut().resize_editor(width, height)
     }
     pub fn editor_scale(&self, id: uuid::Uuid, scale: f64) -> Result<()> {
-        match &*self.instance(id)?.backend.borrow() {
+        let instance = self.instance(id)?;
+        let _scope = main_loop::MainFrame::new();
+        match &*instance.backend.borrow() {
             Backend::Clap(p) => p.editor_scale(scale),
             Backend::Vst3(p) => p.editor_scale(scale),
         }
         Ok(())
     }
     pub fn editor_resizable(&self, id: uuid::Uuid) -> Result<bool> {
-        Ok(self.instance(id)?.backend.borrow().editor_resizable())
+        let instance = self.instance(id)?;
+        let _scope = main_loop::MainFrame::new();
+        Ok(instance.backend.borrow().editor_resizable())
     }
     pub fn editor_focus(&self, id: uuid::Uuid, focus: bool) -> Result<()> {
-        self.instance(id)?.backend.borrow().editor_focus(focus);
+        let instance = self.instance(id)?;
+        let _scope = main_loop::MainFrame::new();
+        instance.backend.borrow().editor_focus(focus);
         Ok(())
     }
     pub fn close_editor(&self, id: uuid::Uuid) -> Result<()> {
-        self.instance(id)?.backend.borrow_mut().close_editor();
+        let instance = self.instance(id)?;
+        let _scope = main_loop::MainFrame::new();
+        instance.backend.borrow_mut().close_editor();
         Ok(())
     }
     /// Keep active processing and editors alive until the unique lease returns.
@@ -825,15 +834,16 @@ impl NativeHost {
         let i = self.instance(id)?;
         i.retire.set(true);
         i.shared.suspend.store(true, Ordering::Release);
+        let _scope = main_loop::MainFrame::new();
         i.backend.borrow_mut().close_editor();
         Ok(())
     }
     /// Call each main-thread tick. Notification delivery never executes on audio.
     pub fn pump(&mut self, mut notify: impl FnMut(uuid::Uuid, NativeNotification)) {
-        let _scope = main_loop::MainFrame::new();
         if self.check_thread().is_err() {
             return;
         }
+        let _scope = main_loop::MainFrame::new();
         for (id, i) in &self.instances {
             i.backend.borrow_mut().pump();
             if (i.shared.returned.load(Ordering::Acquire)
@@ -912,6 +922,7 @@ impl NativeHost {
 }
 impl Drop for NativeHost {
     fn drop(&mut self) {
+        let _scope = main_loop::MainFrame::new();
         // A live lease must never become dangling. Normal shutdown returns leases
         // before dropping the broker. Misordered shutdown intentionally retains
         // native owners until process exit, rather than unloading under audio.
@@ -920,6 +931,8 @@ impl Drop for NativeHost {
                 std::mem::forget(instance);
             }
         }
+        self.modules.clear();
+        self.vst_modules.clear();
     }
 }
 

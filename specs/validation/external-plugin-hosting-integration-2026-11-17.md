@@ -78,6 +78,21 @@ Both workspace runs used `--locked --offline --no-fail-fast -- --skip native_aud
 The debug run passed before the C character type change. The focused debug tests
 and the release workspace run passed with the final change.
 
+## macOS shutdown follow-up
+
+The crash report stopped in `objc_autoreleasePoolPop` during host teardown.
+AppKit had drained the pool created in the launch event. Native control calls
+and teardown now use pools confined to the current call.
+
+- The host lifetime regression aborted before the fix and passed afterward.
+- The signed debug bundle and the release executable returned status 0 on
+  macOS Quit with an empty session and a copy of the demo project. Closing the
+  empty session's debug window also returned status 0.
+- The bundled scanner and the native Drive CLAP and VST3 fixtures passed
+  discovery, editor lifecycle, processing, state capture and retirement checks.
+- Formatting and strict workspace Clippy passed. Both the debug and release
+  workspace suites passed with `--locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`.
+
 ## Limits
 
 Rust allocator guards observe host and Rust fixture heap operations. They cannot

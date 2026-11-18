@@ -18,8 +18,6 @@ unsafe extern "C" {
     fn pthread_main_np() -> i32;
 }
 pub(super) struct MainServices {
-    #[cfg(target_os = "macos")]
-    root_pool: *mut std::ffi::c_void,
     #[cfg(target_os = "windows")]
     com_initialized: bool,
     #[cfg(target_os = "windows")]
@@ -35,8 +33,6 @@ impl MainServices {
             )
         };
         Self {
-            #[cfg(target_os = "macos")]
-            root_pool: unsafe { objc_autoreleasePoolPush() },
             #[cfg(target_os = "windows")]
             com_initialized: status >= 0,
             #[cfg(target_os = "windows")]
@@ -63,20 +59,19 @@ impl MainServices {
         Ok(())
     }
 }
+#[cfg(target_os = "windows")]
 impl Drop for MainServices {
     fn drop(&mut self) {
-        #[cfg(target_os = "windows")]
         if self.com_initialized {
             unsafe {
                 windows_sys::Win32::System::Com::CoUninitialize();
             }
         }
-        #[cfg(target_os = "macos")]
-        unsafe {
-            objc_autoreleasePoolPop(self.root_pool);
-        }
     }
 }
+
+/// End this scope before returning to the event loop, which can drain its
+/// enclosing pool before the host receives another event.
 pub(super) struct MainFrame {
     #[cfg(target_os = "macos")]
     pool: *mut std::ffi::c_void,
@@ -115,5 +110,20 @@ pub(crate) fn pump_application_events() {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_can_outlive_the_autorelease_pool_of_its_creation_event() {
+        let host = {
+            let _creation_event = MainFrame::new();
+            NativeHost::new()
+        };
+        let _close_event = MainFrame::new();
+        drop(host);
     }
 }
