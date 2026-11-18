@@ -143,7 +143,7 @@ fn mixer_centers_icon_and_short_or_truncated_label_as_one_group() {
 }
 
 #[test]
-fn mixer_headers_keep_track_colors_and_light_text_across_themes_and_selection() {
+fn mixer_headers_keep_track_colors_and_use_theme_text_across_selection_states() {
     let (mut app, track) = fixture();
     app.session.project.add_track().unwrap();
     app.view_mode = crate::mixer::ViewMode::Mixer;
@@ -157,7 +157,7 @@ fn mixer_headers_keep_track_colors_and_light_text_across_themes_and_selection() 
     ] {
         app.session.project.tracks[0].color = color;
         let colors = theme::clip_colors(color, None);
-        for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for color_theme in settings::ColorTheme::ALL {
             app.set_settings(
                 &ctx,
                 settings::AppSettings {
@@ -165,6 +165,11 @@ fn mixer_headers_keep_track_colors_and_light_text_across_themes_and_selection() 
                     ..Default::default()
                 },
             );
+            let expected_text = if color_theme == settings::ColorTheme::Light {
+                theme::LIGHT.text
+            } else {
+                egui::Color32::WHITE
+            };
             for selected in [false, true] {
                 app.selected_track = None;
                 app.selected_tracks.clear();
@@ -183,7 +188,7 @@ fn mixer_headers_keep_track_colors_and_light_text_across_themes_and_selection() 
                 let point = name.pos + name.galley.rect.center().to_vec2();
                 let uri = icons::Lucide::AudioLines
                     .size(16.0)
-                    .color(crate::mixer::HEADER_TEXT)
+                    .color(expected_text)
                     .uri();
                 let egui::load::TexturePoll::Ready { texture } = ctx
                     .try_load_texture(
@@ -218,7 +223,7 @@ fn mixer_headers_keep_track_colors_and_light_text_across_themes_and_selection() 
                         .job
                         .sections
                         .iter()
-                        .all(|section| section.format.color == crate::mixer::HEADER_TEXT
+                        .all(|section| section.format.color == expected_text
                             && section.format.font_id.size == 11.0)
                 );
                 assert!(shapes.iter().any(|shape| matches!(&shape.shape,

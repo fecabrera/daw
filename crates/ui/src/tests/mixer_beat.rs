@@ -80,6 +80,17 @@ fn beat_mixer_children_share_group_gutters_destinations_and_aligned_output_contr
             .unwrap();
         let before = app.session.project.clone();
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let header_text = if color == settings::ColorTheme::Light {
+            theme::LIGHT.text
+        } else {
+            egui::Color32::WHITE
+        };
+        for name in ["Kick", "Snare"] {
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Text(text) if text.galley.text() == name
+                    && text.galley.job.sections.iter().all(|section| section.format.color == header_text)
+            )));
+        }
         let rect = app.mixer_bounds[&parent];
         assert_eq!(app.mixer_bounds[&rows[0]].left(), rect.right());
         assert_eq!(

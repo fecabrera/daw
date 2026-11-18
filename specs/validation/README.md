@@ -17,6 +17,23 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Light theme controls and Mixer headers — 2026-11-17
+
+Light uses darker shared fills for framed controls, knob faces, unit headers,
+text fields and meter tracks. Secondary labels darken with their surfaces.
+Mixer and Timeline’s Track mixer use standard Light text for names and icons,
+including beat subtracks and Master.
+
+The focused Mixer run passed 52 tests, including header text, icon tint and
+selection states. The shared palette test checks the input fill used by text
+fields and meter tracks, and the fills used by buttons, knobs and unit headers.
+
+- `cargo test --locked --offline --workspace` passed on macOS arm64.
+- `cargo test --locked --offline --workspace --release` passed on macOS arm64.
+
+Each workspace run passed 1,075 UI tests with 3 ignored. Formatting, strict
+workspace Clippy and `git diff --check` passed. Native visual checks were not run.
+
 ## Playback through empty timeline space — 2026-11-17
 
 Supersedes the iteration-1 requirement to disable empty-project playback and

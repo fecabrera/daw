@@ -71,16 +71,16 @@ pub const DARK: Palette = Palette {
     meter: METER,
 };
 
-/// Near-white surfaces and pale separators sampled from the Light reference.
+/// Near-white workspace surfaces with darker control and separator colors.
 pub const LIGHT: Palette = Palette {
     background: Color32::from_rgb(251, 251, 251),
     panel: Color32::WHITE,
-    input: Color32::from_rgb(246, 246, 251),
-    border: Color32::from_rgb(242, 242, 242),
+    input: Color32::from_rgb(234, 234, 240),
+    border: Color32::from_gray(224),
     divider: Color32::from_rgb(220, 220, 220),
     text: Color32::from_rgb(40, 43, 47),
     time_unit: Color32::from_rgb(85, 89, 94),
-    secondary: Color32::from_rgb(106, 110, 115),
+    secondary: Color32::from_rgb(96, 100, 105),
     grid: Color32::from_rgb(208, 210, 213),
     grid_subdivision: Color32::from_rgb(221, 223, 225),
     missing: Color32::from_rgb(219, 221, 223),
@@ -96,6 +96,7 @@ pub const MIST: Palette = Palette {
     input: Color32::from_rgb(216, 218, 224),
     border: Color32::from_rgb(221, 224, 231),
     divider: Color32::from_rgb(221, 224, 231),
+    secondary: Color32::from_rgb(106, 110, 115),
     grid: Color32::from_rgb(216, 218, 224),
     grid_subdivision: Color32::from_rgb(221, 224, 231),
     missing: Color32::from_rgb(216, 218, 224),
@@ -133,7 +134,7 @@ pub fn borderless_control_fill(ctx: &Context) -> Color32 {
     } else if colors == MIST {
         colors.input
     } else {
-        Color32::from_rgb(238, 239, 240)
+        Color32::from_rgb(229, 230, 231)
     }
 }
 

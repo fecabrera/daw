@@ -18,7 +18,7 @@ Select a track, group, beat subtrack or Master to change the effect target. A be
 
 ## Track controls
 
-Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Each track and group header centers its icon and semibold name together. All track, group, Return and Master headers use the same light text color for names and icons. Selected strips use the selection background. Master’s icon matches its label. The icon-to-label gap matches the vertical padding around the icon. Master uses the same centered layout and semibold text, with the neutral unit-header background color.
+Audio track headers show a waveform icon. MIDI track headers show a keyboard icon. Master shows a boom box icon. Each header centers its icon and semibold name together. In Light mode, header names and icons use the standard dark text color. In Dark and Mist modes, they use white. Selected strips use the selection background. The icon-to-label gap matches the vertical padding around the icon. Master uses the neutral unit-header background color.
 
 Nested tracks have a colored gutter above their headers. Each gutter connects to its parent header and uses that parent’s color. Deeper groups add another gutter, up to three visible nesting levels. Header sizes stay the same, and the lower output controls remain aligned.
 

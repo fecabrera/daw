@@ -5,7 +5,6 @@ mod beat;
 mod strip;
 
 pub(super) const STRIP_WIDTH: f32 = 120.0;
-pub(super) const HEADER_TEXT: egui::Color32 = egui::Color32::WHITE;
 pub(super) const GROUP_GUTTER_HEIGHT: f32 = HEADER_HEIGHT / 2.0;
 const STRIP_BORDER: f32 = 1.0;
 const OUT_PADDING: f32 = 8.0;
@@ -80,6 +79,14 @@ impl ViewMode {
             Self::Instrument => "Instrument",
             Self::Edit => "Editor",
         }
+    }
+}
+
+pub(super) fn header_text(ctx: &egui::Context) -> egui::Color32 {
+    if theme::palette(ctx) == theme::LIGHT {
+        theme::LIGHT.text
+    } else {
+        egui::Color32::WHITE
     }
 }
 

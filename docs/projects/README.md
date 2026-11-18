@@ -84,7 +84,7 @@ Settings groups controls into six categories:
 - **Stem Separation**: local model selection and validation.
 - **Plugins**: default and additional VST3/CLAP folders, scan/rescan, retry/cancel, and scan status.
 
-Choose **Dark**, **Light**, or **Mist** under **Appearance > Theme**. Light uses near-white backgrounds, white panels, and pale grey separators. Mist uses cool grey backgrounds and pale panels. All themes keep your selected accent and clip colors.
+Choose **Dark**, **Light**, or **Mist** under **Appearance > Theme**. Light uses near-white backgrounds and white panels, with darker grey for buttons, knobs, unit headers, and separators. Text fields and meter backgrounds use a cool grey. Mist uses cool grey backgrounds and pale panels. All themes keep your selected accent and clip colors.
 
 On Windows, **Appearance > Titlebar > Custom** combines the menu, project title, and view buttons in the titlebar. A continuous divider separates this row from playback controls in restored and maximized windows. **Native** is the default titlebar style.
 

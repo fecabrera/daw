@@ -2,6 +2,32 @@ use super::*;
 use egui::{Event, Pos2, Rect, Vec2};
 
 #[test]
+fn light_theme_controls_use_darker_surfaces() {
+    let ctx = Context::default();
+    configure(&ctx);
+    apply(&ctx, egui::Theme::Light, LIGHT, ACCENT);
+
+    let style = ctx.global_style();
+    let widgets = &style.visuals.widgets;
+    let input = Color32::from_rgb(234, 234, 240);
+    assert_eq!(style.visuals.text_edit_bg_color, Some(input));
+    assert_eq!(style.visuals.extreme_bg_color, input);
+    assert_eq!(palette(&ctx).input, input);
+    assert_eq!(widgets.inactive.weak_bg_fill, Color32::from_gray(240));
+    assert_eq!(widgets.hovered.weak_bg_fill, Color32::from_gray(224));
+    assert_eq!(unit_separator(&ctx), widgets.inactive.weak_bg_fill);
+    assert_eq!(unit_header_fill(&ctx, true), widgets.hovered.weak_bg_fill);
+    assert_eq!(
+        style.visuals.weak_text_color,
+        Some(Color32::from_rgb(96, 100, 105))
+    );
+    assert_eq!(
+        borderless_control_fill(&ctx),
+        Color32::from_rgb(229, 230, 231)
+    );
+}
+
+#[test]
 fn framed_controls_and_text_inputs_keep_geometry_without_interaction_outlines() {
     for colors in [DARK, LIGHT, MIST] {
         let ctx = Context::default();

@@ -15,10 +15,10 @@ Master strip headers use the shared neutral `unit_header_fill` color in Mixer an
 Timeline’s Track mixer, at either selection state. Track/group/Return header
 colors retain their existing behavior. Mixer strip bodies use
 `selected_track_header_background` when selected and `palette.panel` otherwise.
-Track/group/Return header names and icons use their inherited clip contrast color;
-Master uses normal palette text at both selection states. Apply this in Mixer and
-Timeline’s Track mixer. Selection remains UI state and retains its existing
-gestures and effect targeting.
+Track, group, beat subtrack, Return and Master header names and icons use standard
+palette text in Light mode and white in Dark and Mist. Apply the same colors at
+both selection states in Mixer and Timeline’s Track mixer. Selection remains UI
+state and retains its existing gestures and effect targeting.
 
 ## Accepted behavior
 

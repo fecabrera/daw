@@ -180,7 +180,7 @@ fn mixer_group_gutters_connect_ancestor_colors_and_keep_header_height_and_output
                             .job
                             .sections
                             .iter()
-                            .all(|section| section.format.color == crate::mixer::HEADER_TEXT)
+                            .all(|section| section.format.color == crate::mixer::header_text(&ctx))
                     );
                     let fader = app.mixer_faders[&Some(track.id)];
                     if let Some(y) = fader_y {
@@ -579,7 +579,7 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                         assert!((name.left() - left - inset - 34.0).abs() < 1.0);
                     }
                     let color = if mode == ViewMode::Mixer {
-                        crate::mixer::HEADER_TEXT
+                        crate::mixer::header_text(&ctx)
                     } else {
                         theme::palette(&ctx).secondary
                     };

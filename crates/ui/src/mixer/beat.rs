@@ -67,11 +67,12 @@ impl DawUi {
     ) {
         rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
             self.center_mixer_header(ui, &row.name);
+            let color = header_text(ui.ctx());
             icons::header_icon_tinted(
                 ui,
                 icons::Lucide::AudioLines,
                 Sense::hover(),
-                Some(HEADER_TEXT),
+                Some(color),
                 icons::TOOLBAR_ICON_SIZE,
             )
             .on_hover_text("Beat subtrack");
@@ -90,7 +91,7 @@ impl DawUi {
                 self.beat_subtrack_selected(row.id),
                 Sense::click(),
                 Some(theme::ClipColors {
-                    text: HEADER_TEXT,
+                    text: color,
                     ..theme::clip_colors(parent.color, None)
                 }),
             );
