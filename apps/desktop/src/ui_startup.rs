@@ -1,5 +1,5 @@
 use daw_ui::{DawUi, settings::AppSettings};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn configure_context(ctx: &egui::Context) {
     daw_ui::theme::configure(ctx);
@@ -20,9 +20,39 @@ pub(crate) fn create_ui(
     );
     ui.set_settings(ctx, settings);
     if load_user_themes {
-        ui.set_theme_directory(ctx, theme_directory());
+        ui.set_theme_directory(ctx, theme_directory(), open_theme_folder);
     }
     ui
+}
+
+fn open_theme_folder(path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("/usr/bin/open")
+            .arg(path)
+            .output()
+            .map_err(|error| error.to_string())?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned());
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(path)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use gtk4::gio::{self, prelude::FileExt};
+        gio::AppInfo::launch_default_for_uri(
+            &gio::File::for_path(path).uri(),
+            None::<&gio::AppLaunchContext>,
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn theme_directory() -> Option<PathBuf> {

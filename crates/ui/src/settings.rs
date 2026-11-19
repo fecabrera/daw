@@ -447,42 +447,34 @@ fn appearance(
             ui.label("Theme");
         },
         |ui| {
-            let runtime = controls.themes;
-            let active = runtime.map(|themes| themes.active(settings));
-            let label = active.map_or(settings.theme.name(), |entry| entry.name.as_str());
-            crate::menus::Dropdown::from_id_salt("color_theme")
-                .selected_text(label)
-                .width(ui.available_width())
-                .show_ui(ui, |ui| {
-                    for theme in ColorTheme::ALL {
-                        let selected =
-                            settings.custom_theme_id.is_none() && settings.theme == theme;
-                        if ui.selectable_label(selected, theme.name()).clicked() {
-                            settings.theme = theme;
-                            settings.custom_theme_id = None;
-                            apply_appearance(ctx, settings, runtime);
+            if let Some(runtime) = controls.themes {
+                let group = crate::rows::input_group(ui, |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        crate::rows::input_group_edge(ui, true);
+                        let refresh = crate::icons::button(
+                            ui,
+                            crate::icons::Lucide::RefreshCw,
+                            "Refresh themes",
+                            runtime.directory.is_some() && !runtime.busy(),
+                            crate::theme::palette(ui.ctx()).text,
+                        );
+                        if refresh.clicked() {
+                            controls.theme_action = Some(crate::theme_files::Action::Reload);
                         }
-                    }
-                    if let Some(runtime) = runtime {
-                        let entries = runtime.entries();
-                        for entry in &entries[ColorTheme::ALL.len()..] {
-                            let selected =
-                                settings.custom_theme_id.as_deref() == Some(entry.id.as_str());
-                            let ambiguous = entries.iter().any(|other| {
-                                other.id != entry.id && other.name.eq_ignore_ascii_case(&entry.name)
-                            });
-                            let label = if ambiguous {
-                                format!("{} ({})", entry.name, entry.id)
-                            } else {
-                                entry.name.clone()
-                            };
-                            if ui.selectable_label(selected, label).clicked() {
-                                settings.custom_theme_id = Some(entry.id.clone());
-                                runtime.apply(ctx, settings);
-                            }
-                        }
-                    }
+                        crate::rows::input_group_edge(ui, false);
+                        ui.allocate_ui_with_layout(
+                            Vec2::new(ui.available_width(), crate::toolbars::CONTROL_HEIGHT),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| theme_dropdown(ui, ctx, settings, Some(runtime)),
+                        );
+                        refresh
+                    })
+                    .inner
                 });
+                crate::rows::group_separator(ui, group.response.rect, group.inner.rect.left());
+            } else {
+                theme_dropdown(ui, ctx, settings, None);
+            }
         },
     );
     let swatch_color = settings.accent.color();
@@ -541,6 +533,48 @@ fn appearance(
     }
 }
 
+fn theme_dropdown(
+    ui: &mut egui::Ui,
+    ctx: &Context,
+    settings: &mut AppSettings,
+    runtime: Option<&crate::theme_files::Runtime>,
+) {
+    let active = runtime.map(|themes| themes.active(settings));
+    let label = active.map_or(settings.theme.name(), |entry| entry.name.as_str());
+    crate::menus::Dropdown::from_id_salt("color_theme")
+        .selected_text(label)
+        .width(ui.available_width())
+        .truncate()
+        .show_ui(ui, |ui| {
+            for theme in ColorTheme::ALL {
+                let selected = settings.custom_theme_id.is_none() && settings.theme == theme;
+                if ui.selectable_label(selected, theme.name()).clicked() {
+                    settings.theme = theme;
+                    settings.custom_theme_id = None;
+                    apply_appearance(ctx, settings, runtime);
+                }
+            }
+            if let Some(runtime) = runtime {
+                let entries = runtime.entries();
+                for entry in &entries[ColorTheme::ALL.len()..] {
+                    let selected = settings.custom_theme_id.as_deref() == Some(entry.id.as_str());
+                    let ambiguous = entries.iter().any(|other| {
+                        other.id != entry.id && other.name.eq_ignore_ascii_case(&entry.name)
+                    });
+                    let label = if ambiguous {
+                        format!("{} ({})", entry.name, entry.id)
+                    } else {
+                        entry.name.clone()
+                    };
+                    if ui.selectable_label(selected, label).clicked() {
+                        settings.custom_theme_id = Some(entry.id.clone());
+                        runtime.apply(ctx, settings);
+                    }
+                }
+            }
+        });
+}
+
 fn apply_appearance(
     ctx: &Context,
     settings: &AppSettings,
@@ -572,31 +606,47 @@ fn theme_actions(
         );
     }
     if let Some(path) = &runtime.directory {
-        crate::rows::advice(ui, path.display().to_string());
-        ui.horizontal_wrapped(|ui| {
-            ui.add_enabled_ui(!runtime.busy(), |ui| {
-                if ui
-                    .button("Create theme overrides")
-                    .on_hover_text(
-                        "Create the themes folder and add missing built-in theme JSON files",
-                    )
-                    .clicked()
+        let path = path.display().to_string();
+        ui.allocate_ui_with_layout(
+            Vec2::new(ui.available_width(), crate::toolbars::CONTROL_HEIGHT),
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                let colors = crate::theme::palette(ui.ctx());
+                if crate::icons::button(
+                    ui,
+                    crate::icons::Lucide::FolderOpen,
+                    "Open folder",
+                    !runtime.busy(),
+                    colors.text,
+                )
+                .clicked()
                 {
-                    *action = Some(Action::CreateOverrides);
+                    *action = Some(Action::OpenFolder);
                 }
-                if ui.button("Reload themes").clicked() {
-                    *action = Some(Action::Reload);
+                if crate::icons::button(
+                    ui,
+                    crate::icons::Lucide::SquareText,
+                    "Copy themes folder path",
+                    true,
+                    colors.text,
+                )
+                .clicked()
+                {
+                    ui.ctx().copy_text(path.clone());
                 }
-            });
-            if ui.button("Copy themes folder path").clicked() {
-                ui.ctx().copy_text(path.display().to_string());
-            }
-        });
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(&path).small().color(colors.secondary),
+                        )
+                        .truncate(),
+                    )
+                    .on_hover_text(&path);
+                });
+            },
+        );
     } else {
         crate::rows::advice(ui, "Themes folder unavailable");
-    }
-    if ui.button("Copy stock JSON").clicked() {
-        runtime.copy_stock(ui.ctx(), settings);
     }
     if runtime.busy() {
         ui.spinner();

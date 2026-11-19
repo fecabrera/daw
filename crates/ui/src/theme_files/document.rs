@@ -1,9 +1,9 @@
 use crate::{settings::ColorTheme, theme::Palette};
 use egui::Color32;
-use serde::{Deserialize, Deserializer, Serialize, de};
+use serde::{Deserialize, Deserializer, de};
 use std::{collections::BTreeMap, fmt};
 
-#[derive(Clone, Copy, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(rename_all = "snake_case")]
 enum Role {
     Background,
@@ -20,20 +20,6 @@ enum Role {
 }
 
 impl Role {
-    const ALL: [Self; 11] = [
-        Self::Background,
-        Self::Panel,
-        Self::ButtonBackground,
-        Self::Input,
-        Self::Border,
-        Self::Divider,
-        Self::Text,
-        Self::TimeUnit,
-        Self::Secondary,
-        Self::Grid,
-        Self::GridSubdivision,
-    ];
-
     fn color(self, palette: &mut Palette) -> &mut Color32 {
         match self {
             Self::Background => &mut palette.background,
@@ -49,27 +35,6 @@ impl Role {
             Self::GridSubdivision => &mut palette.grid_subdivision,
         }
     }
-}
-
-pub(super) fn export_stock(base: ColorTheme, mut palette: Palette, mut parent: Palette) -> String {
-    let mut colors = BTreeMap::new();
-    for role in Role::ALL {
-        let color = *role.color(&mut palette);
-        if base != ColorTheme::Mist || color != *role.color(&mut parent) {
-            colors.insert(
-                role,
-                format!("#{:02X}{:02X}{:02X}", color.r(), color.g(), color.b()),
-            );
-        }
-    }
-    let value = serde_json::json!({
-        "version": 1,
-        "id": base.id(),
-        "name": base.name(),
-        "base": base.parent().id(),
-        "colors": colors,
-    });
-    format!("{value:#}\n")
 }
 
 #[derive(Clone)]

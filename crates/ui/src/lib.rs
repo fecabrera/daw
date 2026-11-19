@@ -1273,8 +1273,13 @@ impl DawUi {
         self.configure_audio_cache(false);
     }
 
-    pub fn set_theme_directory(&mut self, ctx: &egui::Context, directory: Option<PathBuf>) {
-        self.themes.set_directory(ctx, directory);
+    pub fn set_theme_directory(
+        &mut self,
+        ctx: &egui::Context,
+        directory: Option<PathBuf>,
+        open_folder: fn(&std::path::Path) -> Result<(), String>,
+    ) {
+        self.themes.set_directory(ctx, directory, open_folder);
     }
 
     pub fn settings_shortcut() -> egui::KeyboardShortcut {

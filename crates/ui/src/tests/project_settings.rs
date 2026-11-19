@@ -310,7 +310,7 @@ fn settings_dialog_fields_share_left_and_right_edges() {
                         })
                         .unwrap_or_else(|| panic!("Missing field: {label}"));
                     // The dialog paints after clip headers that can overlap these coordinates.
-                    shapes
+                    let field = shapes
                         .iter()
                         .rev()
                         .find_map(|shape| match &shape.shape {
@@ -323,7 +323,24 @@ fn settings_dialog_fields_share_left_and_right_edges() {
                             }
                             _ => None,
                         })
-                        .unwrap_or_else(|| panic!("Missing field border: {label}"))
+                        .unwrap_or_else(|| panic!("Missing field border: {label}"));
+                    if !project_settings && *label == theme.name() {
+                        shapes
+                            .iter()
+                            .find_map(|shape| match &shape.shape {
+                                egui::Shape::Rect(group)
+                                    if group.rect.left() == field.left()
+                                        && group.rect.y_range() == field.y_range()
+                                        && group.rect.right() > field.right() =>
+                                {
+                                    Some(group.rect)
+                                }
+                                _ => None,
+                            })
+                            .expect("Theme dropdown and Refresh share a field")
+                    } else {
+                        field
+                    }
                 })
                 .collect();
             for rect in &fields[1..] {

@@ -27,7 +27,6 @@ fn json(id: &str, name: &str, base: &str, colors: &str) -> String {
 #[test]
 fn stock_templates_match_compiled_colors_and_mist_overlays_effective_light() {
     let dir = Folder::new();
-    create_overrides(&dir.0).unwrap();
     let stock = Catalog::scan(&dir.0).unwrap();
     assert!(stock.issues.is_empty(), "{:?}", stock.issues);
     for (entry, colors) in stock.entries.iter().zip([
@@ -37,16 +36,6 @@ fn stock_templates_match_compiled_colors_and_mist_overlays_effective_light() {
         stock_palette(ColorTheme::Midnight),
     ]) {
         assert_eq!(entry.colors, colors);
-        let base = entry.base;
-        let parent = match base {
-            ColorTheme::Mist => mist_from_light(theme::LIGHT),
-            _ => colors,
-        };
-        let export = document::export_stock(base, colors, parent);
-        assert_eq!(
-            Document::parse(export.as_bytes()).unwrap().overlay(parent),
-            colors
-        );
     }
 
     let light = json(
@@ -56,11 +45,6 @@ fn stock_templates_match_compiled_colors_and_mist_overlays_effective_light() {
         r##""text":"#172B40","time_unit":"#28394A","button_background":"#E3EBF5""##,
     );
     dir.write("light.json", &light);
-    create_overrides(&dir.0).unwrap();
-    assert_eq!(fs::read_to_string(dir.0.join("light.json")).unwrap(), light);
-    fs::rename(dir.0.join("light.json"), dir.0.join("my-light.json")).unwrap();
-    create_overrides(&dir.0).unwrap();
-    assert!(!dir.0.join("light.json").exists());
     dir.write(
         "dark.json",
         &json("dark", "Dark", "dark", r##""panel":"#0D1117""##),
@@ -188,7 +172,9 @@ fn publication_uses_current_selection_and_keeps_request_across_fallback() {
         &json("user.room", "Room", "dark", r##""panel":"#0D1117""##),
     );
     let (sender, receiver) = mpsc::channel();
-    sender.send(Ok(Catalog::scan(&dir.0).unwrap())).unwrap();
+    sender
+        .send(Ok(Some(Catalog::scan(&dir.0).unwrap())))
+        .unwrap();
     runtime.pending = Some(receiver);
     runtime.poll(&context, &settings);
     assert_eq!(theme::style_base(&context), theme::StyleBase::Dark);
@@ -199,7 +185,9 @@ fn publication_uses_current_selection_and_keeps_request_across_fallback() {
     fs::rename(dir.0.join("first.json"), dir.0.join("second.json")).unwrap();
     dir.write("second.json", &json("user.room", "New name", "dark", ""));
     let (sender, receiver) = mpsc::channel();
-    sender.send(Ok(Catalog::scan(&dir.0).unwrap())).unwrap();
+    sender
+        .send(Ok(Some(Catalog::scan(&dir.0).unwrap())))
+        .unwrap();
     runtime.pending = Some(receiver);
     settings.custom_theme_id = None;
     runtime.poll(&context, &settings);
@@ -234,8 +222,6 @@ fn midnight_is_built_in_and_reuses_legacy_selection_and_override() {
         r##""panel":"#0D1117""##,
     );
     dir.write("my-midnight.json", &legacy);
-    create_overrides(&dir.0).unwrap();
-    assert!(!dir.0.join("midnight.json").exists());
     runtime.catalog = Catalog::scan(&dir.0).unwrap();
     assert!(
         runtime.catalog.issues.is_empty(),
@@ -256,6 +242,38 @@ fn midnight_is_built_in_and_reuses_legacy_selection_and_override() {
         egui::Color32::from_rgb(13, 17, 23)
     );
     assert_eq!(theme::accent(&ctx), settings.accent.color());
+}
+
+#[test]
+fn open_folder_creates_directory_without_reloading_the_catalog() {
+    fn open_directory(path: &Path) -> Result<(), String> {
+        assert!(path.is_dir());
+        fs::write(path.join("opened"), "").map_err(|error| error.to_string())
+    }
+
+    let dir = Folder::new();
+    let directory = dir.0.join("themes");
+    let ctx = egui::Context::default();
+    let mut runtime = Runtime {
+        directory: Some(directory.clone()),
+        open_folder: Some(open_directory),
+        ..Default::default()
+    };
+    runtime.catalog.issues.push("Existing catalog".into());
+    runtime.start(&ctx, Action::OpenFolder);
+    let result = runtime
+        .pending
+        .as_ref()
+        .unwrap()
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap();
+    let (sender, receiver) = mpsc::channel();
+    sender.send(result).unwrap();
+    runtime.pending = Some(receiver);
+    runtime.poll(&ctx, &AppSettings::default());
+    assert!(directory.join("opened").is_file());
+    assert_eq!(fs::read_dir(directory).unwrap().count(), 1);
+    assert_eq!(runtime.status().collect::<Vec<_>>(), ["Existing catalog"]);
 }
 
 #[test]
@@ -290,15 +308,57 @@ fn reload_button_applies_same_panel_edits_without_editing_the_project() {
     };
     draw(vec![], &mut app);
     let shapes = draw(vec![], &mut app);
-    let point = shapes
-        .iter()
-        .find_map(|shape| match &shape.shape {
-            egui::Shape::Text(text) if text.galley.text() == "Reload themes" => {
-                Some(text.pos + text.galley.rect.center().to_vec2())
-            }
-            _ => None,
-        })
-        .expect("Appearance has a reload action");
+    let label_rect = |label: &str| {
+        shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    Some(egui::Rect::from_min_size(text.pos, text.galley.size()))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("Missing Appearance label {label}"))
+    };
+    let dropdown = label_rect("Light");
+    let accent = label_rect("Accent color");
+    let folder_label = label_rect(dir.0.to_str().unwrap());
+    let folder_offset = folder_label.center().y - accent.center().y;
+    assert!(
+        (0.0..=crate::toolbars::CONTROL_HEIGHT * 3.0).contains(&folder_offset),
+        "The folder row must follow the Appearance controls, got offset {folder_offset}"
+    );
+    let icons_right_of = |label: egui::Rect| {
+        let mut icons = shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Rect(rect)
+                    if rect.brush.is_some()
+                        && rect.rect.left() > label.right()
+                        && rect.rect.y_range().contains(label.center().y) =>
+                {
+                    Some(rect.rect)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        icons.sort_by(|a, b| a.left().total_cmp(&b.left()));
+        icons
+    };
+    let [refresh] = icons_right_of(dropdown)[..] else {
+        panic!("Expected one refresh icon beside the Theme dropdown");
+    };
+    let [copy, open] = icons_right_of(folder_label)[..] else {
+        panic!("Expected two icons on the folder row");
+    };
+    assert_eq!(
+        refresh.size(),
+        egui::Vec2::splat(crate::icons::TOOLBAR_ICON_SIZE)
+    );
+    assert_eq!(refresh.size(), copy.size());
+    assert_eq!(copy.size(), open.size());
+    assert_eq!(copy.center().y, open.center().y);
+    assert!((refresh.center().x - open.center().x).abs() <= 1.0);
+    let point = refresh.center();
     let panel = theme::palette(&ctx).panel;
     let border = theme::palette(&ctx).border;
     let separator = theme::unit_separator(&ctx);

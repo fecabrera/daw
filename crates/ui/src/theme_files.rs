@@ -8,8 +8,8 @@ use crate::{
 use document::{Document, validate_contrast};
 use std::{
     collections::BTreeMap,
-    fs::{self, File, OpenOptions},
-    io::{self, Read, Write},
+    fs::{self, File},
+    io::{self, Read},
     path::{Path, PathBuf},
     sync::{OnceLock, mpsc},
 };
@@ -52,7 +52,6 @@ fn mist_from_light(light: Palette) -> Palette {
 struct Stock {
     colors: [Palette; ColorTheme::ALL.len()],
     mist: Option<Document>,
-    templates: [String; ColorTheme::ALL.len()],
     issues: Vec<String>,
 }
 
@@ -66,7 +65,6 @@ impl Stock {
                 ColorTheme::Light => theme::LIGHT,
                 ColorTheme::Mist => theme::MIST,
             });
-            let mut templates = ColorTheme::ALL.map(|base| template(base).to_owned());
             let mut mist = None;
             for base in ColorTheme::ALL {
                 let index = base.index();
@@ -89,14 +87,12 @@ impl Stock {
                     }
                     Err(error) => {
                         issues.push(format!("Embedded {}: {error}", base.name()));
-                        templates[index] = document::export_stock(base, colors[index], input);
                     }
                 }
             }
             Self {
                 colors,
                 mist,
-                templates,
                 issues,
             }
         })
@@ -175,50 +171,48 @@ impl Catalog {
     }
 
     fn scan(path: &Path) -> Result<Self, String> {
-        discover(path).map(|(themes, issues)| Self::resolve(themes, issues))
-    }
-}
-
-fn discover(path: &Path) -> Result<(UserThemes, Vec<String>), String> {
-    let mut themes = UserThemes::new();
-    let mut issues = Vec::new();
-    let directory = match fs::read_dir(path) {
-        Ok(directory) => directory,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok((themes, issues)),
-        Err(error) => return Err(path_error(path, error)),
-    };
-    for (index, entry) in directory.enumerate() {
-        if index == MAX_ENTRIES {
-            return Err(path_error(
-                path,
-                format!("Use at most {MAX_ENTRIES} folder entries"),
-            ));
-        }
-        let entry = entry.map_err(|error| path_error(path, error))?;
-        let file = entry.path();
-        if !file
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-        {
-            continue;
-        }
-        match entry.file_type() {
-            Ok(kind) if kind.is_file() => {}
-            Ok(_) => continue,
-            Err(error) => {
-                issues.push(path_error(&file, error));
+        let mut themes = UserThemes::new();
+        let mut issues = Vec::new();
+        let directory = match fs::read_dir(path) {
+            Ok(directory) => directory,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(Self::resolve(themes, issues));
+            }
+            Err(error) => return Err(path_error(path, error)),
+        };
+        for (index, entry) in directory.enumerate() {
+            if index == MAX_ENTRIES {
+                return Err(path_error(
+                    path,
+                    format!("Use at most {MAX_ENTRIES} folder entries"),
+                ));
+            }
+            let entry = entry.map_err(|error| path_error(path, error))?;
+            let file = entry.path();
+            if !file
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+            {
                 continue;
             }
+            match entry.file_type() {
+                Ok(kind) if kind.is_file() => {}
+                Ok(_) => continue,
+                Err(error) => {
+                    issues.push(path_error(&file, error));
+                    continue;
+                }
+            }
+            match read_theme(&file) {
+                Ok(document) => themes
+                    .entry(document.id.clone())
+                    .or_default()
+                    .push((file, document)),
+                Err(error) => issues.push(path_error(&file, error)),
+            }
         }
-        match read_theme(&file) {
-            Ok(document) => themes
-                .entry(document.id.clone())
-                .or_default()
-                .push((file, document)),
-            Err(error) => issues.push(path_error(&file, error)),
-        }
+        Ok(Self::resolve(themes, issues))
     }
-    Ok((themes, issues))
 }
 
 fn resolve_files(
@@ -265,38 +259,19 @@ fn read_theme(path: &Path) -> Result<Document, String> {
     Document::parse(&bytes)
 }
 
-fn create_overrides(directory: &Path) -> Result<(), String> {
-    fs::create_dir_all(directory).map_err(|error| path_error(directory, error))?;
-    let (existing, _) = discover(directory)?;
-    for base in ColorTheme::ALL {
-        if existing.contains_key(base.id()) {
-            continue;
-        }
-        let path = directory.join(format!("{}.json", base.id()));
-        let mut file = match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(file) => file,
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(path_error(&path, error)),
-        };
-        if let Err(error) = file.write_all(Stock::get().templates[base.index()].as_bytes()) {
-            drop(file);
-            let _ = fs::remove_file(&path);
-            return Err(path_error(&path, error));
-        }
-    }
-    Ok(())
-}
-
 #[derive(Clone, Copy)]
 pub(super) enum Action {
     Reload,
-    CreateOverrides,
+    OpenFolder,
 }
+
+type FolderOpener = fn(&Path) -> Result<(), String>;
 
 pub(super) struct Runtime {
     pub directory: Option<PathBuf>,
     catalog: Catalog,
-    pending: Option<mpsc::Receiver<Result<Catalog, String>>>,
+    pending: Option<mpsc::Receiver<Result<Option<Catalog>, String>>>,
+    open_folder: Option<FolderOpener>,
     error: Option<String>,
 }
 
@@ -306,15 +281,22 @@ impl Default for Runtime {
             directory: None,
             catalog: Catalog::resolve(UserThemes::new(), Vec::new()),
             pending: None,
+            open_folder: None,
             error: None,
         }
     }
 }
 
 impl Runtime {
-    pub fn set_directory(&mut self, ctx: &egui::Context, directory: Option<PathBuf>) {
+    pub fn set_directory(
+        &mut self,
+        ctx: &egui::Context,
+        directory: Option<PathBuf>,
+        open_folder: FolderOpener,
+    ) {
         self.pending = None;
         self.directory = directory.filter(|path| path.is_absolute());
+        self.open_folder = Some(open_folder);
         self.start(ctx, Action::Reload);
     }
 
@@ -336,10 +318,6 @@ impl Runtime {
         ctx.request_repaint();
     }
 
-    pub fn copy_stock(&self, ctx: &egui::Context, settings: &AppSettings) {
-        ctx.copy_text(Stock::get().templates[self.active(settings).base.index()].clone());
-    }
-
     pub fn status(&self) -> impl Iterator<Item = &str> {
         self.error
             .iter()
@@ -357,13 +335,21 @@ impl Runtime {
         };
         let (sender, receiver) = mpsc::channel();
         let ctx = ctx.clone();
+        let open_folder = self.open_folder;
         match std::thread::Builder::new()
             .name("theme-discovery".into())
             .spawn(move || {
                 let result = match action {
-                    Action::Reload => Catalog::scan(&directory),
-                    Action::CreateOverrides => {
-                        create_overrides(&directory).and_then(|()| Catalog::scan(&directory))
+                    Action::Reload => Catalog::scan(&directory).map(Some),
+                    Action::OpenFolder => {
+                        let open = || {
+                            let open_folder = open_folder.ok_or("Folder opener unavailable")?;
+                            fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+                            open_folder(&directory)
+                        };
+                        open()
+                            .map(|()| None)
+                            .map_err(|error| path_error(&directory, error))
                     }
                 };
                 let _ = sender.send(result);
@@ -382,11 +368,12 @@ impl Runtime {
         };
         self.pending = None;
         match result {
-            Ok(catalog) => {
+            Ok(Some(catalog)) => {
                 self.catalog = catalog;
                 self.error = None;
                 self.apply(ctx, settings);
             }
+            Ok(None) => self.error = None,
             Err(error) => self.error = Some(error),
         }
     }

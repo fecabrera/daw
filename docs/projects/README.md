@@ -89,13 +89,13 @@ Choose **Dark**, **Light**, **Mist**, or **Midnight** under **Appearance > Theme
 
 To edit a theme while the app is running:
 
-1. Open **Settings > Appearance** and choose **Create theme overrides**. This adds missing `dark.json`, `light.json`, `mist.json`, and `midnight.json` files to the displayed themes folder. It keeps any files already there. An existing Midnight file with ID `user.midnight` overrides the built-in Midnight theme.
-2. Open one of those files in a text editor and change its `colors`. Use six-digit hex colors such as `"#0D1117"`. Keep the stock `id`, `name`, and `base` to override the existing menu item. Mist starts from the current Light palette and applies its own colors on top.
-3. Save the file and choose **Reload themes**. The running app updates the active theme. If a file has a problem, see **Theme file issues** in Appearance.
+1. Open **Settings > Appearance** and click the **Open folder** icon. Use the adjacent square-text icon to copy the folder path.
+2. Edit a JSON file in the folder, or save a copy of a [stock theme template](../../crates/ui/assets/themes/) there. Change its `colors` using six-digit hex values such as `"#0D1117"`. Keep the stock `id`, `name`, and `base` to override the existing menu item. Mist starts from Light and applies its own colors on top. An existing file with ID `user.midnight` overrides the built-in Midnight theme.
+3. Save the file and click the **Refresh themes** icon beside the Theme dropdown. The running app updates the active theme. If a file has a problem, see **Theme file issues** in Appearance.
 
 Set `button_background` inside `colors` to change the idle button fill. The stock values are `#2B2B2B` for Dark, `#F0F0F0` for Light, `#E6E9EE` for Mist and `#2B2C2E` for Midnight.
 
-To add a theme, save a copy with its own name and an ID such as `user.blue-room`, then reload and select it. **Copy stock JSON** copies a stock template for the current theme's base. To restore a stock theme, remove its override file and reload. Appearance displays the actual folder, which is normally `~/Library/Application Support/DAW/themes` on macOS, `%LOCALAPPDATA%\DAW\themes` on Windows, and `$XDG_CONFIG_HOME/daw/themes` on Linux (usually `~/.config/daw/themes`).
+To add a theme, save a copy with its own name and an ID such as `user.blue-room`, then refresh the list and select it. To restore a stock theme, remove its override file and refresh the list. Appearance displays the actual folder, which is normally `~/Library/Application Support/DAW/themes` on macOS, `%LOCALAPPDATA%\DAW\themes` on Windows, and `$XDG_CONFIG_HOME/daw/themes` on Linux (usually `~/.config/daw/themes`).
 
 On Windows, **Appearance > Titlebar > Custom** combines the menu, project title, and view buttons in the titlebar. A continuous divider separates this row from playback controls in restored and maximized windows. **Native** is the default titlebar style.
 

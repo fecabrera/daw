@@ -17,6 +17,22 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Appearance theme actions — 2026-11-19
+
+Appearance joins the refresh-cw icon to the Theme dropdown. The themes folder
+row sits below the Appearance controls with its square-text and folder-open
+icons at the right edge. All three icons use the 16-point toolbar size.
+The theme tests check geometry, refresh and creation of an empty missing folder.
+The native macOS check opened the themes folder in Finder and verified the
+final layout with the regular-size icons.
+
+- Formatting, strict workspace Clippy and the macOS bundle signature passed.
+- `cargo test --workspace --locked --offline` passed on macOS with 3,651
+  passing tests and 22 ignored.
+- `cargo test --workspace --release --locked --offline` passed on macOS with
+  3,651 passing tests and 22 ignored.
+- Native Windows and Linux folder opening remains unverified.
+
 ## Built-in Midnight theme — 2026-11-19
 
 Midnight is available in Appearance from its embedded JSON. All eleven colors

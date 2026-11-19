@@ -39,7 +39,7 @@ from headless geometry/interaction checks.
 
 Load embedded Dark, Light, Mist and Midnight templates and discover user overrides from
 the absolute per-user directory supplied by the desktop host. Scan at startup
-and when the user selects Reload themes. Read files on a worker and publish
+and when the user activates the refresh-cw icon beside the Theme dropdown. Read files on a worker and publish
 one catalog on the UI thread. A reload applies edits to the requested theme
 without changing the project, audio configuration, or Undo history.
 
@@ -82,9 +82,12 @@ the previous catalog, while a bad file is reported and excluded. Reject all
 valid files with the same ID and show their paths. Sort stock entries first,
 then custom entries by case-insensitive name and ID.
 
-Create theme overrides makes the themes directory and writes only missing
-stock files. Copy stock JSON returns the original template for the current
-base. Show the directory, current fallback and file diagnostics in Appearance.
+Join the Theme dropdown and the Refresh themes icon in a shared input group.
+Show the directory directly below the Appearance controls on its own row.
+Place the square-text path-copy icon and folder-open icon at the row's right edge.
+Use the standard toolbar icon size for all three theme actions. Create
+the directory if needed before opening it in the desktop
+file manager. Show the current fallback and file diagnostics in Appearance.
 Apply the resolved palette to egui style, shared painting and native window
 appearance. Keep Dark and Mist Mixer header text white. Use Light palette text
 for Light Mixer headers. Standalone plugin editors retain their appearance API.
