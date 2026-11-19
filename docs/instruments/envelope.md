@@ -11,14 +11,21 @@ In the expanded row, the horizontal labels mark Attack, Decay, Sustain, and
 Release. The vertical labels show the envelope level. Drag the peak left or
 right to change Attack. Drag the start of Sustain left or right to change
 Decay, or up or down to change the Sustain level. Drag the start of Release
-left to lengthen Release or right to shorten it. The knobs and the Envelope's
-effect on sound follow the drag. Release the pointer to save one undoable
-change or press Escape to restore the previous values.
-Selecting a handle highlights its part of the gray curve. The middle handle
-highlights Decay and Sustain. The right handle highlights Release.
+left to lengthen Release or right to shorten it.
 
-The middle handle follows the first drag direction. Move at least 12 points
-across the other axis to switch between Decay time and Sustain level.
+Drag the small handle midway through an Attack, Decay, or Release curve
+to adjust its strength. Drag up to increase it or down to decrease it.
+Choose a curve shape other than Linear to show its handle.
+
+The knobs and the Envelope's effect on sound follow the drag. Release the
+pointer to save one undoable change or press Escape to restore the previous
+values.
+Selecting a handle highlights its part of the gray curve. The larger handle
+at the start of Sustain highlights Decay and Sustain.
+
+The larger handle at the start of Sustain follows the first drag direction.
+Move at least 12 points across the other axis to switch between Decay time and
+Sustain level.
 
 During playback or live MIDI input, a dot shows the actual stage progress and level.
 For Per note mode, the dot shows one active voice. The dot disappears when

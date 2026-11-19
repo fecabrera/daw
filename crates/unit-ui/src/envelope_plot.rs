@@ -1,15 +1,35 @@
 use crate::{drag::AxisLock, layout, rows, spectrum_graph, theme};
-use daw_unit_core::{EnvelopeSettings, EnvelopeTiming};
+use daw_unit_core::{CurveShape, EnvelopeSettings, EnvelopeStageSettings, EnvelopeTiming};
 use egui::{Align2, FontId, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 
 const MIN_TIMED_WIDTH: f32 = 0.045;
 const SUSTAIN_WIDTH: f32 = 0.20;
 const SAMPLES_PER_STAGE: usize = 25;
+const CURVE_HANDLE_RADIUS: f32 = 2.75;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Handle {
+    Timing(usize),
+    Curve(usize),
+}
+
+impl Handle {
+    fn is_curve(self) -> bool {
+        matches!(self, Self::Curve(_))
+    }
+
+    fn affected_stages(self) -> std::ops::Range<usize> {
+        match self {
+            Self::Timing(1) => 1..3,
+            Self::Timing(stage) | Self::Curve(stage) => stage..stage + 1,
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 struct Drag {
     before: EnvelopeSettings,
-    handle: usize,
+    handle: Handle,
     origin: Pos2,
     direction: Option<AxisLock>,
     plot: Rect,
@@ -41,18 +61,79 @@ fn point(plot: Rect, x: f32, level: f32) -> Pos2 {
     )
 }
 
-fn handles(plot: Rect, settings: EnvelopeSettings) -> [Pos2; 3] {
+fn stage_level(settings: EnvelopeSettings, stage: usize, progress: f32) -> f32 {
+    let sustain = settings.sustain;
+    match stage {
+        0 => settings
+            .attack
+            .shape
+            .progress(progress, settings.attack.amount, false),
+        1 => egui::lerp(
+            1.0..=sustain,
+            settings
+                .decay
+                .shape
+                .progress(progress, settings.decay.amount, true),
+        ),
+        2 => sustain,
+        _ => {
+            sustain
+                * (1.0
+                    - settings
+                        .release
+                        .shape
+                        .progress(progress, settings.release.amount, true))
+        }
+    }
+}
+
+fn handles(
+    plot: Rect,
+    settings: EnvelopeSettings,
+) -> impl Iterator<Item = (Handle, Pos2, &'static str)> + Clone {
     let edges = stage_edges(settings);
+    let curve = |stage: usize, curve: EnvelopeStageSettings, name| {
+        (curve.shape != CurveShape::Linear).then(|| {
+            let x = egui::lerp(edges[stage]..=edges[stage + 1], 0.5);
+            (
+                Handle::Curve(stage),
+                point(plot, x, stage_level(settings, stage, 0.5)),
+                name,
+            )
+        })
+    };
     [
-        point(plot, edges[1], 1.0),
-        point(plot, edges[2], settings.sustain),
-        point(plot, edges[3], settings.sustain),
+        curve(0, settings.attack, "Attack curve"),
+        Some((Handle::Timing(0), point(plot, edges[1], 1.0), "Attack")),
+        curve(1, settings.decay, "Decay curve"),
+        Some((
+            Handle::Timing(1),
+            point(plot, edges[2], settings.sustain),
+            "Decay and Sustain",
+        )),
+        Some((
+            Handle::Timing(3),
+            point(plot, edges[3], settings.sustain),
+            "Release",
+        )),
+        curve(3, settings.release, "Release curve"),
     ]
+    .into_iter()
+    .flatten()
 }
 
 fn preview(drag: &mut Drag, pointer: Pos2) -> EnvelopeSettings {
     let mut settings = drag.before;
-    let pointer = if drag.handle == 1 {
+    let Handle::Timing(stage) = drag.handle else {
+        let amount = match drag.handle {
+            Handle::Curve(0) => &mut settings.attack.amount,
+            Handle::Curve(1) => &mut settings.decay.amount,
+            _ => &mut settings.release.amount,
+        };
+        *amount = (*amount - (pointer.y - drag.origin.y) / drag.plot.height()).clamp(0.0, 1.0);
+        return settings;
+    };
+    let pointer = if stage == 1 {
         drag.direction
             .as_mut()
             .map_or(drag.origin, |direction| direction.update(pointer))
@@ -64,7 +145,7 @@ fn preview(drag: &mut Drag, pointer: Pos2) -> EnvelopeSettings {
         / ((1.0 - SUSTAIN_WIDTH - 3.0 * MIN_TIMED_WIDTH) * drag.plot.width());
     let time = delta.x * time_scale;
     let max = daw_unit_core::MAX_ENVELOPE_TIME_MS;
-    match (drag.handle, settings.timing) {
+    match (stage, settings.timing) {
         (0, EnvelopeTiming::Time) => {
             settings.attack.time_ms = (settings.attack.time_ms + time).clamp(0.0, max)
         }
@@ -79,7 +160,7 @@ fn preview(drag: &mut Drag, pointer: Pos2) -> EnvelopeSettings {
         }
         _ => settings.release.time_ms = (settings.release.time_ms - time).clamp(0.0, max),
     }
-    if drag.handle == 1 {
+    if stage == 1 {
         settings.sustain = (settings.sustain - delta.y / drag.plot.height()).clamp(0.0, 1.0);
     }
     settings
@@ -119,24 +200,27 @@ pub fn show(
                 } else {
                     Vec2::new(24.0, 17.0)
                 });
-                let nodes = handles(plot, *settings);
                 let mut selected = None;
                 if !compact {
-                    for (index, name) in ["Attack", "Decay and Sustain", "Release"]
-                        .into_iter()
-                        .enumerate()
-                    {
+                    let mut nodes = handles(plot, *settings).peekable();
+                    let mut previous_x = None;
+                    while let Some((handle, node, name)) = nodes.next() {
+                        let (hit_size, cursor) = match handle {
+                            Handle::Timing(_) => (17.0, egui::CursorIcon::Grab),
+                            Handle::Curve(_) => (12.0, egui::CursorIcon::ResizeVertical),
+                        };
                         // Keep neighboring handles reachable even when a stage is short.
-                        let mut hit = Rect::from_center_size(nodes[index], Vec2::splat(17.0));
-                        if let Some(left) = index.checked_sub(1) {
-                            hit.min.x = hit.min.x.max((nodes[left].x + nodes[index].x) * 0.5);
+                        let mut hit = Rect::from_center_size(node, Vec2::splat(hit_size));
+                        if let Some(left) = previous_x {
+                            hit.min.x = hit.min.x.max((left + node.x) * 0.5);
                         }
-                        if let Some(right) = nodes.get(index + 1) {
-                            hit.max.x = hit.max.x.min((right.x + nodes[index].x) * 0.5);
+                        if let Some((_, right, _)) = nodes.peek() {
+                            hit.max.x = hit.max.x.min((right.x + node.x) * 0.5);
                         }
+                        previous_x = Some(node.x);
                         let response = ui
-                            .interact(hit, id.with(index), Sense::click_and_drag())
-                            .on_hover_cursor(egui::CursorIcon::Grab)
+                            .interact(hit, id.with(handle), Sense::click_and_drag())
+                            .on_hover_cursor(cursor)
                             .on_hover_text(name);
                         response.widget_info(|| {
                             egui::WidgetInfo::labeled(
@@ -154,21 +238,22 @@ pub fn show(
                             response.request_focus();
                             drag = Some(Drag {
                                 before: *settings,
-                                handle: index,
+                                handle,
                                 origin,
                                 direction: None,
                                 plot,
                                 frame,
                             });
                         }
-                        if index == 1
+                        if handle == Handle::Timing(1)
                             && response.drag_started()
-                            && let Some(active) = drag.as_mut().filter(|active| active.handle == 1)
+                            && let Some(active) =
+                                drag.as_mut().filter(|active| active.handle == handle)
                         {
                             active.direction = Some(AxisLock::new(active.origin, true));
                         }
                         if response.has_focus() {
-                            selected = Some(index);
+                            selected = Some(handle);
                         }
                         crate::control_capture::record(ui, &response);
                     }
@@ -236,35 +321,18 @@ pub fn show(
                         );
                     }
                 }
-                let sustain = view.sustain;
                 let mut points = Vec::with_capacity(4 * SAMPLES_PER_STAGE);
                 for stage in 0..4 {
                     for sample in 0..SAMPLES_PER_STAGE {
                         let t = sample as f32 / (SAMPLES_PER_STAGE - 1) as f32;
-                        let level = match stage {
-                            0 => view.attack.shape.progress(t, view.attack.amount, false),
-                            1 => egui::lerp(
-                                1.0..=sustain,
-                                view.decay.shape.progress(t, view.decay.amount, true),
-                            ),
-                            2 => sustain,
-                            _ => {
-                                sustain
-                                    * (1.0
-                                        - view.release.shape.progress(t, view.release.amount, true))
-                            }
-                        };
-                        points.push(stage_point(stage, t, level));
+                        points.push(stage_point(stage, t, stage_level(view, stage, t)));
                     }
                 }
                 let gray = theme::palette(ui.ctx()).secondary;
                 let accent = theme::accent(ui.ctx());
-                let affected = match selected.filter(|_| enabled) {
-                    Some(0) => 0..1,
-                    Some(1) => 1..3,
-                    Some(2) => 3..4,
-                    _ => 0..0,
-                };
+                let affected = selected
+                    .filter(|_| enabled)
+                    .map_or(0..0, Handle::affected_stages);
                 let (highlighted, tail) = if affected.is_empty() {
                     (Vec::new(), Vec::new())
                 } else {
@@ -280,13 +348,21 @@ pub fn show(
                     }
                 }
                 if !compact {
-                    for (index, node) in handles(plot, view).into_iter().enumerate() {
+                    let nodes = handles(plot, view);
+                    // Keep midpoint handles visible when painted circles overlap.
+                    let timing = nodes.clone().filter(|(handle, _, _)| !handle.is_curve());
+                    let curves = nodes.filter(|(handle, _, _)| handle.is_curve());
+                    for (handle, node, _) in timing.chain(curves) {
+                        let radius = match handle {
+                            Handle::Timing(_) => 5.5,
+                            Handle::Curve(_) => CURVE_HANDLE_RADIUS,
+                        };
                         spectrum_graph::band_handle(
                             ui,
                             &painter,
                             node,
-                            5.5,
-                            selected == Some(index),
+                            radius,
+                            selected == Some(handle),
                             enabled,
                         );
                     }
@@ -322,6 +398,15 @@ pub fn show(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn button(pos: Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
 
     #[test]
     fn drag_previews_commits_and_cancels() {
@@ -363,12 +448,6 @@ mod tests {
                 _ => None,
             });
             (handles, highlighted)
-        };
-        let button = |pos, pressed| egui::Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: egui::Modifiers::NONE,
         };
         let (handles, highlighted) = run(&mut settings, vec![]);
         assert_eq!(highlighted, None);
@@ -437,6 +516,106 @@ mod tests {
         assert_eq!(highlighted, Some(SAMPLES_PER_STAGE));
         assert_eq!(nodes[2], release);
         assert_eq!(settings, after_attack);
+    }
+
+    #[test]
+    fn midpoint_drags_change_only_their_curve_amount() {
+        let ctx = egui::Context::default();
+        crate::fonts::configure(&ctx);
+        let run = |settings: &mut EnvelopeSettings, compact, events| {
+            let mut pending = None;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| pending = show(ui, (compact, 190.0), settings, true, None),
+            );
+            output.textures_delta.clear();
+            let midpoints = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    Shape::Circle(circle)
+                        if circle.radius == CURVE_HANDLE_RADIUS
+                            && circle.stroke == Stroke::NONE =>
+                    {
+                        Some(circle.center)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            (pending, midpoints)
+        };
+        let mut settings = EnvelopeSettings::default();
+        assert_eq!(run(&mut settings, false, vec![]).1.len(), 2);
+        settings.attack.time_ms = 0.0;
+        settings.attack.shape = CurveShape::Logarithmic;
+        settings.decay.time_ms = 0.0;
+        settings.sustain = 1.0;
+        settings.release.shape = CurveShape::SCurve;
+        assert!(run(&mut settings, true, vec![]).1.is_empty());
+
+        for stage in 0..3 {
+            let before = settings;
+            let (_, midpoints) = run(&mut settings, false, vec![]);
+            assert_eq!(midpoints.len(), 3);
+            let start = midpoints[stage];
+            let across = start + Vec2::new(15.0, 0.0);
+            let up = across - Vec2::new(0.0, 200.0);
+            run(
+                &mut settings,
+                false,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let (preview, _) = run(
+                &mut settings,
+                false,
+                vec![egui::Event::PointerMoved(across)],
+            );
+            assert_eq!(preview, Some(before));
+            let (preview, _) = run(&mut settings, false, vec![egui::Event::PointerMoved(up)]);
+            let mut expected = before;
+            *[
+                &mut expected.attack.amount,
+                &mut expected.decay.amount,
+                &mut expected.release.amount,
+            ][stage] = 1.0;
+            assert_eq!(preview, Some(expected));
+            assert_eq!(settings, before);
+            run(&mut settings, false, vec![button(up, false)]);
+            assert_eq!(settings, expected);
+
+            let start = run(&mut settings, false, vec![]).1[stage];
+            let down = start + Vec2::new(0.0, 200.0);
+            run(
+                &mut settings,
+                false,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let (preview, _) = run(&mut settings, false, vec![egui::Event::PointerMoved(down)]);
+            let mut lower = expected;
+            *[
+                &mut lower.attack.amount,
+                &mut lower.decay.amount,
+                &mut lower.release.amount,
+            ][stage] = 0.0;
+            assert_eq!(preview, Some(lower));
+            let (preview, _) = run(
+                &mut settings,
+                false,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert_eq!(preview, None);
+            run(&mut settings, false, vec![button(down, false)]);
+            assert_eq!(settings, expected);
+        }
     }
 
     #[test]

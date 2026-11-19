@@ -57,9 +57,19 @@ Release time. Reuse the [tempo point axis lock](../audio/timing-maps.md) for
 the Decay and Sustain handle. Lock to the dominant axis of the first
 recognized drag sample. Switch at 12 logical points of perpendicular motion
 from the latest lock position and apply only the excess. Preserve the current
-timing mode and parameter limits. During a drag, draw the knobs from the
-preview settings and publish those settings through the shared graph render
-plan worker. Identify the Envelope by project, track, owner, and unit IDs.
+timing mode and parameter limits.
+
+For each non-Linear Attack, Decay, and Release stage, draw a smaller curve
+handle at 50% of its displayed time. Evaluate its level with the same
+portable curve function as the plotted contour. Drag vertically to change
+only that stage's base curve amount. Moving up increases the amount, and
+one plot height spans the full 0–100% range. Clamp the result and highlight
+only the affected stage. Keep timing and curve handles independently
+reachable for short stages.
+
+During a drag, draw the knobs from the preview settings and publish them
+through the shared graph render plan worker. Identify the Envelope by project,
+track, owner, and unit IDs.
 Keep the saved project and history at their original state until release.
 Commit through the existing instrument edit on release. Withdraw the preview
 on Escape, focus loss, or when the owning plot is no longer available. Keep

@@ -14425,3 +14425,25 @@ the initial Oscillator survives saving and reopening.
 
 Manual desktop interaction, physical MIDI and audio devices, and Windows and
 Linux were outside this check.
+
+## Envelope curve midpoint handles — 2026-11-19
+
+The expanded Shape plot adds small handles at the displayed midpoints of
+non-Linear Attack, Decay, and Release stages. An upward drag increases the
+stage curve amount. The plot previews the edit before release through the
+existing Envelope edit path.
+
+The focused egui tests passed in debug and release with
+`cargo test --offline --locked -p daw-unit-ui envelope_plot` and its
+`--release` variant. They cover all three stages, including very short
+stages, vertical-only movement, amount bounds, release to commit, and Escape
+to cancel. They also check visibility for Linear stages and compact rows.
+
+The debug and release workspace suites passed before the final change to
+handle draw order and widget IDs. Both used `--offline --locked --no-fail-fast`
+and skipped the known `native_audio_component_registration_and_host_calls`
+failure. The focused reruns and Clippy used the final source.
+
+Strict workspace Clippy, formatting, and signature verification of the
+rebuilt local macOS debug app passed. Manual native gestures and device
+playback were outside these checks.
