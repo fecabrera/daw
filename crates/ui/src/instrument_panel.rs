@@ -859,9 +859,7 @@ impl DawUi {
                                 ui.ctx().request_repaint();
                             }
                             reorder_rows.push((layer.id, row.response.rect));
-                            let last = reorder_rows.len() == count
-                                && subview == InstrumentSubview::Sources;
-                            panels::ControlPanel::row_dividers(ui, row.response.rect, true, last);
+                            panels::ControlPanel::row_dividers(ui, row.response.rect, true, false);
                             #[cfg(test)]
                             {
                                 self.midi_editor
@@ -874,6 +872,12 @@ impl DawUi {
                     }
                     if subview == InstrumentSubview::Effects {
                         render_bus(self, ui, &mut settings.main, None);
+                    }
+                    // Each following row paints the shared edge above it. Close the final row.
+                    let last = reorder_rows.last().into_iter().chain(lane_rows.last())
+                        .max_by(|(_, a), (_, b)| a.bottom().total_cmp(&b.bottom()));
+                    if let Some((_, row)) = last {
+                        panels::ControlPanel::row_dividers(ui, *row, false, true);
                     }
                 });
             });

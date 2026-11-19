@@ -321,7 +321,7 @@ Modulation uses the [shared portable source and destination contract](../modulat
 
 ## Instrument Main bus — 2026-10-16
 
-The [Main bus](main.md) is fixed below the scrolling layers. It receives their stereo sum, applies independent gain/pan before track effects, and hosts shared Envelope/LFO components through the existing catalog, controls, and modulation contract. It starts compact, keeps its own saved row/unit presentation, and cannot be removed or reordered. Missing Main data migrates to neutral settings without changing old audio.
+The [Output bus](main.md) follows the regular layers in Effects. It receives their stereo sum and applies independent gain and pan before track effects. The Macros row in Modulation uses the same owner. Output starts expanded and saves its row and unit presentation. It cannot be removed or reordered. Missing Output data migrates to neutral settings.
 
 Each oscillator has a stable ID and individual [Pitch and Gain modulation targets](../modulation/oscillator-pitch.md). Its routes use per-note or shared Envelope/LFO values through the shared destination interface. Pitch amounts use signed fractional semitones; Gain amounts use signed dB. Base transpose/gain and waveform phase remain independent of modulation.
 

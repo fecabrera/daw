@@ -4,6 +4,7 @@ fn setup(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id) {
     let mut app = DawUi::default();
     app.instrument_catalog.expand_folders();
     let track = app.session.project.add_midi_track().unwrap();
+    compact_instrument_buses(app.session.project.instrument_settings_mut(track).unwrap());
     app.select_track(track, false);
     let ctx = context();
     app.set_settings(
@@ -472,8 +473,20 @@ fn every_first_component_shares_one_divider_with_the_layers_column() {
     }
 }
 
+fn assert_final_divider(shapes: &[egui::epaint::ClippedShape], row: Rect, ctx: &egui::Context) {
+    let y = row.bottom() - 0.5;
+    let stroke = Stroke::new(1.0, theme::palette(ctx).border);
+    let dividers = shapes.iter().filter(|shape| {
+        shape.clip_rect.contains(Pos2::new(row.center().x, y))
+            && matches!(&shape.shape, egui::Shape::LineSegment { points, stroke: line }
+                if *line == stroke
+                    && *points == [Pos2::new(row.left(), y), Pos2::new(row.right(), y)])
+    });
+    assert_eq!(dividers.count(), 1, "final row {row:?}");
+}
+
 #[test]
-fn main_components_share_the_bottom_separator_with_the_lane_or_status_panel() {
+fn output_row_draws_one_bottom_divider_across_the_canvas() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
             for collapsed in [false, true] {
@@ -491,10 +504,11 @@ fn main_components_share_the_bottom_separator_with_the_lane_or_status_panel() {
                     }
                     bus.effects.push(effect);
                     app.effects_lane_open = effects_visible;
-                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 1100.0));
                     let x = app.instrument_ui.effect_slots[0].2.center().x;
                     let main = app.instrument_ui.main_bounds.row;
                     let y = main.bottom() - 0.5;
+                    assert_final_divider(&shapes, main, &ctx);
                     assert!(
                         !shapes.iter().any(|s| match &s.shape {
                             egui::Shape::Rect(r) =>
@@ -507,6 +521,7 @@ fn main_components_share_the_bottom_separator_with_the_lane_or_status_panel() {
                                 stroke.color == theme::palette(&ctx).border
                                     && points[0].x < x
                                     && points[1].x > x
+                                    && points[0].x > main.left()
                                     && points.iter().all(|p| (p.y - y).abs() < 0.4),
                             _ => false,
                         }),
@@ -521,6 +536,55 @@ fn main_components_share_the_bottom_separator_with_the_lane_or_status_panel() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn modulation_divider_follows_the_last_visible_row() {
+    use crate::instrument_workspace::InstrumentSubview;
+
+    for has_layer_macros in [false, true] {
+        let (mut app, ctx, _) = setup(settings::ColorTheme::Dark);
+        app.effects_lane_open = false;
+        app.set_instrument_subview(InstrumentSubview::Modulation, &ctx);
+        let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        let layer = &mut instrument.layers[0];
+        layer.collapsed = false;
+        if has_layer_macros {
+            layer.macro_module.add();
+        }
+        let layer = layer.id;
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 900.0));
+        let last = if has_layer_macros {
+            app.midi_editor.layer_bounds[&layer].row
+        } else {
+            app.instrument_ui.macro_bounds.row
+        };
+        assert_final_divider(&shapes, last, &ctx);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn beat_parent_output_and_macros_have_a_bottom_divider() {
+    use crate::instrument_workspace::InstrumentSubview;
+
+    let mut app = DawUi::default();
+    let track = app.session.project.add_beat_track().unwrap();
+    let ctx = context();
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    app.effects_lane_open = false;
+    for subview in [InstrumentSubview::Effects, InstrumentSubview::Modulation] {
+        app.set_instrument_subview(subview, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 900.0));
+        let row = if subview == InstrumentSubview::Effects {
+            app.instrument_ui.main_bounds.row
+        } else {
+            app.instrument_ui.macro_bounds.row
+        };
+        assert_eq!(row.height(), panels::unit_height(false));
+        assert_final_divider(&shapes, row, &ctx);
     }
 }
 

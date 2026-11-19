@@ -43,6 +43,7 @@ fn macro_catalog_adds_multiple_named_powered_strips_to_layers_and_main() {
             },
         );
         let track = app.session.project.add_midi_track().unwrap();
+        compact_instrument_buses(app.session.project.instrument_settings_mut(track).unwrap());
         app.select_track(track, false);
         app.set_view_mode(ViewMode::Instrument, &ctx);
         app.set_instrument_subview(
@@ -264,6 +265,9 @@ fn macro_strip_context_menu_removes_only_its_target_on_release() {
                 ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
                 let mut app = DawUi::default();
                 let track = app.session.project.add_midi_track().unwrap();
+                compact_instrument_buses(
+                    app.session.project.instrument_settings_mut(track).unwrap(),
+                );
                 let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
                 instrument.layers[0].collapsed = main || compact;
                 instrument.main.collapsed = !main || compact;
@@ -394,6 +398,9 @@ fn macro_names_commit_on_enter_and_cancel_without_changing_routes_or_power() {
                     },
                 );
                 let track = app.session.project.add_midi_track().unwrap();
+                compact_instrument_buses(
+                    app.session.project.instrument_settings_mut(track).unwrap(),
+                );
                 let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
                 instrument.layers[0].collapsed = main || compact;
                 instrument.main.collapsed = !main || compact;
@@ -581,6 +588,7 @@ fn macro_order_release_preserves_controls_and_history() {
         let size = Vec2::new(1280.0, 1000.0);
         ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
         let track = app.session.project.add_midi_track().unwrap();
+        compact_instrument_buses(app.session.project.instrument_settings_mut(track).unwrap());
         let layer = &mut app.session.project.tracks[0]
             .instrument
             .as_mut()

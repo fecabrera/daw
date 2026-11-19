@@ -53,6 +53,11 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     frame(&mut app, &ctx, vec![]);
     let before = app.session.project.clone();
     assert_eq!(app.instrument_subview, InstrumentSubview::Sources);
+    let expanded_height = panels::unit_height(false);
+    assert_eq!(
+        app.midi_editor.layer_bounds[&layer].row.height(),
+        expanded_height
+    );
     assert!(app.instrument_ui.modulation_lane_bounds.is_empty());
     assert!(app.instrument_ui.main_bounds.row.is_negative());
     assert!(app.instrument_ui.effect_slots.is_empty());
@@ -95,6 +100,7 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     assert!(app.midi_editor.add_layer_bounds.is_positive());
     assert!(app.instrument_ui.modulation_lane_bounds.is_empty());
     assert!(!app.instrument_ui.main_bounds.row.is_negative());
+    assert_eq!(app.instrument_ui.main_bounds.row.height(), expanded_height);
     assert_eq!(
         app.instrument_ui
             .effect_slots
@@ -112,6 +118,9 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     assert_eq!(app.midi_editor.add_layer_bounds, Rect::NOTHING);
     let lanes = &app.instrument_ui.modulation_lane_bounds;
     assert!(lanes[&lfo].row.top() < lanes[&envelope].row.top());
+    assert_eq!(lanes[&lfo].row.height(), expanded_height);
+    assert_eq!(lanes[&envelope].row.height(), expanded_height);
+    assert_eq!(app.instrument_ui.macro_bounds.row.height(), expanded_height);
     let macros = &app.instrument_ui.component_slots;
     assert_eq!(macros.len(), 2);
     assert_eq!(

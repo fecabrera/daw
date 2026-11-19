@@ -6432,6 +6432,12 @@ impl DawUi {
 
 #[cfg(test)]
 mod tests {
+    pub(super) fn compact_instrument_buses(instrument: &mut daw_core::InstrumentSettings) {
+        instrument.main.collapsed = true;
+        instrument.lfo_lane.collapsed = true;
+        instrument.envelope_lane.collapsed = true;
+    }
+
     /// Use the visible title, below the power hit area, in short compact shells.
     fn unit_title_point(header: Rect) -> Pos2 {
         Pos2::new(

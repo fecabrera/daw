@@ -260,6 +260,7 @@ fn every_component_menu_toggles_in_expanded_and_collapsed_rows() {
         for compact in [false, true] {
             let mut app = DawUi::default();
             let track = app.session.project.add_midi_track().unwrap();
+            compact_instrument_buses(app.session.project.instrument_settings_mut(track).unwrap());
             let layer = &mut app.session.project.tracks[0]
                 .instrument
                 .as_mut()

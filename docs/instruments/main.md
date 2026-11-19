@@ -6,16 +6,16 @@ Layer sources pass through Amplitude, layer effects, and layer mix controls. Out
 
 ## Use Output
 
-In the **Effects** tab, Output follows the regular layers and scrolls with them. Edit its Macro controls in **Modulation**. The expand/collapse button at the top of its right toolbar shows or hides its controls. The toolbar stays at the right edge while components scroll horizontally. Output cannot be removed, renamed, or reordered.
+In the **Effects** tab, Output follows the regular layers and scrolls with them. New Output rows start expanded. Edit its Macro controls in **Modulation**. The expand/collapse button at the top of its right toolbar shows or hides its controls. The toolbar stays at the right edge while components scroll horizontally. Output cannot be removed, renamed, or reordered.
 
 Use the gain knob at the right of the Output header’s second row to change the combined instrument level. Its default is 0 dB. The stereo meters beside Gain show the combined instrument signal after Output effects and gain, before track effects and track gain/pan. They work like track meters: either channel above 0 dBFS lights both clipping indicators, and clicking either rail clears them. Output has no Pan, Mute, or Solo control. Gain does not accept modulation.
 
 ## Add shared controls
 
-Select Output, then add Macro from Modulators in the component catalog. You can also drag compatible installed components onto Output. Output does not accept audio sources, Amplitude, LFOs, or envelopes.
+In **Modulation**, select the Macros row, then add Macro from Modulators in the component catalog. You can also drag compatible installed components onto that row. Output does not accept audio sources, Amplitude, LFOs, or envelopes.
 
 LFOs and envelopes belong to their dedicated [instrument-wide lanes](modulation-lanes.md). Output Macros appear in destination lists with the Output prefix. They can control compatible parameters throughout the same instrument, including its track effects.
 
 Adding a modulator does not create connections. Open a receiving unit's [modulation controls](../modulation/README.md) to assign it. Output settings and layout save with the project.
 
-Output effects appear after its components and process the combined layer output before Output gain/pan. Select Output to add effects from the Effects catalog. Drag effect headers between Output, regular layers, and the track effects lane to move them; hold Option on macOS or Ctrl on Windows/Linux to copy. Click the bottom effects lane to add track effects.
+Output effects process the combined layer output before Output gain and pan. Select Output to add effects from the Effects catalog. Drag effect headers between Output, regular layers, and the track effects lane to move them; hold Option on macOS or Ctrl on Windows/Linux to copy. Click the bottom effects lane to add track effects.

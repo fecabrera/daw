@@ -7,6 +7,7 @@ fn setup(theme: settings::ColorTheme, compact: bool) -> (DawUi, egui::Context, [
     let mut app = DawUi::default();
     let track = app.session.project.add_midi_track().unwrap();
     let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    compact_instrument_buses(i);
     i.layers.push(daw_core::InstrumentLayerSettings::default());
     for l in &mut i.layers {
         l.collapsed = compact;

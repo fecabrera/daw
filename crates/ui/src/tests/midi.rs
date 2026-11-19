@@ -251,6 +251,7 @@ pub(super) fn layer_header_fixture()
     // Leave room for direct gestures on multiple rows above the pinned Main bus.
     app.effects_lane_open = false;
     let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    compact_instrument_buses(settings);
     settings.layers[0].name = "Lead".into();
     let mut second = daw_core::InstrumentLayerSettings {
         name: "Bass".into(),
@@ -2055,6 +2056,7 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
         let (mut app, _, _, _) = fixture();
         app.effects_lane_open = false;
         let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        compact_instrument_buses(settings);
         settings.layers[0].envelopes[0].settings.attack.time_ms = 75.0;
         settings
             .layers
@@ -2151,6 +2153,7 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
 fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount() {
     use daw_core::CurveShape;
     let (mut app, _, _, _) = fixture();
+    compact_instrument_buses(app.session.project.tracks[0].instrument.as_mut().unwrap());
     let ctx = context();
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(1600.0, 800.0)));
     let assets = serde_json::to_value(&app.session.project.assets).unwrap();

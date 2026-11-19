@@ -1447,6 +1447,7 @@ impl DawUi {
                     &sources,
                     &providers,
                 );
+                panels::ControlPanel::row_dividers(ui, rect, false, true);
                 rect
             });
         let rect = scroll.inner;

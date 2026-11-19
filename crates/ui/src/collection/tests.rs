@@ -492,6 +492,9 @@ fn completion_keeps_instrument_component_selection_without_dismissal() {
     let f = Fixture::new();
     let mut app = f.app();
     let track = app.session.project.add_midi_track().unwrap();
+    crate::tests::compact_instrument_buses(
+        app.session.project.instrument_settings_mut(track).unwrap(),
+    );
     app.session
         .project
         .tracks

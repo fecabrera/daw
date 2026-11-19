@@ -61,6 +61,21 @@ Modulation omits the Add button and that Sources and Effects still display it.
 - Formatting, diff checks and workspace Clippy passed. The signed local macOS
   debug bundle was rebuilt. Native interactive checks remain unrun.
 
+### Final lane divider and expanded defaults
+
+The Instrument geometry checks cover the full-width bottom divider on Output,
+shared Macros, layer-owned Macros, and beat parent rows. They verify that the
+divider follows the last row. Workspace checks cover the expanded default
+height in all three subviews. Instrument settings tests round-trip explicit
+compact flags and verify the expanded defaults for new rows.
+
+- `cargo test -p daw-ui -p daw-unit-core --locked --offline --lib` passed
+  1,077 UI tests and 93 settings and DSP contract tests, with 3 UI tests ignored.
+- Debug and release workspace tests each passed 3,639 tests.
+- Formatting, diff checks, and workspace Clippy passed.
+- The local macOS debug app was rebuilt and its signature verified. Native
+  interactive checks remain unrun.
+
 ## Appearance theme actions — 2026-11-19
 
 Appearance joins the refresh-cw icon to the Theme dropdown. The themes folder

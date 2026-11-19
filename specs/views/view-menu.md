@@ -135,3 +135,8 @@ Only geometry in the active tab participates in selection and drops. Reuse the
 existing lane editors, collapse state, owner IDs and edit transactions. Keep
 audio rendering, saved component order and modulation discovery independent of
 the active subview.
+
+Draw one full-width bottom divider on the last displayed row in each subview,
+including beat parent Output and Macros. Adjacent rows share a single divider.
+Clip the dividers to the lane scroll area. New rows start expanded. Loading a
+project restores its saved row heights.

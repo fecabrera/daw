@@ -26,7 +26,7 @@ impl Default for InstrumentBusSettings {
         Self {
             id: Uuid::new_v4(),
             component_order: Vec::new(),
-            collapsed: true,
+            collapsed: false,
             effects: Vec::new(),
             gain_db: 0.0,
             pan: 0.0,
@@ -109,8 +109,21 @@ mod tests {
     #[test]
     fn main_defaults_are_neutral_and_missing_legacy_data_migrates_without_accepting_null() {
         let instrument = InstrumentSettings::default();
-        assert!(instrument.main.collapsed);
+        assert!(!instrument.main.collapsed);
+        assert!(!instrument.lfo_lane.collapsed);
+        assert!(!instrument.envelope_lane.collapsed);
+        assert!(instrument.layers.iter().all(|layer| !layer.collapsed));
         assert!(instrument.main.effects.is_empty());
+        let mut compact = instrument.clone();
+        compact.layers[0].collapsed = true;
+        compact.main.collapsed = true;
+        compact.lfo_lane.collapsed = true;
+        compact.envelope_lane.collapsed = true;
+        assert_eq!(
+            serde_json::from_value::<InstrumentSettings>(serde_json::to_value(&compact).unwrap())
+                .unwrap(),
+            compact
+        );
         let mut legacy_bus = serde_json::to_value(&instrument.main).unwrap();
         legacy_bus.as_object_mut().unwrap().remove("effects");
         assert!(
@@ -125,6 +138,7 @@ mod tests {
         json.as_object_mut().unwrap().remove("main");
         let loaded: InstrumentSettings = serde_json::from_value(json.clone()).unwrap();
         assert!(loaded.valid());
+        assert!(!loaded.main.collapsed);
         assert_eq!(loaded.layers, instrument.layers);
         let repeated: InstrumentSettings = serde_json::from_value(json.clone()).unwrap();
         assert_eq!(repeated.main, loaded.main);

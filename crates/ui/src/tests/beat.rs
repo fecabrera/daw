@@ -958,7 +958,10 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
             let shapes = frame_shapes(&mut app, &ctx, vec![], size);
             super::track_header::assert_header_meter_insets(
                 &shapes,
-                app.instrument_ui.main_bounds.label,
+                Rect::from_min_size(
+                    app.instrument_ui.main_bounds.label.min,
+                    Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+                ),
                 &ctx,
             );
             assert_eq!(app.session.project, before);
@@ -3586,6 +3589,7 @@ fn timeline_subtrack_mix_shortcuts_retain_input_guards_and_share_mixer_child_sco
     assert_eq!(app.session.project, original);
     super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
     app.set_view_mode(ViewMode::Mixer, &ctx);
+    app.effects_lane_open = false;
     frame(&mut app, &ctx, vec![]);
     assert!(app.selected_mixer_beat_row().is_some());
     app.perform_track_action(TrackAction::Mute, &ctx);

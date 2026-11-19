@@ -3,6 +3,7 @@ use super::*;
 fn fixture(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id) {
     let mut app = DawUi::default();
     let track = app.session.project.add_midi_track().unwrap();
+    compact_instrument_buses(app.session.project.instrument_settings_mut(track).unwrap());
     app.selected_track = Some(track);
     let layer = app.session.project.tracks[0]
         .instrument
