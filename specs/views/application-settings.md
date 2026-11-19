@@ -35,6 +35,58 @@ device selection and MIDI-note split interaction, theme/accent behavior, smaller
 windows and persistent Close/sidebar visibility. Separate native observations
 from headless geometry/interaction checks.
 
+## JSON themes
+
+Load embedded Dark, Light and Mist templates and discover user overrides from
+the absolute per-user directory supplied by the desktop host. Scan at startup
+and when the user selects Reload themes. Read files on a worker and publish
+one catalog on the UI thread. A reload applies edits to the requested theme
+without changing the project, audio configuration, or Undo history.
+
+Version 1 accepts a UTF-8 JSON object with optional UTF-8 byte order mark.
+Require `version` (integer 1), `id`, `name`, `base` and `colors`. Custom IDs
+begin with `user.` and use a 1–48 character lowercase ASCII slug with letters,
+digits and hyphens. Start and end the slug with a letter or digit. Trim names
+and require 1–48 characters without control characters. A custom theme can
+inherit the original Dark, Light or Mist with `base` set to `dark`, `light`,
+or `mist`. A stock override uses the matching stock ID and name. Dark and Light
+use their matching base. Mist uses `light`.
+
+The `colors` object accepts any subset of `background`, `panel`, `input`,
+`border`, `divider`, `text`, `time_unit`, `secondary`, `grid` and
+`grid_subdivision`, and `button_background`. Values use opaque `#RRGGBB` sRGB colors. Reject unknown or
+duplicate keys, nulls, invalid types and unsupported versions. Compare the
+resolved foregrounds to background, panel and input. Require 4.5:1 contrast
+for primary text and 3:1 for secondary text. Keep accent, clip and track colors,
+semantic colors, fonts and control geometry in their existing owners.
+
+Use `button_background` for the idle fill of standard framed buttons, joined
+toggles and transport buttons. Each stock JSON defines its own value. Omitted
+values inherit that role through the normal palette overlays. Hover and
+active states, borders, unit headers and unit shells use their own colors.
+
+Apply a unique valid Dark or Light override over its embedded palette. Resolve
+Mist by applying the embedded Mist colors over effective Light, then applying
+a unique valid Mist override. If inherited Mist has insufficient contrast and
+no valid Mist override fixes it, use original stock Mist and report the issue.
+Custom themes inherit original stock palettes. Keep the stock defaults and
+theme preference. Persist an optional custom ID separately from the stock
+fallback. Retain an unavailable custom ID so repair restores it on reload.
+
+Scan at most 512 direct entries. Accept regular files with an ASCII
+case-insensitive JSON extension. Skip directories and symlinks. Reject files
+larger than 32 KiB. A missing folder is empty. A folder-wide scan error keeps
+the previous catalog, while a bad file is reported and excluded. Reject all
+valid files with the same ID and show their paths. Sort stock entries first,
+then custom entries by case-insensitive name and ID.
+
+Create theme overrides makes the themes directory and writes only missing
+stock files. Copy stock JSON returns the original template for the current
+base. Show the directory, current fallback and file diagnostics in Appearance.
+Apply the resolved palette to egui style, shared painting and native window
+appearance. Keep Dark and Mist Mixer header text white. Use Light palette text
+for Light Mixer headers. Standalone plugin editors retain their appearance API.
+
 ## Plugins
 
 Keep discovery configuration in this page. Show the resolved standard folders,

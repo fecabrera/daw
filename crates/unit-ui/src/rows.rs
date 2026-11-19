@@ -148,7 +148,7 @@ fn grouped_square_toggle(
             .max_rect(rect)
             .layout(Layout::centered_and_justified(egui::Direction::LeftToRight)),
         |ui| {
-            let fill = crate::theme::unit_header_fill(ui.ctx(), false);
+            let fill = crate::theme::palette(ui.ctx()).button_background;
             let widgets = &mut ui.visuals_mut().widgets;
             for widget in [
                 &mut widgets.noninteractive,
@@ -175,7 +175,7 @@ pub fn vertical_toggle_group(
     selected: Option<usize>,
 ) -> InnerResponse<Vec<egui::Response>> {
     egui::Frame::new()
-        .fill(crate::theme::unit_separator(ui.ctx()))
+        .fill(crate::theme::palette(ui.ctx()).button_background)
         .corner_radius(5)
         .show(ui, |ui| {
             ui.vertical(|ui| {

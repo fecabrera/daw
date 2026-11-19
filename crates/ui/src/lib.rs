@@ -153,6 +153,7 @@ mod selection_focus;
 mod selection_shortcuts;
 pub mod settings;
 pub mod theme;
+mod theme_files;
 #[cfg(any(target_os = "windows", target_os = "linux", test))]
 pub mod titlebar;
 pub mod toolbars;
@@ -964,6 +965,7 @@ pub struct DawUi {
     #[cfg(test)]
     mixer_faders: HashMap<Option<Id>, Rect>,
     settings: settings::AppSettings,
+    themes: theme_files::Runtime,
     settings_open: bool,
     diagnostic_details: Option<diagnostic_details::Report>,
     audio_settings: Option<audio_settings::AudioDialog>,
@@ -1136,6 +1138,7 @@ impl Default for DawUi {
             #[cfg(test)]
             mixer_faders: HashMap::new(),
             settings: settings::AppSettings::default(),
+            themes: theme_files::Runtime::default(),
             settings_open: false,
             diagnostic_details: None,
             audio_settings: None,
@@ -1262,12 +1265,16 @@ impl DawUi {
 
     pub fn set_settings(&mut self, ctx: &egui::Context, settings: settings::AppSettings) {
         let models_changed = self.settings.separation_models != settings.separation_models;
-        theme::apply(ctx, settings.clone());
+        self.themes.apply(ctx, &settings);
         self.settings = settings;
         if models_changed {
             self.revalidate_separation_models();
         }
         self.configure_audio_cache(false);
+    }
+
+    pub fn set_theme_directory(&mut self, ctx: &egui::Context, directory: Option<PathBuf>) {
+        self.themes.set_directory(ctx, directory);
     }
 
     pub fn settings_shortcut() -> egui::KeyboardShortcut {
@@ -2487,6 +2494,7 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.themes.poll(ui.ctx(), &self.settings);
         self.poll_hosting(ui.ctx());
         self.update_bounce_input_guard(ui.ctx());
         self.update_clip_edge_mode(ui);
@@ -6260,6 +6268,7 @@ impl DawUi {
                 self.job.is_none() && !self.separation_models.busy() && self.error.is_none();
             let mut audio = settings::AudioControls {
                 plugins: Some(&self.hosting.scan),
+                themes: Some(&self.themes),
                 midi_devices: Some(&self.midi.devices),
                 midi_enabled: enabled && !self.midi.busy(),
                 midi_connected: self.midi.connected,
@@ -6291,6 +6300,9 @@ impl DawUi {
             let selection = audio.selection.take();
             let quality_requested = audio.quality_requested;
             let refresh_requested = audio.refresh_requested;
+            if let Some(action) = audio.theme_action {
+                self.themes.start(ctx, action);
+            }
             if midi_retry_requested {
                 self.midi.finalizing = true;
                 self.midi_send(midi_service::Command::Retry);

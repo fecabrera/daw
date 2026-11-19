@@ -1,7 +1,7 @@
 //! DWM-owned caption buttons and frame behavior around the egui header.
 //! The subclass runs on the window thread; removal precedes freeing its boxed state.
 use daw_ui::{
-    settings::{ColorTheme, TitlebarStyle},
+    settings::TitlebarStyle,
     titlebar::{CaptionMetrics, HeaderLayout},
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -35,7 +35,14 @@ struct State {
 pub struct Titlebar {
     window: HWND,
     state: Box<State>,
-    applied: Option<(ColorTheme, TitlebarStyle, f32, bool)>,
+    applied: Option<(CaptionTheme, TitlebarStyle, f32, bool)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct CaptionTheme {
+    dark: bool,
+    panel: egui::Color32,
+    text: egui::Color32,
 }
 impl Titlebar {
     pub fn new(context: &eframe::CreationContext<'_>) -> Option<Self> {
@@ -91,8 +98,14 @@ impl Titlebar {
             .replace(settings.titlebar == TitlebarStyle::Custom)
             != (settings.titlebar == TitlebarStyle::Custom);
         self.state.scale.set(ctx.pixels_per_point());
+        let palette = daw_ui::theme::palette(ctx);
+        let caption = CaptionTheme {
+            dark: ctx.theme() == egui::Theme::Dark,
+            panel: palette.panel,
+            text: palette.text,
+        };
         let appearance = (
-            settings.theme,
+            caption,
             settings.titlebar,
             ctx.pixels_per_point(),
             maximized,
@@ -101,20 +114,19 @@ impl Titlebar {
             let theme_changed = self
                 .applied
                 .as_ref()
-                .is_none_or(|(theme, _, _, _)| *theme != settings.theme);
+                .is_none_or(|(theme, _, _, _)| theme.dark != caption.dark);
             // SAFETY: live HWND and initialized attribute data with its documented size.
             unsafe {
-                let dark = i32::from(settings.theme == ColorTheme::Dark);
+                let dark = i32::from(caption.dark);
                 DwmSetWindowAttribute(
                     self.window,
                     DWMWA_USE_IMMERSIVE_DARK_MODE as u32,
                     (&dark as *const i32).cast(),
                     size_of::<i32>() as u32,
                 );
-                let palette = daw_ui::theme::palette(ctx);
                 for (attribute, color) in [
-                    (DWMWA_CAPTION_COLOR, palette.panel),
-                    (DWMWA_TEXT_COLOR, palette.text),
+                    (DWMWA_CAPTION_COLOR, caption.panel),
+                    (DWMWA_TEXT_COLOR, caption.text),
                 ] {
                     let color = u32::from(color.r())
                         | (u32::from(color.g()) << 8)

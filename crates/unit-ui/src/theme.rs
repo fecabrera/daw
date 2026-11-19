@@ -40,6 +40,7 @@ pub const TOOLBAR_HOVER_FILL: Color32 = Color32::from_rgba_unmultiplied_const(12
 pub struct Palette {
     pub background: Color32,
     pub panel: Color32,
+    pub button_background: Color32,
     pub input: Color32,
     pub border: Color32,
     pub divider: Color32,
@@ -57,6 +58,7 @@ pub struct Palette {
 pub const DARK: Palette = Palette {
     background: BACKGROUND,
     panel: PANEL,
+    button_background: Color32::from_gray(43),
     input: INPUT,
     border: BORDER,
     divider: DIVIDER,
@@ -75,6 +77,7 @@ pub const DARK: Palette = Palette {
 pub const LIGHT: Palette = Palette {
     background: Color32::from_rgb(251, 251, 251),
     panel: Color32::WHITE,
+    button_background: Color32::from_gray(240),
     input: Color32::from_rgb(234, 234, 240),
     border: Color32::from_gray(224),
     divider: Color32::from_rgb(220, 220, 220),
@@ -93,6 +96,7 @@ pub const LIGHT: Palette = Palette {
 pub const MIST: Palette = Palette {
     background: Color32::from_rgb(230, 233, 238),
     panel: Color32::from_rgb(239, 241, 245),
+    button_background: Color32::from_rgb(230, 233, 238),
     input: Color32::from_rgb(216, 218, 224),
     border: Color32::from_rgb(221, 224, 231),
     divider: Color32::from_rgb(221, 224, 231),
@@ -103,16 +107,56 @@ pub const MIST: Palette = Palette {
     ..LIGHT
 };
 
-fn light_palette_id() -> egui::Id {
-    egui::Id::new("application-light-palette")
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StyleBase {
+    Dark,
+    Light,
+    Mist,
+}
+
+impl StyleBase {
+    pub fn mode(self) -> egui::Theme {
+        match self {
+            Self::Dark => egui::Theme::Dark,
+            Self::Light | Self::Mist => egui::Theme::Light,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AppliedPalette {
+    base: StyleBase,
+    colors: Palette,
+}
+
+fn palette_id(mode: egui::Theme) -> egui::Id {
+    egui::Id::new(match mode {
+        egui::Theme::Dark => "application-dark-palette",
+        egui::Theme::Light => "application-light-palette",
+    })
+}
+
+fn applied_palette(ctx: &Context) -> AppliedPalette {
+    let mode = ctx.theme();
+    ctx.data(|data| data.get_temp(palette_id(mode)))
+        .unwrap_or(match mode {
+            egui::Theme::Dark => AppliedPalette {
+                base: StyleBase::Dark,
+                colors: DARK,
+            },
+            egui::Theme::Light => AppliedPalette {
+                base: StyleBase::Light,
+                colors: LIGHT,
+            },
+        })
 }
 
 pub fn palette(ctx: &Context) -> Palette {
-    if ctx.global_style().visuals.dark_mode {
-        DARK
-    } else {
-        ctx.data(|data| data.get_temp(light_palette_id()).unwrap_or(LIGHT))
-    }
+    applied_palette(ctx).colors
+}
+
+pub fn style_base(ctx: &Context) -> StyleBase {
+    applied_palette(ctx).base
 }
 
 /// Unit shell surface, retained from the former subdued strip separators.
@@ -128,18 +172,30 @@ pub fn unit_header_fill(ctx: &Context, _enabled: bool) -> Color32 {
 
 /// Legacy knob/power hover surface, independent of framed control styling.
 pub fn borderless_control_fill(ctx: &Context) -> Color32 {
-    let colors = palette(ctx);
-    if ctx.global_style().visuals.dark_mode {
-        Color32::from_rgb(42, 42, 42)
-    } else if colors == MIST {
-        colors.input
-    } else {
-        Color32::from_rgb(229, 230, 231)
+    let AppliedPalette { base, colors } = applied_palette(ctx);
+    match base {
+        StyleBase::Dark => offset_surface(colors.panel, DARK.panel, Color32::from_gray(42)),
+        StyleBase::Mist => colors.input,
+        StyleBase::Light => {
+            offset_surface(colors.input, LIGHT.input, Color32::from_rgb(229, 230, 231))
+        }
     }
 }
 
+/// Transfer the stock difference between two surfaces to a custom palette.
+pub fn offset_surface(surface: Color32, stock: Color32, stock_variant: Color32) -> Color32 {
+    fn channel(value: u8, stock: u8, variant: u8) -> u8 {
+        (i16::from(value) + i16::from(variant) - i16::from(stock)).clamp(0, 255) as u8
+    }
+    Color32::from_rgb(
+        channel(surface.r(), stock.r(), stock_variant.r()),
+        channel(surface.g(), stock.g(), stock_variant.g()),
+        channel(surface.b(), stock.b(), stock_variant.b()),
+    )
+}
+
 fn framed_controls(visuals: &mut Visuals, colors: Palette) {
-    let idle = blend(colors.panel, colors.border, 50);
+    let idle = colors.button_background;
     visuals.widgets.inactive.bg_fill = idle;
     visuals.widgets.inactive.weak_bg_fill = idle;
     visuals.widgets.hovered.bg_fill = colors.border;
@@ -242,7 +298,7 @@ fn configure_style(ctx: &Context, theme: egui::Theme, colors: Palette) {
     visuals.extreme_bg_color = colors.input;
     visuals.text_edit_bg_color = Some(colors.input);
     visuals.faint_bg_color = match theme {
-        egui::Theme::Dark => Color32::from_rgb(34, 34, 34),
+        egui::Theme::Dark => offset_surface(colors.panel, DARK.panel, Color32::from_gray(34)),
         egui::Theme::Light => blend(colors.panel, colors.text, 3),
     };
     visuals.weak_text_color = Some(colors.secondary);
@@ -299,17 +355,41 @@ fn configure_style(ctx: &Context, theme: egui::Theme, colors: Palette) {
 
 /// Apply a context-local palette and accent. Preferences are independent of audio state.
 pub fn apply(ctx: &Context, theme: egui::Theme, light_colors: Palette, accent: Color32) {
-    if ctx.style_of(egui::Theme::Light).visuals.panel_fill != light_colors.panel {
-        configure_style(ctx, egui::Theme::Light, light_colors);
+    let light_base = if light_colors == MIST {
+        StyleBase::Mist
+    } else {
+        StyleBase::Light
+    };
+    match theme {
+        egui::Theme::Dark => {
+            install_palette(ctx, light_base, light_colors, false);
+            apply_palette(ctx, StyleBase::Dark, DARK, accent);
+        }
+        egui::Theme::Light => apply_palette(ctx, light_base, light_colors, accent),
     }
-    ctx.data_mut(|data| data.insert_temp(light_palette_id(), light_colors));
-    ctx.set_theme(theme);
+}
+
+pub fn apply_palette(ctx: &Context, base: StyleBase, colors: Palette, accent: Color32) {
+    install_palette(ctx, base, colors, false);
+    ctx.set_theme(base.mode());
     set_accent(ctx, accent);
 }
+
+fn install_palette(ctx: &Context, base: StyleBase, colors: Palette, reset: bool) {
+    let mode = base.mode();
+    let id = palette_id(mode);
+    let next = AppliedPalette { base, colors };
+    if reset || ctx.data(|data| data.get_temp(id)) != Some(next) {
+        configure_style(ctx, mode, colors);
+        ctx.data_mut(|data| data.insert_temp(id, next));
+    }
+}
+
 pub fn configure(ctx: &Context) {
-    configure_style(ctx, egui::Theme::Dark, DARK);
-    configure_style(ctx, egui::Theme::Light, LIGHT);
-    apply(ctx, egui::Theme::Dark, LIGHT, ACCENT);
+    install_palette(ctx, StyleBase::Dark, DARK, true);
+    install_palette(ctx, StyleBase::Light, LIGHT, true);
+    ctx.set_theme(egui::Theme::Dark);
+    set_accent(ctx, ACCENT);
 }
 pub fn contrast_color(color: Color32) -> Color32 {
     let brightness =

@@ -7,7 +7,11 @@ pub(super) use material::GREY_200;
 /// equivalents in light palettes.
 pub(super) fn selected_track_background(ctx: &Context) -> Color32 {
     if ctx.global_style().visuals.dark_mode {
-        Color32::from_gray(24)
+        offset_surface(
+            palette(ctx).background,
+            DARK.background,
+            Color32::from_gray(24),
+        )
     } else {
         blend(palette(ctx).background, Color32::BLACK, 3)
     }
@@ -16,7 +20,7 @@ pub(super) fn selected_track_background(ctx: &Context) -> Color32 {
 /// Selected track headers and instrument labels contrast with the lane surface.
 pub(super) fn selected_track_header_background(ctx: &Context) -> Color32 {
     if ctx.global_style().visuals.dark_mode {
-        Color32::from_gray(38)
+        offset_surface(palette(ctx).panel, DARK.panel, Color32::from_gray(38))
     } else {
         blend(palette(ctx).panel, Color32::BLACK, 3)
     }
@@ -128,19 +132,27 @@ const fn display_color(color: daw_core::RgbColor) -> Color32 {
 
 /// Apply application preferences without changing layout or project data.
 pub fn apply(ctx: &Context, settings: crate::settings::AppSettings) {
-    let theme = match settings.theme {
-        crate::settings::ColorTheme::Dark => egui::Theme::Dark,
-        crate::settings::ColorTheme::Light | crate::settings::ColorTheme::Mist => {
-            egui::Theme::Light
-        }
+    let colors = match settings.theme {
+        crate::settings::ColorTheme::Dark => DARK,
+        crate::settings::ColorTheme::Light => LIGHT,
+        crate::settings::ColorTheme::Mist => MIST,
     };
-    let light_colors = if settings.theme == crate::settings::ColorTheme::Mist {
-        MIST
-    } else {
-        LIGHT
+    apply_resolved(ctx, settings.theme, colors, settings.accent);
+}
+
+pub(super) fn apply_resolved(
+    ctx: &Context,
+    base: crate::settings::ColorTheme,
+    colors: Palette,
+    accent: crate::settings::AccentColor,
+) {
+    let base = match base {
+        crate::settings::ColorTheme::Dark => StyleBase::Dark,
+        crate::settings::ColorTheme::Light => StyleBase::Light,
+        crate::settings::ColorTheme::Mist => StyleBase::Mist,
     };
-    daw_unit_ui::theme::apply(ctx, theme, light_colors, settings.accent.color());
-    ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(match theme {
+    apply_palette(ctx, base, colors, accent.color());
+    ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(match base.mode() {
         egui::Theme::Dark => egui::SystemTheme::Dark,
         egui::Theme::Light => egui::SystemTheme::Light,
     }));

@@ -83,8 +83,8 @@ impl ViewMode {
 }
 
 pub(super) fn header_text(ctx: &egui::Context) -> egui::Color32 {
-    if theme::palette(ctx) == theme::LIGHT {
-        theme::LIGHT.text
+    if theme::style_base(ctx) == theme::StyleBase::Light {
+        theme::palette(ctx).text
     } else {
         egui::Color32::WHITE
     }

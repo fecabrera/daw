@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "mist",
+  "name": "Mist",
+  "base": "light",
+  "colors": {
+    "background": "#E6E9EE",
+    "panel": "#EFF1F5",
+    "button_background": "#E6E9EE",
+    "input": "#D8DAE0",
+    "border": "#DDE0E7",
+    "divider": "#DDE0E7",
+    "secondary": "#6A6E73",
+    "grid": "#D8DAE0",
+    "grid_subdivision": "#DDE0E7"
+  }
+}

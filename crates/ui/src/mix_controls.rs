@@ -91,7 +91,7 @@ fn mute_solo_arm_with_size(
         egui::Vec2::new(2.0 * size + rows::GROUP_DIVIDER_WIDTH, size),
         egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
-            let background = crate::theme::unit_separator(ui.ctx());
+            let background = crate::theme::palette(ui.ctx()).button_background;
             let group = egui::Frame::new()
                 .fill(background)
                 .corner_radius(5)

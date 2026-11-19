@@ -122,6 +122,29 @@ impl ColorTheme {
             Self::Mist => "Mist",
         }
     }
+
+    pub(super) const fn index(self) -> usize {
+        match self {
+            Self::Dark => 0,
+            Self::Light => 1,
+            Self::Mist => 2,
+        }
+    }
+
+    pub(super) const fn id(self) -> &'static str {
+        match self {
+            Self::Dark => "dark",
+            Self::Light => "light",
+            Self::Mist => "mist",
+        }
+    }
+
+    pub(super) const fn parent(self) -> Self {
+        match self {
+            Self::Mist => Self::Light,
+            _ => self,
+        }
+    }
 }
 
 /// Window presentation; Linux custom controls require a GTK host.
@@ -155,6 +178,12 @@ pub struct AppSettings {
     pub separation_models: std::sync::Arc<daw_project::SeparationModels>,
     pub accent: AccentColor,
     pub theme: ColorTheme,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::theme_files::deserialize_custom_id"
+    )]
+    pub custom_theme_id: Option<String>,
     pub titlebar: TitlebarStyle,
     pub seek_cache: CacheProfile,
     /// How MIDI notes that cross the playhead are divided. Audio clips are unaffected.
@@ -332,6 +361,8 @@ pub struct AudioControls<'a> {
     pub selection: Option<daw_output::AudioSettings>,
     pub quality_requested: bool,
     pub refresh_requested: bool,
+    pub(super) themes: Option<&'a crate::theme_files::Runtime>,
+    pub(super) theme_action: Option<crate::theme_files::Action>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -368,7 +399,13 @@ fn group_id() -> egui::Id {
     egui::Id::new("app-settings-group")
 }
 
-fn appearance(ui: &mut egui::Ui, ctx: &Context, settings: &mut AppSettings, label_width: f32) {
+fn appearance(
+    ui: &mut egui::Ui,
+    ctx: &Context,
+    settings: &mut AppSettings,
+    label_width: f32,
+    controls: &mut AudioControls<'_>,
+) {
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     {
         let show_titlebar = cfg!(any(target_os = "macos", target_os = "windows"));
@@ -401,16 +438,39 @@ fn appearance(ui: &mut egui::Ui, ctx: &Context, settings: &mut AppSettings, labe
             ui.label("Theme");
         },
         |ui| {
+            let runtime = controls.themes;
+            let active = runtime.map(|themes| themes.active(settings));
+            let label = active.map_or(settings.theme.name(), |entry| entry.name.as_str());
             crate::menus::Dropdown::from_id_salt("color_theme")
-                .selected_text(settings.theme.name())
+                .selected_text(label)
                 .width(ui.available_width())
                 .show_ui(ui, |ui| {
                     for theme in ColorTheme::ALL {
-                        if ui
-                            .selectable_value(&mut settings.theme, theme, theme.name())
-                            .changed()
-                        {
-                            crate::theme::apply(ctx, settings.clone());
+                        let selected =
+                            settings.custom_theme_id.is_none() && settings.theme == theme;
+                        if ui.selectable_label(selected, theme.name()).clicked() {
+                            settings.theme = theme;
+                            settings.custom_theme_id = None;
+                            apply_appearance(ctx, settings, runtime);
+                        }
+                    }
+                    if let Some(runtime) = runtime {
+                        let entries = runtime.entries();
+                        for entry in &entries[ColorTheme::ALL.len()..] {
+                            let selected =
+                                settings.custom_theme_id.as_deref() == Some(entry.id.as_str());
+                            let ambiguous = entries.iter().any(|other| {
+                                other.id != entry.id && other.name.eq_ignore_ascii_case(&entry.name)
+                            });
+                            let label = if ambiguous {
+                                format!("{} ({})", entry.name, entry.id)
+                            } else {
+                                entry.name.clone()
+                            };
+                            if ui.selectable_label(selected, label).clicked() {
+                                settings.custom_theme_id = Some(entry.id.clone());
+                                runtime.apply(ctx, settings);
+                            }
                         }
                     }
                 });
@@ -460,13 +520,92 @@ fn appearance(ui: &mut egui::Ui, ctx: &Context, settings: &mut AppSettings, labe
                         });
                         if response.clicked() {
                             settings.accent = accent;
-                            crate::theme::apply(ctx, settings.clone());
+                            apply_appearance(ctx, settings, controls.themes);
                             ui.close();
                         }
                     }
                 });
         },
     );
+    if let Some(runtime) = controls.themes {
+        theme_actions(ui, settings, runtime, &mut controls.theme_action);
+    }
+}
+
+fn apply_appearance(
+    ctx: &Context,
+    settings: &AppSettings,
+    runtime: Option<&crate::theme_files::Runtime>,
+) {
+    if let Some(runtime) = runtime {
+        runtime.apply(ctx, settings);
+    } else {
+        crate::theme::apply(ctx, settings.clone());
+    }
+}
+
+fn theme_actions(
+    ui: &mut egui::Ui,
+    settings: &AppSettings,
+    runtime: &crate::theme_files::Runtime,
+    action: &mut Option<crate::theme_files::Action>,
+) {
+    use crate::theme_files::Action;
+
+    ui.separator();
+    let active = runtime.active(settings);
+    if let Some(id) = &settings.custom_theme_id
+        && id != &active.id
+    {
+        crate::rows::advice(
+            ui,
+            format!("Theme {id} is unavailable. Using {}.", active.name),
+        );
+    }
+    if let Some(path) = &runtime.directory {
+        crate::rows::advice(ui, path.display().to_string());
+        ui.horizontal_wrapped(|ui| {
+            ui.add_enabled_ui(!runtime.busy(), |ui| {
+                if ui
+                    .button("Create theme overrides")
+                    .on_hover_text(
+                        "Create the themes folder and add missing Dark, Light and Mist JSON files",
+                    )
+                    .clicked()
+                {
+                    *action = Some(Action::CreateOverrides);
+                }
+                if ui.button("Reload themes").clicked() {
+                    *action = Some(Action::Reload);
+                }
+            });
+            if ui.button("Copy themes folder path").clicked() {
+                ui.ctx().copy_text(path.display().to_string());
+            }
+        });
+    } else {
+        crate::rows::advice(ui, "Themes folder unavailable");
+    }
+    if ui.button("Copy stock JSON").clicked() {
+        runtime.copy_stock(ui.ctx(), settings);
+    }
+    if runtime.busy() {
+        ui.spinner();
+    }
+    if runtime.status().next().is_some() {
+        egui::CollapsingHeader::new("Theme file issues")
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("theme-file-issues")
+                    .max_height(120.0)
+                    .show(ui, |ui| {
+                        for issue in runtime.status() {
+                            crate::rows::advice(ui, issue);
+                        }
+                    });
+            });
+    }
 }
 
 fn playback(
@@ -866,7 +1005,9 @@ pub fn show(
                                     .min(ui.available_width() * 0.44);
                                 ui.strong(group.label());
                                 match group {
-                                    Group::Appearance => appearance(ui, ctx, settings, label_width),
+                                    Group::Appearance => {
+                                        appearance(ui, ctx, settings, label_width, audio)
+                                    }
                                     Group::Playback => playback(ui, settings, audio, label_width),
                                     Group::TimeStretch => time_stretch(ui, settings, label_width),
                                     Group::Midi => midi(ui, settings, audio, label_width),

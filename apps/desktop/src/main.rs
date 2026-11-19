@@ -143,7 +143,7 @@ fn main() -> eframe::Result {
                 .storage
                 .and_then(|storage| storage.get_string(daw_ui::settings::STORAGE_KEY));
             let settings = daw_ui::settings::AppSettings::from_json(stored.as_deref());
-            let mut ui = crate::ui_startup::create_ui(&cc.egui_ctx, project, settings);
+            let mut ui = crate::ui_startup::create_ui(&cc.egui_ctx, project, settings, true);
             if let Some(root) = midi::recovery_root() {
                 ui.enable_midi(Box::new(midi::NativeMidi::default()), root);
             }

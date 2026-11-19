@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "light",
+  "name": "Light",
+  "base": "light",
+  "colors": {
+    "background": "#FBFBFB",
+    "panel": "#FFFFFF",
+    "button_background": "#F0F0F0",
+    "input": "#EAEAF0",
+    "border": "#E0E0E0",
+    "divider": "#DCDCDC",
+    "text": "#282B2F",
+    "time_unit": "#55595E",
+    "secondary": "#606469",
+    "grid": "#D0D2D5",
+    "grid_subdivision": "#DDDFE1"
+  }
+}

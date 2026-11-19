@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "dark",
+  "name": "Dark",
+  "base": "dark",
+  "colors": {
+    "background": "#121212",
+    "panel": "#1E1E1E",
+    "button_background": "#2B2B2B",
+    "input": "#0F0F0F",
+    "border": "#373737",
+    "divider": "#080808",
+    "text": "#C7C9CC",
+    "time_unit": "#AAAEB3",
+    "secondary": "#8B8F94",
+    "grid": "#282828",
+    "grid_subdivision": "#1C1C1C"
+  }
+}

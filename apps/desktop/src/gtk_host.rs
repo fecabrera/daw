@@ -142,7 +142,7 @@ fn build(
     if loaded.window.fullscreen {
         window.fullscreen();
     }
-    let mut ui = crate::ui_startup::create_ui(&ctx, project, settings);
+    let mut ui = crate::ui_startup::create_ui(&ctx, project, settings, smoke.is_none());
     if smoke.is_none()
         && let Some(root) = crate::midi::recovery_root()
     {

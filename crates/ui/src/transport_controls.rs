@@ -270,11 +270,9 @@ pub(super) fn show(
 }
 
 fn standard_surface(ui: &Ui) -> icons::ToggleSurface {
+    let colors = theme::palette(ui.ctx());
     icons::ToggleSurface {
-        idle: (
-            theme::unit_separator(ui.ctx()),
-            theme::palette(ui.ctx()).text,
-        ),
+        idle: (colors.button_background, colors.text),
         hovered: (
             theme::unit_header_fill(ui.ctx(), false),
             ui.visuals().widgets.hovered.fg_stroke.color,

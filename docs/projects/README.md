@@ -87,6 +87,16 @@ Settings groups controls into six categories:
 
 Choose **Dark**, **Light**, or **Mist** under **Appearance > Theme**. Light uses near-white backgrounds and white panels, with darker grey for buttons, knobs, unit headers, and separators. Text fields and meter backgrounds use a cool grey. Mist uses cool grey backgrounds and pale panels. All themes keep your selected accent and clip colors.
 
+To edit a theme while the app is running:
+
+1. Open **Settings > Appearance** and choose **Create theme overrides**. This adds the missing `dark.json`, `light.json`, and `mist.json` files to the displayed themes folder. It keeps any files already there.
+2. Open one of those files in a text editor and change its `colors`. Use six-digit hex colors such as `"#0D1117"`. Keep the stock `id`, `name`, and `base` to override the existing menu item. Mist starts from the current Light palette and applies its own colors on top.
+3. Save the file and choose **Reload themes**. The running app updates the active theme. If a file has a problem, see **Theme file issues** in Appearance.
+
+Set `button_background` inside `colors` to change the idle button fill. The stock values are `#2B2B2B` for Dark, `#F0F0F0` for Light and `#E6E9EE` for Mist.
+
+To add a theme, save a copy with its own name and an ID such as `user.blue-room`, then reload and select it. **Copy stock JSON** copies a stock template for the current theme's base. To restore a stock theme, remove its override file and reload. Appearance displays the actual folder, which is normally `~/Library/Application Support/DAW/themes` on macOS, `%LOCALAPPDATA%\DAW\themes` on Windows, and `$XDG_CONFIG_HOME/daw/themes` on Linux (usually `~/.config/daw/themes`).
+
 On Windows, **Appearance > Titlebar > Custom** combines the menu, project title, and view buttons in the titlebar. A continuous divider separates this row from playback controls in restored and maximized windows. **Native** is the default titlebar style.
 
 Changes apply on this computer and are retained across restarts. Close retains your choices. These preferences are separate from Project Settings.

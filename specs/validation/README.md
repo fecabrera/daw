@@ -17,6 +17,38 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## JSON button backgrounds — 2026-11-19
+
+Dark, Light and Mist define a separate `button_background` color for idle
+controls. The theme tests check stock values, fallback after changing a panel
+color, and live reload without changing the panel, borders, unit headers or
+unit shell fill. Strict Clippy, formatting and the local macOS bundle signature
+check passed.
+
+- `cargo test --workspace --locked --offline` passed on macOS with 3,649
+  passing tests and 22 ignored.
+- `cargo test --workspace --release --locked --offline` passed on macOS with
+  3,649 passing tests and 22 ignored.
+
+## Runtime JSON themes — 2026-11-18
+
+Appearance discovers per-user JSON themes and reloads edits without restarting.
+Dark and Light accept user overrides. Mist inherits the resolved Light palette
+and applies its own override colors while retaining its stock semantic colors.
+The regression tests cover stock parity, schema and conflict diagnostics,
+appearance-only publication, preference recovery and a Reload themes click
+that updates both egui and Mixer text after a same-panel edit.
+
+- Strict workspace Clippy, formatting and `git diff --check` passed.
+- `cargo test --workspace --locked --offline` passed on macOS with 3,649
+  tests passed and 22 ignored.
+- `cargo test --workspace --release --locked --offline` passed on macOS with
+  3,649 tests passed and 22 ignored.
+- The local macOS package passed code-signature verification. In the native
+  app, Settings exposed the theme controls and **Create theme overrides**
+  generated the three expected JSON files. The live color edit was verified
+  by the egui interaction test. Native Windows and Linux checks remain open.
+
 ## Transport menu — 2026-11-18
 
 The macOS menu bar and the application menu share the toolbar's transport
