@@ -9,7 +9,7 @@ debug assertions and integer overflow checks explicitly enabled. This keeps the
 full DSP matrices practical on hosted runners and preserves debug-only lifecycle
 checks such as egui texture cleanup. Test selection and the 90-minute job limit
 are unchanged. Release validation remains a separate local requirement; see
-[repository validation instructions](../../AGENTS.md#validation).
+[repository validation instructions](repository-instructions/build-and-validation-workflow.md#validation).
 
 | Platform | Runner | Download |
 | --- | --- | --- |

@@ -10,7 +10,7 @@ Run commands from the repository root with the toolchain pinned in [rust-toolcha
 - [Effect plugins](plugins.md): CLAP/VST3/AUv2 builds and packaging.
 - [GitHub Actions builds](ci.md): platform artifacts, downloads, and logs.
 
-For CLI commands, see the [CLI guide](../cli/README.md). For contribution rules and validation commands, see [repository instructions](../../AGENTS.md#build-and-validation-workflow). Architecture and implementation contracts remain in [specifications](../../specs/README.md).
+For CLI commands, see the [CLI guide](../cli/README.md). For contribution rules and validation commands, see [build and validation workflow](repository-instructions/build-and-validation-workflow.md). Architecture and implementation contracts remain in [specifications](../../specs/README.md).
 The desktop MIDI adapter uses midir with native CoreMIDI, WinMM and ALSA backends. ALSA development libraries are required on Linux. MIDI device dependencies stay outside the CLI and portable engine. Packaged dependency notices are in `crates/ui/assets/licenses`. Physical keyboard, device-disconnect and latency checks must run on each platform.
 
 ## Headless tools

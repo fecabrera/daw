@@ -1,6 +1,6 @@
 # Implementation specifications
 
-This tree contains implementation requirements, architecture, data formats, acceptance criteria, and engineering validation history. User instructions belong in the [user guide](../docs/README.md). Follow the audience and folder rules in [AGENTS.md](../AGENTS.md#documentation-and-dependency-licenses).
+This tree contains implementation requirements, architecture, data formats, acceptance criteria, and engineering validation history. User instructions belong in the [user guide](../docs/README.md). Follow the audience and folder rules in [documentation and dependency license instructions](../docs/development/repository-instructions/documentation-and-dependency-licenses.md).
 
 - [Audio analysis](audio/analysis.md): reusable energy/spectral transient detection.
 

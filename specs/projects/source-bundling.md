@@ -173,7 +173,7 @@ Acceptance matrix:
 | Undo/Redo and history-only source revisions | Paths remain valid; incompatible source versions are reported rather than silently substituted. |
 | Windows/macOS/Linux paths and filesystems | Unicode names, case differences, symlinks, destination containment and native rename behavior are verified. |
 
-Implementation validation follows [repository instructions](../../AGENTS.md#validation): affected core/project/media/UI tests, formatting, strict workspace/all-target Clippy, workspace tests, CLI smoke checks when shared project behavior changes, and the macOS desktop rebuild. Use temporary fixtures and fault injection; never move/delete user recordings to test portability. Record native platform/device checks and any unavailable coverage explicitly.
+Implementation validation follows [repository instructions](../../docs/development/repository-instructions/build-and-validation-workflow.md#validation): affected core/project/media/UI tests, formatting, strict workspace/all-target Clippy, workspace tests, CLI smoke checks when shared project behavior changes, and the macOS desktop rebuild. Use temporary fixtures and fault injection; never move/delete user recordings to test portability. Record native platform/device checks and any unavailable coverage explicitly.
 
 Update [project user guidance](../../docs/projects/README.md), [roadmap](../../docs/roadmap.md), [README](../../README.md), [storage requirements](../architecture/mvp-scope.md#project-storage), relevant iteration/save/history requirements and [validation history](../validation/README.md) as each stage lands. Keep planned behavior separate from available features until the desktop command ships.
 
