@@ -4,6 +4,7 @@ use daw_core::Clip;
 
 pub(super) struct TrackProcessor<'a> {
     pub monitor_only: bool,
+    pub paused: bool,
     pub sidechains: &'a [daw_unit_core::ModulationValue],
     pub sidechain_sources: Option<&'a daw_unit_core::ModulationSourceIndex>,
     pub audio: &'a mut AudioTrack,
@@ -27,7 +28,7 @@ impl TrackProcessor<'_> {
                     runtime.sample_in_region(frame, region)
                 } else {
                     if self.monitor_only {
-                        runtime.sample_live(frame)
+                        runtime.sample_live(frame, self.paused)
                     } else {
                         runtime.held_sample()
                     }

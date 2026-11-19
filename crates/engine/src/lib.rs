@@ -587,7 +587,7 @@ impl Renderer {
                 let index = *self.track_index.get(&track)?;
                 self.midi[index]
                     .as_ref()?
-                    .envelope_snapshot(daw_core::ModulationSourceId { layer, unit })
+                    .envelope_snapshot(daw_core::ModulationSourceId { layer, unit }, false)
             }
 
             ModulationTarget::Noise { track, layer } => {
@@ -712,6 +712,15 @@ impl Renderer {
                 ]))
             }
         }
+    }
+    /// Monitor readings from live MIDI only, excluding paused arrangement state.
+    pub fn live_envelope_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {
+        let ModulationTarget::Envelope { track, layer, unit } = target else {
+            return None;
+        };
+        self.midi[*self.track_index.get(&track)?]
+            .as_ref()?
+            .envelope_snapshot(daw_core::ModulationSourceId { layer, unit }, true)
     }
     /// Attach prepared meter handles before publishing a renderer to the callback.
     pub fn set_source_output_peak_meter(
@@ -1182,6 +1191,18 @@ impl Renderer {
         self.prime_latency(false, false);
     }
 
+    /// Worker-only. End the prepared chord or Beat trigger on the source feed
+    /// clock, where the gate remains exact with parallel/hosted latency.
+    pub fn begin_finite_audition(&mut self, track: Id, gate: u64) {
+        self.reset_processing();
+        if let Some(&index) = self.track_index.get(&track)
+            && let Some(runtime) = &mut self.midi[index]
+        {
+            runtime.begin_finite_audition(gate);
+        }
+        self.prime_latency(false, false);
+    }
+
     /// Includes silent attacks and normal per-note/shared release ownership.
     pub fn audition_active(&self) -> bool {
         self.midi
@@ -1383,6 +1404,9 @@ impl Renderer {
     pub fn pause(&mut self) {
         if self.playing {
             self.paused = true;
+            if let Some(graph) = &mut self.hosted {
+                graph.clear_monitor_output();
+            }
         }
         self.playing = false;
     }

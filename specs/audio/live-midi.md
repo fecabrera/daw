@@ -30,6 +30,12 @@ Stopped monitoring advances a separate clock without moving the playhead. After 
 Transport-cache snapshots omit live reserves. The output worker must recreate these reserves after replacing its renderer with a restored snapshot, then reconcile memory admission before publication. Offline export does not allocate live reserves. Voice stealing is bounded and
 old token releases cannot release a replacement. Panic forces a 5 ms release.
 
+An idle live route on a paused track keeps its scheduled provider history
+frozen. Process the buses and effects with silent instrument input and the
+last published provider values. Live input on another track does not thaw
+that history. A live-owned shared Release survives an arrangement clip
+edge that introduces no scheduled gate.
+
 Sampler preparation unions requested live pitches with saved pitches on workers.
 A target without every required exact enabled-layer pitch suppresses that attack;
 no pitch transform runs in the callback and held attacks are not replayed late.

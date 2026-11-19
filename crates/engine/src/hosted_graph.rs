@@ -103,6 +103,10 @@ pub(super) struct HostedGraph {
     pub output: Vec<[f32; 2]>,
     pub consumed: usize,
     pub count: usize,
+    // Monitoring must not consume already-evaluated arrangement samples during pause.
+    monitor_output: Vec<[f32; 2]>,
+    monitor_consumed: usize,
+    monitor_count: usize,
     pub quantum: usize,
     pub primed: bool,
     pub evaluated: bool,
@@ -273,6 +277,9 @@ impl HostedGraph {
             output: vec![[0.0; 2]; maximum],
             consumed: 0,
             count: 0,
+            monitor_output: vec![[0.0; 2]; maximum],
+            monitor_consumed: 0,
+            monitor_count: 0,
             quantum,
             primed: false,
             evaluated: false,
@@ -388,6 +395,7 @@ impl HostedGraph {
             + self.master.heap_bytes()
             + self.master_controls.heap_bytes()
             + vec_bytes(&self.output)
+            + vec_bytes(&self.monitor_output)
             + vec_bytes(&self.order)
             + vec_bytes(&self.roots)
             + vec_bytes(&self.taps.raw)
@@ -500,6 +508,9 @@ impl HostedGraph {
         std::mem::swap(&mut self.output, &mut previous.output);
         self.consumed = previous.consumed;
         self.count = previous.count;
+        std::mem::swap(&mut self.monitor_output, &mut previous.monitor_output);
+        self.monitor_consumed = previous.monitor_consumed;
+        self.monitor_count = previous.monitor_count;
         self.primed = previous.primed;
     }
     pub fn attach_effect_meter(
@@ -529,6 +540,16 @@ impl HostedGraph {
         self.count = 0;
         self.consumed = 0;
         self.primed = false;
+        self.clear_monitor_output();
+    }
+    pub fn clear_monitor_output(&mut self) {
+        self.monitor_consumed = 0;
+        self.monitor_count = 0;
+    }
+    pub fn swap_monitor_output(&mut self) {
+        std::mem::swap(&mut self.output, &mut self.monitor_output);
+        std::mem::swap(&mut self.consumed, &mut self.monitor_consumed);
+        std::mem::swap(&mut self.count, &mut self.monitor_count);
     }
     pub fn flush(&mut self) {
         for track in &mut self.tracks {
@@ -621,7 +642,7 @@ impl HostedGraph {
                         if advancing {
                             runtime.sample_in_region(source_frame, region);
                         } else {
-                            runtime.sample_live(source_frame);
+                            runtime.sample_live(source_frame, renderer.paused);
                         }
                     }
                     block.controls.publish(offset, runtime.modulation_values());
@@ -933,5 +954,124 @@ mod tests {
             .effects
             .push(daw_core::EffectInstance::saturator());
         compare(plan);
+    }
+
+    #[test]
+    fn paused_hosted_monitor_preserves_pending_arrangement_and_envelope_history() {
+        let mut plan = super::super::tests::plan();
+        plan.project.tracks.clear();
+        let id = plan.project.add_midi_track().unwrap();
+        let mut instrument =
+            daw_core::InstrumentSettings::from(daw_core::OscillatorSettings::default());
+        let layer = &mut instrument.layers[0];
+        let envelope = &mut layer.envelopes[0];
+        envelope.mode = daw_core::EnvelopeMode::Legato;
+        envelope.settings.release.time_ms = 200.0;
+        let meter = super::super::ModulationTarget::Envelope {
+            track: id,
+            layer: layer.id,
+            unit: envelope.id,
+        };
+        plan.project.tracks[0].instrument = Some(instrument);
+        let clip_id = plan.project.add_midi_pattern(id, 0).unwrap();
+        plan.project
+            .edit(daw_core::Edit::ReplaceMidiPattern {
+                clip_id,
+                pattern: daw_core::MidiPattern {
+                    length_ticks: 960,
+                    notes: vec![daw_core::MidiNote {
+                        id: Id::from_u128(1),
+                        start_tick: 0,
+                        length_ticks: 120,
+                        pitch: 60,
+                        velocity: 100,
+                    }],
+                },
+            })
+            .unwrap();
+        plan.project.transport.playhead_frame = 0;
+        let make = || {
+            let mut renderer = Renderer::new(plan.clone());
+            renderer.hosted =
+                Some(HostedGraph::prepare(&mut renderer, &mut Default::default()).unwrap());
+            renderer.prepare_live_midi();
+            renderer.live_midi_route(id, true);
+            renderer.play();
+            for _ in 0..3347 {
+                renderer.next_sample();
+            }
+            renderer
+        };
+        let mut actual = make();
+        let mut reference = make();
+        let snapshot =
+            |render: &Renderer| render.modulation_snapshot(meter).unwrap().map(f32::to_bits);
+        assert!(
+            actual.modulation_snapshot(meter).unwrap()[super::super::ENVELOPE_PLOT_POSITION.start]
+                >= 3.0
+        );
+        actual.pause();
+        for _ in 0..3701 {
+            assert_eq!(actual.next_sample(), [0.0; 2]);
+        }
+        assert_eq!(snapshot(&actual), snapshot(&reference));
+        actual.play();
+        for _ in 0..941 {
+            assert_eq!(actual.next_sample(), reference.next_sample());
+        }
+        assert_eq!(snapshot(&actual), snapshot(&reference));
+    }
+
+    #[test]
+    fn finite_audition_gate_follows_the_source_clock_in_hosted_blocks() {
+        let mut plan = super::super::tests::plan();
+        plan.project.tracks.clear();
+        let id = plan.project.add_midi_track().unwrap();
+        let mut instrument =
+            daw_core::InstrumentSettings::from(daw_core::OscillatorSettings::default());
+        instrument.layers[0].envelopes[0].settings.release.time_ms = 100.0;
+        instrument.layers[0]
+            .effects
+            .push(daw_core::EffectInstance::limiter());
+        plan.project.tracks[0].instrument = Some(instrument);
+        let clip_id = plan.project.add_midi_pattern(id, 0).unwrap();
+        plan.project
+            .edit(daw_core::Edit::ReplaceMidiPattern {
+                clip_id,
+                pattern: daw_core::MidiPattern {
+                    length_ticks: 960,
+                    notes: vec![daw_core::MidiNote {
+                        id: Id::from_u128(1),
+                        start_tick: 0,
+                        length_ticks: 960,
+                        pitch: 69,
+                        velocity: 127,
+                    }],
+                },
+            })
+            .unwrap();
+        plan.project.transport.playhead_frame = 0;
+        let gate = 3001;
+        let mut scalar = Renderer::new(plan.clone());
+        let mut block = Renderer::new(plan);
+        block.hosted = Some(HostedGraph::prepare(&mut block, &mut Default::default()).unwrap());
+        scalar.begin_finite_audition(id, gate);
+        block.begin_finite_audition(id, gate);
+        let mut expected = vec![[0.0; 2]; 9000];
+        let mut actual = expected.clone();
+        scalar.render_offline(&mut expected);
+        for chunk in actual.chunks_mut(127) {
+            block.render_offline(chunk);
+        }
+        for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
+            assert!((actual - expected).abs() < 1e-6);
+        }
+        assert!(
+            actual[gate as usize + 300..gate as usize + 1300]
+                .iter()
+                .flatten()
+                .any(|v| v.abs() > 0.01)
+        );
+        assert!(actual[8500..].iter().flatten().all(|v| *v == 0.0));
     }
 }

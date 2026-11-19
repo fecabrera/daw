@@ -41,4 +41,9 @@ A primary click or Up/Down movement onto a selected chord row auditions that cho
 
 Render a one-bar gate, capped at eight seconds, followed by one second for release and effect tails. Fade the first and last five milliseconds. The processing-rate buffer is bounded to nine seconds at every supported rate. The UI permits one worker and one replaceable pending request. New requests cancel stale work. Only a result matching the current project, revision, and selected track can reach output. Stop, Escape, window focus loss, leaving the Chords tab/view, blocked editing, track changes, and project edits cancel the preview. Worker and device errors use normal UI error reporting.
 
+Use the prepared chord triggers and send normal note-off at the gate on the
+source feed clock. The cap limits the held gate. Note timing uses the full
+prepared note duration. The isolated renderer advances the source Release
+and bus effects through the tail window.
+
 Output mixes prepared stereo buffers before the existing device-rate converter, independently of the arrangement renderer and transport. The bounded queue carries at most two buffers. Generation checks discard stale queued buffers and fade active cancellation over five milliseconds. A separate bounded retirement queue returns all buffer owners to the control thread; callback processing neither allocates nor frees buffers. Natural completion and queue saturation remain bounded. Preview audio reaches the main output meter; per-track and unit meters continue to describe arrangement playback.

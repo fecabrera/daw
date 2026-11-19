@@ -105,6 +105,10 @@ impl Renderer {
         if self.playing {
             self.prime_hosted(&mut graph, true, true);
         }
+        let paused_monitor = self.paused;
+        if paused_monitor {
+            graph.swap_monitor_output();
+        }
         if graph.consumed >= graph.count {
             let start = if self.playing {
                 latency::advanced_frame(self.playhead, self.alignment.total, self.loop_region(true))
@@ -119,6 +123,9 @@ impl Renderer {
             }
             if !ready {
                 self.buffering = true;
+                if paused_monitor {
+                    graph.swap_monitor_output();
+                }
                 self.hosted = Some(graph);
                 return [0.0; 2];
             }
@@ -138,6 +145,9 @@ impl Renderer {
             }
         } else {
             self.live_clock = self.live_clock.wrapping_add(1);
+        }
+        if paused_monitor {
+            graph.swap_monitor_output();
         }
         self.hosted = Some(graph);
         sample

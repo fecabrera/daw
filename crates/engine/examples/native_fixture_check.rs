@@ -510,6 +510,39 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         assert_eq!(output[2000], [0.0; 2]);
         Ok(())
     })?;
+    // A bounded preview sends each native voice an off at its content-clock gate.
+    let (settings, states, _) = mapped(&mut service, &candidate, &instrument, 48000, 512)?;
+    let mut preview = base_plan(48000, 512, client.clone(), states);
+    let track = preview.project.add_midi_track()?;
+    let layer = &mut preview.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.clear_sources();
+    layer.hosted = Some(HostedSource::Known(settings));
+    let clip_id = preview.project.add_midi_pattern(track, 0)?;
+    preview.project.edit(Edit::ReplaceMidiPattern {
+        clip_id,
+        pattern: Chord {
+            root: 0,
+            kind: ChordKind::Major,
+        }
+        .pattern()?,
+    })?;
+    service.run(move || -> daw_plugin_host::Result<()> {
+        let mut renderer = Renderer::try_new(preview)?;
+        let gate = 3001;
+        renderer.begin_finite_audition(track, gate as u64);
+        let mut samples = [[0.0; 2]; 3701];
+        for block in samples.chunks_mut(127) {
+            measured(|| renderer.render_offline(block));
+        }
+        assert!(samples[gate - 1][0] > 0.1);
+        assert!(samples[gate..].iter().all(|sample| *sample == [0.0; 2]));
+        assert!(renderer.hosted_fault().is_none());
+        Ok(())
+    })?;
     // One shared Macro drives the common typed destination. Plain CLAP deltas
     // and normalized VST3 automation produce the same synthetic gain.
     let (mut settings, states, _) = mapped(&mut service, &candidate, &instrument, 48000, 512)?;

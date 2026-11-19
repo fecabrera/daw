@@ -140,6 +140,8 @@ pub(crate) struct SharedControls {
     pub index: daw_unit_core::ModulationSourceIndex,
     providers: Vec<ProviderControl>,
     live_held: usize,
+    // A final physical note-off owns its tail across arrangement-only resets.
+    live_release: bool,
     live_origins: [Option<i128>; 2],
     order: Vec<usize>,
     held: usize,
@@ -189,6 +191,7 @@ impl SharedControls {
             providers: Vec::new(),
             held: 0,
             live_held: 0,
+            live_release: false,
             live_origins: [None; 2],
             note_durations: [None; 2],
             note_ages: [0; 2],
@@ -219,6 +222,7 @@ impl SharedControls {
     }
     pub fn reset(&mut self) {
         self.live_held = 0;
+        self.live_release = false;
         self.live_origins = [None; 2];
         self.reset_notes();
         for provider in &mut self.providers {
@@ -230,6 +234,10 @@ impl SharedControls {
             self.held = self.live_held;
             return;
         }
+        if self.live_release_active() {
+            return;
+        }
+        self.live_release = false;
         for e in &mut self.controls {
             e.reset();
         }
@@ -247,11 +255,16 @@ impl SharedControls {
         self.frame = 0;
         self.release_frames = 0;
     }
-    pub fn reconstruct(&mut self, state: NoteState, frame: u64) {
+    /// Returns whether the live release took priority over reconstructed note history.
+    pub fn reconstruct(&mut self, state: NoteState, frame: u64) -> bool {
         if self.live_held > 0 {
             self.held = state.held.saturating_add(self.live_held);
-            return;
+            return false;
         }
+        if state.held == 0 && self.live_release_active() {
+            return true;
+        }
+        self.live_release = false;
         self.reset_notes();
         self.held = state.held;
         self.note_durations = state.durations;
@@ -283,12 +296,20 @@ impl SharedControls {
                 }
             }
         }
+        false
     }
     pub fn end(&mut self) {
+        if self.held <= self.live_held {
+            return;
+        }
         self.held = self.live_held;
         if self.live_held > 0 {
             return;
         }
+        self.start_release(false);
+    }
+    fn start_release(&mut self, live: bool) {
+        self.live_release = live;
         self.release_frames = 0;
         for e in &mut self.controls {
             e.envelope.note_off();
@@ -322,10 +343,14 @@ impl SharedControls {
         } else {
             self.live_held = self.live_held.saturating_sub(1);
         }
-        self.event(on, None);
+        self.note_event(on, None, true);
     }
     pub fn event(&mut self, on: bool, duration_frames: Option<u64>) {
+        self.note_event(on, duration_frames, false);
+    }
+    fn note_event(&mut self, on: bool, duration_frames: Option<u64>, live: bool) {
         if on {
+            self.live_release = false;
             self.note_durations[0] = duration_frames;
             self.note_ages[0] = 0;
             if self.held == 0 {
@@ -338,15 +363,18 @@ impl SharedControls {
                 }
             }
             self.held += 1;
-        } else {
-            self.held = self.held.saturating_sub(1);
+        } else if self.held > 0 {
+            self.held -= 1;
             if self.held == 0 {
-                self.release_frames = 0;
-                for e in &mut self.controls {
-                    e.envelope.note_off();
-                }
+                self.start_release(live);
             }
         }
+    }
+    pub fn live_release_active(&self) -> bool {
+        self.live_release && self.controls.iter().any(|e| !e.envelope.is_idle())
+    }
+    pub fn live_contour_active(&self) -> bool {
+        self.live_held > 0 || self.live_release_active()
     }
     pub fn adopt_live(&mut self, old: &Self) {
         self.live_held = old.live_held;

@@ -28,12 +28,11 @@ impl Session {
         chord: daw_core::Chord,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Vec<[f32; 2]>> {
-        self.audition_pattern(
-            track,
-            chord.pattern().map_err(error)?,
-            8 * u64::from(self.project.sample_rate_hz),
-            cancelled,
-        )
+        let rate = u64::from(self.project.sample_rate_hz);
+        let (mut renderer, length) =
+            self.audition_renderer(track, chord.pattern().map_err(error)?, 8 * rate, cancelled)?;
+        renderer.begin_finite_audition(track, length - rate);
+        self.render_audition(&mut renderer, length, cancelled)
     }
 
     /// Render a short isolated MIDI note through the selected instrument and buses.
@@ -57,23 +56,12 @@ impl Session {
                 velocity: 100,
             }],
         };
-        self.audition_pattern(
+        let (mut renderer, length) = self.audition_renderer(
             track,
             pattern,
             u64::from(self.project.sample_rate_hz) / 2,
             cancelled,
-        )
-    }
-
-    fn audition_pattern(
-        &self,
-        track: Id,
-        pattern: daw_core::MidiPattern,
-        maximum_gate: u64,
-        cancelled: &impl Fn() -> bool,
-    ) -> Result<Vec<[f32; 2]>> {
-        let (mut renderer, length) =
-            self.audition_renderer(track, pattern, maximum_gate, cancelled)?;
+        )?;
         self.render_audition(&mut renderer, length, cancelled)
     }
 
@@ -93,6 +81,7 @@ impl Session {
             BeatPreview::Automatic(resolution),
             cancelled,
         )?;
+        renderer.begin_finite_audition(subtrack, gate);
         self.render_audition(
             &mut renderer,
             gate + u64::from(self.project.sample_rate_hz),
@@ -437,6 +426,75 @@ mod tests {
         assert_eq!(gate, 8 * u64::from(session.project.sample_rate_hz));
     }
 
+    #[test]
+    fn chord_and_automatic_beat_render_dry_release_inside_the_finite_tail() {
+        let peak = |samples: &[[f32; 2]]| {
+            samples
+                .iter()
+                .flatten()
+                .map(|v| v.abs())
+                .fold(0.0, f32::max)
+        };
+        for rate in daw_core::SAMPLE_RATES {
+            for capped in [false, true] {
+                if capped && rate != 48_000 {
+                    continue;
+                }
+                let (mut midi, track) = session();
+                let (mut beat, kit, row) = beat_session();
+                for session in [&mut midi, &mut beat] {
+                    session.project.sample_rate_hz = rate;
+                    if capped {
+                        session.project.edit(Edit::SetTempo { bpm: 5.0 }).unwrap();
+                    }
+                }
+                let midi_instrument = midi.project.tracks[0].instrument.as_mut().unwrap();
+                let beat_row = &mut beat.project.tracks[0].beat.as_mut().unwrap().subtracks[0];
+                for instrument in [midi_instrument, &mut beat_row.instrument] {
+                    let layer = &mut instrument.layers[0];
+                    layer.oscillators[0].waveform = daw_core::Waveform::Sine;
+                    layer.envelopes[0].settings.release.time_ms = 300.0;
+                }
+                let midi_before = midi.project.clone();
+                let beat_before = beat.project.clone();
+                let chord = daw_core::Chord {
+                    root: 0,
+                    kind: daw_core::ChordKind::Major,
+                };
+                let resolution = if capped {
+                    daw_core::BeatResolution::Quarter
+                } else {
+                    daw_core::BeatResolution::Sixteenth
+                };
+                let chord_samples = midi.audition_chord(track, chord, &|| false).unwrap();
+                let beat_samples = beat
+                    .audition_beat_step(kit, row, 0, resolution, &|| false)
+                    .unwrap();
+                for (samples, ticks) in [
+                    (chord_samples, 4 * daw_core::MIDI_TICKS_PER_BEAT),
+                    (beat_samples, resolution.step_ticks()),
+                ] {
+                    let gate = midi.project.midi_frame(ticks).min(8 * u64::from(rate)) as usize;
+                    let rate = rate as usize;
+                    assert_eq!(samples.len(), gate + rate);
+                    assert!(peak(&samples[gate - rate / 100..gate]) > 0.01);
+                    assert!(peak(&samples[gate..gate + rate / 50]) > 0.01);
+                    assert_eq!(peak(&samples[gate + rate / 3..]), 0.0);
+                    assert_eq!(samples[0], [0.0; 2]);
+                    assert_eq!(samples[gate + rate - 1], [0.0; 2]);
+                }
+                assert_eq!(midi.project, midi_before);
+                assert_eq!(beat.project, beat_before);
+
+                beat.project.tracks[0].beat.as_mut().unwrap().subtracks[0].muted = true;
+                let suppressed = beat
+                    .audition_beat_step(kit, row, 0, resolution, &|| false)
+                    .unwrap();
+                assert_eq!(peak(&suppressed), 0.0);
+            }
+        }
+    }
+
     fn natural_preview(session: &Session, track: Id, row: Id) -> Vec<[f32; 2]> {
         let mut preview = session
             .beat_subtrack_audition(track, row, 0, daw_core::BeatResolution::Sixteenth, &|| {
@@ -563,6 +621,18 @@ mod tests {
         );
         assert!(samples.len() >= rate * 4);
         assert_eq!(session.project, before);
+        let automatic = session
+            .audition_beat_step(track, row, 0, daw_core::BeatResolution::Sixteenth, &|| {
+                false
+            })
+            .unwrap();
+        assert!(
+            automatic[rate / 2..rate]
+                .iter()
+                .flatten()
+                .any(|v| v.abs() > 0.01)
+        );
+        assert_eq!(automatic.last(), Some(&[0.0; 2]));
         session.project.tracks[0].beat.as_mut().unwrap().subtracks[0]
             .instrument
             .layers[0]

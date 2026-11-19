@@ -290,8 +290,10 @@ previews its subtrack at velocity 100, saved trigger pitch plus clip transpose,
 and saved resolution; removing or clicking disabled steps remains silent.
 Prepare one isolated beat hit on the existing latest-request audition worker
 through the normal subtrack, beat Output and ancestor bus renderer. Keep mute,
-local solo, gain/pan, source preparation and one-step note-off behavior. Bound the
-preview to one step (at most eight seconds) plus one second of tail and reuse audition boundary fades.
+local solo, gain/pan and source preparation. Send normal note-off at the
+one-step gate, capped at eight seconds. Keep the prepared trigger duration for
+Note timing. Render one second of source release and effect tails after the
+gate, with the usual audition boundary fades.
 Never change live project data or transport for previews. Toggle-off, view/track
 changes, edits, Escape and existing job/dialog/focus guards cancel stale previews.
 Reuse `instrument_lanes_header` for the Beat subtracks title and Plus action so

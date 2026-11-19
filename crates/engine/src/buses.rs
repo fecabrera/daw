@@ -123,6 +123,7 @@ impl Renderer {
             }
             let (sample, mono) = track_processing::TrackProcessor {
                 monitor_only: self.monitor_only,
+                paused: self.paused,
                 sidechains: &[],
                 sidechain_sources: None,
                 audio: &mut self.audio_tracks[index],
@@ -265,6 +266,7 @@ impl Renderer {
                 let (sample, mono) = if valid {
                     track_processing::TrackProcessor {
                         monitor_only: self.monitor_only,
+                        paused: self.paused,
                         sidechains: &self.sidechains.values[index],
                         sidechain_sources: Some(&self.sidechains.indices[index]),
                         audio: &mut self.audio_tracks[index],

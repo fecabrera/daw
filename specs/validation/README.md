@@ -17,6 +17,32 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Envelope Release ownership and monitoring — 2026-11-19
+
+- Synthetic MIDI checks cover both shared modes, unmatched offs across
+  continuous wraps, and release ownership across wraps and loop-enabled gaps.
+  The tests compare dry PCM against a final-note-only reference and check
+  latency-compensated note-off at all six project rates.
+- Physical MIDI simulations check shared release at empty clip entry and exit,
+  paused Attack and Release with duration modulation and an idle live route,
+  separate-track live input, and allocation-free resume. Hosted block checks
+  cover pause with pending arrangement samples and preview feed-clock timing.
+- Chord and automatic Beat preview checks measure dry PCM immediately after
+  the gate at all six project rates. They also cover the eight-second cap,
+  suppressed Beat hits, one-shot continuation and bounded output.
+- Engine and output checks cover live Per note and shared Shape readings,
+  scheduled voice priority, stopped and paused monitoring, and idle publication
+  without another MIDI event. The owned native CLAP and VST3 fixtures verify
+  finite preview note-off at the exact frame with native latency.
+- The macOS workspace debug suite passed. The final engine, output, and
+  project debug rerun passed 370 tests with 2 existing cases ignored.
+  The workspace release suite passed 3,649 tests with 22 existing cases ignored.
+  Strict workspace Clippy, formatting, the CLI smoke check, and the native
+  hosting fixture check passed. AUv2 registration required access to the
+  macOS AudioComponent registrar outside the sandbox.
+- Native desktop Shape, physical MIDI hardware, listening, Windows and Linux
+  checks remain open.
+
 ## Windows CI capture-log test — 2026-11-19
 
 The plug-in workflow passes its Bash executable to the packaging test suite.

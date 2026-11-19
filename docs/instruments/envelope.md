@@ -22,7 +22,9 @@ across the other axis to switch between Decay time and Sustain level.
 
 During playback or live MIDI input, a dot shows the actual stage progress and level.
 For Per note mode, the dot shows one active voice. The dot disappears when
-the Envelope is idle or off. Note timing previews use a one-second reference
+the Envelope is idle or off. While playback is paused or stopped, the dot
+shows live MIDI input. A short Release can finish between display updates.
+Note timing previews use a one-second reference
 note. The Sustain width is a guide for the held stage.
 
 Time timing sets Attack and Decay in milliseconds. Note timing sets them as percentages of the triggering note's complete duration. Release remains in milliseconds. A 100% note-relative Attack rises across the full note duration; 0% Decay reaches Sustain immediately after Attack.
@@ -38,6 +40,10 @@ Hold Shift while dragging an Attack, Decay, or Release millisecond knob for fine
 | Legato | The contour starts when a note arrives with no other note held. Overlapping notes keep it running. |
 
 The Envelope lane offers all three modes. Shared track effects cannot use Per note Envelopes. Note-relative Legato keeps the first held note's duration through overlapping notes.
+
+Retrigger and Legato start Release after the last held note ends. Release starts
+from the current level, even during Attack or Decay. A clip boundary or the end
+of a sample can end the sound before the contour finishes.
 
 Turning an Envelope off removes its contribution while retaining its settings. Removing it retains settings and connections for restoration from the catalog. Use the receiving connection's Amount and power controls to adjust or disable its effect on a particular parameter.
 

@@ -109,6 +109,9 @@ publishes the complete result through normal preparation and session history.
 A continuous transport wrap releases instrument note gates without resetting their
 voices. One-shot sources, envelope releases and bus effects finish across the
 boundary; hits and directed stops in the next iteration retain normal priority.
+Only an off for an admitted gate can end that gate. Ending a group of
+scheduled gates preserves the release ages of voices already off. Shared
+Release keeps its original owners during repeated gate termination.
 Instrument clip-edge fades must not silence these voices during live looping. Gaps at
 the loop start continue the retained voices with their preceding clip gain. A choke already fading at the wrap
 continues toward silence and cannot return to full gain. Seek/reset still

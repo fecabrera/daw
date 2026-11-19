@@ -69,6 +69,7 @@ impl Batch {
             }
             let mut processor = TrackProcessor {
                 monitor_only: false,
+                paused: false,
                 sidechains: &[],
                 sidechain_sources: None,
                 audio: &mut work.audio,

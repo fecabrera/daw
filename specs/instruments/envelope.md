@@ -38,6 +38,13 @@ Shared Envelopes publish one effective value per pair. Local Envelopes aggregate
 active voices. Slots 18 and 19 publish stage position and current level for a
 shared Envelope or the first active voice with a running per-note Envelope.
 Publish NaN in both slots when idle. Callback collection adds no allocations.
+Include active physical MIDI voices in per-note extrema after scheduled
+voices, preserving the first running voice for the marker. During stopped
+or paused monitoring, publish only live-owned running contours. Publish
+idle at the callback boundary after the last eligible contour finishes.
+The output reader permits these live Envelope snapshots during monitoring.
+The existing MIDI service repaints them and clears the marker after the
+final release without another input event.
 
 Draw Shape as the first strip in both row heights. Use the shared plot surface,
 Compressor strip width and curve stroke, and the portable curve evaluator.

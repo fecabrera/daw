@@ -22,7 +22,28 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
 };
 
-type ModulationMeter = Arc<[AtomicU32; daw_engine::MODULATION_SNAPSHOT_SIZE]>;
+type ModulationMeter = Arc<ModulationReading>;
+
+struct ModulationReading {
+    values: [AtomicU32; daw_engine::MODULATION_SNAPSHOT_SIZE],
+    // The transport can change before the next callback publishes its readings.
+    playing: AtomicBool,
+}
+impl ModulationReading {
+    fn read(&self, playing: bool, envelope: bool) -> Option<daw_engine::ModulationSnapshot> {
+        let eligible = if envelope {
+            self.playing.load(Ordering::Acquire) == playing
+        } else {
+            playing
+        };
+        if !eligible {
+            return None;
+        }
+        let values =
+            std::array::from_fn(|i| f32::from_bits(self.values[i].load(Ordering::Relaxed)));
+        values[0].is_finite().then_some(values)
+    }
+}
 
 mod effect_audition;
 #[cfg(test)]
@@ -165,13 +186,19 @@ impl PreparedRenderer {
             }
         }
         for (key, meter) in &self.modulation {
-            let values = self
-                .renderer
-                .modulation_snapshot(*key)
-                .unwrap_or([f32::NAN; daw_engine::MODULATION_SNAPSHOT_SIZE]);
-            for (cell, value) in meter.iter().zip(values) {
+            let reading =
+                if !self.renderer.playing && matches!(key, ModulationTarget::Envelope { .. }) {
+                    self.renderer.live_envelope_snapshot(*key)
+                } else {
+                    self.renderer.modulation_snapshot(*key)
+                };
+            let values = reading.unwrap_or([f32::NAN; daw_engine::MODULATION_SNAPSHOT_SIZE]);
+            for (cell, value) in meter.values.iter().zip(values) {
                 cell.store(value.to_bits(), Ordering::Relaxed);
             }
+            meter
+                .playing
+                .store(self.renderer.playing, Ordering::Release);
         }
         for (meter, peaks) in self.meters.iter().zip(self.renderer.track_peaks()) {
             meter.publish_block_peaks(peaks, release);
@@ -525,7 +552,10 @@ fn modulation_meters(
         .chain(oscillator_levels)
         .map(|key| {
             let handle = previous.get(&key).cloned().unwrap_or_else(|| {
-                Arc::new(std::array::from_fn(|_| AtomicU32::new(f32::NAN.to_bits())))
+                Arc::new(ModulationReading {
+                    values: std::array::from_fn(|_| AtomicU32::new(f32::NAN.to_bits())),
+                    playing: AtomicBool::new(false),
+                })
             });
             (key, handle)
         })
@@ -999,12 +1029,12 @@ impl AudioOutput {
         &self,
         key: ModulationTarget,
     ) -> Option<daw_engine::ModulationSnapshot> {
-        if !self.status.playing.load(Ordering::Relaxed) {
-            return None;
-        }
-        let meter = self.bindings.modulation.get(&key)?;
-        let values = std::array::from_fn(|i| f32::from_bits(meter[i].load(Ordering::Relaxed)));
-        values[0].is_finite().then_some(values)
+        let playing = self.status.playing.load(Ordering::Relaxed);
+        let is_envelope = matches!(key, ModulationTarget::Envelope { .. });
+        self.bindings
+            .modulation
+            .get(&key)?
+            .read(playing, is_envelope)
     }
     pub fn gain_reduction_db(&self, id: Id) -> f32 {
         if !self.status.playing.load(Ordering::Relaxed) {
@@ -2801,6 +2831,94 @@ fn effect_test_chain(plan: &mut RenderPlan, master: bool) -> &mut Vec<daw_core::
 #[cfg(test)]
 mod modulation_meter_tests {
     use super::*;
+
+    #[test]
+    fn live_envelope_meter_publishes_release_and_final_idle_without_another_event() {
+        use daw_core::{EnvelopeMode, MidiNote, MidiPattern, OscillatorSettings};
+        for (mode, pause) in [
+            (EnvelopeMode::PerNote, false),
+            (EnvelopeMode::Retrigger, false),
+            (EnvelopeMode::Legato, true),
+        ] {
+            let mut plan = crate::tests::transport_plan();
+            plan.project.transport.playhead_frame = 0;
+            plan.project.tracks[0].clips.clear();
+            let track = plan.project.add_midi_track().unwrap();
+            let mut instrument = daw_core::InstrumentSettings::from(OscillatorSettings::default());
+            let layer = &mut instrument.layers[0];
+            let envelope = &mut layer.envelopes[0];
+            envelope.mode = mode;
+            envelope.settings.release.time_ms = 40.0;
+            let key = ModulationTarget::Envelope {
+                track,
+                layer: layer.id,
+                unit: envelope.id,
+            };
+            plan.project.tracks[1].instrument = Some(instrument);
+            if pause {
+                let clip_id = plan.project.add_midi_pattern(track, 0).unwrap();
+                plan.project
+                    .edit(daw_core::Edit::ReplaceMidiPattern {
+                        clip_id,
+                        pattern: MidiPattern {
+                            length_ticks: 960,
+                            notes: vec![MidiNote {
+                                id: Id::from_u128(10),
+                                start_tick: 0,
+                                length_ticks: 192,
+                                pitch: 60,
+                                velocity: 127,
+                            }],
+                        },
+                    })
+                    .unwrap();
+            }
+            let handles = modulation_meters(&plan, &HashMap::new());
+            let meter = &handles[&key];
+            let mut renderer =
+                PreparedRenderer::new(plan.clone(), &track_meters(&plan, &Default::default()));
+            renderer.bind_modulation(&handles);
+            renderer.prepare_live_midi();
+            renderer.live_midi_route(track, true);
+            let stage = daw_engine::ENVELOPE_PLOT_POSITION.start;
+            if pause {
+                renderer.play();
+                for _ in 0..5001 {
+                    renderer.next_sample();
+                }
+                renderer.publish_track_peaks(0.0);
+                assert!(meter.read(true, true).unwrap()[stage] >= 3.0);
+                renderer.pause();
+                assert!(meter.read(false, true).is_none());
+                renderer.next_sample();
+                renderer.publish_track_peaks(0.0);
+                assert!(meter.read(false, true).is_none());
+            }
+            let token = Id::from_u128(11);
+            assert!(renderer.live_midi_note(token, Some((69, 127))));
+            for _ in 0..513 {
+                renderer.next_sample();
+            }
+            renderer.live_midi_note(token, None);
+            for _ in 0..127 {
+                renderer.next_sample();
+            }
+            renderer.publish_track_peaks(0.0);
+            assert!((3.0..4.0).contains(&meter.read(false, true).unwrap()[stage]));
+            assert!(meter.read(false, false).is_none());
+            for _ in 0..2049 {
+                renderer.next_sample();
+            }
+            renderer.publish_track_peaks(0.0);
+            let final_reading = meter.read(false, true);
+            assert!(
+                final_reading.is_none(),
+                "{mode:?} final reading: {final_reading:?}"
+            );
+            assert!(f32::from_bits(meter.values[stage].load(Ordering::Relaxed)).is_nan());
+        }
+    }
+
     #[test]
     fn processed_parameter_snapshots_publish_without_advancing_dsp_and_follow_unit_identity() {
         let mut plan = crate::tests::transport_plan();
@@ -2894,7 +3012,7 @@ mod modulation_meter_tests {
         let handles = modulation_meters(&plan, &HashMap::new());
         assert_eq!(handles.len(), 13);
         assert!(handles.contains_key(&oscillator_level));
-        assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
+        assert!(f32::from_bits(handles[&key].values[0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
         renderer.bind_modulation(&handles);
@@ -2927,18 +3045,22 @@ mod modulation_meter_tests {
         );
         assert_eq!(
             expected.map(f32::to_bits),
-            std::array::from_fn(|i| handles[&key][i].load(Ordering::Relaxed))
+            std::array::from_fn(|i| handles[&key].values[i].load(Ordering::Relaxed))
         );
         assert_eq!(
-            f32::from_bits(handles[&amplitude][0].load(Ordering::Relaxed)),
+            f32::from_bits(handles[&amplitude].values[0].load(Ordering::Relaxed)),
             daw_core::SILENT_GAIN_DB
         );
         assert_eq!(
             renderer.modulation_values(drive_key).unwrap(),
-            std::array::from_fn(|i| f32::from_bits(handles[&drive_key][i].load(Ordering::Relaxed)))
+            std::array::from_fn(|i| f32::from_bits(
+                handles[&drive_key].values[i].load(Ordering::Relaxed)
+            ))
         );
-        assert!(f32::from_bits(handles[&oscillator][0].load(Ordering::Relaxed)).is_nan());
-        assert!(f32::from_bits(handles[&oscillator_level][0].load(Ordering::Relaxed)).is_nan());
+        assert!(f32::from_bits(handles[&oscillator].values[0].load(Ordering::Relaxed)).is_nan());
+        assert!(
+            f32::from_bits(handles[&oscillator_level].values[0].load(Ordering::Relaxed)).is_nan()
+        );
         let retained = modulation_meters(&plan, &handles);
         assert!(Arc::ptr_eq(
             &retained[&oscillator_level],
@@ -2950,7 +3072,7 @@ mod modulation_meter_tests {
         assert_eq!(eq[6], 2.4);
         assert_eq!(
             eq.map(f32::to_bits),
-            std::array::from_fn(|i| handles[&eq_key][i].load(Ordering::Relaxed))
+            std::array::from_fn(|i| handles[&eq_key].values[i].load(Ordering::Relaxed))
         );
         let compressor = renderer.modulation_snapshot(compressor_key).unwrap();
         assert!(compressor[..8].iter().all(|v| v.is_finite()));
@@ -2958,13 +3080,13 @@ mod modulation_meter_tests {
         assert_eq!(compressor[6], 0.4);
         assert_eq!(
             compressor.map(f32::to_bits),
-            std::array::from_fn(|i| handles[&compressor_key][i].load(Ordering::Relaxed))
+            std::array::from_fn(|i| handles[&compressor_key].values[i].load(Ordering::Relaxed))
         );
         let reading = renderer.modulation_snapshot(sampler).unwrap();
         assert!(reading.iter().all(|v| v.is_nan()));
         assert_eq!(
             reading.map(f32::to_bits),
-            std::array::from_fn(|i| handles[&sampler][i].load(Ordering::Relaxed))
+            std::array::from_fn(|i| handles[&sampler].values[i].load(Ordering::Relaxed))
         );
         let limiter = renderer.modulation_snapshot(limiter_key).unwrap();
         assert!(limiter[..4].iter().all(|v| v.is_finite()));
@@ -2972,7 +3094,7 @@ mod modulation_meter_tests {
         assert_eq!(limiter[2], 2.3);
         assert_eq!(
             limiter.map(f32::to_bits),
-            std::array::from_fn(|i| handles[&limiter_key][i].load(Ordering::Relaxed))
+            std::array::from_fn(|i| handles[&limiter_key].values[i].load(Ordering::Relaxed))
         );
         let ott = renderer.modulation_snapshot(ott_key).unwrap();
         let parameters = daw_core::ModulationParameter::OTT.len();
@@ -2981,7 +3103,7 @@ mod modulation_meter_tests {
         assert_eq!(ott[14], 3.0);
         assert_eq!(
             ott.map(f32::to_bits),
-            std::array::from_fn(|i| handles[&ott_key][i].load(Ordering::Relaxed))
+            std::array::from_fn(|i| handles[&ott_key].values[i].load(Ordering::Relaxed))
         );
         let next = modulation_meters(&plan, &handles);
         assert!(Arc::ptr_eq(&next[&ott_key], &handles[&ott_key]));
