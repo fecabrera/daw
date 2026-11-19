@@ -4,7 +4,9 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 
 Dropdown and context menus use padded rows and the same corner rounding as standard controls. Unit selectors, including modulation sources, layer submenus and destinations, use smaller text. Their hover background matches unselected view buttons. Selected view and toolbar buttons keep their active background when hovered or pressed. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs and the Instrument/Editor Tracks panel use the same corner rounding, row spacing and inset selection highlights.
 
-On Windows and Linux, open the burger menu for File, Edit, Clip, Track, and View. Its categories and submenus use the same design as dropdown menus. Keyboard shortcuts appear beside the actions that support them; unavailable actions appear dimmed.
+On Windows and Linux, open the application menu for File, Edit, Clip, Track, Transport and View. Its categories and submenus use the same design as dropdown menus. Keyboard shortcuts appear beside the actions that support them. Unavailable actions appear dimmed.
+
+Use **Transport** for Play or Pause, Stop, Loop, Record, Metronome, Count-in and Panic. Loop, Record, Metronome and Count-in show a checkmark when active.
 
 Right-click an item to open its available actions. Context menus for clips, tracks, unit headers, and editable strips use the same design as dropdown menus. Independent plugin editors use it for their appearance menu and EQ band actions. Escape or a click outside the menu dismisses it without applying an action.
 

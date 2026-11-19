@@ -38,6 +38,7 @@ impl DawUi {
                     menus::submenu(ui, "Edit", |ui| self.edit_menu(ui));
                     menus::submenu(ui, "Clip", |ui| self.clip_menu(ui));
                     menus::submenu(ui, "Track", |ui| self.track_menu(ui));
+                    menus::submenu(ui, "Transport", |ui| self.transport_menu(ui));
                     menus::submenu(ui, "View", |ui| self.view_menu(ui));
                 });
             });

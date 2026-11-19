@@ -5,8 +5,9 @@ pub use hosting::{PluginRequest, PluginSnapshot};
 mod midi;
 mod midi_service;
 mod midi_writer;
-pub use midi::{Preferences as MidiPreferences, TransportAction};
+pub use midi::Preferences as MidiPreferences;
 pub use midi_service::{MidiBackend, MidiDevice, MidiIngress};
+pub use transport_controls::TransportAction;
 mod bounce;
 mod graph_preview;
 mod time_signature_control;
@@ -2662,21 +2663,7 @@ impl DawUi {
             .show_separator_line(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
-                ui.add_enabled_ui(
-                    self.export_dialog.is_none()
-                        && self.overwrite.is_none()
-                        && self.export_status.is_none()
-                        && self.separation_status.is_none()
-                        && self.bounce_status.is_none()
-                        && !self.bounce_input_blocked
-                        && self.normalize_dialog.is_none()
-                        && self.collection_status.is_none()
-                        && self.project_name_dialog.is_none()
-                        && self.project_settings.is_none()
-                        && !self.settings_open
-                        && self.diagnostic_details.is_none(),
-                    |ui| self.toolbar(ui),
-                );
+                ui.add_enabled_ui(self.transport_toolbar_available(), |ui| self.toolbar(ui));
             });
         egui::Panel::bottom("status").show(ui, |ui| {
             rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
@@ -3504,15 +3491,13 @@ impl DawUi {
         );
         toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
             let playing = self.is_playing();
-            let stop_action = self.stop_action();
-            let enabled = self.session.project.transport.r#loop.enabled;
             let buttons = transport_controls::show(
                 ui,
                 playing,
-                stop_action,
-                enabled,
-                playing || self.media_ready(),
-                self.job.is_none(),
+                self.stop_action(),
+                self.transport_action_selected(TransportAction::Loop),
+                self.transport_action_enabled(TransportAction::Play),
+                self.transport_action_enabled(TransportAction::Loop),
             );
             #[cfg(test)]
             {
@@ -3520,26 +3505,25 @@ impl DawUi {
                     [buttons.play.rect, buttons.stop.rect, buttons.looping.rect];
             }
             if buttons.play.clicked() {
-                self.toggle_playback();
+                self.perform_transport_action(TransportAction::Play);
             }
             if buttons.stop.clicked() {
-                match stop_action {
-                    transport_controls::StopAction::Stop => self.stop(),
-                    transport_controls::StopAction::ReturnToOrigin => self.seek(0),
-                    transport_controls::StopAction::AtOrigin => {}
-                }
+                self.perform_transport_action(TransportAction::Stop);
             }
             if buttons.looping.clicked() {
-                self.toggle_looping();
+                self.perform_transport_action(TransportAction::Loop);
             }
-            let record =
-                transport_controls::record(ui, self.midi.recording, self.midi_record_enabled());
+            let record = transport_controls::record(
+                ui,
+                self.transport_action_selected(TransportAction::Record),
+                self.transport_action_enabled(TransportAction::Record),
+            );
             #[cfg(test)]
             {
                 self.record_bounds = record.rect;
             }
             if record.clicked() {
-                self.record_midi();
+                self.perform_transport_action(TransportAction::Record);
             }
             ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
                 self.time_control(ui)
@@ -3548,29 +3532,29 @@ impl DawUi {
                 self.musical_control(ui)
             });
             ui.separator();
-            let metronome =
-                transport_controls::metronome(ui, self.metronome_enabled, self.job.is_none());
+            let metronome = transport_controls::metronome(
+                ui,
+                self.transport_action_selected(TransportAction::Metronome),
+                self.transport_action_enabled(TransportAction::Metronome),
+            );
             #[cfg(test)]
             {
                 self.metronome_bounds = metronome.rect;
             }
             if metronome.clicked() {
-                self.metronome_enabled = !self.metronome_enabled;
-                if let Some(output) = &self.output {
-                    output.set_metronome(self.metronome_enabled);
-                }
+                self.perform_transport_action(TransportAction::Metronome);
             }
             let count_in = transport_controls::count_in(
                 ui,
-                self.settings.midi.count_in_enabled,
-                self.job.is_none() && !self.midi.busy(),
+                self.transport_action_selected(TransportAction::CountIn),
+                self.transport_action_enabled(TransportAction::CountIn),
             );
             #[cfg(test)]
             {
                 self.count_in_bounds = count_in.rect;
             }
             if count_in.clicked() {
-                self.settings.midi.count_in_enabled = !self.settings.midi.count_in_enabled;
+                self.perform_transport_action(TransportAction::CountIn);
             }
             ui.add_enabled_ui(
                 self.job.is_none() && !self.midi.busy() && !self.is_playing(),

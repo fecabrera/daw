@@ -1,5 +1,144 @@
-use crate::{icons, theme};
+use crate::{DawUi, icons, menus, theme};
 use egui::{Response, Ui, Vec2};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransportAction {
+    Play,
+    Stop,
+    Loop,
+    Record,
+    Metronome,
+    CountIn,
+    Panic,
+}
+
+impl TransportAction {
+    pub const ALL: [Self; 7] = [
+        Self::Play,
+        Self::Stop,
+        Self::Loop,
+        Self::Record,
+        Self::Metronome,
+        Self::CountIn,
+        Self::Panic,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Play => "Play",
+            Self::Stop => "Stop",
+            Self::Loop => "Loop",
+            Self::Record => "Record",
+            Self::Metronome => "Metronome",
+            Self::CountIn => "Count-in",
+            Self::Panic => "Panic",
+        }
+    }
+
+    pub fn starts_section(self) -> bool {
+        matches!(self, Self::Metronome | Self::Panic)
+    }
+}
+
+impl DawUi {
+    pub(super) fn transport_toolbar_available(&self) -> bool {
+        self.export_dialog.is_none()
+            && self.overwrite.is_none()
+            && self.export_status.is_none()
+            && self.separation_status.is_none()
+            && self.bounce_status.is_none()
+            && !self.bounce_input_blocked
+            && self.normalize_dialog.is_none()
+            && self.collection_status.is_none()
+            && self.project_name_dialog.is_none()
+            && self.project_settings.is_none()
+            && !self.settings_open
+            && self.diagnostic_details.is_none()
+    }
+
+    pub fn transport_action_enabled(&self, action: TransportAction) -> bool {
+        match action {
+            TransportAction::Panic => self.midi.service.is_some(),
+            _ if !self.transport_toolbar_available() => false,
+            TransportAction::Play => self.is_playing() || self.media_ready(),
+            TransportAction::Stop => self.stop_action() != StopAction::AtOrigin,
+            TransportAction::Loop | TransportAction::Metronome => self.job.is_none(),
+            TransportAction::Record => self.midi_record_enabled(),
+            TransportAction::CountIn => self.job.is_none() && !self.midi.busy(),
+        }
+    }
+
+    pub fn transport_action_label(&self, action: TransportAction) -> &'static str {
+        if action == TransportAction::Play && self.is_playing() {
+            "Pause"
+        } else {
+            action.label()
+        }
+    }
+
+    pub fn transport_action_selected(&self, action: TransportAction) -> bool {
+        match action {
+            TransportAction::Loop => self.session.project.transport.r#loop.enabled,
+            TransportAction::Record => self.midi.recording,
+            TransportAction::Metronome => self.metronome_enabled,
+            TransportAction::CountIn => self.settings.midi.count_in_enabled,
+            _ => false,
+        }
+    }
+
+    pub fn perform_transport_action(&mut self, action: TransportAction) {
+        if !self.transport_action_enabled(action) {
+            return;
+        }
+        match action {
+            TransportAction::Play => self.toggle_playback(),
+            TransportAction::Stop => match self.stop_action() {
+                StopAction::Stop => self.stop(),
+                StopAction::ReturnToOrigin => self.seek(0),
+                StopAction::AtOrigin => {}
+            },
+            TransportAction::Loop => self.toggle_looping(),
+            TransportAction::Record => self.record_midi(),
+            TransportAction::Metronome => {
+                self.metronome_enabled = !self.metronome_enabled;
+                if let Some(output) = &self.output {
+                    output.set_metronome(self.metronome_enabled);
+                }
+            }
+            TransportAction::CountIn => {
+                self.settings.midi.count_in_enabled = !self.settings.midi.count_in_enabled;
+            }
+            TransportAction::Panic => {
+                if let Some(service) = &self.midi.service {
+                    service.panic();
+                }
+            }
+        }
+    }
+
+    pub(super) fn transport_menu(&mut self, ui: &mut Ui) {
+        for action in TransportAction::ALL {
+            if action.starts_section() {
+                menus::separator(ui);
+            }
+            if ui
+                .add_enabled_ui(self.transport_action_enabled(action), |ui| {
+                    menus::checked_button(
+                        ui,
+                        self.transport_action_selected(action),
+                        self.transport_action_label(action),
+                        "",
+                    )
+                })
+                .inner
+                .clicked()
+            {
+                self.perform_transport_action(action);
+                ui.close();
+            }
+        }
+    }
+}
 
 pub(super) const PLAY_FILL: egui::Color32 = egui::Color32::from_rgb(51, 133, 85);
 pub(super) const STOP_FILL: egui::Color32 = egui::Color32::from_rgb(197, 78, 88);

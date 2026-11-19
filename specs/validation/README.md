@@ -17,6 +17,23 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Transport menu — 2026-11-18
+
+The macOS menu bar and the application menu share the toolbar's transport
+actions. An egui interaction test checks all seven labels and both separators,
+dispatch to the transport state, and the disabled Record action.
+
+- Formatting, strict workspace Clippy and `git diff --check` passed.
+- `cargo test --workspace --locked --offline` passed on macOS with 3,644
+  passing tests and 22 ignored.
+- `cargo test --workspace --release --locked --offline` passed on macOS with
+  3,644 passing tests and 22 ignored.
+- `sh tools/package_macos.sh debug --local` rebuilt the app and verified its
+  code signature.
+
+Native menu interaction remains unverified. The macOS UI automation service
+failed to start. Windows and Linux native interaction also remain unverified.
+
 ## Second-pass shared code — 2026-11-18
 
 Implemented the 32 findings in the second independent code consolidation

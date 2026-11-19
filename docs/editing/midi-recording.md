@@ -3,10 +3,10 @@
 1. Choose the MIDI input and channel in Application Settings.
 2. Select a MIDI track, or enable R on several MIDI tracks.
 3. Place the playhead at the recording start and disable Loop.
-4. Press the circle Record button in the transport, or choose Transport > Record MIDI.
+4. Press the circle Record button in the transport, or choose Transport > Record.
 5. Play the notes. Press Record again to finish the take. Stop and Pause also finish it.
 
-The Numbers button immediately after the metronome toggles count-in. Set its
+Choose Transport > Count-in or use the Numbers button after the metronome. Set its
 length to 1, 2 or 4 bars in Application Settings. The toggle saves that app setting;
 it does not modify the project. Count-in runs only when starting from stopped.
 The playhead stays at the recording start during count-in. The click sounds even

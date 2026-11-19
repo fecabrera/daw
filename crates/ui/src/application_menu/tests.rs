@@ -102,7 +102,7 @@ fn application_menu_reuses_dropdown_rows_submenus_and_dividers() {
             let project = app.session.project.clone();
             let initial = frame(&mut app, &ctx, vec![]);
             let root = click(&mut app, &ctx, initial.button.center());
-            for label in ["File", "Edit", "Clip", "Track", "View"] {
+            for label in ["File", "Edit", "Clip", "Track", "Transport", "View"] {
                 let text = text(&root, label);
                 assert_eq!(text.galley.rows.len(), 1);
                 assert!(
@@ -184,6 +184,73 @@ fn application_menu_reuses_dropdown_rows_submenus_and_dividers() {
             assert!(!app.dirty);
         }
     }
+}
+
+#[test]
+fn transport_submenu_groups_actions_and_dispatches_to_the_toolbar_state() {
+    let ctx = egui::Context::default();
+    crate::theme::configure(&ctx);
+    crate::fonts::configure(&ctx);
+    crate::icons::configure(&ctx);
+    let mut app = DawUi::default();
+    app.session.project.transport.playhead_frame = 480;
+    let region = &mut app.session.project.transport.r#loop;
+    region.start_frame = 0;
+    region.end_frame = 48_000;
+    region.enabled = false;
+    let initial = frame(&mut app, &ctx, vec![]);
+    let open = |app: &mut DawUi| {
+        let root = click(app, &ctx, initial.button.center());
+        let transport = text_rect(&root, "Transport").center();
+        click(app, &ctx, transport);
+        frame(app, &ctx, vec![Event::PointerMoved(transport)])
+    };
+
+    let menu = open(&mut app);
+    let rows = [
+        "Play",
+        "Stop",
+        "Loop",
+        "Record",
+        "Metronome",
+        "Count-in",
+        "Panic",
+    ]
+    .map(|label| text_rect(&menu, label));
+    for (index, pair) in rows.windows(2).enumerate() {
+        let [upper, lower] = [pair[0], pair[1]];
+        assert!(upper.bottom() < lower.top());
+        let separated = menu.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::Shape::LineSegment { points, .. }
+                if points[0].y > upper.bottom() && points[0].y < lower.top()
+                    && points[0].x <= upper.left() && points[1].x >= upper.right())
+        });
+        assert_eq!(separated, matches!(index, 3 | 5));
+    }
+    click(&mut app, &ctx, rows[1].center());
+    assert_eq!(app.session.project.transport.playhead_frame, 0);
+    assert!(!egui::Popup::is_any_open(&ctx));
+
+    let click_action = |app: &mut DawUi, label| {
+        let menu = open(app);
+        let point = text_rect(&menu, label).center();
+        click(app, &ctx, point)
+    };
+    click_action(&mut app, "Play");
+    assert_eq!(app.playback_requests, 1);
+    click_action(&mut app, "Loop");
+    assert!(app.session.project.transport.r#loop.enabled);
+    let metronome = app.metronome_enabled;
+    click_action(&mut app, "Metronome");
+    assert_eq!(app.metronome_enabled, !metronome);
+    let count_in = app.settings.midi.count_in_enabled;
+    click_action(&mut app, "Count-in");
+    assert_eq!(app.settings.midi.count_in_enabled, !count_in);
+
+    click_action(&mut app, "Record");
+    assert!(!app.transport_action_enabled(crate::TransportAction::Record));
+    assert!(!app.midi.recording);
+    assert!(app.error.is_none());
 }
 
 #[test]

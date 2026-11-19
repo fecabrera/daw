@@ -396,6 +396,9 @@ impl NativeMenu {
         let transport_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Transport"));
         transport_menu.setAutoenablesItems(false);
         for (index, action) in TransportAction::ALL.into_iter().enumerate() {
+            if action.starts_section() {
+                transport_menu.addItem(&NSMenuItem::separatorItem(mtm));
+            }
             // SAFETY: The selector is defined above with an NSMenuItem argument.
             let item = unsafe {
                 NSMenuItem::initWithTitle_action_keyEquivalent(
@@ -541,6 +544,14 @@ impl NativeMenu {
             }
             if let MenuAction::Track(action) = action {
                 item.setTitle(&NSString::from_str(ui.track_action_label(*action)));
+            }
+            if let MenuAction::Transport(action) = action {
+                item.setTitle(&NSString::from_str(ui.transport_action_label(*action)));
+                item.setState(if ui.transport_action_selected(*action) {
+                    NSControlStateValueOn
+                } else {
+                    NSControlStateValueOff
+                });
             }
             if let MenuAction::View(mode) = action {
                 item.setState(if ui.view_mode() == *mode {

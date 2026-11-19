@@ -22,21 +22,6 @@ impl Default for Preferences {
         }
     }
 }
-/// Actions shared by the app menu, native menu and keyboard input.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TransportAction {
-    Record,
-    Panic,
-}
-impl TransportAction {
-    pub const ALL: [Self; 2] = [Self::Record, Self::Panic];
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Record => "Record MIDI",
-            Self::Panic => "Panic",
-        }
-    }
-}
 pub(super) struct State {
     pub armed: HashSet<Id>,
     pub recording: bool,
@@ -98,39 +83,6 @@ pub(super) struct Arm {
     pub editable: bool,
 }
 impl DawUi {
-    pub fn transport_action_enabled(&self, action: TransportAction) -> bool {
-        match action {
-            TransportAction::Record => self.midi_record_enabled(),
-            TransportAction::Panic => self.midi.service.is_some(),
-        }
-    }
-    pub fn perform_transport_action(&mut self, action: TransportAction) {
-        if !self.transport_action_enabled(action) {
-            return;
-        }
-        match action {
-            TransportAction::Record => self.record_midi(),
-            TransportAction::Panic => {
-                if let Some(service) = &self.midi.service {
-                    service.panic();
-                }
-            }
-        }
-    }
-    pub(super) fn transport_menu(&mut self, ui: &mut egui::Ui) {
-        for action in TransportAction::ALL {
-            if ui
-                .add_enabled(
-                    self.transport_action_enabled(action),
-                    egui::Button::new(action.label()),
-                )
-                .clicked()
-            {
-                self.perform_transport_action(action);
-                ui.close();
-            }
-        }
-    }
     pub(super) fn midi_arm(&self, track: &daw_core::Track) -> Option<Arm> {
         if track.kind != daw_core::TrackKind::Midi {
             return None;
