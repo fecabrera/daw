@@ -295,6 +295,7 @@ fn model_row(
     path: Option<&std::path::Path>,
     info: Option<&daw_project::SeparationModelInfo>,
     action: &mut Option<ModelAction>,
+    audio: &mut AudioControls<'_>,
 ) {
     crate::rows::field(
         ui,
@@ -311,15 +312,18 @@ fn model_row(
                 .on_hover_text(
                     path.map_or_else(|| "Choose model".into(), |p| p.display().to_string()),
                 );
-                if ui.button("Choose…").clicked()
-                    && let Some(selected) = rfd::FileDialog::new()
+                if ui.button("Choose…").clicked() {
+                    if audio.host_picker {
+                        audio.picker = Some(PickerKind::Model(kind));
+                    } else if let Some(selected) = rfd::FileDialog::new()
                         .add_filter("ONNX model", &["onnx"])
                         .pick_file()
-                {
-                    *action = Some(ModelAction {
-                        kind,
-                        path: Some(selected),
-                    });
+                    {
+                        *action = Some(ModelAction {
+                            kind,
+                            path: Some(selected),
+                        });
+                    }
                 }
                 if ui
                     .add_enabled(path.is_some(), egui::Button::new("Clear"))
@@ -352,9 +356,26 @@ fn model_row(
     }
 }
 
+/// A file chooser owned by the active Settings surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PickerKind {
+    Model(daw_project::SeparationModelKind),
+    PluginFolder,
+}
+
+#[derive(Default)]
+pub(super) struct Navigation {
+    group: Group,
+    scroll: [f32; 6],
+}
+
 /// Discovery data and actions for the main Settings device selectors.
 #[derive(Default)]
 pub struct AudioControls<'a> {
+    pub(super) host_picker: bool,
+    pub(super) picker: Option<PickerKind>,
+    pub(super) navigation: Option<&'a mut Navigation>,
+    pub(super) folder_draft: Option<&'a mut crate::plugin_settings::FolderDraft>,
     pub(super) plugins: Option<&'a crate::plugin_settings::ScanStatus>,
     pub plugin_action: Option<daw_plugin_host::ScanMode>,
     pub plugin_cancel_requested: bool,
@@ -939,6 +960,7 @@ fn separation(
     models_enabled: bool,
     model_action: &mut Option<ModelAction>,
     label_width: f32,
+    audio: &mut AudioControls<'_>,
 ) {
     ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE && models_enabled, |ui| {
         model_row(
@@ -948,6 +970,7 @@ fn separation(
             models.cpu.as_deref(),
             model_info.get(&daw_project::SeparationModelKind::Cpu),
             model_action,
+            audio,
         );
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         model_row(
@@ -957,6 +980,7 @@ fn separation(
             models.coreml.as_deref(),
             model_info.get(&daw_project::SeparationModelKind::CoreMl),
             model_action,
+            audio,
         );
     });
     if !daw_project::SEPARATION_AVAILABLE {
@@ -964,8 +988,10 @@ fn separation(
     }
 }
 
-pub fn show(
+#[allow(clippy::too_many_arguments)]
+pub(super) fn show_surface(
     ctx: &Context,
+    surface: Option<&mut egui::Ui>,
     settings: &mut AppSettings,
     models: &daw_project::SeparationModels,
     model_info: &std::collections::HashMap<
@@ -977,119 +1003,186 @@ pub fn show(
     audio: &mut AudioControls<'_>,
 ) -> bool {
     let popup_was_open = egui::Popup::is_any_open(ctx);
-    let mut group = ctx
-        .data_mut(|data| data.get_temp::<Group>(group_id()))
-        .unwrap_or_default();
+    let mut navigation = audio.navigation.take();
+    let mut group = navigation.as_ref().map_or_else(
+        || {
+            ctx.data(|data| data.get_temp::<Group>(group_id()))
+                .unwrap_or_default()
+        },
+        |state| state.group,
+    );
+    let mut offsets = navigation.as_ref().map(|state| state.scroll);
+    let native = surface.is_some();
     let width = (ctx.content_rect().width() - 48.0).clamp(280.0, 680.0);
     let height = (ctx.content_rect().height() - 150.0).clamp(160.0, 420.0);
-    let sidebar_width = (width * 0.24).clamp(96.0, 160.0);
-    let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
-        .width(width)
-        .footer_separator(true)
-        .show_with_content(ctx, |ui| {
-            ui.horizontal_top(|ui| {
-                ui.allocate_ui_with_layout(
-                    Vec2::new(sidebar_width, height),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        ui.set_width(sidebar_width);
-                        ui.set_min_height(height);
-                        // Let the shared catalog body own the sidebar insets,
-                        // including the space next to the dialog edges/divider.
-                        let bounds = ui.max_rect().expand(f32::from(crate::dialogs::PADDING));
-                        let mut sidebar = ui.new_child(
-                            egui::UiBuilder::new()
-                                .id_salt("settings-sidebar")
-                                .max_rect(bounds),
-                        );
-                        sidebar.set_clip_rect(
-                            bounds.intersect(
-                                ui.clip_rect().expand(f32::from(crate::dialogs::PADDING)),
-                            ),
-                        );
-                        let panel = crate::panels::ControlPanel::with_width(
-                            &sidebar,
-                            bounds,
-                            bounds.width(),
-                        );
-                        panel.catalog_body(&mut sidebar, |ui| {
-                            for item in Group::ALL {
-                                if panel
-                                    .catalog_item(ui, item.label(), group == item, false)
-                                    .clicked()
-                                {
-                                    group = item;
-                                }
-                            }
-                        });
-                    },
-                );
-                let (divider, _) =
-                    ui.allocate_exact_size(Vec2::new(1.0, height), egui::Sense::hover());
-                let padding = f32::from(crate::dialogs::PADDING);
-                ui.painter()
-                    .with_clip_rect(ui.clip_rect().expand(padding))
-                    .vline(
-                        divider.center().x,
-                        (divider.top() - padding)..=(divider.bottom() + padding + 0.5),
-                        egui::Stroke::new(1.0, crate::theme::palette(ctx).border),
+    let content = |ui: &mut egui::Ui| {
+        let width = if native { ui.available_width() } else { width };
+        let height = if native {
+            ui.available_height()
+        } else {
+            height
+        };
+        let sidebar_width = (width * 0.24).clamp(96.0, 160.0);
+        ui.horizontal_top(|ui| {
+            ui.allocate_ui_with_layout(
+                Vec2::new(sidebar_width, height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_width(sidebar_width);
+                    ui.set_min_height(height);
+                    // Let the shared catalog body own the sidebar insets,
+                    // including the space next to the dialog edges/divider.
+                    let bounds = ui.max_rect().expand(f32::from(crate::dialogs::PADDING));
+                    let mut sidebar = ui.new_child(
+                        egui::UiBuilder::new()
+                            .id_salt("settings-sidebar")
+                            .max_rect(bounds),
                     );
-                ui.allocate_ui_with_layout(
-                    Vec2::new(ui.available_width(), height),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        ui.set_min_height(height);
-                        egui::ScrollArea::vertical()
-                            .id_salt(("settings-content", group))
-                            .max_height(height)
-                            .show(ui, |ui| {
-                                ui.set_min_width(ui.available_width());
-                                let label_text = |label: &str| {
-                                    ui.painter()
-                                        .layout_no_wrap(
-                                            label.into(),
-                                            egui::TextStyle::Body.resolve(ui.style()),
-                                            crate::theme::palette(ctx).text,
-                                        )
-                                        .size()
-                                        .x
-                                };
-                                let label_width = label_text("Recording offset")
-                                    .max(label_text("Split MIDI notes"))
-                                    .max(
-                                        label_text("Accent color")
-                                            + ui.spacing().item_spacing.x
-                                            + 14.0,
-                                    )
-                                    .min(ui.available_width() * 0.44);
-                                ui.strong(group.label());
-                                match group {
-                                    Group::Appearance => {
-                                        appearance(ui, ctx, settings, label_width, audio)
-                                    }
-                                    Group::Playback => playback(ui, settings, audio, label_width),
-                                    Group::TimeStretch => time_stretch(ui, settings, label_width),
-                                    Group::Midi => midi(ui, settings, audio, label_width),
-                                    Group::Plugins => {
-                                        crate::plugin_settings::show(ui, settings, audio)
-                                    }
-                                    Group::StemSeparation => separation(
-                                        ui,
-                                        models,
-                                        model_info,
-                                        models_enabled,
-                                        model_action,
-                                        label_width,
-                                    ),
-                                }
-                            });
-                    },
+                    sidebar.set_clip_rect(
+                        bounds.intersect(ui.clip_rect().expand(f32::from(crate::dialogs::PADDING))),
+                    );
+                    let panel =
+                        crate::panels::ControlPanel::with_width(&sidebar, bounds, bounds.width());
+                    panel.catalog_body(&mut sidebar, |ui| {
+                        for item in Group::ALL {
+                            if panel
+                                .catalog_item(ui, item.label(), group == item, false)
+                                .clicked()
+                            {
+                                group = item;
+                            }
+                        }
+                    });
+                },
+            );
+            let (divider, _) = ui.allocate_exact_size(Vec2::new(1.0, height), egui::Sense::hover());
+            let padding = f32::from(crate::dialogs::PADDING);
+            ui.painter()
+                .with_clip_rect(ui.clip_rect().expand(padding))
+                .vline(
+                    divider.center().x,
+                    (divider.top() - padding)..=(divider.bottom() + padding + 0.5),
+                    egui::Stroke::new(1.0, crate::theme::palette(ctx).border),
                 );
+            ui.allocate_ui_with_layout(
+                Vec2::new(ui.available_width(), height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_min_height(height);
+                    let mut scroll = egui::ScrollArea::vertical()
+                        .id_salt(("settings-content", group))
+                        .max_height(height);
+                    let index = group as usize;
+                    if let Some(offsets) = &offsets {
+                        scroll = scroll.vertical_scroll_offset(offsets[index]);
+                    }
+                    let output = scroll.show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        let label_text = |label: &str| {
+                            ui.painter()
+                                .layout_no_wrap(
+                                    label.into(),
+                                    egui::TextStyle::Body.resolve(ui.style()),
+                                    crate::theme::palette(ctx).text,
+                                )
+                                .size()
+                                .x
+                        };
+                        let label_width = label_text("Recording offset")
+                            .max(label_text("Split MIDI notes"))
+                            .max(label_text("Accent color") + ui.spacing().item_spacing.x + 14.0)
+                            .min(ui.available_width() * 0.44);
+                        ui.strong(group.label());
+                        match group {
+                            Group::Appearance => appearance(ui, ctx, settings, label_width, audio),
+                            Group::Playback => playback(ui, settings, audio, label_width),
+                            Group::TimeStretch => time_stretch(ui, settings, label_width),
+                            Group::Midi => midi(ui, settings, audio, label_width),
+                            Group::Plugins => crate::plugin_settings::show(ui, settings, audio),
+                            Group::StemSeparation => separation(
+                                ui,
+                                models,
+                                model_info,
+                                models_enabled,
+                                model_action,
+                                label_width,
+                                audio,
+                            ),
+                        }
+                    });
+                    if let Some(offsets) = &mut offsets {
+                        offsets[index] = output.state.offset.y;
+                    }
+                },
+            );
+        });
+    };
+    let close = if let Some(surface) = surface {
+        let palette = crate::theme::palette(ctx);
+        let padding = crate::dialogs::PADDING;
+        let frame = egui::Frame::new().fill(palette.panel).inner_margin(padding);
+        let height = crate::toolbars::CONTROL_HEIGHT + 2.0 * f32::from(padding);
+        let footer = egui::Panel::bottom("application-settings-footer")
+            .exact_size(height)
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(frame)
+            .show(surface, |ui| {
+                crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
+                    ui.button("Close").clicked().then_some(())
+                })
+                .inner
             });
-        })
-        .is_some();
+        egui::CentralPanel::default()
+            .frame(frame)
+            .show(surface, content);
+        let bounds = footer.response.rect;
+        surface.painter().hline(
+            bounds.x_range(),
+            bounds.top() + 0.5,
+            egui::Stroke::new(1.0, palette.border),
+        );
+        footer.inner
+    } else {
+        crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
+            .width(width)
+            .footer_separator(true)
+            .show_with_content(ctx, content)
+    };
+    if let Some(state) = &mut navigation {
+        state.group = group;
+        state.scroll = offsets.unwrap_or_default();
+    }
+    audio.navigation = navigation;
     ctx.data_mut(|data| data.insert_temp(group_id(), group));
-    close || (!popup_was_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)))
+    close.is_some()
+        || (!popup_was_open
+            && ctx.input(|input| input.modifiers.is_none() && input.key_pressed(egui::Key::Escape)))
+}
+
+#[cfg(test)]
+pub(super) fn show(
+    ctx: &Context,
+    settings: &mut AppSettings,
+    models: &daw_project::SeparationModels,
+    model_info: &std::collections::HashMap<
+        daw_project::SeparationModelKind,
+        daw_project::SeparationModelInfo,
+    >,
+    models_enabled: bool,
+    model_action: &mut Option<ModelAction>,
+    audio: &mut AudioControls<'_>,
+) -> bool {
+    show_surface(
+        ctx,
+        None,
+        settings,
+        models,
+        model_info,
+        models_enabled,
+        model_action,
+        audio,
+    )
 }
 
 #[cfg(test)]
@@ -1118,8 +1211,9 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                closed = show(
+                closed = show_surface(
                     ui.ctx(),
+                    None,
                     settings,
                     &Default::default(),
                     &Default::default(),
@@ -1296,6 +1390,7 @@ mod tests {
                                     has_path.then(|| std::path::Path::new(file)),
                                     has_info.then_some(&info),
                                     &mut None,
+                                    &mut AudioControls::default(),
                                 );
                             }
                         },

@@ -13,6 +13,9 @@ cargo run -p daw-desktop
 
 The Linux desktop uses GTK with OpenGL 3.3. Under **Settings > Appearance > Titlebar**, choose **Custom** for actual GTK window buttons alongside the application menu, project title and view controls. Choose **Native** for the regular titlebar above the app toolbar. Fresh preferences select Custom; saved choices are retained. Both modes are available on Wayland and X11.
 
+Application Settings opens in a separate GTK window. Its model and plugin
+folder choosers use GTK and attach to that window.
+
 Create a local portable ZIP from the current files without committing:
 
 ```sh

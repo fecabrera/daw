@@ -34,6 +34,14 @@ committed IM text, scroll, clipboard text and local file hover/drop. The keyboar
 controller forwards key presses and releases before it manually filters them
 through the IM context. This preserves printable shortcuts such as Space while
 still receiving committed text; no state borrow spans synchronous IM callbacks.
+
+Application Settings uses a decorated GTK transient window with its own
+GLArea, input buffer, painter, texture cache and repaint deadline. It renders
+the shared Settings session and forwards clipboard and input method events.
+The main window retains file drops, project shortcuts and preference writes.
+Reattach the transient after the main-window titlebar recreates its surface.
+Release the Settings painter with its own context current. Use a parented
+GTK chooser for the Settings model and plugin-folder requests.
 GTK BackSpace maps to egui Backspace. Surface scroll units remain points, scaled
 by UI zoom; discrete wheel units remain lines. GTK touchpad pinch scale changes
 produce egui zoom events; direct touches use egui multitouch zoom instead.

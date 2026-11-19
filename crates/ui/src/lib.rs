@@ -152,6 +152,8 @@ pub mod rows;
 mod selection_focus;
 mod selection_shortcuts;
 pub mod settings;
+mod settings_window;
+pub use settings_window::SettingsPicker;
 pub mod theme;
 mod theme_files;
 #[cfg(any(target_os = "windows", target_os = "linux", test))]
@@ -966,6 +968,7 @@ pub struct DawUi {
     settings: settings::AppSettings,
     themes: theme_files::Runtime,
     settings_open: bool,
+    settings_window: settings_window::SettingsWindow,
     diagnostic_details: Option<diagnostic_details::Report>,
     audio_settings: Option<audio_settings::AudioDialog>,
     audio_devices: audio_settings::DevicesState,
@@ -1138,6 +1141,7 @@ impl Default for DawUi {
             settings: settings::AppSettings::default(),
             themes: theme_files::Runtime::default(),
             settings_open: false,
+            settings_window: Default::default(),
             diagnostic_details: None,
             audio_settings: None,
             audio_devices: Default::default(),
@@ -1293,7 +1297,10 @@ impl DawUi {
     }
 
     pub fn open_settings(&mut self) {
-        if self.settings_enabled() {
+        if self.settings_open {
+            self.settings_window.focus_requested = true;
+        } else if self.settings_enabled() {
+            self.settings_window.begin();
             self.audio_settings = None;
             self.settings_open = true;
             self.refresh_audio_devices();
@@ -2498,6 +2505,7 @@ impl DawUi {
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
         self.themes.poll(ui.ctx(), &self.settings);
+        self.sync_settings_theme(ui.ctx());
         self.poll_hosting(ui.ctx());
         self.update_bounce_input_guard(ui.ctx());
         self.update_clip_edge_mode(ui);
@@ -2588,7 +2596,7 @@ impl DawUi {
             self.perform_file_action(action);
         }
         if !self.native_menu
-            && self.settings_enabled()
+            && (self.settings_enabled() || self.settings_open)
             && ctx.input_mut(|input| input.consume_shortcut(&Self::settings_shortcut()))
         {
             self.open_settings();
@@ -2629,20 +2637,10 @@ impl DawUi {
                 self.output = None;
             }
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
+        let deferred_close = self.settings_window.take_root_close();
+        if !self.allow_close && (deferred_close || ctx.input(|i| i.viewport().close_requested())) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            if self.job.is_none()
-                && self.regular_save.is_none()
-                && self.collection_status.is_none()
-                && self.bounce_status.is_none()
-                && !self.bounce_input_blocked
-            {
-                self.project_name_dialog = None;
-                self.settings_open = false;
-                self.audio_settings = None;
-                self.project_settings = None;
-                self.request(Action::CloseWindow);
-            }
+            self.request_desktop_close();
         }
         if self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -2690,7 +2688,10 @@ impl DawUi {
                             })
                             .unwrap_or_else(|| self.busy.clone()),
                     );
-                    if self.settings_cancel.is_some() && ui.button("Cancel").clicked() {
+                    if self.settings_cancel.is_some()
+                        && !(self.native_settings_visible() && self.separation_models.running())
+                        && ui.button("Cancel").clicked()
+                    {
                         if let Some(cancel) = &self.settings_cancel {
                             cancel.store(true, Ordering::Relaxed);
                         }
@@ -2761,7 +2762,7 @@ impl DawUi {
                             && self.collection_status.is_none()
                             && self.project_name_dialog.is_none()
                             && self.project_settings.is_none()
-                            && !self.settings_open
+                            && !self.settings_modal()
                             && self.diagnostic_details.is_none(),
                         |ui| self.selection_control(ui),
                     );
@@ -2790,7 +2791,7 @@ impl DawUi {
                         && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
-                        && !self.settings_open
+                        && !self.settings_modal()
                         && self.diagnostic_details.is_none(),
                     |ui| self.workspace(ui),
                 );
@@ -2888,7 +2889,7 @@ impl DawUi {
             && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
-            && !self.settings_open
+            && !self.settings_modal()
             && self.diagnostic_details.is_none()
         {
             let sampler_file = ctx
@@ -3120,7 +3121,7 @@ impl DawUi {
             && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
-            && !self.settings_open
+            && !self.settings_modal()
             && self.diagnostic_details.is_none()
             && self.error.is_none()
     }
@@ -6263,68 +6264,8 @@ impl DawUi {
                 None => self.project_settings = Some(draft),
             }
         }
-        if self.settings_open && self.audio_settings.is_some() {
-            self.show_audio_settings(ctx);
-        } else if self.settings_open {
-            let mut model_action = None;
-            let enabled =
-                self.job.is_none() && !self.separation_models.busy() && self.error.is_none();
-            let mut audio = settings::AudioControls {
-                plugins: Some(&self.hosting.scan),
-                themes: Some(&self.themes),
-                midi_devices: Some(&self.midi.devices),
-                midi_enabled: enabled && !self.midi.busy(),
-                midi_connected: self.midi.connected,
-                midi_take_retained: self.midi.take_retained,
-                devices: self.audio_devices.catalog.as_ref(),
-                error: self.audio_devices.error.as_deref(),
-                enabled: enabled && !self.audio_devices.busy(),
-                ..Default::default()
-            };
-            if settings::show(
-                ctx,
-                &mut self.settings,
-                &self.separation_models.validated,
-                &self.separation_models.info,
-                enabled,
-                &mut model_action,
-                &mut audio,
-            ) {
-                self.settings_open = false;
-            }
-            if audio.plugin_cancel_requested {
-                self.hosting.requests.push(PluginRequest::CancelScan);
-            }
-            if let Some(mode) = audio.plugin_action.take() {
-                self.hosting.requests.push(PluginRequest::Scan(mode));
-            }
-            let midi_panic_requested = audio.midi_panic_requested;
-            let midi_retry_requested = audio.midi_retry_requested;
-            let selection = audio.selection.take();
-            let quality_requested = audio.quality_requested;
-            let refresh_requested = audio.refresh_requested;
-            if let Some(action) = audio.theme_action {
-                self.themes.start(ctx, action);
-            }
-            if midi_retry_requested {
-                self.midi.finalizing = true;
-                self.midi_send(midi_service::Command::Retry);
-            }
-            if midi_panic_requested && let Some(service) = &self.midi.service {
-                service.panic();
-            }
-            if let Some(draft) = selection {
-                self.apply_audio_device_selection(draft);
-            }
-            if quality_requested {
-                self.open_audio_settings();
-            }
-            if refresh_requested {
-                self.refresh_audio_devices();
-            }
-            if let Some(action) = model_action {
-                self.change_separation_model(action);
-            }
+        if self.settings_open && !self.native_settings_visible() && !self.settings_root_prompt() {
+            self.draw_application_settings(ctx, None);
         }
         // A Refresh click can start discovery after this frame's receiver poll.
         if self.audio_devices.busy() {
@@ -6407,7 +6348,8 @@ impl DawUi {
                 }
             }
         }
-        if let Some(error) = self.error.clone()
+        if (!self.native_settings_visible() || self.settings_root_prompt())
+            && let Some(error) = self.error.clone()
             && dialogs::Dialog::new("Error", &error, &[("OK", ())])
                 .show(ctx)
                 .is_some()

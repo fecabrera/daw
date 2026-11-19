@@ -1,0 +1,5 @@
+The DAW contains modified eframe and egui-wgpu version 0.36.2.
+Source: https://github.com/emilk/egui/tree/49682f8baa058bf49e011035cfbd6e825f88a5ef
+MIT terms and copyright: Egui-Glow-MIT.txt.
+The DAW source tree carries the patched crates in vendor/eframe and vendor/egui-wgpu.
+Changes isolate secondary window startup failures and report successful presentation.

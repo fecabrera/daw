@@ -20,6 +20,7 @@ tracing-subscriber.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 eframe.workspace = true
+rfd.workspace = true
 wgpu = { version = "30", default-features = false, features = ["std", "metal", "dx12", "vulkan", "gles", "wgsl"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

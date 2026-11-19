@@ -86,7 +86,8 @@ impl Touches {
 pub(super) fn connect_touch(
     area: &gtk4::GLArea,
     window: &gtk4::ApplicationWindow,
-    state: &Rc<RefCell<State>>,
+    state: &Rc<RefCell<super::input::Surface>>,
+    header: Rc<impl Fn(egui::Pos2) -> bool + 'static>,
 ) {
     let zoom = gtk4::GestureZoom::new();
     let previous_scale = Rc::new(Cell::new(1.0_f64));
@@ -155,10 +156,7 @@ pub(super) fn connect_touch(
             return glib::Propagation::Proceed;
         };
         // Let the existing GTK header gesture start a native window move.
-        if phase == egui::TouchPhase::Start
-            && state.ui.settings().titlebar == TitlebarStyle::Custom
-            && state.ui.header_layout(&state.ctx).can_drag(pos)
-        {
+        if phase == egui::TouchPhase::Start && header(pos) {
             return glib::Propagation::Proceed;
         }
         let mut touches = contacts.borrow_mut();

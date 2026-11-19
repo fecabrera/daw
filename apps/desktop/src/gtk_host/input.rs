@@ -36,12 +36,31 @@ fn key(value: gdk::Key) -> Option<egui::Key> {
     })
 }
 
+pub(super) struct Surface {
+    pub ctx: egui::Context,
+    pub input: egui::RawInput,
+    pub pointer: egui::Pos2,
+}
+
+impl Surface {
+    pub fn new(ctx: egui::Context) -> Self {
+        Self {
+            ctx,
+            input: Default::default(),
+            pointer: egui::Pos2::ZERO,
+        }
+    }
+}
+
 pub(super) fn connect_input(
     area: &gtk4::GLArea,
     window: &gtk4::ApplicationWindow,
-    state: &Rc<RefCell<State>>,
+    state: &Rc<RefCell<Surface>>,
+    header: impl Fn(egui::Pos2) -> bool + 'static,
+    file_drops: bool,
 ) {
-    super::touch::connect_touch(area, window, state);
+    let header = Rc::new(header);
+    super::touch::connect_touch(area, window, state, header.clone());
     let motion = gtk4::EventControllerMotion::new();
     let input = state.clone();
     motion.connect_motion(move |controller, x, y| {
@@ -81,10 +100,7 @@ pub(super) fn connect_input(
         let touch = gesture
             .current_event()
             .is_some_and(|event| event.event_type() == gdk::EventType::TouchBegin);
-        if (gesture.current_button() == 1 || touch)
-            && state.ui.settings().titlebar == TitlebarStyle::Custom
-            && state.ui.header_layout(&state.ctx).can_drag(pos)
-        {
+        if (gesture.current_button() == 1 || touch) && header(pos) {
             if count == 2 {
                 if window.is_maximized() {
                     window.unmaximize();
@@ -252,6 +268,9 @@ pub(super) fn connect_input(
         state.ctx.request_repaint();
     });
     area.add_controller(focus);
+    if !file_drops {
+        return;
+    }
     let drop = gtk4::DropTarget::new(gdk::FileList::static_type(), gdk::DragAction::COPY);
     drop.set_preload(true);
     let input = state.clone();
@@ -316,7 +335,7 @@ fn scroll_delta(
 }
 
 fn pointer_button(
-    state: &mut State,
+    state: &mut Surface,
     button: u32,
     pressed: bool,
     flags: gdk::ModifierType,

@@ -318,6 +318,16 @@ impl Runtime {
         ctx.request_repaint();
     }
 
+    pub fn sync_settings_surface(&self, ctx: &egui::Context, settings: &AppSettings) {
+        let entry = self.active(settings);
+        let palette = (entry.base, entry.colors, settings.accent);
+        let id = egui::Id::new(("settings-surface-palette", ctx.viewport_id()));
+        if ctx.data(|data| data.get_temp(id)) != Some(palette) {
+            ctx.data_mut(|data| data.insert_temp(id, palette));
+            self.apply(ctx, settings);
+        }
+    }
+
     pub fn status(&self) -> impl Iterator<Item = &str> {
         self.error
             .iter()

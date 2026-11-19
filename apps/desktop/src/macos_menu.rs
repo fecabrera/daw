@@ -18,6 +18,7 @@ struct MenuTargetIvars {
 #[derive(Clone, Copy)]
 enum MenuAction {
     Settings,
+    Quit,
     Transport(TransportAction),
     ProjectSettings,
     File(FileAction),
@@ -82,6 +83,12 @@ define_class!(
         fn perform_settings_action(&self, _item: &NSMenuItem) {
             let _ = self.ivars().sender.send(MenuAction::Settings);
             self.ivars().context.request_repaint();
+        }
+        // SAFETY: AppKit passes the native Quit menu item to this selector.
+        #[unsafe(method(performQuitAction:))]
+        fn perform_quit_action(&self, _item: &NSMenuItem) {
+            let _ = self.ivars().sender.send(MenuAction::Quit);
+            self.ivars().context.request_repaint_of(egui::ViewportId::ROOT);
         }
         // SAFETY: The selector takes an NSMenuItem sender and returns void.
         #[unsafe(method(performProjectSettingsAction:))]
@@ -205,6 +212,19 @@ impl NativeMenu {
             unsafe { item.setTarget(Some(&target)) };
             app_menu.insertItem_atIndex(&item, 2);
             app_menu.insertItem_atIndex(&NSMenuItem::separatorItem(mtm), 3);
+            for index in 0..app_menu.numberOfItems() {
+                if let Some(item) = app_menu.itemAtIndex(index)
+                    && item.action() == Some(sel!(terminate:))
+                {
+                    // SAFETY: the retained target defines this action with the native sender ABI.
+                    unsafe {
+                        item.setAction(Some(sel!(performQuitAction:)));
+                        item.setTarget(Some(&target));
+                    }
+                    items.push((MenuAction::Quit, item));
+                    break;
+                }
+            }
             items.push((MenuAction::Settings, item));
         }
         for (index, action) in FileAction::ALL
@@ -479,6 +499,7 @@ impl NativeMenu {
         for action in self.receiver.try_iter() {
             match action {
                 MenuAction::Settings => ui.open_settings(),
+                MenuAction::Quit => ui.request_desktop_close(),
                 MenuAction::Transport(action) => ui.perform_transport_action(action),
                 MenuAction::ProjectSettings => ui.open_project_settings(),
                 MenuAction::File(action) => ui.perform_file_action(action),
@@ -568,7 +589,8 @@ impl NativeMenu {
                 });
             }
             item.setEnabled(match action {
-                MenuAction::Settings => ui.settings_enabled(),
+                MenuAction::Settings => ui.settings_enabled() || ui.native_settings_visible(),
+                MenuAction::Quit => true,
                 MenuAction::Transport(action) => ui.transport_action_enabled(*action),
                 MenuAction::ProjectSettings => ui.project_settings_enabled(),
                 MenuAction::File(action) => ui.file_action_enabled(*action),

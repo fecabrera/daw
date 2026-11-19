@@ -74,6 +74,12 @@ Audio settings changes prepare the required audio before replacing the session. 
 
 Open Settings from the app-name menu on macOS or File on Windows/Linux. Use Command+, on macOS or Ctrl+, on Windows/Linux.
 
+Settings opens in a separate window with the system titlebar. Use the titlebar
+close button or **Close** in the footer. Press Escape to close a dropdown first.
+The **Titlebar** preference controls the main DAW window. Main-window editing
+stays blocked while Settings is open. If the system window cannot open, Settings
+opens inside the main window.
+
 Choose a group in the left sidebar. The right panel shows only that group’s settings. The selected group is remembered during the app session; switching groups does not change preferences or modify the project.
 
 Settings groups controls into six categories:

@@ -10,9 +10,9 @@ pub(super) struct ScanStatus {
     pub inventory: Vec<(String, String, String)>,
 }
 #[derive(Clone)]
-struct FolderDraft {
+pub(super) struct FolderDraft {
     format: PluginFormat,
-    path: String,
+    pub(super) path: String,
 }
 impl Default for FolderDraft {
     fn default() -> Self {
@@ -91,10 +91,15 @@ pub(super) fn show(
         settings.plugin_folders.remove(index);
     }
     let key = egui::Id::new("plugin-folder-draft");
-    let mut draft = ui
-        .ctx()
-        .data(|d| d.get_temp::<FolderDraft>(key))
-        .unwrap_or_default();
+    let mut draft = controls
+        .folder_draft
+        .as_deref()
+        .cloned()
+        .unwrap_or_else(|| {
+            ui.ctx()
+                .data(|d| d.get_temp::<FolderDraft>(key))
+                .unwrap_or_default()
+        });
     ui.add_enabled_ui(!scanning, |ui| {
         ui.horizontal(|ui| {
             egui::ComboBox::from_id_salt("plugin-folder-format")
@@ -103,10 +108,12 @@ pub(super) fn show(
                     ui.selectable_value(&mut draft.format, PluginFormat::Vst3, "VST3");
                     ui.selectable_value(&mut draft.format, PluginFormat::Clap, "CLAP");
                 });
-            if ui.button("Browse…").clicked()
-                && let Some(path) = rfd::FileDialog::new().pick_folder()
-            {
-                draft.path = path.to_string_lossy().into_owned();
+            if ui.button("Browse…").clicked() {
+                if controls.host_picker {
+                    controls.picker = Some(crate::settings::PickerKind::PluginFolder);
+                } else if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    draft.path = path.to_string_lossy().into_owned();
+                }
             }
         });
         ui.add(
@@ -130,7 +137,11 @@ pub(super) fn show(
             draft.path.clear();
         }
     });
-    ui.ctx().data_mut(|d| d.insert_temp(key, draft));
+    if let Some(state) = controls.folder_draft.as_deref_mut() {
+        *state = draft;
+    } else {
+        ui.ctx().data_mut(|d| d.insert_temp(key, draft));
+    }
     ui.separator();
     ui.strong("Plugin status");
     if let Some(status) = status {

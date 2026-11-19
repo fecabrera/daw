@@ -1,6 +1,6 @@
 # Application Settings
 
-The shared Settings dialog has a left sidebar and a right content panel. List
+The shared Settings surface has a left sidebar and a right content panel. List
 Appearance, Playback, Time stretch, MIDI, Stem Separation and Plugins in that
 order. Highlight the active group with the shared catalog selection style.
 Show only that group's controls and advice in the content panel.
@@ -29,6 +29,41 @@ width override must leave other dialogs' defaults unchanged.
 Close and Escape retain the existing behavior. Escape dismisses an open popup
 before closing Settings. Audio quality defaults remain the existing secondary
 dialog opened from Playback.
+
+Desktop Settings uses a single native window with regular platform chrome
+and a standard close button. macOS WGPU and Windows Glow use a deferred eframe
+viewport. Linux uses a GTK transient window. Keep native hosting independent
+of the main-window Titlebar preference. Retain the embedded Settings dialog
+for hostless use and when the child window fails to start or present.
+Retain the session, active group, scroll positions and picker draft on fallback.
+
+Reserve a fixed bottom panel in the native client. Give the Close row the
+shared horizontal and vertical padding. Draw its full-width divider at the
+top of the footer. Size the sidebar and scrollable page from the remaining
+client height so they meet the divider and keep the footer visible as the
+window resizes.
+
+Keep one Settings session and block main-window editing through child
+retirement. Repeated Settings requests focus the current session. Native
+close and footer Close retire the session through the same state transition.
+Keep the Audio quality draft, errors and model validation status on the
+Settings surface while it owns interaction. Root-only prompts take focus
+when necessary. Queue root close while a Settings picker holds its native
+parent, then apply the normal project close guard after the picker resolves.
+Discard results from a retired Settings session.
+
+Attach native file and folder choosers to the active Settings window. Use
+`FileChooserNative` on GTK and async RFD on eframe. If the eframe Settings
+owner is unavailable after a bounded attempt, suspend Settings and use
+the verified root window as the chooser owner. Resume the same Settings
+session after the chooser returns. Keep the existing validation and commit
+paths for received file and directory choices.
+
+Write eframe autosave geometry from the main viewport, including on a
+Settings redraw. A watched child reports graphics failure or successful
+presentation to root. Contain child surface failures without stopping the
+main renderer. The host checks that the child presents within the startup
+deadline and uses the embedded surface if it does not.
 
 Validate actual group clicks, exclusive page content, preference isolation,
 device selection and MIDI-note split interaction, theme/accent behavior, smaller

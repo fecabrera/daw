@@ -17,6 +17,28 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Native Application Settings window — 2026-11-19
+
+- Shared Settings tests cover fallback and retirement guards, single-session
+  focus requests, chooser draft transfer, and stale results. The hosted
+  layout check verifies sidebar and footer visibility at minimum size,
+  vertical Close alignment, and the full-width footer divider.
+- The signed local macOS debug bundle passed three isolated-profile smoke
+  runs. The first verified presentation of a decorated Settings window,
+  main-window titlebar switching, and close. The other runs injected a
+  window creation failure and a pre-callback WGPU redraw failure. Both
+  reached the embedded fallback with the editing guard active.
+- The Linux ARM64 GTK build and Xvfb smoke passed in a Debian Trixie
+  container. Settings stayed open through Custom, Native and Custom root
+  titlebar transitions. The native Settings close signal retired the child.
+- The patched eframe Glow backend passed an x64 Windows Rust cross-target
+  check. The full desktop cross-build reached the LAME build, which needs a
+  Windows C toolchain. Native Windows and Wayland window behavior, interactive
+  chooser and focus checks, and physical audio/MIDI device checks remain open.
+- The macOS workspace debug and release suites each passed 3,652 tests with
+  22 ignored. Workspace Clippy with warnings denied, formatting, and
+  `git diff --check` passed.
+
 ## Envelope Release ownership and monitoring — 2026-11-19
 
 - Synthetic MIDI checks cover both shared modes, unmatched offs across

@@ -21,6 +21,8 @@ use std::{
 mod input;
 #[path = "gtk_host/preferences.rs"]
 mod preferences;
+#[path = "gtk_host/settings.rs"]
+mod settings;
 #[path = "gtk_host/textures.rs"]
 mod textures;
 #[path = "gtk_host/touch.rs"]
@@ -30,17 +32,18 @@ struct State {
     ui: DawUi,
     hosting: crate::hosting::Hosting,
     ctx: egui::Context,
-    input: egui::RawInput,
+    input: Rc<RefCell<input::Surface>>,
     painter: Option<egui_glow::Painter>,
     textures: textures::Textures,
     renderer_generation: u32,
     // The loader must outlive every GL entry point used by the painter.
     gl_library: Option<libloading::Library>,
     started: Instant,
-    pointer: egui::Pos2,
     close_requested: bool,
     close_approved: bool,
     smoke: bool,
+    smoke_settings_presented: bool,
+    smoke_close_settings: bool,
     saved: String,
     last_saved: Instant,
     window: preferences::WindowState,
@@ -148,21 +151,23 @@ fn build(
     {
         ui.enable_midi(Box::new(crate::midi::NativeMidi::default()), root);
     }
+    ui.enable_native_settings();
     let hosting = crate::hosting::Hosting::new(&mut ui);
     let state = Rc::new(RefCell::new(State {
         hosting,
         ui,
         ctx: ctx.clone(),
-        input: Default::default(),
+        input: Rc::new(RefCell::new(input::Surface::new(ctx.clone()))),
         painter: None,
         textures: textures::Textures::default(),
         renderer_generation: 0,
         gl_library: None,
         started: Instant::now(),
-        pointer: egui::Pos2::ZERO,
         close_requested: false,
         close_approved: false,
         smoke: smoke.is_some(),
+        smoke_settings_presented: false,
+        smoke_close_settings: false,
         saved: String::new(),
         last_saved: Instant::now() - Duration::from_secs(1),
         window: loaded.window,
@@ -178,7 +183,20 @@ fn build(
             .min(u128::from(u64::MAX)) as u64;
         wake.fetch_min(deadline, Ordering::Relaxed);
     });
-    input::connect_input(&area, &window, &state);
+    let root_input_owner = Rc::downgrade(&state);
+    input::connect_input(
+        &area,
+        &window,
+        &state.borrow().input,
+        move |point| {
+            root_input_owner.upgrade().is_some_and(|state| {
+                let state = state.borrow();
+                state.ui.settings().titlebar == TitlebarStyle::Custom
+                    && state.ui.header_layout(&state.ctx).can_drag(point)
+            })
+        },
+        true,
+    );
 
     let smoke_controls = (left.clone(), right.clone(), titlebar_box.clone());
     let destroyed = Rc::new(Cell::new(false));
@@ -296,7 +314,7 @@ fn build(
             height: left_height.max(right_height) as f32 / zoom,
             top_inset: 0.0,
         });
-        let mut input = std::mem::take(&mut state.input);
+        let mut input = std::mem::take(&mut state.input.borrow_mut().input);
         input.screen_rect = Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
             egui::vec2(area.width() as f32 / zoom, area.height() as f32 / zoom),
@@ -331,24 +349,7 @@ fn build(
                 &mut output.textures_delta,
             );
         }
-        for command in output.platform_output.commands {
-            match command {
-                egui::OutputCommand::CopyText(text) => area.clipboard().set_text(&text),
-                egui::OutputCommand::OpenUrl(url) => {
-                    gtk4::gio::AppInfo::launch_default_for_uri_async(
-                        &url.url,
-                        None::<&gtk4::gio::AppLaunchContext>,
-                        None::<&gtk4::gio::Cancellable>,
-                        |result| {
-                            if let Err(error) = result {
-                                tracing::warn!(%error, "Cannot open URL");
-                            }
-                        },
-                    );
-                }
-                _ => {}
-            }
-        }
+        forward_platform_output(area, output.platform_output.commands);
         let mut close = false;
         if let Some(viewport) = output.viewport_output.get(&egui::ViewportId::ROOT) {
             for command in &viewport.commands {
@@ -412,6 +413,9 @@ fn build(
         }
         glib::Propagation::Stop
     });
+    let settings_state = Rc::downgrade(&state);
+    let settings_root = window.downgrade();
+    let mut settings_host = settings::Host::default();
     let weak_area = area.downgrade();
     // Poll only the repaint flag; worker callbacks never access GTK objects.
     glib::timeout_add_local(Duration::from_millis(16), move || {
@@ -421,6 +425,9 @@ fn build(
         let Some(area) = weak_area.upgrade() else {
             return glib::ControlFlow::Break;
         };
+        if let (Some(window), Some(state)) = (settings_root.upgrade(), settings_state.upgrade()) {
+            settings_host.update(&window, &area, &state);
+        }
         if repaint_clock.elapsed().as_millis() >= u128::from(repaint.load(Ordering::Relaxed)) {
             repaint.store(u64::MAX, Ordering::Relaxed);
             area.queue_render();
@@ -437,6 +444,7 @@ fn build(
     area.grab_focus();
     if let Some(passed) = smoke {
         let mut step = 0;
+        let mut closing_settings = false;
         let mut deadline = Instant::now() + Duration::from_secs(10);
         glib::timeout_add_local(Duration::from_millis(600), move || {
             let (left, right, _) = &smoke_controls;
@@ -472,6 +480,19 @@ fn build(
                 window.destroy();
                 return glib::ControlFlow::Break;
             }
+            if !closing_settings && !state.ui.application_settings_open() && step == 0 {
+                state.ui.open_settings();
+                state.ctx.request_repaint();
+            }
+            if !closing_settings && !state.smoke_settings_presented {
+                if Instant::now() < deadline {
+                    return glib::ControlFlow::Continue;
+                }
+                tracing::error!("GTK smoke test: Settings did not present");
+                drop(state);
+                window.destroy();
+                return glib::ControlFlow::Break;
+            }
             if step == 0 || step == 1 {
                 if step == 1 {
                     save_snapshot(&window, "native.png");
@@ -489,10 +510,24 @@ fn build(
                 deadline = Instant::now() + Duration::from_secs(10);
                 return glib::ControlFlow::Continue;
             }
+            if !closing_settings {
+                closing_settings = true;
+                state.smoke_close_settings = true;
+                return glib::ControlFlow::Continue;
+            }
+            if state.ui.application_settings_open() || state.smoke_settings_presented {
+                if Instant::now() < deadline {
+                    return glib::ControlFlow::Continue;
+                }
+                tracing::error!("GTK smoke test: native Settings close did not retire the window");
+                drop(state);
+                window.destroy();
+                return glib::ControlFlow::Break;
+            }
             save_snapshot(&window, "custom.png");
             passed.set(true);
             eprintln!(
-                "GTK smoke test passed: rendered DAW and switched Custom → Native → Custom with real GTK controls."
+                "GTK smoke test passed: rendered DAW and switched Custom → Native → Custom with native Settings open, then closed Settings."
             );
             state.close_approved = true;
             drop(state);
@@ -553,6 +588,27 @@ fn save_settings(state: &mut State, force: bool) {
     match preferences::save(&preferences::path(), &json) {
         Ok(()) => state.saved = json,
         Err(error) => tracing::warn!(%error, "Cannot save application preferences"),
+    }
+}
+
+fn forward_platform_output(area: &gtk4::GLArea, commands: Vec<egui::OutputCommand>) {
+    for command in commands {
+        match command {
+            egui::OutputCommand::CopyText(text) => area.clipboard().set_text(&text),
+            egui::OutputCommand::OpenUrl(url) => {
+                gtk4::gio::AppInfo::launch_default_for_uri_async(
+                    &url.url,
+                    None::<&gtk4::gio::AppLaunchContext>,
+                    None::<&gtk4::gio::Cancellable>,
+                    |result| {
+                        if let Err(error) = result {
+                            tracing::warn!(%error, "Cannot open URL");
+                        }
+                    },
+                );
+            }
+            _ => {}
+        }
     }
 }
 
