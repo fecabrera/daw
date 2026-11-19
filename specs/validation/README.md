@@ -17,6 +17,23 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Windows CI capture-log test — 2026-11-19
+
+The plug-in workflow passes its Bash executable to the packaging test suite.
+On Windows, Git Bash converts the executable path to an absolute Windows path
+before native Python starts. The test also checks that a log write failure
+returns a failure when the captured command succeeds.
+
+- The shared packaging tests passed on macOS with the default Bash lookup and
+  with a different Bash executable first on PATH and the CI override set.
+- The workflow YAML parsed, its packaging step passed Bash syntax validation,
+  and `git diff --check` passed.
+- The plug-in workflow discovery command passed on macOS with 39 tests
+  passing and the PowerShell test skipped. The disk-image fixture required
+  execution outside the sandbox.
+- Formatting, workspace Clippy, and debug and release workspace tests passed.
+- Native Windows CI has not rerun.
+
 ## Instrument subviews — 2026-11-19
 
 Instrument workspace tests cover Sources as the initial tab, the three lane

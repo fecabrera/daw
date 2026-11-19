@@ -86,7 +86,12 @@ jobs:
 
       - name: Test packaging
         id: plugin_packaging_tests
-        run: bash tools/capture_ci_log.sh work/ci-logs/packaging-tests.log python -m unittest discover -s tools -p "test_*packag*.py" -v
+        run: |
+          export DAW_TEST_BASH="$BASH"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            DAW_TEST_BASH="$(cygpath -am "$BASH")"
+          fi
+          "$BASH" tools/capture_ci_log.sh work/ci-logs/packaging-tests.log python -m unittest discover -s tools -p "test_*packag*.py" -v
 
       - name: Build CLAP and VST3 libraries
         id: plugin_build
