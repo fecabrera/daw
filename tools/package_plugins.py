@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from plugin_bundle_layout import bundle_info, preview_binary
 import plistlib
 import shutil
 import subprocess
@@ -123,14 +124,8 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
         content.mkdir()
         extension = "component" if format_name == "auv2" else format_name
         bundle = content / f"{file_product}.{extension}"
-        if system == "macos":
-            binary = bundle / "Contents/MacOS" / file_product
-        elif format_name == "clap":
-            binary = bundle
-        else:
-            folder, filename = (("x86_64-win", f"{file_product}.vst3") if system == "windows"
-                                else ("x86_64-linux", f"{file_product}.so"))
-            binary = bundle / "Contents" / folder / filename
+        native_system = {"macos": "Darwin", "windows": "Windows", "linux": "Linux"}[system]
+        binary = preview_binary(bundle, file_product, format_name, native_system)
         binary.parent.mkdir(parents=True, exist_ok=True)
         metadata = target_metadata(root, unit, format_name)
         library_name = metadata.get("lib", {}).get("name", metadata["package"]["name"].replace("-", "_"))
@@ -140,11 +135,7 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
         binary.chmod(0o755)
         if system == "macos":
             identifier = manifest["clap_id"] + ("." + format_name if format_name != "clap" else "")
-            info = {
-                "CFBundleExecutable": file_product, "CFBundleIdentifier": identifier,
-                "CFBundleName": manifest["product"], "CFBundlePackageType": "BNDL",
-                "CFBundleVersion": version, "CFBundleShortVersionString": version,
-            }
+            info = bundle_info(file_product, identifier, name=product, version=version)
             if format_name == "auv2":
                 au = manifest["auv2"]
                 info["AudioComponents"] = [{"type": au["type"], "subtype": au["subtype"],

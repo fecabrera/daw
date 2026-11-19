@@ -1,39 +1,6 @@
 use daw_multiband_compressor_plugin::{Parameter as P, PluginState, Processor, SUPPORTED_RATES};
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::cell::Cell;
+use daw_plugin_support::allocation_probe::{Allocator, Region};
 use std::sync::Arc;
-thread_local! {
-    static TRACK: Cell<bool> = const { Cell::new(false) };
-    static OPERATIONS: Cell<usize> = const { Cell::new(0) };
-}
-struct Allocator;
-// SAFETY: All operations forward unchanged pointers/layouts to System.
-unsafe impl GlobalAlloc for Allocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        TRACK.with(|track| {
-            if track.get() {
-                OPERATIONS.with(|n| n.set(n.get() + 1));
-            }
-        });
-        unsafe { System.alloc(layout) }
-    }
-    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
-        TRACK.with(|track| {
-            if track.get() {
-                OPERATIONS.with(|n| n.set(n.get() + 1));
-            }
-        });
-        unsafe { System.dealloc(pointer, layout) }
-    }
-    unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-        TRACK.with(|track| {
-            if track.get() {
-                OPERATIONS.with(|n| n.set(n.get() + 1));
-            }
-        });
-        unsafe { System.realloc(pointer, layout, size) }
-    }
-}
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator;
 #[test]
@@ -82,8 +49,7 @@ fn dense_automation_presence_changes_resets_and_meter_solos_do_not_allocate_or_r
         let mut actual = Processor::new(f64::from(rate), 1, 512, state).unwrap();
         let meter = Arc::new(daw_multiband_compressor_plugin::OutputMeter::default());
         actual.set_output_meter(meter.clone());
-        OPERATIONS.with(|n| n.set(0));
-        TRACK.with(|t| t.set(true));
+        let region = Region::begin();
         for (i, p) in P::ALL.into_iter().enumerate() {
             state.set(p, p.info().maximum).unwrap();
             actual.apply_parameter(p, &state);
@@ -101,8 +67,8 @@ fn dense_automation_presence_changes_resets_and_meter_solos_do_not_allocate_or_r
         }
         actual.restore(PluginState::default());
         actual.process_sample([0.1, -0.2]);
-        TRACK.with(|t| t.set(false));
-        assert_eq!(OPERATIONS.with(Cell::get), 0);
+        let operations = region.finish();
+        assert_eq!(operations, [0; 2]);
     }
 }
 #[test]
@@ -204,16 +170,15 @@ fn spectrum_is_pcm_neutral_bounded_and_coherent_through_plugin_telemetry() {
         let mut reference = Processor::new(rate as f64, 1, 512, state).unwrap();
         actual.set_output_meter(meter.clone());
         assert_eq!(plugin::meter_values(&meter)[269], rate as f64);
-        OPERATIONS.with(|n| n.set(0));
-        TRACK.with(|t| t.set(true));
+        let region = Region::begin();
         let mut equal = true;
         for i in 0..rate / 4 {
             let x = (i as f32 * std::f32::consts::TAU * 80.0 / rate as f32).sin() * 0.5;
             equal &= actual.process_sample([x, -x]) == reference.process_sample([x, -x]);
         }
-        TRACK.with(|t| t.set(false));
+        let operations = region.finish();
         assert!(equal);
-        assert_eq!(OPERATIONS.with(Cell::get), 0);
+        assert_eq!(operations, [0; 2]);
         let frame = meter.spectrum.reading();
         assert_eq!(frame.valid_branches, 1);
         assert!(frame.magnitudes.iter().any(|v| *v > 0.01));

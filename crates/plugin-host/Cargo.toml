@@ -22,6 +22,7 @@ rtrb.workspace = true
 windows-sys = { workspace = true, features = ["Win32_UI_Shell", "Win32_System_Com", "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
+daw-plugin-support.workspace = true
 daw-drive.workspace = true
 daw-drive-plugin.workspace = true
 

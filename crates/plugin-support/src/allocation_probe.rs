@@ -41,7 +41,7 @@ pub fn begin() {
 /// # Safety
 /// Non-null pointers must refer to writable u64 output storage.
 pub unsafe fn end(allocations: *mut u64, deallocations: *mut u64) {
-    let counts = COUNTS.with(|cell| cell.replace(None)).unwrap_or([0; 2]);
+    let counts = take_counts();
     if !allocations.is_null() {
         unsafe {
             allocations.write(counts[0]);
@@ -58,4 +58,41 @@ pub unsafe fn end(allocations: *mut u64, deallocations: *mut u64) {
 pub fn probe() {
     let allocation = std::hint::black_box(Box::new([0_u8; 128]));
     drop(std::hint::black_box(allocation));
+}
+
+fn take_counts() -> [u64; 2] {
+    COUNTS.with(|cell| cell.replace(None)).unwrap_or([0; 2])
+}
+
+/// Observe this thread until the region finishes, including unwind cleanup.
+pub struct Region(std::marker::PhantomData<std::rc::Rc<()>>);
+
+impl Region {
+    pub fn begin() -> Self {
+        COUNTS.with(|counts| {
+            assert!(
+                counts.get().is_none(),
+                "allocation regions cannot be nested"
+            );
+        });
+        begin();
+        Self(std::marker::PhantomData)
+    }
+
+    pub fn finish(self) -> [u64; 2] {
+        take_counts()
+    }
+}
+
+impl Drop for Region {
+    fn drop(&mut self) {
+        take_counts();
+    }
+}
+
+pub fn assert_no_heap<T>(call: impl FnOnce() -> T) -> T {
+    let region = Region::begin();
+    let result = call();
+    assert_eq!(region.finish(), [0; 2], "callback heap operations");
+    result
 }

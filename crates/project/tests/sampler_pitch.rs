@@ -1,13 +1,16 @@
 use daw_core::{Edit, Id, MidiNote, MidiPattern, SamplerMode, SamplerSettings, StretchEngine};
 use daw_engine::Renderer;
 use daw_project::Session;
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{fs, sync::Arc};
 
-struct Fixture(PathBuf);
+#[path = "support/fixture_dir.rs"]
+mod fixture_dir;
+use fixture_dir::FixtureDir;
+
+struct Fixture(FixtureDir);
 impl Fixture {
     fn new() -> Self {
-        let path = std::env::temp_dir().join(format!("daw-sampler-pitch-{}", Id::new_v4()));
-        fs::create_dir(&path).unwrap();
+        let path = FixtureDir::new("daw-sampler-pitch");
         let mut wav = hound::WavWriter::create(
             path.join("tone.wav"),
             hound::WavSpec {
@@ -49,11 +52,6 @@ impl Fixture {
         session
             .with_sampler_file(track, owner, &self.0.join("tone.wav"))
             .unwrap()
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 fn pattern(notes: &[u8]) -> MidiPattern {

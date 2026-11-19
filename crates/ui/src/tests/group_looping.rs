@@ -29,39 +29,7 @@ fn begin_loop(
     shift: bool,
 ) -> Vec<egui::epaint::ClippedShape> {
     frame(app, ctx, vec![]);
-    frame(
-        app,
-        ctx,
-        vec![egui::Event::PointerMoved(start), button(start, true)],
-    );
-    frame_shapes(
-        app,
-        ctx,
-        vec![
-            egui::Event::ModifiersChanged(egui::Modifiers {
-                shift,
-                ..Default::default()
-            }),
-            egui::Event::PointerMoved(end),
-        ],
-        Vec2::new(1280.0, 800.0),
-    )
-}
-
-fn release(app: &mut DawUi, ctx: &egui::Context, end: Pos2, shift: bool) {
-    frame(
-        app,
-        ctx,
-        vec![egui::Event::PointerButton {
-            pos: end,
-            button: egui::PointerButton::Primary,
-            pressed: false,
-            modifiers: egui::Modifiers {
-                shift,
-                ..Default::default()
-            },
-        }],
-    );
+    shift_drag(app, ctx, start, end, shift)
 }
 
 #[test]
@@ -125,7 +93,7 @@ fn selected_header_edges_loop_every_clip_with_shared_preview_and_repeat_snapping
                     theme::ACCENT
                 ));
             }
-            release(&mut app, &ctx, end, shift);
+            shift_release(&mut app, &ctx, end, shift);
             assert!(app.error.is_none());
             assert!(app.dirty);
             assert_eq!(app.selected_clips, HashSet::from(ids));
@@ -143,7 +111,7 @@ fn selected_header_edges_loop_every_clip_with_shared_preview_and_repeat_snapping
                     format!("{:?}", original.clip)
                 );
             }
-            release(&mut app, &ctx, end, true);
+            shift_release(&mut app, &ctx, end, true);
             assert!(app.error.is_none());
             assert_eq!(app.selected_clips, HashSet::from(ids));
         }
@@ -192,7 +160,7 @@ fn group_loop_overlap_trims_selected_and_unselected_neighbors() {
             }
             assert_eq!(format!("{:?}", app.session.project), original);
             assert!(!app.dirty);
-            release(&mut app, &ctx, end, true);
+            shift_release(&mut app, &ctx, end, true);
             assert_ne!(format!("{:?}", app.session.project), original);
             assert!(app.dirty);
             assert_eq!(app.selected_clips, HashSet::from(ids));
@@ -288,7 +256,7 @@ fn group_loop_bounds_no_ops_and_cancellation_preserve_selection() {
                 );
                 output.textures_delta.clear();
             }
-            release(&mut app, &ctx, end, true);
+            shift_release(&mut app, &ctx, end, true);
             assert!(app.drag.is_none());
             assert_eq!(format!("{:?}", app.session.project), original);
             assert!(!app.dirty);

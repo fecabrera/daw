@@ -464,16 +464,8 @@ impl DawUi {
                 .ok();
         }
         let clips: Vec<_> = clips.into_iter().map(|(_, clip)| clip).collect();
-        if let Some(edge) = drag.mode.stretch_edge() {
-            self.session.project.stretched_clips(&clips, edge).ok()
-        } else if let Some(edge) = drag.mode.resize_edge() {
-            if matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight) {
-                self.session.project.trimmed_clips(&clips, edge).ok()
-            } else {
-                self.session.project.resized_clips(&clips, edge).ok()
-            }
-        } else {
-            None
-        }
+        drag.mode
+            .edge_transaction(&self.session.project, &clips)?
+            .ok()
     }
 }

@@ -636,18 +636,9 @@ impl DawUi {
                 self.midi_pattern_edges(ui, track, note_viewport);
                 self.update_midi_notes(ui);
                 self.editor_note_selection(ui, note_viewport, track);
-                let x = grid_left
-                    + (self
-                        .session
-                        .project
-                        .seconds(self.session.project.transport.playhead_frame)
-                        - self.view_scroll()) as f32
-                        * self.view_zoom();
+                let x = self.project_playhead_x(grid_left, self.view_scroll(), self.view_zoom());
                 if x >= grid_left && x <= canvas.right() {
-                    p.line_segment(
-                        [Pos2::new(x, canvas.top()), Pos2::new(x, canvas.bottom())],
-                        Stroke::new(1.0, theme::accent(ui.ctx())),
-                    );
+                    paint_project_playhead(&p, x, canvas.top(), canvas.bottom());
                 }
             });
         // Paint one shell after both panes, independent of the vertically scrolled canvas.

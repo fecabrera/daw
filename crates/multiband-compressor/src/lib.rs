@@ -2,9 +2,9 @@
 use daw_filter::crossover::CrossoverBank;
 use daw_unit_core::{
     EffectUnit, LevelMonitor, ModulationContext, ModulationDestination, ModulationInputs,
-    ModulationParameter as P, ModulationRamp as Ramp, ModulationScope, ModulationSmoother,
-    ModulationTargetId, ModulationValue, MultibandCompressorBand, MultibandCompressorSettings,
-    PortKind, ProcessingContext, RoutedDestination, UnitDescriptor,
+    ModulationParameter as P, ModulationRamp as Ramp, ModulationScope, ModulationTargetId,
+    ModulationValue, MultibandCompressorBand, MultibandCompressorSettings, PortKind,
+    ProcessingContext, RoutedDestination, UnitDescriptor,
 };
 use std::sync::{
     Arc,
@@ -15,13 +15,6 @@ fn gain(db: f32) -> f32 {
         0.0
     } else {
         10_f32.powf(db / 20.0)
-    }
-}
-fn db(v: f32) -> f32 {
-    if v <= 0.0 {
-        daw_unit_core::SILENT_GAIN_DB
-    } else {
-        20.0 * v.log10()
     }
 }
 fn clean(v: f32) -> f32 {
@@ -93,44 +86,12 @@ impl ModulationDestination for Band {
         out
     }
 }
-#[derive(Clone)]
-struct Output {
-    base: [Ramp; 2],
-    external: ModulationSmoother<2>,
-    effective: [f32; 2],
-}
-impl ModulationDestination for Output {
-    type Audio = [f32; 2];
-    const MODULATION_PARAMETERS: &'static [P] = &[P::Level, P::DryWet];
-    const MODULATION_SCOPE: ModulationScope = ModulationScope::Shared;
-    fn process_with_modulation(
-        &mut self,
-        input: [f32; 2],
-        m: &ModulationInputs,
-        _: ModulationContext,
-    ) -> [f32; 2] {
-        let b = self.base.each_mut().map(Ramp::next_value);
-        let o = self
-            .external
-            .process(m.offsets([P::Level, P::DryWet]))
-            .map(|v| v as f32);
-        self.effective = [
-            if b[0] == 0.0 {
-                daw_unit_core::SILENT_GAIN_DB
-            } else {
-                (db(b[0]) + o[0]).clamp(daw_unit_core::SILENT_GAIN_DB, 12.0)
-            },
-            (b[1] + o[1]).clamp(0.0, 1.0),
-        ];
-        input
-    }
-}
 pub struct MultibandCompressor {
     audition_allowed: Option<Arc<AtomicBool>>,
     bands: Vec<RoutedDestination<Band>>,
     order: Vec<usize>,
     present: Vec<bool>,
-    output: RoutedDestination<Output>,
+    output: RoutedDestination<daw_unit_core::WetOutput>,
     crossover: CrossoverBank,
     solo_mix: Ramp,
     bypass: Ramp,
@@ -180,11 +141,7 @@ impl MultibandCompressor {
                 })
                 .collect(),
             output: RoutedDestination::new(
-                Output {
-                    base: [gain(s.level_db), s.dry_wet].map(Ramp::new),
-                    external: ModulationSmoother::new(c),
-                    effective: [s.level_db, s.dry_wet],
-                },
+                daw_unit_core::WetOutput::new(c, s.level_db, s.dry_wet),
                 &s.modulations,
                 c.sample_rate_hz,
             ),
@@ -287,15 +244,9 @@ impl MultibandCompressor {
         }
     }
     pub fn retarget_output(&mut self, enabled: bool, level: f32, mix: f32) {
-        for (r, v) in self
-            .output
+        self.output
             .destination
-            .base
-            .iter_mut()
-            .zip([gain(level), mix])
-        {
-            r.set(v, self.fade_frames);
-        }
+            .retarget(level, mix, self.fade_frames);
         self.bypass.set(f32::from(enabled), self.fade_frames);
         self.spectrum.set_enabled(enabled);
         self.monitor.set_enabled(enabled);
@@ -372,15 +323,9 @@ impl MultibandCompressor {
         }
         self.crossover
             .retarget(s.bands.iter().map(|band| band.upper_hz), self.fade_frames);
-        for (r, v) in self
-            .output
+        self.output
             .destination
-            .base
-            .iter_mut()
-            .zip([gain(s.level_db), s.dry_wet])
-        {
-            r.set(v, self.fade_frames);
-        }
+            .retarget(s.level_db, s.dry_wet, self.fade_frames);
         self.bypass.set(f32::from(s.enabled), self.fade_frames);
         self.spectrum.set_enabled(s.enabled);
         self.monitor.set_enabled(s.enabled);
@@ -427,14 +372,9 @@ impl MultibandCompressor {
             }
         }
         self.output.inherit_routes(&mut previous.output);
-        let targets = self.output.destination.base.map(|r| r.target());
-        std::mem::swap(
-            &mut self.output.destination,
-            &mut previous.output.destination,
-        );
-        for (r, v) in self.output.destination.base.iter_mut().zip(targets) {
-            r.set(v, self.fade_frames);
-        }
+        self.output
+            .destination
+            .inherit(&mut previous.output.destination, self.fade_frames);
         self.solo_mix = previous.solo_mix;
         let target = self.bypass.target();
         self.bypass = previous.bypass;
@@ -503,7 +443,7 @@ impl MultibandCompressor {
             wet_sum = solo_dry;
         }
         self.output.process([0.0; 2], shared, context);
-        let [level, mix] = self.output.destination.effective;
+        let [level, mix] = self.output.destination.effective();
         if !allowed {
             self.solo_mix = Ramp::new(0.0);
         }
@@ -533,7 +473,7 @@ impl MultibandCompressor {
         })
     }
     pub fn effective_parameters(&self) -> [f32; 2] {
-        self.output.destination.effective
+        self.output.destination.effective()
     }
 }
 impl EffectUnit for MultibandCompressor {
@@ -564,10 +504,7 @@ impl EffectUnit for MultibandCompressor {
             b.destination.audible.reset();
         }
         self.output.reset_routes();
-        for r in &mut self.output.destination.base {
-            r.reset();
-        }
-        self.output.destination.external.reset();
+        self.output.destination.reset();
         self.crossover.reset();
     }
     fn heap_bytes(&self) -> u64 {

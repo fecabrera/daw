@@ -202,6 +202,23 @@ impl BloomDelays {
     }
 }
 
+/// Convert between a product's ordered controls and the prepared reverb slots.
+pub struct ParameterSlots<const N: usize>(pub [usize; N]);
+
+impl<const N: usize> ParameterSlots<N> {
+    pub fn gather(&self, values: [f32; 12]) -> [f32; N] {
+        self.0.map(|slot| values[slot])
+    }
+
+    pub fn scatter(&self, values: [f64; N]) -> [f64; 12] {
+        let mut offsets = [0.0; 12];
+        for (slot, value) in self.0.into_iter().zip(values) {
+            offsets[slot] = value;
+        }
+        offsets
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

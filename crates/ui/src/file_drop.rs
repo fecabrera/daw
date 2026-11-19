@@ -53,16 +53,9 @@ impl FileHover {
     }
 
     pub fn poll(&mut self) {
-        let result = self
-            .receiver
-            .as_ref()
-            .and_then(|receiver| match receiver.try_recv() {
-                Ok(result) => Some(result),
-                Err(mpsc::TryRecvError::Empty) => None,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    Some(Err("File preview worker stopped".into()))
-                }
-            });
+        let result = self.receiver.as_ref().and_then(|receiver| {
+            crate::worker_result::poll(receiver, || "File preview worker stopped".into())
+        });
         if let Some(result) = result {
             self.audio = Some(result);
             self.receiver = None;

@@ -5,13 +5,11 @@ use super::buffers::Planar;
 use super::*;
 use daw_plugin_clap::sys::{
     audio_buffer::*,
-    entry::*,
     events::*,
     ext::{
         audio_ports::*, gui::*, latency::*, note_ports::*, params::*, render::*, state::*, tail::*,
         thread_check::*, timer_support::*,
     },
-    factory::plugin_factory::*,
     host::*,
     plugin::*,
     process::*,
@@ -19,65 +17,13 @@ use daw_plugin_clap::sys::{
     version::*,
 };
 use daw_unit_core::{HostedParameter, HostedParameterDomain};
-use libloading::Library;
 use std::{
     ffi::{CStr, CString, c_char, c_void},
     ptr,
     time::{Duration, Instant},
 };
 
-pub(super) struct ClapModule {
-    entry: clap_plugin_entry,
-    factory: *const clap_plugin_factory,
-    _library: Library,
-}
-impl ClapModule {
-    pub unsafe fn open(path: &std::path::Path) -> Result<Self> {
-        let library =
-            unsafe { Library::new(crate::module_executable(crate::PluginFormat::Clap, path)?) }?;
-        let entry = unsafe { **library.get::<*const clap_plugin_entry>(b"clap_entry\0")? };
-        if !clap_version_is_compatible(entry.clap_version) || entry.deinit.is_none() {
-            return Err(Error::Invalid("Incompatible CLAP module".into()));
-        }
-        let path = crate::scan::path_cstring(path)?;
-        if !unsafe {
-            entry
-                .init
-                .ok_or_else(|| Error::Invalid("Missing CLAP initializer".into()))?(
-                path.as_ptr()
-            )
-        } {
-            return Err(Error::Invalid("CLAP module initialization failed".into()));
-        }
-        let mut module = Self {
-            entry,
-            factory: ptr::null(),
-            _library: library,
-        };
-        module.factory = unsafe {
-            module
-                .entry
-                .get_factory
-                .ok_or_else(|| Error::Invalid("Missing CLAP factory lookup".into()))?(
-                CLAP_PLUGIN_FACTORY_ID.as_ptr(),
-            )
-        }
-        .cast();
-        if module.factory.is_null() {
-            return Err(Error::Invalid("Missing CLAP plugin factory".into()));
-        }
-        Ok(module)
-    }
-}
-impl Drop for ClapModule {
-    fn drop(&mut self) {
-        if let Some(deinit) = self.entry.deinit {
-            unsafe {
-                deinit();
-            }
-        }
-    }
-}
+pub(super) use crate::clap_module::ClapModule;
 
 struct Timer {
     id: u32,
@@ -335,12 +281,12 @@ impl ClapInstance {
         });
         let id =
             CString::new(id).map_err(|_| Error::Invalid("CLAP identity contains NUL".into()))?;
-        let factory = unsafe { &*module.factory };
+        let factory = module.factory();
         let plugin = unsafe {
             factory
                 .create_plugin
                 .ok_or_else(|| Error::Invalid("Missing CLAP factory constructor".into()))?(
-                module.factory,
+                factory,
                 &*host,
                 id.as_ptr(),
             )

@@ -7,6 +7,8 @@ import platform
 import shutil
 import subprocess
 
+from plugin_bundle_layout import library_filename
+
 
 def build_artifact(fmt, work, env, fetch, forbidden, run):
     prefix = "DRIVE_" + fmt.upper()
@@ -14,9 +16,10 @@ def build_artifact(fmt, work, env, fetch, forbidden, run):
     target = work / "target"
     offline = [] if fetch else ["--offline"]
     build = cargo + ["build", "-p", "daw-drive-" + fmt, "--release", "--locked", "--target-dir", str(target)] + offline
-    artifact = {"Darwin": f"libdaw_drive_{fmt}.dylib", "Linux": f"libdaw_drive_{fmt}.so", "Windows": f"daw_drive_{fmt}.dll"}.get(platform.system())
-    if artifact is None:
+    system = platform.system()
+    if system not in ("Darwin", "Linux", "Windows"):
         raise ValueError("Unsupported development build platform")
+    artifact = library_filename(system, f"daw_drive_{fmt}")
     run(build + ["--features", "allocation-check"], work / "instrumented-build.log", env)
     instrumented = work / ("allocation-check-" + artifact)
     shutil.copy2(target / "release" / artifact, instrumented)

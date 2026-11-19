@@ -61,6 +61,24 @@ impl LfoClock {
         self.remaining = 0;
     }
     /// A map supplies integrated phase. Rate changes keep the shared correction lifecycle.
+    /// Use musical coordinates for a note division when the caller has a position.
+    pub fn phase(
+        &mut self,
+        frame: u64,
+        origin: i128,
+        rate: f64,
+        mode: daw_unit_core::LfoRateMode,
+        beats: f64,
+        quarter: Option<f64>,
+    ) -> f64 {
+        match (mode, quarter) {
+            (daw_unit_core::LfoRateMode::Note, Some(quarter)) => {
+                self.phase_at_quarters(frame, origin, quarter, beats, rate)
+            }
+            _ => self.phase_at(frame, origin, rate),
+        }
+    }
+
     pub fn phase_at_quarters(
         &mut self,
         frame: u64,
@@ -200,25 +218,22 @@ impl Lfo {
             _ => self.rate_phase = 0.0,
         }
         self.rate_last = Some((context.frame, origin, hz - base_hz));
-        let base_phase = if let Some(m) = context
-            .musical
-            .filter(|_| self.settings.rate_mode == daw_unit_core::LfoRateMode::Note)
-        {
-            let q_origin = match self.settings.restart {
+        let quarter = context.musical.map(|m| {
+            let origin = match self.settings.restart {
                 LfoRestart::Transport => 0.0,
                 LfoRestart::Retrigger => m.note_origin.unwrap_or(0.0),
                 LfoRestart::Legato => m.legato_origin.unwrap_or(0.0),
             };
-            self.clock.phase_at_quarters(
-                context.frame,
-                origin,
-                (m.quarter - q_origin).max(0.0),
-                self.settings.note_rate.beats(),
-                base_hz,
-            )
-        } else {
-            self.clock.phase_at(context.frame, origin, base_hz)
-        };
+            (m.quarter - origin).max(0.0)
+        });
+        let base_phase = self.clock.phase(
+            context.frame,
+            origin,
+            base_hz,
+            self.settings.rate_mode,
+            self.settings.note_rate.beats(),
+            quarter,
+        );
         let phase = base_phase + self.rate_phase + self.phase.next_value();
         let depth = (self.depth.next_value() + self.offsets[0]).clamp(0.0, 1.0);
         self.effective = [depth as f32, hz as f32];

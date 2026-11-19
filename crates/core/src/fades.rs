@@ -187,15 +187,11 @@ impl crate::Project {
         if clip.muted {
             return 0;
         }
-        let Some(neighbor) = track.clips.iter().find(|other| {
-            other.id != id
-                && !other.muted
-                && if left {
-                    other.end() == clip.start_frame
-                } else {
-                    other.start_frame == clip.end()
-                }
-        }) else {
+        let Some(neighbor) = track
+            .clips
+            .iter()
+            .find(|other| other.id != id && !other.muted && clip.touches_edge(other, left))
+        else {
             return 0;
         };
         let Some(own) = self.audio_edge_geometry(clip, left) else {

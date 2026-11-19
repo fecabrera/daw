@@ -49,32 +49,20 @@ fn editor_meshes_match_builtin_body_in_every_theme_scale_and_parameter_snapshot(
 #[test]
 fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
     fn event(pos: egui::Pos2, pressed: bool) -> Event {
-        Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        }
+        parity::primary_button(pos, pressed)
     }
     fn frame(
         ctx: &egui::Context,
         editor: &mut Editor,
         events: Vec<Event>,
     ) -> Vec<egui::epaint::ClippedShape> {
-        let mut out = ctx.run_ui(
-            egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    Vec2::new(WIDTH as f32, HEIGHT as f32),
-                )),
-                focused: true,
-                events,
-                ..Default::default()
-            },
+        parity::frame(
+            ctx,
+            Vec2::new(WIDTH as f32, HEIGHT as f32),
+            events,
+            None,
             |ui| editor.show(ui),
-        );
-        out.textures_delta.clear();
-        out.shapes
+        )
     }
     for note_mode in [false, true] {
         let mut state = PluginState::default();

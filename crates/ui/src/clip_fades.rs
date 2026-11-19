@@ -4,11 +4,17 @@ use daw_core::ClipFade;
 
 // The side is the fade owner's edge, which faces into the host clip.
 fn adjoins(host: &Clip, owner: &Clip, left: bool) -> bool {
-    if left {
-        owner.start_frame == host.end()
-    } else {
-        owner.end() == host.start_frame
-    }
+    owner.touches_edge(host, left)
+}
+
+fn adjoining_owners<'a>(
+    host: &'a Clip,
+    clips: &'a [Clip],
+) -> impl Iterator<Item = (&'a Clip, [bool; 2])> {
+    clips.iter().filter_map(move |owner| {
+        let edges = [adjoins(host, owner, false), adjoins(host, owner, true)];
+        (edges[0] || edges[1]).then_some((owner, edges))
+    })
 }
 
 pub(super) const WAVEFORM_TOP: f32 = 30.0;
@@ -512,9 +518,9 @@ impl DawUi {
             .tracks
             .iter()
             .find(|track| track.id == track_id)?;
-        for other in &track.clips {
+        for (other, edges) in adjoining_owners(clip, &track.clips) {
             for left in [true, false] {
-                if !adjoins(clip, other, left) {
+                if !edges[usize::from(left)] {
                     continue;
                 }
                 let Some(fade) = self.visible_crossfade(other, left, ctx) else {
@@ -605,8 +611,8 @@ impl DawUi {
         };
         let painter =
             painter.with_clip_rect(block.expand(HANDLE_RADIUS).intersect(painter.clip_rect()));
-        for other in &track.clips {
-            if other.id == clip.id || !(adjoins(clip, other, false) || adjoins(clip, other, true)) {
+        for (other, _) in adjoining_owners(clip, &track.clips) {
+            if other.id == clip.id {
                 continue;
             }
             let rect = self.clip_rect_relative_to(block, clip, other);
@@ -639,11 +645,11 @@ impl DawUi {
         let mut rect = block;
         rect.min.x -= width(clip, true);
         rect.max.x += width(clip, false);
-        for other in &track.clips {
-            if adjoins(clip, other, false) {
+        for (other, edges) in adjoining_owners(clip, &track.clips) {
+            if edges[0] {
                 rect.min.x += width(other, false);
             }
-            if adjoins(clip, other, true) {
+            if edges[1] {
                 rect.max.x -= width(other, true);
             }
         }
@@ -665,11 +671,9 @@ impl DawUi {
         else {
             return;
         };
-        for other in &track.clips {
+        for (other, edges) in adjoining_owners(clip, &track.clips) {
             let fades = self.visible_fades(other, painter.ctx());
-            if (adjoins(clip, other, false) && fades.fade_out.crossfade)
-                || (adjoins(clip, other, true) && fades.fade_in.crossfade)
-            {
+            if (edges[0] && fades.fade_out.crossfade) || (edges[1] && fades.fade_in.crossfade) {
                 let rect = self.clip_rect_relative_to(block, clip, other);
                 let painter = painter.with_clip_rect(painter.clip_rect().intersect(block));
                 let colors = theme::clip_colors(track.color, other.color);
@@ -711,9 +715,9 @@ impl DawUi {
             .iter()
             .find(|t| t.clips.iter().any(|c| c.id == clip.id))
         {
-            for other in &track.clips {
+            for (other, edges) in adjoining_owners(clip, &track.clips) {
                 for left in [true, false] {
-                    if !adjoins(clip, other, left) {
+                    if !edges[usize::from(left)] {
                         continue;
                     }
                     let Some(fade) = self.visible_crossfade(other, left, ctx) else {
@@ -777,9 +781,9 @@ impl DawUi {
         else {
             return;
         };
-        for other in &track.clips {
+        for (other, edges) in adjoining_owners(clip, &track.clips) {
             for left in [true, false] {
-                if !adjoins(clip, other, left) {
+                if !edges[usize::from(left)] {
                     continue;
                 }
                 let Some(fade) = self.visible_crossfade(other, left, painter.ctx()) else {

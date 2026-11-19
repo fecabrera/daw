@@ -3,9 +3,11 @@ pub use index::ModulationSourceIndex;
 mod graph;
 mod protocol;
 mod runtime;
+mod wet_output;
 pub use graph::*;
 pub use protocol::*;
 pub use runtime::*;
+pub use wet_output::WetOutput;
 
 use crate::EnvelopeSettings;
 use serde::{Deserialize, Serialize};

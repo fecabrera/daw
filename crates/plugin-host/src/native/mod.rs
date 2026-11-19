@@ -532,7 +532,9 @@ impl NativeHost {
                     }
                     module.clone()
                 } else {
-                    let module = Rc::new(unsafe { clap::ClapModule::open(&candidate.path) }?);
+                    let module = Rc::new(unsafe {
+                        clap::ClapModule::open(&candidate.path, crate::clap_module::Use::Host)
+                    }?);
                     self.modules.insert(
                         candidate.path.clone(),
                         (candidate.fingerprint.clone(), module.clone()),

@@ -1,7 +1,7 @@
 //! Bounded WAV-to-disk preparation with the same rate conversion as resident PCM.
+use crate::stereo_fft::StereoFft;
 use crate::{AudioData, DiskAudioWriter, Error, Result};
 use daw_core::SourceMetadata;
-use rubato::Resampler;
 use std::{fs::File, io::BufReader};
 
 pub const STREAM_PCM_THRESHOLD_BYTES: u64 = 64 * 1024 * 1024;
@@ -11,12 +11,11 @@ pub(crate) fn should_stream(frames: u64) -> bool {
 
 struct RateWriter {
     output: DiskAudioWriter,
-    converter: Option<rubato::FftFixedIn<f32>>,
+    converter: Option<StereoFft>,
     input: Vec<Vec<f32>>,
     converted: Vec<Vec<f32>>,
     stereo: Vec<[f32; 2]>,
     filled: usize,
-    skip: usize,
     remaining: u64,
     _scratch: crate::AudioReservation,
 }
@@ -26,23 +25,14 @@ impl RateWriter {
             crate::AudioReservation::new(0, crate::resample_scratch(input_rate, output_rate)?)?;
         let output = DiskAudioWriter::new(frames)?;
         let converter = (input_rate != output_rate)
-            .then(|| {
-                rubato::FftFixedIn::<f32>::new(
-                    input_rate as usize,
-                    output_rate as usize,
-                    1024,
-                    2,
-                    2,
-                )
-            })
+            .then(|| StereoFft::new(input_rate, output_rate))
             .transpose()
             .map_err(|e| Error(e.to_string()))?;
-        let input_size = converter.as_ref().map_or(8192, |c| c.input_frames_next());
+        let input_size = converter.as_ref().map_or(8192, StereoFft::input_frames);
         let converted = converter
             .as_ref()
-            .map_or_else(Vec::new, |c| c.output_buffer_allocate(true));
+            .map_or_else(Vec::new, StereoFft::output_buffer);
         let output_size = converted.first().map_or(8192, Vec::len);
-        let skip = converter.as_ref().map_or(0, |c| c.output_delay());
         Ok(Self {
             output,
             converter,
@@ -50,7 +40,6 @@ impl RateWriter {
             converted,
             stereo: vec![[0.; 2]; output_size],
             filled: 0,
-            skip,
             remaining: frames,
             _scratch: scratch,
         })
@@ -69,24 +58,23 @@ impl RateWriter {
         Ok(())
     }
     fn flush(&mut self) -> Result<()> {
-        let count = if let Some(converter) = &mut self.converter {
-            let (_, frames) = converter
-                .process_into_buffer(&self.input, &mut self.converted, None)
+        let take = if let Some(converter) = &mut self.converter {
+            let window = converter
+                .process(&self.input, &mut self.converted, self.remaining)
                 .map_err(|e| Error(e.to_string()))?;
-            for (index, frame) in self.stereo[..frames].iter_mut().enumerate() {
+            let take = window.len();
+            for (frame, index) in self.stereo.iter_mut().zip(window) {
                 *frame = [self.converted[0][index], self.converted[1][index]];
             }
-            frames
+            take
         } else {
-            for (index, frame) in self.stereo[..self.filled].iter_mut().enumerate() {
+            let take = self.remaining.min(self.filled as u64) as usize;
+            for (index, frame) in self.stereo[..take].iter_mut().enumerate() {
                 *frame = [self.input[0][index], self.input[1][index]];
             }
-            self.filled
+            take
         };
-        let skip = self.skip.min(count);
-        self.skip -= skip;
-        let take = self.remaining.min((count - skip) as u64) as usize;
-        self.output.write(&self.stereo[skip..skip + take])?;
+        self.output.write(&self.stereo[..take])?;
         self.remaining -= take as u64;
         self.input.iter_mut().for_each(|channel| channel.fill(0.));
         self.filled = 0;

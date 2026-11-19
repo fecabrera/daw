@@ -1,7 +1,7 @@
 //! Bounded worker-side AAC-LC/ADTS export. The codec keeps history across writes.
+use crate::stereo_fft::StereoFft;
 use crate::{AudioEncoder, AudioReservation, Error, Result, resampled_frames};
 use oxideav_aac::encoder::{EncoderConfig, StreamEncoder};
-use rubato::Resampler;
 use std::{
     fs::File,
     io::{BufWriter, Write},
@@ -12,13 +12,12 @@ pub struct AacEncoder {
     encoder: StreamEncoder,
     writer: BufWriter<File>,
     pcm: Vec<i16>,
-    converter: Option<rubato::FftFixedIn<f32>>,
+    converter: Option<StereoFft>,
     input: Vec<Vec<f32>>,
     output: Vec<Vec<f32>>,
     input_filled: usize,
     input_frames: u64,
     output_frames: u64,
-    delay: usize,
     input_rate: u32,
     output_rate: u32,
     pub(super) clipped: bool,
@@ -35,20 +34,16 @@ impl AacEncoder {
             crate::resample_scratch(input_rate, output_rate)? + 8 * 1024 * 1024,
         )?;
         let converter = if input_rate != output_rate {
-            Some(
-                rubato::FftFixedIn::new(input_rate as usize, output_rate as usize, 1024, 2, 2)
-                    .map_err(error)?,
-            )
+            Some(StereoFft::new(input_rate, output_rate).map_err(error)?)
         } else {
             None
         };
         let input = converter
             .as_ref()
-            .map_or_else(Vec::new, |c| c.input_buffer_allocate(true));
+            .map_or_else(Vec::new, StereoFft::input_buffer);
         let output = converter
             .as_ref()
-            .map_or_else(Vec::new, |c| c.output_buffer_allocate(true));
-        let delay = converter.as_ref().map_or(0, |c| c.output_delay());
+            .map_or_else(Vec::new, StereoFft::output_buffer);
         let encoder = StreamEncoder::new(EncoderConfig {
             sample_rate: output_rate,
             channels: 2,
@@ -65,7 +60,6 @@ impl AacEncoder {
             input_filled: 0,
             input_frames: 0,
             output_frames: 0,
-            delay,
             input_rate,
             output_rate,
             clipped: false,
@@ -91,17 +85,17 @@ impl AacEncoder {
         Ok(())
     }
     fn convert_block(&mut self, target: u64) -> Result<()> {
-        let (_, count) = self
+        let window = self
             .converter
             .as_mut()
             .unwrap()
-            .process_into_buffer(&self.input, &mut self.output, None)
+            .process(
+                &self.input,
+                &mut self.output,
+                target.saturating_sub(self.output_frames),
+            )
             .map_err(error)?;
-        let skip = self.delay.min(count);
-        self.delay -= skip;
-        let keep = (count - skip)
-            .min(usize::try_from(target.saturating_sub(self.output_frames)).unwrap_or(usize::MAX));
-        for i in skip..skip + keep {
+        for i in window {
             self.push_frame([self.output[0][i], self.output[1][i]])?;
         }
         self.input_filled = 0;

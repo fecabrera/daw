@@ -1,11 +1,14 @@
 use daw_core::{BounceMode, BounceRequest, Edit, Id, SendTap, TrackSend};
 use daw_project::{BounceError, BounceProgress, Session, SessionHistory};
 use std::{fs, path::PathBuf, sync::atomic::Ordering};
-struct Fixture(PathBuf);
+#[path = "support/fixture_dir.rs"]
+mod fixture_dir;
+use fixture_dir::FixtureDir;
+
+struct Fixture(FixtureDir);
 impl Fixture {
     fn new() -> Self {
-        let path = std::env::temp_dir().join(format!("daw-bounce-test-{}", Id::new_v4()));
-        fs::create_dir(&path).unwrap();
+        let path = FixtureDir::new("daw-bounce-test");
         Self(path)
     }
     fn session(&self) -> Session {
@@ -28,11 +31,6 @@ impl Fixture {
         let mut session = Session::default();
         session.import(&path, None, 1200).unwrap();
         session
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 fn render(s: &Session, frames: usize) -> Vec<[f32; 2]> {

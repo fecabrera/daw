@@ -1,41 +1,8 @@
 //! Preserve the full-retarget reference while bounding each automation update.
 use daw_multiband_eq_plugin::{Parameter as P, PluginState, Processor, SUPPORTED_RATES};
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::cell::Cell;
+use daw_plugin_support::allocation_probe::{Allocator, Region};
 use std::sync::Arc;
 use std::{hint::black_box, time::Instant};
-thread_local! {
-    static TRACK: Cell<bool> = const { Cell::new(false) };
-    static OPERATIONS: Cell<usize> = const { Cell::new(0) };
-}
-struct Allocator;
-// SAFETY: All operations forward unchanged pointers/layouts to System.
-unsafe impl GlobalAlloc for Allocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        TRACK.with(|track| {
-            if track.get() {
-                OPERATIONS.with(|n| n.set(n.get() + 1));
-            }
-        });
-        unsafe { System.alloc(layout) }
-    }
-    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
-        TRACK.with(|track| {
-            if track.get() {
-                OPERATIONS.with(|n| n.set(n.get() + 1));
-            }
-        });
-        unsafe { System.dealloc(pointer, layout) }
-    }
-    unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-        TRACK.with(|track| {
-            if track.get() {
-                OPERATIONS.with(|n| n.set(n.get() + 1));
-            }
-        });
-        unsafe { System.realloc(pointer, layout, size) }
-    }
-}
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator;
 fn state() -> PluginState {
@@ -58,8 +25,7 @@ fn per_field_updates_preserve_dense_automation_ramps_reset_meters_and_heap_bound
         let expected = Arc::new(daw_multiband_eq_plugin::OutputMeter::default());
         actual.set_output_meter(meter.clone());
         reference.set_output_meter(expected.clone());
-        OPERATIONS.with(|n| n.set(0));
-        TRACK.with(|t| t.set(true));
+        let region = Region::begin();
         for frame in 0..64 {
             for p in P::ALL {
                 state
@@ -97,8 +63,8 @@ fn per_field_updates_preserve_dense_automation_ramps_reset_meters_and_heap_bound
                 daw_multiband_eq_plugin::meter_values(&expected)
             );
         }
-        TRACK.with(|t| t.set(false));
-        assert_eq!(OPERATIONS.with(Cell::get), 0);
+        let operations = region.finish();
+        assert_eq!(operations, [0; 2]);
     }
 }
 
@@ -183,8 +149,7 @@ fn continuous_spectrum_processing_and_lifecycle_preserve_pcm_without_heap_operat
         actual.set_spectrum_meter(meter.clone());
         let mut prepared = daw_equalizer::MultibandEq::new(c, &settings);
         prepared.set_spectrum_meter(meter.clone());
-        OPERATIONS.with(|n| n.set(0));
-        TRACK.with(|t| t.set(true));
+        let region = Region::begin();
         for frame in 0..rate {
             let phase = frame as f64 * std::f64::consts::TAU * 87.3 / f64::from(rate);
             let input = [phase.sin() as f32 * 1.3, phase.cos() as f32 * 0.7];
@@ -204,7 +169,7 @@ fn continuous_spectrum_processing_and_lifecycle_preserve_pcm_without_heap_operat
         for _ in 0..512 {
             black_box(prepared.process_sample([0.1, -0.1]));
         }
-        TRACK.with(|t| t.set(false));
-        assert_eq!(OPERATIONS.with(Cell::get), 0, "rate={rate}");
+        let operations = region.finish();
+        assert_eq!(operations, [0; 2], "rate={rate}");
     }
 }

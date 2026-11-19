@@ -6,21 +6,34 @@ use crate::{
 impl Project {
     pub fn can_merge_audio_clips(&self, ids: &[Id]) -> bool {
         self.merge_targets(ids)
-            .is_ok_and(|(_, clips)| clips.iter().all(|c| self.audio_asset(c.asset_id).is_some()))
+            .is_ok_and(|(_, clips)| self.audio_merge_eligible(&clips))
     }
     pub fn can_merge_clips(&self, ids: &[Id]) -> bool {
-        self.can_merge_audio_clips(ids) || self.can_merge_pattern_clips(ids)
+        self.merge_targets(ids).is_ok_and(|(_, clips)| {
+            self.audio_merge_eligible(&clips) || self.pattern_merge_eligible(&clips)
+        })
     }
     pub fn merged_clips(&self, ids: &[Id]) -> Result<(Self, Id)> {
-        if self.can_merge_audio_clips(ids) {
-            self.merge_audio_clips(ids)
+        let (track, clips) = self.merge_targets(ids)?;
+        if self.audio_merge_eligible(&clips) {
+            self.merge_audio_targets(track, clips)
         } else {
-            self.merge_pattern_clips(ids)
+            self.merge_patterns(track, clips)
         }
     }
     pub fn merge_audio_clips(&self, ids: &[Id]) -> Result<(Self, Id)> {
         let (track, clips) = self.merge_targets(ids)?;
-        if clips.iter().any(|c| self.audio_asset(c.asset_id).is_none()) {
+        self.merge_audio_targets(track, clips)
+    }
+
+    fn audio_merge_eligible(&self, clips: &[&crate::Clip]) -> bool {
+        clips
+            .iter()
+            .all(|clip| self.audio_asset(clip.asset_id).is_some())
+    }
+
+    fn merge_audio_targets(&self, track: usize, clips: Vec<&crate::Clip>) -> Result<(Self, Id)> {
+        if !self.audio_merge_eligible(&clips) {
             return Err(Error(
                 "Audio Merge requires audio clips on one track".into(),
             ));

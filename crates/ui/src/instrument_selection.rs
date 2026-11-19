@@ -41,21 +41,21 @@ impl DawUi {
         {
             self.edit(Edit::Beat {
                 track_id: parent,
-                edit: daw_core::BeatEdit::SetMix {
-                    id: row.id,
-                    gain_db: row.instrument.main.gain_db,
-                    pan: row.instrument.main.pan,
-                    muted: if action == TrackAction::Mute {
+                edit: crate::mix_controls::MixValues::new(
+                    row.instrument.main.gain_db,
+                    row.instrument.main.pan,
+                    if action == TrackAction::Mute {
                         !row.muted
                     } else {
                         row.muted
                     },
-                    soloed: if action == TrackAction::Solo {
+                    if action == TrackAction::Solo {
                         !row.soloed
                     } else {
                         row.soloed
                     },
-                },
+                )
+                .beat_edit(row.id),
             });
             return;
         }

@@ -154,14 +154,14 @@ impl Chorus {
         if self.last_frame != frame.checked_sub(1) {
             self.rate_phase = 0.0;
         }
-        let base_phase = if let Some(m) =
-            musical.filter(|_| self.rate_mode == daw_unit_core::LfoRateMode::Note)
-        {
-            self.clock
-                .phase_at_quarters(frame, 0, m.quarter, self.note_rate.beats(), base_rate)
-        } else {
-            self.clock.phase_at(frame, 0, base_rate)
-        };
+        let base_phase = self.clock.phase(
+            frame,
+            0,
+            base_rate,
+            self.rate_mode,
+            self.note_rate.beats(),
+            musical.map(|m| m.quarter),
+        );
         self.phase = (base_phase + self.rate_phase).rem_euclid(1.0);
         self.rate_phase = (self.rate_phase + (rate - base_rate) / self.rate).rem_euclid(1.0);
         self.last_frame = Some(frame);

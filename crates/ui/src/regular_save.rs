@@ -54,16 +54,11 @@ impl DawUi {
     }
 
     pub(super) fn poll_regular_save(&mut self) {
-        let result = self
-            .regular_save
-            .as_ref()
-            .and_then(|save| match save.receiver.try_recv() {
-                Ok(result) => Some(result),
-                Err(mpsc::TryRecvError::Empty) => None,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    Some(Err("Project save stopped unexpectedly".into()))
-                }
-            });
+        let result = self.regular_save.as_ref().and_then(|save| {
+            crate::worker_result::poll(&save.receiver, || {
+                "Project save stopped unexpectedly".into()
+            })
+        });
         if let Some(result) = result {
             let saved = self.regular_save.take().unwrap();
             match result {

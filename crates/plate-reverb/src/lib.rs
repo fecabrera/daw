@@ -1,10 +1,12 @@
 //! Portable Plate Reverb; prepared storage and shared modulation/meter lifecycle.
-use daw_reverb_core::{Parameters, Reverb};
+use daw_reverb_core::{ParameterSlots, Parameters, Reverb};
 use daw_unit_core::{
     EffectUnit, ModulationContext, ModulationDestination, ModulationDestinationSettings,
     ModulationInputs, ModulationParameter as P, ModulationScope, ModulationSmoother,
     PlateReverbSettings as Settings, PortKind, ProcessingContext, UnitDescriptor,
 };
+const SLOTS: ParameterSlots<9> = ParameterSlots([1, 0, 2, 3, 4, 8, 9, 10, 6]);
+
 #[derive(Clone)]
 pub struct PlateReverb {
     core: Reverb,
@@ -57,8 +59,7 @@ impl PlateReverb {
         self.core.set_output_peak_meter(m);
     }
     pub fn effective_parameters(&self) -> [f32; 9] {
-        let v = self.core.effective();
-        [v[1], v[0], v[2], v[3], v[4], v[8], v[9], v[10], v[6]]
+        SLOTS.gather(self.core.effective())
     }
     pub fn process_modulated_at(
         &mut self,
@@ -67,18 +68,8 @@ impl PlateReverb {
         _: f32,
         offsets: [f32; 9],
     ) -> [f32; 2] {
-        let o = self.offsets.process(offsets);
-        let mut offsets = [0.0; 12];
-        offsets[1] = o[0];
-        offsets[0] = o[1];
-        offsets[2] = o[2];
-        offsets[3] = o[3];
-        offsets[4] = o[4];
-        offsets[8] = o[5];
-        offsets[9] = o[6];
-        offsets[10] = o[7];
-        offsets[6] = o[8];
-        self.core.sample(input, offsets)
+        self.core
+            .sample(input, SLOTS.scatter(self.offsets.process(offsets)))
     }
 }
 impl EffectUnit for PlateReverb {

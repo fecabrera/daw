@@ -1,6 +1,17 @@
 use crate::{Clip, ClipEdge, Edit, Error, Id, Project, Result};
 use std::collections::HashSet;
 
+impl Clip {
+    /// Whether the neighbor touches this edge at an exclusive endpoint.
+    pub fn touches_edge(&self, other: &Clip, left: bool) -> bool {
+        if left {
+            other.end() == self.start_frame
+        } else {
+            other.start_frame == self.end()
+        }
+    }
+}
+
 impl Project {
     /// Find the original neighbor touching the requested waveform edge.
     pub fn trim_neighbor(&self, clip_id: Id, edge: ClipEdge) -> Option<&Clip> {
@@ -9,13 +20,10 @@ impl Project {
             .iter()
             .find(|track| track.clips.iter().any(|clip| clip.id == clip_id))?;
         let clip = track.clips.iter().find(|clip| clip.id == clip_id)?;
-        track.clips.iter().find(|other| {
-            other.id != clip_id
-                && match edge {
-                    ClipEdge::Left => other.end() == clip.start_frame,
-                    ClipEdge::Right => other.start_frame == clip.end(),
-                }
-        })
+        track
+            .clips
+            .iter()
+            .find(|other| other.id != clip_id && clip.touches_edge(other, edge == ClipEdge::Left))
     }
 
     /// Preview the same transaction used to commit a shared waveform boundary.
@@ -26,14 +34,12 @@ impl Project {
         edge: ClipEdge,
         delta: i128,
     ) -> Result<Self> {
-        let mut next = self.clone();
-        next.edit(Edit::TrimBoundary {
+        self.edited(Edit::TrimBoundary {
             clip_id,
             selected: selected.to_vec(),
             edge,
             delta,
-        })?;
-        Ok(next)
+        })
     }
 
     pub(crate) fn apply_trim_boundary(

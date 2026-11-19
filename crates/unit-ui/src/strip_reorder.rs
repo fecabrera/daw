@@ -53,7 +53,7 @@ pub fn active(ui: &Ui, owner: egui::Id) -> bool {
     let Some(mut s) = state(ui.ctx()).filter(|s| s.owner == owner) else {
         return false;
     };
-    if drag::cancelled(ui) || s.frame + 1 < ui.ctx().cumulative_frame_nr() {
+    if drag::cancelled(ui) || crate::drag::skipped_frame(s.frame, ui.ctx().cumulative_frame_nr()) {
         clear(ui.ctx());
         return false;
     }

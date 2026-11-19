@@ -1,6 +1,6 @@
 //! Shared plugin meter storage. The portable DSP owns publication and bypass clearing.
 use daw_spectrum::telemetry::TelemetryCache;
-use daw_unit_core::{BandMeter, MeterStorage, PeakHold, PeakMeter};
+use daw_unit_core::{BandMeter, MeterStorage, PeakHold, PeakMeter, PluginMeterPrefix};
 use std::sync::Arc;
 pub struct OutputMeter {
     pub spectrum: Arc<daw_unit_core::SpectrumMeter>,
@@ -32,6 +32,14 @@ impl Default for OutputMeter {
     }
 }
 impl OutputMeter {
+    fn prefix(&self) -> PluginMeterPrefix<'_> {
+        PluginMeterPrefix {
+            output: &self.output,
+            reduction: &self.reduction,
+            bands: &self.bands,
+        }
+    }
+
     pub fn sample_rate_hz(&self) -> u32 {
         self.prepared_rate
             .load(std::sync::atomic::Ordering::Relaxed)
@@ -59,15 +67,7 @@ pub const SPECTRUM_BASS_END: usize = SPECTRUM_SCHEMA + 10;
 pub const METER_VALUES: usize = SPECTRUM_SCHEMA + 14;
 pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
     let mut v = [0.0; METER_VALUES];
-    v[0] = f64::from(m.readings()[0]);
-    v[1] = f64::from(m.boost_peaks()[0].peak());
-    v[2] = f64::from(m.reduction.reading());
-    v[3] = f64::from(m.reduction.peak());
-    for i in 0..3 {
-        v[4 + i] = f64::from(m.bands.readings()[i]);
-        v[7 + i] = f64::from(m.bands.reduction_peaks()[i].peak());
-        v[10 + i] = f64::from(m.bands.boost_peaks()[i].peak());
-    }
+    v[..PluginMeterPrefix::VALUES].copy_from_slice(&m.prefix().encode());
     for i in 0..64 {
         v[77 + i] = f64::from(m.eq_bands[i].boost_peaks()[0].peak());
         v[13 + i] = f64::from(m.eq_bands[i].readings()[0]);
@@ -85,16 +85,8 @@ pub fn receive_meter(m: &OutputMeter, v: [f32; METER_VALUES]) {
     };
     m.set_prepared_rate(spectrum.sample_rate_hz);
     m.spectrum.store(spectrum);
-    m.output.clear();
-    m.output.store([v[1], 0.0, 0.0]);
-    m.output.initialize([v[0], 0.0, 0.0]);
-    m.reduction.clear();
-    m.reduction.store(v[3]);
-    m.reduction.initialize(v[2]);
-    m.bands.clear();
-    m.bands.store(std::array::from_fn(|i| -v[7 + i]));
-    m.bands.store(std::array::from_fn(|i| v[10 + i]));
-    m.bands.initialize(std::array::from_fn(|i| v[4 + i]));
+    m.prefix()
+        .receive(v[..PluginMeterPrefix::VALUES].try_into().unwrap());
     for i in 0..64 {
         m.eq_bands[i].clear();
         m.eq_bands[i].store([v[77 + i], 0.0, 0.0]);
@@ -103,18 +95,7 @@ pub fn receive_meter(m: &OutputMeter, v: [f32; METER_VALUES]) {
 }
 /// Bits select independent held readings; current readings remain untouched.
 pub fn reset_meter(m: &OutputMeter, mask: u32) {
-    if mask & 1 != 0 {
-        m.output.boost_peaks()[0].reset_peak();
-    }
-    if mask & 2 != 0 {
-        m.reduction.reset_peak();
-    }
-    for i in 0..3 {
-        if mask & (4 << i) != 0 {
-            m.bands.reduction_peaks()[i].reset_peak();
-            m.bands.boost_peaks()[i].reset_peak();
-        }
-    }
+    m.prefix().reset(mask);
 }
 
 impl MeterStorage for OutputMeter {

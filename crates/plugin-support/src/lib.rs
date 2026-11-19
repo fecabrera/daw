@@ -1,6 +1,10 @@
 //! Format-neutral ABI containment, atomic publication, and bounded text helpers.
 pub mod allocation_probe;
+mod editor_queue;
+pub use editor_queue::EditorQueue;
+mod revision_exchange;
 pub mod state_io;
+pub use revision_exchange::RevisionExchange;
 
 use std::{
     ffi::c_char,

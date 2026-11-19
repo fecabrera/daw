@@ -138,8 +138,7 @@ impl Project {
             None => order.len(),
         };
         order.splice(at..at, selected);
-        let mut next = self.clone();
-        next.edit(transfer.edit.clone())?;
+        let mut next = self.edited(transfer.edit.clone())?;
         let final_output = next.instrument_settings(track).is_none();
         let mut snapshot;
         let instrument = if final_output {
@@ -321,8 +320,7 @@ impl Project {
         }
         edits.push(destination.edit(result, target_compact));
         let edit = Edit::Batch(edits);
-        let mut candidate = self.clone();
-        candidate.edit(edit.clone())?;
+        self.edited(edit.clone())?;
         Ok(EffectTransfer { edit, selected })
     }
 }

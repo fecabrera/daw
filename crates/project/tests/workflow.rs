@@ -2,11 +2,14 @@ use daw_core::{ClipLoop, DEFAULT_TRACK_COLOR, Edit, Project, RgbColor, default_t
 use daw_project::Session;
 use std::{fs, path::PathBuf};
 
-struct Fixture(PathBuf);
+#[path = "support/fixture_dir.rs"]
+mod fixture_dir;
+use fixture_dir::FixtureDir;
+
+struct Fixture(FixtureDir);
 impl Fixture {
     fn new() -> Self {
-        let p = std::env::temp_dir().join(format!("daw-test-{}", daw_core::Id::new_v4()));
-        fs::create_dir_all(&p).unwrap();
+        let p = FixtureDir::new("daw-test");
         Self(p)
     }
     fn wav(&self, name: &str, rate: u32, channels: u16, bits: u16, float: bool) -> PathBuf {
@@ -39,11 +42,6 @@ impl Fixture {
         }
         writer.finalize().unwrap();
         path
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 
@@ -450,7 +448,7 @@ fn failed_generated_save_as_releases_the_name_and_allows_retry() {
     let fixture = Fixture::new();
     let generated = fixture.0.join("generated");
     fs::create_dir(&generated).unwrap();
-    let media = Fixture(generated);
+    let media = Fixture(FixtureDir::adopt(generated));
     let first = media.wav("first.wav", 48000, 2, 16, false);
     let second = media.wav("second.wav", 48000, 2, 16, false);
     let mut session = Session::default();

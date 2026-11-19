@@ -43,8 +43,7 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p work/ci-logs
-          cargo deny --locked --workspace --color never check --show-stats licenses \
-            2>&1 | tee work/ci-logs/cargo-deny-licenses.log
+          bash tools/capture_ci_log.sh work/ci-logs/cargo-deny-licenses.log cargo deny --locked --workspace --color never check --show-stats licenses
 
       - name: Check advisories by shipped target
         run: |
@@ -52,8 +51,7 @@ jobs:
           failed=0
           for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc x86_64-unknown-linux-gnu; do
             echo "::group::Cargo Deny advisories for $target"
-            if ! cargo deny --locked --workspace --color never --target "$target" check --show-stats advisories \
-              2>&1 | tee "work/ci-logs/cargo-deny-advisories-$target.log"; then
+            if ! bash tools/capture_ci_log.sh "work/ci-logs/cargo-deny-advisories-$target.log" cargo deny --locked --workspace --color never --target "$target" check --show-stats advisories; then
               failed=1
             fi
             echo '::endgroup::'

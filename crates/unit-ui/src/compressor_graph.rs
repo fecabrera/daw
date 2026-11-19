@@ -82,9 +82,10 @@ pub(crate) fn show(
                 }))
     });
     let cancel = dimensions.0
-        || !ui.is_enabled()
-        || ui.input(|i| !i.focused || i.key_pressed(egui::Key::Escape))
-        || drag.as_ref().is_some_and(|d| frame > d.frame + 1);
+        || crate::drag::cancelled(ui)
+        || drag
+            .as_ref()
+            .is_some_and(|d| crate::drag::skipped_frame(d.frame, frame));
     if external {
         drag = None;
     } else if let Some(d) = drag.as_mut() {

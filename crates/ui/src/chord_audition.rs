@@ -355,22 +355,18 @@ impl DawUi {
             }
         }
         let state = &mut self.chords.audition;
-        if let Some(pending) = &state.pending {
-            match pending.receiver.try_recv() {
-                Err(mpsc::TryRecvError::Empty) => {}
-                result => {
-                    let pending = state.pending.take().unwrap();
-                    if !pending.cancel.load(Ordering::Relaxed)
-                        && valid
-                        && state.queued.is_none()
-                        && state.scope == Some((pending.project, pending.track, pending.revision))
-                    {
-                        match result {
-                            Ok(Ok(samples)) => self.play_chord_audition(pending.rate, samples),
-                            Ok(Err(error)) => self.fail(error),
-                            Err(_) => self.fail("MIDI audition worker stopped"),
-                        }
-                    }
+        if let Some(result) = state.pending.as_ref().and_then(|pending| {
+            crate::worker_result::poll(&pending.receiver, || "MIDI audition worker stopped".into())
+        }) {
+            let pending = state.pending.take().unwrap();
+            if !pending.cancel.load(Ordering::Relaxed)
+                && valid
+                && state.queued.is_none()
+                && state.scope == Some((pending.project, pending.track, pending.revision))
+            {
+                match result {
+                    Ok(samples) => self.play_chord_audition(pending.rate, samples),
+                    Err(error) => self.fail(error),
                 }
             }
         }

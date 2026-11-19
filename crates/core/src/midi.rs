@@ -295,13 +295,11 @@ impl Project {
         start_tick: i64,
         end_tick: i64,
     ) -> Result<Self> {
-        let mut next = self.clone();
-        next.edit(Edit::ResizeMidiPattern {
+        self.edited(Edit::ResizeMidiPattern {
             clip_id,
             start_tick,
             end_tick,
-        })?;
-        Ok(next)
+        })
     }
 
     pub(crate) fn bound_retimed_midi_sources(&mut self) -> Result<()> {

@@ -49,13 +49,13 @@ pub fn render(
     });
     let after = PluginState::from_settings(s).ok();
     let controls = std::array::from_fn(|i| {
-        control_capture::at(&captured, b.controls[i]).map(|mut r| {
+        control_capture::at_with_change(&captured, b.controls[i], || {
             if let (Some(before), Some(after)) = (before, after)
                 && before.get(P::ALL[i + 1]) != after.get(P::ALL[i + 1])
             {
-                r.mark_changed();
+                return true;
             }
-            r
+            false
         })
     });
     let mut readouts: Vec<_> = b

@@ -161,17 +161,11 @@ impl DawUi {
         }
     }
     pub(super) fn poll_audio_devices(&mut self, ctx: &egui::Context) {
-        let result =
-            self.audio_devices
-                .pending
-                .as_ref()
-                .and_then(|receiver| match receiver.try_recv() {
-                    Ok(result) => Some(result),
-                    Err(std::sync::mpsc::TryRecvError::Empty) => None,
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                        Some(Err("Audio device discovery stopped unexpectedly".into()))
-                    }
-                });
+        let result = self.audio_devices.pending.as_ref().and_then(|receiver| {
+            crate::worker_result::poll(receiver, || {
+                "Audio device discovery stopped unexpectedly".into()
+            })
+        });
         if let Some(result) = result {
             self.audio_devices.pending = None;
             self.finish_audio_discovery(result);

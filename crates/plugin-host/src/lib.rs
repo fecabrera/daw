@@ -2,6 +2,7 @@
 //! No filesystem or loader API in this crate may run on an audio callback.
 mod aliases;
 mod architecture;
+mod clap_module;
 mod discovery;
 mod folders;
 #[cfg(target_os = "macos")]

@@ -188,16 +188,8 @@ impl DawUi {
     }
 
     pub(super) fn paint_track_overview_playhead(&self, painter: &egui::Painter, rect: Rect) {
-        let x = rect.left()
-            + (self
-                .session
-                .project
-                .seconds(self.session.project.transport.playhead_frame)
-                - self.midi_editor.scroll) as f32
-                * self.midi_editor.zoom;
-        painter.line_segment(
-            [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-            Stroke::new(1.0, theme::accent(painter.ctx())),
-        );
+        let x =
+            self.project_playhead_x(rect.left(), self.midi_editor.scroll, self.midi_editor.zoom);
+        paint_project_playhead(painter, x, rect.top(), rect.bottom());
     }
 }

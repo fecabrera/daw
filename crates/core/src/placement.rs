@@ -22,9 +22,7 @@ pub struct ClipPlacement {
 impl Project {
     /// Moves retain IDs; new placements use new IDs. Incoming clips win overlaps.
     pub fn placed_clips(&self, clips: &[ClipPlacement]) -> Result<Self> {
-        let mut next = self.clone();
-        next.edit(Edit::OverwriteClips(clips.to_vec()))?;
-        Ok(next)
+        self.edited(Edit::OverwriteClips(clips.to_vec()))
     }
 
     pub(crate) fn apply_placements(&mut self, clips: &[ClipPlacement]) -> Result<()> {

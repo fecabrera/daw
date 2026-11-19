@@ -440,17 +440,11 @@ impl DawUi {
             }
             self.hosting.resuming = false;
         }
-        let ready = self
-            .hosting
-            .installation
-            .as_ref()
-            .and_then(|i| match i.receipt.try_recv() {
-                Ok(result) => Some(result),
-                Err(mpsc::TryRecvError::Disconnected) => Some(Err(
-                    daw_plugin_host::Error::Invalid("Plugin installation stopped".into()),
-                )),
-                _ => None,
-            });
+        let ready = self.hosting.installation.as_ref().and_then(|i| {
+            crate::worker_result::poll(&i.receipt, || {
+                daw_plugin_host::Error::Invalid("Plugin installation stopped".into())
+            })
+        });
         if let Some(result) = ready {
             let installation = self.hosting.installation.take().unwrap();
             if installation.project == self.session.project.project_id {

@@ -46,7 +46,10 @@ impl<'a> StripTarget<'a> {
     fn mix(self, app: &DawUi) -> (f32, f32, bool, bool) {
         match self {
             Self::Master => (app.session.project.master.gain_db, 0.0, false, false),
-            Self::Track(t) => (t.gain_db, t.pan, t.muted, t.soloed),
+            Self::Track(t) => {
+                let mix = mix_controls::MixValues::track(t);
+                (mix.gain, mix.pan, mix.muted, mix.soloed)
+            }
             Self::Beat { row, .. } => (
                 row.instrument.main.gain_db,
                 row.instrument.main.pan,
@@ -287,7 +290,7 @@ impl DawUi {
         );
         content.spacing_mut().item_spacing = Vec2::new(CONTROL_SPACING, OUT_CONTROL_SPACING);
         let (mut gain, mut pan, mut muted, mut soloed) = target.mix(self);
-        let previous = (gain, pan, muted, soloed);
+        let previous = mix_controls::MixValues::new(gain, pan, muted, soloed);
         let mut inputs = target.id().map_or_else(
             || Inputs {
                 gain: self.master_gain_input.clone(),
@@ -408,13 +411,13 @@ impl DawUi {
         if let Some(track) = track {
             self.apply_midi_arm(track.id, arm);
             if self.midi.busy() {
-                gain = previous.0;
-                pan = previous.1;
-                muted = previous.2;
-                soloed = previous.3;
+                gain = previous.gain;
+                pan = previous.pan;
+                muted = previous.muted;
+                soloed = previous.soloed;
             }
             self.inputs.insert(track.id, inputs);
-            if previous != (gain, pan, muted, soloed) {
+            if previous != mix_controls::MixValues::new(gain, pan, muted, soloed) {
                 if let Some(t) = self
                     .session
                     .project
@@ -422,30 +425,23 @@ impl DawUi {
                     .iter_mut()
                     .find(|t| t.id == track.id)
                 {
-                    t.gain_db = gain;
-                    t.pan = pan;
-                    t.muted = muted;
-                    t.soloed = soloed;
+                    mix_controls::MixValues::new(gain, pan, muted, soloed).apply(t);
                 }
                 self.changed();
             }
         } else if let StripTarget::Beat { parent, row } = target {
             self.inputs.insert(row.id, inputs);
-            if !self.midi.busy() && previous != (gain, pan, muted, soloed) {
+            if !self.midi.busy()
+                && previous != mix_controls::MixValues::new(gain, pan, muted, soloed)
+            {
                 self.edit_beat(
                     parent.id,
-                    daw_core::BeatEdit::SetMix {
-                        id: row.id,
-                        gain_db: gain,
-                        pan,
-                        muted,
-                        soloed,
-                    },
+                    crate::mix_controls::MixValues::new(gain, pan, muted, soloed).beat_edit(row.id),
                 );
             }
         } else {
             self.master_gain_input = inputs.gain;
-            if gain != previous.0 {
+            if gain != previous.gain {
                 self.session.project.master.gain_db = gain;
                 self.changed();
             }

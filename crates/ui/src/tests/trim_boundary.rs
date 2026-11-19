@@ -37,40 +37,8 @@ fn begin_boundary(
         block.top() + 40.0,
     );
     let end = start + Vec2::new(delta * app.zoom, 0.0);
-    frame(
-        app,
-        ctx,
-        vec![egui::Event::PointerMoved(start), button(start, true)],
-    );
-    let shapes = frame_shapes(
-        app,
-        ctx,
-        vec![
-            egui::Event::ModifiersChanged(egui::Modifiers {
-                shift,
-                ..Default::default()
-            }),
-            egui::Event::PointerMoved(end),
-        ],
-        Vec2::new(1280.0, 800.0),
-    );
+    let shapes = shift_drag(app, ctx, start, end, shift);
     (start, end, shapes)
-}
-
-fn release_boundary(app: &mut DawUi, ctx: &egui::Context, end: Pos2, shift: bool) {
-    frame(
-        app,
-        ctx,
-        vec![egui::Event::PointerButton {
-            pos: end,
-            button: egui::PointerButton::Primary,
-            pressed: false,
-            modifiers: egui::Modifiers {
-                shift,
-                ..Default::default()
-            },
-        }],
-    );
 }
 
 #[test]
@@ -117,7 +85,7 @@ fn either_waveform_edge_previews_the_pair_and_commits_the_same_snapped_boundary(
                 }
                 assert_eq!(format!("{:?}", app.session.project), original);
                 assert!(!app.dirty);
-                release_boundary(&mut app, &ctx, end, shift);
+                shift_release(&mut app, &ctx, end, shift);
                 assert!(app.error.is_none());
                 assert!(app.dirty);
                 for preview in previews {
@@ -181,7 +149,7 @@ fn shared_boundary_clamps_both_source_limits_and_removes_either_covered_clip_on_
                     .all(|preview| !preview.removed)
             );
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-            release_boundary(&mut app, &ctx, end, true);
+            shift_release(&mut app, &ctx, end, true);
             assert!(app.error.is_none());
             assert_eq!(
                 app.session.project.tracks[0].clips.len(),
@@ -227,7 +195,7 @@ fn shared_boundary_cancels_on_escape_or_focus_loss_and_clamped_releases_stay_cle
             );
             output.textures_delta.clear();
         }
-        release_boundary(&mut app, &ctx, end, true);
+        shift_release(&mut app, &ctx, end, true);
         assert!(app.drag.is_none());
         assert_eq!(format!("{:?}", app.session.project), before);
         assert!(!app.dirty);
@@ -304,7 +272,7 @@ fn trimming_inside_either_clip_keeps_the_original_behavior() {
         let previews = app.clip_drag_previews(drag, end, false);
         assert_eq!(previews.len(), 1);
         assert_eq!(previews[0].clip.id, clip.id);
-        release_boundary(&mut app, &ctx, end, false);
+        shift_release(&mut app, &ctx, end, false);
         let neighbor = &clips[usize::from(!left_edge)];
         let retained = app.session.project.tracks[0]
             .clips
@@ -336,7 +304,7 @@ fn linked_pair_and_other_selected_clips_reject_shortening_as_one_transaction() {
     let previews = app.clip_drag_previews(app.drag.as_ref().unwrap(), end, true);
     assert!(previews.iter().all(|preview| !preview.valid));
     assert_eq!(format!("{:?}", app.session.project), before);
-    release_boundary(&mut app, &ctx, end, true);
+    shift_release(&mut app, &ctx, end, true);
     assert_eq!(format!("{:?}", app.session.project), before);
     assert_eq!(app.session.project.tracks[1].id, other_track);
     assert!(!app.dirty);
@@ -364,7 +332,7 @@ fn the_shared_line_works_at_multiple_display_scales_and_uses_a_narrow_hit_area()
             assert_eq!(drag.linked_boundary, offset.abs() <= 3.0);
             let previews = app.clip_drag_previews(drag, end, false);
             assert_eq!(previews.len(), if offset.abs() <= 3.0 { 2 } else { 1 });
-            release_boundary(&mut app, &ctx, end, false);
+            shift_release(&mut app, &ctx, end, false);
             let clips = &app.session.project.tracks[0].clips;
             if offset.abs() <= 3.0 {
                 assert_eq!(clips[0].end(), clips[1].start_frame);

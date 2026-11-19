@@ -1055,9 +1055,7 @@ impl AudioOutput {
         &self,
         target: daw_engine::SourceOutputTarget,
     ) -> Option<&daw_unit_core::PeakHold> {
-        self.bindings
-            .sources
-            .get(&target)
+        self.source_output_meter(target)
             .map(|m| &m.boost_peaks()[0])
     }
     pub fn source_output_meter(
@@ -1070,7 +1068,10 @@ impl AudioOutput {
         if !self.status.playing.load(Ordering::Relaxed) {
             return [0.0; 2];
         }
-        self.source_output_meter(target).map_or([0.0; 2], |m| {
+        Self::stereo_output(self.source_output_meter(target))
+    }
+    fn stereo_output(meter: Option<&daw_unit_core::BandMeter<3>>) -> [f32; 2] {
+        meter.map_or([0.0; 2], |m| {
             let [_, left, right] = m.readings();
             [left, right]
         })
@@ -1086,21 +1087,14 @@ impl AudioOutput {
         if !self.status.playing.load(Ordering::Relaxed) {
             return [0.0; 2];
         }
-        self.effect_output_meter(id).map_or([0.0; 2], |m| {
-            let [_, left, right] = m.readings();
-            [left, right]
-        })
+        Self::stereo_output(self.effect_output_meter(id))
     }
     /// Held effect output peak, retained while paused/stopped and resettable by the UI.
     pub fn loudness_meter(&self, id: Id) -> Option<&daw_unit_core::LoudnessMeter> {
         self.bindings.loudness.get(&id).map(AsRef::as_ref)
     }
     pub fn effect_output_peak(&self, id: Id) -> Option<&daw_unit_core::PeakHold> {
-        self.bindings
-            .outputs
-            .get(&id)
-            .or_else(|| self.bindings.bands.get(&ModulationTarget::Effect(id)))
-            .map(|m| &m.boost_peaks()[0])
+        self.effect_output_meter(id).map(|m| &m.boost_peaks()[0])
     }
     /// Current linear output level; stopped or absent outputs show silence.
     pub fn effect_output_level(&self, id: Id) -> f32 {

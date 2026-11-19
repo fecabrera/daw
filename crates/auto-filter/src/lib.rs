@@ -109,12 +109,14 @@ impl AutoFilter {
         musical: Option<daw_unit_core::MusicalPosition>,
     ) -> f64 {
         let rate = daw_lfo::rate_hz(self.rate_mode, self.rate_hz, self.note_beats, tempo_bpm);
-        if let Some(m) = musical.filter(|_| self.rate_mode == daw_unit_core::LfoRateMode::Note) {
-            self.clock
-                .phase_at_quarters(frame, 0, m.quarter, self.note_beats, rate)
-        } else {
-            self.clock.phase_at(frame, 0, rate)
-        }
+        self.clock.phase(
+            frame,
+            0,
+            rate,
+            self.rate_mode,
+            self.note_beats,
+            musical.map(|m| m.quarter),
+        )
     }
     /// Explicit host position makes seeks, loop wraps and export phase deterministic.
     pub fn process_at(&mut self, input: [f32; 2], frame: u64, tempo_bpm: f32) -> [f32; 2] {

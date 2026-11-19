@@ -1,8 +1,10 @@
 use super::*;
+#[path = "../../unit-core/test_support/modulation.rs"]
+mod fixtures;
 use daw_unit_core::{
-    EnvelopeInstance, Modulation, ModulationContext, ModulationDestination,
-    ModulationDestinationSettings, ModulationParameter as P, ModulationRange, ModulationRoute,
-    ModulationSourceId, ModulationValue, process_modulation,
+    EnvelopeInstance, ModulationContext, ModulationDestination, ModulationDestinationSettings,
+    ModulationParameter as P, ModulationRange, ModulationSourceId, ModulationValue,
+    process_modulation,
 };
 
 fn source() -> ModulationSourceId {
@@ -21,16 +23,7 @@ fn value(source: ModulationSourceId, value: f32) -> ModulationValue {
         release_age: None,
     }
 }
-fn route(source: ModulationSourceId, parameter: P, amount: f32, rate: u32) -> ModulationRoute {
-    ModulationRoute::new(
-        Modulation {
-            source: Some(source),
-            amount,
-            ..Modulation::new(parameter)
-        },
-        rate,
-    )
-}
+use fixtures::route;
 
 #[test]
 fn eq_typed_modulation_resolves_every_target_and_preserves_neutral_audio_at_all_rates() {

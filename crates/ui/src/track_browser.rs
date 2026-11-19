@@ -40,13 +40,7 @@ impl Default for Bounds {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq)]
-struct Mix {
-    gain: f32,
-    pan: f32,
-    muted: bool,
-    soloed: bool,
-}
+use crate::mix_controls::MixValues;
 #[derive(Clone)]
 struct Row {
     id: Id,
@@ -55,7 +49,7 @@ struct Row {
     name: String,
     kind: TrackKind,
     depth: usize,
-    mix: Mix,
+    mix: MixValues,
 }
 impl Row {
     fn branch(&self) -> bool {
@@ -110,12 +104,7 @@ impl State {
                     name: track.name.clone(),
                     kind: track.kind,
                     depth,
-                    mix: Mix {
-                        gain: track.gain_db,
-                        pan: track.pan,
-                        muted: track.muted,
-                        soloed: track.soloed,
-                    },
+                    mix: MixValues::track(track),
                 });
                 if let Some(beat) = track
                     .beat
@@ -129,7 +118,7 @@ impl State {
                         name: row.name.clone(),
                         kind: TrackKind::Midi,
                         depth: depth + 1,
-                        mix: Mix {
+                        mix: MixValues {
                             gain: row.instrument.main.gain_db,
                             pan: row.instrument.main.pan,
                             muted: row.muted,
@@ -276,16 +265,7 @@ impl DawUi {
         self.apply_midi_arm(row.id, arm);
         if value != row.mix {
             if let Some(parent) = row.beat {
-                self.edit_beat(
-                    parent,
-                    daw_core::BeatEdit::SetMix {
-                        id: row.id,
-                        gain_db: value.gain,
-                        pan: value.pan,
-                        muted: value.muted,
-                        soloed: value.soloed,
-                    },
-                );
+                self.edit_beat(parent, value.beat_edit(row.id));
             } else if let Some(track) = self
                 .session
                 .project
@@ -293,10 +273,7 @@ impl DawUi {
                 .iter_mut()
                 .find(|t| t.id == row.id)
             {
-                track.gain_db = value.gain;
-                track.pan = value.pan;
-                track.muted = value.muted;
-                track.soloed = value.soloed;
+                value.apply(track);
                 self.changed();
             }
         }

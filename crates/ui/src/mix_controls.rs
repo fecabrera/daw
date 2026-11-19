@@ -485,3 +485,43 @@ mod tests {
         }
     }
 }
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct MixValues {
+    pub gain: f32,
+    pub pan: f32,
+    pub muted: bool,
+    pub soloed: bool,
+}
+
+impl MixValues {
+    pub fn new(gain: f32, pan: f32, muted: bool, soloed: bool) -> Self {
+        Self {
+            gain,
+            pan,
+            muted,
+            soloed,
+        }
+    }
+
+    pub fn track(track: &daw_core::Track) -> Self {
+        Self::new(track.gain_db, track.pan, track.muted, track.soloed)
+    }
+
+    pub fn apply(self, track: &mut daw_core::Track) {
+        track.gain_db = self.gain;
+        track.pan = self.pan;
+        track.muted = self.muted;
+        track.soloed = self.soloed;
+    }
+
+    pub fn beat_edit(self, id: daw_core::Id) -> daw_core::BeatEdit {
+        daw_core::BeatEdit::SetMix {
+            id,
+            gain_db: self.gain,
+            pan: self.pan,
+            muted: self.muted,
+            soloed: self.soloed,
+        }
+    }
+}

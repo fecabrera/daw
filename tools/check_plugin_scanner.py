@@ -4,10 +4,10 @@ import argparse
 import json
 from pathlib import Path
 import platform
-import plistlib
-import shutil
 import subprocess
 import tempfile
+
+from plugin_bundle_layout import library_filename, stage_test_bundle
 
 
 def main():
@@ -21,10 +21,9 @@ def main():
     parser.add_argument("--host-check", type=Path, help="Native processing check executable, built with cargo build -p daw-plugin-host --example native_host_check")
     args = parser.parse_args()
     system = platform.system()
-    prefix, suffix = ("", ".dll") if system == "Windows" else ("lib", ".dylib" if system == "Darwin" else ".so")
     libraries = {
-        "clap": args.clap_library or Path(f"target/debug/{prefix}daw_drive_clap{suffix}"),
-        "vst3": args.vst3_library or Path(f"target/debug/{prefix}daw_drive_vst3{suffix}"),
+        "clap": args.clap_library or Path("target/debug") / library_filename(system, "daw_drive_clap"),
+        "vst3": args.vst3_library or Path("target/debug") / library_filename(system, "daw_drive_vst3"),
     }
     scanner = args.scanner.resolve(strict=True)
     command = [str(scanner)] + (["--daw-plugin-scan"] if args.embedded else [])
@@ -32,18 +31,8 @@ def main():
         root = Path(directory)
         for kind, library in libraries.items():
             bundle = root / f"Drive.{kind}"
-            if system == "Darwin":
-                binary = bundle / "Contents/MacOS/DrivePayload"
-            elif system == "Windows":
-                arch = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
-                binary = bundle / f"Contents/{arch}-win/Drive.{kind}"
-            else:
-                binary = bundle / f"Contents/{platform.machine()}-linux/Drive.so"
-            binary.parent.mkdir(parents=True)
-            shutil.copy2(library.resolve(strict=True), binary)
-            if system == "Darwin":
-                with (bundle / "Contents/Info.plist").open("wb") as output:
-                    plistlib.dump({"CFBundleExecutable": "DrivePayload", "CFBundleIdentifier": f"org.daw.scanner-check.{kind}", "CFBundlePackageType": "BNDL"}, output)
+            stage_test_bundle(bundle, library, "Drive", kind, system, platform.machine(),
+                              "DrivePayload", f"org.daw.scanner-check.{kind}")
             result = root / f"{kind}.json"
             subprocess.run(command + ["--format", kind, "--plugin", str(bundle), "--result", str(result)], check=True, timeout=12)
             response = json.loads(result.read_text())

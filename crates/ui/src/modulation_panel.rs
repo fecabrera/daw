@@ -193,6 +193,21 @@ fn source_picker_with_audio(
 }
 mod destination_menu;
 use destination_menu::destination_picker;
+pub(super) type ProviderSources = Vec<(ModulationSourceId, Vec<Source>)>;
+
+pub(super) fn instrument_sources(
+    instrument: &InstrumentSettings,
+    project: &daw_core::Project,
+) -> (Vec<Source>, ProviderSources) {
+    let mut available = sources(Some(instrument));
+    crate::audio_sidechain::append_sources(&mut available, project);
+    let mut providers = provider_sources(instrument);
+    for (_, sources) in &mut providers {
+        crate::audio_sidechain::append_sources(sources, project);
+    }
+    (available, providers)
+}
+
 /// Filter through the shared graph rules before opening a provider's source picker.
 pub(super) fn provider_sources(
     instrument: &InstrumentSettings,

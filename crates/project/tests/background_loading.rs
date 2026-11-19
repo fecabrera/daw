@@ -1,11 +1,14 @@
 use daw_core::Id;
 use daw_project::Session;
-use std::{fs, path::PathBuf};
-struct Fixture(PathBuf);
+use std::fs;
+#[path = "support/fixture_dir.rs"]
+mod fixture_dir;
+use fixture_dir::FixtureDir;
+
+struct Fixture(FixtureDir);
 impl Fixture {
     fn new() -> Self {
-        let root = std::env::temp_dir().join(format!("daw-background-document-{}", Id::new_v4()));
-        fs::create_dir_all(&root).unwrap();
+        let root = FixtureDir::new("daw-background-document");
         let path = root.join("source.wav");
         let mut writer = hound::WavWriter::create(
             &path,
@@ -30,11 +33,6 @@ impl Fixture {
         Session::open_document(&self.0)
             .unwrap()
             .into_editor_session()
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 #[test]

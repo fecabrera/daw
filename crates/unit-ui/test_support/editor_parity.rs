@@ -35,17 +35,40 @@ pub fn paint(
     size: Vec2,
     draw: impl FnMut(&mut egui::Ui),
 ) -> Vec<egui::ClippedPrimitive> {
+    ctx.tessellate(
+        frame(ctx, size, vec![Event::PointerGone], None, draw),
+        ctx.pixels_per_point(),
+    )
+}
+
+pub fn frame(
+    ctx: &egui::Context,
+    size: Vec2,
+    events: Vec<Event>,
+    time: Option<f64>,
+    draw: impl FnMut(&mut egui::Ui),
+) -> Vec<egui::epaint::ClippedShape> {
     let mut out = ctx.run_ui(
         egui::RawInput {
             screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, size)),
             focused: true,
-            events: vec![Event::PointerGone],
+            events,
+            time,
             ..Default::default()
         },
         draw,
     );
     out.textures_delta.clear();
-    ctx.tessellate(out.shapes, ctx.pixels_per_point())
+    out.shapes
+}
+
+pub fn primary_button(pos: egui::Pos2, pressed: bool) -> Event {
+    Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Default::default(),
+    }
 }
 
 pub fn compare(

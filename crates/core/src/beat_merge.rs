@@ -1,8 +1,8 @@
 //! Beat Merge retains the common grid, stretch and stable subtrack bindings.
 use crate::split::note_occurrences;
 use crate::{
-    BeatPattern, BeatPatternSource, Clip, ClipLoop, Error, Id, MIDI_TICKS_PER_BEAT, MidiNote,
-    MidiPattern, Project, Result,
+    BeatPattern, BeatPatternSource, Clip, Error, Id, MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern,
+    Project, Result,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -78,6 +78,10 @@ impl Project {
     /// Unfold visible steps into one pattern without changing lane instruments or sources.
     pub fn merge_beat_clips(&self, ids: &[Id]) -> Result<(Self, Id)> {
         let (track, clips) = self.pattern_merge_targets(ids)?;
+        self.merge_beat_targets(track, clips)
+    }
+
+    pub(crate) fn merge_beat_targets(&self, track: usize, clips: Vec<&Clip>) -> Result<(Self, Id)> {
         let (owner, bars) = self.beat_merge_settings(&clips)?;
         let first = clips[0];
         let resolution = self.merge_beat_source(first)?.pattern.resolution;
@@ -109,11 +113,7 @@ impl Project {
                     })
                     .collect(),
             };
-            let mut window = (*clip).clone();
-            window.repeat.get_or_insert(ClipLoop {
-                length_frames: self.midi_reference_position(clip, clip.end()),
-                phase_frame: 0,
-            });
+            let window = self.linear_merge_window(clip);
             let occurrences = note_occurrences(self, &window, &notes, remaining).map_err(|_| {
                 Error("Beat Merge exceeds the 4,096 hit limit; shorten the selection".into())
             })?;
@@ -151,6 +151,7 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ClipLoop;
     use crate::{BeatEdit, BeatResolution, BeatSubtrack, ClipStretch, Edit};
 
     fn fixture(rate: u32, tempo: f32) -> (Project, Id, Vec<Id>, Vec<Id>) {

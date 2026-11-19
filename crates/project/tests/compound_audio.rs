@@ -1,11 +1,14 @@
 use daw_core::{Edit, Id};
 use daw_project::{Session, SessionHistory};
-use std::{fs, path::PathBuf};
-struct Fixture(PathBuf);
+use std::fs;
+#[path = "support/fixture_dir.rs"]
+mod fixture_dir;
+use fixture_dir::FixtureDir;
+
+struct Fixture(FixtureDir);
 impl Fixture {
     fn new() -> Self {
-        let path = std::env::temp_dir().join(format!("daw-audio-merge-{}", Id::new_v4()));
-        fs::create_dir(&path).unwrap();
+        let path = FixtureDir::new("daw-audio-merge");
         let mut writer = hound::WavWriter::create(
             path.join("original.wav"),
             hound::WavSpec {
@@ -34,11 +37,6 @@ impl Fixture {
         s.project.tracks[0].clips[0].gain_db = -3.0;
         s.project.tracks[0].clips[1].channels.inverted = true;
         (s, vec![a, b])
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 fn render(s: &Session) -> Vec<[f32; 2]> {

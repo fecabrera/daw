@@ -1,19 +1,20 @@
 // Shared hover coverage for every effect editor, including product-specific wrappers.
 #[test]
 fn hovered_editor_controls_match_builtin_values_without_host_gestures() {
-    fn frame(ctx: &egui::Context, point: egui::Pos2, mut draw: impl FnMut(&mut egui::Ui)) -> Vec<String> {
-        let mut out = ctx.run_ui(egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(WIDTH as f32, HEIGHT as f32))),
-            time: Some(ctx.cumulative_frame_nr() as f64 * 0.1),
-            focused: true,
-            events: vec![Event::PointerMoved(point)],
-            ..Default::default()
-        }, |ui| draw(ui));
-        let texts = out.shapes.iter().filter_map(|s| match &s.shape {
-            egui::Shape::Text(t) => Some(t.galley.text().to_owned()), _ => None,
-        }).collect();
-        out.textures_delta.clear();
-        texts
+    fn frame(ctx: &egui::Context, point: egui::Pos2, draw: impl FnMut(&mut egui::Ui)) -> Vec<String> {
+        parity::frame(
+            ctx,
+            Vec2::new(WIDTH as f32, HEIGHT as f32),
+            vec![Event::PointerMoved(point)],
+            Some(ctx.cumulative_frame_nr() as f64 * 0.1),
+            draw,
+        )
+        .into_iter()
+        .filter_map(|shape| match shape.shape {
+            egui::Shape::Text(text) => Some(text.galley.text().to_owned()),
+            _ => None,
+        })
+        .collect()
     }
     for appearance in 0..3 {
         for scale in [1.0, 1.5] {

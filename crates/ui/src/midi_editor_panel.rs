@@ -405,15 +405,10 @@ impl DawUi {
                         .tracks
                         .iter_mut()
                         .find(|t| t.id == track.id)
-                        && (current.gain_db != track.gain_db
-                            || current.pan != track.pan
-                            || current.muted != track.muted
-                            || current.soloed != track.soloed)
+                        && mix_controls::MixValues::track(current)
+                            != mix_controls::MixValues::track(&track)
                     {
-                        current.gain_db = track.gain_db;
-                        current.pan = track.pan;
-                        current.muted = track.muted;
-                        current.soloed = track.soloed;
+                        mix_controls::MixValues::track(&track).apply(current);
                         self.changed();
                     }
                 } else {

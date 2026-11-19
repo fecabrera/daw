@@ -159,6 +159,7 @@ mod unit_selection;
 mod waveforms;
 #[cfg(target_os = "macos")]
 pub mod window_drag;
+mod worker_result;
 
 const TRACK_WIDTH: f32 = panels::ControlPanel::WIDTH;
 const ROW_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE + 14.0;
@@ -1241,7 +1242,19 @@ impl Default for DawUi {
         }
     }
 }
+fn paint_project_playhead(painter: &egui::Painter, x: f32, top: f32, bottom: f32) {
+    painter.line_segment(
+        [Pos2::new(x, top), Pos2::new(x, bottom)],
+        Stroke::new(1.0, theme::accent(painter.ctx())),
+    );
+}
+
 impl DawUi {
+    fn project_playhead_x(&self, left: f32, scroll: f64, zoom: f32) -> f32 {
+        let project = &self.session.project;
+        left + (project.seconds(project.transport.playhead_frame) - scroll) as f32 * zoom
+    }
+
     pub fn settings(&self) -> settings::AppSettings {
         self.settings.clone()
     }
@@ -1686,12 +1699,8 @@ impl DawUi {
         self.poll_background_media();
         self.refresh_collection();
         self.poll_regular_save();
-        let message = self.job.as_ref().and_then(|rx| match rx.try_recv() {
-            Ok(m) => Some(m),
-            Err(mpsc::TryRecvError::Disconnected) => {
-                Some(Err("Background operation stopped unexpectedly".into()))
-            }
-            Err(_) => None,
+        let message = self.job.as_ref().and_then(|rx| {
+            crate::worker_result::poll(rx, || "Background operation stopped unexpectedly".into())
         });
         if let Some(message) = message {
             self.job = None;
@@ -3919,20 +3928,13 @@ impl DawUi {
         control_panel.finish(ui);
 
         // Draw over both the arrangement lanes and the track workspace.
-        let playhead_x = timeline_rect.left()
-            + ((self
-                .session
-                .project
-                .seconds(self.session.project.transport.playhead_frame)
-                - self.scroll) as f32)
-                * self.zoom;
+        let playhead_x = self.project_playhead_x(timeline_rect.left(), self.scroll, self.zoom);
         if (timeline_rect.left()..=timeline_rect.right()).contains(&playhead_x) {
-            painter.line_segment(
-                [
-                    Pos2::new(playhead_x, self.arrangement.ruler_bounds.bottom()),
-                    Pos2::new(playhead_x, timeline_rect.bottom()),
-                ],
-                Stroke::new(1.0, theme::accent(ui.ctx())),
+            paint_project_playhead(
+                &painter,
+                playhead_x,
+                self.arrangement.ruler_bounds.bottom(),
+                timeline_rect.bottom(),
             );
         }
         self.timeline_scrollbar_at(ui, scrollbar_rect, "timeline_scrollbar");
@@ -4982,11 +4984,9 @@ impl DawUi {
                                             arm.as_mut(),
                                         );
                                         self.apply_midi_arm(track.id, arm);
-                                        let updated = gain != track.gain_db
-                                            || pan != track.pan
-                                            || mute != track.muted
-                                            || solo != track.soloed;
-                                        if updated {
+                                        let mix =
+                                            mix_controls::MixValues::new(gain, pan, mute, solo);
+                                        if mix != mix_controls::MixValues::track(&track) {
                                             if let Some(t) = self
                                                 .session
                                                 .project
@@ -4994,10 +4994,7 @@ impl DawUi {
                                                 .iter_mut()
                                                 .find(|t| t.id == track.id)
                                             {
-                                                t.gain_db = gain;
-                                                t.pan = pan;
-                                                t.muted = mute;
-                                                t.soloed = solo;
+                                                mix.apply(t);
                                             }
                                             self.changed();
                                         }
@@ -9795,12 +9792,36 @@ mod tests {
         output.shapes
     }
     pub(super) fn button(pos: Pos2, pressed: bool) -> egui::Event {
+        button_with_modifiers(pos, pressed, egui::Modifiers::NONE)
+    }
+    fn button_with_modifiers(pos: Pos2, pressed: bool, modifiers: egui::Modifiers) -> egui::Event {
         egui::Event::PointerButton {
             pos,
             button: egui::PointerButton::Primary,
             pressed,
-            modifiers: Default::default(),
+            modifiers,
         }
+    }
+    fn shift_drag(
+        app: &mut DawUi,
+        ctx: &egui::Context,
+        start: Pos2,
+        end: Pos2,
+        shift: bool,
+    ) -> Vec<egui::epaint::ClippedShape> {
+        frame(
+            app,
+            ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        shift_frame(app, ctx, vec![egui::Event::PointerMoved(end)], shift)
+    }
+    fn shift_release(app: &mut DawUi, ctx: &egui::Context, end: Pos2, shift: bool) {
+        let modifiers = egui::Modifiers {
+            shift,
+            ..Default::default()
+        };
+        frame(app, ctx, vec![button_with_modifiers(end, false, modifiers)]);
     }
     fn shift_frame(
         app: &mut DawUi,

@@ -1,8 +1,10 @@
 use super::*;
+#[path = "../../unit-core/test_support/modulation.rs"]
+mod fixtures;
 use daw_unit_core::{
     Modulation, ModulationContext, ModulationDestination, ModulationDestinationSettings,
-    ModulationParameter as P, ModulationRange, ModulationRoute, ModulationSourceId,
-    ModulationValue, process_modulation,
+    ModulationParameter as P, ModulationRange, ModulationSourceId, ModulationValue,
+    process_modulation,
 };
 fn source() -> ModulationSourceId {
     ModulationSourceId {
@@ -20,16 +22,7 @@ fn value(source: ModulationSourceId) -> ModulationValue {
         release_age: None,
     }
 }
-fn route(source: ModulationSourceId, parameter: P, amount: f32, rate: u32) -> ModulationRoute {
-    ModulationRoute::new(
-        Modulation {
-            source: Some(source),
-            amount,
-            ..Modulation::new(parameter)
-        },
-        rate,
-    )
-}
+use fixtures::route;
 fn context(rate: u32) -> ProcessingContext {
     ProcessingContext {
         sample_rate_hz: rate,

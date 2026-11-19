@@ -1082,13 +1082,13 @@ impl DawUi {
                         if bus != row.mix || muted != row.muted || soloed != row.soloed {
                             self.edit_beat(
                                 track.id,
-                                BeatEdit::SetMix {
-                                    id: row.id,
-                                    gain_db: bus.gain_db,
-                                    pan: bus.pan,
+                                crate::mix_controls::MixValues::new(
+                                    bus.gain_db,
+                                    bus.pan,
                                     muted,
                                     soloed,
-                                },
+                                )
+                                .beat_edit(row.id),
                             );
                         }
                         ui.advance_cursor_after_rect(rect);
@@ -1376,13 +1376,8 @@ impl DawUi {
         if muted != row.muted || soloed != row.soloed {
             self.edit(Edit::Beat {
                 track_id: parent,
-                edit: BeatEdit::SetMix {
-                    id: owner,
-                    gain_db: bus.gain_db,
-                    pan: bus.pan,
-                    muted,
-                    soloed,
-                },
+                edit: crate::mix_controls::MixValues::new(bus.gain_db, bus.pan, muted, soloed)
+                    .beat_edit(owner),
             });
         }
         knobs
@@ -1420,12 +1415,8 @@ impl DawUi {
             self.midi_editor.add_layer_bounds = Rect::NOTHING;
         }
         self.sidechain_context(ui.ctx(), owner);
-        let mut sources = modulation_panel::sources(Some(&settings));
-        crate::audio_sidechain::append_sources(&mut sources, &self.session.project);
-        let mut providers = modulation_panel::provider_sources(&settings);
-        for (_, sources) in &mut providers {
-            crate::audio_sidechain::append_sources(sources, &self.session.project);
-        }
+        let (sources, providers) =
+            crate::modulation_panel::instrument_sources(&settings, &self.session.project);
         let scroll = egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .id_salt(("beat-output", owner))

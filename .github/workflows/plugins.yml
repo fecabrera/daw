@@ -86,34 +86,34 @@ jobs:
 
       - name: Test packaging
         id: plugin_packaging_tests
-        run: python -m unittest discover -s tools -p "test_*packag*.py" -v 2>&1 | tee work/ci-logs/packaging-tests.log
+        run: bash tools/capture_ci_log.sh work/ci-logs/packaging-tests.log python -m unittest discover -s tools -p "test_*packag*.py" -v
 
       - name: Build CLAP and VST3 libraries
         id: plugin_build
-        run: cargo build --release --locked --target '${{ matrix.target }}' -p daw-${{ matrix.unit.slug }}-clap -p daw-${{ matrix.unit.slug }}-vst3 --lib 2>&1 | tee work/ci-logs/plugin-build.log
+        run: bash tools/capture_ci_log.sh work/ci-logs/plugin-build.log cargo build --release --locked --target '${{ matrix.target }}' -p daw-${{ matrix.unit.slug }}-clap -p daw-${{ matrix.unit.slug }}-vst3 --lib
 
       - name: Test native plugin libraries
         id: plugin_tests
         env:
           DRIVE_CLAP_TEST_LIBRARY: ${{ github.workspace }}/target/${{ matrix.target }}/release/${{ matrix.prefix }}${{ matrix.unit.library }}_clap${{ matrix.suffix }}
           DRIVE_VST3_TEST_LIBRARY: ${{ github.workspace }}/target/${{ matrix.target }}/release/${{ matrix.prefix }}${{ matrix.unit.library }}_vst3${{ matrix.suffix }}
-        run: cargo test --release --locked --target '${{ matrix.target }}' -p daw-${{ matrix.unit.slug }}-clap -p daw-${{ matrix.unit.slug }}-vst3 -p daw-${{ matrix.unit.slug }}-plugin -p daw-${{ matrix.unit.slug }}-editor 2>&1 | tee work/ci-logs/plugin-tests.log
+        run: bash tools/capture_ci_log.sh work/ci-logs/plugin-tests.log cargo test --release --locked --target '${{ matrix.target }}' -p daw-${{ matrix.unit.slug }}-clap -p daw-${{ matrix.unit.slug }}-vst3 -p daw-${{ matrix.unit.slug }}-plugin -p daw-${{ matrix.unit.slug }}-editor
 
       - name: Build and test AUv2
         if: runner.os == 'macOS'
         id: auv2_tests
         run: |
-          cargo test --locked --target '${{ matrix.target }}' -p daw-plugin-auv2 -p daw-${{ matrix.unit.slug }}-auv2 2>&1 | tee work/ci-logs/auv2-debug.log
-          cargo test --release --locked --target '${{ matrix.target }}' -p daw-plugin-auv2 -p daw-${{ matrix.unit.slug }}-auv2 2>&1 | tee work/ci-logs/auv2-release.log
+          bash tools/capture_ci_log.sh work/ci-logs/auv2-debug.log cargo test --locked --target '${{ matrix.target }}' -p daw-plugin-auv2 -p daw-${{ matrix.unit.slug }}-auv2
+          bash tools/capture_ci_log.sh work/ci-logs/auv2-release.log cargo test --release --locked --target '${{ matrix.target }}' -p daw-plugin-auv2 -p daw-${{ matrix.unit.slug }}-auv2
 
       - name: Package plugin previews
         id: plugin_package
-        run: python tools/package_plugins.py --release --api all --units '${{ matrix.unit.slug }}' --output-dir 'target/plugin-artifacts/${{ matrix.unit.slug }}' --target '${{ matrix.target }}' 2>&1 | tee work/ci-logs/plugin-package.log
+        run: bash tools/capture_ci_log.sh work/ci-logs/plugin-package.log python tools/package_plugins.py --release --api all --units '${{ matrix.unit.slug }}' --output-dir 'target/plugin-artifacts/${{ matrix.unit.slug }}' --target '${{ matrix.target }}'
 
       - name: Check packaged AUv2 exports
         if: runner.os == 'macOS'
         id: auv2_exports
-        run: python tools/check_auv2_exports.py target/plugin-artifacts/${{ matrix.unit.slug }}/*-auv2.zip 2>&1 | tee work/ci-logs/auv2-exports.log
+        run: bash tools/capture_ci_log.sh work/ci-logs/auv2-exports.log python tools/check_auv2_exports.py target/plugin-artifacts/${{ matrix.unit.slug }}/*-auv2.zip
 
       # ZIPs retain bundle structure and executable modes after artifact download.
       - name: Upload CLAP preview

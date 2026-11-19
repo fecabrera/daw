@@ -15,15 +15,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 POWERSHELL = os.environ.get('DAW_TEST_PWSH') or shutil.which('pwsh') or shutil.which('powershell.exe')
-NOTICE_DIRS = (
-    'crates/unit-ui/assets/fonts', 'crates/ui/assets/icons',
-    'crates/ui/assets/licenses', 'crates/unit-ui/assets/licenses',
-    'crates/media/assets/licenses', 'crates/oscillator/assets/licenses',
-    'crates/equalizer/assets/licenses', 'crates/timestretch/licenses',
-    'crates/separation/assets/licenses',
-    'crates/plugin-host/assets/licenses', 'crates/plugin-clap/assets/licenses',
-    'crates/plugin-vst3/assets/licenses',
-)
+from desktop_packaging_fixtures import stage_notice_sources
 
 
 @unittest.skipUnless(POWERSHELL, 'PowerShell required')
@@ -35,8 +27,7 @@ class WindowsPackagingTests(unittest.TestCase):
             for name in ('package_windows.ps1', 'desktop_notices.txt'):
                 shutil.copy(ROOT / 'tools' / name, root / 'tools' / name)
             shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
-            for directory in NOTICE_DIRS:
-                shutil.copytree(ROOT / directory, root / directory)
+            stage_notice_sources(ROOT, root)
             extra_notice = 'archive test 音 % #.txt'
             (root / 'crates/ui/assets/licenses' / extra_notice).write_bytes(b'exact fixture notice')
             wrapper = root / 'run.ps1'

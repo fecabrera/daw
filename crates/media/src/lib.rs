@@ -1,7 +1,8 @@
 mod transients;
 use daw_core::{SAMPLE_RATE, SourceMetadata};
-use rubato::Resampler;
+mod stereo_fft;
 use std::{fs::File, path::Path, sync::Arc};
+use stereo_fft::StereoFft;
 pub use transients::{TRANSIENT_ANALYSIS_MEMORY_BYTES, audio_transients};
 
 pub use memory::{AudioMemoryUsage, audio_memory_bytes};
@@ -285,10 +286,8 @@ fn convert_samples(
         validate_resample_frame(*frame)?;
     }
     let mut converter =
-        rubato::FftFixedIn::<f32>::new(input_rate as usize, output_rate as usize, 1024, 2, 2)
-            .map_err(|e| Error(e.to_string()))?;
-    let input_size = converter.input_frames_next();
-    let delay = converter.output_delay();
+        StereoFft::new(input_rate, output_rate).map_err(|e| Error(e.to_string()))?;
+    let input_size = converter.input_frames();
     let target = usize::try_from(resampled_frames(
         samples.len() as u64,
         input_rate,
@@ -298,10 +297,9 @@ fn convert_samples(
     let mut out = Vec::new();
     out.try_reserve_exact(target)
         .map_err(|e| Error(format!("Cannot reserve resampled audio: {e}")))?;
-    let mut input = converter.input_buffer_allocate(true);
-    let mut block = converter.output_buffer_allocate(true);
+    let mut input = converter.input_buffer();
+    let mut block = converter.output_buffer();
     let mut position = 0;
-    let mut produced = 0usize;
     while out.len() < target {
         if cancelled() {
             return Err(Error("Audio preparation cancelled".into()));
@@ -311,15 +309,10 @@ fn convert_samples(
                 *value = samples.get(position + i).map_or(0.0, |s| s[channel]);
             }
         }
-        let (_, frames) = converter
-            .process_into_buffer(&input, &mut block, None)
+        let window = converter
+            .process(&input, &mut block, (target - out.len()) as u64)
             .map_err(|e| Error(e.to_string()))?;
-        let first = delay.saturating_sub(produced).min(frames);
-        let count = (frames - first).min(target - out.len());
-        for (&left, &right) in block[0][first..first + count]
-            .iter()
-            .zip(&block[1][first..first + count])
-        {
+        for (&left, &right) in block[0][window.clone()].iter().zip(&block[1][window]) {
             let frame = [left, right];
             if frame.into_iter().any(|s| !s.is_finite()) {
                 return Err(Error(
@@ -328,7 +321,6 @@ fn convert_samples(
             }
             out.push(frame);
         }
-        produced += frames;
         position += input_size;
     }
     Ok(out)

@@ -26,12 +26,7 @@ fn modifiers(shift: bool) -> egui::Modifiers {
 }
 
 fn pointer_button(pos: Pos2, pressed: bool, shift: bool) -> egui::Event {
-    egui::Event::PointerButton {
-        pos,
-        pressed,
-        button: egui::PointerButton::Primary,
-        modifiers: modifiers(shift),
-    }
+    button_with_modifiers(pos, pressed, modifiers(shift))
 }
 
 fn begin(

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import platform
 import plistlib
+from plugin_bundle_layout import bundle_info, preview_binary
 import shutil
 import sys
 from drive_artifact_check import build_artifact, check_artifact, collect_report
@@ -59,14 +60,13 @@ def main() -> int:
     artifact, tests, names, plugin_version = build_artifact(
         "clap", work, env, args.fetch, FORBIDDEN, run)
     bundle = work / "Drive.clap"
-    if platform.system() == "Darwin":
-        binary = bundle / "Contents/MacOS/Drive"
-        binary.parent.mkdir(parents=True, exist_ok=True)
-        (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "Drive", "CFBundleIdentifier": "io.github.fecabrera.daw.drive", "CFBundleName": "Drive", "CFBundlePackageType": "BNDL", "CFBundleVersion": plugin_version, "CFBundleShortVersionString": plugin_version}))
-        notices = bundle / "Contents/Resources/licenses"
-    else:
-        binary = bundle
-        notices = work / "notices"
+    system = platform.system()
+    binary = preview_binary(bundle, "Drive", "clap", system)
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    if system == "Darwin":
+        info = bundle_info("Drive", "io.github.fecabrera.daw.drive", name="Drive", version=plugin_version)
+        (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
+    notices = (work / "notices" if system != "Darwin" else bundle / "Contents/Resources/licenses")
     shutil.copy2(artifact, binary)
     copy_preview_notices(ROOT, notices, "clap", merge=True)
     (notices / "DEVELOPMENT.txt").write_text("Drive editor development artifact. Complete release dependency/notice audit, native accessibility, platform and external-host checks remain gates. Not a release package.\n")

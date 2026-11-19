@@ -1,50 +1,13 @@
 //! Loaded-binary processing check against this repository's portable Drive.
 use daw_drive_plugin::{IDENTITY, Parameter, PluginState};
 use daw_plugin_host::*;
+use daw_plugin_support::allocation_probe::{Allocator, assert_no_heap as measured};
 use daw_unit_core::{EffectUnit, ProcessingContext};
-use std::{
-    alloc::{GlobalAlloc, Layout, System},
-    cell::Cell,
-    path::PathBuf,
-};
-thread_local! {static WATCH:Cell<bool>=const {Cell::new(false)};static HEAP:Cell<u64>=const {Cell::new(0)};}
-struct Allocator;
-unsafe impl GlobalAlloc for Allocator {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        WATCH.with(|w| {
-            if w.get() {
-                HEAP.with(|n| n.set(n.get() + 1));
-            }
-        });
-        unsafe { System.alloc(l) }
-    }
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        WATCH.with(|w| {
-            if w.get() {
-                HEAP.with(|n| n.set(n.get() + 1));
-            }
-        });
-        unsafe { System.dealloc(p, l) }
-    }
-    unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
-        WATCH.with(|w| {
-            if w.get() {
-                HEAP.with(|c| c.set(c.get() + 1));
-            }
-        });
-        unsafe { System.realloc(p, l, n) }
-    }
-}
+use std::path::PathBuf;
+
 #[global_allocator]
 static ALLOCATOR: Allocator = Allocator;
-fn measured<T>(call: impl FnOnce() -> T) -> T {
-    HEAP.with(|n| n.set(0));
-    WATCH.with(|w| w.set(true));
-    let out = call();
-    WATCH.with(|w| w.set(false));
-    assert_eq!(HEAP.with(Cell::get), 0, "host callback heap operations");
-    out
-}
+
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let format = match args.next().and_then(|s| s.into_string().ok()).as_deref() {

@@ -261,14 +261,11 @@ pub fn render_visual(
     }
     let after = PluginState::from_settings(settings).ok();
     let mut controls = std::array::from_fn(|i| {
-        control_capture::at(&captured, rects[i]).map(|mut response| {
-            if let (Some(before), Some(after)) = (before, after) {
+        control_capture::at_with_change(&captured, rects[i], || {
+            before.zip(after).is_some_and(|(before, after)| {
                 let p = P::ALL[i + 1];
-                if before.get(p) != after.get(p) {
-                    response.mark_changed();
-                }
-            }
-            response
+                before.get(p) != after.get(p)
+            })
         })
     });
     for (id, parameter, response) in &b.graph.edits {

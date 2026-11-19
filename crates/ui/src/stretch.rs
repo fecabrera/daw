@@ -170,9 +170,9 @@ impl DawUi {
     }
 
     pub(super) fn finish_clip_stretch(&mut self, drag: &Drag, pointer: Pos2, unsnapped: bool) {
-        let Some(edge) = drag.mode.stretch_edge() else {
+        if drag.mode.stretch_edge().is_none() {
             return;
-        };
+        }
         let previews = self.stretch_group_preview(drag, pointer, unsnapped);
         if previews.is_empty() || previews.iter().any(|preview| !preview.valid) {
             return;
@@ -199,7 +199,11 @@ impl DawUi {
         if contains_audio && self.reject_pending_audio_transform() {
             return;
         }
-        let next = match self.session.project.stretched_clips(&clips, edge) {
+        let next = match drag
+            .mode
+            .edge_transaction(&self.session.project, &clips)
+            .unwrap()
+        {
             Ok(next) => next,
             Err(error) => {
                 self.fail(error);

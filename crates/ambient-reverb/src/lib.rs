@@ -1,10 +1,12 @@
 //! Portable Ambient Reverb; prepared storage and shared modulation/meter lifecycle.
-use daw_reverb_core::{Parameters, Reverb};
+use daw_reverb_core::{ParameterSlots, Parameters, Reverb};
 use daw_unit_core::{
     AmbientReverbSettings as Settings, EffectUnit, ModulationContext, ModulationDestination,
     ModulationDestinationSettings, ModulationInputs, ModulationParameter as P, ModulationScope,
     ModulationSmoother, PortKind, ProcessingContext, UnitDescriptor,
 };
+const SLOTS: ParameterSlots<8> = ParameterSlots([0, 5, 6, 7, 8, 9, 10, 3]);
+
 #[derive(Clone)]
 pub struct AmbientReverb {
     core: Reverb,
@@ -57,8 +59,7 @@ impl AmbientReverb {
         self.core.set_output_peak_meter(m);
     }
     pub fn effective_parameters(&self) -> [f32; 8] {
-        let v = self.core.effective();
-        [v[0], v[5], v[6], v[7], v[8], v[9], v[10], v[3]]
+        SLOTS.gather(self.core.effective())
     }
     pub fn process_modulated_at(
         &mut self,
@@ -67,17 +68,8 @@ impl AmbientReverb {
         _: f32,
         offsets: [f32; 8],
     ) -> [f32; 2] {
-        let o = self.offsets.process(offsets);
-        let mut offsets = [0.0; 12];
-        offsets[0] = o[0];
-        offsets[5] = o[1];
-        offsets[6] = o[2];
-        offsets[7] = o[3];
-        offsets[8] = o[4];
-        offsets[9] = o[5];
-        offsets[10] = o[6];
-        offsets[3] = o[7];
-        self.core.sample(input, offsets)
+        self.core
+            .sample(input, SLOTS.scatter(self.offsets.process(offsets)))
     }
 }
 impl EffectUnit for AmbientReverb {

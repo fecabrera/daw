@@ -11,6 +11,8 @@ import sys
 import tempfile
 import unittest
 
+from desktop_packaging_fixtures import stage_notice_sources
+
 ROOT = Path(__file__).resolve().parent.parent
 NATIVE = sys.platform == 'darwin' and shutil.which('codesign') and shutil.which('cc')
 
@@ -22,17 +24,10 @@ def fixture():
         root = base / 'repository'
         (root / 'tools').mkdir(parents=True)
         for name in ('package_macos.sh', 'package_macos_dmg.sh', 'build_desktop.py', 'package_sources.py', 'runtime_notices.json',
-                     'copy_desktop_notices.sh', 'desktop_notices.txt'):
+                     'copy_desktop_notices.sh', 'desktop_notices.txt', 'package_desktop_posix.sh'):
             shutil.copy(ROOT / 'tools' / name, root / 'tools' / name)
         shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
-        for directory in ('crates/unit-ui/assets/fonts', 'crates/ui/assets/icons',
-                          'crates/ui/assets/licenses', 'crates/unit-ui/assets/licenses',
-                          'crates/separation/assets/licenses', 'crates/media/assets/licenses',
-                          'crates/timestretch/licenses', 'crates/oscillator/assets/licenses',
-                          'crates/equalizer/assets/licenses', 'crates/ui/assets/app-icon',
-                          'crates/plugin-host/assets/licenses', 'crates/plugin-clap/assets/licenses',
-                          'crates/plugin-vst3/assets/licenses'):
-            shutil.copytree(ROOT / directory, root / directory)
+        stage_notice_sources(ROOT, root, app_icons=True)
         (root / 'fixture.c').write_text('int main(void) { return 0; }\n')
         seed = base / 'native executable'
         subprocess.run(['cc', str(root / 'fixture.c'), '-o', str(seed)], check=True, capture_output=True)

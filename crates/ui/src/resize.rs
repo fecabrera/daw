@@ -17,6 +17,22 @@ impl ClipDragMode {
             _ => None,
         }
     }
+
+    pub(super) fn edge_transaction(
+        self,
+        project: &daw_core::Project,
+        clips: &[Clip],
+    ) -> Option<daw_core::Result<daw_core::Project>> {
+        if let Some(edge) = self.stretch_edge() {
+            return Some(project.stretched_clips(clips, edge));
+        }
+        let edge = self.resize_edge()?;
+        Some(if matches!(self, Self::TrimLeft | Self::TrimRight) {
+            project.trimmed_clips(clips, edge)
+        } else {
+            project.resized_clips(clips, edge)
+        })
+    }
 }
 
 fn range(clip: &Clip) -> (u64, u64, u64, Option<daw_core::ClipLoop>) {
@@ -53,9 +69,8 @@ impl DawUi {
             return None;
         }
         let clips: Vec<_> = raw.into_iter().map(|p| p.clip).collect();
-        self.session
-            .project
-            .trimmed_clips(&clips, drag.mode.resize_edge()?)
+        drag.mode
+            .edge_transaction(&self.session.project, &clips)?
             .ok()
     }
     pub(super) fn resolve_resize_preview(
@@ -63,20 +78,22 @@ impl DawUi {
         drag: &Drag,
         mut raw: Vec<ClipPreview>,
     ) -> Vec<ClipPreview> {
-        let Some(edge) = drag.mode.resize_edge().or_else(|| drag.mode.stretch_edge()) else {
+        if drag
+            .mode
+            .resize_edge()
+            .or_else(|| drag.mode.stretch_edge())
+            .is_none()
+        {
             return raw;
-        };
+        }
         if raw.is_empty() || raw.iter().any(|preview| !preview.valid) {
             return raw;
         }
         let clips: Vec<_> = raw.iter().map(|preview| preview.clip.clone()).collect();
-        let result = if drag.mode.stretch_edge().is_some() {
-            self.session.project.stretched_clips(&clips, edge)
-        } else if matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight) {
-            self.session.project.trimmed_clips(&clips, edge)
-        } else {
-            self.session.project.resized_clips(&clips, edge)
-        };
+        let result = drag
+            .mode
+            .edge_transaction(&self.session.project, &clips)
+            .unwrap();
         let Ok(next) = result else {
             for preview in &mut raw {
                 preview.valid = false;
@@ -118,9 +135,9 @@ impl DawUi {
     }
 
     pub(super) fn finish_clip_resize(&mut self, drag: &Drag, pointer: Pos2, unsnapped: bool) {
-        let Some(edge) = drag.mode.resize_edge() else {
+        if drag.mode.resize_edge().is_none() {
             return;
-        };
+        }
         if let Some(result) = self.linked_trim_result(drag, pointer, unsnapped) {
             match result {
                 Ok(next) => self.publish_resize(next),
@@ -137,11 +154,10 @@ impl DawUi {
             return;
         }
         let clips: Vec<_> = raw.iter().map(|preview| preview.clip.clone()).collect();
-        let result = if matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight) {
-            self.session.project.trimmed_clips(&clips, edge)
-        } else {
-            self.session.project.resized_clips(&clips, edge)
-        };
+        let result = drag
+            .mode
+            .edge_transaction(&self.session.project, &clips)
+            .unwrap();
         match result {
             Ok(next) => self.publish_resize(next),
             Err(error) => self.fail(error),

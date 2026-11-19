@@ -193,46 +193,10 @@ pub(crate) unsafe fn text(pointer: *const c_char) -> Result<String> {
 }
 
 unsafe fn inspect_clap(path: &Path) -> Result<Vec<HostedPluginDescriptor>> {
-    use daw_plugin_clap::sys::{
-        entry::clap_plugin_entry,
-        factory::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory},
-        version::clap_version_is_compatible,
-    };
-    let executable = crate::module_executable(PluginFormat::Clap, path)?;
-    // SAFETY: isolated scanner accepts foreign module initializers.
-    let library = unsafe { Library::new(executable) }?;
-    let entry = unsafe { library.get::<*const clap_plugin_entry>(b"clap_entry\0") }?;
-    let entry =
-        unsafe { (*entry).as_ref() }.ok_or_else(|| Error::Invalid("Null CLAP entry".into()))?;
-    if !clap_version_is_compatible(entry.clap_version) {
-        return Err(Error::Invalid("Incompatible CLAP version".into()));
-    }
-    let init = entry
-        .init
-        .ok_or_else(|| Error::Invalid("Missing CLAP init".into()))?;
-    let deinit = entry
-        .deinit
-        .ok_or_else(|| Error::Invalid("Missing CLAP deinit".into()))?;
-    let get_factory = entry
-        .get_factory
-        .ok_or_else(|| Error::Invalid("Missing CLAP factory lookup".into()))?;
-    let path_text = path_cstring(path)?;
-    if !unsafe { init(path_text.as_ptr()) } {
-        return Err(Error::Invalid("CLAP initialization failed".into()));
-    }
-    struct Initialized(unsafe extern "C" fn());
-    impl Drop for Initialized {
-        fn drop(&mut self) {
-            unsafe {
-                (self.0)();
-            }
-        }
-    }
-    let _initialized = Initialized(deinit);
-    let factory = unsafe {
-        (get_factory(CLAP_PLUGIN_FACTORY_ID.as_ptr()) as *const clap_plugin_factory).as_ref()
-    }
-    .ok_or_else(|| Error::Invalid("Missing CLAP plugin factory".into()))?;
+    use daw_plugin_clap::sys::version::clap_version_is_compatible;
+    let module =
+        unsafe { crate::clap_module::ClapModule::open(path, crate::clap_module::Use::Scan) }?;
+    let factory = module.factory();
     let count = factory
         .get_plugin_count
         .ok_or_else(|| Error::Invalid("Missing CLAP descriptor count".into()))?;

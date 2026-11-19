@@ -67,14 +67,11 @@ pub fn render(
             P::DryWet => b.knobs[3][1],
             _ => Rect::NOTHING,
         };
-        control_capture::at(&captured, rect).map(|mut response| {
-            if let (Some(before), Some(after)) = (before, after) {
+        control_capture::at_with_change(&captured, rect, || {
+            before.zip(after).is_some_and(|(before, after)| {
                 let p = P::ALL[slot + 1];
-                if before.get(p) != after.get(p) {
-                    response.mark_changed();
-                }
-            }
-            response
+                before.get(p) != after.get(p)
+            })
         })
     });
     Bounds {

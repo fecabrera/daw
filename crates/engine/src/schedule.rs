@@ -48,6 +48,8 @@ struct Transition {
     fade: daw_core::ClipFade,
 }
 
+type StagedFrame = (usize, u64, [f32; 2]);
+
 #[derive(Clone)]
 pub(super) struct AudioTrack {
     ranges: Ranges,
@@ -65,8 +67,8 @@ pub(super) struct AudioTrack {
     baked_loops: Vec<bool>,
     transitions: Vec<Transition>,
     transition_ranges: Ranges,
-    staged: Option<(usize, u64, [f32; 2])>,
-    staged_continuation: Option<(usize, u64, [f32; 2])>,
+    staged: Option<StagedFrame>,
+    staged_continuation: Option<StagedFrame>,
     loop_pin: Option<(u64, Option<(usize, u64)>)>,
     readers: Vec<daw_media::FrameReader>,
     reader_indices: Vec<Option<usize>>,
@@ -382,14 +384,7 @@ impl AudioTrack {
                 let neighbor = track
                     .clips
                     .iter()
-                    .position(|other| {
-                        other.id != clip.id
-                            && if left {
-                                other.end() == clip.start_frame
-                            } else {
-                                other.start_frame == clip.end()
-                            }
-                    })
+                    .position(|other| other.id != clip.id && clip.touches_edge(other, left))
                     .unwrap();
                 // Outgoing owners take priority if an unrelated placement joins two saved transitions.
                 if left
@@ -563,17 +558,13 @@ impl AudioTrack {
             Self::continuation_audio(&self.contexts[index], &self.audio[index])
         {
             let reader = self.continuation_reader(index);
-            let value = if let Some(reader) = reader {
-                self.readers[reader]
-                    .sample(position)
-                    .map_err(|e| e.to_string())?
-            } else {
-                audio
-                    .samples
-                    .get(position as usize)
-                    .copied()
-                    .unwrap_or_default()
-            };
+            let value = read_pcm(
+                audio,
+                reader.map(|reader| &mut self.readers[reader]),
+                position,
+                None,
+            )
+            .map_err(|e| e.to_string())?;
             let mono =
                 self.layouts[index]
                     .as_mut()
@@ -713,24 +704,13 @@ impl AudioTrack {
                 let audio = Self::continuation_audio(&self.contexts[t.owner], &self.audio[t.owner])
                     .unwrap();
                 let reader = self.continuation_reader(t.owner);
-                let extra = if let Some(reader) = reader {
-                    if realtime {
-                        self.staged_continuation
-                            .filter(|(transition, p, _)| *transition == i && *p == position)
-                            .map_or_else(
-                                || self.readers[reader].live_sample(position),
-                                |(_, _, value)| value,
-                            )
-                    } else {
-                        self.readers[reader].sample(position).unwrap_or_default()
-                    }
-                } else {
-                    audio
-                        .samples
-                        .get(position as usize)
-                        .copied()
-                        .unwrap_or_default()
-                };
+                let extra = read_pcm(
+                    audio,
+                    reader.map(|reader| &mut self.readers[reader]),
+                    position,
+                    realtime.then_some((self.staged_continuation, i)),
+                )
+                .unwrap_or_default();
                 let mono = self.layouts[t.owner].as_mut().map_or(
                     Some(audio.metadata.channels == 1),
                     |layout| {
@@ -825,24 +805,13 @@ impl AudioTrack {
         let Some(audio) = &self.audio[index] else {
             return ([0.0; 2], None);
         };
-        let value = if let Some(reader) = self.reader_indices[index] {
-            if realtime {
-                self.staged
-                    .filter(|(i, p, _)| *i == index && *p == position)
-                    .map_or_else(
-                        || self.readers[reader].live_sample(position),
-                        |(_, _, value)| value,
-                    )
-            } else {
-                self.readers[reader].sample(position).unwrap_or_default()
-            }
-        } else {
-            audio
-                .samples
-                .get(position as usize)
-                .copied()
-                .unwrap_or_default()
-        };
+        let value = read_pcm(
+            audio,
+            self.reader_indices[index].map(|reader| &mut self.readers[reader]),
+            position,
+            realtime.then_some((self.staged, index)),
+        )
+        .unwrap_or_default();
         (
             clip.channels
                 .apply(value)
@@ -897,6 +866,27 @@ fn audio_source_missing(plan: &RenderPlan, clip: &daw_core::Clip) -> bool {
     }
     false
 }
+fn read_pcm(
+    audio: &AudioData,
+    reader: Option<&mut daw_media::FrameReader>,
+    position: u64,
+    realtime: Option<(Option<StagedFrame>, usize)>,
+) -> daw_media::Result<[f32; 2]> {
+    let Some(reader) = reader else {
+        return Ok(audio
+            .samples
+            .get(position as usize)
+            .copied()
+            .unwrap_or_default());
+    };
+    if let Some((staged, key)) = realtime {
+        return Ok(staged
+            .filter(|(index, frame, _)| *index == key && *frame == position)
+            .map_or_else(|| reader.live_sample(position), |(_, _, value)| value));
+    }
+    reader.sample(position)
+}
+
 fn signed_source_position(clip: &daw_core::Clip, frame: i128) -> i128 {
     let local = frame - i128::from(clip.start_frame);
     clip.extended_source_frame(local)

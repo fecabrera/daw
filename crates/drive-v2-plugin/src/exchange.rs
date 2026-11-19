@@ -1,64 +1,35 @@
 //! Shared control-to-audio recall and coherent audio-to-control publication.
 use crate::PluginState;
 const WORDS: usize = crate::MAX_STATE_BYTES.div_ceil(8);
-use daw_plugin_support::Snapshot;
 
-pub struct StateExchange {
-    pending: Snapshot<{ WORDS }>,
-    published: Snapshot<{ WORDS + 1 }>,
-}
+pub struct StateExchange(daw_plugin_support::RevisionExchange<WORDS, { WORDS + 1 }>);
+
 impl Default for StateExchange {
     fn default() -> Self {
-        let words = words(PluginState::default());
-        Self {
-            pending: Snapshot::new(words),
-            published: Snapshot::new(std::array::from_fn(
-                |i| {
-                    if i < WORDS { words[i] } else { 0 }
-                },
-            )),
-        }
+        Self(daw_plugin_support::RevisionExchange::new(words(
+            PluginState::default(),
+        )))
     }
 }
+
 impl StateExchange {
-    /// One serialized control-thread writer. Only validated snapshots enter here.
     pub fn recall(&self, state: PluginState) {
-        self.pending.publish(words(state));
+        self.0.recall(words(state));
     }
-    /// One attempt on audio; a concurrent recall is deferred to the next boundary.
+
     pub fn consume(&self, applied: &mut u64) -> Option<PluginState> {
-        let (revision, words) = self.pending.read()?;
-        if revision == *applied {
-            return None;
-        }
-        let state = state(words)?;
-        *applied = revision;
-        Some(state)
+        self.0.consume(applied, state)
     }
-    /// One serialized audio writer, or control while inactive.
+
     pub fn publish(&self, state: PluginState, applied: u64) {
-        let words = words(state);
-        self.published.publish(std::array::from_fn(|i| {
-            if i < WORDS { words[i] } else { applied }
-        }));
+        self.0.publish(words(state), applied);
     }
+
     pub fn current(&self) -> Option<PluginState> {
-        for _ in 0..8 {
-            let Some((revision, pending)) = self.pending.read() else {
-                continue;
-            };
-            let Some((_, published)) = self.published.read() else {
-                continue;
-            };
-            return state(if revision != published[WORDS] {
-                pending
-            } else {
-                std::array::from_fn(|i| published[i])
-            });
-        }
-        None
+        self.0.current(state)
     }
 }
+
 fn words(state: PluginState) -> [u64; WORDS] {
     let bytes = state.encode();
     std::array::from_fn(|i| {

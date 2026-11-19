@@ -98,16 +98,9 @@ impl State {
         if !self.enabled {
             self.cancel();
         }
-        let result = self
-            .job
-            .as_ref()
-            .and_then(|job| match job.receiver.try_recv() {
-                Ok(result) => Some(result),
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    Some(Err("Transient analysis worker stopped".into()))
-                }
-                Err(mpsc::TryRecvError::Empty) => None,
-            });
+        let result = self.job.as_ref().and_then(|job| {
+            crate::worker_result::poll(&job.receiver, || "Transient analysis worker stopped".into())
+        });
         if let Some(result) = result {
             let job = self.job.take().unwrap();
             if job.generation == self.generation && !job.cancelled.load(Ordering::Relaxed) {

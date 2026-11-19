@@ -3,6 +3,8 @@ use super::*;
 use daw_drive_plugin::{Parameter, PluginState};
 use egui::{Event, Rect, Vec2};
 use std::sync::{Arc, atomic::Ordering};
+#[path = "../../unit-ui/test_support/dropdown_label.rs"]
+mod dropdown_label;
 #[path = "../../unit-ui/test_support/editor_parity.rs"]
 mod parity;
 use parity::context;
@@ -49,27 +51,16 @@ fn editor_meshes_match_builtin_body_in_every_theme_scale_and_parameter_snapshot(
 #[test]
 fn builtin_control_gestures_emit_only_their_bound_host_parameter() {
     fn event(pos: egui::Pos2, pressed: bool) -> Event {
-        Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        }
+        parity::primary_button(pos, pressed)
     }
     fn frame(ctx: &egui::Context, editor: &mut Editor, events: Vec<Event>) {
-        let mut out = ctx.run_ui(
-            egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    Vec2::new(WIDTH as f32, HEIGHT as f32),
-                )),
-                focused: true,
-                events,
-                ..Default::default()
-            },
+        parity::frame(
+            ctx,
+            Vec2::new(WIDTH as f32, HEIGHT as f32),
+            events,
+            None,
             |ui| editor.show(ui),
         );
-        out.textures_delta.clear();
     }
     for highpass_enabled in [false, true] {
         let mut state = PluginState::default();
@@ -246,38 +237,18 @@ fn slope_dropdown_publishes_only_its_host_parameter() {
         editor: &mut Editor,
         events: Vec<Event>,
     ) -> Vec<egui::epaint::ClippedShape> {
-        let mut output = ctx.run_ui(
-            egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    Vec2::new(WIDTH as f32, HEIGHT as f32),
-                )),
-                focused: true,
-                events,
-                ..Default::default()
-            },
+        parity::frame(
+            ctx,
+            Vec2::new(WIDTH as f32, HEIGHT as f32),
+            events,
+            None,
             |ui| editor.show(ui),
-        );
-        output.textures_delta.clear();
-        output.shapes
+        )
     }
     fn button(pos: egui::Pos2, pressed: bool) -> Event {
-        Event::PointerButton {
-            pos,
-            pressed,
-            button: egui::PointerButton::Primary,
-            modifiers: Default::default(),
-        }
+        parity::primary_button(pos, pressed)
     }
-    fn find_label(shape: &egui::Shape, name: &str) -> Option<egui::Pos2> {
-        match shape {
-            egui::Shape::Text(t) if t.galley.text() == name => {
-                Some(t.pos + t.galley.rect.center().to_vec2())
-            }
-            egui::Shape::Vec(shapes) => shapes.iter().find_map(|s| find_label(s, name)),
-            _ => None,
-        }
-    }
+    use dropdown_label::find_label;
     for (parameter, slot) in [(Parameter::HighPassSlope, 9), (Parameter::LowPassSlope, 12)] {
         let mut state = PluginState::default();
         state.set(Parameter::HighPassEnabled, 1.0).unwrap();

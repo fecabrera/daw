@@ -8,11 +8,14 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-struct Fixture(PathBuf);
+#[path = "support/fixture_dir.rs"]
+mod fixture_dir;
+use fixture_dir::FixtureDir;
+
+struct Fixture(FixtureDir);
 impl Fixture {
     fn new() -> Self {
-        let path = std::env::temp_dir().join(format!("daw-source-bundling-{}", Id::new_v4()));
-        fs::create_dir(&path).unwrap();
+        let path = FixtureDir::new("daw-source-bundling");
         Self(path)
     }
     fn wav(&self, name: &str, value: f32) -> PathBuf {
@@ -40,11 +43,6 @@ impl Fixture {
         s.import(&self.wav("a.wav", 0.2), None, 0).unwrap();
         s.save(&self.0.join("original")).unwrap();
         s
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 fn collect(session: &Session, history: Option<&SessionHistory>) -> CollectionOutcome {

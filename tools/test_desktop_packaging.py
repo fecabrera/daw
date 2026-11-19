@@ -10,6 +10,8 @@ import tempfile
 import unittest
 import zipfile
 
+from desktop_packaging_fixtures import stage_notice_sources
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -37,19 +39,10 @@ class DesktopPackagingTests(unittest.TestCase):
                         shutil.copy(script, root / 'tools' / script.name)
                         shutil.copy(ROOT / 'tools/package_sources.py', root / 'tools/package_sources.py')
                         shutil.copy(ROOT / 'tools/build_desktop.py', root / 'tools/build_desktop.py')
-                        for name in ('runtime_notices.json', 'copy_desktop_notices.sh', 'desktop_notices.txt'):
+                        for name in ('runtime_notices.json', 'copy_desktop_notices.sh', 'desktop_notices.txt', 'package_desktop_posix.sh'):
                             shutil.copy(ROOT / 'tools' / name, root / 'tools' / name)
                         shutil.copy(ROOT / 'LICENSE', root / 'LICENSE')
-                        for directory in (
-                            'crates/unit-ui/assets/fonts', 'crates/ui/assets/icons',
-                            'crates/ui/assets/licenses', 'crates/unit-ui/assets/licenses',
-                            'crates/separation/assets/licenses', 'crates/media/assets/licenses',
-                            'crates/timestretch/licenses', 'crates/oscillator/assets/licenses',
-                            'crates/equalizer/assets/licenses', 'crates/plugin-host/assets/licenses',
-                            'crates/plugin-clap/assets/licenses', 'crates/plugin-vst3/assets/licenses',
-                        ):
-                            shutil.copytree(ROOT / directory, root / directory)
-                        shutil.copytree(ROOT / 'crates/ui/assets/app-icon', root / 'crates/ui/assets/app-icon')
+                        stage_notice_sources(ROOT, root, app_icons=True)
                         default = root / 'target' / profile
                         default.mkdir(parents=True)
                         (default / 'daw-desktop').write_text('stale')

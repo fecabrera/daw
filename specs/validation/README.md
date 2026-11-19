@@ -17,6 +17,28 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Second-pass shared code — 2026-11-18
+
+Implemented the 32 findings in the second independent code consolidation
+exploration. The refactor shares clip transactions and UI behavior, worker
+polling, stereo conversion and PCM reads, DSP modulation, native plugin
+lifetime and telemetry, test fixtures, and packaging and CI helpers.
+
+- Formatting, strict workspace Clippy, and `git diff --check` passed.
+- The macOS workspace suite passed in debug and release with 3,643 tests
+  passed and 22 ignored in each profile. Both runs used `--locked --offline`.
+- The Python tool suite ran 68 tests with one Windows PowerShell test
+  skipped. Both additional tests for bundle layout and CI log capture passed.
+- The CLI built and passed `python3 tools/check_cli.py`. Its checks cover
+  compound audio, codecs, source collection, and exact repeat exports.
+- The native macOS scanner, host parity, preset, and graph checks passed
+  for CLAP and VST3 where applicable. Both loaded Drive formats passed the
+  zero-heap host callback check. The optimized native graph check passed
+  at six rates and three block sizes with irregular output slices.
+
+Native UI gestures, audio device checks, and hosted macOS, Linux, and Windows
+CI jobs remain open.
+
 ## Shared code from the duplication audit — 2026-11-18
 
 Implemented findings F01–F27 from the independent duplication audit. The

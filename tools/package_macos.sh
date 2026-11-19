@@ -1,27 +1,10 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-profile=debug
-profile_set=0
-local_build=0
-usage() {
-  echo 'Usage: sh tools/package_macos.sh [debug|release] [--local]'
-}
-for argument in "$@"; do
-  case "$argument" in
-    debug|release)
-      if [ "$profile_set" = 1 ]; then usage >&2; exit 2; fi
-      profile="$argument"
-      profile_set=1
-      ;;
-    --local) local_build=1 ;;
-    --help|-h) usage; exit 0 ;;
-    *) usage >&2; exit 2 ;;
-  esac
-done
-if [ "$local_build" = 0 ]; then
-  source_revision="$(python3 tools/package_sources.py --revision-only)"
-fi
+. tools/package_desktop_posix.sh
+package_arguments package_macos.sh "$@"
+
+package_source_revision
 executable="$(python3 tools/build_desktop.py "$profile" macos)"
 mkdir -p "$PWD/target/$profile"
 artifact="target/$profile/DAW.app"
@@ -86,11 +69,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 if [ "$local_build" = 1 ]; then
-  cat > "$bundle/Contents/Resources/LOCAL-BUILD.txt" <<'NOTE'
-Local development build from the current working tree, including uncommitted changes.
-No corresponding-source archive is included. This is not a distribution package.
-Keep LICENSE.txt and the licenses directory with this app.
-NOTE
+  package_local_marker "$bundle/Contents/Resources/LOCAL-BUILD.txt"
 else
   python3 tools/package_sources.py --revision "$source_revision" --profile "$profile" \
     --destination "$bundle/Contents/Resources" --binary "$bundle/Contents/MacOS/daw-desktop" \

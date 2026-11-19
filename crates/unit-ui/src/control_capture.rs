@@ -42,3 +42,16 @@ pub(crate) fn record(ui: &Ui, response: &Response) {
 pub fn at(responses: &[Response], rect: Rect) -> Option<Response> {
     responses.iter().find(|r| r.rect == rect).cloned()
 }
+
+/// Compare typed values only for the first captured response at this rectangle.
+pub fn at_with_change(
+    responses: &[Response],
+    rect: Rect,
+    changed: impl FnOnce() -> bool,
+) -> Option<Response> {
+    let mut response = at(responses, rect)?;
+    if changed() {
+        response.mark_changed();
+    }
+    Some(response)
+}

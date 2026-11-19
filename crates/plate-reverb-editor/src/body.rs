@@ -32,18 +32,14 @@ pub fn render(
     Bounds {
         sections: b.sections,
         controls: std::array::from_fn(|i| {
-            control_capture::at(&c, b.controls[i]).map(|mut r| {
+            control_capture::at_with_change(&c, b.controls[i], || {
                 let parameter = P::ALL[i + 1];
-                if before.get(parameter)
+                before.get(parameter)
                     != after
                         .get_or_insert_with(|| {
                             daw_drive_plugin::PluginState::from_settings(s).unwrap()
                         })
                         .get(parameter)
-                {
-                    r.mark_changed();
-                }
-                r
             })
         }),
         readouts: vec![],

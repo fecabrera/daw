@@ -1,59 +1,18 @@
 use super::*;
+#[path = "../../unit-core/test_support/modulation.rs"]
+mod fixtures;
 use daw_unit_core::{
-    Modulation, ModulationBehavior, ModulationContext, ModulationDestination,
-    ModulationDestinationSettings, ModulationParameter as P, ModulationRange, ModulationRoute,
-    ModulationScope, ModulationSourceId, ModulationValue, process_modulation,
+    ModulationDestination, ModulationDestinationSettings, ModulationParameter as P,
+    ModulationRoute, ModulationScope,
 };
 
-fn source() -> ModulationValue {
-    ModulationValue {
-        source: ModulationSourceId {
-            layer: "00000000-0000-0000-0000-000000000001".parse().unwrap(),
-            unit: "00000000-0000-0000-0000-000000000002".parse().unwrap(),
-        },
-        value: 1.0,
-        weight: 1.0,
-        release_age: None,
-        range: ModulationRange::Unipolar,
-        behavior: ModulationBehavior::Contour,
-    }
-}
+use fixtures::{contour as source, process_contour as process};
 fn routes(rate: u32, amounts: [f32; 19]) -> Vec<ModulationRoute> {
     P::OTT
         .into_iter()
         .zip(amounts)
-        .map(|(parameter, amount)| {
-            ModulationRoute::new(
-                Modulation {
-                    source: Some(source().source),
-                    amount,
-                    ..Modulation::new(parameter)
-                },
-                rate,
-            )
-        })
+        .map(|(parameter, amount)| fixtures::route(source().source, parameter, amount, rate))
         .collect()
-}
-fn process(
-    unit: &mut Ott,
-    routes: &mut [ModulationRoute],
-    input: [f32; 2],
-    local: bool,
-) -> [f32; 2] {
-    let values = [source()];
-    let (local, shared) = if local {
-        (&values[..], &[][..])
-    } else {
-        (&[][..], &values[..])
-    };
-    process_modulation(
-        unit,
-        routes,
-        input,
-        local,
-        shared,
-        ModulationContext::default(),
-    )
 }
 const RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 fn amounts() -> [f32; 19] {

@@ -98,10 +98,10 @@ pub fn show(
     let id = ui.id().with("envelope-plot-drag");
     let frame = ui.ctx().cumulative_frame_nr();
     let mut drag = ui.data_mut(|data| data.get_temp::<Drag>(id));
-    let blocked = compact
-        || !ui.is_enabled()
-        || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape));
-    if blocked || drag.is_some_and(|d| d.before != *settings || frame > d.frame + 1) {
+    let blocked = compact || crate::drag::cancelled(ui);
+    if blocked
+        || drag.is_some_and(|d| d.before != *settings || crate::drag::skipped_frame(d.frame, frame))
+    {
         drag = None;
     }
     let mut pending = None;

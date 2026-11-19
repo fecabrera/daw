@@ -222,41 +222,9 @@ impl ModulationDestination for Band {
     }
 }
 #[derive(Clone)]
-struct Output {
-    base: [Ramp; 2],
-    external: ModulationSmoother<2>,
-    effective: [f32; 2],
-}
-impl ModulationDestination for Output {
-    type Audio = [f32; 2];
-    const MODULATION_PARAMETERS: &'static [P] = &[P::Level, P::DryWet];
-    const MODULATION_SCOPE: ModulationScope = ModulationScope::Shared;
-    fn process_with_modulation(
-        &mut self,
-        input: [f32; 2],
-        m: &ModulationInputs,
-        _: ModulationContext,
-    ) -> [f32; 2] {
-        let b = self.base.each_mut().map(Ramp::next_value);
-        let o = self
-            .external
-            .process(m.offsets([P::Level, P::DryWet]))
-            .map(|v| v as f32);
-        self.effective = [
-            if b[0] == 0.0 {
-                daw_unit_core::SILENT_GAIN_DB
-            } else {
-                (db(b[0]) + o[0]).clamp(daw_unit_core::SILENT_GAIN_DB, 12.0)
-            },
-            (b[1] + o[1]).clamp(0.0, 1.0),
-        ];
-        input
-    }
-}
-#[derive(Clone)]
 pub struct Exciter {
     bands: Vec<RoutedDestination<Band>>,
-    output: RoutedDestination<Output>,
+    output: RoutedDestination<daw_unit_core::WetOutput>,
     crossover: CrossoverBank,
     dry: [[f32; 2]; LATENCY],
     cursor: usize,
@@ -280,11 +248,7 @@ impl Exciter {
                 .map(|b| RoutedDestination::new(Band::new(c, b), &s.modulations, c.sample_rate_hz))
                 .collect(),
             output: RoutedDestination::new(
-                Output {
-                    base: [gain(s.level_db), s.dry_wet].map(Ramp::new),
-                    external: ModulationSmoother::new(c),
-                    effective: [s.level_db, s.dry_wet],
-                },
+                daw_unit_core::WetOutput::new(c, s.level_db, s.dry_wet),
                 &s.modulations,
                 c.sample_rate_hz,
             ),
@@ -324,15 +288,9 @@ impl Exciter {
         }
         self.crossover
             .retarget(s.bands.iter().map(|band| band.upper_hz), self.fade_frames);
-        for (r, v) in self
-            .output
+        self.output
             .destination
-            .base
-            .iter_mut()
-            .zip([gain(s.level_db), s.dry_wet])
-        {
-            r.set(v, self.fade_frames);
-        }
+            .retarget(s.level_db, s.dry_wet, self.fade_frames);
         self.bypass.set(f32::from(s.enabled), self.fade_frames);
         self.monitor.set_enabled(s.enabled);
         true
@@ -361,14 +319,9 @@ impl Exciter {
             }
         }
         self.output.inherit_routes(&mut previous.output);
-        let targets = self.output.destination.base.map(|r| r.target());
-        std::mem::swap(
-            &mut self.output.destination,
-            &mut previous.output.destination,
-        );
-        for (r, v) in self.output.destination.base.iter_mut().zip(targets) {
-            r.set(v, self.fade_frames);
-        }
+        self.output
+            .destination
+            .inherit(&mut previous.output.destination, self.fade_frames);
         self.dry = previous.dry;
         self.cursor = previous.cursor;
         let target = self.bypass.target();
@@ -417,7 +370,7 @@ impl Exciter {
             }
         }
         self.output.process([0.0; 2], shared, context);
-        let [level, mix] = self.output.destination.effective;
+        let [level, mix] = self.output.destination.effective();
         let enabled = f64::from(self.bypass.next_value());
         let out = std::array::from_fn(|ch| {
             let base = solo_dry[ch];
@@ -440,7 +393,7 @@ impl Exciter {
             .map(|b| b.destination.effective)
     }
     pub fn effective_parameters(&self) -> [f32; 2] {
-        self.output.destination.effective
+        self.output.destination.effective()
     }
 }
 impl EffectUnit for Exciter {
@@ -469,10 +422,7 @@ impl EffectUnit for Exciter {
             b.destination.reset();
         }
         self.output.reset_routes();
-        for r in &mut self.output.destination.base {
-            r.reset();
-        }
-        self.output.destination.external.reset();
+        self.output.destination.reset();
         self.crossover.reset();
     }
     fn heap_bytes(&self) -> u64 {

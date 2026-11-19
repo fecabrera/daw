@@ -36,17 +36,13 @@ pub fn render(
     Bounds {
         sections: b.sections,
         controls: std::array::from_fn(|i| {
-            control_capture::at(&c, b.controls[i]).map(|mut r| {
-                if before.get(P::ALL[i + 1])
+            control_capture::at_with_change(&c, b.controls[i], || {
+                before.get(P::ALL[i + 1])
                     != after
                         .get_or_insert_with(|| {
                             daw_drive_plugin::PluginState::from_settings(s).unwrap()
                         })
                         .get(P::ALL[i + 1])
-                {
-                    r.mark_changed();
-                }
-                r
             })
         }),
     }

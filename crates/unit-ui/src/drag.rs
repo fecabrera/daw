@@ -5,6 +5,10 @@ pub fn cancelled(ui: &Ui) -> bool {
     !ui.is_enabled() || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape))
 }
 
+pub(crate) fn skipped_frame(previous: u64, current: u64) -> bool {
+    previous + 1 < current
+}
+
 /// Arm on press, including a motion and release delivered together next frame.
 pub fn press_origin(ui: &Ui, response: &Response) -> Option<Pos2> {
     if cancelled(ui)

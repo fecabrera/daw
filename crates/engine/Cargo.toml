@@ -39,6 +39,7 @@ daw-limiter.workspace = true
 daw-ott.workspace = true
 
 [dev-dependencies]
+daw-plugin-support.workspace = true
 daw-plugin-host-fixtures.workspace = true
 daw-drive-plugin.workspace = true
 serde_json.workspace = true

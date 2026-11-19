@@ -1,13 +1,10 @@
 //! Drive editor and bounded UI-thread channels. No audio or SDK ownership.
 use daw_drive_plugin::{Parameter, PluginState};
-use daw_plugin_support::Snapshot;
+use daw_plugin_support::{EditorQueue, Snapshot};
 use daw_unit_ui::{drive, fonts, theme};
-use std::{
-    collections::VecDeque,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU32, Ordering},
-    },
+use std::sync::{
+    Arc,
+    atomic::{AtomicU32, Ordering},
 };
 pub const WIDTH: u32 = drive::SIZE.x as u32;
 pub const HEIGHT: u32 = drive::SIZE.y as u32;
@@ -25,7 +22,7 @@ pub struct Model {
     pub meter_reset: std::sync::atomic::AtomicU32,
     pub output_reset: std::sync::atomic::AtomicBool,
     state: Snapshot<7>,
-    events: Mutex<VecDeque<Edit>>,
+    events: EditorQueue<Edit>,
     pub appearance: AtomicU32,
     pub scale: AtomicU32,
 }
@@ -36,7 +33,7 @@ impl Default for Model {
             meter_reset: std::sync::atomic::AtomicU32::new(0),
             output_reset: std::sync::atomic::AtomicBool::new(false),
             state: Snapshot::new(Parameter::ALL.map(|p| PluginState::default().get(p).to_bits())),
-            events: Mutex::new(VecDeque::with_capacity(CAPACITY)),
+            events: EditorQueue::new(CAPACITY),
             appearance: AtomicU32::new(0),
             scale: AtomicU32::new(1.0f32.to_bits()),
         }
@@ -73,25 +70,16 @@ impl Model {
     }
     /// A host recall supersedes presentation edits not yet delivered to control.
     pub fn discard_presentation(&self) {
-        if let Ok(mut events) = self.events.lock() {
-            events.retain(|e| !matches!(e, Edit::Presentation(_)));
-        }
+        self.events.retain(|e| !matches!(e, Edit::Presentation(_)));
     }
     pub fn pop(&self) -> Option<Edit> {
-        self.events.lock().ok()?.pop_front()
+        self.events.pop()
     }
     pub fn push(&self, edits: &[Edit]) -> bool {
-        let Ok(mut queue) = self.events.lock() else {
-            return false;
-        };
-        if queue.len() + edits.len() > CAPACITY {
-            return false;
-        }
-        queue.extend(edits.iter().copied());
-        true
+        self.events.push(edits)
     }
     pub fn remaining(&self) -> usize {
-        self.events.lock().map_or(0, |q| CAPACITY - q.len())
+        self.events.remaining()
     }
 }
 pub struct Editor {

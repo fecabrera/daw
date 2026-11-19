@@ -183,8 +183,7 @@ impl Project {
                 ..r.value
             })
             .collect();
-        let mut next = self.clone();
-        next.edit(Edit::SetMarkers {
+        self.edited(Edit::SetMarkers {
             markers: markers.clone(),
         })?;
         Ok(markers)
@@ -260,8 +259,7 @@ impl Project {
             })
             .collect();
         events.sort_by_key(|e| e.start_frame);
-        let mut next = self.clone();
-        next.edit(Edit::SetSignatureEvents {
+        self.edited(Edit::SetSignatureEvents {
             events: events.clone(),
         })?;
         Ok(events)

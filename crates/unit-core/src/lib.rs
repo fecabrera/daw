@@ -1,4 +1,7 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+mod plugin_meter;
+pub use plugin_meter::PluginMeterPrefix;
+
 mod level_history;
 pub use level_history::{
     LEVEL_HISTORY_BINS, LEVEL_HISTORY_SECONDS, LevelHistory, LevelHistoryReading,

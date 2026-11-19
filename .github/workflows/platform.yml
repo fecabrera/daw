@@ -47,15 +47,15 @@ jobs:
         id: formatting
         run: |
           mkdir -p work/ci-logs
-          cargo fmt --all --check 2>&1 | tee work/ci-logs/formatting.log
+          bash tools/capture_ci_log.sh work/ci-logs/formatting.log cargo fmt --all --check
 
       - name: Check Clippy
         id: clippy
-        run: cargo clippy --locked --workspace --all-targets -- -D warnings 2>&1 | tee work/ci-logs/clippy.log
+        run: bash tools/capture_ci_log.sh work/ci-logs/clippy.log cargo clippy --locked --workspace --all-targets -- -D warnings
 
       - name: Run workspace tests
         id: tests
-        run: cargo test --locked --workspace 2>&1 | tee work/ci-logs/tests.log
+        run: bash tools/capture_ci_log.sh work/ci-logs/tests.log cargo test --locked --workspace
 
       - name: Check Linux GTK window modes
         id: gtk_window
@@ -66,32 +66,32 @@ jobs:
           GTK_A11Y: none
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
-          dbus-run-session -- xvfb-run -a cargo run --locked -p daw-desktop -- --smoke-test 2>&1 | tee work/ci-logs/gtk-window.log
+          bash tools/capture_ci_log.sh work/ci-logs/gtk-window.log dbus-run-session -- xvfb-run -a cargo run --locked -p daw-desktop -- --smoke-test
           cargo run --locked -p daw-desktop -- --font-license > work/ci-logs/font-license.log
 
       - name: Check external plugin hosting with owned fixtures
         id: plugin_hosting
         run: |
-          cargo build --locked -p daw-desktop -p daw-cli -p daw-plugin-host-fixtures -p daw-plugin-scan -p daw-drive-clap -p daw-drive-vst3 2>&1 | tee work/ci-logs/hosting-build.log
-          cargo build --locked -p daw-engine --example native_fixture_check -p daw-plugin-host --example native_host_check --example native_preset_check 2>&1 | tee -a work/ci-logs/hosting-build.log
+          bash tools/capture_ci_log.sh work/ci-logs/hosting-build.log cargo build --locked -p daw-desktop -p daw-cli -p daw-plugin-host-fixtures -p daw-plugin-scan -p daw-drive-clap -p daw-drive-vst3
+          bash tools/capture_ci_log.sh --append work/ci-logs/hosting-build.log cargo build --locked -p daw-engine --example native_fixture_check -p daw-plugin-host --example native_host_check --example native_preset_check
           # The graph matrix fingerprints the full debug bundle on every load.
-          cargo build --locked --profile test -p daw-engine --example native_graph_check 2>&1 | tee -a work/ci-logs/hosting-build.log
-          python tools/check_plugin_hosting.py 2>&1 | tee work/ci-logs/hosting-fixtures.log
-          python tools/check_plugin_scanner.py --embedded --scanner target/debug/daw-desktop${{ runner.os == 'Windows' && '.exe' || '' }} 2>&1 | tee work/ci-logs/hosting-embedded-desktop.log
-          python tools/check_plugin_scanner.py --embedded --scanner target/debug/daw-cli${{ runner.os == 'Windows' && '.exe' || '' }} 2>&1 | tee work/ci-logs/hosting-embedded-cli.log
-          python tools/check_plugin_scanner.py --host-check target/debug/examples/native_host_check${{ runner.os == 'Windows' && '.exe' || '' }} --graph-check target/debug/examples/native_graph_check${{ runner.os == 'Windows' && '.exe' || '' }} 2>&1 | tee work/ci-logs/hosting-drive.log
+          bash tools/capture_ci_log.sh --append work/ci-logs/hosting-build.log cargo build --locked --profile test -p daw-engine --example native_graph_check
+          bash tools/capture_ci_log.sh work/ci-logs/hosting-fixtures.log python tools/check_plugin_hosting.py
+          bash tools/capture_ci_log.sh work/ci-logs/hosting-embedded-desktop.log python tools/check_plugin_scanner.py --embedded --scanner target/debug/daw-desktop${{ runner.os == 'Windows' && '.exe' || '' }}
+          bash tools/capture_ci_log.sh work/ci-logs/hosting-embedded-cli.log python tools/check_plugin_scanner.py --embedded --scanner target/debug/daw-cli${{ runner.os == 'Windows' && '.exe' || '' }}
+          bash tools/capture_ci_log.sh work/ci-logs/hosting-drive.log python tools/check_plugin_scanner.py --host-check target/debug/examples/native_host_check${{ runner.os == 'Windows' && '.exe' || '' }} --graph-check target/debug/examples/native_graph_check${{ runner.os == 'Windows' && '.exe' || '' }}
 
       - name: Check Intel macOS targets
         if: runner.os == 'macOS' && runner.arch == 'ARM64'
         run: |
           rustup target add x86_64-apple-darwin
-          cargo check --locked --workspace --all-targets --target x86_64-apple-darwin 2>&1 | tee work/ci-logs/intel-check.log
+          bash tools/capture_ci_log.sh work/ci-logs/intel-check.log cargo check --locked --workspace --all-targets --target x86_64-apple-darwin
 
       - name: Check the headless CLI
         id: cli
         run: |
-          cargo build --locked -p daw-cli 2>&1 | tee work/ci-logs/cli-build.log
-          python tools/check_cli.py 2>&1 | tee work/ci-logs/cli.log
+          bash tools/capture_ci_log.sh work/ci-logs/cli-build.log cargo build --locked -p daw-cli
+          bash tools/capture_ci_log.sh work/ci-logs/cli.log python tools/check_cli.py
 
       - name: Upload test logs
         id: logs
@@ -149,14 +149,14 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           mkdir -p work/ci-logs
-          sh tools/package_macos_dmg.sh release 2>&1 | tee work/ci-logs/package.log
+          bash tools/capture_ci_log.sh work/ci-logs/package.log sh tools/package_macos_dmg.sh release
 
       - name: Package Linux ZIP
         id: linux_package
         if: runner.os == 'Linux'
         run: |
           mkdir -p work/ci-logs
-          sh tools/package_linux.sh release 2>&1 | tee work/ci-logs/package.log
+          bash tools/capture_ci_log.sh work/ci-logs/package.log sh tools/package_linux.sh release
 
       - name: Upload Windows executable and licenses
         id: windows_artifact

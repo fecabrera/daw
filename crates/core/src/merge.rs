@@ -46,6 +46,11 @@ impl Project {
 
     pub(crate) fn pattern_merge_targets(&self, ids: &[Id]) -> Result<(usize, Vec<&Clip>)> {
         let (index, clips) = self.merge_targets(ids)?;
+        self.validate_pattern_merge(&clips)?;
+        Ok((index, clips))
+    }
+
+    fn validate_pattern_merge(&self, clips: &[&Clip]) -> Result<()> {
         let first = clips[0];
         let midi = self
             .assets
@@ -66,21 +71,21 @@ impl Project {
         }) {
             return Err(Error("Merge requires one pattern type with matching gain, transpose, enabled state and channels".into()));
         }
-        Ok((index, clips))
+        Ok(())
     }
 
     pub fn can_merge_pattern_clips(&self, ids: &[Id]) -> bool {
-        self.pattern_merge_targets(ids).is_ok_and(|(_, clips)| {
-            if self
+        self.merge_targets(ids)
+            .is_ok_and(|(_, clips)| self.pattern_merge_eligible(&clips))
+    }
+
+    pub(crate) fn pattern_merge_eligible(&self, clips: &[&Clip]) -> bool {
+        self.validate_pattern_merge(clips).is_ok()
+            && (!self
                 .assets
                 .iter()
                 .any(|a| a.id == clips[0].asset_id && a.beat_pattern.is_some())
-            {
-                self.beat_merge_settings(&clips).is_ok()
-            } else {
-                true
-            }
-        })
+                || self.beat_merge_settings(clips).is_ok())
     }
 
     pub fn can_merge_midi_clips(&self, ids: &[Id]) -> bool {
@@ -93,23 +98,45 @@ impl Project {
 
     /// Merge patterns with silent gaps, or consolidate one pattern's visible range.
     pub fn merge_pattern_clips(&self, ids: &[Id]) -> Result<(Self, Id)> {
-        let (_, clips) = self.pattern_merge_targets(ids)?;
+        let (track, clips) = self.merge_targets(ids)?;
+        self.merge_patterns(track, clips)
+    }
+
+    pub(crate) fn merge_patterns(&self, track: usize, clips: Vec<&Clip>) -> Result<(Self, Id)> {
+        self.validate_pattern_merge(&clips)?;
         if self
             .assets
             .iter()
             .any(|a| a.id == clips[0].asset_id && a.beat_pattern.is_some())
         {
-            self.merge_beat_clips(ids)
+            self.merge_beat_targets(track, clips)
         } else {
-            self.merge_midi_clips(ids)
+            self.merge_midi_targets(track, clips)
         }
+    }
+
+    pub(crate) fn linear_merge_window(&self, clip: &Clip) -> Clip {
+        let mut window = clip.clone();
+        window.repeat.get_or_insert(ClipLoop {
+            length_frames: self.midi_reference_position(clip, clip.end()),
+            phase_frame: 0,
+        });
+        window
     }
 
     /// Return one unlooped pattern containing selected notes at their existing times.
     /// Keep the earliest clip's identity, name, color and common playback settings.
     pub fn merge_midi_clips(&self, ids: &[Id]) -> Result<(Self, Id)> {
         let (track, clips) = self.pattern_merge_targets(ids)?;
-        if !self.can_merge_midi_clips(ids) {
+        self.merge_midi_targets(track, clips)
+    }
+
+    fn merge_midi_targets(&self, track: usize, clips: Vec<&Clip>) -> Result<(Self, Id)> {
+        if !self
+            .assets
+            .iter()
+            .any(|a| a.id == clips[0].asset_id && a.midi_pattern.is_some())
+        {
             return Err(Error("Merge requires MIDI clips".into()));
         }
         let first = clips[0];
@@ -123,11 +150,7 @@ impl Project {
                 .and_then(|asset| asset.midi_pattern.as_ref())
                 .unwrap();
             // A linear source window is one repetition with no phase shift.
-            let mut window = (*clip).clone();
-            window.repeat.get_or_insert(ClipLoop {
-                length_frames: self.midi_reference_position(clip, clip.end()),
-                phase_frame: 0,
-            });
+            let window = self.linear_merge_window(clip);
             occurrences.extend(
                 note_occurrences(self, &window, pattern, MAX_MERGE_NOTES - occurrences.len())
                     .map_err(|_| {

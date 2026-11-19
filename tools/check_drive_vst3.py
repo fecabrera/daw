@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import plistlib
+from plugin_bundle_layout import bundle_info, preview_binary
 import shutil
 import re
 import sys
@@ -59,14 +60,12 @@ def main() -> int:
     artifact, tests, names, plugin_version = build_artifact(
         "vst3", work, env, args.fetch, FORBIDDEN, run)
     bundle = work / "Drive.vst3"
-    if platform.system() == "Darwin":
-        binary = bundle / "Contents/MacOS/Drive"
-        binary.parent.mkdir(parents=True, exist_ok=True)
-        (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "Drive", "CFBundleIdentifier": "io.github.fecabrera.daw.drive.vst3", "CFBundleName": "Drive", "CFBundlePackageType": "BNDL", "CFBundleVersion": plugin_version, "CFBundleShortVersionString": plugin_version}))
-    else:
-        architecture = "x86_64-linux" if platform.system() == "Linux" else "x86_64-win"
-        binary = bundle / "Contents" / architecture / ("Drive.so" if platform.system() == "Linux" else "Drive.vst3")
-        binary.parent.mkdir(parents=True, exist_ok=True)
+    system = platform.system()
+    binary = preview_binary(bundle, "Drive", "vst3", system)
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    if system == "Darwin":
+        info = bundle_info("Drive", "io.github.fecabrera.daw.drive.vst3", name="Drive", version=plugin_version)
+        (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
     notices = bundle / "Contents/Resources/licenses"
     shutil.copy2(artifact, binary)
     copy_preview_notices(ROOT, notices, "vst3", merge=True)

@@ -1,13 +1,16 @@
 use daw_core::{ClipLoop, ClipStretch, Edit, Id, StretchEngine};
 use daw_engine::{Renderer, TransportState};
 use daw_project::{Session, SessionHistory};
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{fs, sync::Arc};
 
-struct Fixture(PathBuf);
+#[path = "support/fixture_dir.rs"]
+mod fixture_dir;
+use fixture_dir::FixtureDir;
+
+struct Fixture(FixtureDir);
 impl Fixture {
     fn new(channels: u16) -> Self {
-        let path = std::env::temp_dir().join(format!("daw-clip-pitch-{}", Id::new_v4()));
-        fs::create_dir(&path).unwrap();
+        let path = FixtureDir::new("daw-clip-pitch");
         let mut wav = hound::WavWriter::create(
             path.join("tone.wav"),
             hound::WavSpec {
@@ -33,11 +36,6 @@ impl Fixture {
         session.project.stretch_engine = engine;
         session.import(&self.0.join("tone.wav"), None, 0).unwrap();
         session
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 fn transpose(session: &Session, value: i8) -> Session {

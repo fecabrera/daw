@@ -137,17 +137,8 @@ impl DawUi {
         if let Some(track) = track {
             self.editor_clip_marquee(ui, &selection, lane, track.id);
         }
-        let x = lane.left()
-            + (self
-                .session
-                .project
-                .seconds(self.session.project.transport.playhead_frame)
-                - self.view_scroll()) as f32
-                * self.view_zoom();
-        painter.line_segment(
-            [Pos2::new(x, lane.top()), Pos2::new(x, lane.bottom())],
-            Stroke::new(1.0, theme::accent(ui.ctx())),
-        );
+        let x = self.project_playhead_x(lane.left(), self.view_scroll(), self.view_zoom());
+        paint_project_playhead(&painter, x, lane.top(), lane.bottom());
         #[cfg(test)]
         {
             self.midi_editor.content.bounds = lane;

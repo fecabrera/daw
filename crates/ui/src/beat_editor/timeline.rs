@@ -35,21 +35,21 @@ impl DawUi {
             .filter(|row| self.beat_ui.selected.contains(&row.id))
             .map(|row| Edit::Beat {
                 track_id: parent,
-                edit: BeatEdit::SetMix {
-                    id: row.id,
-                    gain_db: row.instrument.main.gain_db,
-                    pan: row.instrument.main.pan,
-                    muted: if action == TrackAction::Mute {
+                edit: crate::mix_controls::MixValues::new(
+                    row.instrument.main.gain_db,
+                    row.instrument.main.pan,
+                    if action == TrackAction::Mute {
                         !row.muted
                     } else {
                         row.muted
                     },
-                    soloed: if action == TrackAction::Solo {
+                    if action == TrackAction::Solo {
                         !row.soloed
                     } else {
                         row.soloed
                     },
-                },
+                )
+                .beat_edit(row.id),
             })
             .collect();
         if edits.is_empty() {
@@ -339,13 +339,7 @@ impl DawUi {
             if (gain, pan, muted, soloed) != (row.mix.gain_db, row.mix.pan, row.muted, row.soloed) {
                 self.edit_beat(
                     parent,
-                    BeatEdit::SetMix {
-                        id: row.id,
-                        gain_db: gain,
-                        pan,
-                        muted,
-                        soloed,
-                    },
+                    crate::mix_controls::MixValues::new(gain, pan, muted, soloed).beat_edit(row.id),
                 );
             }
             panels::GroupPanel::row_dividers(
