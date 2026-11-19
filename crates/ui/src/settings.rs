@@ -110,16 +110,18 @@ pub enum ColorTheme {
     Dark,
     Light,
     Mist,
+    Midnight,
 }
 
 impl ColorTheme {
-    pub const ALL: [Self; 3] = [Self::Dark, Self::Light, Self::Mist];
+    pub const ALL: [Self; 4] = [Self::Dark, Self::Light, Self::Mist, Self::Midnight];
 
     pub fn name(self) -> &'static str {
         match self {
             Self::Dark => "Dark",
             Self::Light => "Light",
             Self::Mist => "Mist",
+            Self::Midnight => "Midnight",
         }
     }
 
@@ -128,6 +130,7 @@ impl ColorTheme {
             Self::Dark => 0,
             Self::Light => 1,
             Self::Mist => 2,
+            Self::Midnight => 3,
         }
     }
 
@@ -136,12 +139,14 @@ impl ColorTheme {
             Self::Dark => "dark",
             Self::Light => "light",
             Self::Mist => "mist",
+            Self::Midnight => "midnight",
         }
     }
 
     pub(super) const fn parent(self) -> Self {
         match self {
             Self::Mist => Self::Light,
+            Self::Midnight => Self::Dark,
             _ => self,
         }
     }
@@ -200,6 +205,10 @@ impl AppSettings {
         let Ok(mut settings) = serde_json::from_value::<Self>(value.clone()) else {
             return Self::default();
         };
+        if settings.custom_theme_id.as_deref() == Some(crate::theme_files::LEGACY_MIDNIGHT_ID) {
+            settings.theme = ColorTheme::Midnight;
+            settings.custom_theme_id = None;
+        }
         settings.plugin_folders.retain(|r| r.path.is_absolute());
         settings.plugin_folders.truncate(64);
         let mut seen = std::collections::HashSet::new();
@@ -569,7 +578,7 @@ fn theme_actions(
                 if ui
                     .button("Create theme overrides")
                     .on_hover_text(
-                        "Create the themes folder and add missing Dark, Light and Mist JSON files",
+                        "Create the themes folder and add missing built-in theme JSON files",
                     )
                     .clicked()
                 {
@@ -1493,7 +1502,7 @@ mod tests {
     }
 
     #[test]
-    fn mist_dropdown_applies_reference_surfaces_and_switches_back_without_leaking() {
+    fn theme_dropdown_applies_stock_surfaces_and_switches_back_without_leaking() {
         let ctx = Context::default();
         crate::theme::configure(&ctx);
         let mut settings = AppSettings {
@@ -1507,6 +1516,10 @@ mod tests {
             ("Mist", crate::theme::MIST),
             ("Light", crate::theme::LIGHT),
             ("Mist", crate::theme::MIST),
+            (
+                "Midnight",
+                crate::theme_files::stock_palette(ColorTheme::Midnight),
+            ),
             ("Dark", crate::theme::DARK),
         ] {
             let current = settings.theme.name();

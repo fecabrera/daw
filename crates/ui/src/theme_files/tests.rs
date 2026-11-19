@@ -30,11 +30,12 @@ fn stock_templates_match_compiled_colors_and_mist_overlays_effective_light() {
     create_overrides(&dir.0).unwrap();
     let stock = Catalog::scan(&dir.0).unwrap();
     assert!(stock.issues.is_empty(), "{:?}", stock.issues);
-    for (entry, colors) in stock
-        .entries
-        .iter()
-        .zip([theme::DARK, theme::LIGHT, theme::MIST])
-    {
+    for (entry, colors) in stock.entries.iter().zip([
+        theme::DARK,
+        theme::LIGHT,
+        theme::MIST,
+        stock_palette(ColorTheme::Midnight),
+    ]) {
         assert_eq!(entry.colors, colors);
         let base = entry.base;
         let parent = match base {
@@ -67,8 +68,8 @@ fn stock_templates_match_compiled_colors_and_mist_overlays_effective_light() {
     dir.write("room.JSON", &json("user.room", "Room", "mist", ""));
     let catalog = Catalog::scan(&dir.0).unwrap();
     assert!(catalog.issues.is_empty(), "{:?}", catalog.issues);
-    let [dark, light, mist, room] = catalog.entries.as_slice() else {
-        panic!("Expected the three stock entries and one custom theme");
+    let [dark, light, mist, _, room] = catalog.entries.as_slice() else {
+        panic!("Expected the four stock entries and one custom theme");
     };
     assert_eq!(dark.colors.panel, egui::Color32::from_rgb(13, 17, 23));
     assert_eq!(dark.colors.button_background, theme::DARK.button_background);
@@ -127,8 +128,8 @@ fn strict_schema_and_conflicts_leave_valid_themes_available() {
     dir.write("a.json", &json("user.conflict", "A", "light", ""));
     dir.write("valid.json", &json("user.valid", "Valid", "dark", ""));
     let catalog = Catalog::scan(&dir.0).unwrap();
-    assert_eq!(catalog.entries.len(), 4);
-    assert_eq!(catalog.entries[3].id, "user.valid");
+    assert_eq!(catalog.entries.len(), ColorTheme::ALL.len() + 1);
+    assert_eq!(catalog.entries.last().unwrap().id, "user.valid");
     for diagnostic in [
         "panel",
         "duplicate color role text",
@@ -203,7 +204,58 @@ fn publication_uses_current_selection_and_keeps_request_across_fallback() {
     settings.custom_theme_id = None;
     runtime.poll(&context, &settings);
     assert_eq!(theme::style_base(&context), theme::StyleBase::Light);
-    assert_eq!(runtime.entries()[3].name, "New name");
+    assert_eq!(runtime.entries().last().unwrap().name, "New name");
+}
+
+#[test]
+fn midnight_is_built_in_and_reuses_legacy_selection_and_override() {
+    let dir = Folder::new();
+    let mut runtime = Runtime::default();
+    let settings = AppSettings::from_json(Some(
+        r#"{"theme":"light","custom_theme_id":"user.midnight","accent":"teal"}"#,
+    ));
+    assert_eq!(settings.theme, ColorTheme::Midnight);
+    assert!(settings.custom_theme_id.is_none());
+    assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
+
+    let entry = runtime.active(&settings);
+    assert_eq!(entry.id, "midnight");
+    assert_eq!(entry.name, "Midnight");
+    assert_eq!(entry.colors.background, egui::Color32::from_rgb(20, 21, 23));
+    assert_eq!(
+        entry.colors.button_background,
+        egui::Color32::from_rgb(43, 44, 46)
+    );
+
+    let legacy = json(
+        "user.midnight",
+        "Midnight",
+        "dark",
+        r##""panel":"#0D1117""##,
+    );
+    dir.write("my-midnight.json", &legacy);
+    create_overrides(&dir.0).unwrap();
+    assert!(!dir.0.join("midnight.json").exists());
+    runtime.catalog = Catalog::scan(&dir.0).unwrap();
+    assert!(
+        runtime.catalog.issues.is_empty(),
+        "{:?}",
+        runtime.catalog.issues
+    );
+    assert_eq!(runtime.entries().len(), ColorTheme::ALL.len());
+    assert_eq!(
+        fs::read_to_string(dir.0.join("my-midnight.json")).unwrap(),
+        legacy
+    );
+
+    let ctx = egui::Context::default();
+    runtime.apply(&ctx, &settings);
+    assert_eq!(theme::style_base(&ctx), theme::StyleBase::Dark);
+    assert_eq!(
+        theme::palette(&ctx).panel,
+        egui::Color32::from_rgb(13, 17, 23)
+    );
+    assert_eq!(theme::accent(&ctx), settings.accent.color());
 }
 
 #[test]

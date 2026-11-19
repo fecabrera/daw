@@ -236,17 +236,17 @@ fn independent_transport_buttons_preserve_size_hover_and_semantic_colors_in_all_
                     if playing {
                         play_fill
                     } else {
-                        theme::unit_separator(&ctx)
+                        theme::palette(&ctx).button_background
                     },
                     if playing {
                         stop_fill
                     } else {
-                        theme::unit_separator(&ctx)
+                        theme::palette(&ctx).button_background
                     },
                     if looping {
                         loop_fill
                     } else {
-                        theme::unit_separator(&ctx)
+                        theme::palette(&ctx).button_background
                     },
                 ];
                 for (rect, fill) in rects.into_iter().zip(fills) {
@@ -275,7 +275,7 @@ fn independent_transport_buttons_preserve_size_hover_and_semantic_colors_in_all_
                             .any(|shape| matches!(&shape.shape, egui::Shape::Rect(paint)
                         if paint.rect == rect && paint.fill == theme::unit_header_fill(&ctx, false)
                             && paint.stroke == Stroke::NONE)),
-                        fill == theme::unit_separator(&ctx)
+                        fill == theme::palette(&ctx).button_background
                     );
                     assert!(hovered.iter().any(
                         |shape| matches!(&shape.shape, egui::Shape::Rect(paint)
@@ -661,7 +661,7 @@ fn timing_section_orders_metronome_signature_tempo_and_keeps_project_and_transpo
         );
         let idle = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(idle.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::Rect(surface) if surface.rect == rect && surface.fill == theme::unit_separator(&ctx)
+            egui::Shape::Rect(surface) if surface.rect == rect && surface.fill == theme::palette(&ctx).button_background
                 && surface.corner_radius == egui::CornerRadius::same(5) && surface.stroke.is_empty()
         )));
         let point = rect.center();

@@ -734,11 +734,7 @@ fn mixer_name_editing_and_out_of_range_gain_survive_display() {
 
 #[test]
 fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
-    for color_theme in [
-        settings::ColorTheme::Dark,
-        settings::ColorTheme::Light,
-        settings::ColorTheme::Mist,
-    ] {
+    for color_theme in settings::ColorTheme::ALL {
         for accent in [
             settings::AccentColor::DeepOrange,
             settings::AccentColor::Yellow,
@@ -801,16 +797,17 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                                     _ => None,
                                 })
                                 .unwrap();
-                            let expected = if label == selected_label || hovered == Some(label) {
-                                match color_theme {
-                                    settings::ColorTheme::Dark => egui::Color32::WHITE,
-                                    settings::ColorTheme::Light | settings::ColorTheme::Mist => {
-                                        egui::Color32::BLACK
+                            let expected =
+                                if label == selected_label || hovered == Some(label) {
+                                    match color_theme {
+                                        settings::ColorTheme::Dark
+                                        | settings::ColorTheme::Midnight => egui::Color32::WHITE,
+                                        settings::ColorTheme::Light
+                                        | settings::ColorTheme::Mist => egui::Color32::BLACK,
                                     }
-                                }
-                            } else {
-                                theme::palette(&ctx).secondary
-                            };
+                                } else {
+                                    theme::palette(&ctx).secondary
+                                };
                             assert!(
                                 text.galley.job.sections.iter().all(|section| {
                                     let color = text.override_text_color.unwrap_or_else(|| {

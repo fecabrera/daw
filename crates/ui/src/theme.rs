@@ -132,11 +132,7 @@ const fn display_color(color: daw_core::RgbColor) -> Color32 {
 
 /// Apply application preferences without changing layout or project data.
 pub fn apply(ctx: &Context, settings: crate::settings::AppSettings) {
-    let colors = match settings.theme {
-        crate::settings::ColorTheme::Dark => DARK,
-        crate::settings::ColorTheme::Light => LIGHT,
-        crate::settings::ColorTheme::Mist => MIST,
-    };
+    let colors = crate::theme_files::stock_palette(settings.theme);
     apply_resolved(ctx, settings.theme, colors, settings.accent);
 }
 
@@ -147,7 +143,9 @@ pub(super) fn apply_resolved(
     accent: crate::settings::AccentColor,
 ) {
     let base = match base {
-        crate::settings::ColorTheme::Dark => StyleBase::Dark,
+        crate::settings::ColorTheme::Dark | crate::settings::ColorTheme::Midnight => {
+            StyleBase::Dark
+        }
         crate::settings::ColorTheme::Light => StyleBase::Light,
         crate::settings::ColorTheme::Mist => StyleBase::Mist,
     };

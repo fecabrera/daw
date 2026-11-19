@@ -436,11 +436,11 @@ mod tests {
                         assert!(
                             output.shapes.iter().any(|shape| matches!(&shape.shape,
                                 egui::Shape::Rect(rect) if rect.rect.contains_rect(pair)
-                                    && rect.fill == crate::theme::unit_separator(&ctx)
+                                    && rect.fill == crate::theme::palette(&ctx).button_background
                                     && rect.stroke.is_empty()
                                 && rect.corner_radius == egui::CornerRadius::same(5)
                             )),
-                            "the pair uses the unit content background, not the strip card"
+                            "the pair uses the theme button background"
                         );
                         assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
                             egui::Shape::LineSegment { points, stroke }

@@ -16,6 +16,7 @@ use std::{
 
 const MAX_ENTRIES: usize = 512;
 const MAX_BYTES: usize = 32 * 1024;
+pub(super) const LEGACY_MIDNIGHT_ID: &str = "user.midnight";
 
 pub(super) fn deserialize_custom_id<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
@@ -34,6 +35,7 @@ fn template(theme: ColorTheme) -> &'static str {
         ColorTheme::Dark => include_str!("../assets/themes/dark.json"),
         ColorTheme::Light => include_str!("../assets/themes/light.json"),
         ColorTheme::Mist => include_str!("../assets/themes/mist.json"),
+        ColorTheme::Midnight => include_str!("../assets/themes/midnight.json"),
     }
 }
 
@@ -48,9 +50,9 @@ fn mist_from_light(light: Palette) -> Palette {
 }
 
 struct Stock {
-    colors: [Palette; 3],
+    colors: [Palette; ColorTheme::ALL.len()],
     mist: Option<Document>,
-    templates: [String; 3],
+    templates: [String; ColorTheme::ALL.len()],
     issues: Vec<String>,
 }
 
@@ -59,7 +61,11 @@ impl Stock {
         static STOCK: OnceLock<Stock> = OnceLock::new();
         STOCK.get_or_init(|| {
             let mut issues = Vec::new();
-            let mut colors = [theme::DARK, theme::LIGHT, theme::MIST];
+            let mut colors = ColorTheme::ALL.map(|base| match base {
+                ColorTheme::Dark | ColorTheme::Midnight => theme::DARK,
+                ColorTheme::Light => theme::LIGHT,
+                ColorTheme::Mist => theme::MIST,
+            });
             let mut templates = ColorTheme::ALL.map(|base| template(base).to_owned());
             let mut mist = None;
             for base in ColorTheme::ALL {
@@ -95,6 +101,10 @@ impl Stock {
             }
         })
     }
+}
+
+pub(super) fn stock_palette(base: ColorTheme) -> Palette {
+    Stock::get().colors[base.index()]
 }
 
 pub(super) struct Entry {

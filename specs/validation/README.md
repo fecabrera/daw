@@ -17,6 +17,19 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Built-in Midnight theme — 2026-11-19
+
+Midnight is available in Appearance from its embedded JSON. All eleven colors
+match the supplied file. Theme tests cover startup without a user file,
+legacy selection migration, and loading a `user.midnight` override without a
+duplicate entry. Six focused tests, formatting and strict workspace Clippy
+passed on macOS. The rebuilt macOS bundle passed its signature check.
+
+- `cargo test --workspace --locked --offline` passed on macOS with 3,650
+  passing tests and 22 ignored.
+- `cargo test --workspace --release --locked --offline` passed on macOS with
+  3,650 passing tests and 22 ignored.
+
 ## Compact unit output meters — 2026-11-19
 
 Gap meters align with the visible unit shell in compact Effects and Instrument

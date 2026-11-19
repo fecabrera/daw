@@ -134,6 +134,9 @@ impl Document {
         }
         let mut document =
             serde_json::from_slice::<Self>(bytes).map_err(|error| error.to_string())?;
+        if document.id == super::LEGACY_MIDNIGHT_ID {
+            document.id = ColorTheme::Midnight.id().into();
+        }
         document.name = document.name.trim().to_owned();
         if !(1..=48).contains(&document.name.chars().count())
             || document.name.chars().any(char::is_control)

@@ -37,7 +37,7 @@ from headless geometry/interaction checks.
 
 ## JSON themes
 
-Load embedded Dark, Light and Mist templates and discover user overrides from
+Load embedded Dark, Light, Mist and Midnight templates and discover user overrides from
 the absolute per-user directory supplied by the desktop host. Scan at startup
 and when the user selects Reload themes. Read files on a worker and publish
 one catalog on the UI thread. A reload applies edits to the requested theme
@@ -48,9 +48,11 @@ Require `version` (integer 1), `id`, `name`, `base` and `colors`. Custom IDs
 begin with `user.` and use a 1–48 character lowercase ASCII slug with letters,
 digits and hyphens. Start and end the slug with a letter or digit. Trim names
 and require 1–48 characters without control characters. A custom theme can
-inherit the original Dark, Light or Mist with `base` set to `dark`, `light`,
-or `mist`. A stock override uses the matching stock ID and name. Dark and Light
-use their matching base. Mist uses `light`.
+inherit any original stock theme by its ID in `base`. A stock override uses
+the matching stock ID and name. Dark and Light use their matching base. Mist
+uses `light` and Midnight uses `dark`. Treat the legacy ID `user.midnight` as
+the stock ID `midnight` in theme files and migrate that saved selection to
+the built-in choice.
 
 The `colors` object accepts any subset of `background`, `panel`, `input`,
 `border`, `divider`, `text`, `time_unit`, `secondary`, `grid` and
@@ -65,7 +67,7 @@ toggles and transport buttons. Each stock JSON defines its own value. Omitted
 values inherit that role through the normal palette overlays. Hover and
 active states, borders, unit headers and unit shells use their own colors.
 
-Apply a unique valid Dark or Light override over its embedded palette. Resolve
+Apply a unique valid Dark, Light or Midnight override over its embedded palette. Resolve
 Mist by applying the embedded Mist colors over effective Light, then applying
 a unique valid Mist override. If inherited Mist has insufficient contrast and
 no valid Mist override fixes it, use original stock Mist and report the issue.
