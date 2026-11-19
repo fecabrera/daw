@@ -58,38 +58,57 @@ impl<'a, T: Copy> Dialog<'a, T> {
             .default_width(self.width.unwrap_or(DEFAULT_WIDTH))
             .max_width(self.width.unwrap_or(MAX_WIDTH))
             .frame(Frame::window(&ctx.global_style()).inner_margin(PADDING))
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing = Vec2::splat(f32::from(PADDING));
-                if !self.message.is_empty() {
-                    ui.add(egui::Label::new(self.message).wrap());
-                }
-                ui.add_enabled_ui(self.actions_enabled, |ui| {
-                    content(ui);
-                    if !self.actions.is_empty() {
-                        if self.footer_separator {
-                            let (separator, _) = ui.allocate_exact_size(
-                                Vec2::new(ui.available_width(), 1.0),
-                                egui::Sense::hover(),
-                            );
-                            let padding = f32::from(PADDING);
-                            ui.painter()
-                                .with_clip_rect(ui.clip_rect().expand(padding))
-                                .hline(
-                                    (separator.left() - padding)..=(separator.right() + padding),
-                                    separator.center().y,
-                                    egui::Stroke::new(1.0, crate::theme::palette(ctx).border),
-                                );
-                        }
-                        crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                            for &(label, action) in self.actions {
-                                if ui.button(label).clicked() {
-                                    selected = Some(action);
-                                }
-                            }
-                        });
-                    }
-                });
-            });
+            .show(ctx, |ui| selected = self.body(ui, content));
         selected
     }
+
+    pub(super) fn body(self, ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> Option<T> {
+        let mut selected = None;
+        ui.spacing_mut().item_spacing = Vec2::splat(f32::from(PADDING));
+        if !self.message.is_empty() {
+            ui.add(egui::Label::new(self.message).wrap());
+        }
+        ui.add_enabled_ui(self.actions_enabled, |ui| {
+            content(ui);
+            if !self.actions.is_empty() {
+                if self.footer_separator {
+                    let (separator, _) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), 1.0),
+                        egui::Sense::hover(),
+                    );
+                    let padding = f32::from(PADDING);
+                    ui.painter()
+                        .with_clip_rect(ui.clip_rect().expand(padding))
+                        .hline(
+                            (separator.left() - padding)..=(separator.right() + padding),
+                            separator.center().y,
+                            egui::Stroke::new(1.0, crate::theme::palette(ui.ctx()).border),
+                        );
+                }
+                crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
+                    for &(label, action) in self.actions {
+                        if ui.button(label).clicked() {
+                            selected = Some(action);
+                        }
+                    }
+                });
+            }
+        });
+        selected
+    }
+}
+
+/// Return the client height needed for the dialog content and its outer padding.
+pub(super) fn native_client(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> u32 {
+    egui::CentralPanel::default()
+        .frame(
+            Frame::new()
+                .fill(crate::theme::palette(ui.ctx()).panel)
+                .inner_margin(PADDING),
+        )
+        .show(ui, |ui| {
+            // Measure the body separately from the panel that fills the viewport.
+            (ui.scope(content).response.rect.height() + 2.0 * f32::from(PADDING)).ceil() as u32
+        })
+        .inner
 }

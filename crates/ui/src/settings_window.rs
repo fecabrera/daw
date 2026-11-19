@@ -44,8 +44,12 @@ impl SettingsWindow {
 }
 
 impl DawUi {
-    pub fn enable_native_settings(&mut self) {
+    pub fn enable_native_windows(&mut self) {
         self.settings_window.host = true;
+    }
+
+    pub(super) fn native_desktop_windows_enabled(&self) -> bool {
+        self.settings_window.host
     }
 
     pub fn application_settings_open(&self) -> bool {
@@ -77,8 +81,7 @@ impl DawUi {
 
     pub fn settings_root_prompt(&self) -> bool {
         self.midi.recovery_prompt()
-            || self.unsaved_prompt
-            || self.project_name_dialog.is_some()
+            || self.project_prompt_kind().is_some()
             || self.overwrite.is_some()
             || self.diagnostic_details.is_some()
     }
@@ -149,6 +152,12 @@ impl DawUi {
     }
 
     pub fn request_desktop_close(&mut self) {
+        if self.native_desktop_windows_enabled() && self.project_prompt_kind().is_some() {
+            if !self.project_prompt_window.picking() {
+                self.project_prompt_window.focus_requested = true;
+            }
+            return;
+        }
         if self.settings_window.picker.is_some() {
             self.settings_window.root_close = true;
         } else if self.job.is_none()
@@ -327,7 +336,7 @@ mod tests {
         let ctx = egui::Context::default();
         let root = egui::Context::default();
         let mut daw = DawUi::default();
-        daw.enable_native_settings();
+        daw.enable_native_windows();
         daw.open_settings();
         let bounds = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(420.0, 320.0));
         let mut output = ctx.run_ui(
@@ -383,7 +392,7 @@ mod tests {
     #[test]
     fn settings_fallback_and_native_retirement_keep_the_edit_guard() {
         let mut ui = DawUi::default();
-        ui.enable_native_settings();
+        ui.enable_native_windows();
         ui.open_settings();
         let generation = ui.native_settings_generation().unwrap();
         assert!(!ui.edit_environment_available());
@@ -410,7 +419,7 @@ mod tests {
     #[test]
     fn chooser_results_keep_the_draft_and_cannot_reopen_retired_settings() {
         let mut ui = DawUi::default();
-        ui.enable_native_settings();
+        ui.enable_native_windows();
         ui.open_settings();
         let request = SettingsPicker {
             generation: ui.native_settings_generation().unwrap(),

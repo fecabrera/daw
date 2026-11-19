@@ -151,7 +151,7 @@ fn build(
     {
         ui.enable_midi(Box::new(crate::midi::NativeMidi::default()), root);
     }
-    ui.enable_native_settings();
+    ui.enable_native_windows();
     let hosting = crate::hosting::Hosting::new(&mut ui);
     let state = Rc::new(RefCell::new(State {
         hosting,

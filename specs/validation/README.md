@@ -14447,3 +14447,42 @@ failure. The focused reruns and Clippy used the final source.
 Strict workspace Clippy, formatting, and signature verification of the
 rebuilt local macOS debug app passed. Manual native gestures and device
 playback were outside these checks.
+
+## Native project prompt title bars — 2026-11-19
+
+The Unsaved Changes, Save Project, and Save Project As prompts use the desktop
+secondary window host. Focused egui tests cover the native client without a
+drawn title, Cancel on window close, stale window rejection, initial name
+selection, chooser ownership, chooser cancellation, and draft retention on
+fallback.
+
+The debug and release workspace regressions passed with the known native
+Audio Unit registration test skipped. Those runs started before the final
+focus and recovery-order changes. The full `daw-ui` debug test suite passed
+on the final source with 1,081 passed and 3 ignored. The focused project
+prompt tests also passed in release on the final source. Strict workspace
+Clippy and formatting passed.
+
+The macOS debug bundle built and passed signature verification. The App Settings
+smoke test passed for native presentation and close. Its injected redraw
+failure also passed the embedded fallback check. The project prompt checks used
+automated egui input. Windows and Linux native window checks were outside this
+run.
+
+## Fitted prompts and native Export — 2026-11-19
+
+The shared native prompt measures its body and adds the standard outer padding.
+The focused tests check spacing below the buttons, extra height for an invalid
+project name, the WAV-to-MP3 size change, and the Export window's ownership
+of its file picker. They also check cancellation without starting an export.
+
+The final debug UI suite passed with 1,082 tests passed and 3 ignored.
+The debug and release workspace runs passed with the known native Audio Unit
+registration test skipped. Those runs started before the final guard that
+preserves the measured height while another prompt takes focus.
+The three focused prompt tests passed in release on the final source.
+Workspace Clippy and formatting passed. The signed macOS debug bundle passed
+`--project-prompts-smoke-test`, which checks the native titles, actual client
+heights, and close behavior of Save and Export. The existing
+`--settings-smoke-test` also passed. Windows and Linux native sizing were
+outside these checks.

@@ -1,5 +1,5 @@
 //! Packaged debug smoke test for real presentation, close and fallback.
-use daw_ui::{DawUi, settings::TitlebarStyle};
+use daw_ui::{DawUi, FileAction, settings::TitlebarStyle};
 use eframe::native_viewport::{self, StartupFault, Status};
 use egui::{Context, ViewportCommand, ViewportId};
 use std::{
@@ -13,6 +13,9 @@ enum Step {
     Opening,
     SwitchTitlebar(ViewportId),
     Closing,
+    OpenProjectPrompt(FileAction),
+    ProjectPromptOpening(FileAction),
+    ProjectPromptClosing(FileAction),
     Finished,
 }
 
@@ -24,15 +27,16 @@ pub(super) struct Smoke {
 
 impl Smoke {
     pub fn from_arg(arg: &OsStr) -> Option<Self> {
-        let fault = match arg.to_str()? {
-            "--settings-smoke-test" => None,
-            "--settings-smoke-test=window" => Some(StartupFault::Window),
-            "--settings-smoke-test=redraw" => Some(StartupFault::Redraw),
+        let (step, fault) = match arg.to_str()? {
+            "--settings-smoke-test" => (Step::Open, None),
+            "--settings-smoke-test=window" => (Step::Open, Some(StartupFault::Window)),
+            "--settings-smoke-test=redraw" => (Step::Open, Some(StartupFault::Redraw)),
+            "--project-prompts-smoke-test" => (Step::OpenProjectPrompt(FileAction::Save), None),
             _ => return None,
         };
         Some(Self {
             started: Instant::now(),
-            step: Step::Open,
+            step,
             fault,
         })
     }
@@ -43,7 +47,7 @@ impl Smoke {
         }
         assert!(
             self.started.elapsed() < Duration::from_secs(15),
-            "Settings smoke test timed out"
+            "Native dialog smoke test timed out"
         );
         match self.step {
             Step::Open => {
@@ -92,6 +96,52 @@ impl Smoke {
                     println!("PASS: native Settings presentation, close, or embedded fallback");
                     self.step = Step::Finished;
                     daw.request_desktop_close();
+                }
+            }
+            Step::OpenProjectPrompt(action) => {
+                if action == FileAction::Export {
+                    let project = &mut daw.session.project;
+                    let track = project.add_midi_track().unwrap();
+                    project.add_midi_pattern(track, 0).unwrap();
+                }
+                daw.perform_file_action(action);
+                assert!(daw.desktop_window().is_some());
+                self.step = Step::ProjectPromptOpening(action);
+            }
+            Step::ProjectPromptOpening(action) => {
+                if let Some(id) = host.viewport_id()
+                    && let Some(Status::Presented(window)) = native_viewport::status(ctx, id)
+                    && let Some(window) = window.upgrade()
+                {
+                    let key = daw.desktop_window().unwrap();
+                    let [_, height] = daw.desktop_window_size(key);
+                    let actual = f64::from(window.inner_size().height) / window.scale_factor();
+                    assert!(window.is_decorated());
+                    assert_eq!(
+                        window.title(),
+                        if action == FileAction::Save {
+                            "Save project"
+                        } else {
+                            "Export audio"
+                        },
+                    );
+                    if height < 145 && (actual - f64::from(height)).abs() <= 1.0 {
+                        ctx.send_viewport_cmd_to(id, ViewportCommand::Close);
+                        self.step = Step::ProjectPromptClosing(action);
+                    }
+                }
+            }
+            Step::ProjectPromptClosing(action) => {
+                if daw.desktop_window().is_none() && host.viewport_id().is_none() {
+                    if action == FileAction::Save {
+                        self.step = Step::OpenProjectPrompt(FileAction::Export);
+                    } else {
+                        println!(
+                            "PASS: native Save and Export title bars, fitted client heights and close"
+                        );
+                        self.step = Step::Finished;
+                        daw.request_desktop_close();
+                    }
                 }
             }
             Step::Finished => {}

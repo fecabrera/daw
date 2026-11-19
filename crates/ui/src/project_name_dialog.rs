@@ -19,18 +19,26 @@ impl ProjectNameDialog {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) -> Option<Action> {
+    pub fn title(&self) -> &'static str {
+        if self.save_as {
+            "Save project as"
+        } else {
+            "Save project"
+        }
+    }
+
+    pub fn restore_focus(&mut self) {
+        self.focus = true;
+    }
+
+    pub fn show(&mut self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> Option<Action> {
         let mut enter = false;
-        let action = crate::dialogs::Dialog::new(
-            if self.save_as {
-                "Save project as"
-            } else {
-                "Save project"
-            },
+        let dialog = crate::dialogs::Dialog::new(
+            self.title(),
             "Enter a name, then choose where to create the project folder.",
             &[("Continue…", true), ("Cancel", false)],
-        )
-        .show_with_content(ctx, |ui| {
+        );
+        let content = |ui: &mut egui::Ui| {
             ui.label("Project name");
             let mut output = egui::TextEdit::singleline(&mut self.name)
                 .id_salt("project_folder_name")
@@ -59,7 +67,11 @@ impl ProjectNameDialog {
                     .wrap(),
                 );
             }
-        });
+        };
+        let action = match surface {
+            Some(ui) => dialog.body(ui, content),
+            None => dialog.show_with_content(ctx, content),
+        };
         if action == Some(false)
             || ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
         {
@@ -92,7 +104,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| action = dialog.show(ui.ctx()),
+            |ui| action = dialog.show(ui.ctx(), None),
         );
         output.textures_delta.clear();
         (action, output.shapes)

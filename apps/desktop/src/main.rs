@@ -84,7 +84,7 @@ impl eframe::App for App {
         if let Some((request, result)) = self.settings_host.poll(&ctx) {
             self.ui
                 .borrow_mut()
-                .complete_settings_picker(request, Ok(result));
+                .complete_desktop_picker(request, Ok(result));
         }
         let mut daw = self.ui.borrow_mut();
         #[cfg(target_os = "windows")]
@@ -204,7 +204,7 @@ fn main() -> eframe::Result {
                 settings.titlebar = daw_ui::settings::TitlebarStyle::Native;
                 ui.set_settings(&cc.egui_ctx, settings);
             }
-            ui.enable_native_settings();
+            ui.enable_native_windows();
             let hosting = hosting::Hosting::new(&mut ui);
             let ui = std::rc::Rc::new(std::cell::RefCell::new(ui));
             let settings_host = settings_host::Host::new(&ui);

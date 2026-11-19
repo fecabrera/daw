@@ -418,7 +418,7 @@ impl DawUi {
         ctx.request_repaint_after(Duration::from_millis(16));
     }
     pub(super) fn midi_dialogs(&mut self, ctx: &egui::Context) {
-        if self.unsaved_prompt {
+        if self.project_prompt_kind().is_some() {
             return;
         }
         if self.midi.recovery_running {

@@ -10,17 +10,18 @@ pub fn show(
     ctx: &egui::Context,
     settings: &mut ExportSettings,
     project_rate_hz: u32,
+    surface: Option<&mut egui::Ui>,
 ) -> Option<Action> {
     let description = format!(
         "Stereo · {} kHz",
         settings.output_sample_rate(project_rate_hz) as f32 / 1000.0
     );
-    let action = crate::dialogs::Dialog::new(
+    let dialog = crate::dialogs::Dialog::new(
         "Export audio",
         &description,
         &[("Export…", Action::Export), ("Cancel", Action::Cancel)],
-    )
-    .show_with_content(ctx, |ui| {
+    );
+    let content = |ui: &mut egui::Ui| {
         egui::Grid::new("export_settings")
             .num_columns(2)
             .spacing(egui::Vec2::new(12.0, 8.0))
@@ -85,7 +86,11 @@ pub fn show(
                     ui.end_row();
                 }
             });
-    });
+    };
+    let action = match surface {
+        Some(ui) => dialog.body(ui, content),
+        None => dialog.show_with_content(ctx, content),
+    };
     action.or_else(|| {
         ctx.input(|input| input.key_pressed(egui::Key::Escape))
             .then_some(Action::Cancel)
@@ -110,7 +115,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| action = show(ui.ctx(), settings, daw_core::SAMPLE_RATE),
+            |ui| action = show(ui.ctx(), settings, daw_core::SAMPLE_RATE, None),
         );
         output.textures_delta.clear();
         (action, output.shapes)

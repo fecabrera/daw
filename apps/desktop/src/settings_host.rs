@@ -1,5 +1,5 @@
-//! eframe hosts Settings in one deferred native viewport owned by the DAW session.
-use daw_ui::{DawUi, SettingsPicker, settings::PickerKind};
+//! eframe hosts the active secondary window in a deferred native viewport.
+use daw_ui::{DawUi, DesktopPicker, DesktopWindow, settings::PickerKind};
 use eframe::native_viewport::{self, Status, Window};
 use egui::{Context, ViewportBuilder, ViewportCommand, ViewportId};
 use std::{
@@ -18,7 +18,7 @@ thread_local! {
 
 struct Viewport {
     id: ViewportId,
-    generation: u64,
+    window: DesktopWindow,
     opened: Instant,
     suspended: bool,
 }
@@ -27,12 +27,12 @@ type PickerFuture = Pin<Box<dyn Future<Output = Option<rfd::FileHandle>>>>;
 
 enum Chooser {
     Waiting {
-        request: SettingsPicker,
+        request: DesktopPicker,
         since: Instant,
         use_root: bool,
     },
     Open {
-        request: SettingsPicker,
+        request: DesktopPicker,
         future: PickerFuture,
         _owner: Arc<Window>,
     },
@@ -70,7 +70,7 @@ impl Host {
         }
     }
 
-    pub fn poll(&mut self, root: &Context) -> Option<(SettingsPicker, Option<std::path::PathBuf>)> {
+    pub fn poll(&mut self, root: &Context) -> Option<(DesktopPicker, Option<std::path::PathBuf>)> {
         let Some(Chooser::Open {
             future, request, ..
         }) = &mut self.chooser
@@ -104,24 +104,26 @@ impl Host {
                 app.borrow_mut().finish_settings_retirement();
             }
         }
-        let (generation, root_prompt, focus, picker) = {
+        let (window, size, root_prompt, focus, picker) = {
             let mut ui = app.borrow_mut();
+            let window = ui.desktop_window();
             (
-                ui.native_settings_generation(),
-                ui.settings_root_prompt(),
-                ui.take_settings_focus(),
-                ui.take_settings_picker(),
+                window,
+                window.map(|window| ui.desktop_window_size(window)),
+                window.is_some_and(|window| ui.desktop_window_blocked(window)),
+                window.is_some_and(|window| ui.take_desktop_focus(window)),
+                ui.take_desktop_picker(),
             )
         };
         if let Some(request) = picker {
             self.chooser = Some(Chooser::Waiting {
                 request,
                 since: Instant::now(),
-                use_root: generation.is_none(),
+                use_root: window != Some(request.owner()),
             });
         }
 
-        if self.viewport.as_ref().map(|viewport| viewport.generation) != generation {
+        if self.viewport.as_ref().map(|viewport| viewport.window) != window {
             if let Some(old) = self.viewport.take() {
                 let restore = matches!(native_viewport::status(root, old.id),
                     Some(Status::Presented(window)) if
@@ -129,16 +131,21 @@ impl Host {
                 native_viewport::forget(root, old.id);
                 self.retiring = Some(old.id);
                 root.request_repaint();
-                if restore {
+                if restore && window.is_none() {
                     root.send_viewport_cmd_to(ViewportId::ROOT, ViewportCommand::Focus);
                 }
             }
-            if let Some(generation) = generation {
-                let id = ViewportId::from_hash_of(("application-settings", generation));
+            if let Some(window) = window {
+                let id = match window {
+                    DesktopWindow::Settings(generation) => {
+                        ViewportId::from_hash_of(("application-settings", generation))
+                    }
+                    DesktopWindow::Project(_) => ViewportId::from_hash_of(window),
+                };
                 native_viewport::watch(root, id);
                 self.viewport = Some(Viewport {
                     id,
-                    generation,
+                    window,
                     opened: Instant::now(),
                     suspended: false,
                 });
@@ -146,7 +153,10 @@ impl Host {
         }
         let mut owner = None;
         let mut suspend_for_chooser = false;
-        if let Some(viewport) = &self.viewport {
+        if let Some(viewport) = &mut self.viewport {
+            if viewport.suspended && !root_prompt {
+                viewport.opened = Instant::now();
+            }
             let failure = match native_viewport::status(root, viewport.id) {
                 Some(Status::Presented(window)) => {
                     owner = window.upgrade();
@@ -157,13 +167,16 @@ impl Host {
                     {
                         self.startup_error = true;
                     }
-                    tracing::warn!(%error, "Cannot open native Settings");
+                    tracing::warn!(%error, title = viewport.window.title(), "Cannot open native dialog");
                     true
                 }
-                _ => root.embed_viewports() || viewport.opened.elapsed() >= Duration::from_secs(2),
+                _ => {
+                    root.embed_viewports()
+                        || (!root_prompt && viewport.opened.elapsed() >= Duration::from_secs(2))
+                }
             };
             if failure {
-                app.borrow_mut().fail_native_settings(viewport.generation);
+                app.borrow_mut().fail_desktop_window(viewport.window);
                 self.retire(root);
                 root.request_repaint();
             } else if owner.is_none() {
@@ -177,7 +190,10 @@ impl Host {
             use_root,
         }) = &mut self.chooser
         {
-            if let Some(child) = owner.take().filter(|_| !*use_root) {
+            if let Some(child) = owner
+                .take()
+                .filter(|_| !*use_root && window == Some(request.owner()))
+            {
                 self.chooser = Some(Self::open_chooser(*request, child));
                 root.request_repaint();
             } else if *use_root {
@@ -191,7 +207,7 @@ impl Host {
                         self.chooser = Some(Self::open_chooser(*request, window));
                         root.request_repaint();
                     } else {
-                        app.borrow_mut().complete_settings_picker(
+                        app.borrow_mut().complete_desktop_picker(
                             *request,
                             Err("Cannot open the chooser without a desktop window.".into()),
                         );
@@ -231,16 +247,26 @@ impl Host {
         } else if focus && !suspended {
             root.send_viewport_cmd_to(viewport.id, ViewportCommand::Focus);
         }
-        let generation = viewport.generation;
+        let window = viewport.window;
         let app_id = self.app;
         let root_context = root.clone();
         let mut builder = ViewportBuilder::default()
-            .with_title("Settings")
+            .with_title(window.title())
             .with_decorations(true)
             .with_transparent(false)
             .with_visible(!suspended)
-            .with_inner_size([680.0, 510.0])
-            .with_min_inner_size([420.0, 320.0]);
+            .with_inner_size(
+                size.unwrap_or_else(|| window.size())
+                    .map(|size| size as f32),
+            );
+        builder = if window.resizable() {
+            builder.with_min_inner_size([420.0, 320.0])
+        } else {
+            builder
+                .with_resizable(false)
+                .with_minimize_button(false)
+                .with_maximize_button(false)
+        };
         if cfg!(target_os = "macos") {
             builder = builder
                 .with_fullsize_content_view(false)
@@ -260,14 +286,14 @@ impl Host {
                     ui.ctx().request_repaint();
                     return;
                 };
-                if daw.native_settings_generation() != Some(generation) {
+                if daw.desktop_window() != Some(window) {
                     return;
                 }
                 if class == egui::ViewportClass::EmbeddedWindow {
-                    daw.fail_native_settings(generation);
+                    daw.fail_desktop_window(window);
                     root_context.request_repaint_of(ViewportId::ROOT);
                 } else {
-                    daw.show_native_settings(&root_context, ui);
+                    daw.show_desktop_window(window, &root_context, ui);
                 }
             });
         });
@@ -284,13 +310,25 @@ impl Host {
         }
     }
 
-    fn open_chooser(request: SettingsPicker, owner: Arc<Window>) -> Chooser {
+    fn open_chooser(request: DesktopPicker, owner: Arc<Window>) -> Chooser {
         let dialog = rfd::AsyncFileDialog::new().set_parent(owner.as_ref());
-        let future: PickerFuture = match request.kind {
-            PickerKind::Model(_) => {
-                Box::pin(dialog.add_filter("ONNX model", &["onnx"]).pick_file())
+        let future: PickerFuture = match request {
+            DesktopPicker::Settings(settings) => match settings.kind {
+                PickerKind::Model(_) => {
+                    Box::pin(dialog.add_filter("ONNX model", &["onnx"]).pick_file())
+                }
+                PickerKind::PluginFolder => Box::pin(dialog.pick_folder()),
+            },
+            DesktopPicker::ProjectLocation(_) => {
+                Box::pin(dialog.set_title("Choose project location").pick_folder())
             }
-            PickerKind::PluginFolder => Box::pin(dialog.pick_folder()),
+            DesktopPicker::ExportFile(_, format) => Box::pin(
+                dialog
+                    .set_title("Export audio")
+                    .set_file_name(format!("mix.{}", format.extension()))
+                    .add_filter(format.label(), &[format.extension()])
+                    .save_file(),
+            ),
         };
         Chooser::Open {
             request,

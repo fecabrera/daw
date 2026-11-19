@@ -144,9 +144,12 @@ mod transport_controls;
 pub use mixer::ViewMode;
 mod arrangement;
 mod audio_settings;
+mod desktop_window;
 mod musical_time;
 pub mod panels;
+pub use desktop_window::{DesktopPicker, DesktopWindow};
 mod project_name_dialog;
+mod project_prompt;
 mod project_settings;
 pub mod rows;
 mod selection_focus;
@@ -1045,6 +1048,7 @@ pub struct DawUi {
     error: Option<String>,
     pending: Option<Action>,
     unsaved_prompt: bool,
+    project_prompt_window: project_prompt::ProjectPromptWindow,
     project_name_dialog: Option<project_name_dialog::ProjectNameDialog>,
     overwrite: Option<PathBuf>,
     export_settings: ExportSettings,
@@ -1217,6 +1221,7 @@ impl Default for DawUi {
             error: None,
             pending: None,
             unsaved_prompt: false,
+            project_prompt_window: Default::default(),
             project_name_dialog: None,
             overwrite: None,
             export_settings: ExportSettings::default(),
@@ -1447,6 +1452,9 @@ impl DawUi {
         }
         self.pending = Some(action);
         if self.dirty {
+            if !self.unsaved_prompt {
+                self.project_prompt_window.begin();
+            }
             self.unsaved_prompt = true;
         } else {
             self.perform_pending();
@@ -1527,6 +1535,7 @@ impl DawUi {
     }
     fn save(&mut self, save_as: bool) {
         if save_as || self.session.folder.is_none() || self.session.recovered_working_copy() {
+            self.project_prompt_window.begin();
             self.project_name_dialog = Some(project_name_dialog::ProjectNameDialog::new(
                 self.session.project.name.clone(),
                 save_as,
@@ -3157,6 +3166,7 @@ impl DawUi {
             FileAction::SaveAs => self.save(true),
             FileAction::CollectSources => self.collect_sources(),
             FileAction::Export => {
+                self.project_prompt_window.begin();
                 self.export_dialog = Some(self.export_settings);
             }
         }
@@ -6268,67 +6278,8 @@ impl DawUi {
         if self.audio_devices.busy() {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
-        #[derive(Clone, Copy)]
-        enum UnsavedChoice {
-            Save,
-            Discard,
-            Cancel,
-        }
-
-        if self.unsaved_prompt {
-            let choice = dialogs::Dialog::new(
-                "Unsaved changes",
-                "Save changes before continuing?",
-                &[
-                    ("Save", UnsavedChoice::Save),
-                    ("Discard", UnsavedChoice::Discard),
-                    ("Cancel", UnsavedChoice::Cancel),
-                ],
-            )
-            .actions_enabled(self.job.is_none())
-            .show(ctx);
-            match choice {
-                Some(UnsavedChoice::Save) => self.save(false),
-                Some(UnsavedChoice::Discard) => {
-                    self.dirty = false;
-                    self.unsaved_prompt = false;
-                    self.perform_pending();
-                }
-                Some(UnsavedChoice::Cancel) => {
-                    self.pending = None;
-                    self.unsaved_prompt = false;
-                }
-                None => {}
-            }
-        }
-        if let Some(mut draft) = self.project_name_dialog.take() {
-            match draft.show(ctx) {
-                Some(project_name_dialog::Action::Cancel) => self.save_named(String::new(), None),
-                Some(project_name_dialog::Action::Continue(name)) => {
-                    let parent = rfd::FileDialog::new()
-                        .set_title("Choose project location")
-                        .pick_folder();
-                    self.save_named(name, parent);
-                }
-                None => self.project_name_dialog = Some(draft),
-            }
-        }
-        if let Some(mut settings) = self.export_dialog {
-            match export_dialog::show(ctx, &mut settings, self.session.project.sample_rate_hz) {
-                Some(export_dialog::Action::Cancel) => self.export_dialog = None,
-                Some(export_dialog::Action::Export) => {
-                    self.export_dialog = None;
-                    let format = settings.format;
-                    if let Some(path) = rfd::FileDialog::new()
-                        .set_file_name(format!("mix.{}", format.extension()))
-                        .add_filter(format.label(), &[format.extension()])
-                        .save_file()
-                    {
-                        self.export_to(path.with_extension(format.extension()), settings);
-                    }
-                }
-                None => self.export_dialog = Some(settings),
-            }
+        if self.native_project_prompt().is_none() {
+            self.draw_project_prompt(ctx, None);
         }
         if let Some(path) = self.overwrite.clone() {
             let message = format!("Replace {}?", path.display());
