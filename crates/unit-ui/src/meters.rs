@@ -224,7 +224,7 @@ impl<'a> StereoOutputLevel<'a> {
 pub fn unit_gap_rect(unit: Rect) -> Rect {
     Rect::from_center_size(
         egui::pos2(unit.right() + 8.0, unit.center().y),
-        Vec2::new(8.0, 64.0),
+        Vec2::new(8.0, unit.height().min(64.0)),
     )
 }
 
@@ -243,7 +243,7 @@ pub fn unit_gap_level(
     let channels: [Response; 2] = std::array::from_fn(|channel| {
         let rail = Rect::from_min_size(
             bounds.min + Vec2::new(channel as f32 * 5.0, 0.0),
-            Vec2::new(3.0, 64.0),
+            Vec2::new(3.0, bounds.height()),
         );
         output_level(
             ui,
@@ -495,7 +495,8 @@ mod tests {
                 meter.store([1.5, 1.5, 0.5]);
                 let unit = Rect::from_min_size(egui::pos2(20.0, 13.0), Vec2::new(width, height));
                 let expected = unit_gap_rect(unit);
-                assert_eq!(expected.size(), Vec2::new(8.0, 64.0));
+                let meter_height = if height == 42.0 { 42.0 } else { 64.0 };
+                assert_eq!(expected.size(), Vec2::new(8.0, meter_height));
                 assert_eq!(expected.center().y, unit.center().y);
                 assert_eq!(expected.left() - unit.right(), 4.0);
                 for phase in 0..4 {
@@ -557,7 +558,7 @@ mod tests {
                         })
                         .collect();
                     assert_eq!(rails.len(), 2);
-                    assert_eq!(rails[0].size(), Vec2::new(3.0, 64.0));
+                    assert_eq!(rails[0].size(), Vec2::new(3.0, meter_height));
                     assert_eq!(rails[1].left() - rails[0].right(), 2.0);
                     if phase < 3 {
                         assert!(

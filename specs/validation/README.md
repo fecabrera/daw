@@ -17,6 +17,20 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Compact unit output meters — 2026-11-19
+
+Gap meters align with the visible unit shell in compact Effects and Instrument
+lanes. The meter tests check both painted rails, the shared reset hit area,
+selection and project state. Expanded lanes use 64-point rails.
+
+- Four focused tests, formatting and strict workspace Clippy passed on macOS.
+- `cargo test --workspace --locked --offline` passed on macOS with 3,649
+  passing tests and 22 ignored.
+- `cargo test --workspace --release --locked --offline` passed on macOS with
+  3,649 passing tests and 22 ignored.
+- The rebuilt macOS app passed signature verification. Native visual checks
+  remain open.
+
 ## JSON button backgrounds — 2026-11-19
 
 Dark, Light and Mist define a separate `button_background` color for idle

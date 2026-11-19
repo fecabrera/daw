@@ -1800,14 +1800,25 @@ fn audio_unit_gap_meters_remain_visible_when_collapsed_and_preserve_selection() 
                 assert_eq!(pair[1].1.left() - pair[0].1.right(), panels::UNIT_GAP);
             }
             for (_, unit) in &slots {
-                let rail = daw_unit_ui::meters::unit_gap_rect(*unit);
-                assert_eq!(rail.height(), 64.0);
+                let shell = panels::unit_shell_rect(*unit);
+                assert!(shapes.iter().any(|shape| matches!(
+                    &shape.shape,
+                    egui::Shape::Rect(r) if r.rect == shell && r.fill == theme::unit_separator(&ctx)
+                )), "Missing painted effect shell at {shell:?}");
+                let rail = daw_unit_ui::meters::unit_gap_rect(shell);
+                let height = if compact {
+                    assert_eq!(rail.y_range(), shell.y_range());
+                    shell.height()
+                } else {
+                    64.0
+                };
+                assert_eq!(rail.height(), height);
                 assert_eq!(rail.center().y, unit.center().y);
                 assert!(
                     shapes
                         .iter()
                         .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
-                    if rail.contains_rect(r.rect) && r.rect.size() == Vec2::new(3.0, 64.0) && r.fill == theme::palette(&ctx).input))
+                    if rail.contains_rect(r.rect) && r.rect.size() == Vec2::new(3.0, height) && r.fill == theme::palette(&ctx).input))
                 );
             }
             let header = Pos2::new(slots[0].1.left() + 13.0, slots[0].1.center().y);
@@ -1819,7 +1830,8 @@ fn audio_unit_gap_meters_remain_visible_when_collapsed_and_preserve_selection() 
             frame(&mut app, &ctx, vec![button(header, false)]);
             app.selected_effects.extend(ids.iter().copied());
             app.dirty = false;
-            let point = daw_unit_ui::meters::unit_gap_rect(slots[0].1).center();
+            let point =
+                daw_unit_ui::meters::unit_gap_rect(panels::unit_shell_rect(slots[0].1)).center();
             frame(
                 &mut app,
                 &ctx,
@@ -7285,7 +7297,7 @@ fn effect_out_strips_hide_output_rails_and_preserve_gap_and_reduction_meters() {
                 };
                 assert_eq!(rail, Rect::NOTHING);
                 let unit = app.effects_bounds.chain[0].1;
-                let gap = daw_unit_ui::meters::unit_gap_rect(unit);
+                let gap = daw_unit_ui::meters::unit_gap_rect(panels::unit_shell_rect(unit));
                 let before = app.session.project.clone();
                 app.dirty = false;
                 click(&mut app, &ctx, gap.center());

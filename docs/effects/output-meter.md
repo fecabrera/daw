@@ -1,7 +1,8 @@
 # Unit output meters
 
 Every audio unit in the DAW has a vertical stereo meter in the gap after it,
-including the last unit. It stays visible in compact and collapsed views. Left
+including the last unit. In compact lanes, the rails align with the top and
+bottom of the unit. They stay visible when a unit is collapsed. Left
 and right channels have separate levels and held-peak markers. Click either rail
 or the gap between them to reset both peaks. Envelope, LFO and Macro have no
 audio meter.

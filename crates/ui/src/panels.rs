@@ -47,6 +47,11 @@ pub(super) fn unit_height(compact: bool) -> f32 {
     }
 }
 
+/// Convert a unit's allocated lane slot to the visible shell bounds.
+pub(super) fn unit_shell_rect(slot: Rect) -> Rect {
+    slot.shrink2(Vec2::new(0.0, UNIT_VERTICAL_MARGIN))
+}
+
 /// Standard internally padded control strip, shared by repeated sources and EQ bands.
 pub(super) use daw_unit_ui::layout::unit_strip;
 

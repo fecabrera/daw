@@ -822,7 +822,9 @@ impl DawUi {
             })
             && !slots.iter().any(|(_, rect)| {
                 lane.rect_contains_pointer(*rect)
-                    || lane.rect_contains_pointer(daw_unit_ui::meters::unit_gap_rect(*rect))
+                    || lane.rect_contains_pointer(daw_unit_ui::meters::unit_gap_rect(
+                        panels::unit_shell_rect(*rect),
+                    ))
             })
         {
             self.selected_effects.clear();
@@ -1748,7 +1750,7 @@ impl DawUi {
                     let rect = unit.response.rect;
                     meters::unit_gap_level(
                         ui,
-                        rect,
+                        panels::unit_shell_rect(rect),
                         ui.id().with((effect.id, "gap-output")),
                         meters::StereoOutputLevel::new(
                             self.output

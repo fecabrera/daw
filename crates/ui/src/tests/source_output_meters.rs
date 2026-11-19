@@ -52,6 +52,21 @@ fn sources_keep_gap_meters_without_horizontal_output_rails_or_meter_drags() {
                         let before = app.session.project.clone();
                         let shapes = frame_shapes(&mut app, &ctx, vec![], size);
                         assert_eq!(app.session.project, before);
+                        let unit = app
+                            .instrument_ui
+                            .component_slots
+                            .iter()
+                            .find(|(_, component, _)| component.is_source())
+                            .unwrap()
+                            .2;
+                        let gap = daw_unit_ui::meters::unit_gap_rect(unit);
+                        let height = if compact { unit.height() } else { 64.0 };
+                        assert!(shapes.iter().any(|s| matches!(
+                            &s.shape,
+                            egui::Shape::Rect(r) if gap.contains_rect(r.rect)
+                                && r.rect.size() == Vec2::new(3.0, height)
+                                && r.fill == theme::palette(&ctx).input
+                        )));
                         let strip = if kind == 0 {
                             app.midi_editor.oscillator_output_bounds
                         } else {
@@ -76,14 +91,7 @@ fn sources_keep_gap_meters_without_horizontal_output_rails_or_meter_drags() {
                                 app.instrument_ui.samplers[0].gain
                             };
                             assert!(rail.bottom() < knob.top());
-                            let unit = app
-                                .instrument_ui
-                                .component_slots
-                                .iter()
-                                .find(|(_, component, _)| component.is_source())
-                                .unwrap()
-                                .2;
-                            let point = daw_unit_ui::meters::unit_gap_rect(unit).center();
+                            let point = gap.center();
                             frame_shapes(
                                 &mut app,
                                 &ctx,

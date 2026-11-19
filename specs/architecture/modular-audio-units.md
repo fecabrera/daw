@@ -593,10 +593,12 @@ Cover both sources at all six processing rates, polyphony, passive audio equalit
 
 ## Audio-unit gap meters
 
-In DAW unit lanes, paint two 3×64-point level rails with a 2-point channel gap
+In DAW unit lanes, paint two 3-point-wide level rails with a 2-point channel gap
 in the existing 16-point space after every audio unit, including the last. The
 stereo meter is 8 points wide. Center it horizontally in the gap and vertically
-on the complete unit rectangle. Retain unit widths, 16-point gaps and row-edge padding; painting/interactions allocate no layout
+on the visible unit shell. Use a 64-point height in expanded lanes and the
+shell height in compact lanes. Use the painted bounds for hit testing.
+Retain unit widths, 16-point gaps and row-edge padding. Painting and interactions allocate no layout
 space. Keep it visible in expanded, compact and collapsed units. Exclude
 Envelope, LFO and Macro. Standalone editors retain their existing body geometry.
 
