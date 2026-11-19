@@ -1398,15 +1398,22 @@ impl DawUi {
             }
             return;
         }
-        if !self.instrument_output_visible {
+        use crate::instrument_workspace::InstrumentSubview;
+        let subview = self.instrument_subview;
+        let original = self.session.project.beat(track).unwrap().output.clone();
+        if subview == InstrumentSubview::Sources {
+            self.empty_instrument_panel(ui, "Select a beat subtrack");
             return;
         }
-        let original = self.session.project.beat(track).unwrap().output.clone();
         let mut settings = self.session.project.instrument_snapshot(output).unwrap();
         self.activate_component_drag(ui);
         let panel = panels::ControlPanel::begin(ui, ui.max_rect());
-        let header = panel.header(ui, "Output", |_| {});
-        panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
+        let header = if subview == InstrumentSubview::Effects {
+            panel.header(ui, "Output", |_| {}).response
+        } else {
+            self.layers_header(ui, &panel, false).response
+        };
+        panels::ControlPanel::row_dividers(ui, header.rect, false, true);
         self.instrument_ui.clear_layout();
         self.instrument_ui.track = Some(owner);
         #[cfg(test)]
@@ -1419,7 +1426,7 @@ impl DawUi {
             crate::modulation_panel::instrument_sources(&settings, &self.session.project);
         let scroll = egui::ScrollArea::vertical()
             .auto_shrink([false, false])
-            .id_salt(("beat-output", owner))
+            .id_salt(("beat-output", owner, subview))
             .show(ui, |ui| {
                 let rect = Rect::from_min_size(
                     ui.next_widget_position(),
@@ -1455,7 +1462,7 @@ impl DawUi {
             self.edit_beat(track, BeatEdit::SetOutput(Box::new(settings.main)));
         }
         #[cfg(test)]
-        {
+        if subview == InstrumentSubview::Effects {
             self.beat_ui.final_output = Some(rect);
         }
         panel.finish(ui);

@@ -45,6 +45,10 @@ fn macro_catalog_adds_multiple_named_powered_strips_to_layers_and_main() {
         let track = app.session.project.add_midi_track().unwrap();
         app.select_track(track, false);
         app.set_view_mode(ViewMode::Instrument, &ctx);
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &ctx,
+        );
         frame(&mut app, &ctx, vec![]);
         let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
         let layer = i.layers[0].id;
@@ -71,7 +75,7 @@ fn macro_catalog_adds_multiple_named_powered_strips_to_layers_and_main() {
             .layers[0]
             .macro_module;
         assert!(m.controls[0].enabled && !m.controls[1].enabled);
-        let main_label = app.instrument_ui.main_bounds.label.left_top() + Vec2::new(20.0, 15.0);
+        let main_label = app.instrument_ui.macro_bounds.label.left_top() + Vec2::new(20.0, 15.0);
         click(&mut app, &ctx, main_label, false);
         add_component(&mut app, &ctx, main, 4);
         let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
@@ -256,6 +260,8 @@ fn macro_strip_context_menu_removes_only_its_target_on_release() {
         for compact in [false, true] {
             for hit in ["padding", "control", "power"] {
                 let ctx = context();
+                let size = Vec2::new(1280.0, 1100.0);
+                ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
                 let mut app = DawUi::default();
                 let track = app.session.project.add_midi_track().unwrap();
                 let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
@@ -271,8 +277,12 @@ fn macro_strip_context_menu_removes_only_its_target_on_release() {
                 module.controls[1].settings.value = 0.3;
                 app.select_track(track, false);
                 app.set_view_mode(ViewMode::Instrument, &ctx);
+                app.set_instrument_subview(
+                    crate::instrument_workspace::InstrumentSubview::Modulation,
+                    &ctx,
+                );
                 frame(&mut app, &ctx, vec![]);
-                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
                 let label = text_rect(&shapes, "Macro 2");
                 let power = Pos2::new(
                     label.left()
@@ -308,7 +318,7 @@ fn macro_strip_context_menu_removes_only_its_target_on_release() {
                         ],
                     );
                 }
-                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
                 let menu = text_rect(&shapes, "Remove macro").center();
                 assert_eq!(
                     app.session.project.tracks[0].instrument.as_ref().unwrap(),
@@ -415,6 +425,10 @@ fn macro_names_commit_on_enter_and_cancel_without_changing_routes_or_power() {
                 let before = instrument.clone();
                 app.select_track(track, false);
                 app.set_view_mode(ViewMode::Instrument, &ctx);
+                app.set_instrument_subview(
+                    crate::instrument_workspace::InstrumentSubview::Modulation,
+                    &ctx,
+                );
                 frame(&mut app, &ctx, vec![]);
                 app.dirty = false;
                 begin_macro_rename(&mut app, &ctx, "Macro 2");
@@ -483,6 +497,10 @@ fn macro_names_commit_on_enter_and_cancel_without_changing_routes_or_power() {
                             app.set_view_mode(ViewMode::Timeline, &ctx);
                             frame(&mut app, &ctx, vec![]);
                             app.set_view_mode(ViewMode::Instrument, &ctx);
+                            app.set_instrument_subview(
+                                crate::instrument_workspace::InstrumentSubview::Modulation,
+                                &ctx,
+                            );
                         }
                         "track" => {
                             let other = app.session.project.add_midi_track().unwrap();
@@ -584,6 +602,10 @@ fn macro_order_release_preserves_controls_and_history() {
             .collapsed = compact;
         app.select_track(track, false);
         app.set_view_mode(ViewMode::Instrument, &ctx);
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &ctx,
+        );
         let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         let start = text_rect(&shapes, "Macro 1").center();
         let end = text_rect(&shapes, "Macro 3").right_center() + Vec2::new(5.0, 0.0);

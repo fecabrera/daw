@@ -270,6 +270,10 @@ fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_outpu
     let (mut app, ctx, track, row, _) = setup();
     app.navigate_beat_owner(track, Some(row), false);
     app.view_mode = ViewMode::Instrument;
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Effects,
+        &ctx,
+    );
     let size = Vec2::new(1600.0, 1400.0);
     let shapes = frame_shapes(&mut app, &ctx, vec![], size);
     let text: Vec<_> = shapes
@@ -282,8 +286,8 @@ fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_outpu
     assert!(
         text.contains(&"Layers")
             && text.contains(&"Layer 1")
-            && text.contains(&"LFO")
-            && text.contains(&"Envelope")
+            && !text.contains(&"LFO")
+            && !text.contains(&"Envelope")
     );
     assert_eq!(text.iter().filter(|text| **text == "Output").count(), 1);
     let settings = app
@@ -300,6 +304,10 @@ fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_outpu
     midi.session.project.tracks[0].instrument = Some(settings);
     midi.select_track(midi_track, false);
     midi.view_mode = ViewMode::Instrument;
+    midi.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Effects,
+        &ctx,
+    );
     frame_shapes(&mut midi, &ctx, vec![], size);
     assert_eq!(midi.midi_editor.layer_bounds[&layer].row, bounds);
     assert_eq!(midi.instrument_ui.main_bounds.row, output_bounds);
@@ -550,6 +558,10 @@ fn component_catalog_targets_local_provider_lanes_and_fixed_output_across_frames
     let (mut app, ctx, track, row, _) = setup();
     app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Modulation,
+        &ctx,
+    );
     app.instrument_catalog_visible = true;
     app.instrument_catalog.expand_folders();
     let sibling = BeatSubtrack::new("Snare".into());
@@ -621,13 +633,28 @@ fn component_catalog_targets_local_provider_lanes_and_fixed_output_across_frames
     frame(&mut app, &ctx, vec![]);
     let root = app.session.project.beat(track).unwrap().output.id;
     assert_eq!(app.selected_instrument_owner(), Some(root));
+    app.instrument_ui.select_layer(root);
     let entry = crate::instrument_catalog::ENTRIES
         .iter()
         .position(|e| e.type_id == "daw.macro")
         .unwrap();
+    assert_eq!(app.instrument_catalog_target(), Some((root, root)));
+    for _ in 0..40 {
+        frame(&mut app, &ctx, vec![]);
+    }
     let point = app.instrument_catalog_bounds.entries[entry].center();
     super::instrument_catalog::click(&mut app, &ctx, point, false);
+    assert!(
+        app.instrument_catalog
+            .selected_types()
+            .contains(&"daw.macro")
+    );
     super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
+    assert!(app.error.is_none(), "{:?}", app.error);
+    assert!(
+        app.job.is_none(),
+        "Macro addition should apply synchronously"
+    );
     assert_eq!(
         app.session
             .project
@@ -651,6 +678,10 @@ fn catalog_drag_into_expanded_subtrack_reuses_release_only_component_placement()
     };
     app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Modulation,
+        &ctx,
+    );
     app.instrument_catalog_visible = true;
     app.instrument_catalog.expand_folders();
     let mut settings = app
@@ -675,6 +706,16 @@ fn catalog_drag_into_expanded_subtrack_reuses_release_only_component_placement()
         .position(|e| e.type_id == "daw.macro")
         .unwrap();
     let origin = app.instrument_catalog_bounds.entries[entry].center();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(origin), button(origin, true)],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(origin + Vec2::new(20.0, 0.0))],
+    );
     let viewport = app
         .instrument_ui
         .component_viewports
@@ -683,11 +724,6 @@ fn catalog_drag_into_expanded_subtrack_reuses_release_only_component_placement()
         .unwrap()
         .1;
     let destination = Pos2::new(viewport.right() - 8.0, viewport.center().y);
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::PointerMoved(origin), button(origin, true)],
-    );
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(destination)]);
     assert!(
         app.session.project.instrument_settings(row).unwrap().layers[0]
@@ -720,6 +756,10 @@ fn empty_beat_parent_has_a_fixed_output_without_source_or_group_rows() {
         let track = app.session.project.add_beat_track().unwrap();
         app.select_track(track, false);
         app.view_mode = ViewMode::Instrument;
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Effects,
+            &ctx,
+        );
         app.set_settings(
             &ctx,
             settings::AppSettings {
@@ -909,6 +949,10 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
 
             app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
             app.view_mode = ViewMode::Instrument;
+            app.set_instrument_subview(
+                crate::instrument_workspace::InstrumentSubview::Effects,
+                &ctx,
+            );
             frame_shapes(&mut app, &ctx, vec![], size);
 
             let shapes = frame_shapes(&mut app, &ctx, vec![], size);
@@ -2197,6 +2241,10 @@ fn editor_subtrack_selection_replaces_final_output_target() {
     for target in ["name", "control", "blank"] {
         let (mut app, ctx, track, row, _) = setup();
         app.view_mode = ViewMode::Instrument;
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Effects,
+            &ctx,
+        );
         frame(&mut app, &ctx, vec![]);
         let output = app.session.project.beat(track).unwrap().output.id;
         let point = app.beat_ui.final_output.unwrap().left_top() + egui::vec2(100.0, 25.0);
@@ -2215,6 +2263,10 @@ fn editor_subtrack_selection_replaces_final_output_target() {
         click(&mut app, &ctx, point);
         assert_eq!(app.beat_ui.primary, Some(row), "{target}");
         app.view_mode = ViewMode::Instrument;
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Effects,
+            &ctx,
+        );
         frame(&mut app, &ctx, vec![]);
         assert_eq!(app.selected_instrument_owner(), Some(row), "{target}");
         assert_eq!(app.session.project, original, "{target}");

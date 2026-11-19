@@ -1,6 +1,6 @@
 # Instrument modulation lanes
 
-Each MIDI instrument has an **LFO** lane and an **Envelope** lane. They belong to the whole instrument. They follow the regular layers and appear before Output. Scroll the Layers area to reach their controls.
+Open **Modulation** in Instrument to edit the instrument-wide **LFO** and **Envelope** lanes. Macros appear below them.
 
 Select a lane, then add its component from Modulators in the Instrument components catalog. Double-click an entry, select it and press Enter, or drag it onto the lane's label or body. The LFO lane accepts only LFOs. The Envelope lane accepts only envelopes. A mixed catalog selection containing an unsupported type makes no addition to these lanes. Regular layers and Output no longer accept these two component types.
 
@@ -11,8 +11,3 @@ Drag unit headers to reorder units within their lane. Hold Option on macOS or Ct
 Use a receiving unit's [modulation controls](../modulation/README.md) to assign a source. Pickers group these sources under LFO and Envelope. Adding a source creates no connections. LFOs produce shared signals. Envelopes keep Per note, Retrigger, and Legato modes; Per note remains specific to each playing voice. Existing scope and cycle checks still apply throughout the same instrument.
 
 Older projects move existing LFOs and envelopes from regular layers and Output into their matching lanes when opened. Their settings, assignments, and sound are retained. Lane layout, unit order, and controls save with the project. Projects saved with these lanes require the current application version.
-
-Selecting LFO or Envelope keeps the Effects catalog available. Drag effects to
-a regular layer, Output or the track effects lane. LFO and Envelope still reject
-effect drops; double-click or Enter does not add an effect to a selected control
-lane.

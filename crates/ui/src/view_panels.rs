@@ -12,12 +12,10 @@ pub enum ViewPanel {
     EffectsLane,
     Returns,
     Master,
-    ModulationLanes,
-    InstrumentOutput,
 }
 
 impl ViewPanel {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 9] = [
         Self::Tracks,
         Self::Components,
         Self::EffectsCatalog,
@@ -27,8 +25,6 @@ impl ViewPanel {
         Self::EffectsLane,
         Self::Returns,
         Self::Master,
-        Self::ModulationLanes,
-        Self::InstrumentOutput,
     ];
 
     pub fn label(self) -> &'static str {
@@ -42,8 +38,6 @@ impl ViewPanel {
             Self::EffectsLane => "Effects Lane",
             Self::Returns => "Returns",
             Self::Master => "Master",
-            Self::ModulationLanes => "LFO / Envelopes",
-            Self::InstrumentOutput => "Instrument Output",
         }
     }
 
@@ -55,7 +49,6 @@ impl ViewPanel {
             Self::Chords => matches!(view, ViewMode::Timeline | ViewMode::Edit),
             Self::ClipSettings => view == ViewMode::Timeline,
             Self::TrackMixer => matches!(view, ViewMode::Timeline | ViewMode::Instrument),
-            Self::ModulationLanes | Self::InstrumentOutput => view == ViewMode::Instrument,
             Self::Returns | Self::Master => matches!(view, ViewMode::Timeline | ViewMode::Mixer),
         }
     }
@@ -63,11 +56,8 @@ impl ViewPanel {
 
 impl DawUi {
     pub fn view_panel_enabled(&self, panel: ViewPanel, ctx: &egui::Context) -> bool {
-        let changes_instrument_layout = self.view_mode == ViewMode::Instrument
-            && matches!(
-                panel,
-                ViewPanel::TrackMixer | ViewPanel::ModulationLanes | ViewPanel::InstrumentOutput
-            );
+        let changes_instrument_layout =
+            self.view_mode == ViewMode::Instrument && panel == ViewPanel::TrackMixer;
         panel.available_in(self.view_mode)
             && self.effects_editing_available(ctx)
             && !self.strip_dragging
@@ -88,8 +78,6 @@ impl DawUi {
                     self.instrument_track_mixer_visible
                 }
                 ViewPanel::TrackMixer => self.track_mixer_visible,
-                ViewPanel::ModulationLanes => self.instrument_modulation_visible,
-                ViewPanel::InstrumentOutput => self.instrument_output_visible,
                 ViewPanel::EffectsLane => self.effects_lane_visible(),
                 ViewPanel::Returns if self.view_mode == ViewMode::Timeline => {
                     self.timeline_returns_visible
@@ -180,12 +168,6 @@ impl DawUi {
             }
             ViewPanel::Returns => self.mixer_returns_visible = !self.mixer_returns_visible,
             ViewPanel::Master => self.mixer_master_visible = !self.mixer_master_visible,
-            ViewPanel::ModulationLanes => {
-                self.instrument_modulation_visible = !self.instrument_modulation_visible
-            }
-            ViewPanel::InstrumentOutput => {
-                self.instrument_output_visible = !self.instrument_output_visible
-            }
         }
         ctx.request_repaint();
     }

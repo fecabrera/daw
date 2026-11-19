@@ -680,6 +680,10 @@ mod tests {
             app.select_track(track, false);
             if inline {
                 app.set_view_mode(ViewMode::Instrument, &ctx);
+                app.set_instrument_subview(
+                    crate::instrument_workspace::InstrumentSubview::Effects,
+                    &ctx,
+                );
             }
             app.set_effects_lane_visible(!inline);
             app.set_effects_catalog_visible(true);

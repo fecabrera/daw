@@ -7,13 +7,15 @@ The bottom **Effects lane** toggle shares its open or closed state with the othe
 
 An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline, Instrument, Editor or Mixer to add effects.
 
-## Right toolbar
+## Instrument tabs
 
-Use **Track Mixer** at the top to show the selected track and its output bus.
-It starts closed and remembers its visibility separately from Timeline.
-Use **LFO / Envelopes** and **Instrument Output** at the bottom to show or hide
-those lanes. Both start visible. Hidden lanes continue processing.
-The same commands are available in **View**.
+- **Sources** opens first. It shows the sources and processors in each layer.
+- **Effects** shows the effects in each layer and on Output. Output scrolls with the layers.
+- **Modulation** shows LFO, Envelope, and then Macros. Layer-owned Macros appear under their layer names.
+
+Switching tabs changes which lanes you can edit. All units continue to process audio or modulation. When a catalog is open, the Effects tab shows the Effects catalog. Sources and Modulation show the Instrument components catalog.
+
+Use **Track Mixer** at the top of the right toolbar or in **View** to show the selected track and its output bus. It starts closed and remembers its visibility separately from Timeline.
 
 ## Project tracks
 
@@ -37,7 +39,7 @@ With focus in the list, use Up/Down to move through visible rows without wrappin
 
 ## Instrument components
 
-The Instrument components catalog has three folders. Each folder starts collapsed. Click its row to hide or show its components. Folder choices remain in place while the application is open.
+Sources shows the Sources and Processors folders. Modulation shows the Modulators folder. Click its row to hide or show its components. Folder choices remain in place while the application is open.
 
 | Folder | Component | Use |
 | --- | --- | --- |
@@ -74,7 +76,7 @@ Selected layers use the same header and lane shades as selected Timeline tracks
 in Dark, Light and Mist. This also applies to Output, LFO and Envelope. Each
 selected regular layer is highlighted when several layers are selected.
 
-Layer controls stay in the left column; installed components appear to their right. Use the Layers Plus button to add another layer. Each layer has gain, pan, mute, and solo controls. Mute and Solo share the same joined M / S button group as tracks, with independent toggles. Layer gain/pan and Output gain use compact knobs without text-entry fields. Output has no pan knob. On the second row, layer Mute and Solo sit at the left; Pan then Gain sit at the right. Output’s single gain knob also sits at the right. Regular layers and Output have the same stereo level meters as tracks, beside the gain knob. Each layer meter shows its signal after effects, gain, pan and layer mute/solo. Output shows their combined signal after Output effects and gain, before track controls. Either channel exceeding 0 dBFS lights both clipping indicators; click either rail to clear them. Meters do not change sound or project data. Each layer, including Output, has an expand/collapse button at the top of its own right toolbar. The toolbar stays at the right edge while components scroll horizontally. Hover or drag a knob to see its value in the tooltip. Solo applies among the layers of that instrument. [Output](../instruments/main.md) controls their combined output and can hold Macro controls.
+Layer controls stay in the left column; installed components appear to their right. Use the Layers Plus button in Sources or Effects to add another layer. Each layer has gain, pan, mute, and solo controls. Mute and Solo share the same joined M / S button group as tracks, with independent toggles. Layer gain/pan and Output gain use compact knobs without text-entry fields. Output has no pan knob. On the second row, layer Mute and Solo sit at the left; Pan then Gain sit at the right. Output’s single gain knob also sits at the right. Regular layers and Output have the same stereo level meters as tracks, beside the gain knob. Each layer meter shows its signal after effects, gain, pan and layer mute/solo. Output shows their combined signal after Output effects and gain, before track controls. Either channel exceeding 0 dBFS lights both clipping indicators; click either rail to clear them. Meters do not change sound or project data. Each layer, including Output, has an expand/collapse button at the top of its own right toolbar. The toolbar stays at the right edge while components scroll horizontally. Hover or drag a knob to see its value in the tooltip. Solo applies among the layers of that instrument. [Output](../instruments/main.md) controls their combined output and can hold Macro controls.
 
 ## Amplitude
 
@@ -103,13 +105,11 @@ Folders start collapsed. Click a folder to hide or show its effects. Use Up/Down
 
 Select the destination track or Master before adding an effect. Double-click an effect to add it. Shift-click selects effects across open folders; Enter on an effect adds the selection in folder order. Drag selected effects into the lane to choose their insertion point, then release to add them. The insertion preview appears after the preceding unit’s output meter. Escape or an invalid drop cancels. Scroll when the catalog does not fit.
 
-In Instrument, click a layer or Output to select it, then add effects from the Effects catalog. New effects append to that same layer lane. Drag effect headers or catalog effects between control components, including into an empty layer. Only audio sources stay pinned first. Collapse or expand the layer to change the size of the whole row. Drag effect headers between regular layers, Output, and the track effects lane to move them; hold Option on macOS or Ctrl on Windows/Linux to duplicate them. Selected effects transfer together. Layer effect settings save with the project.
-
-Output effects share the Output lane with its control components. You can place an effect before Macro. LFO and Envelope lanes do not accept effects. Selecting either lane keeps the Effects catalog enabled, so you can drag effects to a regular layer, Output or the track effects lane. Dropping on LFO or Envelope cancels the addition. Click the separate bottom effects lane to target track effects, or edit track effects in Timeline, Editor or Mixer.
+In the **Effects** tab, click a layer or Output to select it, then add effects from the Effects catalog. New effects append to that lane. Drag to reorder effects or move them between regular layers, Output, and the separate bottom Effects lane. Hold Option on macOS or Ctrl on Windows/Linux to duplicate them. Selected effects transfer together. Click the bottom Effects lane to target track effects.
 
 Layer effects process that layer's notes together, after Amplitude and before layer gain/pan. Output effects process the combined layer sum before Output gain/pan. Track output effects process the instrument after Output. This lets you distort one layer while keeping another layer clean.
 
-Effects run in their left-to-right order. Moving a control component across an effect changes its display position; it does not change modulation timing or the fixed Amplitude processing stage. Master effects process the combined track mix.
+Effects run in their left-to-right order. Master effects process the combined track mix.
 
 The header power control turns a unit on or off. Right-click a header for **Enable** or **Disable** as the first menu item. On a selected unit, this action applies to all selected units in its lane. Double-click its header to collapse or expand it. Off units keep their settings and remain editable. See [moving and copying units](../editing/units.md) and [modulation](../modulation/README.md).
 

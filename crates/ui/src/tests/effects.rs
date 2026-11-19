@@ -142,6 +142,12 @@ fn categorized_catalog_fixture(
         &ctx,
     );
     app.master_selected = target == "master";
+    if target == "instrument" {
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Effects,
+            &ctx,
+        );
+    }
     app.set_effects_catalog_visible(true);
     frame(&mut app, &ctx, vec![]);
     if target == "instrument" {
@@ -1744,6 +1750,10 @@ fn harmonic_lift_has_six_band_rails_and_keeps_the_maximizer_rail() {
 fn instrument_gap_meters_cover_sources_and_amplitude_but_exclude_modulators() {
     for source in ["oscillator", "sampler", "noise"] {
         let (mut app, ctx) = categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Sources,
+            &ctx,
+        );
         app.session.project.tracks[0]
             .instrument
             .as_mut()
@@ -5715,27 +5725,14 @@ fn layer_effect_library_drag_targets_empty_layers_without_the_bottom_lane() {
         .layers[1];
     assert_eq!(l.effects.len(), 1);
     assert!(app.dirty);
-    // Adding a source still keeps the effect after all components in the shared lane.
-    app.session.project.tracks[0]
-        .instrument
-        .as_mut()
-        .unwrap()
-        .layers[1]
-        .oscillators
-        .push(daw_core::OscillatorSettings::default());
     frame(&mut app, &ctx, vec![]);
-    let (_, _, effect) = app
-        .instrument_ui
-        .effect_slots
-        .iter()
-        .find(|(owner, _, _)| *owner == id)
-        .unwrap();
-    assert!(
-        (effect.left()
-            - app.midi_editor.layer_bounds[&id].oscillator_panel.right()
-            - panels::UNIT_GAP)
-            .abs()
-            < 0.01
+    assert_eq!(
+        app.instrument_ui
+            .effect_slots
+            .iter()
+            .filter(|(owner, _, _)| *owner == id)
+            .count(),
+        1
     );
 }
 
@@ -6030,91 +6027,6 @@ fn effects_move_and_copy_between_track_lane_regular_layers_and_main() {
                     if from_track { Some(owner) } else { None }
                 );
                 assert!(app.dirty);
-            }
-        }
-    }
-}
-
-#[test]
-fn inline_effects_keep_the_component_boundary_on_regular_layers_and_main() {
-    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for compact in [false, true] {
-            for collapsed in [false, true] {
-                for main in [false, true] {
-                    let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
-                    app.effects_lane_open = false;
-                    let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
-                    let owner;
-                    if main {
-                        owner = i.main.id;
-                        i.main.collapsed = compact;
-                        i.main.macro_module.add();
-                        i.main.macro_module.collapsed = collapsed;
-                        i.main.macro_module.modulation_open = true;
-                        i.main.effects.push(daw_core::EffectInstance::drive());
-                        if let daw_core::EffectSettings::Drive(s) = &mut i.main.effects[0].unit {
-                            s.collapsed = collapsed;
-                        }
-                    } else {
-                        let l = &mut i.layers[0];
-                        owner = l.id;
-                        l.collapsed = compact;
-                        l.amplitude.present = true;
-                        l.amplitude.collapsed = collapsed;
-                        l.amplitude.modulation_open = true;
-                        l.effects.push(daw_core::EffectInstance::equalizer());
-                        if let daw_core::EffectSettings::Eq3(s) = &mut l.effects[0].unit {
-                            s.collapsed = collapsed;
-                        }
-                    }
-                    let chain = if main {
-                        &mut i.main.effects
-                    } else {
-                        &mut i.layers[0].effects
-                    };
-                    let mut second = daw_core::EffectInstance::drive();
-                    if let daw_core::EffectSettings::Drive(s) = &mut second.unit {
-                        s.collapsed = collapsed;
-                    }
-                    chain.push(second);
-                    app.dirty = false;
-                    frame(&mut app, &ctx, vec![]);
-                    let saved = serde_json::to_value(&app.session.project).unwrap();
-                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-                    let component = app
-                        .instrument_ui
-                        .component_slots
-                        .iter()
-                        .rev()
-                        .find(|(o, _, _)| *o == owner)
-                        .unwrap()
-                        .2;
-                    let mut previous = component;
-                    for effect in app
-                        .instrument_ui
-                        .effect_slots
-                        .iter()
-                        .filter(|(o, _, _)| *o == owner)
-                        .map(|(_, _, r)| *r)
-                    {
-                        assert!((effect.left() - previous.right() - panels::UNIT_GAP).abs() < 0.01);
-                        let boundary = previous.right() - 0.5;
-                        let stroke = Stroke::new(1.0, theme::unit_separator(&ctx));
-                        let lines = shapes.iter().filter(|shape| {
-                            shape.clip_rect.contains(Pos2::new(boundary, previous.center().y)) && matches!(&shape.shape,
-                                egui::Shape::LineSegment { points, stroke: painted }
-                                if *painted == stroke && points[0].x == boundary && points[1].x == boundary
-                                && points[0].y <= previous.top() && points[1].y >= effect.bottom())
-                        }).count();
-                        assert_eq!(
-                            lines, 0,
-                            "Main {main}, compact {compact}, collapsed {collapsed}"
-                        );
-                        previous = effect;
-                    }
-                    assert_eq!(serde_json::to_value(&app.session.project).unwrap(), saved);
-                    assert!(!app.dirty);
-                }
             }
         }
     }
@@ -6857,138 +6769,6 @@ fn drive_v2_catalog_three_strip_layout_color_power_and_gain_edits_use_shared_his
 }
 
 #[test]
-fn inline_effects_move_before_macro_and_components_move_across_effects() {
-    use daw_core::InstrumentComponent as C;
-    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for main in [false, true] {
-            let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
-            ctx.data_mut(|data| {
-                data.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(1280.0, 1100.0))
-            });
-            let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
-            let effect = daw_core::EffectInstance::auto_filter();
-            let id = effect.id;
-            let owner = if main {
-                instrument.main.macro_module.add();
-                instrument.main.collapsed = false;
-                instrument.main.effects.push(effect);
-                instrument.main.id
-            } else {
-                let l = &mut instrument.layers[0];
-                l.macro_module.add();
-                l.collapsed = false;
-                l.effects.push(effect);
-                l.id
-            };
-            app.history = None;
-            frame(&mut app, &ctx, vec![]);
-            let macro_rect = app
-                .instrument_ui
-                .component_slots
-                .iter()
-                .find(|(o, u, _)| *o == owner && *u == C::Macros)
-                .unwrap()
-                .2;
-            let rect = app
-                .instrument_ui
-                .effect_slots
-                .iter()
-                .find(|(o, e, _)| *o == owner && *e == id)
-                .unwrap()
-                .2;
-            let start = unit_slot_point(rect);
-            let end = Pos2::new(macro_rect.left() + 2.0, start.y);
-            end_click_sequence(&mut app, &ctx);
-            frame(
-                &mut app,
-                &ctx,
-                vec![egui::Event::PointerMoved(start), button(start, true)],
-            );
-            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-            frame(&mut app, &ctx, vec![button(end, false)]);
-            frame(&mut app, &ctx, vec![]);
-            let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
-            let order = if main {
-                i.main.visible_units()
-            } else {
-                i.layers[0].visible_units()
-            };
-            assert_eq!(
-                order,
-                vec![C::Effect(id), C::Macros],
-                "{theme:?} main={main}"
-            );
-            let macro_rect = app
-                .instrument_ui
-                .component_slots
-                .iter()
-                .find(|(o, u, _)| *o == owner && *u == C::Macros)
-                .unwrap()
-                .2;
-            let rect = app
-                .instrument_ui
-                .effect_slots
-                .iter()
-                .find(|(o, e, _)| *o == owner && *e == id)
-                .unwrap()
-                .2;
-            assert!(rect.right() <= macro_rect.left() + 1.0);
-            app.perform_history_action(HistoryAction::Undo, &ctx);
-            let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
-            assert_eq!(
-                if main {
-                    i.main.visible_units()
-                } else {
-                    i.layers[0].visible_units()
-                },
-                vec![C::Macros, C::Effect(id)]
-            );
-            app.perform_history_action(HistoryAction::Redo, &ctx);
-            frame(&mut app, &ctx, vec![]);
-            let macro_rect = app
-                .instrument_ui
-                .component_slots
-                .iter()
-                .find(|(o, u, _)| *o == owner && *u == C::Macros)
-                .unwrap()
-                .2;
-            let rect = app
-                .instrument_ui
-                .effect_slots
-                .iter()
-                .find(|(o, e, _)| *o == owner && *e == id)
-                .unwrap()
-                .2;
-            let start = unit_title_point(Rect::from_min_size(
-                macro_rect.min,
-                Vec2::new(panels::HEADER_HEIGHT, macro_rect.height()),
-            ));
-            let end = Pos2::new(rect.left() + 2.0, start.y);
-            end_click_sequence(&mut app, &ctx);
-            frame(
-                &mut app,
-                &ctx,
-                vec![egui::Event::PointerMoved(start), button(start, true)],
-            );
-            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-            frame(&mut app, &ctx, vec![button(end, false)]);
-            let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
-            assert_eq!(
-                if main {
-                    i.main.visible_units()
-                } else {
-                    i.layers[0].visible_units()
-                },
-                vec![C::Macros, C::Effect(id)]
-            );
-            let saved = serde_json::to_value(&app.session.project).unwrap();
-            let reopened: daw_core::Project = serde_json::from_value(saved).unwrap();
-            reopened.validate().unwrap();
-        }
-    }
-}
-
-#[test]
 fn mixed_inline_effect_drops_cancel_on_escape_and_outside_release() {
     for escape in [false, true] {
         let (mut app, ctx) = categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");
@@ -7012,15 +6792,8 @@ fn mixed_inline_effect_drops_cancel_on_escape_and_outside_release() {
             .find(|(o, _, _)| *o == owner)
             .unwrap()
             .2;
-        let macro_rect = app
-            .instrument_ui
-            .component_slots
-            .iter()
-            .find(|(o, u, _)| *o == owner && *u == daw_core::InstrumentComponent::Macros)
-            .unwrap()
-            .2;
         let start = unit_slot_point(rect);
-        let end = macro_rect.left_top() + Vec2::new(2.0, 8.0);
+        let end = rect.right_center() + Vec2::new(12.0, 0.0);
         end_click_sequence(&mut app, &ctx);
         begin_effect_drag(&mut app, &ctx, start, end);
         assert!(app.effects_drag.as_ref().is_some_and(|d| d.active));
@@ -7675,144 +7448,6 @@ fn shimmer_reverb_uses_shared_catalog_controls_on_track_master_and_instrument() 
                     _ => unreachable!(),
                 }
             }
-        }
-    }
-}
-
-#[test]
-fn provider_lane_selection_keeps_effect_catalog_draggable_to_audio_chains_only() {
-    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for envelope in [false, true] {
-            for destination in ["layer", "output", "track", "lfo", "envelope"] {
-                let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
-                let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
-                let layer = instrument.layers[0].id;
-                let lfo = instrument.lfo_lane.id;
-                let envelope_lane = instrument.envelope_lane.id;
-                app.instrument_ui.selected_layer = Some(if envelope { envelope_lane } else { lfo });
-                app.instrument_ui.track_effects_target = false;
-                app.set_effects_lane_visible(destination == "track");
-                app.set_effects_catalog_visible(true);
-                frame(&mut app, &ctx, vec![]);
-                assert!(app.effect_catalog_target().is_none());
-                let before = app.session.project.clone();
-                let start = app.effects_bounds.entry.center();
-                click(&mut app, &ctx, start);
-                super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
-                assert_eq!(
-                    app.session.project, before,
-                    "Enter cannot add effects to a provider lane"
-                );
-                end_click_sequence(&mut app, &ctx);
-                let end = match destination {
-                    "layer" => {
-                        let bounds = &app.midi_editor.layer_bounds[&layer];
-                        Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y)
-                    }
-                    "output" => {
-                        let bounds = &app.instrument_ui.main_bounds;
-                        Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y)
-                    }
-                    "track" => app.effects_bounds.lane_viewport.center(),
-                    other => {
-                        let owner = if other == "lfo" { lfo } else { envelope_lane };
-                        let bounds = &app.instrument_ui.modulation_lane_bounds[&owner];
-                        Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y)
-                    }
-                };
-                frame(
-                    &mut app,
-                    &ctx,
-                    vec![egui::Event::PointerMoved(start), button(start, true)],
-                );
-                assert!(
-                    app.effects_drag.is_some(),
-                    "{envelope} {destination}: catalog drag must arm"
-                );
-                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-                assert_eq!(
-                    app.session.project, before,
-                    "hover must not edit the project"
-                );
-                frame(&mut app, &ctx, vec![button(end, false)]);
-                let track = &app.session.project.tracks[0];
-                let instrument = track.instrument.as_ref().unwrap();
-                assert_eq!(
-                    instrument.layers[0].effects.len(),
-                    usize::from(destination == "layer")
-                );
-                assert_eq!(
-                    instrument.main.effects.len(),
-                    usize::from(destination == "output")
-                );
-                assert_eq!(track.effects.len(), usize::from(destination == "track"));
-                if matches!(destination, "lfo" | "envelope") {
-                    assert_eq!(
-                        app.session.project, before,
-                        "provider lanes must reject effects"
-                    );
-                    assert!(!app.dirty);
-                } else {
-                    assert!(app.dirty);
-                }
-                assert!(app.effects_drag.is_none());
-                app.session.project.validate().unwrap();
-            }
-        }
-    }
-}
-
-#[test]
-fn catalog_effect_drops_on_lfo_and_envelope_reject_a_previous_valid_layer_target() {
-    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for envelope in [false, true] {
-            let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
-            let track = app.session.project.tracks[0].id;
-            let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-            let layer = instrument.layers[0].id;
-            let provider = if envelope {
-                instrument.envelope_lane.id
-            } else {
-                instrument.lfo_lane.id
-            };
-            app.instrument_ui.selected_layer = Some(provider);
-            app.instrument_ui.track_effects_target = false;
-            app.set_effects_lane_visible(false);
-            app.set_effects_catalog_visible(true);
-            frame(&mut app, &ctx, vec![]);
-            let before = app.session.project.clone();
-            let revision = app.change_revision;
-            let start = app.effects_bounds.entry.center();
-            let bounds = &app.midi_editor.layer_bounds[&layer];
-            let valid = Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y);
-            let bounds = &app.instrument_ui.modulation_lane_bounds[&provider];
-            let rejected = Pos2::new(bounds.label.right() + 30.0, bounds.row.center().y);
-            frame(
-                &mut app,
-                &ctx,
-                vec![egui::Event::PointerMoved(start), button(start, true)],
-            );
-            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(valid)]);
-            let drag = app.effects_drag.as_ref().expect("catalog drag active");
-            assert!(drag.active);
-            assert_eq!(
-                drag.target,
-                effects_panel::EffectTarget::Layer { track, layer }
-            );
-            assert_eq!(app.session.project, before);
-            // Release on the provider, not the last eligible row. The previous
-            // valid destination must not receive an accidental insertion.
-            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(rejected)]);
-            assert_eq!(app.session.project, before);
-            frame(&mut app, &ctx, vec![button(rejected, false)]);
-            assert!(app.effects_drag.is_none());
-            assert_eq!(
-                app.session.project, before,
-                "envelope={envelope}: rejected effect drop"
-            );
-            assert_eq!(app.change_revision, revision);
-            assert!(!app.dirty);
-            app.session.project.validate().unwrap();
         }
     }
 }

@@ -506,6 +506,10 @@ fn completion_keeps_instrument_component_selection_without_dismissal() {
     app.selected_track = Some(track);
     app.view_mode = ViewMode::Instrument;
     let ctx = context();
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Modulation,
+        &ctx,
+    );
     frame(&mut app, &ctx, vec![]);
     frame(&mut app, &ctx, vec![]);
     let (owner, unit, _) = app

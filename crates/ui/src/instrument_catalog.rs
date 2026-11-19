@@ -1,6 +1,7 @@
 //! Catalog adapter for the components available within an instrument layer.
 use super::*;
 use crate::instrument_component_drag::{ComponentDrag, ComponentDragSource};
+use crate::instrument_workspace::InstrumentSubview;
 use daw_core::ModulationLaneKind;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -11,6 +12,10 @@ pub(super) enum Category {
 }
 impl Category {
     const ALL: [Self; 3] = [Self::Sources, Self::Modulators, Self::Processors];
+
+    fn index(self) -> usize {
+        self as usize
+    }
 
     fn name(self) -> &'static str {
         match self {
@@ -103,6 +108,8 @@ impl Entry {
     }
 }
 
+pub(super) const MACRO_TYPE: &str = "daw.macro";
+
 pub(super) const ENTRIES: [Entry; 8] = [
     Entry::layer("daw.oscillator", "Oscillator", Category::Sources, |l| {
         l.oscillators.push(Default::default())
@@ -120,7 +127,7 @@ pub(super) const ENTRIES: [Entry; 8] = [
     Entry::layer("daw.amplitude", "Amplitude", Category::Processors, |l| {
         l.amplitude.present = true
     }),
-    Entry::layer("daw.macro", "Macro", Category::Modulators, |l| {
+    Entry::layer(MACRO_TYPE, "Macro", Category::Modulators, |l| {
         l.macro_module.add()
     })
     .with_main(|main| main.macro_module.add()),
@@ -232,8 +239,7 @@ fn can_add_registered(
 #[cfg(test)]
 pub(crate) struct Bounds {
     pub toggle: Rect,
-    pub modulation_toggle: Rect,
-    pub output_toggle: Rect,
+    pub subviews: [Rect; 3],
     pub library: Rect,
     pub header: Rect,
     pub entries: [Rect; ENTRIES.len()],
@@ -249,8 +255,7 @@ impl Default for Bounds {
     fn default() -> Self {
         Self {
             toggle: Rect::NOTHING,
-            modulation_toggle: Rect::NOTHING,
-            output_toggle: Rect::NOTHING,
+            subviews: [Rect::NOTHING; 3],
             library: Rect::NOTHING,
             header: Rect::NOTHING,
             entries: [Rect::NOTHING; ENTRIES.len()],
@@ -271,15 +276,23 @@ impl DawUi {
         bounds: Rect,
         allowed: bool,
     ) {
+        let subview = self.instrument_subview;
+        let modulators = Category::Modulators.index();
+        self.instrument_catalog
+            .exclude_folder((subview == InstrumentSubview::Sources).then_some(modulators));
+        self.instrument_catalog
+            .filter_folder((subview == InstrumentSubview::Modulation).then_some(modulators));
         let target = self.instrument_catalog_target();
         let enabled = allowed && self.effects_drag.is_none() && target.is_some();
-        self.instrument_catalog
-            .enable_external(target.is_some_and(|(track, owner)| {
-                self.session
-                    .project
-                    .instrument_settings(track)
-                    .is_some_and(|i| i.layers.iter().any(|l| l.id == owner))
-            }));
+        self.instrument_catalog.enable_external(
+            subview == InstrumentSubview::Sources
+                && target.is_some_and(|(track, owner)| {
+                    self.session
+                        .project
+                        .instrument_settings(track)
+                        .is_some_and(|i| i.layers.iter().any(|l| l.id == owner))
+                }),
+        );
         let output = self.instrument_catalog.show_with_header(
             ui,
             panel,
@@ -300,41 +313,6 @@ impl DawUi {
         );
         if let Some(identity) = output.external_add.clone() {
             self.add_external_plugin(identity);
-        }
-        if let Some((track, owner)) = target
-            && let Some(settings) = self.session.project.instrument_snapshot(track)
-        {
-            for (index, response) in &output.rows {
-                let entry = ENTRIES[*index];
-                if let Some(lane) = settings.modulation_lane_kind(owner)
-                    && !entry.can_add(&settings, owner)
-                {
-                    response
-                        .clone()
-                        .on_hover_text(format!("{} units only", lane.name()));
-                } else if !entry.can_add(&settings, owner) && !entry.source {
-                    response.clone().on_hover_text(match entry.provider_lane {
-                        Some(ModulationLaneKind::Lfo) => "Requires the LFO lane",
-                        Some(ModulationLaneKind::Envelope) => "Requires the Envelope lane",
-                        None => "Unsupported lane",
-                    });
-                } else if entry.source && !entry.can_add(&settings, owner) {
-                    response.clone().on_hover_text("Requires a regular layer");
-                }
-            }
-        }
-        if target.is_some_and(|(track_id, owner)| {
-            self.session
-                .project
-                .instrument_settings(track_id)
-                .is_some_and(|i| i.main.id == owner)
-        }) {
-            for (index, response) in &output.rows {
-                let entry = ENTRIES[*index];
-                if !entry.supports_main() && entry.provider_lane.is_none() {
-                    response.clone().on_hover_text("Requires a regular layer");
-                }
-            }
         }
         if enabled
             && self.component_drag.is_none()
@@ -386,7 +364,31 @@ impl DawUi {
             let mut settings = self.session.project.instrument_snapshot(track_id).unwrap();
             let original = settings.clone();
             let types: Vec<_> = self.instrument_catalog.selected_types();
-            add_components(&mut settings, layer_id, &types);
+            if subview == InstrumentSubview::Modulation {
+                let has_provider_lanes =
+                    self.session.project.instrument_settings(track_id).is_some();
+                for entry in ENTRIES
+                    .iter()
+                    .filter(|entry| types.contains(&entry.type_id))
+                {
+                    if entry.provider_lane.is_some() && !has_provider_lanes {
+                        continue;
+                    }
+                    let owner = match entry.provider_lane {
+                        Some(ModulationLaneKind::Lfo) => settings.lfo_lane.id,
+                        Some(ModulationLaneKind::Envelope) => settings.envelope_lane.id,
+                        None if settings.modulation_lane_kind(layer_id).is_some() => {
+                            settings.main.id
+                        }
+                        None => layer_id,
+                    };
+                    if entry.can_add(&settings, owner) {
+                        entry.add_to(&mut settings, owner);
+                    }
+                }
+            } else {
+                add_components(&mut settings, layer_id, &types);
+            }
             if settings != original {
                 self.edit(Edit::SetInstrument {
                     track_id,
@@ -402,14 +404,17 @@ impl DawUi {
             .project
             .instrument_track(self.selected_instrument_owner()?)?;
         let instrument = track.instrument.as_ref()?;
-        if instrument.layers.is_empty() {
-            return Some((track.id, instrument.main.id));
-        }
-        if self.instrument_ui.track == Some(track.id)
-            && let Some(owner) = self.instrument_ui.selected_layer
-            && instrument.bus(owner).is_some()
-        {
-            return Some((track.id, owner));
+        match self.instrument_subview {
+            InstrumentSubview::Effects => return None,
+            InstrumentSubview::Modulation => {
+                let owner = self.instrument_ui.selected_layer.filter(|owner| {
+                    self.instrument_ui.track == Some(track.id)
+                        && (instrument.bus(*owner).is_some()
+                            || instrument.layers.iter().any(|layer| layer.id == *owner))
+                });
+                return Some((track.id, owner.unwrap_or(instrument.main.id)));
+            }
+            InstrumentSubview::Sources => {}
         }
         let layer = instrument
             .layers

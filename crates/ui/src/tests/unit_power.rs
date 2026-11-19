@@ -96,6 +96,14 @@ fn component_power_menu_changes_selected_group_and_undoes_together() {
                 data.insert_temp(egui::Id::new("test-frame-size"), Vec2::new(1280.0, 1100.0))
             });
             app.set_view_mode(ViewMode::Instrument, &ctx);
+            app.set_instrument_subview(
+                if main {
+                    crate::instrument_workspace::InstrumentSubview::Modulation
+                } else {
+                    crate::instrument_workspace::InstrumentSubview::Sources
+                },
+                &ctx,
+            );
             for _ in 0..3 {
                 frame(&mut app, &ctx, vec![]);
             }
@@ -184,6 +192,12 @@ fn effect_power_menu_changes_group_or_unselected_target() {
                 &ctx,
             );
             app.master_selected = target == "master";
+            if target == "layer" {
+                app.set_instrument_subview(
+                    crate::instrument_workspace::InstrumentSubview::Effects,
+                    &ctx,
+                );
+            }
             frame(&mut app, &ctx, vec![]);
             let rect = if target == "layer" {
                 app.instrument_ui
@@ -301,6 +315,12 @@ fn every_component_menu_toggles_in_expanded_and_collapsed_rows() {
             app.select_track(track, false);
             let ctx = context();
             app.set_view_mode(ViewMode::Instrument, &ctx);
+            if matches!(kind, "envelope" | "lfo" | "macro") {
+                app.set_instrument_subview(
+                    crate::instrument_workspace::InstrumentSubview::Modulation,
+                    &ctx,
+                );
+            }
             for _ in 0..3 {
                 frame(&mut app, &ctx, vec![]);
             }

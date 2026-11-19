@@ -152,10 +152,9 @@ fn both_catalogs_start_collapsed_and_retain_independent_expansion_choices() {
             frame(&mut app, &ctx, vec![]);
             open(&mut app, &ctx);
             assert!(
-                app.instrument_catalog_bounds
-                    .folders
-                    .iter()
-                    .all(Rect::is_positive)
+                [0, 2]
+                    .into_iter()
+                    .all(|index| app.instrument_catalog_bounds.folders[index].is_positive())
             );
             assert_eq!(
                 app.instrument_catalog_bounds.entries,
@@ -177,10 +176,11 @@ fn both_catalogs_start_collapsed_and_retain_independent_expansion_choices() {
             click(&mut app, &ctx, toggle, false);
             assert!(app.instrument_catalog_bounds.entries[0].is_positive());
             assert_eq!(app.instrument_catalog_bounds.entries[1], Rect::NOTHING);
-            let sources = app.instrument_catalog_bounds.folders[0].center();
-            click(&mut app, &ctx, sources, false);
-            key(&mut app, &ctx, egui::Key::ArrowDown, false, false);
-            key(&mut app, &ctx, egui::Key::Enter, false, false);
+            app.set_instrument_subview(
+                crate::instrument_workspace::InstrumentSubview::Modulation,
+                &ctx,
+            );
+            frame(&mut app, &ctx, vec![]);
             for index in [1, 2, 4] {
                 assert!(app.instrument_catalog_bounds.entries[index].is_positive());
             }
@@ -206,6 +206,16 @@ fn open(app: &mut DawUi, ctx: &egui::Context) {
 
 // Install through the catalog when a unit-control test needs an absent component.
 pub(super) fn add_component(app: &mut DawUi, ctx: &egui::Context, layer: Id, index: usize) {
+    use crate::instrument_workspace::InstrumentSubview;
+    let tab = if [1, 2, 4].contains(&index) {
+        InstrumentSubview::Modulation
+    } else {
+        InstrumentSubview::Sources
+    };
+    if app.instrument_subview != tab {
+        app.set_instrument_subview(tab, ctx);
+        frame(app, ctx, vec![]);
+    }
     if app.instrument_ui.selected_layer != Some(layer) {
         let point = if let Some(bounds) = app.instrument_ui.modulation_lane_bounds.get(&layer) {
             bounds.name.center()
@@ -214,9 +224,12 @@ pub(super) fn add_component(app: &mut DawUi, ctx: &egui::Context, layer: Id, ind
             .as_ref()
             .is_some_and(|i| i.main.id == layer)
         {
-            app.instrument_ui.main_bounds.name.center()
+            app.instrument_ui.macro_bounds.name.center()
+        } else if let Some(bounds) = app.midi_editor.layer_bounds.get(&layer) {
+            bounds.name.center()
         } else {
-            app.midi_editor.layer_bounds[&layer].name.center()
+            app.instrument_ui.select_layer(layer);
+            return add_component(app, ctx, layer, index);
         };
         click(app, ctx, point, false);
     }
@@ -303,23 +316,16 @@ fn catalog_keyboard_adds_selected_components_only_to_the_selected_layer() {
         assert_eq!(app.instrument_ui.selected_layer, Some(layers[1]));
         assert!(!app.dirty);
         open(&mut app, &ctx);
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &ctx,
+        );
+        frame(&mut app, &ctx, vec![]);
         let point = app.instrument_catalog_bounds.entries[1].center();
         click(&mut app, &ctx, point, false);
         key(&mut app, &ctx, egui::Key::ArrowDown, true, false);
         assert_eq!(app.instrument_catalog.selection.len(), 2);
         assert!(!app.dirty);
-        key(&mut app, &ctx, egui::Key::Enter, false, false);
-        assert!(!app.dirty, "regular layers reject provider additions");
-        let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-        let envelope = instrument.envelope_lane.id;
-        let lfo = instrument.lfo_lane.id;
-        app.instrument_ui.select_layer(envelope);
-        let point = app.instrument_catalog_bounds.entries[1].center();
-        click(&mut app, &ctx, point, false);
-        key(&mut app, &ctx, egui::Key::Enter, false, false);
-        app.instrument_ui.select_layer(lfo);
-        let point = app.instrument_catalog_bounds.entries[2].center();
-        click(&mut app, &ctx, point, false);
         key(&mut app, &ctx, egui::Key::Enter, false, false);
         let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
         assert_eq!(instrument.lfo_lane.lfos.len(), 1);
@@ -417,7 +423,7 @@ fn component_double_click_adds_once_and_catalog_focus_and_selection_follow_share
         1
     );
     app.dirty = false;
-    let envelope = app.instrument_catalog_bounds.entries[1].center();
+    let envelope = app.instrument_catalog_bounds.entries[3].center();
     click(&mut app, &ctx, envelope, true);
     assert_eq!(app.instrument_catalog.selection.len(), 2);
     key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
@@ -586,10 +592,8 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                     }
                     frame(&mut app, &ctx, vec![]);
                     open(&mut app, &ctx);
-                    let source = app.instrument_catalog_bounds.entries[0].center();
+                    let source = app.instrument_catalog_bounds.entries[7].center();
                     click(&mut app, &ctx, source, false);
-                    let envelope = app.instrument_catalog_bounds.entries[1].center();
-                    click(&mut app, &ctx, envelope, true);
                     let filter = app.instrument_catalog_bounds.entries[3].center();
                     click(&mut app, &ctx, filter, true);
                     let original = serde_json::to_value(&app.session.project).unwrap();
@@ -600,7 +604,7 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                         Pos2::new(target.toolbar.left() - 20.0, target.row.center().y)
                     };
                     assert!(app.instrument_catalog_bounds.layer_viewport.contains(end));
-                    start_component_drag(&mut app, &ctx, 0);
+                    start_component_drag(&mut app, &ctx, 7);
                     assert!(!app.file_action_enabled(FileAction::Save));
                     assert!(!app.view_switch_enabled());
                     assert_eq!(
@@ -619,7 +623,7 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                         let preview = app.instrument_catalog_bounds.drop_bounds;
                         assert!(shapes.iter().any(|shape| matches!(&shape.shape,
                             egui::Shape::Rect(rect) if rect.rect == preview && rect.stroke == theme::selection_outline(&ctx))));
-                        assert_eq!(app.instrument_catalog.selection.len(), 3);
+                        assert_eq!(app.instrument_catalog.selection.len(), 2);
                         assert_eq!(app.instrument_ui.selected_layer, Some(layers[0]));
                         assert_eq!(
                             serde_json::to_value(&app.session.project).unwrap(),
@@ -640,66 +644,20 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                             && !instrument.layers[0].envelopes[0].present
                             && !instrument.layers[0].envelopes[1].present
                     );
-                    assert_eq!(instrument.layers[1].oscillators.len(), 1);
+                    assert!(instrument.layers[1].noise.is_some());
                     assert!(
                         !instrument.layers[1].envelopes[0].present,
                         "provider entries require their dedicated lanes"
                     );
                     assert!(instrument.layers[1].amplitude.present);
                     assert_eq!(app.instrument_ui.selected_layer, Some(layers[1]));
-                    assert_eq!(app.instrument_catalog.selection.len(), 3);
+                    assert_eq!(app.instrument_catalog.selection.len(), 2);
                     assert!(app.session.project.tracks[0].effects.is_empty());
                     assert!(app.dirty);
                 }
             }
         }
     }
-}
-
-#[test]
-fn dragging_an_unselected_component_replaces_library_selection_and_existing_envelope_drop_stays_clean()
- {
-    let (mut app, ctx, _, layers) = fixture(settings::ColorTheme::Dark);
-    open(&mut app, &ctx);
-    let envelope = app.instrument_catalog_bounds.entries[1].center();
-    click(&mut app, &ctx, envelope, false);
-    start_component_drag(&mut app, &ctx, 0);
-    let end = app.midi_editor.layer_bounds[&layers[1]].label.center();
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-    assert_eq!(
-        app.instrument_catalog.selection,
-        HashSet::from([crate::instrument_catalog::ENTRIES[0].type_id])
-    );
-    frame(&mut app, &ctx, vec![button(end, false)]);
-    let target = &app.session.project.tracks[0]
-        .instrument
-        .as_ref()
-        .unwrap()
-        .layers[1];
-    assert_eq!(target.oscillators.len(), 1);
-    assert!(!target.envelopes[0].present);
-    // A drop onto an installed, disabled/collapsed envelope must retain all settings.
-    let target = &mut app.session.project.tracks[0]
-        .instrument
-        .as_mut()
-        .unwrap()
-        .layers[1];
-    target.amplitude.present = true;
-    target.amplitude.enabled = false;
-    target.amplitude.collapsed = true;
-    target.amplitude.level_db = -7.0;
-    frame(&mut app, &ctx, vec![]);
-    app.dirty = false;
-    let original = serde_json::to_value(&app.session.project).unwrap();
-    start_component_drag(&mut app, &ctx, 3);
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-    frame(&mut app, &ctx, vec![button(end, false)]);
-    assert_eq!(
-        serde_json::to_value(&app.session.project).unwrap(),
-        original
-    );
-    assert!(!app.dirty);
-    assert!(app.component_drag.is_none());
 }
 
 #[test]
@@ -866,177 +824,6 @@ fn amplitude_double_click_adds_once_to_the_selected_layer() {
     assert_eq!(app.instrument_ui.selected_layer, Some(layers[0]));
     app.dirty = false;
     key(&mut app, &ctx, egui::Key::Enter, false, false);
-    assert!(!app.dirty);
-}
-
-#[test]
-fn category_folders_group_entries_and_hide_selected_children_without_editing_the_project() {
-    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        let (mut app, ctx, _, _) = fixture(theme);
-        open(&mut app, &ctx);
-        let original = serde_json::to_value(&app.session.project).unwrap();
-        let entries = app.instrument_catalog_bounds.entries;
-        let folders = app.instrument_catalog_bounds.folders;
-        let rows = [
-            folders[0], entries[0], entries[5], folders[1], entries[1], entries[2], entries[4],
-            folders[2], entries[3],
-        ];
-        assert!(
-            rows.windows(2)
-                .all(|pair| pair[0].bottom() <= pair[1].top())
-        );
-        assert!(
-            rows.iter()
-                .all(|rect| app.instrument_catalog_bounds.library.contains_rect(*rect))
-        );
-        click(&mut app, &ctx, entries[0].center(), false);
-        click(&mut app, &ctx, entries[1].center(), true);
-        click(&mut app, &ctx, folders[0].center(), false);
-        assert!(app.component_drag.is_none());
-        assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
-        assert_eq!(app.instrument_catalog_bounds.entries[5], Rect::NOTHING);
-        assert_eq!(
-            app.instrument_catalog.selection,
-            HashSet::from(["daw.envelope"])
-        );
-        for repeat in [false, true] {
-            frame(
-                &mut app,
-                &ctx,
-                vec![egui::Event::Key {
-                    key: egui::Key::Enter,
-                    physical_key: None,
-                    pressed: true,
-                    repeat,
-                    modifiers: Default::default(),
-                }],
-            );
-            assert!(app.instrument_catalog_bounds.entries[0].is_positive());
-        }
-        frame(
-            &mut app,
-            &ctx,
-            vec![egui::Event::Key {
-                key: egui::Key::Enter,
-                physical_key: None,
-                pressed: false,
-                repeat: false,
-                modifiers: Default::default(),
-            }],
-        );
-        assert_eq!(
-            app.instrument_catalog.selection,
-            HashSet::from(["daw.envelope"])
-        );
-        key(&mut app, &ctx, egui::Key::Space, false, false);
-        assert!(app.instrument_catalog_bounds.entries[0].is_positive());
-        key(&mut app, &ctx, egui::Key::Enter, false, false);
-        assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
-        let toggle = app.instrument_catalog_bounds.toggle.center();
-        click(&mut app, &ctx, toggle, false);
-        open(&mut app, &ctx);
-        assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
-        app.set_view_mode(ViewMode::Timeline, &ctx);
-        frame(&mut app, &ctx, vec![]);
-        app.set_view_mode(ViewMode::Instrument, &ctx);
-        frame(&mut app, &ctx, vec![]);
-        assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
-        assert_eq!(
-            serde_json::to_value(&app.session.project).unwrap(),
-            original
-        );
-        assert!(!app.dirty);
-    }
-}
-
-#[test]
-fn category_keyboard_navigation_uses_visible_rows_and_preserves_component_addition() {
-    let (mut app, ctx, _, _) = fixture(settings::ColorTheme::Dark);
-    open(&mut app, &ctx);
-    let owner = app.session.project.tracks[0]
-        .instrument
-        .as_ref()
-        .unwrap()
-        .envelope_lane
-        .id;
-    app.instrument_ui.select_layer(owner);
-    let source = app.instrument_catalog_bounds.entries[0].center();
-    click(&mut app, &ctx, source, false);
-    key(&mut app, &ctx, egui::Key::ArrowLeft, false, false);
-    assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
-    assert!(app.instrument_catalog.selection.is_empty());
-    key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
-    key(&mut app, &ctx, egui::Key::Enter, false, false);
-    assert!(app.instrument_catalog_bounds.entries[0].is_positive());
-    key(&mut app, &ctx, egui::Key::ArrowLeft, false, false);
-    key(&mut app, &ctx, egui::Key::ArrowDown, false, false); // Modulators.
-    key(&mut app, &ctx, egui::Key::ArrowDown, false, false); // Envelope.
-    assert_eq!(
-        app.instrument_catalog.selection,
-        HashSet::from(["daw.envelope"])
-    );
-    key(&mut app, &ctx, egui::Key::ArrowDown, true, false);
-    key(&mut app, &ctx, egui::Key::ArrowDown, true, false);
-    assert_eq!(
-        app.instrument_catalog.selected_types(),
-        vec!["daw.envelope", "daw.lfo", "daw.macro"]
-    );
-    key(&mut app, &ctx, egui::Key::ArrowUp, true, false);
-    assert_eq!(
-        app.instrument_catalog.selected_types(),
-        vec!["daw.envelope", "daw.lfo"]
-    );
-    key(&mut app, &ctx, egui::Key::ArrowLeft, false, false);
-    assert_eq!(app.instrument_catalog_bounds.entries[1], Rect::NOTHING);
-    assert!(app.instrument_catalog.selection.is_empty());
-    key(&mut app, &ctx, egui::Key::ArrowRight, false, false);
-    key(&mut app, &ctx, egui::Key::ArrowDown, false, false);
-    key(&mut app, &ctx, egui::Key::Enter, false, false);
-    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-    assert!(instrument.envelope_lane.envelopes[0].present);
-    assert!(instrument.layers[0].oscillators.is_empty() && instrument.layers[0].lfos.is_empty());
-    assert!(app.dirty);
-}
-
-#[test]
-fn category_group_drag_uses_display_order_and_excludes_closed_folders() {
-    let (mut app, ctx, _, _) = fixture(settings::ColorTheme::Dark);
-    open(&mut app, &ctx);
-    for (index, shift) in [(3, false), (4, true), (1, true)] {
-        let point = app.instrument_catalog_bounds.entries[index].center();
-        click(&mut app, &ctx, point, shift);
-    }
-    start_component_drag(&mut app, &ctx, 1);
-    let crate::instrument_component_drag::ComponentDragSource::Catalog { types, .. } =
-        &app.component_drag.as_ref().unwrap().source
-    else {
-        panic!("expected catalog drag")
-    };
-    assert_eq!(types, &["daw.envelope", "daw.macro", "daw.amplitude"]);
-    let outside = app.effects_bounds.strip.center();
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::PointerMoved(outside), button(outside, false)],
-    );
-    for (index, shift) in [(3, false), (4, true), (1, true)] {
-        let point = app.instrument_catalog_bounds.entries[index].center();
-        click(&mut app, &ctx, point, shift);
-    }
-    let folder = app.instrument_catalog_bounds.folders[1].center();
-    click(&mut app, &ctx, folder, false);
-    assert!(app.component_drag.is_none());
-    assert_eq!(
-        app.instrument_catalog.selected_types(),
-        vec!["daw.amplitude"]
-    );
-    start_component_drag(&mut app, &ctx, 3);
-    let crate::instrument_component_drag::ComponentDragSource::Catalog { types, .. } =
-        &app.component_drag.as_ref().unwrap().source
-    else {
-        panic!("expected catalog drag")
-    };
-    assert_eq!(types, &["daw.amplitude"]);
     assert!(!app.dirty);
 }
 

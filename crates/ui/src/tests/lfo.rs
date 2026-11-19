@@ -22,6 +22,10 @@ fn lfo_catalog_adds_independent_saved_sources_without_adding_routes_in_both_them
             },
         );
         app.set_view_mode(ViewMode::Instrument, &ctx);
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &ctx,
+        );
         frame(&mut app, &ctx, vec![]);
         add_component(&mut app, &ctx, layer, 2);
         add_component(&mut app, &ctx, layer, 2);
@@ -274,6 +278,10 @@ fn lfo_catalog_enter_and_drag_share_the_existing_component_actions() {
     app.select_track(track, false);
     let ctx = context();
     app.set_view_mode(ViewMode::Instrument, &ctx);
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Modulation,
+        &ctx,
+    );
     frame(&mut app, &ctx, vec![]);
     let owner = app.session.project.tracks[0]
         .instrument

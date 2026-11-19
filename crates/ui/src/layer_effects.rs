@@ -8,17 +8,18 @@ pub(super) struct InlineEffects<'a> {
 impl DawUi {
     pub(super) fn effect_catalog_target(&self) -> Option<EffectTarget> {
         if self.view_mode == ViewMode::Instrument
+            && self.instrument_subview == crate::instrument_workspace::InstrumentSubview::Effects
             && let Some(track) = self.selected_instrument_owner()
             && !self.instrument_ui.track_effects_target
             && let Some(layer) = self.instrument_ui.selected_layer
         {
             let i = self.session.project.instrument_snapshot(track)?;
-            if layer == i.lfo_lane.id || layer == i.envelope_lane.id {
-                return None;
-            }
-            if layer == i.main.id || i.layers.iter().any(|l| l.id == layer) {
-                return Some(EffectTarget::Layer { track, layer });
-            }
+            let layer = if layer == i.main.id || i.layers.iter().any(|l| l.id == layer) {
+                layer
+            } else {
+                i.layers.first().map_or(i.main.id, |l| l.id)
+            };
+            return Some(EffectTarget::Layer { track, layer });
         }
         self.effects_target()
     }

@@ -18,8 +18,6 @@ in-app menu sends the equivalent viewport command.
 | Effects Lane | All |
 | Returns | Timeline, Mixer |
 | Master | Timeline, Mixer |
-| LFO / Envelopes | Instrument |
-| Instrument Output | Instrument |
 
 Keep unavailable panel entries visible, disabled and unchecked. A supported
 panel's checkmark reads the current view's actual visibility, including when a
@@ -109,18 +107,31 @@ Keep selection, project history, audio routing and processing unchanged.
 
 ## Instrument right toolbar
 
-Reserve a standard-width right toolbar outside the Instrument lanes and their
-drop targets. Place Track Mixer at the top and LFO / Envelopes above Instrument
-Output at the bottom of the upper workspace. Keep the existing lane-specific
-collapse buttons inside the Instrument canvas.
+Reserve a standard-width right toolbar outside the Instrument canvas and drop
+targets. Keep Track Mixer at the top. Its state starts closed and stays
+independent of Timeline. Constrain the panel to leave room for lane labels and
+the lane-specific collapse buttons.
 
-Use the shared Track Mixer panel for the primary project track and its output
-bus. Start it closed and preserve its Instrument visibility across view switches
-independently of Timeline. Constrain its width to leave room for the Instrument
-labels and lane toolbar. Scroll its strips when space is limited.
+## Instrument subviews
 
-Start both lane visibility toggles enabled. LFO / Envelopes hides the two
-dedicated instrument-wide modulation lanes. Instrument Output hides the pinned
-Output lane, including the final Output on a beat parent. Hidden lanes reserve
-no space and expose no canvas controls or drop targets. Restore their saved
-collapse state on show. These controls affect only workspace visibility.
+Use the shared joined control style for Sources, Effects and Modulation at the
+top of the Instrument canvas. Place the group beside the Layers heading when
+there is room. Use the same Layers heading in Modulation and omit its Add
+button. Sources is the initial selection. Remember the active tab and vertical
+scroll position while the application is open. Tab selection
+has no project data or history entry and is guarded during active edits.
+
+- Sources shows regular layers with audio sources and processors. The
+  Instrument components catalog shows source and processor folders.
+- Effects shows regular layers and Output with their serial effect chains.
+  Output follows the layers in the same scroll area. The separate track Effects
+  Lane retains the shared visibility setting.
+- Modulation shows LFO, Envelope, an instrument-wide Macros row, and the
+  regular layers that own modulation controls. It shows the Modulators folder.
+  Beat parent Output has a Macros row here. Its subtracks expose their own
+  instrument-wide provider lanes.
+
+Only geometry in the active tab participates in selection and drops. Reuse the
+existing lane editors, collapse state, owner IDs and edit transactions. Keep
+audio rendering, saved component order and modulation discovery independent of
+the active subview.

@@ -13,6 +13,7 @@ pub(super) struct Catalog {
     pub selection: HashSet<&'static str>,
     folders: Vec<Folder>,
     folder_filter: Option<usize>,
+    excluded_folder: Option<usize>,
     cursor: Row,
     anchor: Row,
     range_base: Option<HashSet<&'static str>>,
@@ -214,6 +215,13 @@ impl Catalog {
         self.anchor = self.cursor;
     }
 
+    pub fn exclude_folder(&mut self, folder: Option<usize>) {
+        if self.excluded_folder != folder {
+            self.excluded_folder = folder;
+            self.clear();
+        }
+    }
+
     fn visible_rows(&self) -> Vec<Row> {
         if self.folders.is_empty() {
             return (0..self.entries.len()).map(Row::Entry).collect();
@@ -221,7 +229,10 @@ impl Catalog {
         self.folders
             .iter()
             .enumerate()
-            .filter(|(index, _)| self.folder_filter.is_none_or(|filter| filter == *index))
+            .filter(|(index, _)| {
+                self.folder_filter.is_none_or(|filter| filter == *index)
+                    && self.excluded_folder != Some(*index)
+            })
             .flat_map(|(index, folder)| {
                 std::iter::once(Row::Folder(index)).chain(
                     folder

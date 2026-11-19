@@ -17,6 +17,33 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Instrument subviews — 2026-11-19
+
+Instrument workspace tests cover Sources as the initial tab, the three lane
+layouts, independent Track Mixer visibility, shared Effects Lane visibility,
+catalog additions and drops, and tab switches without project edits. They also
+cover beat Output effects and adding the first Macro on a beat parent.
+
+- `cargo test -p daw-ui --locked --offline --lib` passed 1,075 tests with 3 ignored.
+- `cargo test --workspace --locked --offline` passed 3,637 tests with 22 ignored.
+- `cargo test --workspace --release --locked --offline` passed 3,637 tests with 22 ignored.
+- `cargo fmt --all --check`, `git diff --check`, and
+  `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` passed.
+- `sh tools/package_macos.sh debug --local` built and verified the ad-hoc signature of
+  `target/debug/DAW.app`. Geometry and interactions were checked in egui tests.
+  Native interactive and device checks remain unrun.
+
+### Joined tabs and Layers header
+
+The Instrument workspace test checks the shared divider spacing between the
+three tabs and the Layers header bounds across all subviews. It checks that
+Modulation omits the Add button and that Sources and Effects still display it.
+
+- The UI suite passed 1,075 tests with 3 ignored.
+- Workspace tests passed 3,637 in debug and 3,637 in release.
+- Formatting, diff checks and workspace Clippy passed. The signed local macOS
+  debug bundle was rebuilt. Native interactive checks remain unrun.
+
 ## Appearance theme actions — 2026-11-19
 
 Appearance joins the refresh-cw icon to the Theme dropdown. The themes folder

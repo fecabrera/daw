@@ -12,6 +12,20 @@ pub(super) struct ComponentDrag {
     pub active: bool,
 }
 
+impl ComponentDrag {
+    pub(super) fn moves_macros(&self) -> bool {
+        use daw_core::InstrumentComponent::Macros;
+
+        self.active
+            && match &self.source {
+                ComponentDragSource::Catalog { types, .. } => {
+                    types.contains(&crate::instrument_catalog::MACRO_TYPE)
+                }
+                ComponentDragSource::Installed { components, .. } => components.contains(&Macros),
+            }
+    }
+}
+
 pub(super) enum ComponentDragSource {
     Catalog {
         types: Vec<&'static str>,
@@ -190,13 +204,42 @@ impl DawUi {
                             || (*c == daw_core::InstrumentComponent::Macros && order.contains(c)))
                 })
                 .collect();
-            let (mut index, changed) = drag::group_insertion(&order, &moving, slot);
+            let (index, changed) = drag::group_insertion(&order, &moving, slot);
             let incoming_source = !same_move && components.iter().any(|c| c.is_source());
+            let destination = settings.bus(*owner).map_or_else(
+                || {
+                    settings
+                        .layers
+                        .iter()
+                        .find(|layer| layer.id == *owner)
+                        .map_or_else(Vec::new, |layer| layer.visible_components())
+                },
+                |bus| bus.visible_components(),
+            );
+            let mut model_order: Vec<_> = destination
+                .into_iter()
+                .filter(|unit| !moving.contains(unit))
+                .collect();
             if first == 0 && incoming_source {
-                index += 1;
+                model_order.insert(0, *components.iter().find(|unit| unit.is_source()).unwrap());
             }
-            index = index.max(usize::from(first > 0 || incoming_source));
-            destination_index = Some(index);
+            // Translate the visual slot to the complete component order. Other subviews
+            // can contain components that still occupy positions in the saved order.
+            let mut visible = order.iter().filter(|unit| !moving.contains(unit));
+            let previous = index
+                .checked_sub(1)
+                .and_then(|index| visible.clone().nth(index));
+            destination_index = Some(if let Some(next) = visible.nth(index) {
+                model_order.iter().position(|unit| unit == next).unwrap()
+            } else if let Some(previous) = previous {
+                model_order
+                    .iter()
+                    .position(|unit| unit == previous)
+                    .unwrap()
+                    + 1
+            } else {
+                model_order.len()
+            });
             unit_insertion = Some((
                 slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
                 slot,

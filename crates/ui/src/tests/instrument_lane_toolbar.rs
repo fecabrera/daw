@@ -113,6 +113,11 @@ fn each_lane_keeps_its_toolbar_fixed_outside_scrolling_components() {
             let bounds = &app.midi_editor.layer_bounds[&layer];
             assert_toolbar(bounds.row, bounds.label, bounds.toolbar, bounds.collapse);
             assert_eq!(bounds.row.height(), ROW_HEIGHT);
+            app.set_instrument_subview(
+                crate::instrument_workspace::InstrumentSubview::Effects,
+                &ctx,
+            );
+            frame_shapes(&mut app, &ctx, vec![], size);
             let output = &app.instrument_ui.main_bounds;
             assert_toolbar(output.row, output.label, output.toolbar, output.collapse);
             for (id, viewport) in &app.instrument_ui.component_viewports {
@@ -150,13 +155,20 @@ fn lane_toolbars_reject_catalog_drops_and_dialog_blocked_toggles() {
         .layers[0]
         .id;
     for output in [false, true] {
+        if output {
+            app.set_instrument_subview(
+                crate::instrument_workspace::InstrumentSubview::Modulation,
+                &ctx,
+            );
+            frame(&mut app, &ctx, vec![]);
+        }
         let rail = if output {
-            app.instrument_ui.main_bounds.toolbar
+            app.instrument_ui.macro_bounds.toolbar
         } else {
             app.midi_editor.layer_bounds[&layer].toolbar
         };
         let before = app.session.project.clone();
-        let source = app.instrument_catalog_bounds.entries[1].center();
+        let source = app.instrument_catalog_bounds.entries[if output { 4 } else { 0 }].center();
         frame(
             &mut app,
             &ctx,
@@ -170,7 +182,7 @@ fn lane_toolbars_reject_catalog_drops_and_dialog_blocked_toggles() {
         assert_eq!(app.session.project, before);
         assert!(!app.dirty);
         let point = if output {
-            app.instrument_ui.main_bounds.collapse.center()
+            app.instrument_ui.macro_bounds.collapse.center()
         } else {
             app.midi_editor.layer_bounds[&layer].collapse.center()
         };
@@ -204,6 +216,10 @@ fn selected_effect_outlines_stop_at_their_lane_toolbar() {
         let size = Vec2::new(1280.0, 1100.0);
         ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
         app.set_view_mode(ViewMode::Instrument, &ctx);
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Effects,
+            &ctx,
+        );
         frame(&mut app, &ctx, vec![]);
         let viewport = app
             .instrument_ui
@@ -269,6 +285,10 @@ fn output_toolbar_shares_one_top_separator_with_the_whole_row() {
                     );
                     ctx.set_pixels_per_point(scale);
                     app.set_view_mode(ViewMode::Instrument, &ctx);
+                    app.set_instrument_subview(
+                        crate::instrument_workspace::InstrumentSubview::Effects,
+                        &ctx,
+                    );
                     let size = Vec2::new(1280.0, 1000.0);
                     for _ in 0..2 {
                         frame_shapes(&mut app, &ctx, vec![], size);
@@ -277,7 +297,7 @@ fn output_toolbar_shares_one_top_separator_with_the_whole_row() {
                     let bounds = &app.instrument_ui.main_bounds;
                     for x in [
                         bounds.label.center().x,
-                        bounds.envelopes[0].center().x,
+                        bounds.label.right() + 18.0,
                         bounds.toolbar.left() - 12.0,
                         bounds.toolbar.center().x,
                     ] {

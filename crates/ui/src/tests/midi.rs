@@ -421,6 +421,12 @@ fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
         ] {
             for oscillator in [true, false] {
                 let (mut app, ctx, layers) = layer_header_fixture();
+                if !oscillator {
+                    app.set_instrument_subview(
+                        crate::instrument_workspace::InstrumentSubview::Modulation,
+                        &ctx,
+                    );
+                }
                 let id = layers[0].id;
                 app.set_settings(
                     &ctx,
@@ -578,6 +584,7 @@ fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
                                 .instrument_ui
                                 .selected_components
                                 .contains(&(id, component))
+                                || !oscillator
                             {
                                 theme::palette(&ctx).text
                             } else {
@@ -650,256 +657,6 @@ fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
 }
 
 #[test]
-fn unit_headers_save_collapse_independently_without_changing_audio_settings_or_layer_height() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for accent in [
-            settings::AccentColor::DeepOrange,
-            settings::AccentColor::Yellow,
-        ] {
-            let (mut app, ctx, layers) = layer_header_fixture();
-            app.set_settings(
-                &ctx,
-                settings::AppSettings {
-                    theme: color_theme,
-                    accent,
-                    ..Default::default()
-                },
-            );
-            frame(&mut app, &ctx, vec![]);
-            app.dirty = false;
-            let before = serde_json::to_value(&app.session.project).unwrap();
-            let first = layers[0].id;
-            let second = layers[1].id;
-            let initial = &app.midi_editor.layer_bounds[&first];
-            let full_height = initial.row.height();
-            let full_width = initial.oscillator_panel.width();
-            let point = unit_title_point(initial.oscillator_header);
-            click_note_or_lane(&mut app, &ctx, point);
-            frame(&mut app, &ctx, vec![]);
-            assert_eq!(
-                app.midi_editor.layer_bounds[&first]
-                    .oscillator_panel
-                    .width(),
-                full_width,
-                "A single click must leave the unit expanded"
-            );
-            double_click_unit_header(&mut app, &ctx, point);
-            let first_bounds = &app.midi_editor.layer_bounds[&first];
-            assert_eq!(
-                first_bounds.oscillator_panel.width(),
-                panels::UNIT_LEFT_HEADER_WIDTH
-            );
-            assert_eq!(
-                first_bounds.oscillator_panel.height(),
-                full_height - 2.0 * panels::UNIT_VERTICAL_MARGIN
-            );
-            assert_eq!(first_bounds.row.height(), full_height);
-            assert!(first_bounds.oscillators.is_empty());
-            assert!(
-                first_bounds
-                    .envelope_stages
-                    .iter()
-                    .all(|rect| *rect != Rect::NOTHING)
-            );
-            assert!(
-                app.midi_editor.layer_bounds[&second]
-                    .oscillator_panel
-                    .width()
-                    > panels::UNIT_LEFT_HEADER_WIDTH
-            );
-            let point = unit_title_point(first_bounds.envelope_header);
-            double_click_unit_header(&mut app, &ctx, point);
-            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let bounds = &app.midi_editor.layer_bounds[&first];
-            assert!(
-                bounds
-                    .envelope_stages
-                    .iter()
-                    .all(|rect| *rect == Rect::NOTHING)
-            );
-            assert_eq!(
-                bounds.envelope_panel.width(),
-                panels::UNIT_LEFT_HEADER_WIDTH
-            );
-            assert_eq!(
-                bounds.envelope_panel.height(),
-                full_height - 2.0 * panels::UNIT_VERTICAL_MARGIN
-            );
-            assert_eq!(
-                bounds.oscillator_panel.right() + panels::UNIT_GAP,
-                bounds.envelope_panel.left()
-            );
-            for (name, panel, header) in [
-                (
-                    "Oscillator",
-                    bounds.oscillator_panel,
-                    bounds.oscillator_header,
-                ),
-                ("Envelope 1", bounds.envelope_panel, bounds.envelope_header),
-            ] {
-                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                    egui::Shape::Rect(rect) if rect.rect == panel && rect.fill == theme::unit_separator(&ctx))));
-                let text = shapes
-                    .iter()
-                    .find_map(|shape| match &shape.shape {
-                        egui::Shape::Text(text)
-                            if text.galley.text() == name
-                                && text.angle != 0.0
-                                && header.contains(text.visual_bounding_rect().center()) =>
-                        {
-                            Some(text)
-                        }
-                        _ => None,
-                    })
-                    .unwrap();
-                assert_eq!(text.angle, -std::f32::consts::FRAC_PI_2);
-                let component = if name == "Oscillator" {
-                    daw_core::InstrumentComponent::Oscillators
-                } else {
-                    daw_core::InstrumentComponent::Envelope(layers[0].envelopes[0].id)
-                };
-                assert_eq!(
-                    text.fallback_color,
-                    if app
-                        .instrument_ui
-                        .selected_components
-                        .contains(&(first, component))
-                    {
-                        theme::palette(&ctx).text
-                    } else {
-                        theme::palette(&ctx).secondary
-                    }
-                );
-                assert!(
-                    text.galley
-                        .job
-                        .sections
-                        .iter()
-                        .all(|section| section.format.font_id.size == panels::HEADER_FONT_SIZE)
-                );
-                let body = Rect::from_min_max(
-                    header.min + Vec2::new(1.0, panels::HEADER_HEIGHT + 1.0),
-                    header.max - Vec2::splat(1.0),
-                );
-                assert!(body.contains_rect(text.visual_bounding_rect()));
-                assert!(
-                    ((text.pos
-                        + egui::emath::Rot2::from_angle(text.angle)
-                            * text.galley.rect.center().to_vec2())
-                        - body.center())
-                    .length()
-                        < 0.01
-                );
-                let cap = header;
-                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                    egui::Shape::Rect(rect) if rect.rect == cap && rect.fill == theme::unit_header_fill(&ctx, true))));
-            }
-            let mut saved = before.clone();
-            saved["tracks"][0]["instrument"]["layers"][0]["oscillator_collapsed"] = true.into();
-            saved["tracks"][0]["instrument"]["layers"][0]["envelopes"][0]["collapsed"] =
-                true.into();
-            assert_eq!(serde_json::to_value(&app.session.project).unwrap(), saved);
-            assert!(app.dirty);
-            app.dirty = false;
-            let disabled_point = unit_title_point(bounds.oscillator_header);
-            for _ in 0..2 {
-                for pressed in [true, false] {
-                    let mut output = ctx.run_ui(
-                        egui::RawInput {
-                            screen_rect: Some(Rect::from_min_size(
-                                Pos2::ZERO,
-                                Vec2::new(1280.0, 800.0),
-                            )),
-                            events: vec![
-                                egui::Event::PointerMoved(disabled_point),
-                                button(disabled_point, pressed),
-                            ],
-                            ..Default::default()
-                        },
-                        |ui| {
-                            ui.disable();
-                            app.show(ui);
-                        },
-                    );
-                    output.textures_delta.clear();
-                }
-            }
-            frame(&mut app, &ctx, vec![]);
-            assert_eq!(
-                app.midi_editor.layer_bounds[&first]
-                    .oscillator_panel
-                    .width(),
-                panels::UNIT_LEFT_HEADER_WIDTH,
-                "Disabled headers must not expand"
-            );
-            app.set_view_mode(ViewMode::Timeline, &ctx);
-            frame(&mut app, &ctx, vec![]);
-            app.set_view_mode(ViewMode::Instrument, &ctx);
-            frame(&mut app, &ctx, vec![]);
-            assert_eq!(
-                app.midi_editor.layer_bounds[&first]
-                    .oscillator_panel
-                    .width(),
-                panels::UNIT_LEFT_HEADER_WIDTH
-            );
-            // Saved presentation follows the layer when its row changes.
-            app.session.project.tracks[0]
-                .instrument
-                .as_mut()
-                .unwrap()
-                .layers
-                .swap(0, 1);
-            frame(&mut app, &ctx, vec![]);
-            assert_eq!(
-                app.midi_editor.layer_bounds[&first]
-                    .oscillator_panel
-                    .width(),
-                panels::UNIT_LEFT_HEADER_WIDTH
-            );
-            assert!(
-                app.midi_editor.layer_bounds[&second]
-                    .oscillator_panel
-                    .width()
-                    > panels::UNIT_LEFT_HEADER_WIDTH
-            );
-            let point = app.midi_editor.layer_bounds[&first]
-                .oscillator_header
-                .center();
-            double_click_unit_header(&mut app, &ctx, point);
-            assert_eq!(
-                app.midi_editor.layer_bounds[&first]
-                    .oscillator_panel
-                    .width(),
-                full_width
-            );
-            assert!(!app.midi_editor.layer_bounds[&first].oscillators.is_empty());
-            assert_eq!(
-                app.midi_editor.layer_bounds[&first].envelope_panel.width(),
-                panels::UNIT_LEFT_HEADER_WIDTH
-            );
-            let point = app.midi_editor.layer_bounds[&first]
-                .envelope_header
-                .center();
-            double_click_unit_header(&mut app, &ctx, point);
-            assert!(
-                app.midi_editor.layer_bounds[&first]
-                    .envelope_stages
-                    .iter()
-                    .all(|rect| *rect != Rect::NOTHING)
-            );
-            app.session.project.tracks[0]
-                .instrument
-                .as_mut()
-                .unwrap()
-                .layers
-                .swap(0, 1);
-            assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
-            assert!(app.dirty);
-        }
-    }
-}
-
-#[test]
 fn saved_unit_collapse_restores_in_a_fresh_ui_and_project_replacement_uses_its_own_state() {
     let (mut app, ctx, layers) = layer_header_fixture();
     frame(&mut app, &ctx, vec![]);
@@ -912,6 +669,11 @@ fn saved_unit_collapse_restores_in_a_fresh_ui_and_project_replacement_uses_its_o
         .width();
     let header = app.midi_editor.layer_bounds[&first].oscillator_header;
     double_click_unit_header(&mut app, &ctx, unit_title_point(header));
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Modulation,
+        &ctx,
+    );
+    frame(&mut app, &ctx, vec![]);
     let header = app.midi_editor.layer_bounds[&first].envelope_header;
     double_click_unit_header(&mut app, &ctx, unit_title_point(header));
     assert!(app.dirty);
@@ -925,7 +687,6 @@ fn saved_unit_collapse_restores_in_a_fresh_ui_and_project_replacement_uses_its_o
     let collapsed_width = panels::UNIT_LEFT_HEADER_WIDTH;
     let bounds = &reopened.midi_editor.layer_bounds[&first];
     assert_eq!(bounds.oscillator_panel.width(), collapsed_width);
-    assert_eq!(bounds.envelope_panel.width(), collapsed_width);
     assert!(bounds.oscillators.is_empty());
     assert!(
         bounds
@@ -948,7 +709,6 @@ fn saved_unit_collapse_restores_in_a_fresh_ui_and_project_replacement_uses_its_o
     frame(&mut reopened, &fresh_ctx, vec![]);
     let bounds = &reopened.midi_editor.layer_bounds[&first];
     assert_eq!(bounds.oscillator_panel.width(), full_width);
-    assert!(bounds.envelope_panel.width() > collapsed_width);
     assert!(!bounds.oscillators.is_empty());
     assert!(!reopened.dirty);
 }
@@ -1281,6 +1041,11 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
 fn layer_shift_selection_toggles_backgrounds_and_keeps_output_exclusive() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, _) = layer_header_fixture();
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Effects,
+            &ctx,
+        );
+        frame(&mut app, &ctx, vec![]);
         let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
         for l in &mut i.layers {
             l.collapsed = true;
@@ -1365,6 +1130,11 @@ fn selected_layer_groups_move_copy_cancel_and_undo_in_saved_order() {
             "fast",
         ] {
             let (mut app, ctx, _) = layer_header_fixture();
+            app.set_instrument_subview(
+                crate::instrument_workspace::InstrumentSubview::Effects,
+                &ctx,
+            );
+            frame(&mut app, &ctx, vec![]);
             let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
             for l in &mut i.layers {
                 l.collapsed = true;
@@ -1628,6 +1398,11 @@ fn layer_copy_modifier_can_be_released_and_invalid_drops_do_not_copy() {
         "move", "escape", "outside", "output", "same", "changed", "disabled", "focus",
     ] {
         let (mut app, ctx, _) = layer_header_fixture();
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Effects,
+            &ctx,
+        );
+        frame(&mut app, &ctx, vec![]);
         for l in &mut app.session.project.tracks[0]
             .instrument
             .as_mut()
@@ -1922,6 +1697,11 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
                 .len(),
             1
         );
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Sources,
+            &ctx,
+        );
+        frame(&mut app, &ctx, vec![]);
         assert_eq!(app.midi_editor.layer_bounds[&first].oscillators.len(), 1);
         let add = app.midi_editor.add_layer_bounds.center();
         click_note_or_lane(&mut app, &ctx, add);
@@ -2284,6 +2064,11 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
         let ctx = context();
         app.set_view_mode(ViewMode::Instrument, &ctx);
         frame(&mut app, &ctx, vec![]);
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &ctx,
+        );
+        frame(&mut app, &ctx, vec![]);
         let header = unit_title_point(app.midi_editor.layer_bounds[&first].envelope_header);
         let header = if collapsed {
             double_click_unit_header(&mut app, &ctx, header);
@@ -2329,7 +2114,13 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
             app.session.project.tracks[0].instrument.as_ref(),
             Some(&before)
         );
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Sources,
+            &ctx,
+        );
+        frame(&mut app, &ctx, vec![]);
         let label = app.midi_editor.layer_bounds[&second].label.center();
+
         let remove = menu(&mut app, &ctx, label, "Delete layer");
         click_note_or_lane(&mut app, &ctx, remove);
         frame(&mut app, &ctx, vec![]);
@@ -2357,235 +2148,6 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
 }
 
 #[test]
-fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        let (mut app, track, _, _) = fixture();
-        let ctx = context();
-        app.set_settings(
-            &ctx,
-            settings::AppSettings {
-                theme: color_theme,
-                ..Default::default()
-            },
-        );
-        app.set_view_mode(ViewMode::Instrument, &ctx);
-        for count in [1, 3] {
-            let mut settings = app.session.project.tracks[0].instrument.clone().unwrap();
-            settings.layers[0]
-                .oscillators
-                .resize_with(count, daw_core::OscillatorSettings::default);
-            (
-                settings.layers[0].envelopes[0].settings.attack.time_ms,
-                settings.layers[0].envelopes[0].settings.sustain,
-            ) = match count {
-                0 => (5.0, 0.8),
-                1 => (1200.0, 0.2),
-                _ => (10_000.0, 0.99),
-            };
-            let readouts = [
-                knobs::format_time(settings.layers[0].envelopes[0].settings.attack.time_ms),
-                knobs::format_time(settings.layers[0].envelopes[0].settings.decay.time_ms),
-                format!(
-                    "{:.0}%",
-                    settings.layers[0].envelopes[0].settings.sustain * 100.0
-                ),
-                knobs::format_time(settings.layers[0].envelopes[0].settings.release.time_ms),
-            ];
-            app.edit(Edit::SetInstrument {
-                track_id: track,
-                instrument: Some(settings),
-            });
-            // Timing and Mode share one strip before ADSR. Keep the full unit visible.
-            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(2200.0, 800.0));
-            let oscillator = app.midi_editor.oscillator_panel_bounds;
-            let envelope = app.midi_editor.envelope_panel_bounds;
-            let waveform_size = shapes.iter().find_map(|shape| match &shape.shape {
-                egui::Shape::Path(path) if path.points.len() == 129 => {
-                    let bounds = Rect::from_points(&path.points);
-                    oscillator.contains_rect(bounds).then_some(bounds.size())
-                }
-                _ => None,
-            });
-            assert_eq!(waveform_size.is_some(), count > 0);
-            assert_eq!(oscillator.top(), envelope.top());
-            assert_eq!(oscillator.bottom(), envelope.bottom());
-            assert!((envelope.left() - oscillator.right() - panels::UNIT_GAP).abs() < 0.01);
-            for panel in [oscillator, envelope] {
-                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(r)
-                    if r.rect == panel && r.corner_radius == egui::CornerRadius::same(7) && r.stroke.is_empty())));
-            }
-            for (index, label) in ["Attack", "Decay", "Sustain", "Release"]
-                .into_iter()
-                .enumerate()
-            {
-                let strip = app.midi_editor.envelope_stage_bounds[index];
-                assert!((strip.width() - midi_editor::UNIT_STRIP_WIDTH).abs() < 0.01);
-                assert!((strip.top() - envelope.top()).abs() < 0.01);
-                assert!((envelope.bottom() - strip.bottom()).abs() < 0.01);
-                if index > 0 {
-                    assert_eq!(
-                        strip.left(),
-                        app.midi_editor.envelope_stage_bounds[index - 1].right()
-                    );
-                    assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
-                        egui::Shape::LineSegment { points, stroke }
-                            if points[0] == strip.left_top() && points[1] == strip.left_bottom()
-                                && stroke.width == 1.0 && stroke.color == theme::unit_separator(&ctx))));
-                }
-                let mut centers: Vec<_> = shapes
-                    .iter()
-                    .filter_map(|shape| match &shape.shape {
-                        egui::Shape::Circle(circle)
-                            if (circle.radius - 9.0).abs() < 0.01
-                                && strip.contains(circle.center) =>
-                        {
-                            Some(circle.center)
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                centers.sort_by(|a, b| a.y.total_cmp(&b.y));
-                assert_eq!(centers.len(), if index == 2 { 1 } else { 3 });
-                for (row, center) in centers.iter().enumerate() {
-                    assert!((center.x - strip.center().x).abs() < 0.01);
-                    let expected_y = strip.top()
-                        + 10.0
-                        + knobs::CHOICE_SIZE * 0.5
-                        + row as f32 * (knobs::CHOICE_SIZE + f32::from(theme::TOOLBAR_PADDING));
-                    assert!((center.y - expected_y).abs() < 0.01);
-                    if row == 1 {
-                        let row_bounds =
-                            Rect::from_center_size(*center, Vec2::splat(knobs::CHOICE_SIZE));
-                        let diagrams: Vec<_> = shapes
-                            .iter()
-                            .filter_map(|shape| match &shape.shape {
-                                egui::Shape::Path(path)
-                                    if (path.stroke.width - 1.25).abs() < 0.01
-                                        && row_bounds
-                                            .contains_rect(Rect::from_points(&path.points)) =>
-                                {
-                                    Some(path)
-                                }
-                                _ => None,
-                            })
-                            .collect();
-                        assert_eq!(diagrams.len(), 4);
-                        for (choice, diagram) in diagrams.iter().enumerate() {
-                            let bounds = Rect::from_points(&diagram.points);
-                            assert!((bounds.width() - 10.0).abs() < 0.01);
-                            assert!((bounds.height() - 6.0).abs() < 0.01);
-                            let start = diagram.points[0];
-                            let end = *diagram.points.last().unwrap();
-                            let deviation = diagram
-                                .points
-                                .iter()
-                                .map(|point| {
-                                    let t = (point.x - start.x) / (end.x - start.x);
-                                    (point.y - (start.y + t * (end.y - start.y))).abs()
-                                })
-                                .fold(0.0_f32, f32::max);
-                            if choice == 0 {
-                                assert!(deviation < 0.01, "Linear stays straight");
-                            } else {
-                                assert!(deviation > 0.5, "Curve symbol must have a visible bend");
-                            }
-                        }
-                    }
-                    if row != 1 {
-                        let endpoints = if index == 2 || row == 2 {
-                            ["0%", "100%"]
-                        } else {
-                            ["0 ms", "10 s"]
-                        };
-                        let mut endpoint_bounds = Vec::new();
-                        for endpoint in endpoints {
-                            let text = shapes
-                                .iter()
-                                .find_map(|shape| match &shape.shape {
-                                    egui::Shape::Text(text)
-                                        if text.galley.text() == endpoint
-                                            && strip.contains(text.pos)
-                                            && text.pos.y > center.y
-                                            && text.pos.y < center.y + knobs::CHOICE_SIZE * 0.5 =>
-                                    {
-                                        Some(text)
-                                    }
-                                    _ => None,
-                                })
-                                .unwrap();
-                            let bounds = text.galley.rect.translate(text.pos.to_vec2());
-                            assert!(bounds.top() > center.y);
-                            assert!(bounds.bottom() <= center.y + knobs::CHOICE_SIZE * 0.5);
-                            assert!(strip.contains_rect(bounds));
-                            endpoint_bounds.push(bounds);
-                        }
-                        assert!(endpoint_bounds[0].center().x < center.x);
-                        assert!(endpoint_bounds[1].center().x > center.x);
-                        assert!(endpoint_bounds[0].right() < endpoint_bounds[1].left());
-                    }
-                }
-                let readout = shapes
-                    .iter()
-                    .find_map(|shape| match &shape.shape {
-                        egui::Shape::Text(text)
-                            if text.galley.text() == readouts[index]
-                                && strip.contains(text.pos) =>
-                        {
-                            Some(text)
-                        }
-                        _ => None,
-                    })
-                    .unwrap();
-                let readout_bounds = readout.galley.rect.translate(readout.pos.to_vec2());
-                assert!(
-                    (readout_bounds.center().x - centers[0].x).abs() < 0.51,
-                    "{label} value {readout_bounds:?}, knob {:?}",
-                    centers[0]
-                );
-                assert!((readout_bounds.bottom() - (centers[0].y - 15.0)).abs() < 0.51);
-                assert!(readout_bounds.top() >= centers[0].y - knobs::CHOICE_SIZE * 0.5);
-                let text = shapes
-                    .iter()
-                    .find_map(|shape| match &shape.shape {
-                        egui::Shape::Text(text) if text.galley.text() == label => Some(text),
-                        _ => None,
-                    })
-                    .unwrap();
-                let bounds = text.galley.rect.translate(text.pos.to_vec2());
-                assert!(
-                    (bounds.center().x - strip.center().x).abs() < 0.51,
-                    "{label} label {bounds:?}, strip {strip:?}"
-                );
-                assert!(
-                    (bounds.center().y
-                        - (strip.bottom() - 10.0 - icons::COMPACT_BUTTON_SIZE * 0.5))
-                        .abs()
-                        < 0.51
-                );
-                if count > 0 {
-                    assert!(
-                        (bounds.center().y - app.midi_editor.oscillator_power_bounds[0].center().y)
-                            .abs()
-                            < 0.51
-                    );
-                }
-            }
-            let header = shapes
-                .iter()
-                .find_map(|shape| match &shape.shape {
-                    egui::Shape::Text(text) if text.galley.text() == "Envelope 1" => Some(text),
-                    _ => None,
-                })
-                .unwrap();
-            assert_eq!(
-                header.galley.job.sections[0].format.color,
-                theme::palette(&ctx).secondary
-            );
-        }
-    }
-}
-
-#[test]
 fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount() {
     use daw_core::CurveShape;
     let (mut app, _, _, _) = fixture();
@@ -2600,6 +2162,10 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
         .oscillators
         .clone();
     app.set_view_mode(ViewMode::Instrument, &ctx);
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Modulation,
+        &ctx,
+    );
     frame(&mut app, &ctx, vec![]);
     let point = |app: &DawUi, stage: usize, row: usize| {
         let strip = app.midi_editor.envelope_stage_bounds[stage];
@@ -7045,14 +6611,9 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
                 );
             }
         }
-        for label in ["Osc 1", "Attack", "Decay", "Sustain", "Release"] {
-            assert!(
-                shapes
-                    .iter()
-                    .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == label)),
-                "{label}"
-            );
-        }
+        assert!(shapes.iter().any(|s| matches!(
+            &s.shape, egui::Shape::Text(t) if t.galley.text() == "Osc 1"
+        )));
         assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "5.0 ms" || t.galley.text() == "No source")));
         for label in ["No source", "No envelope", "Add source", "Add envelope"] {
             assert!(!shapes.iter().any(|s| matches!(&s.shape,
@@ -7084,10 +6645,12 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
                 empty
             };
             super::instrument_catalog::add_component(&mut app, &ctx, owner, component);
-            assert_eq!(
-                app.midi_editor.layer_bounds[&empty].row.height(),
-                ROW_HEIGHT
-            );
+            if component != 1 {
+                assert_eq!(
+                    app.midi_editor.layer_bounds[&empty].row.height(),
+                    ROW_HEIGHT
+                );
+            }
         }
         let added = &app.session.project.tracks[0]
             .instrument
@@ -7184,10 +6747,7 @@ fn compact_layer_collapse_is_guarded_and_preserves_independent_unit_states_and_o
     }
     frame(&mut app, &ctx, vec![]);
     let bounds = &app.midi_editor.layer_bounds[&first];
-    let panels = [
-        (bounds.oscillator_panel, "Osc..."),
-        (bounds.envelope_panel, "Env..."),
-    ];
+    let panels = [(bounds.oscillator_panel, "Osc...")];
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     for (panel, name) in panels {
         assert_eq!(
@@ -7240,10 +6800,6 @@ fn compact_layer_collapse_is_guarded_and_preserves_independent_unit_states_and_o
     assert!(bounds.row.height() > ROW_HEIGHT);
     assert_eq!(
         bounds.oscillator_panel.width(),
-        panels::UNIT_LEFT_HEADER_WIDTH
-    );
-    assert_eq!(
-        bounds.envelope_panel.width(),
         panels::UNIT_LEFT_HEADER_WIDTH
     );
     let track = app.session.project.tracks[0].id;

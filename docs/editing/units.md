@@ -48,6 +48,8 @@ The action keeps the units and their settings. Undo and Redo apply to the group 
 
 ## Move or copy components
 
+Open the Instrument tab for the units you want to move.
+
 1. Select one or more installed units.
 2. Drag a selected header to the compatible destination lane.
 3. Use the insertion line to choose the position. Drop on a layer label to append.

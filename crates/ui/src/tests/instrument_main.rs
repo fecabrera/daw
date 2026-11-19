@@ -14,6 +14,10 @@ fn setup(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id) {
         },
     );
     app.set_view_mode(ViewMode::Instrument, &ctx);
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Effects,
+        &ctx,
+    );
     frame(&mut app, &ctx, vec![]);
     (app, ctx, track)
 }
@@ -126,18 +130,13 @@ fn output_scrolls_with_layers_and_reuses_mix_controls_in_both_themes() {
                 .all(|r| r.top() >= app.instrument_ui.main_bounds.collapse.bottom() + 4.0)
         );
         let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
-        let [lfo, envelope] = [instrument.lfo_lane.id, instrument.envelope_lane.id];
         instrument
             .layers
             .extend((0..8).map(|_| daw_core::InstrumentLayerSettings::default()));
         frame(&mut app, &ctx, vec![]);
         let viewport = app.instrument_catalog_bounds.layer_viewport;
-        let lfo_row = app.instrument_ui.modulation_lane_bounds[&lfo].row;
-        let envelope_row = app.instrument_ui.modulation_lane_bounds[&envelope].row;
         let main = app.instrument_ui.main_bounds.row;
-        assert_eq!(lfo_row.bottom() - 1.0, envelope_row.top());
-        assert_eq!(envelope_row.bottom() - 1.0, main.top());
-        assert!(viewport.bottom() <= lfo_row.top());
+        assert!(viewport.bottom() <= main.top());
         frame(
             &mut app,
             &ctx,
@@ -158,15 +157,6 @@ fn output_scrolls_with_layers_and_reuses_mix_controls_in_both_themes() {
         let scrolled_output = app.instrument_ui.main_bounds.row;
         assert!(viewport.contains_rect(scrolled_output));
         assert!(scrolled_output.top() < main.top());
-        let offset = Vec2::new(0.0, scrolled_output.top() - main.top());
-        assert_eq!(
-            app.instrument_ui.modulation_lane_bounds[&lfo].row,
-            lfo_row.translate(offset)
-        );
-        assert_eq!(
-            app.instrument_ui.modulation_lane_bounds[&envelope].row,
-            envelope_row.translate(offset)
-        );
         let gain = app.instrument_ui.main_bounds.mix[0].center();
         click(&mut app, &ctx, gain, false);
         key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
@@ -237,7 +227,12 @@ fn output_accepts_macros_and_rejects_sources_and_dedicated_lane_providers() {
         .main
         .id;
     app.instrument_ui.select_layer(main);
-    for index in 0..crate::instrument_catalog::ENTRIES.len() {
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Modulation,
+        &ctx,
+    );
+    frame(&mut app, &ctx, vec![]);
+    for index in [1, 2, 4] {
         let point = app.instrument_catalog_bounds.entries[index].center();
         click(&mut app, &ctx, point, false);
         key(&mut app, &ctx, egui::Key::Enter, false, false);
@@ -257,11 +252,15 @@ fn output_accepts_macros_and_rejects_sources_and_dedicated_lane_providers() {
 fn empty_main_accepts_catalog_drops_across_its_label_and_body() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
-            for index in 0..crate::instrument_catalog::ENTRIES.len() {
+            for index in [1, 2, 4] {
                 for label in [false, true] {
                     for fast in [false, true] {
                         let (mut app, ctx, _) = setup(theme);
                         app.effects_lane_open = false;
+                        app.set_instrument_subview(
+                            crate::instrument_workspace::InstrumentSubview::Modulation,
+                            &ctx,
+                        );
                         let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
                         i.layers[0].collapsed = true;
                         i.main.collapsed = compact;
@@ -270,12 +269,12 @@ fn empty_main_accepts_catalog_drops_across_its_label_and_body() {
                         app.dirty = false;
                         let original = serde_json::to_value(&app.session.project).unwrap();
                         let source = app.instrument_catalog_bounds.entries[index].center();
-                        let row = app.instrument_ui.main_bounds.row;
+                        let row = app.instrument_ui.macro_bounds.row;
                         let end = if label {
-                            app.instrument_ui.main_bounds.label.center()
+                            app.instrument_ui.macro_bounds.label.center()
                         } else {
                             Pos2::new(
-                                app.instrument_ui.main_bounds.toolbar.left() - 20.0,
+                                app.instrument_ui.macro_bounds.toolbar.left() - 20.0,
                                 row.center().y,
                             )
                         };
@@ -369,6 +368,15 @@ fn every_first_component_shares_one_divider_with_the_layers_column() {
                             continue;
                         }
                         let (mut app, ctx, _) = setup(theme);
+                        app.set_instrument_subview(
+                            if entry.type_id == "daw.macro" {
+                                crate::instrument_workspace::InstrumentSubview::Modulation
+                            } else {
+                                crate::instrument_workspace::InstrumentSubview::Sources
+                            },
+                            &ctx,
+                        );
+
                         app.effects_lane_open = false;
                         let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
                         let owner = if main {
@@ -407,7 +415,7 @@ fn every_first_component_shares_one_divider_with_the_layers_column() {
                         app.dirty = false;
                         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                         let label = if main {
-                            app.instrument_ui.main_bounds.label
+                            app.instrument_ui.macro_bounds.label
                         } else {
                             app.midi_editor.layer_bounds[&owner].label
                         };
@@ -477,19 +485,14 @@ fn main_components_share_the_bottom_separator_with_the_lane_or_status_panel() {
                         .unwrap()
                         .main;
                     bus.collapsed = compact;
-                    bus.envelopes.push(daw_core::EnvelopeInstance {
-                        collapsed,
-                        mode: daw_core::EnvelopeMode::Legato,
-                        ..Default::default()
-                    });
-                    bus.lfos.push(daw_core::LfoInstance {
-                        collapsed,
-                        ..Default::default()
-                    });
+                    let mut effect = daw_core::EffectInstance::drive();
+                    if let daw_core::EffectSettings::Drive(settings) = &mut effect.unit {
+                        settings.collapsed = collapsed;
+                    }
+                    bus.effects.push(effect);
                     app.effects_lane_open = effects_visible;
                     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-                    let headers = &app.instrument_ui.main_bounds.envelopes;
-                    let x = headers[0].center().x;
+                    let x = app.instrument_ui.effect_slots[0].2.center().x;
                     let main = app.instrument_ui.main_bounds.row;
                     let y = main.bottom() - 0.5;
                     assert!(
@@ -574,25 +577,27 @@ fn fixed_layers_header_keeps_its_separator_above_scrolled_content() {
 #[test]
 fn expanded_modulation_lanes_share_the_regular_layer_scroll_viewport() {
     let (mut app, ctx, _) = setup(settings::ColorTheme::Dark);
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Modulation,
+        &ctx,
+    );
     let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
     instrument.lfo_lane.collapsed = false;
     instrument.envelope_lane.collapsed = false;
-    let layer = instrument.layers[0].id;
     let lfo = instrument.lfo_lane.id;
     let envelope = instrument.envelope_lane.id;
     let size = Vec2::new(1000.0, 600.0);
     frame_sized(&mut app, &ctx, vec![], size);
     let rows = |app: &DawUi| {
         [
-            app.midi_editor.layer_bounds[&layer].row,
             app.instrument_ui.modulation_lane_bounds[&lfo].row,
             app.instrument_ui.modulation_lane_bounds[&envelope].row,
-            app.instrument_ui.main_bounds.row,
+            app.instrument_ui.macro_bounds.row,
         ]
     };
     let before = rows(&app);
     let viewport = app.instrument_catalog_bounds.layer_viewport;
-    assert!(before[3].top() >= viewport.bottom());
+    assert!(before[2].top() >= viewport.bottom());
     for pair in before.windows(2) {
         assert_eq!(pair[0].bottom() - 1.0, pair[1].top());
     }
@@ -614,12 +619,12 @@ fn expanded_modulation_lanes_share_the_regular_layer_scroll_viewport() {
         frame_sized(&mut app, &ctx, vec![], size);
     }
     let after = rows(&app);
-    let offset = Vec2::new(0.0, after[3].top() - before[3].top());
+    let offset = Vec2::new(0.0, after[2].top() - before[2].top());
     assert!(offset.y < 0.0);
     for (before, after) in before.into_iter().zip(after) {
         assert_eq!(before.translate(offset), after);
     }
-    assert!(viewport.contains_rect(after[3]));
+    assert!(viewport.contains_rect(after[2]));
     assert_eq!(app.instrument_catalog_bounds.layer_viewport, viewport);
     assert!(!app.dirty);
 }
@@ -681,8 +686,7 @@ fn main_top_separator_shares_the_last_layers_bottom_pixel() {
                     ys.iter().all(|y| *y == main.top() + 0.5),
                     "one shared pixel, got {ys:?}"
                 );
-                let header = app.instrument_ui.main_bounds.envelopes[0];
-                let cx = header.center().x;
+                let cx = app.instrument_ui.main_bounds.label.right() + 12.0;
                 assert!(!shapes.iter().any(|s| {
                     match &s.shape {
                         egui::Shape::LineSegment { points, stroke } => {

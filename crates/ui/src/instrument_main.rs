@@ -1,5 +1,6 @@
 //! Shared instrument-wide rows. Output also provides audio mix controls.
 use super::*;
+use crate::instrument_workspace::InstrumentSubview;
 use daw_core::InstrumentBusSettings;
 
 pub(super) struct LaneRow<'a> {
@@ -58,11 +59,21 @@ impl DawUi {
             kind,
             shared_sources,
         } = row;
+        let subview = self.instrument_subview;
+        let output = subview == InstrumentSubview::Effects;
         let title = kind.map_or(
-            InstrumentBusSettings::DISPLAY_NAME,
+            if output {
+                InstrumentBusSettings::DISPLAY_NAME
+            } else {
+                "Macros"
+            },
             daw_core::ModulationLaneKind::name,
         );
-        let output = kind.is_none();
+        let units: Vec<_> = bus
+            .visible_units()
+            .into_iter()
+            .filter(|unit| subview.shows(*unit))
+            .collect();
         let beat_output = self.session.project.tracks.iter().any(|t| {
             t.beat
                 .as_ref()
@@ -192,7 +203,7 @@ impl DawUi {
 
                 let components = egui::ScrollArea::horizontal()
                     .max_width((toolbar.left() - ui.next_widget_position().x).max(0.0))
-                    .id_salt("main-units")
+                    .id_salt(("main-units", subview))
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         panels::unit_row(ui, true, |ui| {
@@ -202,12 +213,12 @@ impl DawUi {
                             if self.effects_drag.as_ref().is_some_and(|d| d.active) {
                                 drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range()));
                             }
-                            for component in bus.visible_units() {
+                            for &component in &units {
                                 let selected = self.instrument_ui.selected_components.iter()
                                     .filter(|(id, _)| *id == bus.id)
                                     .map(|(_, component)| *component).collect();
                                 let targets = crate::unit_selection::drag_group(
-                                    &bus.visible_units(), &selected, component,
+                                    &units, &selected, component,
                                 );
                                 let menu = crate::unit_power::PowerMenu::new(
                                     targets.iter().filter_map(|c| crate::unit_power::bus_enabled(bus, *c).copied()),
@@ -221,7 +232,7 @@ impl DawUi {
                                         let index = bus.envelopes.iter().position(|e| e.id == id).unwrap();
                                         {
                                         let id = bus.envelopes[index].id;
-                                        crate::envelope_panel::unit(ui, &mut bus.envelopes[index], index + 1, output || shared_sources.contains(&daw_core::ModulationSourceId {layer:bus.id,unit:id}), height, compact, crate::envelope_panel::Controls { sources: provider_sources.iter().find(|(source, _)| source.layer == bus.id && source.unit == id).map_or(&[], |(_, sources)| sources.as_slice()), live: self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Envelope { track, layer: bus.id, unit: id })) })
+                                        crate::envelope_panel::unit(ui, &mut bus.envelopes[index], index + 1, kind.is_none() || shared_sources.contains(&daw_core::ModulationSourceId {layer:bus.id,unit:id}), height, compact, crate::envelope_panel::Controls { sources: provider_sources.iter().find(|(source, _)| source.layer == bus.id && source.unit == id).map_or(&[], |(_, sources)| sources.as_slice()), live: self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Envelope { track, layer: bus.id, unit: id })) })
                                         }.map(|unit| {
                                             self.offer_envelope_preview(ui, track, bus.id, &bus.envelopes[index], unit.inner.as_ref());
                                             self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track, bus.id, component);
@@ -280,10 +291,12 @@ impl DawUi {
         {
             if output {
                 self.instrument_ui.main_bounds = bounds;
-            } else {
+            } else if kind.is_some() {
                 self.instrument_ui
                     .modulation_lane_bounds
                     .insert(bus.id, bounds);
+            } else {
+                self.instrument_ui.macro_bounds = bounds;
             }
         }
     }

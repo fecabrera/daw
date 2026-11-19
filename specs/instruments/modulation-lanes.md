@@ -8,20 +8,13 @@ One instrument owns two fixed lanes: LFO and Envelope. Store them separately fro
 
 These are control lanes, not audio buses. The LFO lane permits only LFO settings; Envelope permits only Envelope settings, including Per note mode. Reject effects, Macro controls, non-neutral audio mix fields and duplicate owner/provider IDs. They do not participate in audio summing, layer solo, latency alignment or audio level metering. Regular audio layers and Output retain their existing processing order and mix behavior.
 
-Reuse the Output row implementation for their column labels, horizontally scrolling unit bodies, power actions, component selection and shared right toolbar. Lay out LFO, then Envelope, then Output directly after the regular layers in one vertical scroll area. The Instrument toolbar can hide the modulation pair or Output. Lane headers expose no name editor, layer actions, M/S, pan, gain or meter. Their toolbar uses the regular layer expand and collapse directions. Compact state is saved independently of unit collapse. Use the shared row divider so adjacent rows share one border pixel.
+Reuse the Output row implementation for their column labels, horizontally scrolling unit bodies, power actions, component selection and shared right toolbar. Lay out LFO, then Envelope, then Macros in the Modulation subview. Lane headers expose no name editor, layer actions, M/S, pan, gain or meter. Their toolbar uses the regular layer expand and collapse directions. Compact state is saved independently of unit collapse. Use the shared row divider so adjacent rows share one border pixel.
 
 ## Catalog and installed gestures
 
-Register a provider once through `Entry::provider`, with its `ModulationLaneKind` and installation function. This metadata drives double-click/Enter additions, catalog previews, valid releases and hints. Preview must not construct settings or assign UUIDs. Neither regular layers nor Output receive new Envelope/LFO additions. A dedicated lane rejects the entire mixed catalog group if any selected type is unsupported.
+Register a provider once through `Entry::provider`, with its `ModulationLaneKind` and installation function. This metadata routes double-click/Enter additions to their respective lanes and validates catalog drag targets. Preview must not construct settings or assign UUIDs. Neither regular layers nor Output receive new Envelope/LFO additions. A dedicated lane rejects the entire mixed catalog group if any selected type is unsupported.
 
-Core transfer eligibility also checks the lane kind. A global provider can reorder or copy within its matching lane; it cannot move/copy to regular layers, Output or the other provider lane. Reuse component group transactions, insertion geometry, edge scrolling, release-only commits and cancellation. Preserve unit/route identities on reorder; copies receive fresh identities and retain incoming assignments. Shared selection, Delete/Backspace, retained removal, restoration and Undo/Redo apply unchanged. Effects catalog additions and effect drops cannot target control lanes. Selecting
-one must not disable catalog rows or keyboard browsing. Keep catalog drag origins
-available through the selected track's effect chain when the selected lane has no
-effect destination. This is only an origin/validation anchor: hovering a valid
-regular layer or Output retargets insertion through the existing drag path; track
-effects retain their lane path. Double-click/Enter still use the selected catalog
-addition target and cannot fall back to adding effects to a control lane or an
-unrequested track chain. Invalid control-lane releases cancel without edits.
+Core transfer eligibility also checks the lane kind. A global provider can reorder or copy within its matching lane; it cannot move/copy to regular layers, Output or the other provider lane. Reuse component group transactions, insertion geometry, edge scrolling, release-only commits and cancellation. Preserve unit/route identities on reorder; copies receive fresh identities and retain incoming assignments. Shared selection, Delete/Backspace, retained removal, restoration and Undo/Redo apply unchanged.
 
 ## Modulation and processing
 

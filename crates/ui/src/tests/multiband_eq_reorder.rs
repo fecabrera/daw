@@ -288,6 +288,10 @@ fn eq_band_reorder_works_in_regular_layer_and_output_lanes() {
                 instrument.layers[0].effects.push(effect);
             }
             app.set_view_mode(ViewMode::Instrument, &ctx);
+            app.set_instrument_subview(
+                crate::instrument_workspace::InstrumentSubview::Effects,
+                &ctx,
+            );
             app.history = None;
             frame_sized(&mut app, &ctx, vec![], Vec2::new(1600.0, 1200.0));
             let (start, end) = points(&app);

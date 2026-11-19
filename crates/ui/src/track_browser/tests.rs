@@ -1405,6 +1405,10 @@ fn group_context_creates_audio_midi_beat_and_nested_groups_inside_the_clicked_pa
 fn beat_parent_navigation_targets_final_output_catalog_effects() {
     use crate::effects_panel::EffectTarget;
     let (mut app, ctx, parent, rows, _, _) = beat_fixture();
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Effects,
+        &ctx,
+    );
     let output = app.session.project.beat(parent).unwrap().output.id;
     app.session
         .project
@@ -1485,6 +1489,10 @@ fn beat_reorder_ignores_other_button_releases_in_both_panes() {
         for other in [egui::PointerButton::Secondary, egui::PointerButton::Middle] {
             let (mut app, ctx, parent, ids, _, _) = beat_fixture();
             if !browser {
+                app.set_instrument_subview(
+                    crate::instrument_workspace::InstrumentSubview::Effects,
+                    &ctx,
+                );
                 app.set_view_mode(ViewMode::Edit, &ctx);
                 app.select_editor_track(parent);
                 app.set_tracks_panel_visible(true);

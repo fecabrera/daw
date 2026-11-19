@@ -93,6 +93,10 @@ fn add_legacy_envelope(app: &mut DawUi, ctx: &egui::Context, layer: Id) {
 fn legacy_envelope_panels_keep_independent_settings_power_and_collapse() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &ctx,
+        );
         let size = Vec2::new(1800.0, 800.0);
         ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
         add_legacy_envelope(&mut app, &ctx, layer);
@@ -152,6 +156,10 @@ fn legacy_envelope_panels_keep_independent_settings_power_and_collapse() {
         reopened.selected_track = app.selected_track;
         let fresh = context();
         reopened.set_view_mode(ViewMode::Instrument, &fresh);
+        reopened.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &fresh,
+        );
         frame(&mut reopened, &fresh, vec![]);
         assert_eq!(
             reopened.session.project.tracks[0].instrument,
@@ -888,6 +896,10 @@ fn envelope_first_column_timing_knob_and_mode_dropdown_save_time_and_note_values
     use daw_core::{EnvelopeMode, EnvelopeTiming};
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &ctx,
+        );
         add_legacy_envelope(&mut app, &ctx, layer);
         let stages = app.midi_editor.layer_bounds[&layer].envelope_stages;
         let y = stages[0].top() + 10.0 + knobs::CHOICE_SIZE * 0.5;
@@ -1646,6 +1658,10 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for main in [false, true] {
             let (mut app, ctx, layer) = fixture(theme);
+            app.set_instrument_subview(
+                crate::instrument_workspace::InstrumentSubview::Modulation,
+                &ctx,
+            );
             let size = Vec2::new(1800.0, 800.0);
             ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
             app.effects_lane_open = false;

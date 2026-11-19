@@ -56,10 +56,9 @@ impl DawUi {
                     ui,
                     &panel,
                     "Beat subtracks",
-                    "Add beat subtrack",
-                    self.editing_enabled(),
+                    Some(("Add beat subtrack", self.editing_enabled())),
                 );
-                if header.inner.clicked() {
+                if header.inner.as_ref().is_some_and(egui::Response::clicked) {
                     self.add_beat_subtrack(track);
                 }
                 header.response

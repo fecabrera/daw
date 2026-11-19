@@ -26,6 +26,10 @@ fn layers_and_output_reuse_track_meter_geometry_in_every_presentation() {
                 );
                 ctx.set_pixels_per_point(scale);
                 app.set_view_mode(ViewMode::Instrument, &ctx);
+                app.set_instrument_subview(
+                    crate::instrument_workspace::InstrumentSubview::Effects,
+                    &ctx,
+                );
                 let size = Vec2::new(1280.0, 1000.0);
                 for _ in 0..2 {
                     frame_shapes(&mut app, &ctx, vec![], size);
