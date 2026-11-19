@@ -389,7 +389,7 @@ pub struct AudioControls<'a> {
     pub error: Option<&'a str>,
     pub enabled: bool,
     pub selection: Option<daw_output::AudioSettings>,
-    pub quality_requested: bool,
+    pub quality_draft: Option<daw_core::AudioQuality>,
     pub refresh_requested: bool,
     pub(super) themes: Option<&'a crate::theme_files::Runtime>,
     pub(super) theme_action: Option<crate::theme_files::Action>,
@@ -693,6 +693,7 @@ fn playback(
     settings: &mut AppSettings,
     audio: &mut AudioControls<'_>,
     label_width: f32,
+    quality_enabled: bool,
 ) {
     ui.add_enabled_ui(audio.enabled, |ui| {
         let empty = daw_output::Devices::default();
@@ -716,9 +717,6 @@ fn playback(
             audio.selection = Some(draft);
         }
         crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-            if ui.button("Audio quality defaults…").clicked() {
-                audio.quality_requested = true;
-            }
             if ui.button("Refresh devices").clicked() {
                 audio.refresh_requested = true;
             }
@@ -752,6 +750,16 @@ fn playback(
                 });
         },
     );
+    ui.separator();
+    ui.strong("Audio quality defaults");
+    ui.add_enabled_ui(quality_enabled, |ui| {
+        crate::audio_settings::quality_defaults(
+            ui,
+            label_width,
+            &mut settings.audio_quality,
+            &mut audio.quality_draft,
+        );
+    });
 }
 
 fn time_stretch(ui: &mut egui::Ui, settings: &mut AppSettings, label_width: f32) {
@@ -1088,14 +1096,20 @@ pub(super) fn show_surface(
                                 .size()
                                 .x
                         };
-                        let label_width = label_text("Recording offset")
-                            .max(label_text("Split MIDI notes"))
-                            .max(label_text("Accent color") + ui.spacing().item_spacing.x + 14.0)
-                            .min(ui.available_width() * 0.44);
+                        let label_width = label_text(if group == Group::Playback {
+                            "Output bit depth"
+                        } else {
+                            "Recording offset"
+                        })
+                        .max(label_text("Split MIDI notes"))
+                        .max(label_text("Accent color") + ui.spacing().item_spacing.x + 14.0)
+                        .min(ui.available_width() * 0.44);
                         ui.strong(group.label());
                         match group {
                             Group::Appearance => appearance(ui, ctx, settings, label_width, audio),
-                            Group::Playback => playback(ui, settings, audio, label_width),
+                            Group::Playback => {
+                                playback(ui, settings, audio, label_width, models_enabled)
+                            }
                             Group::TimeStretch => time_stretch(ui, settings, label_width),
                             Group::Midi => midi(ui, settings, audio, label_width),
                             Group::Plugins => crate::plugin_settings::show(ui, settings, audio),
@@ -1155,9 +1169,15 @@ pub(super) fn show_surface(
     }
     audio.navigation = navigation;
     ctx.data_mut(|data| data.insert_temp(group_id(), group));
+    if !popup_was_open
+        && ctx.input(|input| input.modifiers.is_none() && input.key_pressed(egui::Key::Escape))
+    {
+        if group == Group::Playback && audio.quality_draft.take().is_some() {
+            return close.is_some();
+        }
+        return true;
+    }
     close.is_some()
-        || (!popup_was_open
-            && ctx.input(|input| input.modifiers.is_none() && input.key_pressed(egui::Key::Escape)))
 }
 
 #[cfg(test)]

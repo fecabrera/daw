@@ -21,6 +21,7 @@ pub(super) struct SettingsWindow {
     pub focus_requested: bool,
     navigation: settings::Navigation,
     folder_draft: crate::plugin_settings::FolderDraft,
+    quality_draft: Option<daw_core::AudioQuality>,
     picker: Option<SettingsPicker>,
     picker_started: bool,
     close_after_picker: bool,
@@ -142,7 +143,7 @@ impl DawUi {
         }
         self.settings_window.retiring |= self.native_settings_visible();
         self.settings_open = false;
-        self.audio_settings = None;
+        self.settings_window.quality_draft = None;
         self.settings_window.close_after_picker = false;
         self.settings_window.focus_requested = false;
     }
@@ -216,83 +217,77 @@ impl DawUi {
             }
             return;
         }
-        if self.audio_settings.is_some() {
-            self.show_audio_settings(&ctx);
-        } else {
-            let mut model_action = None;
-            let enabled = self.job.is_none()
-                && !self.separation_models.busy()
-                && self.error.is_none()
-                && self.settings_window.picker.is_none();
-            let mut audio = settings::AudioControls {
-                host_picker: self.settings_window.host,
-                navigation: Some(&mut self.settings_window.navigation),
-                folder_draft: Some(&mut self.settings_window.folder_draft),
-                plugins: Some(&self.hosting.scan),
-                themes: Some(&self.themes),
-                midi_devices: Some(&self.midi.devices),
-                midi_enabled: enabled && !self.midi.busy(),
-                midi_connected: self.midi.connected,
-                midi_take_retained: self.midi.take_retained,
-                devices: self.audio_devices.catalog.as_ref(),
-                error: self.audio_devices.error.as_deref(),
-                enabled: enabled && !self.audio_devices.busy(),
-                ..Default::default()
-            };
-            let close = settings::show_surface(
-                &ctx,
-                surface,
-                &mut self.settings,
-                &self.separation_models.validated,
-                &self.separation_models.info,
-                enabled,
-                &mut model_action,
-                &mut audio,
-            );
-            let picker = audio.picker;
-            if audio.plugin_cancel_requested {
-                self.hosting.requests.push(PluginRequest::CancelScan);
-            }
-            if let Some(mode) = audio.plugin_action.take() {
-                self.hosting.requests.push(PluginRequest::Scan(mode));
-            }
-            let midi_panic_requested = audio.midi_panic_requested;
-            let midi_retry_requested = audio.midi_retry_requested;
-            let selection = audio.selection.take();
-            let quality_requested = audio.quality_requested;
-            let refresh_requested = audio.refresh_requested;
-            if let Some(action) = audio.theme_action {
-                self.themes.start(root, action);
-            }
-            if midi_retry_requested {
-                self.midi.finalizing = true;
-                self.midi_send(midi_service::Command::Retry);
-            }
-            if midi_panic_requested && let Some(service) = &self.midi.service {
-                service.panic();
-            }
-            if let Some(draft) = selection {
-                self.apply_audio_device_selection(draft);
-            }
-            if quality_requested {
-                self.open_audio_settings();
-            }
-            if refresh_requested {
-                self.refresh_audio_devices();
-            }
-            if let Some(action) = model_action {
-                self.change_separation_model(action);
-            }
-            if let Some(kind) = picker {
-                self.settings_window.picker = Some(SettingsPicker {
-                    generation: self.settings_window.generation,
-                    kind,
-                });
-                self.settings_window.picker_started = false;
-            }
-            if close && self.error.is_none() {
-                self.close_application_settings();
-            }
+        let mut model_action = None;
+        let enabled = self.job.is_none()
+            && !self.separation_models.busy()
+            && self.error.is_none()
+            && self.settings_window.picker.is_none();
+        let mut audio = settings::AudioControls {
+            host_picker: self.settings_window.host,
+            navigation: Some(&mut self.settings_window.navigation),
+            folder_draft: Some(&mut self.settings_window.folder_draft),
+            plugins: Some(&self.hosting.scan),
+            themes: Some(&self.themes),
+            midi_devices: Some(&self.midi.devices),
+            midi_enabled: enabled && !self.midi.busy(),
+            midi_connected: self.midi.connected,
+            midi_take_retained: self.midi.take_retained,
+            devices: self.audio_devices.catalog.as_ref(),
+            quality_draft: self.settings_window.quality_draft,
+            error: self.audio_devices.error.as_deref(),
+            enabled: enabled && !self.audio_devices.busy(),
+            ..Default::default()
+        };
+        let close = settings::show_surface(
+            &ctx,
+            surface,
+            &mut self.settings,
+            &self.separation_models.validated,
+            &self.separation_models.info,
+            enabled,
+            &mut model_action,
+            &mut audio,
+        );
+        let picker = audio.picker;
+        if audio.plugin_cancel_requested {
+            self.hosting.requests.push(PluginRequest::CancelScan);
+        }
+        if let Some(mode) = audio.plugin_action.take() {
+            self.hosting.requests.push(PluginRequest::Scan(mode));
+        }
+        let midi_panic_requested = audio.midi_panic_requested;
+        let midi_retry_requested = audio.midi_retry_requested;
+        let selection = audio.selection.take();
+        self.settings_window.quality_draft = audio.quality_draft;
+        let refresh_requested = audio.refresh_requested;
+        if let Some(action) = audio.theme_action {
+            self.themes.start(root, action);
+        }
+        if midi_retry_requested {
+            self.midi.finalizing = true;
+            self.midi_send(midi_service::Command::Retry);
+        }
+        if midi_panic_requested && let Some(service) = &self.midi.service {
+            service.panic();
+        }
+        if let Some(draft) = selection {
+            self.apply_audio_device_selection(draft);
+        }
+        if refresh_requested {
+            self.refresh_audio_devices();
+        }
+        if let Some(action) = model_action {
+            self.change_separation_model(action);
+        }
+        if let Some(kind) = picker {
+            self.settings_window.picker = Some(SettingsPicker {
+                generation: self.settings_window.generation,
+                kind,
+            });
+            self.settings_window.picker_started = false;
+        }
+        if close && self.error.is_none() {
+            self.close_application_settings();
         }
         if native
             && self.separation_models.running()

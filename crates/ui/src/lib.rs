@@ -970,7 +970,6 @@ pub struct DawUi {
     settings_open: bool,
     settings_window: settings_window::SettingsWindow,
     diagnostic_details: Option<diagnostic_details::Report>,
-    audio_settings: Option<audio_settings::AudioDialog>,
     audio_devices: audio_settings::DevicesState,
     separation_models: separation_models::State,
     project_settings: Option<project_settings::ProjectSettings>,
@@ -1143,7 +1142,6 @@ impl Default for DawUi {
             settings_open: false,
             settings_window: Default::default(),
             diagnostic_details: None,
-            audio_settings: None,
             audio_devices: Default::default(),
             separation_models: Default::default(),
             project_settings: None,
@@ -1301,7 +1299,6 @@ impl DawUi {
             self.settings_window.focus_requested = true;
         } else if self.settings_enabled() {
             self.settings_window.begin();
-            self.audio_settings = None;
             self.settings_open = true;
             self.refresh_audio_devices();
         }

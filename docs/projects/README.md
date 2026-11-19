@@ -115,7 +115,7 @@ The main **Settings** window exposes **Output device** and **Input device** unde
 
 Input selection is saved for future recording. The app does not yet record or monitor input.
 
-Open **Audio quality defaults…** to choose concrete values for new projects: sample rate, output bit depth and buffer size. Initial values are **48 kHz, 32-bit float and 512 samples**. Apply saves these defaults; Cancel or Escape discards the draft, with Escape closing an open dropdown first. Applying defaults leaves the current project and playback unchanged. You can set defaults without a connected audio device.
+In **Settings → Playback**, find **Audio quality defaults** below the divider. Set the sample rate, output bit depth and buffer size for new projects. Initial values are **48 kHz, 32-bit float and 512 samples**. Apply saves the defaults. Cancel, Escape on the Playback page, or closing Settings discards unsaved changes. Escape closes an open dropdown first. Applying defaults leaves the current project and playback unchanged. You can set defaults without a connected audio device.
 
 Under **Time stretch > Default engine**, choose **Rubber Band** (the
 initial default) or **Integrated (experimental)**. The choice is retained across

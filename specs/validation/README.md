@@ -17,6 +17,18 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Inline Playback audio quality defaults — 2026-11-19
+
+- An egui interaction test checks that Playback displays both sections
+  together with a divider. It changes the draft and exercises Apply,
+  Cancel and Escape. It also checks that selecting a device leaves the
+  pending defaults intact.
+- The signed local macOS debug bundle passed the native Settings window
+  presentation and close smoke test. The inline controls were exercised
+  by the egui test.
+- The macOS workspace debug and release suites each passed 3,651 tests
+  with 22 ignored. Strict workspace Clippy and formatting passed.
+
 ## Native Application Settings window — 2026-11-19
 
 - Shared Settings tests cover fallback and retirement guards, single-session

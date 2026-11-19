@@ -25,7 +25,7 @@ Prefer the project processing rate. If hardware requires another supported rate,
 
 Device selectors publish changes after validation. An output device change probes a replacement using the current project's quality before publishing the new device identity; failure retains the previous device/output and reports an error. Success stops playback and retains the playhead. Input-only and unchanged selections do not open a stream or edit the project.
 
-The Audio quality defaults dialog edits a separate draft. Apply validates and saves only future-project defaults. Cancel/Escape discards the draft; Escape closes an open dropdown first. Missing devices and unsupported current-device combinations do not block future defaults. Project Settings remains the place to change an existing project.
+The Audio quality defaults section in Settings → Playback edits a separate draft. Apply validates and saves only future-project defaults. Cancel, Escape on the Playback page, or closing Settings discards the draft. Escape closes an open dropdown first. Missing devices and unsupported current-device combinations do not block future defaults. Project Settings remains the place to change an existing project.
 
 Informational advice below audio quality, Playback and Project Settings controls uses `rows::advice`: Small text in the theme's secondary grey, with wrapping. Separation model summary/description rows reuse this helper. Keep error/progress messages and field-value readouts separate from advice styling.
 

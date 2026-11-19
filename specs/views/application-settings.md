@@ -26,9 +26,11 @@ scroll state per group. Reuse shared field alignment, typography, dropdowns,
 buttons and the canonical tooltip presentation. The shared dialog's optional
 width override must leave other dialogs' defaults unchanged.
 
-Close and Escape retain the existing behavior. Escape dismisses an open popup
-before closing Settings. Audio quality defaults remain the existing secondary
-dialog opened from Playback.
+Show Audio quality defaults inline in Playback, below a separator after the
+device and seek cache controls. Use the shared field alignment. Apply saves
+validated defaults for new projects. Cancel or closing Settings discards the
+draft. Escape dismisses an open popup first, then discards an unsaved quality
+draft when Playback is active. With no active draft it closes Settings.
 
 Desktop Settings uses a single native window with regular platform chrome
 and a standard close button. macOS WGPU and Windows Glow use a deferred eframe

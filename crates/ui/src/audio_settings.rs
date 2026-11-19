@@ -2,11 +2,6 @@
 use super::*;
 use daw_output::{AudioSettings, DeviceId, DeviceInfo, Devices};
 
-pub(super) struct AudioDialog {
-    draft: daw_core::AudioQuality,
-    error: Option<String>,
-}
-
 pub(super) struct DevicesState {
     discover: fn() -> Result<Devices, String>,
     pub catalog: Option<Devices>,
@@ -36,12 +31,6 @@ impl DevicesState {
     pub fn busy(&self) -> bool {
         self.pending.is_some()
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Action {
-    Apply,
-    Cancel,
 }
 
 #[cfg(target_os = "linux")]
@@ -97,45 +86,99 @@ pub(super) fn device_row(
     );
     *selected != previous
 }
-impl AudioDialog {
-    fn new(settings: daw_core::AudioQuality) -> Self {
-        Self {
-            draft: settings,
-            error: None,
+pub(super) fn quality_defaults(
+    ui: &mut egui::Ui,
+    label_width: f32,
+    saved: &mut daw_core::AudioQuality,
+    pending: &mut Option<daw_core::AudioQuality>,
+) {
+    let mut draft = pending.unwrap_or(*saved);
+    rows::field(
+        ui,
+        label_width,
+        |ui| {
+            ui.label("Sample rate");
+        },
+        |ui| {
+            crate::menus::Dropdown::from_id_salt("default_sample_rate")
+                .selected_text(format!("{} Hz", draft.sample_rate_hz))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for rate in daw_core::SAMPLE_RATES {
+                        ui.selectable_value(&mut draft.sample_rate_hz, rate, format!("{rate} Hz"));
+                    }
+                });
+        },
+    );
+    rows::field(
+        ui,
+        label_width,
+        |ui| {
+            ui.label("Output bit depth");
+        },
+        |ui| {
+            crate::menus::Dropdown::from_id_salt("default_output_format")
+                .selected_text(draft.output_sample_format.label())
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for format in daw_core::SampleFormat::ALL {
+                        ui.selectable_value(
+                            &mut draft.output_sample_format,
+                            format,
+                            format.label(),
+                        );
+                    }
+                });
+        },
+    );
+    rows::field(
+        ui,
+        label_width,
+        |ui| {
+            ui.label("Buffer size");
+        },
+        |ui| {
+            crate::menus::Dropdown::from_id_salt("default_buffer_size")
+                .selected_text(format!("{} samples", draft.buffer_size_frames))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for frames in daw_core::BUFFER_SIZES {
+                        ui.selectable_value(
+                            &mut draft.buffer_size_frames,
+                            frames,
+                            format!("{frames} samples"),
+                        );
+                    }
+                });
+        },
+    );
+    rows::advice(
+        ui,
+        "These values are copied into new projects. Use Project Settings to change the current project.",
+    );
+    rows::advice(
+        ui,
+        "Output bit depth selects the device stream format. The driver may use a different hardware format. Internal processing and export settings stay separate.",
+    );
+    rows::wrapped(ui, toolbars::CONTROL_HEIGHT, |ui| {
+        let changed = draft != *saved;
+        if ui
+            .add_enabled(
+                changed && draft.validate().is_ok(),
+                egui::Button::new("Apply"),
+            )
+            .clicked()
+        {
+            *saved = draft;
         }
-    }
-    fn valid(&self) -> bool {
-        self.draft.validate().is_ok()
-    }
-    fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<Action> {
-        let popup_was_open = egui::Popup::is_any_open(ctx);
-        let mut action = None;
-        dialogs::Dialog::new("Audio quality defaults", "", &[] as &[(&str, Action)]).show_with_content(ctx, |ui| {
-            let width = ui.painter().layout_no_wrap("Output bit depth".into(), egui::TextStyle::Body.resolve(ui.style()), theme::palette(ctx).text).size().x;
-            ui.add_enabled_ui(!busy, |ui| {
-                rows::field(ui, width, |ui| {ui.label("Sample rate");}, |ui| {
-                    crate::menus::Dropdown::from_id_salt("default_sample_rate").selected_text(format!("{} Hz", self.draft.sample_rate_hz)).width(ui.available_width()).show_ui(ui, |ui| {for rate in daw_core::SAMPLE_RATES {ui.selectable_value(&mut self.draft.sample_rate_hz, rate, format!("{rate} Hz"));}});
-                });
-                rows::field(ui, width, |ui| {ui.label("Output bit depth");}, |ui| {
-                    crate::menus::Dropdown::from_id_salt("default_output_format").selected_text(self.draft.output_sample_format.label()).width(ui.available_width()).show_ui(ui, |ui| {for format in daw_core::SampleFormat::ALL {ui.selectable_value(&mut self.draft.output_sample_format, format, format.label());}});
-                });
-                rows::field(ui, width, |ui| {ui.label("Buffer size");}, |ui| {
-                    crate::menus::Dropdown::from_id_salt("default_buffer_size").selected_text(format!("{} samples", self.draft.buffer_size_frames)).width(ui.available_width()).show_ui(ui, |ui| {for frames in daw_core::BUFFER_SIZES {ui.selectable_value(&mut self.draft.buffer_size_frames, frames, format!("{frames} samples"));}});
-                });
-                rows::advice(ui, "These values are copied into new projects. Use Project Settings to change the current project.");
-                rows::advice(ui, "Output bit depth selects the device stream format. The driver may use a different hardware format. Internal processing and export settings stay separate.");
-                if let Some(error) = &self.error {ui.colored_label(theme::palette(ctx).error, error);}
-                rows::wrapped(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                    if ui.add_enabled(self.valid(), egui::Button::new("Apply")).clicked() {action = Some(Action::Apply);}
-                    if ui.button("Cancel").clicked() {action = Some(Action::Cancel);}
-                });
-            });
-        });
-        if !busy && !popup_was_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
-            action = Some(Action::Cancel);
+        if ui
+            .add_enabled(changed, egui::Button::new("Cancel"))
+            .clicked()
+        {
+            draft = *saved;
         }
-        action
-    }
+    });
+    *pending = (draft != *saved).then_some(draft);
 }
 
 impl DawUi {
@@ -174,44 +217,17 @@ impl DawUi {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
     }
-    pub(super) fn show_audio_settings(&mut self, ctx: &egui::Context) {
-        let action = self
-            .audio_settings
-            .as_mut()
-            .and_then(|dialog| dialog.show(ctx, self.job.is_some()));
-        match action {
-            Some(Action::Cancel) => self.audio_settings = None,
-            Some(Action::Apply) => {
-                let draft = self.audio_settings.as_ref().unwrap().draft;
-                if let Err(error) = self.apply_audio_quality_defaults(draft) {
-                    self.audio_settings.as_mut().unwrap().error = Some(error);
-                }
-            }
-            None => {}
-        }
-    }
-    fn apply_audio_quality_defaults(
-        &mut self,
-        draft: daw_core::AudioQuality,
-    ) -> Result<(), String> {
-        draft.validate().map_err(|e| e.to_string())?;
-        self.settings.audio_quality = draft;
-        self.audio_settings = None;
-        Ok(())
-    }
     fn apply_audio_device_settings(
         &mut self,
         draft: AudioSettings,
         open: impl FnOnce(daw_engine::RenderPlan, &AudioSettings) -> Result<AudioOutput, String>,
     ) -> Result<(), String> {
         if draft == self.settings.audio {
-            self.audio_settings = None;
             return Ok(());
         }
         // Input selection has no stream yet. It must not interrupt playback.
         if draft.output_device == self.settings.audio.output_device {
             self.settings.audio = draft;
-            self.audio_settings = None;
             return Ok(());
         }
         if !self.media_ready() {
@@ -236,14 +252,10 @@ impl DawUi {
                 self.settings.audio = draft;
                 self.configure_audio_cache(false);
                 self.audio_devices.error = None;
-                self.audio_settings = None;
                 Ok(())
             }
             Err(error) => Err(error),
         }
-    }
-    pub(super) fn open_audio_settings(&mut self) {
-        self.audio_settings = Some(AudioDialog::new(self.settings.audio_quality));
     }
     pub(super) fn apply_audio_device_selection(&mut self, draft: AudioSettings) {
         self.audio_devices.error = self
@@ -336,25 +348,6 @@ mod tests {
             default_input: Some(id("Microphone")),
         }
     }
-    fn frame(
-        ctx: &egui::Context,
-        dialog: &mut AudioDialog,
-        events: Vec<egui::Event>,
-    ) -> (Option<Action>, Vec<egui::epaint::ClippedShape>) {
-        let mut action = None;
-        let mut output = ctx.run_ui(
-            egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 700.0))),
-                events,
-                ..Default::default()
-            },
-            |ui| {
-                action = dialog.show(ui.ctx(), false);
-            },
-        );
-        output.textures_delta.clear();
-        (action, output.shapes)
-    }
     fn assert_advice(ctx: &egui::Context, shapes: &[egui::epaint::ClippedShape], label: &str) {
         let text = shapes
             .iter()
@@ -368,72 +361,7 @@ mod tests {
         assert!(text.galley.job.sections.iter().all(|section| section.format.font_id.size == size && section.format.color == color));
     }
     #[test]
-    fn dialog_exposes_controls_and_escape_closes_popup_before_discarding_draft() {
-        let ctx = egui::Context::default();
-        theme::configure(&ctx);
-        let mut dialog = AudioDialog::new(daw_core::AudioQuality::default());
-        frame(&ctx, &mut dialog, vec![]);
-        let shapes = frame(&ctx, &mut dialog, vec![]).1;
-        let text_position = |label: &str| {
-            shapes
-                .iter()
-                .find_map(|shape| match &shape.shape {
-                    egui::Shape::Text(text) if text.galley.text() == label => {
-                        Some(text.pos + text.galley.rect.center().to_vec2())
-                    }
-                    _ => None,
-                })
-                .unwrap_or_else(|| panic!("Missing audio setting: {label}"))
-        };
-        for label in [
-            "Sample rate",
-            "Output bit depth",
-            "Buffer size",
-            "Apply",
-            "Cancel",
-        ] {
-            text_position(label);
-        }
-        for label in ["Output device", "Input device", "Refresh devices"] {
-            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == label)));
-        }
-        for message in [
-            "These values are copied into new projects. Use Project Settings to change the current project.",
-            "Output bit depth selects the device stream format. The driver may use a different hardware format. Internal processing and export settings stay separate.",
-        ] {
-            assert_advice(&ctx, &shapes, message);
-        }
-        let point = text_position("32-bit float");
-        let pointer = |pressed| egui::Event::PointerButton {
-            pos: point,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        };
-        frame(
-            &ctx,
-            &mut dialog,
-            vec![egui::Event::PointerMoved(point), pointer(true)],
-        );
-        frame(&ctx, &mut dialog, vec![pointer(false)]);
-        assert!(egui::Popup::is_any_open(&ctx));
-        let escape = |pressed| egui::Event::Key {
-            key: egui::Key::Escape,
-            physical_key: None,
-            pressed,
-            repeat: false,
-            modifiers: Default::default(),
-        };
-        assert_eq!(frame(&ctx, &mut dialog, vec![escape(true)]).0, None);
-        assert!(!egui::Popup::is_any_open(&ctx));
-        frame(&ctx, &mut dialog, vec![escape(false)]);
-        assert_eq!(
-            frame(&ctx, &mut dialog, vec![escape(true)]).0,
-            Some(Action::Cancel)
-        );
-    }
-    #[test]
-    fn main_settings_selects_devices_without_editing_quality_defaults() {
+    fn playback_shows_inline_quality_defaults_and_keeps_device_selection_independent() {
         let ctx = egui::Context::default();
         theme::configure(&ctx);
         let catalog = devices();
@@ -452,6 +380,7 @@ mod tests {
             ..Default::default()
         };
         let mut render = |events| {
+            let mut close = false;
             let mut output = ctx.run_ui(
                 egui::RawInput {
                     screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 900.0))),
@@ -459,7 +388,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    settings::show(
+                    close = settings::show(
                         ui.ctx(),
                         &mut preferences,
                         &Default::default(),
@@ -471,6 +400,7 @@ mod tests {
                 },
             );
             output.textures_delta.clear();
+            assert!(!close);
             output.shapes
         };
         fn point(shapes: &[egui::epaint::ClippedShape], label: &str) -> Pos2 {
@@ -482,102 +412,117 @@ mod tests {
                     }
                     _ => None,
                 })
-                .unwrap_or_else(|| panic!("Missing main setting: {label}"))
+                .unwrap_or_else(|| panic!("Missing Playback setting: {label}"))
         }
+        let click = |render: &mut dyn FnMut(Vec<egui::Event>) -> Vec<_>, pos| {
+            let button = |pressed| egui::Event::PointerButton {
+                pos,
+                pressed,
+                button: egui::PointerButton::Primary,
+                modifiers: Default::default(),
+            };
+            render(vec![egui::Event::PointerMoved(pos), button(true)]);
+            render(vec![button(false)]);
+            render(vec![])
+        };
+        let escape = |pressed| egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: Default::default(),
+        };
         render(vec![]);
         let shapes = render(vec![]);
-        let playback = point(&shapes, "Playback");
-        render(vec![
-            egui::Event::PointerMoved(playback),
-            egui::Event::PointerButton {
-                pos: playback,
-                button: egui::PointerButton::Primary,
-                pressed: true,
-                modifiers: Default::default(),
-            },
-        ]);
-        render(vec![egui::Event::PointerButton {
-            pos: playback,
-            button: egui::PointerButton::Primary,
-            pressed: false,
-            modifiers: Default::default(),
-        }]);
-        let shapes = render(vec![]);
+        let mut shapes = click(&mut render, point(&shapes, "Playback"));
         for label in [
             "Output device",
             "Input device",
-            "Audio quality defaults…",
             "Refresh devices",
-            "Time stretch",
+            "Seek cache",
+            "Audio quality defaults",
+            "Sample rate",
+            "Output bit depth",
+            "Buffer size",
+            "Apply",
+            "Cancel",
+            "Close",
         ] {
             point(&shapes, label);
         }
-        assert_advice(
-            &ctx,
-            &shapes,
+        let seek_cache = point(&shapes, "Seek cache");
+        let quality = point(&shapes, "Audio quality defaults");
+        assert!(shapes.iter().any(|shape| match &shape.shape {
+            egui::Shape::LineSegment { points, .. } =>
+                points[0].y == points[1].y
+                    && points[0].y > seek_cache.y
+                    && points[0].y < quality.y
+                    && (points[1].x - points[0].x) > 100.0,
+            _ => false,
+        }));
+        for message in [
             "Changing output stops playback. Input selection is saved for future recording; input monitoring is not available.",
-        );
-        // The first default-device dropdown belongs to Output device.
-        let output_point = point(&shapes, DEFAULT_DEVICE_LABEL);
-        let button = |position, pressed| egui::Event::PointerButton {
-            pos: position,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
+            "These values are copied into new projects. Use Project Settings to change the current project.",
+            "Output bit depth selects the device stream format. The driver may use a different hardware format. Internal processing and export settings stay separate.",
+        ] {
+            assert_advice(&ctx, &shapes, message);
+        }
+        let pick_rate = |render: &mut dyn FnMut(Vec<egui::Event>) -> Vec<_>, shapes: &[_]| {
+            let popup = click(render, point(shapes, "48000 Hz"));
+            click(render, point(&popup, "96000 Hz"))
         };
-        render(vec![
-            egui::Event::PointerMoved(output_point),
-            button(output_point, true),
-        ]);
-        render(vec![button(output_point, false)]);
-        let shapes = render(vec![]);
-        let speaker = point(&shapes, "Speakers");
-        render(vec![
-            egui::Event::PointerMoved(speaker),
-            button(speaker, true),
-        ]);
-        render(vec![button(speaker, false)]);
-        let shapes = render(vec![]);
-        let quality = point(&shapes, "Audio quality defaults…");
-        render(vec![
-            egui::Event::PointerMoved(quality),
-            button(quality, true),
-        ]);
-        render(vec![button(quality, false)]);
-        assert!(controls.quality_requested);
-        let selection = controls.selection.unwrap();
-        assert_eq!(selection.output_device, Some(id("Speakers")));
-        assert_eq!(preferences.audio_quality, before.audio_quality);
+
+        shapes = pick_rate(&mut render, &shapes);
+        shapes = click(&mut render, point(&shapes, "Cancel"));
+        point(&shapes, "48000 Hz");
+
+        shapes = pick_rate(&mut render, &shapes);
+        click(&mut render, point(&shapes, "32-bit float"));
+        assert!(egui::Popup::is_any_open(&ctx));
+        render(vec![escape(true)]);
+        assert!(!egui::Popup::is_any_open(&ctx));
+        shapes = render(vec![escape(false)]);
+        point(&shapes, "96000 Hz");
+        render(vec![escape(true)]);
+        shapes = render(vec![escape(false)]);
+        point(&shapes, "48000 Hz");
+
+        shapes = pick_rate(&mut render, &shapes);
+        // The first default-device dropdown belongs to Output device.
+        shapes = click(&mut render, point(&shapes, DEFAULT_DEVICE_LABEL));
+        shapes = click(&mut render, point(&shapes, "Speakers"));
+        point(&shapes, "96000 Hz");
+        let shapes = click(&mut render, point(&shapes, "Apply"));
+        point(&shapes, "96000 Hz");
+
+        assert_eq!(
+            controls.selection.unwrap().output_device,
+            Some(id("Speakers"))
+        );
+        assert!(controls.quality_draft.is_none());
         // The caller probes the output before publishing the selection.
-        assert_eq!(preferences, before);
+        assert_eq!(preferences.audio, before.audio);
+        assert_eq!(
+            preferences.audio_quality,
+            daw_core::AudioQuality {
+                sample_rate_hz: 96000,
+                ..before.audio_quality
+            }
+        );
     }
     #[test]
     fn unchanged_preferences_do_not_open_a_stream_or_edit_project() {
         let mut app = DawUi::default();
         let before = app.session.project.clone();
-        app.audio_settings = Some(AudioDialog::new(app.settings.audio_quality));
         app.apply_audio_device_settings(app.settings.audio.clone(), |_, _| {
             panic!("No-op must not open output")
         })
         .unwrap();
-        assert!(app.audio_settings.is_none());
         assert_eq!(app.session.project, before);
         assert!(!app.dirty);
     }
     #[test]
-    fn defaults_are_concrete_and_do_not_depend_on_connected_devices() {
-        let mut dialog = AudioDialog::new(Default::default());
-        assert!(dialog.valid());
-        assert_eq!(dialog.draft.sample_rate_hz, 48000);
-        assert_eq!(dialog.draft.output_sample_format, SampleFormat::F32);
-        assert_eq!(dialog.draft.buffer_size_frames, 512);
-        dialog.draft.output_sample_format = SampleFormat::I24;
-        assert!(dialog.valid());
-        dialog.draft.buffer_size_frames = 33;
-        assert!(!dialog.valid());
-        dialog.draft.buffer_size_frames = 256;
-        dialog.draft.sample_rate_hz = 12345;
-        assert!(!dialog.valid());
+    fn disconnected_device_is_labeled_unavailable() {
         assert!(
             device_label(Some(&id("Disconnected speakers")), &devices().outputs)
                 .contains("unavailable")
@@ -632,7 +577,6 @@ mod tests {
         assert_eq!(app.settings.audio, draft);
         assert_eq!(app.session.project, before_project);
         assert!(!app.dirty);
-        assert!(app.audio_settings.is_none());
         assert_eq!(
             settings::AppSettings::from_json(Some(&app.settings.to_json())),
             app.settings
@@ -680,13 +624,11 @@ mod tests {
             output_sample_format: SampleFormat::I24,
             buffer_size_frames: 256,
         };
-        app.audio_settings = Some(AudioDialog::new(next));
-        app.apply_audio_quality_defaults(next).unwrap();
+        app.settings.audio_quality = next;
         assert_eq!(app.settings.audio_quality, next);
         assert_eq!(app.session.project, before);
         assert!(!app.dirty);
         assert!(app.output.is_none());
-        assert!(app.audio_settings.is_none());
         app.pending = Some(crate::Action::New);
         app.perform_pending();
         assert_eq!(app.session.project.audio_quality(), next);
