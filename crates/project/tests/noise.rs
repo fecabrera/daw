@@ -8,6 +8,7 @@ fn noise_save_reopen_and_float_export_keep_the_same_signal_without_media_assets(
     let mut session = Session::default();
     let track = session.project.add_midi_track().unwrap();
     let mut instrument = session.project.tracks[0].instrument.clone().unwrap();
+    instrument.layers[0].oscillators.clear();
     instrument.layers[0].noise = Some(NoiseSettings {
         kind: NoiseType::Pink,
         color: 0.25,

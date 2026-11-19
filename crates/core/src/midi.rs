@@ -1,5 +1,6 @@
 use crate::{
-    Asset, Clip, ClipEdge, Edit, Error, Id, MusicalClock, Project, Result, Source, SourceMetadata,
+    Asset, Clip, ClipEdge, Edit, Error, Id, InstrumentSettings, MusicalClock, Project, Result,
+    Source, SourceMetadata,
 };
 use serde::{Deserialize, Serialize};
 
@@ -350,7 +351,9 @@ impl Project {
         let index = next.tracks.len();
         let track = next.tracks.last_mut().unwrap();
         track.kind = TrackKind::Midi;
-        track.instrument = Some(Default::default());
+        let mut instrument = InstrumentSettings::default();
+        instrument.layers[0].oscillators.push(Default::default());
+        track.instrument = Some(instrument);
         track.name = format!("MIDI {index}");
         next.validate()?;
         *self = next;

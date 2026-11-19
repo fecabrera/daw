@@ -33,7 +33,6 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     let mut app = DawUi::default();
     let track = app.session.project.add_midi_track().unwrap();
     let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
-    instrument.layers[0].oscillators.push(Default::default());
     instrument.layers[0].amplitude.present = true;
     instrument.layers[0]
         .effects

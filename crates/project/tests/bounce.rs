@@ -870,8 +870,9 @@ fn sampler_granulizer_and_noise_keep_source_layer_and_output_processing() {
             });
         let layer = s.project.tracks[0].instrument.as_ref().unwrap().layers[0].id;
         if source == "noise" {
-            s.project.tracks[0].instrument.as_mut().unwrap().layers[0].noise =
-                Some(daw_core::NoiseSettings::default());
+            let layer = &mut s.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+            layer.oscillators.clear();
+            layer.noise = Some(daw_core::NoiseSettings::default());
         } else {
             let decoded = s.audio.values().next().unwrap().clone();
             s = s

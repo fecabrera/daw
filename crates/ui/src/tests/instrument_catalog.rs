@@ -76,6 +76,7 @@ fn fixture(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id, [Id; 2]) {
     app.instrument_catalog.expand_folders();
     let track = app.session.project.add_midi_track().unwrap();
     let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    instrument.layers[0].oscillators.clear();
     instrument.layers[0].collapsed = true;
     instrument.layers.push(daw_core::InstrumentLayerSettings {
         collapsed: true,

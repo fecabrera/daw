@@ -147,12 +147,14 @@ fn sampler_midi_edits_publish_immediately_while_root_edits_remain_transactional(
     sampler.id = Id::new_v4();
     sampler.root_note = 60;
     let new_id = sampler.id;
-    app.session.project.tracks[1]
-        .instrument
-        .as_mut()
+    let layer = &mut app
+        .session
+        .project
+        .instrument_settings_mut(destination)
         .unwrap()
-        .layers[0]
-        .sampler = Some(sampler);
+        .layers[0];
+    layer.oscillators.clear();
+    layer.sampler = Some(sampler);
     app.session.prepare_stretches().unwrap();
     let mut copy = app.session.project.tracks[0].clips[0].clone();
     copy.start_frame = 0;

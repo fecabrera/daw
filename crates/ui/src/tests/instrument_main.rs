@@ -221,12 +221,9 @@ fn output_scrolls_with_layers_and_reuses_mix_controls_in_both_themes() {
 #[test]
 fn output_accepts_macros_and_rejects_sources_and_dedicated_lane_providers() {
     let (mut app, ctx, _) = setup(settings::ColorTheme::Dark);
-    let main = app.session.project.tracks[0]
-        .instrument
-        .as_ref()
-        .unwrap()
-        .main
-        .id;
+    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+    let main = instrument.main.id;
+    let layers = instrument.layers.clone();
     app.instrument_ui.select_layer(main);
     app.set_instrument_subview(
         crate::instrument_workspace::InstrumentSubview::Modulation,
@@ -241,7 +238,7 @@ fn output_accepts_macros_and_rejects_sources_and_dedicated_lane_providers() {
     let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
     assert!(i.main.envelopes.is_empty() && i.main.lfos.is_empty());
     assert_eq!(i.main.macro_module.controls.len(), 1);
-    assert!(i.layers[0].oscillators.is_empty() && !i.layers[0].amplitude.present);
+    assert_eq!(i.layers, layers);
     assert!(
         crate::modulation_panel::sources(Some(i))
             .iter()

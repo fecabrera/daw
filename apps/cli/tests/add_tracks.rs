@@ -47,6 +47,13 @@ fn add_tracks_persists_each_type_and_invalid_arguments_leave_project_unchanged()
         let added = saved.tracks.last().unwrap();
         assert_eq!(added.name, "New track ü");
         assert_eq!(added.kind, expected);
+        if expected == TrackKind::Midi {
+            let instrument = added.instrument.as_ref().unwrap();
+            assert_eq!(instrument.layers.len(), 1);
+            let oscillators = &instrument.layers[0].oscillators;
+            assert_eq!(oscillators.len(), 1);
+            assert_eq!(oscillators[0].waveform, daw_core::Waveform::Sine);
+        }
         assert!(added.clips.is_empty());
         assert!(added.group_id.is_none());
         assert_ne!(added.id, original.tracks[0].id);

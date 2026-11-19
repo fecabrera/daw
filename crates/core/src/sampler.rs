@@ -89,6 +89,7 @@ mod tests {
         let mut p = Project::default();
         let track = p.add_midi_track().unwrap();
         let i = p.tracks[0].instrument.as_mut().unwrap();
+        i.layers[0].oscillators.clear();
         i.layers[0].sampler = Some(Default::default());
         i.layers.push(InstrumentLayerSettings::default());
         i.layers.push(InstrumentLayerSettings {
@@ -183,6 +184,7 @@ mod modulation_tests {
             unit: provider,
         });
         route.amount = -12.0;
+        i.layers[0].oscillators.clear();
         i.layers[0].sampler = Some(SamplerSettings {
             modulation_open: true,
             modulations: vec![route],

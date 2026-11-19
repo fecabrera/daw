@@ -2959,7 +2959,6 @@ mod modulation_meter_tests {
             track,
             layer: layer.id,
         };
-        layer.oscillators.push(Default::default());
         let oscillator_level = ModulationTarget::OscillatorLevel {
             track,
             layer: layer.id,

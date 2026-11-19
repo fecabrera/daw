@@ -215,6 +215,9 @@ fn idle_live_route_keeps_paused_shared_contour_and_resume_samples_frozen() {
                 layer.envelopes[0].settings.attack.time_ms = 90.0;
                 layer.envelopes[0].modulations.push(route);
                 let other = plan.project.add_midi_track().unwrap();
+                plan.project.instrument_settings_mut(other).unwrap().layers[0]
+                    .oscillators
+                    .clear();
                 let mut actual = Renderer::new(plan.clone());
                 let mut reference = Renderer::new(plan);
                 for renderer in [&mut actual, &mut reference] {

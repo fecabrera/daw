@@ -92,7 +92,11 @@ fn duplicate_into_new_track_uses_defaults_and_commits_only_on_release() {
             if midi {
                 let instrument = fresh.instrument.as_ref().unwrap();
                 assert_eq!(instrument.layers.len(), 1);
-                assert!(instrument.layers[0].oscillators.is_empty());
+                assert_eq!(instrument.layers[0].oscillators.len(), 1);
+                assert_eq!(
+                    instrument.layers[0].oscillators[0].waveform,
+                    daw_core::Waveform::Sine
+                );
                 assert!(instrument.layers[0].sampler.is_none());
             } else {
                 assert!(fresh.instrument.is_none());
@@ -287,6 +291,7 @@ fn moving_source_groups_to_new_tracks_previews_commits_cancels_and_undoes() {
                 .as_mut()
                 .unwrap()
                 .layers[0];
+            layer.oscillators.clear();
             match kind {
                 "noise" => {
                     layer.noise = Some(daw_core::NoiseSettings {

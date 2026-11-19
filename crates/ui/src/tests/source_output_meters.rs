@@ -23,6 +23,7 @@ fn sources_keep_gap_meters_without_horizontal_output_rails_or_meter_drags() {
                             layer.oscillator_enabled = enabled;
                             layer.oscillator_collapsed = collapsed;
                         } else {
+                            layer.oscillators.clear();
                             layer.sampler = Some(if kind == 1 {
                                 daw_core::SamplerSettings::granular()
                             } else {

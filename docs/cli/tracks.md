@@ -37,8 +37,9 @@ daw-cli tracks --add "New beat" --type beat --project ./Song
 
 Both `--add` and `--type` are required together. Types are `audio`, `midi` and
 `beat`. The command appends an empty root-level track with a new ID and the
-standard defaults, then saves the project. It creates no clips, patterns or
-recordings. Duplicate names are allowed. Names must contain text and cannot
+standard defaults, then saves the project. A MIDI track starts with a sine-wave
+Oscillator in Layer 1. The command creates no clips, patterns or recordings.
+Duplicate names are allowed. Names must contain text and cannot
 contain control characters. You cannot combine `--add` with an inspection name.
 Without `--project`, it edits the project in the current directory. A missing
 project is an error; this command does not create a new project. Success prints

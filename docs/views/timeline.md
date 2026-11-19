@@ -134,7 +134,7 @@ Double-click a chord to insert it at the playhead on the selected MIDI track. En
 
 With catalog focus, Up/Down navigates visible rows. Shift+Up/Down extends or reduces the chord selection. Enter opens or closes a focused note folder, or inserts selected chords when a chord row has focus. Escape clears catalog selection and follows Timeline’s normal track/clip selection behavior.
 
-Chords use the normal clip overwrite rules and Undo/Redo. Audio and group tracks reject chord drops. Catalog browsing and filtering do not change the project; inserted chords save as ordinary MIDI patterns. A new MIDI track starts with an empty instrument, so add a sound in Instrument before playback.
+Chords use the normal clip overwrite rules and Undo/Redo. Audio and group tracks reject chord drops. Catalog browsing and filtering do not change the project; inserted chords save as ordinary MIDI patterns. On playback, a newly created MIDI track uses its default sine-wave Oscillator.
 
 ## Import and arrange
 
@@ -188,7 +188,7 @@ Split the selected clips at the playhead with Clip > Split at playhead, or with 
 
 MIDI notes that cross the playhead follow Settings > MIDI > Split MIDI notes. Split into two is the default: the note becomes two notes. Preserve first keeps the part before the playhead on the original clip and does not continue it. The choice is saved on this computer, not in the project. Undo restores both pieces in one step. If a looping MIDI clip needs note rewriting, one split operation can unfold up to 4,096 note occurrences across the selection. A larger operation reports an error and leaves the project unchanged. Shorten the looping clips before retrying. Splitting between notes does not have this limit.
 
-Duplicating into new track space creates fresh track defaults. Group paste also creates fresh tracks when needed and preserves gaps between tracks. A new MIDI track starts with an empty instrument and needs a source before it makes sound. Existing destination tracks keep their settings. Moving MIDI clips to new track space retains their instrument.
+Duplicating into new track space creates fresh track defaults. Group paste also creates fresh tracks when needed and preserves gaps between tracks. A new MIDI track starts with a sine-wave Oscillator in Layer 1. Existing destination tracks keep their settings. Moving MIDI clips to new track space retains their instrument.
 
 ## Merge audio clips
 

@@ -148,6 +148,7 @@ fn sampler_granulizer_and_embedded_midi_inventory_does_not_depend_on_timeline_cl
             .unwrap()
             .layers[0];
         let id = layer.id;
+        layer.oscillators.clear();
         layer.sampler = Some(if granular {
             daw_core::SamplerSettings::granular()
         } else {

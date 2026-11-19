@@ -58,7 +58,7 @@ Use Up/Down to move through visible folders and components. On a folder, Enter h
 
 With an audio track, group, Master, or no track selected, the Layers panel remains visible. Its Add layer button is disabled, and the empty layer area shows **Select an instrument track**. Select a MIDI track to show its instrument layers and enable the button.
 
-A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain one of Oscillator, Sampler, Granulizer, or Noise. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a compatible lane.
+A new MIDI track starts with a sine-wave Oscillator in Layer 1. Play MIDI notes or add them to a pattern to hear it. A layer can contain one of Oscillator, Sampler, Granulizer, or Noise. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a compatible lane.
 
 Layer names use the same semibold text as track headers. Layers show a waveform icon before their names. Output uses a merge icon with its arrow pointing right. Click a regular layer header to select it. Shift-click toggles layers in the selection. Each selected layer has a highlighted background without a selection outline. The dedicated [LFO and Envelope lanes](../instruments/modulation-lanes.md) follow the regular layers, then Output. All rows scroll together. Each modulation lane accepts only its own provider type and has no audio mix controls. Click Output to select its controls.
 

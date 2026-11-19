@@ -516,7 +516,6 @@ mod inline_order_tests {
         let track = p.add_midi_track().unwrap();
         let i = p.tracks[0].instrument.as_mut().unwrap();
         let l = &mut i.layers[0];
-        l.oscillators.push(Default::default());
         l.macro_module.add();
         l.amplitude.present = true;
         l.effects = vec![EffectInstance::auto_filter(), EffectInstance::drive()];

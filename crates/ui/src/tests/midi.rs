@@ -1611,6 +1611,13 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
             ..Default::default()
         };
         let track = app.session.project.add_midi_track().unwrap();
+        app.session
+            .project
+            .instrument_settings_mut(track)
+            .unwrap()
+            .layers[0]
+            .oscillators
+            .clear();
         app.selected_track = Some(track);
         let ctx = context();
         app.set_settings(
@@ -3209,7 +3216,7 @@ fn new_destination_tracks_use_fresh_instruments_for_copies_and_preserve_move_sou
             let instrument = tracks[index].instrument.as_ref().unwrap();
             if duplicate {
                 assert_eq!(instrument.layers.len(), 1);
-                assert!(instrument.layers[0].oscillators.is_empty());
+                assert_eq!(instrument.layers[0].oscillators.len(), 1);
                 assert!(instrument.layers[0].sampler.is_none());
             } else {
                 let original = tracks[source].instrument.as_ref().unwrap();
@@ -3274,7 +3281,7 @@ fn group_paste_creates_fresh_midi_tracks_and_retains_existing_destination_instru
     assert_eq!(fresh.kind, TrackKind::Midi);
     let instrument = fresh.instrument.as_ref().unwrap();
     assert_eq!(instrument.layers.len(), 1);
-    assert!(instrument.layers[0].oscillators.is_empty());
+    assert_eq!(instrument.layers[0].oscillators.len(), 1);
     assert_eq!(fresh.clips[0].asset_id, before[1].clips[0].asset_id);
     assert_ne!(fresh.clips[0].id, second_clip);
     assert_eq!(fresh.clips[0].start_frame, frames(10.0));

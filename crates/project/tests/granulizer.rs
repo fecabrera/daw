@@ -36,6 +36,7 @@ fn granular_sample_preparation_storage_copy_rate_export_and_failures_share_sessi
         .unwrap()
         .layers[0];
     let owner = layer.id;
+    layer.oscillators.clear();
     layer.sampler = Some(SamplerSettings::granular());
     let clip = session.project.add_midi_pattern(track, 0).unwrap();
     session

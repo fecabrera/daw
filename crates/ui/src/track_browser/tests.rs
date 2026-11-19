@@ -885,6 +885,9 @@ fn shared_tracks_plus_creates_and_selects_midi_in_instrument_and_editor() {
             &original.tracks
         );
         assert_eq!(added.kind, TrackKind::Midi);
+        let oscillators = &added.instrument.as_ref().unwrap().layers[0].oscillators;
+        assert_eq!(oscillators.len(), 1);
+        assert_eq!(oscillators[0].waveform, daw_core::Waveform::Sine);
         assert!(added.clips.is_empty());
         assert_eq!(app.selected_track, Some(added.id));
         if view == ViewMode::Edit {

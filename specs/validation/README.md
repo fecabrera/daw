@@ -14395,3 +14395,33 @@ crashed under QEMU before compiling repository code; this does not constitute a 
 result. Hosted Linux tests and the complete macOS DMG job still require a new CI
 run. Full local packaging requires a clean committed tracked tree; the working tree
 contains the uncommitted fixes.
+
+## Default Oscillator on new MIDI tracks — 2026-11-19
+
+Fresh MIDI tracks start with one enabled sine-wave Oscillator in Layer 1. This
+supersedes the empty instrument default. The same constructor serves the desktop
+and CLI, including fresh tracks for chord drops, clip duplication, and paste.
+Saved empty instruments and newly added empty layers remain valid.
+
+Core tests verify the initial instrument. Automated desktop tests cover track
+creation, clip duplication, and paste. The CLI integration test verifies that
+the initial Oscillator survives saving and reopening.
+
+- The debug workspace run used
+  `cargo test --offline --locked --workspace --no-fail-fast`. The output
+  library and the project `bounce` and `workflow` targets passed focused
+  reruns after fixture corrections.
+- The release workspace run used
+  `cargo test --offline --locked --workspace --release --no-fail-fast`. The
+  output library passed its focused rerun after the fixture correction. The
+  project targets also passed their focused release reruns.
+- In both profiles, macOS rejected native Audio Unit registration in 20 AUv2
+  targets. The other workspace tests and doctests passed across the workspace
+  runs and focused reruns.
+- Formatting, strict workspace Clippy, and `git diff --check` passed.
+- `cargo build --offline --locked -p daw-cli` and
+  `python3 tools/check_cli.py` passed. The signed local macOS debug bundle
+  built and passed signature verification.
+
+Manual desktop interaction, physical MIDI and audio devices, and Windows and
+Linux were outside this check.

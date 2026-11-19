@@ -140,13 +140,17 @@ fn envelope_settings_round_trip_and_missing_envelopes_preserve_legacy_sound() {
 }
 
 #[test]
-fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
+fn new_midi_tracks_start_with_one_oscillator_and_layer_edits_validate_atomically() {
     let mut project = Project::default();
     let track = project.add_midi_track().unwrap();
     let mut instrument = project.tracks[0].instrument.clone().unwrap();
     assert_eq!(instrument.version, INSTRUMENT_STATE_VERSION);
     assert_eq!(instrument.layers.len(), 1);
-    assert!(instrument.layers[0].oscillators.is_empty());
+    let [oscillator] = instrument.layers[0].oscillators.as_slice() else {
+        panic!("New MIDI track must have one oscillator");
+    };
+    assert_eq!(oscillator.waveform, Waveform::Sine);
+    assert!(!oscillator.muted);
     assert!(!instrument.layers[0].envelopes[0].present);
     assert!(!instrument.layers[0].collapsed);
     assert!(instrument.layers[0].oscillator_enabled && instrument.layers[0].envelopes[0].enabled);

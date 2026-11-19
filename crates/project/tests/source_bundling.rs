@@ -227,6 +227,7 @@ fn collection_and_save_as_keep_sampler_and_granulizer_inputs_without_clips() {
             .unwrap()
             .layers[0];
         let id = layer.id;
+        layer.oscillators.clear();
         layer.sampler = Some(if granular {
             SamplerSettings::granular()
         } else {
@@ -481,6 +482,7 @@ fn moved_collected_project_reopens_mixed_sources_and_restored_history_without_or
             .unwrap()
             .layers[0];
         let owner = layer.id;
+        layer.oscillators.clear();
         layer.sampler = Some(if granular {
             SamplerSettings::granular()
         } else {

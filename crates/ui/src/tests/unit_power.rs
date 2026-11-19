@@ -267,6 +267,7 @@ fn every_component_menu_toggles_in_expanded_and_collapsed_rows() {
                 .unwrap()
                 .layers[0];
             layer.collapsed = compact;
+            layer.oscillators.clear();
             let unit = match kind {
                 "oscillator" => {
                     layer.oscillators.push(Default::default());

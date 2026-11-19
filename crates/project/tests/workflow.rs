@@ -3724,6 +3724,7 @@ fn macro_strips_routing_and_presentation_survive_save_as_duplication_and_rate_ch
     let mut session = Session::default();
     let track = session.project.add_midi_track().unwrap();
     let i = session.project.tracks[0].instrument.as_mut().unwrap();
+    i.layers[0].oscillators.clear();
     let module = &mut i.main.macro_module;
     module.add();
     module.add();
@@ -3946,6 +3947,7 @@ fn sampler_files_regions_durations_and_root_metadata_survive_storage_and_rate_ch
         .as_mut()
         .unwrap()
         .layers[0];
+    layer.oscillators.clear();
     layer.sampler = Some(SamplerSettings::default());
     let owner = layer.id;
     session = session.with_sampler_file(track, owner, &path).unwrap();
@@ -4069,6 +4071,7 @@ fn duplicated_layers_preserve_modulated_audio_samples_and_saved_routes() {
                 .as_mut()
                 .unwrap()
                 .layers[0];
+            layer.oscillators.clear();
             layer.sampler = Some(SamplerSettings::default());
             let id = layer.id;
             session = session.with_sampler_file(track, id, &path).unwrap();
@@ -4189,6 +4192,7 @@ fn sampler_clip_assignment_reuses_trim_repeat_and_stretch_mapping_without_changi
         .as_mut()
         .unwrap()
         .layers[0];
+    layer.oscillators.clear();
     layer.sampler = Some(Default::default());
     let owner = layer.id;
     let mut clip = session.project.tracks[0].clips[0].clone();
@@ -5295,6 +5299,7 @@ fn opus_sampler_source_prepares_and_reopens_without_reencoding() {
         .as_mut()
         .unwrap()
         .layers[0];
+    layer.oscillators.clear();
     layer.sampler = Some(daw_core::SamplerSettings::default());
     let owner = layer.id;
     session = session.with_sampler_file(track, owner, &path).unwrap();

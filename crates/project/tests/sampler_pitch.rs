@@ -38,6 +38,7 @@ impl Fixture {
             .as_mut()
             .unwrap()
             .layers[0];
+        layer.oscillators.clear();
         layer.sampler = Some(SamplerSettings::default());
         let owner = layer.id;
         let clip = session.project.add_midi_pattern(track, 0).unwrap();

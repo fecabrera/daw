@@ -328,6 +328,7 @@ fn chord_sampler_edits_are_visible_and_failure_keeps_pending_edits_and_previous_
             .as_mut()
             .unwrap()
             .layers[0];
+        layer.oscillators.clear();
         layer.sampler = Some(Default::default());
         let layer_id = layer.id;
         let file = TestWav::new();
@@ -446,6 +447,7 @@ fn chord_audition_prepares_sampler_pitches_without_publishing_them() {
         .as_mut()
         .unwrap()
         .layers[0];
+    layer.oscillators.clear();
     layer.sampler = Some(Default::default());
     let layer_id = layer.id;
     app.session = app

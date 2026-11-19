@@ -55,6 +55,7 @@ mod tests {
                 modulations: vec![route],
                 ..Default::default()
             };
+            layer.oscillators.clear();
             layer.noise = Some(noise.clone());
             project.validate().unwrap();
             let owner = if grouped {
@@ -163,6 +164,7 @@ mod tests {
         let mut project = Project::default();
         let track = project.add_midi_track().unwrap();
         let i = project.tracks[0].instrument.as_mut().unwrap();
+        i.layers[0].oscillators.clear();
         i.layers[0].noise = Some(Default::default());
         i.layers.push(InstrumentLayerSettings::default());
         i.layers.push(InstrumentLayerSettings {

@@ -48,7 +48,7 @@ impl DawUi {
             .is_some_and(|a| a.midi_pattern.is_some());
         if midi {
             let id = project.add_midi_track()?;
-            // Copies use the standard empty instrument. Only moves carry the source sound.
+            // Keep the default instrument for copies.
             if duplicate {
                 return Ok(id);
             }
