@@ -7,6 +7,7 @@ use drag::Gesture;
 #[derive(Default)]
 pub(super) struct State {
     pub visible: bool,
+    #[cfg(test)]
     editor_visible: bool,
     open: HashSet<Id>,
     known_beats: HashSet<Id>,
@@ -139,6 +140,7 @@ impl DawUi {
     pub(super) fn tracks_panel_visible(&self) -> bool {
         match self.view_mode {
             ViewMode::Instrument => self.track_browser.visible,
+            #[cfg(test)]
             ViewMode::Edit => self.track_browser.editor_visible,
             _ => false,
         }
@@ -183,6 +185,7 @@ impl DawUi {
         }
         match self.view_mode {
             ViewMode::Instrument => self.track_browser.visible = visible,
+            #[cfg(test)]
             ViewMode::Edit => self.track_browser.editor_visible = visible,
             _ => {}
         }
@@ -190,7 +193,7 @@ impl DawUi {
     fn browser_select(&mut self, row: &Row, shift: bool) {
         let parent = row.beat.unwrap_or(row.id);
         let changed_parent = self.selected_track != Some(parent);
-        if self.view_mode == ViewMode::Edit {
+        if self.view_mode.has_track_overview() {
             let selection = self.selected_tracks.clone();
             let primary = self.selected_track;
             if row.beat.is_none() || self.editor_track().is_none_or(|track| track.id != parent) {
@@ -363,7 +366,7 @@ impl DawUi {
         }
         self.track_browser.reconcile(&self.session.project);
         let rows = self.track_browser.rows(&self.session.project);
-        let selected_parent = if self.view_mode == ViewMode::Edit {
+        let selected_parent = if self.view_mode.has_track_overview() {
             self.editor_track().map(|track| track.id)
         } else {
             self.selected_track

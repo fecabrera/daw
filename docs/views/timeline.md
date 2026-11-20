@@ -4,9 +4,9 @@
 
 Select an audio, MIDI, or beat clip or track, then click **Timeline Editor**
 just above the Effects Lane button in the left toolbar. The lower pane shows
-the same waveform, piano roll, or beat grid as [Editor](editor.md), while the
-arrangement stays visible above it. Double-click a clip to fit it in the lower
-pane. Select a beat clip to edit its steps.
+the selected track’s waveform, piano roll, or beat grid while keeping the
+arrangement visible above it. Double-click a clip to open and fit it in the
+[Timeline editor](editor.md). For beat clips, this fits the full source pattern.
 
 Drag the divider at the top of the pane up to make the editor taller or down
 to give Timeline more space. Press Escape to cancel a resize. Click the active
@@ -209,7 +209,7 @@ Duplicating into new track space creates fresh track defaults. Group paste also 
 
 Select audio clips on one track and choose **Merge** from the **Clip** menu or a
 selected clip's context menu. Press **Command+J** on macOS or **Ctrl+J** on Windows
-and Linux for the same command. It works in Timeline and Editor.
+and Linux for the same command. It works in Timeline and its editor pane.
 
 Clips can touch or have gaps. The result keeps their outer bounds, silent gaps,
 gain, fades, stretch, transpose, channel settings and enabled states. Settings
@@ -297,7 +297,7 @@ Horizontal scrolling moves the timeline while track controls stay fixed. Pinch z
 
 Hold Option on macOS or Ctrl on Windows/Linux before dragging an edge to
 stretch. While held, fade and crossfade handles and midpoint controls are hidden
-and disabled in Timeline and Editor. A fade drag already in progress keeps its
+and disabled in Timeline and its editor pane. A fade drag already in progress keeps its
 gesture until release or cancellation.
 
 Audio clips have square fade handles in the strip between the name header and
@@ -427,7 +427,7 @@ A drop selects the destination track or Master and the transferred effects. Effe
 
 Right-click an audio clip and choose **Stem-separation** to create a group with aligned Drums, Bass, Other, and Vocals tracks. The original stays in place, disabled. Select local models in Settings first. Unsaved projects use temporary stem storage until the first save. See [Stem separation](../audio/stem-separation.md) for setup, progress, cancellation, and file storage.
 
-Right-click a disabled clip and choose **Enable clip** to restore it. **Disable clip** silences only that clip. Its header and content become neutral grey, and its translucent body lets the grid show through in Timeline and Editor. These actions support Undo and Redo.
+Right-click a disabled clip and choose **Enable clip** to restore it. **Disable clip** silences only that clip. Its header and content become neutral grey, and its translucent body lets the grid show through in Timeline and its editor pane. These actions support Undo and Redo.
 
 ## Supported imports
 

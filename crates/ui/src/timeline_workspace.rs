@@ -124,7 +124,7 @@ impl DawUi {
     }
 
     pub(super) fn lower_editor_visible(&self) -> bool {
-        self.view_mode == ViewMode::Edit || self.timeline_editor_visible()
+        self.view_mode.has_track_overview() || self.timeline_editor_visible()
     }
 
     pub(super) fn set_timeline_editor_visible(&mut self, visible: bool) {

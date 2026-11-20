@@ -4,9 +4,9 @@ Implementation requirements and design records. For user instructions, see the [
 
 Status: Beat MVP implemented across the project model, storage, renderer, CLI and both views; native platform acceptance remains open. Last updated: 2026-11-16.
 
-The beat editor is the lower editor for beat clips in Editor. It shows one step row per beat subtrack. Instrument opens the selected subtrack’s Layers page with source layers, local LFO, Envelope and Output. Selecting the beat parent opens only final Output. The shared Tracks panel lists subtracks as children of their parent. Both views share subtrack creation, single/group selection, deletion, rename, reorder, gain and pan. Mixer controls both the parent beat track and its expandable subtrack strips.
+The beat editor opens below the arrangement in Timeline. Double-click a beat clip to open it and fit the full source pattern. It shows one step row per beat subtrack. Instrument opens the selected subtrack’s Layers page with source layers, local LFO, Envelope and Output. Selecting the beat parent opens only final Output. The shared Tracks panel lists subtracks as children of their parent. Both views share subtrack creation, single/group selection, deletion, rename, reorder, gain and pan. Mixer controls both the parent beat track and its expandable subtrack strips.
 
-The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, shared-code boundaries and remaining data/UI decisions. It supersedes the older Units-view placement and D33's historical exclusion of beat processing from Instrument. Current views are Timeline, Instrument, Editor and Mixer. A beat subtrack is the child previously called a beat lane; it is not a project track group or a MIDI instrument layer.
+The [staged implementation plan](beat-tracks-plan.md) defines delivery gates, shared-code boundaries and remaining data/UI decisions. It supersedes the older Units-view placement and D33's historical exclusion of beat processing from Instrument. Current views are Timeline, Instrument, and Mixer. References to a separate Editor view or its track overview describe the earlier navigation design. A beat subtrack is the child previously called a beat lane; it is not a project track group or a MIDI instrument layer.
 
 The 2026-11-16 Mixer request supersedes the earlier parent-only restriction;
 see [beat subtrack strips](mixer.md#beat-subtrack-strips).
@@ -333,7 +333,7 @@ scrolling changes only the lower content clock; retain overview zoom/scroll,
 header positions and project/track/clip state. No selected clip means no pattern
 cells. Use the shared scrollbar's styling and interaction guards.
 
-In Editor and Timeline, paint the divider between the audition gutter and
+In the Timeline editor, paint the divider between the audition gutter and
 step grid from below the ruler to the bottom of the pane. Paint it outside
 the row scroll area so it extends through the horizontal scrollbar space.
 

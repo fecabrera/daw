@@ -26,7 +26,7 @@ pub(super) fn audio_fixture() -> (DawUi, egui::Context, Id, Id) {
     clip.source_offset_frame = 2400;
     let id = clip.id;
     let ctx = context();
-    app.open_clip_editor(id, track, &ctx);
+    app.open_overview_fixture(id, track, &ctx);
     app.midi_editor.zoom = 1500.0;
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;

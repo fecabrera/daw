@@ -115,7 +115,8 @@ fn clip_actions_use_primary_or_clicked_target_and_delete_selected_group_atomical
             "Enable clip"
         );
         click(&mut app, &ctx, Some(second.id), "Edit clip");
-        assert_eq!(app.view_mode, ViewMode::Edit);
+        assert_eq!(app.view_mode, ViewMode::Timeline);
+        assert!(app.timeline_editor_visible());
         assert_eq!(app.selected_clip, Some(second.id));
         app.select_clip(first.id, track, false);
         click(&mut app, &ctx, Some(second.id), "Delete clip");

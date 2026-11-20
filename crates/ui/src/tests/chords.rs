@@ -501,7 +501,7 @@ fn chord_audition_prepares_sampler_pitches_without_publishing_them() {
 fn editor_chords_share_catalog_actions_target_and_overview_drag_clock() {
     let (mut app, ctx, midi, audio) = setup();
     let clip = app.session.project.add_midi_pattern(midi, 0).unwrap();
-    app.open_clip_editor(clip, midi, &ctx);
+    app.open_overview_fixture(clip, midi, &ctx);
     // Editor follows the active clip even if another view changed track selection.
     app.selected_track = Some(audio);
     frame(&mut app, &ctx, vec![]);

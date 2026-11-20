@@ -156,6 +156,7 @@ impl Default for EffectsUiBounds {
 #[derive(Default)]
 pub(super) struct Visibility {
     pub catalog: bool,
+    #[cfg(test)]
     pub chords: bool,
 }
 
@@ -163,6 +164,7 @@ impl DawUi {
     pub(super) fn effects_catalog_visible(&self) -> bool {
         match self.view_mode {
             ViewMode::Instrument => self.instrument_effects_catalog_visible,
+            #[cfg(test)]
             ViewMode::Edit => self.editor_effects.catalog,
             ViewMode::Mixer => self.mixer_effects.catalog,
             _ => self.timeline_catalog_visible,
@@ -177,6 +179,7 @@ impl DawUi {
                     self.instrument_catalog_visible = false;
                 }
             }
+            #[cfg(test)]
             ViewMode::Edit => self.editor_effects.catalog = visible,
             ViewMode::Mixer => self.mixer_effects.catalog = visible,
             _ => self.timeline_catalog_visible = visible,
@@ -197,6 +200,7 @@ impl DawUi {
 
     pub(super) fn chords_visible(&self) -> bool {
         match self.view_mode {
+            #[cfg(test)]
             ViewMode::Edit => self.editor_effects.chords,
             ViewMode::Timeline => self.chords.visible,
             _ => false,
@@ -205,6 +209,7 @@ impl DawUi {
 
     pub(super) fn set_chords_visible(&mut self, visible: bool) {
         match self.view_mode {
+            #[cfg(test)]
             ViewMode::Edit => self.editor_effects.chords = visible,
             ViewMode::Timeline => self.chords.visible = visible,
             _ => {}
@@ -232,7 +237,7 @@ impl DawUi {
                 })
                 .map(EffectTarget::Track);
         }
-        if self.view_mode == ViewMode::Edit {
+        if self.view_mode.has_track_overview() {
             return self
                 .editor_track()
                 .map(|track| EffectTarget::Track(track.id));
@@ -329,6 +334,7 @@ impl DawUi {
         let minimum_content = match self.view_mode {
             ViewMode::Instrument => toolbars::HEIGHT,
             ViewMode::Timeline => RULER_HEIGHT + self.track_row_height() + SCROLLBAR_HEIGHT,
+            #[cfg(test)]
             ViewMode::Edit => midi_editor::MIN_HEIGHT - ROW_HEIGHT + self.track_row_height(),
             ViewMode::Mixer => mixer::MIN_HEIGHT,
         };
@@ -591,6 +597,7 @@ impl DawUi {
                                 self.instrument_workspace(ui);
                             }
                             ViewMode::Timeline => timeline_drop = self.timeline_workspace(ui),
+                            #[cfg(test)]
                             ViewMode::Edit => self.edit_view(ui),
                             ViewMode::Mixer => self.mixer(ui),
                         },

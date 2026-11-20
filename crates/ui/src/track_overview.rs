@@ -52,6 +52,7 @@ impl DawUi {
             self.midi_editor.active_track = None;
         }
     }
+    #[cfg(test)]
     pub(super) fn track_overview_ruler(&mut self, ui: &mut egui::Ui) {
         let row = rows::centered(ui, RULER_HEIGHT, |ui| {
             ui.allocate_exact_size(Vec2::new(LABEL_WIDTH, RULER_HEIGHT), Sense::hover());
@@ -86,6 +87,7 @@ impl DawUi {
             ),
         )
     }
+    #[cfg(test)]
     pub(super) fn track_overview_strip(
         &mut self,
         ui: &mut egui::Ui,
@@ -177,6 +179,7 @@ impl DawUi {
         self.editor_clip_marquee(ui, &lane_input, lane, track.id);
     }
 
+    #[cfg(test)]
     pub(super) fn paint_track_overview_playhead(&self, painter: &egui::Painter, rect: Rect) {
         let x =
             self.project_playhead_x(rect.left(), self.midi_editor.scroll, self.midi_editor.zoom);

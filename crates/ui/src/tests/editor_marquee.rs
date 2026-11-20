@@ -150,7 +150,7 @@ fn editor_marquee_in_midi_header_strip_selects_clips_without_notes() {
     app.session.project.tracks[0]
         .clips
         .extend([second.clone(), third]);
-    app.open_clip_editor(first, track, &ctx);
+    app.open_overview_fixture(first, track, &ctx);
     app.midi_editor.content.zoom = 100.0;
     app.midi_editor.content.scroll = 0.0;
     app.retain_content_view();

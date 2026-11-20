@@ -4,6 +4,7 @@ use daw_core::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, TrackKind};
 use crate::track_overview::LABEL_WIDTH as KEY_WIDTH;
 const NOTE_HEIGHT: f32 = 18.0;
 pub(super) const LOWER_MIN_HEIGHT: f32 = RULER_HEIGHT + toolbars::HEIGHT + 22.0 + 2.0 * NOTE_HEIGHT;
+#[cfg(test)]
 pub(super) const MIN_HEIGHT: f32 = 2.0 * RULER_HEIGHT + ROW_HEIGHT + toolbars::HEIGHT + NOTE_HEIGHT;
 pub(super) use crate::panels::UNIT_STRIP_WIDTH;
 #[derive(Clone, Copy)]
@@ -398,12 +399,33 @@ impl DawUi {
         self.add_midi_pattern(track.id, start, ui.ctx());
     }
     pub(super) fn open_clip_editor(&mut self, clip: Id, track: Id, ctx: &egui::Context) {
+        self.set_view_mode(ViewMode::Timeline, ctx);
+        if self.view_mode != ViewMode::Timeline {
+            return;
+        }
+        if !self.timeline_editor_visible() {
+            self.set_timeline_editor_visible(true);
+        }
         self.select_clip(clip, track, false);
         self.midi_editor.delete_clips = true;
-        if !self.timeline_editor_visible() {
+        self.fit_editor_clip();
+        ctx.request_repaint();
+    }
+
+    pub(super) fn fit_editor_clip(&mut self) {
+        self.midi_editor.content.fitted = true;
+        self.midi_editor.content.retain_on_selection = false;
+    }
+
+    #[cfg(test)]
+    pub(super) fn open_overview_fixture(&mut self, clip: Id, track: Id, ctx: &egui::Context) {
+        self.select_clip(clip, track, false);
+        self.midi_editor.delete_clips = true;
+        if !self.view_mode.has_track_overview() {
             self.set_view_mode(ViewMode::Edit, ctx);
         }
     }
+    #[cfg(test)]
     pub(super) fn edit_view(&mut self, ui: &mut egui::Ui) {
         let bounds = ui.available_rect_before_wrap();
         self.midi_editor_panel(ui, bounds, true);
@@ -457,6 +479,7 @@ impl DawUi {
         self.midi_editor.content_active = false;
     }
 
+    #[cfg(test)]
     fn edit_canvas(&mut self, ui: &mut egui::Ui, editor_bounds: Rect) -> Option<Rect> {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         self.update_editor_note_gestures(ui);

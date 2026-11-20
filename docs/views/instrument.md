@@ -5,7 +5,7 @@ MIDI tracks have an **R** button in its own group after M/S on the same row. Ena
 The left toolbar lists **Tracks**, **Instrument components**, and **Effects**. Instrument components opens by default. Its button shows a keyboard with a music note.
 The bottom **Effects lane** toggle shares its open or closed state with the other views.
 
-An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline, Instrument, Editor or Mixer to add effects.
+An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline, Instrument or Mixer to add effects.
 
 ## Instrument tabs
 

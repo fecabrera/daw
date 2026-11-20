@@ -22,7 +22,7 @@ fn fixture(midi: bool) -> (DawUi, egui::Context, Id, Id, Id) {
     let second_id = second.id;
     app.session.project.tracks[0].clips.push(second);
     let ctx = context();
-    app.open_clip_editor(first_id, track, &ctx);
+    app.open_overview_fixture(first_id, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     (app, ctx, track, first_id, second_id)
@@ -98,6 +98,73 @@ fn editor_and_timeline_scrollbars_use_standard_theme_handles_without_clipping() 
                         "standard hovered scrollbar handle must remain fully visible in {band:?} (MIDI: {midi}, view: {view:?})");
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn timeline_double_click_opens_and_fits_audio_midi_and_beat() {
+    for kind in [
+        daw_core::TrackKind::Audio,
+        daw_core::TrackKind::Midi,
+        daw_core::TrackKind::Beat,
+    ] {
+        let (mut app, track, clip) = match kind {
+            daw_core::TrackKind::Audio => {
+                let (app, track) = super::fixture();
+                let clip = app.session.project.tracks[0].clips[0].id;
+                (app, track, clip)
+            }
+            daw_core::TrackKind::Midi => {
+                let mut app = DawUi::default();
+                let track = app.session.project.add_midi_track().unwrap();
+                let clip = app.session.project.add_midi_pattern(track, 0).unwrap();
+                (app, track, clip)
+            }
+            _ => {
+                let mut app = DawUi::default();
+                let track = app.session.project.add_beat_track().unwrap();
+                let clip = app.session.project.add_beat_pattern(track, 0).unwrap();
+                // The source editor fits the full pattern even if the clip is trimmed.
+                app.session.project.tracks[0].clips[0].length_frames /= 2;
+                (app, track, clip)
+            }
+        };
+        let ctx = context();
+        let project = app.session.project.clone();
+        let clip_data = &project.tracks[0].clips[0];
+        let duration = if kind == daw_core::TrackKind::Beat {
+            let pattern = &project.assets[0].beat_pattern.as_ref().unwrap().pattern;
+            project.seconds(project.midi_frame(pattern.length_ticks()))
+        } else {
+            project.seconds(clip_data.length_frames)
+        };
+        frame(&mut app, &ctx, vec![]);
+        let view = (app.zoom, app.scroll);
+        for attempt in 0..2 {
+            assert_eq!(app.timeline_editor_visible(), attempt > 0);
+            let lane = app.lane_bounds[&track];
+            let block = app
+                .clip_block(lane, clip_data, clip_data.start_frame)
+                .intersect(lane);
+            let point = Pos2::new(block.center().x, block.top() + 9.0);
+            super::midi::double_click_unit_header(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(app.view_mode, ViewMode::Timeline);
+            assert!(app.timeline_editor_visible());
+            assert!(!app.effects_lane_visible());
+            assert_eq!(app.selected_clip, Some(clip));
+            let content = &app.midi_editor.content;
+            assert!(content.fitted);
+            assert_eq!(content.scroll, content.start);
+            assert!(
+                (f64::from(content.zoom) * duration - f64::from(content.ruler.width())).abs() < 0.1
+            );
+            assert_eq!((app.zoom, app.scroll), view);
+            assert_eq!(app.session.project, project);
+            assert!(!app.dirty);
+            app.midi_editor.content.fitted = false;
+            app.midi_editor.content.zoom *= 2.0;
         }
     }
 }

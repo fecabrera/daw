@@ -136,7 +136,7 @@ impl DawUi {
         if !gesture.active && crate::drag::crossed_threshold(ui, gesture.origin) {
             gesture.active = true;
             if let Some(parent) = gesture.row.beat {
-                if self.view_mode == ViewMode::Edit {
+                if self.view_mode.has_track_overview() {
                     if self.editor_track().is_none_or(|track| track.id != parent) {
                         self.select_editor_track(parent);
                     }

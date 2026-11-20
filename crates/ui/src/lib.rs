@@ -935,6 +935,7 @@ pub struct DawUi {
     metronome_enabled: bool,
     timeline_catalog_visible: bool,
     instrument_effects_catalog_visible: bool,
+    #[cfg(test)]
     editor_effects: effects_panel::Visibility,
     mixer_effects: effects_panel::Visibility,
     clip_settings_visible: bool,
@@ -1097,6 +1098,7 @@ impl Default for DawUi {
             instrument_catalog_bounds: Default::default(),
             timeline_catalog_visible: true,
             instrument_effects_catalog_visible: false,
+            #[cfg(test)]
             editor_effects: Default::default(),
             mixer_effects: Default::default(),
             clip_settings_visible: false,
@@ -2987,12 +2989,9 @@ impl DawUi {
             self.collection_focus = ctx.memory(|m| m.focused());
         }
         // egui may release text focus at frame start when Escape is pressed.
-        self.selection_text_focus = ctx.memory(|memory| memory.focused()).filter(|_| {
-            matches!(
-                self.view_mode,
-                ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit | ViewMode::Mixer
-            ) && ctx.text_edit_focused()
-        });
+        self.selection_text_focus = ctx
+            .memory(|memory| memory.focused())
+            .filter(|_| ctx.text_edit_focused());
     }
     fn file_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);
@@ -3683,8 +3682,9 @@ impl DawUi {
             ui,
             rail,
             timeline_toolbar::Catalogs {
-                tracks: matches!(self.view_mode, ViewMode::Instrument | ViewMode::Edit)
-                    .then_some(self.tracks_panel_visible()),
+                tracks: (self.view_mode == ViewMode::Instrument
+                    || self.view_mode.has_track_overview())
+                .then_some(self.tracks_panel_visible()),
                 effects: self.effects_catalog_visible(),
                 components: (self.view_mode == ViewMode::Instrument)
                     .then_some(self.instrument_catalog_visible),

@@ -17,6 +17,42 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Mixer view shortcut — 2026-11-20
+
+- The numbered-view tests verify that Command+3 and Ctrl+3 select Mixer with
+  exact modifiers. View menu tests verify both shortcut labels.
+- Strict workspace Clippy, formatting, changed Markdown file links, and
+  `git diff --check` passed. The signed macOS debug bundle rebuilt and passed
+  signature verification. Shortcut interaction was checked in egui.
+- Debug and release workspace runs each passed 3,650 tests with 22 ignored.
+  Both commands excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
+## Timeline-only clip editing — 2026-11-20
+
+- The Timeline double-click test opens the lower editor from a closed pane and
+  refits from manual zoom for audio, MIDI, and beat clips. It checks that audio
+  and MIDI fit their clip range, beat fits its full source despite trimming, and
+  the arrangement view and project data retain their values.
+- Clip menu tests verify that **Edit clip** opens Timeline. View menu and
+  shortcut tests check the available Timeline, Instrument, and Mixer modes.
+  The old single-track overview remains available as a unit-test fixture and
+  is excluded from the desktop build.
+- Strict workspace Clippy, formatting, and `git diff --check` passed. The signed
+  macOS debug bundle passed the native Save and Export smoke test. Clip gestures
+  were exercised through egui events.
+- Debug and release workspace runs each passed 3,650 tests with 22 ignored.
+  Both commands excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
 ## Flush Timeline editor divider — 2026-11-20
 
 - The Timeline editor test verifies a one-point divider at the pane boundary,

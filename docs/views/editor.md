@@ -1,13 +1,11 @@
-# Editor
+# Timeline editor
 
-You can also open the lower editor below the arrangement with
-[Timeline Editor](timeline.md#lower-editor).
+Double-click an audio, MIDI, or beat clip in Timeline to open the editor pane
+and fit the clip. For beat clips, the step grid fits the full source pattern.
+Use [Timeline Editor](timeline.md#lower-editor) on the left toolbar to show or
+hide the pane.
 
 MIDI tracks have an **R** button in its own group after M/S on the same row. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
-
-The left toolbar provides **Tracks**, **Effects**, **Chords**, and the bottom **Effects lane** toggle. Editor has no Clip settings toolbar button; its existing track and options column stays visible. The Effects lane starts open and shares its visibility with the other views. Editor's catalogs start closed and remember their own visibility. Tracks, Effects and Chords share the catalog space; opening one closes the others. Use Tracks to browse audio, MIDI and beat tracks in project order, with expandable groups and the same keyboard navigation as the [Instrument track list](instrument.md#project-tracks). Selecting a project track opens its earliest clip; an empty track clears clip selection. Use the Tracks Plus menu or right-click blank panel space to create an audio, MIDI or beat track or an empty group. The new empty track becomes the editing target. With a beat displayed, use **Add subtrack** in Plus or the Track menubar. A beat parent’s context menu adds directly to that beat. A group’s context menu adds audio, MIDI or beat tracks and nested groups inside that group. Beat parents expand to show subtracks. Selecting one targets its instrument while keeping the current pattern when its beat parent is already open. The panel shares Instrument’s compact M/S controls, track/group renaming and drag behavior. Double-click a track or group name, or use its row’s Rename menu. Enter saves; Escape or moving focus elsewhere cancels. Subtracks can be reordered only within their original beat track.
-
-Select the displayed track to work with its effects. The Effects catalog and lane use the same controls as Timeline. Open Chords to browse, audition or add MIDI chords; drag them onto the track overview using its zoom and scroll.
 
 For beat tracks, the lower editor shows the [beat step grid](beat-editor.md) and shared subtrack headers.
 
@@ -35,7 +33,7 @@ the beat editor, it first clears selected subtracks; press it again to deselect 
 
 1. Add a MIDI track from the Track menu.
 2. Double-click empty MIDI lane space to create a one-beat pattern.
-3. Double-click the clip to open Editor.
+3. Double-click the clip to open and fit it in the Timeline editor.
 4. Hold Command on macOS or Ctrl on Windows/Linux and drag in the piano roll to draw a note.
 5. Drag a note body to move it or an edge to change its length. Double-click a note to delete it.
 
@@ -64,7 +62,7 @@ or loss of window focus cancels the selection and restores the previous group.
 Dragging a clip still moves it; dragging in the piano-roll note area still selects
 notes. The overview and lower pane keep their own zoom and scroll.
 
-Timeline and Editor offer the same clip selection, time-range selection, copy/paste, split, move, trim, loop, and stretch actions. Delete or Backspace removes all selected clips when clip editing is active. Note and beat-step editing keep Delete in their own pane. Click a clip header to switch back to clip deletion; selecting notes gives note deletion priority. A selected time range takes precedence and removes only that range. Clip deletion supports Undo and keeps source media. Text fields, active gestures, dialogs and unfocused windows retain their existing keyboard protection. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Editor's clip moves keep their track assignments. Shift bypasses grid snapping.
+Use the Timeline arrangement for time-range selection. Both the arrangement and the editor support clip selection, copy and paste, split, move, trim, loop, and stretch. Delete or Backspace removes all selected clips when clip editing is active. Note and beat-step editing keep Delete in their own pane. Click a clip header to switch back to clip deletion; selecting notes gives note deletion priority. A selected time range takes precedence and removes only that range. Clip deletion supports Undo and keeps source media. Text fields, active gestures, dialogs and unfocused windows retain their existing keyboard protection. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Clip moves inside the editor keep their track assignments. Shift bypasses grid snapping.
 
 To join MIDI clips with or without gaps, select them and choose **Merge** from the **Clip**
 menu or a selected clip’s context menu. Press **Command+J** on macOS or **Ctrl+J**
@@ -75,7 +73,7 @@ with **Merge**, using the same menus and shortcut.
 
 ## Track and scale controls
 
-The left panel stays visible while you scroll the piano roll. Its track header is beside the clip strip and uses the same selected-header background as Timeline. The options section below it aligns with the lower editor toolbar. Both editor panes use the same floating horizontal scrollbar as the effects lane. It appears over the content and does not reduce the editing area. Hover near the bottom of a pane to reveal and expand its scrollbar. The track name uses the same label and icon as Timeline. Double-click its text to rename the track. Use the Tracks panel to switch tracks. In the two-row layout, the label fills the first row from the track icon to the gap before the meters. With no selected track, the editor stays blank below the ruler. Mute, Solo, Gain, Pan, and the stereo meters work as they do in Timeline. Each channel shows its shared held-peak marker, which remains visible through silence. Click either rail or the gap between them to reset both held peaks and the clipping warning. Gain and Pan use the same compact knobs as track and layer headers, without text-entry fields. With two rows, Mute and Solo sit at the left of the second row; Pan then Gain sit at the right, immediately before the meters. Level meter rails align with the top and bottom padding of the other header controls. The track overview always uses the regular two-row layout, independently of Timeline’s track size. Hover or drag a knob to see its value.
+The options panel stays visible beside the piano roll while you scroll. Use the Timeline track headers to select, rename, and mix tracks. The editor and the arrangement each have a horizontal scrollbar. Hover near the bottom of a pane to reveal its scrollbar.
 
 For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to **Off**, which disables Scale and Snap to scale. Select a root to enable those controls. Choose a scale to dim the piano keys and unselected notes outside it. Enable **Snap to scale** to constrain newly drawn notes and pitch moves. Major is the initial scale and snapping starts off. Returning Root to Off removes the dimming and bypasses snapping; it retains your scale and snapping choices.
 
@@ -100,7 +98,7 @@ Previews use velocity 100 and sustain while the mouse button is held. Releasing 
 
 ## Editor zoom and scroll
 
-The track overview and lower editor have independent horizontal viewports. The playback toolbar’s zoom control and the scrollbar below the overview control the overview. **Fit all clips**, immediately left of that zoom control, shows all clips on the displayed track, including gaps between them. It leaves the lower editor’s view unchanged and is disabled when the track has no clips. The **Fit clip** button (outward arrows between two vertical edges), the zoom control immediately to its right above the lower ruler, and the bottom scrollbar control the waveform or piano roll. Pinch or scroll horizontally over the pane you want to change. The selected clip initially fills the lower editor width. Fit clip restores that view; while fitted, resizing the window keeps the clip fitted. For beat tracks, the lower fit/zoom/scroll controls apply to the full source pattern rather than the clip’s visible playback range.
+The Timeline arrangement and lower editor have independent horizontal viewports. The playback toolbar’s zoom control and the scrollbar below the arrangement control the arrangement. **Fit all clips**, immediately left of that zoom control, shows all clips in the arrangement, including gaps between them. It leaves the lower editor’s view unchanged and is disabled when the project has no clips. The **Fit clip** button (outward arrows between two vertical edges), the zoom control immediately to its right above the lower ruler, and the bottom scrollbar control the waveform or piano roll. Pinch or scroll horizontally over the pane you want to change. The selected clip initially fills the lower editor width. Fit clip restores that view; while fitted, resizing the window keeps the clip fitted. For beat tracks, the lower fit/zoom/scroll controls apply to the full source pattern rather than the clip’s visible playback range.
 
 Zoom out in either audio or MIDI content to see other clips on that track. MIDI note selection and group edits across clips keep the working viewport. Single-click a clip in the overview to select it and scroll the lower pane to its start while keeping the current zoom. Double-click it to select and fit the clip. Both rulers control the same project loop. In either ruler’s upper band, drag the loop body to move it, drag an edge to resize it, or drag empty space to select a new range. Click the range to turn looping on or off. Hold Shift to bypass snapping. Escape or loss of window focus cancels a drag. The lower band positions the playhead. The lower ruler uses its own zoom and scroll, and loop gestures keep both viewports unchanged. Zoom, scroll, and Fit clip do not modify the project. Seeking retains the overview ruler’s saved-navigation behavior.
 

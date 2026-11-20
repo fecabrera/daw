@@ -478,7 +478,7 @@ fn pending_audio_transpose_control_is_disabled_but_gain_remains_editable() {
         let ctx = context();
         app.select_clip(audio_clip, track, false);
         if editor {
-            app.open_clip_editor(audio_clip, track, &ctx);
+            app.open_overview_fixture(audio_clip, track, &ctx);
         } else {
             app.clip_settings_visible = true;
         }
@@ -529,7 +529,7 @@ fn pending_modifier_stretches_preserve_project_history_and_selection_in_both_vie
                 let ctx = context();
                 app.select_clip(audio_clip, audio_track, false);
                 if editor {
-                    app.open_clip_editor(audio_clip, audio_track, &ctx);
+                    app.open_overview_fixture(audio_clip, audio_track, &ctx);
                     app.midi_editor.zoom = 120.0;
                     app.midi_editor.scroll = 0.0;
                 } else {

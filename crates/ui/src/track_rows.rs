@@ -138,7 +138,7 @@ impl DawUi {
         self.timeline_track_size < 2.0
     }
     pub(super) fn track_row_height(&self) -> f32 {
-        if self.view_mode == mixer::ViewMode::Edit {
+        if self.view_mode.has_track_overview() {
             ROW_HEIGHT
         } else if self.view_mode == mixer::ViewMode::Timeline {
             self.timeline_track_size * knobs::SIZE + 14.0

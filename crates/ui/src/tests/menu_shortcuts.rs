@@ -76,7 +76,7 @@ fn all_menus_show_command_symbol_on_mac_and_ctrl_on_windows_and_linux() {
                             "File" => &["⌘N", "⌘O", "⌘S", "Shift+⌘S", "Shift+⌘E", "⌘W", "⌘,"],
                             "Edit" => &["⌘Z", "Shift+⌘Z", "⌘C", "⌘V"],
                             "Clip" => &["Shift+⌘I", "⌘T"],
-                            "View" => &["⌘1", "⌘2", "⌘3", "⌘4"],
+                            "View" => &["⌘1", "⌘2", "⌘3"],
                             _ => &["⌘R"],
                         };
                         for label in expected {
@@ -88,7 +88,7 @@ fn all_menus_show_command_symbol_on_mac_and_ctrl_on_windows_and_linux() {
                             "File" => &["Ctrl+N", "Ctrl+Shift+S"],
                             "Edit" => &["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+C", "Ctrl+V"],
                             "Clip" => &["Ctrl+Shift+I", "Ctrl+T"],
-                            "View" => &["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4"],
+                            "View" => &["Ctrl+1", "Ctrl+2", "Ctrl+3"],
                             _ => &["Ctrl+R"],
                         };
                         for label in expected {

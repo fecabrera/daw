@@ -1134,7 +1134,7 @@ fn stretch_modifier_bypasses_fade_handles_at_clip_edges_in_both_views() {
             let clip = app.session.project.tracks[0].clips[0].clone();
             let ctx = context();
             if editor {
-                app.open_clip_editor(clip.id, track, &ctx);
+                app.open_overview_fixture(clip.id, track, &ctx);
             }
             frame(&mut app, &ctx, vec![]);
             frame(&mut app, &ctx, vec![]);

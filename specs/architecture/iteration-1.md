@@ -640,7 +640,7 @@ Save `master.effects` and `master.effects_compact`, with empty/false legacy defa
 
 ## Numbered view shortcuts — 2026-10-14
 
-Command+1 selects Timeline, Command+2 Instrument, Command+3 Editor, and Command+4 Mixer on macOS. Windows/Linux use Ctrl with the same numbers. Centralize the bindings in `ViewMode::shortcut`, show them beside each egui View menu item with the shared shortcut text/font helper, and register the Command key equivalents in the native macOS View menu. Retain the single active-view checkmark.
+Command+1 selects Timeline, Command+2 selects Instrument, and Command+3 selects Mixer on macOS. Windows and Linux use Ctrl with the same numbers. Centralize the bindings in `ViewMode::shortcut`, show them beside each egui View menu item with the shared shortcut text/font helper, and register the Command key equivalents in the native macOS View menu. Retain the single active-view checkmark.
 
 Dispatch through the existing `set_view_mode` and `view_switch_enabled` guards. Accept exact modifiers, ignore key repeats, and guard jobs, dialogs, active gestures, disabled UI, and window focus. Preserve project data, track/clip selection, viewport state, and existing cancellation of uncommitted drafts when switching. Native menus own their key equivalents; suppress forwarded duplicate presses.
 

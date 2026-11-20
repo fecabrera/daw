@@ -7285,7 +7285,7 @@ fn editor_effect_delete_preserves_selected_midi_notes_and_clip_data() {
         .effects
         .push(daw_core::EffectInstance::equalizer());
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     app.set_effects_lane_visible(true);
     frame(&mut app, &ctx, vec![]);
     let assets = app.session.project.assets.clone();

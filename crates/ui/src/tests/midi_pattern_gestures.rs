@@ -22,7 +22,7 @@ fn fixture() -> (DawUi, egui::Context, Id) {
         .unwrap();
     app.session.project.tracks[0].clips[0].length_frames = 96_000;
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     app.midi_editor.content.fitted = false;
     app.midi_editor.content.zoom = 150.0;

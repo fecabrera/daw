@@ -27,7 +27,7 @@ impl DawUi {
     }
 
     pub(super) fn active_midi_track(&self) -> Option<Id> {
-        let track = if self.view_mode == ViewMode::Edit {
+        let track = if self.view_mode.has_track_overview() {
             self.editor_track()
         } else {
             self.session

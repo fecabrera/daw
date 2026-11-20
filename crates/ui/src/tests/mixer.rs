@@ -1390,7 +1390,7 @@ fn instrument_empty_states_keep_the_layers_panel_and_disable_add_until_midi_sele
 fn available_views_and_empty_states_support_the_shared_effects_workspace() {
     assert_eq!(
         ViewMode::ALL.map(ViewMode::label),
-        ["Timeline", "Instrument", "Editor", "Mixer"]
+        ["Timeline", "Instrument", "Mixer"]
     );
     let mut app = DawUi::default();
     let ctx = context();
@@ -1487,12 +1487,7 @@ fn numbered_view_shortcuts_switch_with_exact_modifiers_and_preserve_project_stat
         };
         assert_eq!(
             ViewMode::ALL.map(|mode| mode.shortcut().logical_key),
-            [
-                egui::Key::Num1,
-                egui::Key::Num2,
-                egui::Key::Num3,
-                egui::Key::Num4
-            ]
+            [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3]
         );
         let clip = app.session.project.tracks[0].clips[0].id;
         app.select_clip(clip, track, false);

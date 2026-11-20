@@ -38,12 +38,14 @@ pub enum ViewMode {
     #[default]
     Timeline,
     Instrument,
+    // Older interaction tests use the track overview as a fixture.
+    #[cfg(test)]
     Edit,
     Mixer,
 }
 
 impl ViewMode {
-    pub const ALL: [Self; 4] = [Self::Timeline, Self::Instrument, Self::Edit, Self::Mixer];
+    pub const ALL: [Self; 3] = [Self::Timeline, Self::Instrument, Self::Mixer];
 
     pub fn shortcut(self) -> egui::KeyboardShortcut {
         egui::KeyboardShortcut::new(
@@ -51,21 +53,23 @@ impl ViewMode {
             match self {
                 Self::Timeline => egui::Key::Num1,
                 Self::Instrument => egui::Key::Num2,
-                Self::Edit => egui::Key::Num3,
-                Self::Mixer => egui::Key::Num4,
+                Self::Mixer => egui::Key::Num3,
+                #[cfg(test)]
+                Self::Edit => unreachable!("The overview fixture has no view shortcut"),
             },
         )
     }
 
     pub(super) fn has_effects(self) -> bool {
-        matches!(
-            self,
-            Self::Timeline | Self::Instrument | Self::Edit | Self::Mixer
-        )
+        true
     }
 
     pub(super) fn has_track_overview(self) -> bool {
-        self == Self::Edit
+        #[cfg(test)]
+        if self == Self::Edit {
+            return true;
+        }
+        false
     }
 
     pub(super) fn has_clip_lanes(self) -> bool {
@@ -77,6 +81,7 @@ impl ViewMode {
             Self::Timeline => "Timeline",
             Self::Mixer => "Mixer",
             Self::Instrument => "Instrument",
+            #[cfg(test)]
             Self::Edit => "Editor",
         }
     }
@@ -146,7 +151,7 @@ impl DawUi {
         self.cancel_browser_interactions();
         self.cancel_beat_reorder(None);
         self.view_mode = mode;
-        if mode == ViewMode::Edit {
+        if mode.has_track_overview() || self.timeline_editor_visible() {
             self.midi_editor.delete_clips = true;
         }
         if mode != ViewMode::Timeline {

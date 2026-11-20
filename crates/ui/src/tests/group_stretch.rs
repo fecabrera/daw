@@ -769,7 +769,7 @@ fn ordinary_editor_edge_switches_to_stretch_and_back_before_cancellation() {
         let (mut app, tracks, ids) = fixture_with_audio();
         app.session.project.tracks[0].clips[0].source_offset_frame = frames(0.25);
         let ctx = context();
-        app.open_clip_editor(ids[0], tracks[0], &ctx);
+        app.open_overview_fixture(ids[0], tracks[0], &ctx);
         frame(&mut app, &ctx, vec![]);
         let original = app.session.project.tracks[0].clips[0].clone();
         let before = format!("{:?}", app.session.project);

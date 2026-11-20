@@ -2,7 +2,7 @@
 
 Use these guides to arrange audio, build MIDI instruments, and export a mix. For builds, packaging, and platform setup, see the [development guides](development/README.md).
 
-Dropdown and context menus use padded rows and the same corner rounding as standard controls. Unit selectors, including modulation sources, layer submenus and destinations, use smaller text. Their hover background matches unselected view buttons. Selected view and toolbar buttons keep their active background when hovered or pressed. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs and the Instrument/Editor Tracks panel use the same corner rounding, row spacing and inset selection highlights.
+Dropdown and context menus use padded rows and the same corner rounding as standard controls. Unit selectors, including modulation sources, layer submenus and destinations, use smaller text. Their hover background matches unselected view buttons. Selected view and toolbar buttons keep their active background when hovered or pressed. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs and the Instrument Tracks panel use the same corner rounding, row spacing and inset selection highlights.
 
 On Windows and Linux, open the application menu for File, Edit, Clip, Track, Transport and View. Its categories and submenus use the same design as dropdown menus. Keyboard shortcuts appear beside the actions that support them. Unavailable actions appear dimmed.
 
@@ -17,17 +17,20 @@ See [Tooltips and Details](views/tooltips.md) for hover values, actions and diag
 ## Views
 
 Panel titles, including Tracks, Layers and Beat subtracks, use semibold text.
-The Timeline, Instrument, Editor and Mixer view buttons use semibold labels. Dragging a view button does not move the window.
+The Timeline, Instrument and Mixer view buttons use semibold labels. Dragging a view button does not move the window.
 Unit strip footer labels use semibold text, including editable Macro names.
+
+Press Command+1 for Timeline, Command+2 for Instrument, or Command+3 for
+Mixer on macOS. Use Ctrl with the same numbers on Windows and Linux.
 
 - [Timeline](views/timeline.md): browse chords, import, arrange, select, trim, loop, split, and copy clips or a time range, and edit clip settings.
 - [Instrument](views/instrument.md): build layered sounds and add effects.
-- [Editor](views/editor.md): create MIDI patterns, edit notes, and inspect audio clip waveforms.
+- [Timeline editor](views/editor.md): create MIDI patterns, edit notes, and inspect audio clip waveforms.
 - [Mixer](views/mixer.md): balance tracks and Master.
 - [Beat tracks and step editor](views/beat-editor.md): create rhythms and configure independent subtrack instruments.
 
 Use the **View** menu to show or hide Tracks, Components, Effects Catalog, Chords,
-Clip Settings, Effects Lane, Returns and Master. Unavailable panels are greyed out. A
+Clip Settings, Effects Lane, Timeline Editor, Returns and Master. Unavailable panels are greyed out. A
 checkmark shows whether the panel is open in the current view; it updates when
 you switch views or use a toolbar toggle. The panel items sit between the view
 choices and the full-screen command, with a divider on each side. Panels that

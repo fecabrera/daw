@@ -25,14 +25,11 @@ impl DawUi {
             && self
                 .editor_track()
                 .is_some_and(|track| track.kind == daw_core::TrackKind::Beat);
-        if !matches!(
-            self.view_mode,
-            ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit | ViewMode::Mixer
-        ) || !self.selection_escape_available(ctx)
+        if !self.selection_escape_available(ctx)
             || (self.lower_editor_visible() && self.midi_editor.dragging())
             || ctx.text_edit_focused()
             || egui::Popup::is_any_open(ctx)
-            || (matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
+            || (self.view_mode.has_clip_lanes()
                 && (self.clip_settings_visible || self.lower_editor_visible())
                 && (self.clip_settings_draft.is_some()
                     || self.clip_settings_change.is_some()

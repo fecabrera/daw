@@ -5,7 +5,7 @@ Use beat tracks to build rhythms from independently configured instruments. Mixe
 ## Create a beat
 
 1. Choose **Add beat track** from the Track menu, the Tracks panel Plus menu, or its empty-space context menu.
-2. Double-click empty space on that track to create a pattern. Double-click the clip to open Editor.
+2. Double-click empty space on that track to create a pattern. Double-click the clip to open the Timeline editor and fit its full source pattern.
 3. Click the **Plus** button in Editor’s **Beat subtracks** header, or choose **Add subtrack** from the Tracks Plus menu or the Track menubar with a beat selected. You can also right-click the beat parent and choose **Add subtrack**. New subtracks start with an empty source layer.
 4. Switch to Instrument, open **Tracks**, and select the subtrack. Add Oscillator, Sampler or Granulizer to its layer through the shared component catalog. Each subtrack is an instrument; there is no audio/MIDI type choice.
 5. Return to Editor and click steps to enable or disable them. Turn on the headphones button above the step rows to hear each step you enable. Press Play to hear the pattern.
@@ -58,7 +58,7 @@ Pattern edits affect only the active clip and create a new source. Other clips k
 
 Select two or more beat clips on the same track, with or without gaps. Choose **Merge** from
 the **Clip** menu or a selected clip's context menu. Press **Command+J** on macOS
-or **Ctrl+J** on Windows and Linux. This works in Timeline and Editor.
+or **Ctrl+J** on Windows and Linux. Use this shortcut in Timeline.
 
 Gaps remain silent and later hits keep their timeline positions. Select any
 intervening clips too: Merge cannot cover an unselected clip. Gaps count toward

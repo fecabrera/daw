@@ -46,10 +46,10 @@ impl ViewPanel {
 
     pub fn available_in(self, view: ViewMode) -> bool {
         match self {
-            Self::Tracks => matches!(view, ViewMode::Instrument | ViewMode::Edit),
+            Self::Tracks => view == ViewMode::Instrument || view.has_track_overview(),
             Self::Components => view == ViewMode::Instrument,
             Self::EffectsCatalog | Self::EffectsLane => true,
-            Self::Chords => matches!(view, ViewMode::Timeline | ViewMode::Edit),
+            Self::Chords => view.has_clip_lanes(),
             Self::ClipSettings | Self::EditorPane => view == ViewMode::Timeline,
             Self::TrackMixer => matches!(view, ViewMode::Timeline | ViewMode::Instrument),
             Self::Returns | Self::Master => matches!(view, ViewMode::Timeline | ViewMode::Mixer),

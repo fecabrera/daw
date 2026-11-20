@@ -103,7 +103,7 @@ fn editor_delete_prefers_notes_and_header_click_returns_to_clip_deletion() {
     for header_first in [false, true] {
         let (mut app, track, clip, note) = super::midi::fixture();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let point = app.midi_editor.note_bounds[&note].center();
         click(&mut app, &ctx, point);

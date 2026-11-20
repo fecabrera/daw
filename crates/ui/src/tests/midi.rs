@@ -2802,7 +2802,7 @@ fn midi_tracks_units_editor_and_clip_copy_use_shared_actions() {
     app.set_view_mode(ViewMode::Timeline, &ctx);
     app.perform_track_action(TrackAction::AddMidi, &ctx);
     assert_eq!(app.session.project.tracks[1].kind, TrackKind::Midi);
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.view_mode, ViewMode::Edit);
     app.perform_clip_action(ClipAction::Copy, &ctx);
@@ -3034,7 +3034,7 @@ fn unit_headers_stay_neutral_and_toolbar_dividers_keep_their_geometry() {
 fn piano_roll_add_move_resize_cancel_and_delete_preserve_source_until_release() {
     let (mut app, track, clip, note) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let source = app.session.project.tracks[0].clips[0].asset_id;
     let original = pattern(&app).clone();
@@ -3364,7 +3364,7 @@ fn double_click_deletes_only_the_edited_patterns_note() {
         })
         .unwrap();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let point = app.midi_editor.note_bounds[&note].center();
     click_note_or_lane(&mut app, &ctx, point);
@@ -3390,7 +3390,7 @@ fn edit_reuses_timeline_ruler_loop_seek_and_toolbar_zoom() {
     frame(&mut app, &ctx, vec![]);
     let timeline_zoom = app.midi_editor.zoom_bounds;
     let timeline_transform = (app.zoom, app.scroll);
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.midi_editor.zoom_bounds, timeline_zoom);
     let ruler = app.midi_editor.ruler_bounds;
@@ -3426,7 +3426,7 @@ fn edit_reuses_timeline_ruler_loop_seek_and_toolbar_zoom() {
 fn pattern_edge_resize_previews_commits_and_cancels_preserving_note_timing() {
     let (mut app, track, clip, _) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let original = format!("{:?}", app.session.project);
     let rect = app.midi_editor.pattern_bounds;
@@ -3507,7 +3507,7 @@ fn piano_roll_note_size_and_snapping_follow_zoom_without_a_subdivision_selector(
         let track = app.session.project.add_midi_track().unwrap();
         let clip = app.session.project.add_midi_pattern(track, 0).unwrap();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         app.midi_editor.content.zoom = zoom;
         app.midi_editor.content.clip = Some(clip);
         app.midi_editor.content.fitted = false;
@@ -3533,7 +3533,7 @@ fn piano_roll_note_size_and_snapping_follow_zoom_without_a_subdivision_selector(
 fn shift_pattern_resize_is_free_and_focus_loss_cancels_the_pending_edit() {
     let (mut app, track, clip, _) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let rect = app.midi_editor.pattern_bounds;
     let start = Pos2::new(rect.right() - 1.0, rect.top() + 24.0);
@@ -3589,7 +3589,7 @@ fn drawing_notes_previews_same_pitch_trims_and_commits_only_on_release() {
         pattern: content,
     });
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let before = format!("{:?}", app.session.project);
     let old_asset = app.session.project.tracks[0].clips[0].asset_id;
@@ -3672,7 +3672,7 @@ fn drawing_notes_previews_same_pitch_trims_and_commits_only_on_release() {
 fn drawing_backwards_keeps_pitch_and_focus_loss_discards_the_preview() {
     let (mut app, track, clip, _) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let grid = app.midi_editor.grid_bounds;
     let y = grid.top() + f32::from(127 - 65u8) * 18.0 + 9.0;
@@ -3732,7 +3732,7 @@ fn pressed_sampler_note_keeps_its_preview_scope_through_insertion_preparation() 
         .with_sampler_file(track, layer_id, &file.0)
         .unwrap();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     app.midi_editor.audition_enabled = true;
     frame(&mut app, &ctx, vec![]);
     let grid = app.midi_editor.grid_bounds;
@@ -3781,7 +3781,7 @@ fn dragged_note_audition_follows_snapped_pitch_without_repeating_same_pitch() {
                     ..Default::default()
                 },
             );
-            app.open_clip_editor(clip, track, &ctx);
+            app.open_overview_fixture(clip, track, &ctx);
             app.midi_editor.audition_enabled = enabled;
             frame(&mut app, &ctx, vec![]);
             let original = app.session.project.clone();
@@ -3859,7 +3859,7 @@ fn timing_drags_and_edge_resizes_do_not_retrigger_note_audition() {
     for resize in [false, true] {
         let (mut app, track, clip, note) = fixture();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         app.midi_editor.audition_enabled = true;
         frame(&mut app, &ctx, vec![]);
         let rect = app.midi_editor.note_bounds[&note];
@@ -3887,7 +3887,7 @@ fn timing_drags_and_edge_resizes_do_not_retrigger_note_audition() {
 fn audition_starts_on_press_and_releases_outside_the_editor_without_retriggering() {
     let (mut app, track, clip, _) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     app.midi_editor.audition_enabled = true;
     frame(&mut app, &ctx, vec![]);
     let grid = app.midi_editor.grid_bounds;
@@ -3938,7 +3938,7 @@ fn editor_headphones_toggle_auditions_keys_existing_notes_and_insertions() {
                 ..Default::default()
             },
         );
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let before = app.session.project.clone();
         let dirty = app.dirty;
@@ -3986,7 +3986,7 @@ fn fast_note_clicks_and_draws_capture_the_press_even_when_release_is_in_the_same
     for (delta, expected_length) in [(0.0, 120), (120.0, 960), (999.0, 3360)] {
         let (mut app, track, clip, _) = fixture();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let grid = app.midi_editor.grid_bounds;
         let start = Pos2::new(
@@ -4058,7 +4058,7 @@ fn edit_shows_only_selected_tracks_patterns_with_shared_geometry_and_contiguous_
                 ..Default::default()
             },
         );
-        app.open_clip_editor(first, track, &ctx);
+        app.open_overview_fixture(first, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let lane = app.midi_editor.track_bounds;
@@ -4128,7 +4128,7 @@ fn editing_an_unselected_pattern_keeps_the_viewport_and_other_source_users() {
         })
         .unwrap();
     let ctx = context();
-    app.open_clip_editor(first, track, &ctx);
+    app.open_overview_fixture(first, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let rect = app.midi_editor.track_note_bounds[&(second.id, note)][0];
     let start = rect.center();
@@ -4195,7 +4195,7 @@ fn looped_trimmed_patterns_show_repetitions_but_only_edit_the_first_cycle() {
     app.session.project.tracks[0].clips[0].length_frames = 120_000;
     app.session.project.validate().unwrap();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let notes = &app.midi_editor.track_note_bounds[&(clip, note)];
     assert_eq!(notes.len(), 3);
@@ -4249,7 +4249,7 @@ fn left_pattern_extension_moves_the_border_keeps_notes_fixed_and_clamps_at_proje
     let (mut app, track, clip, note) = fixture();
     app.session.project.tracks[0].clips[0].start_frame = 48_000;
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     app.midi_editor.scroll = 0.0;
     frame(&mut app, &ctx, vec![]);
@@ -4302,7 +4302,7 @@ fn dense_repeats_at_minimum_zoom_keep_paint_work_bounded() {
     current.length_frames = 48_000 * 600;
     app.session.project.validate().unwrap();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     app.midi_editor.zoom = MIN_ZOOM;
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     assert!(shapes.len() < 2_000);
@@ -4328,7 +4328,7 @@ fn plain_marquee_selects_pitches_without_editing_and_delete_removes_the_group() 
         pattern: content,
     });
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let before = format!("{:?}", app.session.project);
     let dirty = app.dirty;
@@ -4395,7 +4395,7 @@ fn backwards_marquee_spans_pattern_gaps_and_distinguishes_shared_note_ids() {
         })
         .unwrap();
     let ctx = context();
-    app.open_clip_editor(first, track, &ctx);
+    app.open_overview_fixture(first, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let a = app.midi_editor.track_note_bounds[&(first, note)][0];
     let b = app.midi_editor.track_note_bounds[&(second.id, note)][0];
@@ -4458,7 +4458,7 @@ fn marquee_mode_is_latched_and_cancel_restores_the_previous_selection() {
     for lose_focus in [false, true] {
         let (mut app, track, clip, note) = fixture();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let bounds = app.midi_editor.note_bounds[&note];
         click_note_or_lane(&mut app, &ctx, bounds.center());
@@ -4518,7 +4518,7 @@ fn empty_click_clears_selection_without_drawing_and_loop_copies_select_once() {
         phase_frame: 0,
     });
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let copies = app.midi_editor.track_note_bounds[&(clip, note)].clone();
     let start = copies[0].left_top() - Vec2::splat(5.0);
@@ -4622,7 +4622,7 @@ fn modifier_note_drag_previews_stable_copies_and_retains_the_original_source() {
         })
         .unwrap();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let before = format!("{:?}", app.session.project);
     let start = app.midi_editor.note_bounds[&note].center();
@@ -4694,7 +4694,7 @@ fn selected_note_groups_duplicate_and_move_with_shared_time_and_pitch_offsets() 
         pattern: content.clone(),
     });
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let bounds = app.midi_editor.note_bounds[&note].union(app.midi_editor.note_bounds[&second.id]);
     select_note_box(&mut app, &ctx, bounds);
@@ -4790,7 +4790,7 @@ fn note_group_copy_clamps_as_a_group_and_zero_displacement_is_a_no_op() {
         pattern: content.clone(),
     });
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let bounds = app.midi_editor.note_bounds[&note].union(app.midi_editor.note_bounds[&second.id]);
     select_note_box(&mut app, &ctx, bounds);
@@ -4858,7 +4858,7 @@ fn note_copy_modifier_can_change_during_drag_and_shift_bypasses_snapping() {
     for duplicate_on_release in [false, true] {
         let (mut app, track, clip, note) = fixture();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let start = app.midi_editor.note_bounds[&note].center();
         let end = start + Vec2::new(13.0, 0.0);
@@ -4909,7 +4909,7 @@ fn cancelling_a_note_copy_restores_sources_and_selection() {
     for lose_focus in [false, true] {
         let (mut app, track, clip, note) = fixture();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let start = app.midi_editor.note_bounds[&note].center();
         click_note_or_lane(&mut app, &ctx, start);
@@ -4984,7 +4984,7 @@ fn group_note_copy_updates_patterns_once_per_clip_and_preserves_stretched_spacin
         })
         .unwrap();
     let ctx = context();
-    app.open_clip_editor(first, track, &ctx);
+    app.open_overview_fixture(first, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.midi_editor.track_note_bounds[&(first, note)].len(), 2);
     let a = app.midi_editor.track_note_bounds[&(first, note)][0];
@@ -5052,7 +5052,7 @@ fn group_note_copy_updates_patterns_once_per_clip_and_preserves_stretched_spacin
 fn copy_modifier_on_a_note_edge_resizes_without_adding_a_copy() {
     let (mut app, track, clip, note) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let bounds = app.midi_editor.note_bounds[&note];
     let start = Pos2::new(bounds.right() - 2.0, bounds.center().y);
@@ -5086,7 +5086,7 @@ fn copy_modifier_on_a_note_edge_resizes_without_adding_a_copy() {
 fn fast_note_drag_copy_captures_the_press_and_commits_on_release() {
     let (mut app, track, clip, note) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let start = app.midi_editor.note_bounds[&note].center();
     let end = start + Vec2::new(60.0, -18.0);
@@ -5140,7 +5140,7 @@ fn shift_click_toggles_notes_across_patterns_without_deleting_on_a_double_click(
         })
         .unwrap();
     let ctx = context();
-    app.open_clip_editor(first, track, &ctx);
+    app.open_overview_fixture(first, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let before = format!("{:?}", app.session.project);
     let dirty = app.dirty;
@@ -5191,7 +5191,7 @@ fn shift_marquee_toggles_from_its_original_selection_and_retains_notes_outside_t
         pattern: content,
     });
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let a = app.midi_editor.note_bounds[&first];
     let b = app.midi_editor.note_bounds[&second.id];
@@ -5252,7 +5252,7 @@ fn shift_marquee_deduplicates_repetitions_and_cancels_back_to_the_previous_selec
             })
             .unwrap();
         let ctx = context();
-        app.open_clip_editor(first, track, &ctx);
+        app.open_overview_fixture(first, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let a = app.midi_editor.track_note_bounds[&(first, note)][0];
         let b = app.midi_editor.track_note_bounds[&(second.id, note)][0];
@@ -5311,7 +5311,7 @@ fn shift_selected_notes_still_move_as_a_group_with_free_time_adjustment() {
         pattern: content,
     });
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let a = app.midi_editor.note_bounds[&first].center();
     let b = app.midi_editor.note_bounds[&second.id].center();
@@ -5391,7 +5391,7 @@ fn resizing_selected_note_edges_previews_the_group_and_commits_once() {
             })
             .unwrap();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let bounds =
             app.midi_editor.note_bounds[&first].union(app.midi_editor.note_bounds[&second]);
@@ -5459,7 +5459,7 @@ fn group_note_shortening_clamps_at_the_shortest_note_for_both_edges() {
     for left in [false, true] {
         let (mut app, track, clip, first, second) = note_resize_fixture();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let bounds =
             app.midi_editor.note_bounds[&first].union(app.midi_editor.note_bounds[&second]);
@@ -5512,7 +5512,7 @@ fn group_note_expansion_clamps_at_each_pattern_boundary_and_preserves_no_op_sour
             pattern: original.clone(),
         });
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         // Starting a box before tick zero is outside the viewport, so use Shift-click here.
         let a = app.midi_editor.note_bounds[&first].center();
@@ -5570,7 +5570,7 @@ fn group_note_resize_handles_stretch_and_repeats_per_clip_atomically() {
             })
             .unwrap();
         let ctx = context();
-        app.open_clip_editor(first, track, &ctx);
+        app.open_overview_fixture(first, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         // Keep both clips visible instead of relying on a note at the viewport edge.
         app.midi_editor.content.fitted = false;
@@ -5613,7 +5613,7 @@ fn group_note_resize_with_shift_and_copy_modifier_cancels_and_never_duplicates()
         for lose_focus in [false, true] {
             let (mut app, track, clip, first, second) = note_resize_fixture();
             let ctx = context();
-            app.open_clip_editor(clip, track, &ctx);
+            app.open_overview_fixture(clip, track, &ctx);
             frame(&mut app, &ctx, vec![]);
             let bounds =
                 app.midi_editor.note_bounds[&first].union(app.midi_editor.note_bounds[&second]);
@@ -5729,7 +5729,7 @@ fn off_grid_pattern_edges_snap_to_project_grid_after_scroll_and_stretch() {
                 app.session.project.validate().unwrap();
                 let original_clip = app.session.project.tracks[0].clips[0].clone();
                 let ctx = context();
-                app.open_clip_editor(clip, track, &ctx);
+                app.open_overview_fixture(clip, track, &ctx);
                 app.midi_editor.zoom = zoom;
                 app.midi_editor.scroll = 0.025;
                 frame(&mut app, &ctx, vec![]);
@@ -5827,7 +5827,7 @@ fn off_grid_notes_draw_move_and_resize_using_the_project_ruler_grid() {
             let original_clip = current.clone();
             let original_note = pattern(&app).notes[0].clone();
             let ctx = context();
-            app.open_clip_editor(clip, track, &ctx);
+            app.open_overview_fixture(clip, track, &ctx);
             app.midi_editor.content.scroll = 0.025;
             frame(&mut app, &ctx, vec![]);
             let before = format!("{:?}", app.session.project);
@@ -6427,7 +6427,7 @@ fn midi_clip_context_menus_split_and_delete_in_both_views() {
         let (mut app, track, clip, _) = fixture();
         let ctx = context();
         if view == ViewMode::Edit {
-            app.open_clip_editor(clip, track, &ctx);
+            app.open_overview_fixture(clip, track, &ctx);
         }
         frame(&mut app, &ctx, vec![]);
         app.session.project.transport.playhead_frame = 48_000;
@@ -6843,7 +6843,7 @@ fn compact_layer_collapse_is_guarded_and_preserves_independent_unit_states_and_o
 fn scale_options_do_not_retune_existing_notes_and_drawing_uses_the_selected_scale() {
     let (mut app, track, clip, _) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let original = pattern(&app).clone();
     app.dirty = false;
@@ -6903,7 +6903,7 @@ fn scale_snapped_note_moves_keep_group_intervals_and_shift_can_bypass() {
         app.session.project.tracks[0].midi_options.snap = true;
         app.session.project.tracks[0].midi_options.root = Some(0);
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let bounds =
             app.midi_editor.note_bounds[&note].union(app.midi_editor.note_bounds[&second.id]);
@@ -6956,7 +6956,7 @@ fn scale_snapping_keeps_timing_only_moves_resizes_and_cancelled_moves_at_the_ori
     app.session.project.tracks[0].midi_options.snap = true;
     app.session.project.tracks[0].midi_options.root = Some(0);
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let point = app.midi_editor.note_bounds[&note].center();
     let end = point + Vec2::new(60.0, 0.0);
@@ -7044,7 +7044,7 @@ fn editor_panel_retains_full_height_and_shared_track_controls_in_both_themes() {
                 ..Default::default()
             },
         );
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let panel = app.midi_editor.panel_bounds;
         assert_eq!(panel.width(), panels::ControlPanel::WIDTH);
@@ -7080,7 +7080,7 @@ fn editor_panel_retains_full_height_and_shared_track_controls_in_both_themes() {
 fn root_off_disables_scale_controls_and_selecting_a_root_enables_them() {
     let (mut app, track, clip, _) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let before = pattern(&app).clone();
     app.dirty = false;
@@ -7163,7 +7163,7 @@ fn scale_selection_dims_outside_keys_and_notes_in_both_themes_without_retuning()
                 ..Default::default()
             },
         );
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         app.dirty = false;
         // Highlighting is independent from snapping and does not change the source.
@@ -7238,7 +7238,7 @@ fn editor_section_headers_share_panel_dividers_and_audio_options_show_selection_
                 ..Default::default()
             },
         );
-        app.open_clip_editor(clip, midi, &ctx);
+        app.open_overview_fixture(clip, midi, &ctx);
         app.session.project.tracks[0].midi_options.root = Some(9);
         for (track, title, size) in [
             (midi, "MIDI options", Vec2::new(1280.0, 800.0)),
@@ -7330,7 +7330,7 @@ fn per_track_midi_options_mark_dirty_support_history_and_switch_without_inheriti
     app.session.project.tracks[0].midi_options = first_options;
     app.session.project.tracks[1].midi_options = second_options;
     let ctx = context();
-    app.open_clip_editor(clip, first, &ctx);
+    app.open_overview_fixture(clip, first, &ctx);
     frame(&mut app, &ctx, vec![]);
     let source = pattern(&app).clone();
     app.sync_needed = false;
@@ -7390,7 +7390,7 @@ fn drawing_uses_each_selected_tracks_saved_scale_constraints() {
     };
     let ctx = context();
     for (track, clip, expected) in [(first, first_clip, 60), (second, second_clip, 61)] {
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let grid = app.midi_editor.grid_bounds;
         let point = Pos2::new(
@@ -7527,7 +7527,7 @@ fn oscillator_unit_level_occupies_the_last_column_and_edits_only_the_unit_output
 fn live_note_pitch_preview_uses_stable_note_ids_and_cancels_without_an_edit() {
     let (mut app, track, clip, note) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let original = app.session.project.clone();
     let view = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
@@ -7565,7 +7565,7 @@ fn notes_at_pattern_edges_resize_before_clips() {
             pattern: source,
         });
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let original = app.session.project.tracks[0].clips[0].clone();
         let bounds = app.midi_editor.note_bounds[&note];
@@ -7598,7 +7598,7 @@ fn drawing_at_pattern_edges_disables_clip_edge_drags() {
     for (left, distance) in [(true, 0.0), (false, 0.0), (true, 30.0), (false, 30.0)] {
         let (mut app, track, clip, _) = fixture();
         let ctx = context();
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let original = app.session.project.tracks[0].clips[0].clone();
         let header = app.midi_editor.pattern_header_bounds[&clip];
@@ -7763,7 +7763,7 @@ fn scrolled_stretched_midi_repeats_keep_dimmed_colors_and_reject_note_drags() {
                 ..Default::default()
             },
         );
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         app.midi_editor.content.fitted = false;
         app.midi_editor.content.zoom = 80.0;
@@ -7874,7 +7874,7 @@ fn midi_clip_selection_preserves_note_colors_and_selected_notes_match_the_header
                     ..Default::default()
                 },
             );
-            app.open_clip_editor(clip, track, &ctx);
+            app.open_overview_fixture(clip, track, &ctx);
             frame(&mut app, &ctx, vec![]);
             app.midi_editor.content.fitted = false;
             app.midi_editor.content.zoom = 240.0;
@@ -8130,7 +8130,7 @@ fn midi_velocity_slider_updates_selected_patterns_and_undoes_one_drag() {
         })
         .unwrap();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert!(app.midi_editor.velocity_bounds.is_positive());
     let disabled_slider = app.midi_editor.velocity_bounds;
@@ -8229,7 +8229,7 @@ fn midi_velocity_slider_updates_selected_patterns_and_undoes_one_drag() {
 fn deselecting_midi_notes_keeps_options_panel_colors_and_geometry_stable() {
     let (mut app, track, clip, note) = fixture();
     let ctx = context();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let note_center = app.midi_editor.track_note_bounds[&(clip, note)][0].center();
     click_note_or_lane(&mut app, &ctx, note_center);

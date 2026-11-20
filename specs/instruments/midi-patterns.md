@@ -66,33 +66,38 @@ Patterns use the existing clip move, copy/paste, drag duplication, trim, loop, s
 
 ## Editor options panel
 
-Timeline exposes a Timeline Editor toggle above the Effects Lane toggle on its
-left rail. The two panes share the lower workspace slot. The Timeline editor
-starts closed. Switching between panes and resizing are UI state. An active
-Timeline Editor toggle closes the lower pane when pressed again. Other views
-retain their existing Effects Lane behavior.
+Timeline, Instrument, and Mixer are the application views. The
+Timeline Editor toggle and Effects Lane toggle share the lower workspace slot.
+The editor starts closed. The standalone Editor view and its view shortcut
+are removed. This navigation rule supersedes earlier references in this
+specification to the standalone view and its single-track overview.
 
-Reuse the lower Editor renderer, options, viewport, and edit transactions for
-audio, MIDI, and beat tracks. Timeline uses the selected track and the active
-clip on that track. With no supported track selected, prompt for one. Omit the
-standalone overview and track header. Keep Timeline's ruler, scrollbar,
-selection, and file-drop bounds in the upper pane. Lower clip drags retain
-their track and content zoom. When the right Clip settings inspector is open,
-it owns the shared audio clip settings fields. Double-clicking a clip fits it
-in the open Timeline editor and retains Timeline view.
+Double-clicking an audio, MIDI, or beat clip in the arrangement opens the
+Timeline editor, selects the clip, and fits it to the lower canvas. The
+**Edit clip** menu action uses the same path. Fit audio and MIDI clips to their
+visible Timeline range and beat clips to their full source pattern. Keep the
+arrangement's zoom and scroll. An already-open editor refits the clip on
+another double-click.
+
+Use the selected track and the active clip on that track. Share the lower
+renderer, options, viewport, and edit transactions across audio, MIDI, and
+beat tracks. Timeline owns track headers, arrangement selection, and file
+drops. Lower clip drags retain their track and content zoom. When the right
+Clip settings inspector is open, it owns the shared audio clip settings.
+With no supported track selected, the lower pane prompts for one.
 
 Paint a single one-point divider flush with the top of the lower pane. Use an
 invisible six-point hit area inside the pane for primary-pointer resizing.
-Clamp its movement to keep room for
-the upper ruler and track row and the lower editor controls and content.
-Retain the chosen height across pane toggles. Escape, window focus loss, or
-blocked editing cancels the drag and restores the original height.
+Clamp its movement to keep room for the arrangement and lower controls.
+Retain height across pane toggles. Escape, focus loss, or blocked editing
+cancels the drag and restores the original height. Pane visibility, fitting,
+and resizing are workspace state.
 
-Editor has a fixed `ControlPanel::WIDTH` left panel. Its Editor header aligns with the ruler. Below the Editor title, a shared-height track header aligns with the clip strip and contains the track icon/name dropdown, M/S, adjacent Gain/Pan knobs without numeric fields, and stereo meters. Reuse `track_selector.rs`, `mix_controls.rs`, and `meters.rs`; keep mix edits on the existing project-change path. Remove the Editor selector from the playback toolbar. Keep the piano-key gutter between the panel and the note grid; the overview ruler and clip strip share their own viewport. The lower ruler and note grid use the independent editor content viewport. Scroll the options body independently from the piano roll and retain the panel's full-height divider, including with no selected track.
+Overlay horizontal scrollbars within Timeline and the lower editor through
+the shared timeline scrollbar implementation. Paint them after content, and
+keep the content and arrangement viewports independent.
 
-Overlay horizontal scrollbars within Timeline, the Editor overview, and the lower audio/MIDI editor through the shared timeline scrollbar implementation. Do not allocate a scrollbar row or subtract its height from content. The overview and track header end together; the options title and lower editor toolbar start immediately below them with matching top and bottom boundaries, including after window resizing. Use `rows::fixed` for the track header, options title, and lower toolbar so fractional display scaling cannot expand text-bearing rows or shift their borders. Continue both options-title dividers across the lower editor toolbar through the shared pinned-row top border and row-divider bottom border painters. All three panes inherit the effects lane’s standard theme scroll style and default visibility instead of forcing a solid, always-visible scrollbar. Give each floating scroll area enough height to show its hovered handle without clipping. Paint and register scrollbar interaction after content so it stays above clips. Retain scrollbar-only input here because clip canvases own wheel and drag gestures.
-
-Both the Editor title and the options section title use `ControlPanel::header` with a bottom `ControlPanel::row_dividers` separator, matching the other panels. Label the lower section MIDI options for MIDI tracks and Clip options for audio tracks. The audio section calls the shared `clip_settings_body` for Name, read-only Source, Gain, Transpose, and the empty-selection prompt. Reuse Timeline’s validation, group edits, history, and release-only audio preparation; keep only section layout in the Editor adapter. With no selected track, show MIDI options with disabled controls.
+Use `ControlPanel::header` with a bottom `ControlPanel::row_dividers` separator for the options title. Label the lower section MIDI options for MIDI tracks and Clip options for audio tracks. The audio section calls the shared `clip_settings_body` for Name, read-only Source, Gain, Transpose, and the empty-selection prompt. Reuse Timeline’s validation, group edits, history, and release-only audio preparation; keep only section layout in the Editor adapter. With no selected track, show the lower pane’s track-selection prompt.
 
 `midi_editor_panel.rs` owns layout. Core `midi_options.rs` owns `MidiOptions`, `MidiScale`, validation, and input-only scale constraints. Store Root, Scale, and Snap to scale in each MIDI track’s `midi_options` field. Read the active track directly for controls, painting, and note gestures; do not keep an application-wide copy. `Edit::SetMidiOptions` commits options transactionally and rejects missing/non-MIDI targets or roots outside 0–11. Default missing fields through serde, omit an entirely default options block, and reject non-default options on audio/group tracks in project validation. The shared session history includes these saved fields; UI changes preserve track/clip selection and mark the project modified without preparing audio or requesting a renderer update. Keep save/reopen, Save As, Undo/Redo, track duplication, and track switching consistent. Defaults are Root Off, Major, and snapping off. Root Off disables both Scale and Snap to scale, removes scale dimming, and bypasses pitch constraints while retaining the scale and snapping choices. Provide Off plus all 12 chromatic roots plus Chromatic, Major, Natural minor, Harmonic minor, Melodic minor (ascending form), Dorian, Phrygian, Lydian, Mixolydian, Locrian, Major pentatonic, Minor pentatonic, and Blues scales. Disable scale controls without a MIDI track or during a note gesture. Keep the MIDI options and Clip options headings at the regular text size. Use the shared Small text style for the field labels, dropdowns, and checkbox. With a root selected, paint out-of-scale key rows with the background color, their labels with secondary text, and their note fills with secondary grey, including dense-repeat pitch coverage. Keep note selection fills and interactions; highlighting applies even when snapping is off and never changes source pitches. Root Off restores ordinary key/note colors.
 

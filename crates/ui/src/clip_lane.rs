@@ -75,13 +75,17 @@ impl DawUi {
                     .interact_pointer_pos()
                     .is_some_and(|pos| pos.y < block.top() + 22.0));
         if fit_clip {
-            self.open_clip_editor(click_clip.id, track_id, ui.ctx());
             if self.midi_editor.content_active {
-                self.retain_content_view();
+                self.midi_editor.clear_note_selection();
             }
-            self.midi_editor.content.fitted = true;
-            self.midi_editor.content.retain_on_selection = false;
-            ui.ctx().request_repaint();
+            #[cfg(test)]
+            if self.view_mode.has_track_overview() {
+                self.open_overview_fixture(click_clip.id, track_id, ui.ctx());
+                self.fit_editor_clip();
+                ui.ctx().request_repaint();
+                return;
+            }
+            self.open_clip_editor(click_clip.id, track_id, ui.ctx());
         } else if response.clicked() {
             self.select_clip(
                 click_clip.id,

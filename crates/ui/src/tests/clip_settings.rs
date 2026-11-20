@@ -1106,7 +1106,7 @@ fn editor_audio_options_share_timeline_fields_layout_and_empty_selection_prompt(
         let timeline_positions = fields.map(|label| text_pos(&shapes, label).unwrap());
         let before = app.session.project.clone();
         app.dirty = false;
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let editor_title = text_pos(&shapes, "Clip options").unwrap();
         for (label, timeline) in fields.into_iter().zip(timeline_positions) {
@@ -1144,7 +1144,7 @@ fn editor_clip_options_edit_name_and_group_gain_through_shared_history() {
         })
         .unwrap();
     app.history = None;
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let source = app.session.project.assets.clone();
     let name = app.effects_bounds.clip_name;
@@ -1185,7 +1185,7 @@ fn editor_audio_transpose_uses_release_only_worker_publication_and_shared_undo()
     let track = app.session.project.tracks[0].id;
     let asset = app.session.project.tracks[0].clips[0].asset_id;
     let original = app.session.audio[&asset].samples.clone();
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     let point = app.effects_bounds.clip_transpose.center();
@@ -1219,7 +1219,7 @@ fn editor_clip_options_cancel_drafts_and_audio_previews_on_track_or_view_switche
     let track = app.session.project.tracks[0].id;
     let midi = app.session.project.add_midi_track().unwrap();
     app.history = None;
-    app.open_clip_editor(clip, track, &ctx);
+    app.open_overview_fixture(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let before = app.session.project.clone();
     app.dirty = false;
@@ -1235,7 +1235,7 @@ fn editor_clip_options_cancel_drafts_and_audio_previews_on_track_or_view_switche
     assert_eq!(app.session.project, before);
     frame(&mut app, &ctx, vec![]);
     for switch_track in [true, false] {
-        app.open_clip_editor(clip, track, &ctx);
+        app.open_overview_fixture(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
         let point = app.effects_bounds.clip_transpose.center();
         let end = point - Vec2::new(0.0, 12.0);

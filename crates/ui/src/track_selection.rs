@@ -144,12 +144,10 @@ impl DawUi {
             && (action != TrackAction::Ungroup || self.selected_group().is_some())
             && (action != TrackAction::AddSubtrack || self.selected_beat_parent().is_some())
             && (action != TrackAction::AddMidi
-                || matches!(
-                    self.view_mode,
-                    ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit
-                ))
+                || self.view_mode == ViewMode::Instrument
+                || self.view_mode.has_clip_lanes())
             && (action != TrackAction::Duplicate
-                || matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
+                || self.view_mode.has_clip_lanes()
                 || !self.session.project.tracks.iter().any(|track| {
                     self.track_selected(track.id) && track.kind == daw_core::TrackKind::Midi
                 }))
@@ -269,7 +267,7 @@ impl DawUi {
             };
             match result {
                 Ok(id) => {
-                    if self.view_mode == ViewMode::Edit {
+                    if self.view_mode.has_track_overview() {
                         self.select_editor_track(id);
                     } else {
                         self.select_track(id, false);
@@ -425,7 +423,7 @@ impl DawUi {
     }
 
     pub(super) fn selected_beat_parent(&self) -> Option<Id> {
-        let id = if self.view_mode == ViewMode::Edit {
+        let id = if self.view_mode.has_track_overview() {
             self.editor_track().map(|track| track.id)
         } else {
             self.selected_track
@@ -440,7 +438,7 @@ impl DawUi {
         {
             return;
         }
-        if self.view_mode == ViewMode::Edit
+        if self.view_mode.has_track_overview()
             && self.editor_track().is_none_or(|track| track.id != parent)
         {
             self.select_editor_track(parent);
@@ -471,7 +469,7 @@ impl DawUi {
         self.ensure_history();
         match self.session.project.add_track_in_group(group, kind) {
             Ok(id) => {
-                if self.view_mode == ViewMode::Edit {
+                if self.view_mode.has_track_overview() {
                     self.select_editor_track(id);
                 } else {
                     self.select_track(id, false);
