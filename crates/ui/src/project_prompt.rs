@@ -11,6 +11,7 @@ pub enum ProjectPromptKind {
     Export,
     ReplaceExport,
     ExportStatus,
+    StretchUpgrade,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -68,10 +69,13 @@ impl DawUi {
             Some(ProjectPromptKind::Export)
         } else if self.overwrite.is_some() {
             Some(ProjectPromptKind::ReplaceExport)
+        } else if self.export_status.is_some() {
+            Some(ProjectPromptKind::ExportStatus)
         } else {
-            self.export_status
+            self.background_media
+                .stretch_upgrade_notice
                 .as_ref()
-                .map(|_| ProjectPromptKind::ExportStatus)
+                .map(|_| ProjectPromptKind::StretchUpgrade)
         }
     }
 
@@ -164,6 +168,9 @@ impl DawUi {
             }
             Some(ProjectPromptKind::Export) => self.export_dialog = None,
             Some(ProjectPromptKind::ReplaceExport) => self.overwrite = None,
+            Some(ProjectPromptKind::StretchUpgrade) => {
+                self.background_media.stretch_upgrade_notice = None
+            }
             Some(ProjectPromptKind::ExportStatus)
                 if self
                     .export_status
@@ -297,10 +304,22 @@ impl DawUi {
             {
                 self.export(path, true, self.overwrite_settings);
             }
-        } else if let Some(status) = &self.export_status
-            && status.show(ctx, surface)
-        {
-            self.export_status = None;
+        } else if let Some(status) = &self.export_status {
+            if status.show(ctx, surface) {
+                self.export_status = None;
+            }
+        } else if let Some(notice) = &self.background_media.stretch_upgrade_notice {
+            let dialog = dialogs::Dialog::new("Time stretch upgrade", notice, &[("OK", ())]);
+            let acknowledged = match surface {
+                Some(ui) => dialog.body(ui, |_| {}),
+                None => dialog.show(ctx),
+            };
+            if acknowledged.is_some()
+                || ctx
+                    .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+            {
+                self.background_media.stretch_upgrade_notice = None;
+            }
         }
     }
 }

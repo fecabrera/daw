@@ -14586,3 +14586,18 @@ Undo, re-bounce, Merge and save/reopen.
 - `cargo fmt --all --check`, `git diff --check` and documentation link checks passed.
 - `python3 tools/check_cli.py` passed.
 - Native UI, audio-device, listening, Windows and Linux checks were not run.
+
+## Native time-stretch upgrade notice — 2026-11-20
+
+The desktop presents the Integrated revision upgrade in the shared native
+prompt after background audio preparation. Other prompts retain priority.
+The revision-4 fixture verifies that the notice stays out of the status bar,
+appears after preparation and dismissal of an open Export prompt, and can be
+closed without changing the saved manifest or dirty state.
+
+`cargo test --offline --locked -p daw-ui stretch_upgrade_opens` passed.
+The debug and release workspace suites passed with the known native Audio
+Unit registration test skipped.
+Strict workspace Clippy, formatting, and the CLI smoke check passed.
+The local macOS debug app was rebuilt and its signature verified.
+The notice interaction was checked with automated egui input.

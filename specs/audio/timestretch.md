@@ -89,6 +89,12 @@ The revision-3 FFT workspace fits its original conservative 8 MiB allowance, exc
 
 `Session::open` upgrades saved `timestretch` revisions 2, 3, 4, 5 and 6 to current revision 7 before validation and preparation. Rebuild complete clip and Sampler pitch buffers from source through normal worker opening; never relabel old buffers. Warn that sound can change. Save persists revision 7; opening does not write the source manifest. Unknown revisions, including 1 and future revisions, still fail. Rubber Band remains unchanged and the default. Cache matches require the current engine identity; failure/cancellation never publishes a partial session.
 
+The desktop takes the revision upgrade notice from the opened document and
+shows it in the shared native **Time stretch upgrade** dialog after background
+preparation succeeds. Queue it behind any active prompt, and discard it when
+the project is replaced. OK, Escape, or the title-bar close button dismiss it.
+Headless opening retains the warning in the session report.
+
 ### Drum-aware bass selection — revision 4
 
 The bass-energy condition alone also selects long windows for kick-heavy percussion. At zero transpose and compression, the expansion-only attack map does not run, so the long window can spread hits. Do not infer that bass-dominated material is purely tonal or bypass the existing drum/bass regression gates.

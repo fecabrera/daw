@@ -48,6 +48,77 @@ fn wait_audio(app: &mut DawUi) {
     }
     assert!(app.media_ready(), "{:?}", app.background_media.error);
 }
+
+#[test]
+fn stretch_upgrade_opens_a_native_notice_after_preparation_and_other_prompts() {
+    struct Folder(std::path::PathBuf);
+    impl Drop for Folder {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let folder = Folder(std::env::temp_dir().join(format!("daw-upgrade-notice-{}", Id::new_v4())));
+    let file = TestWav::new_frames(4096);
+    let mut session = Session::default();
+    session.import(&file.0, None, 0).unwrap();
+    session.project.stretch_engine = daw_core::StretchEngine::INTEGRATED;
+    session.project.tracks[0].clips[0].stretch = daw_core::ClipStretch::new(17, 20);
+    session.prepare_stretches().unwrap();
+    session.save(&folder.0).unwrap();
+    let manifest = folder.0.join("project.json");
+    let mut saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+    saved["stretch_engine"]["revision"] = serde_json::json!(4);
+    let original = serde_json::to_vec(&saved).unwrap();
+    std::fs::write(&manifest, &original).unwrap();
+
+    let mut app = DawUi::default();
+    app.enable_native_windows();
+    let (tx, rx) = mpsc::channel();
+    app.job = Some(rx);
+    tx.send(Ok(Job::Document(
+        Session::open_document(&folder.0).unwrap(),
+    )))
+    .unwrap();
+    app.poll();
+    assert!(!app.media_ready());
+    assert!(app.desktop_window().is_none());
+    assert!(app.notices.is_empty());
+
+    app.perform_file_action(FileAction::Export);
+    let export = app.desktop_window().unwrap();
+    wait_audio(&mut app);
+    assert_eq!(app.desktop_window(), Some(export));
+    assert!(
+        app.session
+            .audio_for_clip(&app.session.project.tracks[0].clips[0])
+            .is_some()
+    );
+    app.close_desktop_window(export);
+    app.poll();
+    let upgrade = app.desktop_window().unwrap();
+    assert_eq!(upgrade.title(), "Time stretch upgrade");
+    assert!(!app.edit_environment_available());
+    assert!(app.notices.is_empty());
+
+    let root = context();
+    let child = context();
+    let mut output = child.run_ui(egui::RawInput::default(), |ui| {
+        app.show_desktop_window(upgrade, &root, ui);
+    });
+    output.textures_delta.clear();
+    assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::Text(text)
+            if text.galley.text().contains("upgraded from revision 4 to 7")
+                && text.galley.text().contains("Save to retain the new revision.")
+    )));
+    app.close_desktop_window(upgrade);
+    app.poll();
+    assert!(app.desktop_window().is_none());
+    assert!(app.edit_environment_available());
+    assert!(!app.dirty);
+    assert_eq!(std::fs::read(&manifest).unwrap(), original);
+}
 #[test]
 fn rapid_midi_edits_publish_only_latest_audio_and_keep_history_and_selection() {
     let (mut app, _file, clip) = pending_sampler();

@@ -8,6 +8,8 @@ pub(super) struct State {
     pub running: bool,
     pub loading: bool,
     pub error: Option<String>,
+    pub pending_stretch_upgrade_notice: Option<String>,
+    pub stretch_upgrade_notice: Option<String>,
 }
 impl DawUi {
     pub(super) fn media_ready(&self) -> bool {
@@ -15,6 +17,16 @@ impl DawUi {
     }
     pub(super) fn reset_background_media(&mut self) {
         self.background_media = State::default();
+    }
+
+    pub(super) fn present_ready_stretch_upgrade_notice(&mut self) {
+        if self.media_ready()
+            && self.editing_enabled()
+            && let Some(notice) = self.background_media.pending_stretch_upgrade_notice.take()
+        {
+            self.project_prompt_window.begin();
+            self.background_media.stretch_upgrade_notice = Some(notice);
+        }
     }
     pub(super) fn queue_background_media(&mut self) {
         self.release_optional_memory_for_job();

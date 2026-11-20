@@ -49,7 +49,7 @@ Integrated revision 7 is complete by explicit user acceptance.
 
 Integrated improves separation between nearby bass notes when stretching or transposing. Bass-heavy drum mixtures use a shorter analysis window to limit attack smearing. Bass-heavy audio can take longer to prepare. Drum attack protection remains active, and stereo channels retain their relationship. The engine remains experimental.
 
-Projects saved with Integrated revisions 2 or 3 upgrade automatically when opened and rebuild their prepared audio. A warning identifies the upgrade. The sound can change. Opening leaves the saved file unchanged; Save stores the new version. Original recordings stay unchanged.
+Projects saved with Integrated revisions 2 through 6 upgrade to revision 7 when opened. The **Time stretch upgrade** dialog appears after audio preparation finishes. The sound can change. Use **Save** to store the new revision.
 
 Set **Settings > Time stretch > Default engine** to choose the engine
 for new projects. Rubber Band is the initial default. Changing this preference

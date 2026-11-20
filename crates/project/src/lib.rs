@@ -119,12 +119,23 @@ pub struct Session {
     pub recovered_take_before: Option<Box<Session>>,
 }
 /// A validated document without prepared media. Do not construct a renderer from its editor state.
-pub struct ProjectDocument(Session);
+pub struct ProjectDocument {
+    session: Session,
+    stretch_upgrade_notice: Option<String>,
+}
 impl ProjectDocument {
+    /// Allow the desktop to present the upgrade separately after audio preparation.
+    pub fn take_stretch_upgrade_notice(&mut self) -> Option<String> {
+        self.stretch_upgrade_notice.take()
+    }
+
     /// The editor stores this model while BackgroundAudio builds a complete session.
     /// Callers must guard all playback/preview paths until that completion arrives.
-    pub fn into_editor_session(self) -> Session {
-        self.0
+    pub fn into_editor_session(mut self) -> Session {
+        if let Some(notice) = self.stretch_upgrade_notice.take() {
+            self.session.warnings.insert(0, notice);
+        }
+        self.session
     }
 }
 
@@ -255,14 +266,7 @@ impl Session {
             recovery_owner: None,
             recovered_take_before: None,
             missing_audio: HashSet::new(),
-            warnings: if let Some(previous_stretch_revision) = previous_stretch_revision {
-                vec![format!(
-                    "Integrated time stretch upgraded from revision {previous_stretch_revision} to {}; prepared audio rebuilt. The sound can change. Save to retain the new revision.",
-                    daw_core::StretchEngine::INTEGRATED.revision
-                )]
-            } else {
-                vec![]
-            },
+            warnings: Vec::new(),
         };
         session
             .warnings
@@ -275,7 +279,16 @@ impl Session {
                     .map_err(error)?;
             }
         }
-        Ok(ProjectDocument(session))
+        let stretch_upgrade_notice = previous_stretch_revision.map(|previous| {
+            format!(
+                "Integrated time stretch upgraded from revision {previous} to {}. Prepared audio was rebuilt. The sound can change. Save to retain the new revision.",
+                daw_core::StretchEngine::INTEGRATED.revision
+            )
+        });
+        Ok(ProjectDocument {
+            session,
+            stretch_upgrade_notice,
+        })
     }
     /// Worker-only completion of a document or edited model. Existing immutable buffers are reused.
     pub fn prepare_project_audio(

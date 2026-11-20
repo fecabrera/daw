@@ -1784,9 +1784,10 @@ impl DawUi {
                     self.changed();
                 }
                 Ok(Job::Loaded(session, dirty)) => self.install_loaded_session(session, dirty),
-                Ok(Job::Document(document)) => {
-                    self.reset_background_media();
+                Ok(Job::Document(mut document)) => {
+                    let notice = document.take_stretch_upgrade_notice();
                     self.install_loaded_session(document.into_editor_session(), false);
+                    self.background_media.pending_stretch_upgrade_notice = notice;
                     self.background_media.loading = true;
                     self.queue_background_media();
                 }
@@ -1867,6 +1868,7 @@ impl DawUi {
             }
         }
         self.start_next_model_validation();
+        self.present_ready_stretch_upgrade_notice();
     }
     fn install_loaded_session(&mut self, session: Session, dirty: bool) {
         if !dirty {
@@ -2769,6 +2771,7 @@ impl DawUi {
                             && self.normalize_dialog.is_none()
                             && self.collection_status.is_none()
                             && self.project_name_dialog.is_none()
+                            && self.background_media.stretch_upgrade_notice.is_none()
                             && self.project_settings.is_none()
                             && !self.settings_modal()
                             && self.diagnostic_details.is_none(),
@@ -2798,6 +2801,7 @@ impl DawUi {
                         && self.normalize_dialog.is_none()
                         && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
+                        && self.background_media.stretch_upgrade_notice.is_none()
                         && self.project_settings.is_none()
                         && !self.settings_modal()
                         && self.diagnostic_details.is_none(),
@@ -2896,6 +2900,7 @@ impl DawUi {
             && self.normalize_dialog.is_none()
             && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
+            && self.background_media.stretch_upgrade_notice.is_none()
             && self.project_settings.is_none()
             && !self.settings_modal()
             && self.diagnostic_details.is_none()
@@ -3128,6 +3133,7 @@ impl DawUi {
             && self.normalize_dialog.is_none()
             && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
+            && self.background_media.stretch_upgrade_notice.is_none()
             && self.project_settings.is_none()
             && !self.settings_modal()
             && self.diagnostic_details.is_none()

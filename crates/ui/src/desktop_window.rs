@@ -22,6 +22,7 @@ impl DesktopWindow {
                 ProjectPromptKind::Export => "Export audio",
                 ProjectPromptKind::ReplaceExport => "Replace export?",
                 ProjectPromptKind::ExportStatus => "Export status",
+                ProjectPromptKind::StretchUpgrade => "Time stretch upgrade",
             },
         }
     }
@@ -36,6 +37,7 @@ impl DesktopWindow {
                     ProjectPromptKind::Save | ProjectPromptKind::SaveAs => 132,
                     ProjectPromptKind::Export => 168,
                     ProjectPromptKind::ExportStatus => 224,
+                    ProjectPromptKind::StretchUpgrade => 128,
                 },
             ],
         }
