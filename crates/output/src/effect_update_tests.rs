@@ -319,6 +319,100 @@ fn note_plan() -> RenderPlan {
 }
 
 #[test]
+fn dragging_output_saturator_drive_does_not_restart_pending_insertion() {
+    for final_drive in [18.0, 0.0] {
+        let mut base = note_plan();
+        let track = &mut base.project.tracks[0];
+        let track_id = track.id;
+        let main = &mut track.instrument.as_mut().unwrap().main;
+        let layer_id = main.id;
+        main.effects.push(E::drive_v2());
+        let mut chain = main.effects.clone();
+        chain.push(E::saturator());
+        let (mut output, mut callback) =
+            crate::preparation_tests::controlled_output_for_plan(48_000, base.clone());
+        output.preparation = preparation::Worker::new(output.status.clone()).unwrap();
+        output.active_plan = Some(output.plan.clone());
+        callback.renderer.play();
+        output.status.publish_transport(&callback.renderer);
+
+        let plan_at = |drive_db| {
+            let mut effects = chain.clone();
+            let S::Saturator(settings) = &mut effects.last_mut().unwrap().unit else {
+                unreachable!()
+            };
+            settings.drive_db = drive_db;
+            let mut plan = base.clone();
+            plan.project
+                .edit(daw_core::Edit::SetLayerEffects {
+                    track_id,
+                    layer_id,
+                    effects,
+                    compact: false,
+                })
+                .unwrap();
+            plan
+        };
+        let apply = |output: &mut AudioOutput, callback: &mut Callback| {
+            output.drain();
+            realtime(|| callback.update());
+            assert!(callback.renderer.playing);
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let insertion = plan_at(0.0);
+        output.sync(insertion.clone()).unwrap();
+        let topology_revision = output.requested_revision();
+        output.sync(plan_at(6.0)).unwrap();
+        // Fallback can advance the revision once. Moving Drive cannot replace it.
+        assert!(output.requested_revision() <= topology_revision + 1);
+        while callback.scheduled.is_none() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "insertion never scheduled"
+            );
+            apply(&mut output, &mut callback);
+            assert!(output.requested_revision() <= topology_revision + 1);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let insertion_revision = output.requested_revision();
+        let target_clock = callback.scheduled.as_ref().unwrap().activate_at.unwrap();
+        for drive_db in [9.0, 12.0, final_drive] {
+            output.sync(plan_at(drive_db)).unwrap();
+            assert_eq!(output.requested_revision(), insertion_revision);
+            assert!(!output.current_plan_published());
+            assert_eq!(callback.renderer.plan.project, base.project);
+        }
+        while callback.rendered_frames <= target_clock {
+            realtime(|| callback.next());
+        }
+        assert_eq!(callback.renderer.plan.project, insertion.project);
+        assert_eq!(output.applied_revision(), insertion_revision);
+
+        let desired = plan_at(final_drive);
+        while !output.current_plan_published() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "final Drive never applied"
+            );
+            apply(&mut output, &mut callback);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(callback.renderer.plan.project, desired.project);
+        assert_eq!(
+            output.active_plan.as_ref().unwrap().project,
+            desired.project
+        );
+        let stats = output.status.performance.snapshot();
+        assert_eq!(
+            stats.effect_fallbacks[daw_engine::EffectUpdateFallback::Latency as usize],
+            1
+        );
+        assert_eq!(stats.effect_processors_prepared, 0);
+        assert_eq!(stats.effect_updates, u64::from(final_drive != 0.0));
+    }
+}
+
+#[test]
 fn layer_and_output_moves_retain_voice_state_and_reject_changed_delay_distribution() {
     for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {
         let mut plan = note_plan();

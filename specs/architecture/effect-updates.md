@@ -105,6 +105,23 @@ silencing. A partial effect update cannot falsely complete a transport request.
 For unchanged source content, controls can update the audible renderer while an
 exact seek or fallback rebuild is pending. These publications are always partial;
 they neither move the playhead nor acknowledge the pending full result.
+
+Appending one built-in Saturator at the end of a MIDI instrument Output chain
+keeps one preparation in progress. Further changes to that instance's Drive
+value replace one waiting value without cancelling the submitted render plan.
+Once playback acknowledges insertion, the controls worker applies the latest
+waiting value to the installed processor. An already installed Output Saturator
+uses the same policy for compatible Drive edits. Other changes, including
+explicit transport commands, can supersede the request with the latest plan.
+Use strict processing compatibility for all settings and media outside the
+admitted append or Drive change.
+
+Fallback, replay, retry and publication receipts use the submitted snapshot
+until its revision is acknowledged. Keep playback preparation pending until
+the latest requested Drive reaches audio. A complete controls update keeps the
+submitted plan identity after the worker proves processing equivalence. A
+return to the submitted value needs no second DSP update.
+
 Undo/Redo use normal validated project edits; no DSP state or acknowledgment is
 stored in history or manifests. Failure keeps prior playback and reports through
 the existing preparation-error path. Later edits or Undo can retry.

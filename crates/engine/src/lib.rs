@@ -7,7 +7,7 @@ mod hosted_control_delay;
 mod hosted_graph;
 mod hosted_node;
 mod hosted_transport;
-pub use effect_updates::{EffectUpdate, EffectUpdateFallback};
+pub use effect_updates::{EffectUpdate, EffectUpdateFallback, MidiOutputSaturatorEdit};
 mod beat;
 mod beat_gain;
 mod buses;

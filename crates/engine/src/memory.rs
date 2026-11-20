@@ -20,8 +20,17 @@ impl RenderPlan {
     /// Strict checkpoint compatibility. Only the requested playhead may differ;
     /// every processing setting and prepared media allocation must match.
     pub fn same_processing_plan(&self, other: &Self) -> bool {
+        self.same_processing_plan_with(other, |_| {})
+    }
+
+    pub(crate) fn same_processing_plan_with(
+        &self,
+        other: &Self,
+        normalize_other: impl FnOnce(&mut Project),
+    ) -> bool {
         let mut a = self.project.clone();
         let mut b = other.project.clone();
+        normalize_other(&mut b);
         a.markers.clear();
         b.markers.clear();
         a.transport.playhead_frame = 0;

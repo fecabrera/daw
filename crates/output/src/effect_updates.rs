@@ -93,19 +93,24 @@ impl Worker {
                             Err(reason) => (None, Some(reason)),
                         }
                     };
-                    let effective = if controls {
+                    let complete = if controls {
+                        !request.partial_only
+                            && update.as_ref().is_some_and(|update| {
+                                update.plan().same_processing_plan(
+                                    &request.desired.as_ref().clone().prepare_beats(),
+                                )
+                            })
+                    } else {
+                        true
+                    };
+                    let effective = if complete {
+                        request.desired
+                    } else {
                         update
                             .as_ref()
                             .map(|u| Arc::new(u.plan().clone()))
-                            .unwrap_or_else(|| request.previous.clone())
-                    } else {
-                        request.desired.clone()
+                            .unwrap_or(request.previous)
                     };
-                    let complete = !controls
-                        || (!request.partial_only
-                            && effective.same_processing_plan(
-                                &request.desired.as_ref().clone().prepare_beats(),
-                            ));
                     let prepared = update
                         .map(|mut update| {
                             let memory =

@@ -14735,3 +14735,24 @@ Unit registration test skipped.
 Strict workspace Clippy, formatting, and the CLI smoke check passed.
 The local macOS debug app was rebuilt and its signature verified.
 The notice interaction was checked with automated egui input.
+
+## MIDI Output Saturator Drive during insertion — 2026-11-20
+
+The Output regression sends Drive edits before and after the new renderer has
+an activation clock. It verifies one latency fallback, activation of the
+submitted insertion settings, and publication of the latest Drive value
+through the existing processor. Returning Drive to the submitted value
+converges without another DSP update. The regression failed against the parent
+code when Drive advanced the pending insertion revision. It passed with the
+fix in debug and release. All 101 Output library tests passed in the debug
+test profile. The local macOS release app was rebuilt and its signature
+verified.
+
+The 48 kHz release harness simulated 512-frame callbacks. During a 250 ms Drive
+drag, median insertion time fell from 366.5 ms to 118.3 ms with the fix. The
+median time from the last Drive edit to publication of that value fell from
+116.9 ms to 6.3 ms. There were six trials per insertion case. Append without a
+drag took 118.6 ms before and 118.4 ms after. An isolated installed Drive change
+took 6.60 ms before and 6.66 ms after at matched rates, with twelve trials per
+version. The timing checks measured software output. Native gesture, device
+and listening latency remain unmeasured.

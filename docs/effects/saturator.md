@@ -29,6 +29,8 @@ The clipping stage precedes Level and Dry/Wet. Raising Level can lift the output
 
 Header power bypasses saturation while retaining its settings. The two selectors and numeric controls change smoothly. Power and Dry/Wet changes retain time alignment with other tracks and layers.
 
+If you append Saturator to a MIDI instrument's Output during playback, you can adjust Drive while the effect prepares. The latest Drive setting takes effect once the new chain is active.
+
 ## Modulation and editing
 
 Drive, Level, and Dry/Wet accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Open the secondary header dot and add a Source/Destination connection. Drive amounts span ±36 dB, Level amounts ±24 dB, and Dry/Wet amounts ±100 percentage points. Amount knobs follow their destination's steps and drag behavior. Shape and Clip Mode remain discrete controls.

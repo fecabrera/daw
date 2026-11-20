@@ -1,7 +1,91 @@
 //! Worker-compiled effect transactions. No source schedule or unrelated DSP is rebuilt.
 use super::{RenderPlan, Renderer, effects::EffectChain};
-use daw_core::{EffectInstance, EffectSettings, Id, Project};
+use daw_core::{EffectInstance, EffectSettings, Id, InstrumentComponent, Project, TrackKind};
 use std::collections::{HashMap, HashSet};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MidiOutputSaturatorEdit {
+    Append(Id),
+    Drive(Id),
+}
+
+impl RenderPlan {
+    /// Match a single Output Saturator edit without ignoring other processing settings.
+    pub fn midi_output_saturator_edit(&self, next: &Self) -> Option<MidiOutputSaturatorEdit> {
+        if self.external.offline != next.external.offline
+            || self.external.publish != next.external.publish
+            || self.project.tracks.len() != next.project.tracks.len()
+            || !self.beat_tracks.is_empty()
+            || !next.beat_tracks.is_empty()
+        {
+            return None;
+        }
+        let (index, (before, after)) = self
+            .project
+            .tracks
+            .iter()
+            .zip(&next.project.tracks)
+            .enumerate()
+            .find(|(_, (before, after))| before != after)?;
+        if before.id != after.id || before.kind != TrackKind::Midi || after.kind != TrackKind::Midi
+        {
+            return None;
+        }
+        let before = &before.instrument.as_ref()?.main;
+        let after = &after.instrument.as_ref()?.main;
+        if before.id != after.id
+            || !self.project.hosted_units().is_empty()
+            || !next.project.hosted_units().is_empty()
+        {
+            return None;
+        }
+        let (edit, slot) = if let [prefix @ .., effect] = after.effects.as_slice()
+            && prefix == before.effects
+            && matches!(effect.unit, EffectSettings::Saturator(_))
+        {
+            let mut expected = before.retained_units();
+            expected.push(InstrumentComponent::Effect(effect.id));
+            if after.retained_units() != expected {
+                return None;
+            }
+            (MidiOutputSaturatorEdit::Append(effect.id), None)
+        } else {
+            if before.effects.len() != after.effects.len() {
+                return None;
+            }
+            let (slot, (old, new)) = before
+                .effects
+                .iter()
+                .zip(&after.effects)
+                .enumerate()
+                .find(|(_, (old, new))| old != new)?;
+            let (EffectSettings::Saturator(old_settings), EffectSettings::Saturator(new_settings)) =
+                (&old.unit, &new.unit)
+            else {
+                return None;
+            };
+            if old.id != new.id || old_settings.drive_db == new_settings.drive_db {
+                return None;
+            }
+            (
+                MidiOutputSaturatorEdit::Drive(new.id),
+                Some((slot, old_settings.drive_db)),
+            )
+        };
+        self.same_processing_plan_with(next, |project| {
+            let output = &mut project.tracks[index].instrument.as_mut().unwrap().main;
+            if let Some((slot, drive_db)) = slot {
+                if let EffectSettings::Saturator(settings) = &mut output.effects[slot].unit {
+                    settings.drive_db = drive_db;
+                }
+            } else {
+                output.effects.pop();
+                output.component_order.clone_from(&before.component_order);
+            }
+        })
+        .then_some(edit)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Owner {

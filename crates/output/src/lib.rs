@@ -10,7 +10,7 @@ mod devices;
 mod wasapi;
 use cpal::traits::{DeviceTrait, StreamTrait};
 use daw_core::Id;
-use daw_engine::{ModulationTarget, RenderPlan, Renderer, TransportState};
+use daw_engine::{MidiOutputSaturatorEdit, ModulationTarget, RenderPlan, Renderer, TransportState};
 pub use devices::{
     AudioSettings, Configuration, DeviceId, DeviceInfo, Devices, SampleFormat, discover_devices,
 };
@@ -590,9 +590,15 @@ struct PublishedPlan {
     plan: Arc<RenderPlan>,
     bindings: preparation::Bindings,
 }
+struct SaturatorFlight {
+    effect: Id,
+    submitted: Arc<RenderPlan>,
+    controls_only: bool,
+}
 pub struct AudioOutput {
     audition: audition::Sender,
     plan: Arc<RenderPlan>,
+    saturator_flight: Option<SaturatorFlight>,
     desired_transport: Option<(u64, TransportState)>,
     resume_needs_preparation: bool,
     project_rate_hz: u32,
@@ -769,6 +775,7 @@ impl AudioOutput {
         };
         let mut output = Self {
             plan: Arc::new(plan),
+            saturator_flight: None,
             desired_transport: None,
             resume_needs_preparation: false,
             project_rate_hz,
@@ -861,6 +868,10 @@ impl AudioOutput {
             .effect_error
             .take()
             .or_else(|| self.preparation.take_error())?;
+        let deferred = self
+            .saturator_flight
+            .take()
+            .filter(|flight| !flight.submitted.same_processing_plan(&self.plan));
         if self
             .desired_transport
             .is_some_and(|(_, state)| !state.playing)
@@ -877,6 +888,9 @@ impl AudioOutput {
         self.status
             .requested_revision
             .store(self.prepare_revision, Ordering::Release);
+        if let Some(flight) = deferred {
+            self.start_saturator_flight(flight.effect, flight.controls_only);
+        }
         Some(error)
     }
     /// Latest requested transport until activation; useful for pending Play/Pause/Seek UI.
@@ -895,13 +909,17 @@ impl AudioOutput {
             .map_or_else(|| self.status.transport(), |(_, state)| state)
     }
     fn prepare(&mut self, state: Option<TransportState>) {
+        self.saturator_flight = None;
+        self.prepare_dispatched(state);
+    }
+    fn prepare_dispatched(&mut self, state: Option<TransportState>) {
         if state.is_some_and(|state| !state.playing) {
             self.resume_needs_preparation = true;
         }
         self.preparation_failed = false;
         self.prepare_revision =
             self.preparation
-                .submit(self.plan.clone(), self.bindings.clone(), state);
+                .submit(self.dispatched_plan().clone(), self.bindings.clone(), state);
         self.status
             .requested_revision
             .store(self.prepare_revision, Ordering::Release);
@@ -926,11 +944,34 @@ impl AudioOutput {
             .desired_transport
             .filter(|(r, _)| *r > self.status.applied_revision.load(Ordering::Acquire))
             .map(|(_, s)| s);
-        self.plan = Arc::new(plan);
-        if transport.is_some() || self.active_plan.is_none() {
-            self.prepare(transport);
+        if let Some(flight) = &self.saturator_flight
+            && (self.plan.midi_output_saturator_edit(&plan)
+                == Some(MidiOutputSaturatorEdit::Drive(flight.effect))
+                || (self.plan.external.offline == plan.external.offline
+                    && self.plan.external.publish == plan.external.publish
+                    && self.plan.same_processing_plan(&plan)))
+        {
+            self.plan = Arc::new(plan);
+            return Ok(());
+        }
+        let edit = if transport.is_none() && !self.preparing() {
+            self.active_plan
+                .as_ref()
+                .and_then(|active| active.midi_output_saturator_edit(&plan))
         } else {
-            self.prepare_effects();
+            None
+        };
+        self.plan = Arc::new(plan);
+        self.saturator_flight = None;
+        match edit {
+            Some(MidiOutputSaturatorEdit::Append(effect)) => {
+                self.start_saturator_flight(effect, false);
+            }
+            Some(MidiOutputSaturatorEdit::Drive(effect)) => {
+                self.start_saturator_flight(effect, true);
+            }
+            None if transport.is_some() || self.active_plan.is_none() => self.prepare(transport),
+            None => self.prepare_effects(),
         }
         Ok(())
     }
@@ -951,10 +992,12 @@ impl AudioOutput {
     }
     fn prepare_effects(&mut self) {
         let Some(previous) = self.active_plan.clone() else {
-            self.prepare(None);
+            self.prepare_dispatched(None);
             return;
         };
-        self.prepare_revision = self.preparation.update_effect_cache(self.plan.clone());
+        self.prepare_revision = self
+            .preparation
+            .update_effect_cache(self.dispatched_plan().clone());
         self.status
             .requested_revision
             .store(self.prepare_revision, Ordering::Release);
@@ -964,15 +1007,55 @@ impl AudioOutput {
         self.pending_effects = None;
         self.pending_controls = None;
         self.submit_control_update(false);
+        if self.saturator_controls_only() {
+            self.effects.cancel(self.prepare_revision);
+            return;
+        }
         self.effects.submit(effect_updates::Request {
             revision: self.prepare_revision,
             base_revision: self.active_revision,
             base_publication: self.active_publication,
             previous,
-            desired: self.plan.clone(),
+            desired: self.dispatched_plan().clone(),
             bindings: self.bindings.clone(),
             partial_only: false,
         });
+    }
+    fn dispatched_plan(&self) -> &Arc<RenderPlan> {
+        self.saturator_flight
+            .as_ref()
+            .map_or(&self.plan, |flight| &flight.submitted)
+    }
+    fn saturator_controls_only(&self) -> bool {
+        self.saturator_flight
+            .as_ref()
+            .is_some_and(|flight| flight.controls_only)
+    }
+    fn start_saturator_flight(&mut self, effect: Id, controls_only: bool) {
+        self.saturator_flight = Some(SaturatorFlight {
+            effect,
+            submitted: self.plan.clone(),
+            controls_only,
+        });
+        self.prepare_effects();
+    }
+    fn finish_saturator_flight(&mut self) {
+        if self.active_revision != self.prepare_revision
+            || self.applied_revision() != self.prepare_revision
+        {
+            return;
+        }
+        let Some(flight) = self.saturator_flight.take() else {
+            return;
+        };
+        if Arc::ptr_eq(&flight.submitted, &self.plan) {
+            return;
+        }
+        if flight.submitted.same_processing_plan(&self.plan) {
+            self.active_plan = Some(self.plan.clone());
+        } else {
+            self.start_saturator_flight(flight.effect, true);
+        }
     }
     fn submit_control_update(&mut self, partial_only: bool) {
         self.pending_controls = None;
@@ -982,7 +1065,7 @@ impl AudioOutput {
                 base_revision: self.active_revision,
                 base_publication: self.active_publication,
                 previous,
-                desired: self.plan.clone(),
+                desired: self.dispatched_plan().clone(),
                 bindings: self.bindings.clone(),
                 partial_only,
             });
@@ -1215,7 +1298,8 @@ impl AudioOutput {
         }
         let resume = state.paused
             && !self.resume_needs_preparation
-            && self.prepare_revision == self.status.applied_revision.load(Ordering::Acquire);
+            && self.prepare_revision == self.applied_revision()
+            && !self.preparing();
         if !state.paused {
             state.playback_start = Some(state.frame);
         }
@@ -1238,7 +1322,7 @@ impl AudioOutput {
         }
         state.paused |= state.playing;
         state.playing = false;
-        if self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire) {
+        if self.preparing() || self.prepare_revision != self.applied_revision() {
             if self.commands.is_full() {
                 return Err("Audio command queue is full; try again".into());
             }
@@ -1253,6 +1337,7 @@ impl AudioOutput {
             return Err("Audio command queue is full; try again".into());
         }
         let revision = self.preparation.cancel();
+        self.saturator_flight = None;
         self.preparation_failed = false;
         self.prepare_revision = revision;
         self.status
@@ -1304,7 +1389,8 @@ impl AudioOutput {
     }
     pub fn preparing(&self) -> bool {
         !self.preparation_failed
-            && self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire)
+            && (self.prepare_revision != self.applied_revision()
+                || !Arc::ptr_eq(self.dispatched_plan(), &self.plan))
     }
     fn publish_bindings(&mut self, ready: preparation::Bindings) {
         self.bindings = ready;
@@ -1365,30 +1451,44 @@ impl AudioOutput {
         {
             self.pending_controls = Some(ready);
         }
-        if let Some(mut ready) = self.pending_controls.take()
-            && let Ok(Some(mut prepared)) = ready.prepared
-        {
-            let publication = self.publication_id();
-            prepared.publication = publication;
-            let effective = if prepared.complete {
-                ready.revision
-            } else {
-                u64::MAX - ready.revision
-            };
-            match self.commands.push(Command::Effects(prepared)) {
-                Ok(()) => {
-                    self.published_plans.push_back(PublishedPlan {
-                        revision: effective,
-                        publication,
-                        plan: ready.desired,
-                        bindings: ready.bindings,
-                    });
+        if let Some(mut ready) = self.pending_controls.take() {
+            if self.saturator_controls_only()
+                && !matches!(&ready.prepared, Ok(Some(p)) if p.complete)
+            {
+                match ready.prepared {
+                    Err(error) => {
+                        self.effect_error = Some(error);
+                        self.preparation_failed = true;
+                    }
+                    Ok(_) => {
+                        // Keep the frozen input if the compatible worker cannot cover it.
+                        self.saturator_flight.as_mut().unwrap().controls_only = false;
+                        self.prepare_effects();
+                    }
                 }
-                Err(rtrb::PushError::Full(Command::Effects(prepared))) => {
-                    ready.prepared = Ok(Some(prepared));
-                    self.pending_controls = Some(ready);
+            } else if let Ok(Some(mut prepared)) = ready.prepared {
+                let publication = self.publication_id();
+                prepared.publication = publication;
+                let effective = if prepared.complete {
+                    ready.revision
+                } else {
+                    u64::MAX - ready.revision
+                };
+                match self.commands.push(Command::Effects(prepared)) {
+                    Ok(()) => {
+                        self.published_plans.push_back(PublishedPlan {
+                            revision: effective,
+                            publication,
+                            plan: ready.desired,
+                            bindings: ready.bindings,
+                        });
+                    }
+                    Err(rtrb::PushError::Full(Command::Effects(prepared))) => {
+                        ready.prepared = Ok(Some(prepared));
+                        self.pending_controls = Some(ready);
+                    }
+                    Err(_) => unreachable!("only controls are submitted here"),
                 }
-                Err(_) => unreachable!("only controls are submitted here"),
             }
         }
         if let Some(ready) = self.effects.take()
@@ -1424,7 +1524,7 @@ impl AudioOutput {
                         .desired_transport
                         .filter(|(r, _)| *r > self.status.applied_revision.load(Ordering::Acquire))
                         .map(|(_, s)| s);
-                    self.prepare(transport);
+                    self.prepare_dispatched(transport);
                 }
                 Err(error) => {
                     self.effect_error = Some(error);
@@ -1463,7 +1563,7 @@ impl AudioOutput {
                     self.published_plans.push_back(PublishedPlan {
                         revision: ready.revision,
                         publication,
-                        plan: self.plan.clone(),
+                        plan: self.dispatched_plan().clone(),
                         bindings: ready.bindings,
                     });
                 }
@@ -1474,6 +1574,7 @@ impl AudioOutput {
                 Err(_) => unreachable!("only a prepared plan was submitted"),
             }
         }
+        self.finish_saturator_flight();
     }
 }
 struct Callback {
