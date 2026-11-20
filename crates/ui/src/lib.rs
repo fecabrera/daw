@@ -2571,7 +2571,6 @@ impl DawUi {
         }
         self.poll();
         self.poll_midi(ui.ctx());
-        self.midi_dialogs(ui.ctx());
         self.poll_bounce_publication();
         self.poll_audio_devices(&ctx);
         // Publish completed jobs before a new pointer gesture starts its own undo step.
@@ -3135,6 +3134,7 @@ impl DawUi {
             && self.project_name_dialog.is_none()
             && self.background_media.stretch_upgrade_notice.is_none()
             && self.project_settings.is_none()
+            && self.arrangement.draft.is_none()
             && !self.settings_modal()
             && self.diagnostic_details.is_none()
             && self.error.is_none()
@@ -6266,19 +6266,8 @@ impl DawUi {
         }
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
-        self.arrangement_dialog(ctx);
-        if self.show_diagnostic_details(ctx) {
-            return;
-        }
-        if let Some(mut draft) = self.project_settings.take() {
-            match draft.show(ctx) {
-                Some(project_settings::Action::Apply(values)) => {
-                    self.apply_project_settings(values)
-                }
-                Some(project_settings::Action::Cancel) => {}
-                None => self.project_settings = Some(draft),
-            }
-        }
+        self.maintain_arrangement_dialog(ctx);
+        self.sync_project_prompt();
         if self.settings_open && !self.native_settings_visible() && !self.settings_root_prompt() {
             self.draw_application_settings(ctx, None);
         }
@@ -6289,22 +6278,7 @@ impl DawUi {
         if self.native_project_prompt().is_none() {
             self.draw_project_prompt(ctx, None);
         }
-        if (!self.native_settings_visible() || self.settings_root_prompt())
-            && let Some(error) = self.error.clone()
-            && dialogs::Dialog::new("Error", &error, &[("OK", ())])
-                .show(ctx)
-                .is_some()
-        {
-            self.error = None;
-        }
-        self.show_bounce(ctx);
-        self.show_normalization(ctx);
-        self.show_collection(ctx);
-        if let Some(status) = &self.separation_status
-            && status.show(ctx)
-        {
-            self.separation_status = None;
-        }
+        self.finish_collection_dialog(ctx);
     }
 }
 

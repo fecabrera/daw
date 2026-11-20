@@ -35,6 +35,10 @@ pub fn valid_name(name: &str) -> Result<&str, &'static str> {
 }
 
 impl ProjectSettings {
+    pub(super) fn restore_focus(&mut self) {
+        self.focus = true;
+    }
+
     pub fn new(project: &daw_core::Project) -> Self {
         Self {
             name: project.name.clone(),
@@ -46,14 +50,14 @@ impl ProjectSettings {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) -> Option<Action> {
+    pub fn show(&mut self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> Option<Action> {
         let mut enter = false;
         let action = crate::dialogs::Dialog::new(
             "Project Settings",
             "",
             &[("Apply", true), ("Cancel", false)],
         )
-        .show_with_content(ctx, |ui| {
+        .show_surface(ctx, surface, |ui| {
             let label_width = ui
                 .painter()
                 .layout_no_wrap(

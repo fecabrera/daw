@@ -23,7 +23,7 @@ impl Status {
             "Separating audio…"
         }
     }
-    pub fn show(&self, ctx: &egui::Context) -> bool {
+    pub fn show(&self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> bool {
         use std::sync::atomic::Ordering;
         let total = self.progress.total.load(Ordering::Relaxed);
         let done = self.progress.done.load(Ordering::Relaxed);
@@ -54,7 +54,7 @@ impl Status {
             warnings: &self.warnings,
             cancel: Some(&self.progress.cancel),
         }
-        .show(ctx)
+        .show_surface(ctx, surface)
     }
 }
 impl DawUi {

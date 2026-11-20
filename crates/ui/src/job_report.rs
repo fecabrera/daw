@@ -23,10 +23,6 @@ pub struct Report<'a> {
     pub cancel: Option<&'a AtomicBool>,
 }
 impl Report<'_> {
-    pub fn show(&self, ctx: &egui::Context) -> bool {
-        self.show_surface(ctx, None)
-    }
-
     pub fn show_surface(&self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> bool {
         let running = *self.state == State::Running;
         let actions: &[(&str, ())] = if running {

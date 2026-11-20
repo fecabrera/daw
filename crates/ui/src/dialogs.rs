@@ -62,6 +62,18 @@ impl<'a, T: Copy> Dialog<'a, T> {
         selected
     }
 
+    pub(super) fn show_surface(
+        self,
+        ctx: &Context,
+        surface: Option<&mut egui::Ui>,
+        content: impl FnOnce(&mut egui::Ui),
+    ) -> Option<T> {
+        match surface {
+            Some(ui) => self.body(ui, content),
+            None => self.show_with_content(ctx, content),
+        }
+    }
+
     pub(super) fn body(self, ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> Option<T> {
         let mut selected = None;
         ui.spacing_mut().item_spacing = Vec2::splat(f32::from(PADDING));

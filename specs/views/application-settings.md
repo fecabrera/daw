@@ -48,9 +48,9 @@ window resizes.
 Keep one Settings session and block main-window editing through child
 retirement. Repeated Settings requests focus the current session. Native
 close and footer Close retire the session through the same state transition.
-Keep the Audio quality draft, errors and model validation status on the
-Settings surface while it owns interaction. Root-only prompts take focus
-when necessary. Queue root close while a Settings picker holds its native
+Keep the Audio quality draft in the Settings session. Errors and model
+validation use separate shared native dialogs and take focus when needed.
+Return to the same Settings session after dismissal. Queue root close while a Settings picker holds its native
 parent, then apply the normal project close guard after the picker resolves.
 Discard results from a retired Settings session.
 

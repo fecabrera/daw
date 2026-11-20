@@ -1,10 +1,9 @@
 //! One logical Application Settings session shared by the desktop surfaces.
 use crate::{
-    Action, DawUi, PluginRequest, dialogs, midi_service,
+    Action, DawUi, PluginRequest, midi_service,
     settings::{self, PickerKind},
 };
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SettingsPicker {
@@ -26,7 +25,7 @@ pub(super) struct SettingsWindow {
     picker_started: bool,
     close_after_picker: bool,
     root_close: bool,
-    message: Option<String>,
+    pub(super) message: Option<String>,
 }
 
 impl SettingsWindow {
@@ -79,10 +78,12 @@ impl DawUi {
             .then_some(self.settings_window.generation)
     }
 
+    pub(super) fn settings_picker_active(&self) -> bool {
+        self.settings_window.picker.is_some()
+    }
+
     pub fn settings_root_prompt(&self) -> bool {
-        self.midi.recovery_prompt()
-            || self.project_prompt_kind().is_some()
-            || self.diagnostic_details.is_some()
+        self.project_prompt_kind().is_some()
     }
 
     pub fn take_settings_focus(&mut self) -> bool {
@@ -193,7 +194,11 @@ impl DawUi {
         }
         let before = self.settings.clone();
         self.draw_application_settings(root, Some(ui));
-        if self.settings != before || !self.settings_open || self.settings_window.picker.is_some() {
+        if self.settings != before
+            || !self.settings_open
+            || self.settings_window.picker.is_some()
+            || self.settings_root_prompt()
+        {
             root.request_repaint_of(egui::ViewportId::ROOT);
         }
     }
@@ -206,22 +211,11 @@ impl DawUi {
         let ctx = surface
             .as_ref()
             .map_or_else(|| root.clone(), |ui| ui.ctx().clone());
-        let native = surface.is_some();
         if self.settings_window.picker.is_some() {
             if let Some(ui) = surface.as_mut() {
                 egui::CentralPanel::default().show(ui, |ui| {
                     ui.label("Choosing a file…");
                 });
-            }
-            return;
-        }
-        if native && let Some(error) = self.error.clone() {
-            if dialogs::Dialog::new("Error", &error, &[("OK", ())])
-                .show(&ctx)
-                .is_some()
-            {
-                self.error = None;
-                root.request_repaint_of(egui::ViewportId::ROOT);
             }
             return;
         }
@@ -296,23 +290,6 @@ impl DawUi {
         }
         if close && self.error.is_none() {
             self.close_application_settings();
-        }
-        if native
-            && self.separation_models.running()
-            && let Some(cancel) = &self.settings_cancel
-            && dialogs::Dialog::new("Model validation", &self.busy, &[("Cancel", ())])
-                .actions_enabled(!cancel.load(Ordering::Relaxed))
-                .show(&ctx)
-                .is_some()
-        {
-            cancel.store(true, Ordering::Relaxed);
-        }
-        if let Some(message) = self.settings_window.message.as_deref()
-            && dialogs::Dialog::new("Settings window", message, &[("OK", ())])
-                .show(&ctx)
-                .is_some()
-        {
-            self.settings_window.message = None;
         }
         if self.audio_devices.busy()
             || self.themes.busy()

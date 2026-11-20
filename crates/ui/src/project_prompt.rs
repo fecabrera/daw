@@ -12,6 +12,18 @@ pub enum ProjectPromptKind {
     ReplaceExport,
     ExportStatus,
     StretchUpgrade,
+    Arrangement,
+    ProjectSettings,
+    Normalize,
+    Bounce,
+    Separation,
+    CollectionError,
+    Recovery,
+    MemoryDetails,
+    TransientDetails,
+    Error,
+    ModelValidation,
+    SettingsMessage,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -23,6 +35,7 @@ pub struct ProjectPrompt {
 #[derive(Default)]
 pub(super) struct ProjectPromptWindow {
     generation: u64,
+    active_kind: Option<ProjectPromptKind>,
     fallback: bool,
     pub focus_requested: bool,
     pub height: Option<u32>,
@@ -56,26 +69,67 @@ enum UnsavedChoice {
 }
 
 impl DawUi {
+    pub(super) fn sync_project_prompt(&mut self) {
+        let kind = self.project_prompt_kind();
+        if self.project_prompt_window.active_kind != kind {
+            self.project_prompt_window.active_kind = kind;
+            self.project_prompt_window.begin();
+            if kind == Some(ProjectPromptKind::ProjectSettings)
+                && let Some(draft) = self.project_settings.as_mut()
+            {
+                draft.restore_focus();
+            }
+        }
+    }
+
     pub(super) fn project_prompt_kind(&self) -> Option<ProjectPromptKind> {
-        if self.unsaved_prompt {
-            Some(ProjectPromptKind::Unsaved)
-        } else if let Some(draft) = &self.project_name_dialog {
-            Some(if draft.save_as {
-                ProjectPromptKind::SaveAs
-            } else {
-                ProjectPromptKind::Save
+        use ProjectPromptKind::*;
+        if self.settings_picker_active() {
+            None
+        } else if let Some((prompt, _)) = &self.project_prompt_window.picker {
+            Some(prompt.kind)
+        } else if self.error.is_some() {
+            Some(Error)
+        } else if let Some(report) = &self.diagnostic_details {
+            Some(match report {
+                crate::diagnostic_details::Report::Memory => MemoryDetails,
+                crate::diagnostic_details::Report::Transients(_) => TransientDetails,
             })
+        } else if self.unsaved_prompt {
+            Some(Unsaved)
+        } else if let Some(draft) = &self.project_name_dialog {
+            Some(if draft.save_as { SaveAs } else { Save })
         } else if self.export_dialog.is_some() {
-            Some(ProjectPromptKind::Export)
+            Some(Export)
         } else if self.overwrite.is_some() {
-            Some(ProjectPromptKind::ReplaceExport)
+            Some(ReplaceExport)
         } else if self.export_status.is_some() {
-            Some(ProjectPromptKind::ExportStatus)
+            Some(ExportStatus)
+        } else if self.background_media.stretch_upgrade_notice.is_some() {
+            Some(StretchUpgrade)
+        } else if self.arrangement.draft.is_some() {
+            Some(Arrangement)
+        } else if self.project_settings.is_some() {
+            Some(ProjectSettings)
+        } else if self.normalize_dialog.is_some() {
+            Some(Normalize)
+        } else if self.bounce_status.is_some() {
+            Some(Bounce)
+        } else if self.separation_status.is_some() {
+            Some(Separation)
+        } else if self.collection_error_visible() {
+            Some(CollectionError)
+        } else if self.midi.recovery_prompt() {
+            Some(Recovery)
+        } else if self.settings_open
+            && self.separation_models.running()
+            && self.settings_cancel.is_some()
+        {
+            Some(ModelValidation)
+        } else if self.settings_open && self.settings_window.message.is_some() {
+            Some(SettingsMessage)
         } else {
-            self.background_media
-                .stretch_upgrade_notice
-                .as_ref()
-                .map(|_| ProjectPromptKind::StretchUpgrade)
+            None
         }
     }
 
@@ -89,14 +143,13 @@ impl DawUi {
         })
     }
 
-    pub(super) fn project_prompt_blocked(&self) -> bool {
-        self.error.is_some() || self.diagnostic_details.is_some()
-    }
-
     pub(super) fn fail_native_project_prompt(&mut self, prompt: ProjectPrompt) {
         if self.native_project_prompt() == Some(prompt) {
             self.project_prompt_window.fallback = true;
             if let Some(draft) = &mut self.project_name_dialog {
+                draft.restore_focus();
+            }
+            if let Some(draft) = &mut self.project_settings {
                 draft.restore_focus();
             }
         }
@@ -158,10 +211,16 @@ impl DawUi {
     }
 
     pub(super) fn cancel_project_prompt(&mut self) {
-        if self.job.is_some() || self.project_prompt_window.picking() {
+        use ProjectPromptKind as Kind;
+        let kind = self.project_prompt_kind();
+        if self.project_prompt_window.picking() {
             return;
         }
-        match self.project_prompt_kind() {
+        match kind {
+            Some(Kind::Error) => self.error = None,
+            Some(Kind::MemoryDetails | Kind::TransientDetails) => self.diagnostic_details = None,
+            Some(Kind::SettingsMessage) => self.settings_window.message = None,
+            _ if self.job.is_some() => {}
             Some(ProjectPromptKind::Unsaved) => self.apply_unsaved_choice(UnsavedChoice::Cancel),
             Some(ProjectPromptKind::Save | ProjectPromptKind::SaveAs) => {
                 self.save_named(String::new(), None)
@@ -179,7 +238,34 @@ impl DawUi {
             {
                 self.export_status = None;
             }
-            Some(ProjectPromptKind::ExportStatus) | None => {}
+            Some(Kind::Arrangement) => self.arrangement.draft = None,
+            Some(Kind::ProjectSettings) => self.project_settings = None,
+            Some(Kind::Normalize) => self.normalize_dialog = None,
+            Some(Kind::Bounce)
+                if self
+                    .bounce_status
+                    .as_ref()
+                    .is_some_and(|status| status.state != crate::job_report::State::Running) =>
+            {
+                self.dismiss_bounce()
+            }
+            Some(Kind::Separation)
+                if self
+                    .separation_status
+                    .as_ref()
+                    .is_some_and(|status| status.state != crate::job_report::State::Running) =>
+            {
+                self.separation_status = None
+            }
+            Some(Kind::CollectionError) => self.acknowledge_collection_error(),
+            Some(
+                Kind::ExportStatus
+                | Kind::Bounce
+                | Kind::Separation
+                | Kind::Recovery
+                | Kind::ModelValidation,
+            )
+            | None => {}
         }
     }
 
@@ -203,8 +289,95 @@ impl DawUi {
         ctx: &egui::Context,
         surface: Option<&mut egui::Ui>,
     ) {
-        if self.project_prompt_blocked() {
-            return;
+        use ProjectPromptKind as Kind;
+        match self.project_prompt_kind() {
+            Some(Kind::Error) => {
+                if let Some(error) = self.error.as_deref()
+                    && dialogs::Dialog::new("Error", "", &[("OK", ())])
+                        .show_surface(ctx, surface, |ui| {
+                            egui::ScrollArea::vertical()
+                                .max_height(300.0)
+                                .show(ui, |ui| {
+                                    ui.add(egui::Label::new(error).wrap());
+                                });
+                        })
+                        .is_some()
+                {
+                    self.error = None;
+                }
+                return;
+            }
+            Some(Kind::MemoryDetails | Kind::TransientDetails) => {
+                self.show_diagnostic_details(ctx, surface);
+                return;
+            }
+            Some(Kind::Arrangement) => {
+                self.arrangement_dialog(ctx, surface);
+                return;
+            }
+            Some(Kind::ProjectSettings) => {
+                if let Some(mut draft) = self.project_settings.take() {
+                    match draft.show(ctx, surface) {
+                        Some(crate::project_settings::Action::Apply(values)) => {
+                            self.apply_project_settings(values)
+                        }
+                        Some(crate::project_settings::Action::Cancel) => {}
+                        None => self.project_settings = Some(draft),
+                    }
+                }
+                return;
+            }
+            Some(Kind::Normalize) => {
+                self.show_normalization(ctx, surface);
+                return;
+            }
+            Some(Kind::Bounce) => {
+                self.show_bounce(ctx, surface);
+                return;
+            }
+            Some(Kind::Separation) => {
+                if self
+                    .separation_status
+                    .as_ref()
+                    .is_some_and(|status| status.show(ctx, surface))
+                {
+                    self.separation_status = None;
+                }
+                return;
+            }
+            Some(Kind::CollectionError) => {
+                self.show_collection_error(ctx, surface);
+                return;
+            }
+            Some(Kind::Recovery) => {
+                self.midi_dialogs(ctx, surface);
+                return;
+            }
+            Some(Kind::ModelValidation) => {
+                if let Some(cancel) = &self.settings_cancel {
+                    use std::sync::atomic::Ordering;
+                    if dialogs::Dialog::new("Model validation", &self.busy, &[("Cancel", ())])
+                        .actions_enabled(!cancel.load(Ordering::Relaxed))
+                        .show_surface(ctx, surface, |_| {})
+                        .is_some()
+                    {
+                        cancel.store(true, Ordering::Relaxed);
+                    }
+                }
+                return;
+            }
+            Some(Kind::SettingsMessage) => {
+                if let Some(message) = self.settings_window.message.as_deref()
+                    && dialogs::Dialog::new("Settings window", message, &[("OK", ())])
+                        .show_surface(ctx, surface, |_| {})
+                        .is_some()
+                {
+                    self.settings_window.message = None;
+                }
+                return;
+            }
+            None => return,
+            _ => {}
         }
         if self.project_prompt_window.picking() {
             let (title, message) = if self.export_dialog.is_some() {
@@ -368,6 +541,59 @@ mod tests {
             repeat: false,
             modifiers: egui::Modifiers::NONE,
         }
+    }
+
+    #[test]
+    fn native_error_preserves_the_project_settings_draft() {
+        let mut app = DawUi::default();
+        app.enable_native_windows();
+        let mut draft = crate::project_settings::ProjectSettings::new(&app.session.project);
+        draft.name = "Pending name".into();
+        app.project_settings = Some(draft);
+        app.sync_project_prompt();
+
+        let root = egui::Context::default();
+        let settings_window = app.desktop_window().unwrap();
+        assert_eq!(settings_window.title(), "Project Settings");
+        let shapes = child_frame(
+            &mut app,
+            &root,
+            &egui::Context::default(),
+            settings_window,
+            vec![],
+            false,
+        );
+        text_bounds(&shapes, "Project name");
+        assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == settings_window.title())));
+
+        app.fail("Could not apply project settings.");
+        app.sync_project_prompt();
+        let error_window = app.desktop_window().unwrap();
+        assert_eq!(error_window.title(), "Error");
+        child_frame(
+            &mut app,
+            &root,
+            &egui::Context::default(),
+            error_window,
+            vec![],
+            true,
+        );
+
+        app.sync_project_prompt();
+        let resumed = app.desktop_window().unwrap();
+        assert_eq!(resumed.title(), "Project Settings");
+        assert_ne!(resumed, settings_window);
+        assert_eq!(app.project_settings.as_ref().unwrap().name, "Pending name");
+        child_frame(
+            &mut app,
+            &root,
+            &egui::Context::default(),
+            resumed,
+            vec![],
+            true,
+        );
+        assert!(app.desktop_window().is_none());
+        assert_ne!(app.session.project.name, "Pending name");
     }
 
     #[test]
@@ -579,7 +805,9 @@ mod tests {
         assert_eq!(app.desktop_window(), Some(window));
 
         let root = egui::Context::default();
-        let mut output = root.run_ui(egui::RawInput::default(), |ui| app.midi_dialogs(ui.ctx()));
+        let mut output = root.run_ui(egui::RawInput::default(), |ui| {
+            app.midi_dialogs(ui.ctx(), None)
+        });
         output.textures_delta.clear();
         assert!(
             output.shapes.is_empty(),

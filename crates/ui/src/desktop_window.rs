@@ -23,6 +23,18 @@ impl DesktopWindow {
                 ProjectPromptKind::ReplaceExport => "Replace export?",
                 ProjectPromptKind::ExportStatus => "Export status",
                 ProjectPromptKind::StretchUpgrade => "Time stretch upgrade",
+                ProjectPromptKind::Arrangement => "Arrangement event",
+                ProjectPromptKind::ProjectSettings => "Project Settings",
+                ProjectPromptKind::Normalize => "Normalize gain",
+                ProjectPromptKind::Bounce => "Bounce",
+                ProjectPromptKind::Separation => "Stem-separation status",
+                ProjectPromptKind::CollectionError => "Collect project sources",
+                ProjectPromptKind::Recovery => "Project recovery",
+                ProjectPromptKind::MemoryDetails => "Memory details",
+                ProjectPromptKind::TransientDetails => "Transient details",
+                ProjectPromptKind::Error => "Error",
+                ProjectPromptKind::ModelValidation => "Model validation",
+                ProjectPromptKind::SettingsMessage => "Settings window",
             },
         }
     }
@@ -38,6 +50,12 @@ impl DesktopWindow {
                     ProjectPromptKind::Export => 168,
                     ProjectPromptKind::ExportStatus => 224,
                     ProjectPromptKind::StretchUpgrade => 128,
+                    ProjectPromptKind::ProjectSettings | ProjectPromptKind::Normalize => 260,
+                    ProjectPromptKind::Bounce
+                    | ProjectPromptKind::Separation
+                    | ProjectPromptKind::CollectionError => 224,
+                    ProjectPromptKind::MemoryDetails | ProjectPromptKind::TransientDetails => 460,
+                    _ => 120,
                 },
             ],
         }
@@ -90,7 +108,7 @@ impl DawUi {
     pub fn desktop_window_blocked(&self, window: DesktopWindow) -> bool {
         match window {
             DesktopWindow::Settings(_) => self.settings_root_prompt(),
-            DesktopWindow::Project(_) => self.project_prompt_blocked(),
+            DesktopWindow::Project(_) => false,
         }
     }
 
@@ -145,7 +163,6 @@ impl DawUi {
                 let resized = height > 0
                     && !pending_picker
                     && !self.project_prompt_window.picking()
-                    && !self.project_prompt_blocked()
                     && self.desktop_window() == Some(window)
                     && self.project_prompt_window.height != Some(height);
                 if resized {
@@ -155,7 +172,6 @@ impl DawUi {
                     || self.desktop_window() != Some(window)
                     || pending_picker != self.project_prompt_window.picking()
                     || self.job.is_some()
-                    || self.error.is_some()
                 {
                     root.request_repaint_of(egui::ViewportId::ROOT);
                 }

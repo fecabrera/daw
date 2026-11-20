@@ -206,7 +206,7 @@ fn separation_report_shows_tracks_and_project_quality_instead_of_destination() {
                             ..Default::default()
                         },
                         |ui| {
-                            status.show(ui.ctx());
+                            status.show(ui.ctx(), None);
                         },
                     )
                 };

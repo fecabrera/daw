@@ -70,8 +70,19 @@ impl Smoke {
                         !daw.settings_enabled(),
                         "the fallback keeps main editing blocked"
                     );
-                    daw.close_application_settings();
-                    self.step = Step::Closing;
+                    if let Some(window) = daw.desktop_window() {
+                        assert_eq!(window.title(), "Settings window");
+                        if let Some(id) = host.viewport_id()
+                            && let Some(Status::Presented(native)) =
+                                native_viewport::status(ctx, id)
+                            && native.upgrade().is_some_and(|native| native.is_decorated())
+                        {
+                            ctx.send_viewport_cmd_to(id, ViewportCommand::Close);
+                        }
+                    } else {
+                        daw.close_application_settings();
+                        self.step = Step::Closing;
+                    }
                 }
             }
             Step::Opening => {

@@ -15,31 +15,37 @@ pub(super) fn button(ui: &mut egui::Ui, enabled: bool, action: &str) -> egui::Re
 }
 
 impl DawUi {
-    pub(super) fn show_diagnostic_details(&mut self, ctx: &egui::Context) -> bool {
+    pub(super) fn show_diagnostic_details(
+        &mut self,
+        ctx: &egui::Context,
+        surface: Option<&mut egui::Ui>,
+    ) {
         let Some(report) = self.diagnostic_details.take() else {
-            return false;
+            return;
         };
         let title = match &report {
             Report::Memory => "Memory details",
             Report::Transients(_) => "Transient details",
         };
+        let native = surface.is_some();
         let close = dialogs::Dialog::new(title, "", &[("Close", ())])
-            .show_with_content(ctx, |ui| {
-                egui::ScrollArea::vertical()
-                    .max_height(460.0)
-                    .show(ui, |ui| match &report {
-                        Report::Memory => self.memory_details(ui),
-                        Report::Transients(message) => {
-                            ui.add(egui::Label::new(message).wrap());
-                        }
-                    });
+            .show_surface(ctx, surface, |ui| {
+                let mut scroll = egui::ScrollArea::vertical().max_height(460.0);
+                if native {
+                    scroll = scroll.min_scrolled_height(460.0);
+                }
+                scroll.show(ui, |ui| match &report {
+                    Report::Memory => self.memory_details(ui),
+                    Report::Transients(message) => {
+                        ui.add(egui::Label::new(message).wrap());
+                    }
+                });
             })
             .is_some()
             || ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         if !close {
             self.diagnostic_details = Some(report);
         }
-        true
     }
 }
 

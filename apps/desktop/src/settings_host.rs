@@ -51,6 +51,7 @@ impl Wake for Repaint {
 pub(super) struct Host {
     app: usize,
     viewport: Option<Viewport>,
+    suspended_settings: Option<Viewport>,
     chooser: Option<Chooser>,
     retiring: Option<ViewportId>,
     #[cfg(all(target_os = "macos", debug_assertions))]
@@ -63,6 +64,7 @@ impl Host {
         Self {
             app: Rc::as_ptr(ui) as usize,
             viewport: None,
+            suspended_settings: None,
             chooser: None,
             retiring: None,
             #[cfg(all(target_os = "macos", debug_assertions))]
@@ -104,11 +106,12 @@ impl Host {
                 app.borrow_mut().finish_settings_retirement();
             }
         }
-        let (window, size, root_prompt, focus, picker) = {
+        let (window, settings_generation, size, root_prompt, focus, picker) = {
             let mut ui = app.borrow_mut();
             let window = ui.desktop_window();
             (
                 window,
+                ui.native_settings_generation(),
                 window.map(|window| ui.desktop_window_size(window)),
                 window.is_some_and(|window| ui.desktop_window_blocked(window)),
                 window.is_some_and(|window| ui.take_desktop_focus(window)),
@@ -123,19 +126,40 @@ impl Host {
             });
         }
 
+        let settings = settings_generation.map(DesktopWindow::Settings);
+        if self
+            .suspended_settings
+            .as_ref()
+            .is_some_and(|viewport| Some(viewport.window) != settings)
+            && let Some(old) = self.suspended_settings.take()
+        {
+            native_viewport::forget(root, old.id);
+        }
         if self.viewport.as_ref().map(|viewport| viewport.window) != window {
-            if let Some(old) = self.viewport.take() {
+            if let Some(mut old) = self.viewport.take() {
                 let restore = matches!(native_viewport::status(root, old.id),
                     Some(Status::Presented(window)) if
                         window.upgrade().is_some_and(|window| window.has_focus()));
-                native_viewport::forget(root, old.id);
-                self.retiring = Some(old.id);
+                if Some(old.window) == settings {
+                    old.suspended = true;
+                    self.suspended_settings = Some(old);
+                } else {
+                    native_viewport::forget(root, old.id);
+                    self.retiring = Some(old.id);
+                }
                 root.request_repaint();
                 if restore && window.is_none() {
                     root.send_viewport_cmd_to(ViewportId::ROOT, ViewportCommand::Focus);
                 }
             }
-            if let Some(window) = window {
+            if self
+                .suspended_settings
+                .as_ref()
+                .map(|viewport| viewport.window)
+                == window
+            {
+                self.viewport = self.suspended_settings.take();
+            } else if let Some(window) = window {
                 let id = match window {
                     DesktopWindow::Settings(generation) => {
                         ViewportId::from_hash_of(("application-settings", generation))
@@ -150,6 +174,13 @@ impl Host {
                     suspended: false,
                 });
             }
+        }
+        if let Some(viewport) = &self.suspended_settings {
+            root.show_viewport_deferred(
+                viewport.id,
+                Self::builder(viewport.window, viewport.window.size(), true),
+                |_, _| {},
+            );
         }
         let mut owner = None;
         let mut suspend_for_chooser = false;
@@ -250,30 +281,7 @@ impl Host {
         let window = viewport.window;
         let app_id = self.app;
         let root_context = root.clone();
-        let mut builder = ViewportBuilder::default()
-            .with_title(window.title())
-            .with_decorations(true)
-            .with_transparent(false)
-            .with_visible(!suspended)
-            .with_inner_size(
-                size.unwrap_or_else(|| window.size())
-                    .map(|size| size as f32),
-            );
-        builder = if window.resizable() {
-            builder.with_min_inner_size([420.0, 320.0])
-        } else {
-            builder
-                .with_resizable(false)
-                .with_minimize_button(false)
-                .with_maximize_button(false)
-        };
-        if cfg!(target_os = "macos") {
-            builder = builder
-                .with_fullsize_content_view(false)
-                .with_titlebar_shown(true)
-                .with_title_shown(true)
-                .with_titlebar_buttons_shown(true);
-        }
+        let builder = Self::builder(window, size.unwrap_or_else(|| window.size()), suspended);
         root.show_viewport_deferred(viewport.id, builder, move |ui, class| {
             UI.with_borrow(|slot| {
                 let Some(app) = slot
@@ -297,6 +305,31 @@ impl Host {
                 }
             });
         });
+    }
+
+    fn builder(window: DesktopWindow, size: [u32; 2], suspended: bool) -> ViewportBuilder {
+        let mut builder = ViewportBuilder::default()
+            .with_title(window.title())
+            .with_decorations(true)
+            .with_transparent(false)
+            .with_visible(!suspended)
+            .with_inner_size(size.map(|size| size as f32));
+        builder = if window.resizable() {
+            builder.with_min_inner_size([420.0, 320.0])
+        } else {
+            builder
+                .with_resizable(false)
+                .with_minimize_button(false)
+                .with_maximize_button(false)
+        };
+        if cfg!(target_os = "macos") {
+            builder = builder
+                .with_fullsize_content_view(false)
+                .with_titlebar_shown(true)
+                .with_title_shown(true)
+                .with_titlebar_buttons_shown(true);
+        }
+        builder
     }
 
     #[cfg(all(target_os = "macos", debug_assertions))]

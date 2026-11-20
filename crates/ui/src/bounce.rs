@@ -249,7 +249,7 @@ impl DawUi {
             self.dismiss_bounce();
         }
     }
-    fn dismiss_bounce(&mut self) {
+    pub(super) fn dismiss_bounce(&mut self) {
         if let Some(status) = self.bounce_status.take() {
             self.bounce_restore_focus = status.focus;
             status.context.input(|input| {
@@ -290,7 +290,7 @@ impl DawUi {
         });
         self.bounce_input_blocked = self.bounce_block_pointer;
     }
-    pub(super) fn show_bounce(&mut self, ctx: &egui::Context) {
+    pub(super) fn show_bounce(&mut self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) {
         let Some(status) = &self.bounce_status else {
             return;
         };
@@ -343,7 +343,7 @@ impl DawUi {
             cancel: (!status.publishing && !status.cleaning && !draining_error)
                 .then_some(&status.progress.cancel),
         }
-        .show(ctx);
+        .show_surface(ctx, surface);
         if close {
             self.dismiss_bounce();
         }

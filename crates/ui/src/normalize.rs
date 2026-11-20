@@ -15,13 +15,13 @@ impl Draft {
             target: "-1.0".into(),
         }
     }
-    fn show(&mut self, ctx: &egui::Context) -> Option<bool> {
+    fn show(&mut self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> Option<bool> {
         let mut action = None;
         let message = format!(
             "Normalize {} audio clip(s) individually. Adjusts dry clip Gain before effects. Source files stay unchanged.",
             self.clips.len()
         );
-        dialogs::Dialog::<bool>::new("Normalize gain", &message, &[]).show_with_content(ctx, |ui| {
+        dialogs::Dialog::<bool>::new("Normalize gain", &message, &[]).show_surface(ctx, surface, |ui| {
             let before = self.options.mode;
             egui::Grid::new("normalize-options").show(ui, |ui| {
                 ui.label("Measure");
@@ -73,9 +73,13 @@ impl DawUi {
                     })
             })
     }
-    pub(super) fn show_normalization(&mut self, ctx: &egui::Context) {
+    pub(super) fn show_normalization(
+        &mut self,
+        ctx: &egui::Context,
+        surface: Option<&mut egui::Ui>,
+    ) {
         if let Some(mut draft) = self.normalize_dialog.take() {
-            match draft.show(ctx) {
+            match draft.show(ctx, surface) {
                 Some(true) => self.start_normalization(draft.clips, draft.options),
                 Some(false) => (),
                 None => self.normalize_dialog = Some(draft),

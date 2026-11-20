@@ -17,6 +17,27 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Shared native dialog title bars — 2026-11-20
+
+- The workspace UI suite covers the shared dialog body, close behavior, and
+  editing guards. The Project Settings regression checks that closing a
+  native Error dialog returns to the same pending draft and that native
+  close cancels the draft.
+- The signed local macOS debug bundle passed the native Settings, Save, and
+  Export smoke tests. The two Settings startup fault tests also passed. Each
+  verified that the fallback notice opened in a decorated window and that
+  dismissing it preserved the embedded Settings session.
+- The Linux ARM64 GTK build passed the Settings titlebar and close smoke
+  test under Xvfb. Native Windows and Wayland checks remain open.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`,
+  `cargo fmt --all --check`, `git diff --check`, and changed Markdown file
+  links passed.
+- `cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed 3,644 tests with 22 ignored. The command excluded the known macOS
+  Audio Unit registration failure.
+- `cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed 3,644 tests with 22 ignored and the same exclusion.
+
 ## MIDI and beat clip repeat tails — 2026-11-20
 
 - `cargo test --offline -p daw-engine --test midi clip_repeat` passed both

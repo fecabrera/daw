@@ -5,6 +5,7 @@ use daw_ui::{DesktopPicker, DesktopWindow, settings::PickerKind};
 #[derive(Default)]
 pub(super) struct Host {
     child: Option<Child>,
+    suspended_settings: Option<Child>,
     picker: Option<(gtk4::FileChooserNative, Rc<Cell<bool>>)>,
 }
 
@@ -34,11 +35,12 @@ impl Host {
         parent_area: &gtk4::GLArea,
         root: &Rc<RefCell<State>>,
     ) {
-        let (key, size, focus, blocked, request, root_renderer, smoke_close) = {
+        let (key, settings_generation, size, focus, blocked, request, root_renderer, smoke_close) = {
             let mut state = root.borrow_mut();
             let key = state.ui.desktop_window();
             (
                 key,
+                state.ui.native_settings_generation(),
                 key.map(|key| state.ui.desktop_window_size(key)),
                 key.is_some_and(|key| state.ui.take_desktop_focus(key)),
                 key.is_some_and(|key| state.ui.desktop_window_blocked(key)),
@@ -51,10 +53,25 @@ impl Host {
         if self.picker.as_ref().is_some_and(|(_, done)| done.get()) {
             self.picker = None;
         }
+        let settings = settings_generation.map(DesktopWindow::Settings);
+        if self
+            .suspended_settings
+            .as_ref()
+            .is_some_and(|child| Some(child.key) != settings)
+            && let Some(child) = self.suspended_settings.take()
+        {
+            child.window.destroy();
+        }
         if self.child.as_ref().map(|child| child.key) != key {
-            if let Some(child) = self.child.take() {
+            if let Some(mut child) = self.child.take() {
                 let restore = child.window.is_active();
-                child.window.destroy();
+                if Some(child.key) == settings {
+                    child.window.set_visible(false);
+                    child.suspended = true;
+                    self.suspended_settings = Some(child);
+                } else {
+                    child.window.destroy();
+                }
                 let mut state = root.borrow_mut();
                 state.smoke_settings_presented = false;
                 state.ui.finish_settings_retirement();
@@ -64,7 +81,9 @@ impl Host {
                     parent_area.grab_focus();
                 }
             }
-            if let Some((key, size)) = key.zip(size) {
+            if self.suspended_settings.as_ref().map(|child| child.key) == key {
+                self.child = self.suspended_settings.take();
+            } else if let Some((key, size)) = key.zip(size) {
                 self.child = Some(Child::new(parent, root, key, size, root_renderer));
             }
         }
@@ -147,6 +166,9 @@ impl Drop for Host {
     fn drop(&mut self) {
         if let Some((picker, _)) = self.picker.take() {
             picker.hide();
+        }
+        if let Some(child) = self.suspended_settings.take() {
+            child.window.destroy();
         }
         if let Some(child) = self.child.take() {
             child.window.destroy();

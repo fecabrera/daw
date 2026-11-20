@@ -417,12 +417,13 @@ impl DawUi {
         }
         ctx.request_repaint_after(Duration::from_millis(16));
     }
-    pub(super) fn midi_dialogs(&mut self, ctx: &egui::Context) {
-        if self.project_prompt_kind().is_some() {
+    pub(super) fn midi_dialogs(&mut self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) {
+        if self.project_prompt_kind() != Some(crate::project_prompt::ProjectPromptKind::Recovery) {
             return;
         }
         if self.midi.recovery_running {
-            dialogs::Dialog::<()>::new("Project recovery", "Recovering project…", &[]).show(ctx);
+            dialogs::Dialog::<()>::new("Project recovery", "Recovering project…", &[])
+                .show_surface(ctx, surface, |_| {});
             return;
         }
         if let Some(entry) = self.midi.recoveries.first().cloned() {
@@ -430,7 +431,7 @@ impl DawUi {
             if entry.original_folder.is_some() {
                 choices.insert(1, ("Open last saved", 1));
             }
-            let choice=dialogs::Dialog::new("Project recovery",&format!("Recover recent edits to {}?",entry.name),&choices).show_with_content(ctx,|ui|{
+            let choice=dialogs::Dialog::new("Project recovery",&format!("Recover recent edits to {}?",entry.name),&choices).show_surface(ctx,surface,|ui|{
                 if let Some(warning)=&entry.warning {ui.label(warning);}
                 rows::advice(ui,"Recovery keeps the last manual save. Use Save As to put recovered work in your project folder.");
             });

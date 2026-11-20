@@ -19,7 +19,7 @@ struct Item {
     label: String,
     length_frames: Option<u64>,
 }
-struct Draft {
+pub(super) struct Draft {
     item: Item,
     text: String,
     numerator: u16,
@@ -58,7 +58,7 @@ pub(super) struct State {
     visible: [bool; 3],
     pub(super) collapsed: bool,
     drag: Option<Drag>,
-    draft: Option<Draft>,
+    pub(super) draft: Option<Draft>,
     rename: Option<SectionRename>,
     selected: Option<Item>,
     selection: HashSet<(Kind, Id)>,
@@ -776,7 +776,7 @@ impl DawUi {
             self.arrangement.rename = None;
         }
     }
-    pub(super) fn arrangement_dialog(&mut self, ctx: &egui::Context) {
+    pub(super) fn maintain_arrangement_dialog(&mut self, ctx: &egui::Context) {
         if self.view_mode != ViewMode::Timeline {
             self.arrangement.selection.clear();
             self.arrangement.selected = None;
@@ -789,19 +789,26 @@ impl DawUi {
         {
             self.arrangement.rename = None;
         }
+        if self.midi.busy() || self.job.is_some() || self.is_playing() {
+            self.arrangement.draft = None;
+        }
+    }
+
+    pub(super) fn arrangement_dialog(
+        &mut self,
+        ctx: &egui::Context,
+        surface: Option<&mut egui::Ui>,
+    ) {
         let Some(mut draft) = self.arrangement.draft.take() else {
             return;
         };
-        if self.midi.busy() || self.job.is_some() || self.is_playing() {
-            return;
-        }
         let action = dialogs::Dialog::new(
             "Arrangement event",
             "",
             &[("Apply", true), ("Cancel", false)],
         )
         .footer_separator(true)
-        .show_with_content(ctx, |ui| match draft.item.kind {
+        .show_surface(ctx, surface, |ui| match draft.item.kind {
             Kind::Marker => {}
             Kind::Tempo => {
                 ui.label("Tempo (quarter-note BPM)");

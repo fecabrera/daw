@@ -59,17 +59,19 @@ On Windows, default to the standard native titlebar and caption buttons. Display
 
 Use a shared row layout with vertical centering for all control rows and toolbars, including track controls, Master, the status bar, and dialog actions. Reserve the tallest item's height before placing the row's items, so later knobs or controls do not shift the center. Keep the existing row heights, spacing, and panel structure.
 
-Use one reusable application dialog component for project naming, export options, export status, unsaved changes, export replacement, and errors. The component must share the title presentation, centered position, 8-point content padding and spacing, non-resizable sizing, wrapped message text, and button layout. Dialog titles must use the standard UI body font: 13-point Outfit. Use a default width of 320 points and a maximum width of 560 points. Button rows must wrap when needed. Each caller supplies its title, message, action labels, action values, and enabled state, then handles the selected action. Keep native file and folder pickers in `rfd`.
+Use one reusable application dialog component for prompts and reports. Share the 8-point content padding and spacing, wrapped message text, and button layout. Use 320 points as the default width. Button rows must wrap when needed. Each caller supplies the title, message, action labels, action values, and enabled state, then handles the selected action. Let the platform style native titles. Embedded fallback titles use the standard 13-point Outfit UI body font.
 
-Unsaved changes, Save project, Save project as, Export audio, Replace export?,
-and Export status use the [desktop Settings
-window host](../views/application-settings.md) with native platform title bars,
+All application dialogs use the [desktop Settings window host](../views/application-settings.md)
+with native platform title bars,
 independent of the main-window Titlebar preference. Use the same dialog body in
 the native client and the embedded fallback. Fit the native client height to
 the measured dialog body plus 8 points of padding above and below. Refit when
-name validation or export format changes the contents. Close the native prompt through its
-Cancel path. Keep one prompt active and preserve the pending project transition
-and name draft on fallback. When Continue validates a name, show the native
+the contents change. Keep one prompt active and preserve the pending project
+transition and editable drafts on fallback. Use the shared prompt dispatcher for new
+dialogs. Treat title-bar close as Cancel for editable drafts and Close for
+finished reports. Preserve explicit choices for recovery and keep active jobs
+open until they finish. Use the existing platform chooser adapters for files
+and folders. When Continue validates a name, show the native
 folder chooser owned by the naming window, or use the root as its owner after
 fallback. Keep the naming prompt and main editing blocked while the chooser
 holds its owner. Export opens the native file picker with the chosen format,

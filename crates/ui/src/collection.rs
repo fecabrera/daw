@@ -46,7 +46,7 @@ impl Drop for Status {
     }
 }
 impl Status {
-    fn show_error(&self, ctx: &egui::Context) -> bool {
+    fn show_error(&self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> bool {
         if !matches!(self.report, job_report::State::Failed(_)) {
             return false;
         }
@@ -66,7 +66,7 @@ impl Status {
             warnings: &self.warnings,
             cancel: None,
         }
-        .show(ctx)
+        .show_surface(ctx, surface)
     }
 }
 impl DawUi {
@@ -432,10 +432,35 @@ impl DawUi {
             })
             .or_else(|| self.collection_message.clone())
     }
-    pub(super) fn show_collection(&mut self, ctx: &egui::Context) {
+    pub(super) fn collection_error_visible(&self) -> bool {
+        self.collection_status.as_ref().is_some_and(|s| {
+            s.stage == Stage::Done && matches!(s.report, job_report::State::Failed(_))
+        })
+    }
+
+    pub(super) fn acknowledge_collection_error(&mut self) {
+        if let Some(status) = &mut self.collection_status {
+            status.report = job_report::State::Complete;
+        }
+    }
+
+    pub(super) fn show_collection_error(
+        &mut self,
+        ctx: &egui::Context,
+        surface: Option<&mut egui::Ui>,
+    ) {
+        if self
+            .collection_status
+            .as_ref()
+            .is_some_and(|status| status.show_error(ctx, surface))
+        {
+            self.acknowledge_collection_error();
+        }
+    }
+
+    pub(super) fn finish_collection_dialog(&mut self, ctx: &egui::Context) {
         let dismiss = self.collection_status.as_ref().is_some_and(|s| {
-            s.stage == Stage::Done
-                && (!matches!(s.report, job_report::State::Failed(_)) || s.show_error(ctx))
+            s.stage == Stage::Done && !matches!(s.report, job_report::State::Failed(_))
         });
         if dismiss {
             let restore = self.collection_preserves_selection();
