@@ -10,7 +10,7 @@ impl DawUi {
             .map_or(MidiOptions::default(), |track| track.midi_options)
     }
 
-    pub(super) fn midi_editor_panel(&mut self, ui: &mut egui::Ui, bounds: Rect) {
+    pub(super) fn midi_editor_panel(&mut self, ui: &mut egui::Ui, bounds: Rect, overview: bool) {
         let panel = panels::ControlPanel::begin(ui, bounds);
         let rect = Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, bounds.height()));
         #[cfg(test)]
@@ -25,16 +25,18 @@ impl DawUi {
         );
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         child.spacing_mut().item_spacing = Vec2::ZERO;
-        let title = panel.header(&mut child, "Editor", |_| {});
-        panels::ControlPanel::row_dividers(&child, title.response.rect, false, true);
-        let header = rows::fixed(&mut child, self.track_row_height(), |ui| {
-            self.editor_track_header(ui)
-        });
-        #[cfg(test)]
-        {
-            self.midi_editor.track_header_bounds = header.response.rect;
+        if overview {
+            let title = panel.header(&mut child, "Editor", |_| {});
+            panels::ControlPanel::row_dividers(&child, title.response.rect, false, true);
+            let header = rows::fixed(&mut child, self.track_row_height(), |ui| {
+                self.editor_track_header(ui)
+            });
+            #[cfg(test)]
+            {
+                self.midi_editor.track_header_bounds = header.response.rect;
+            }
+            panels::ControlPanel::row_dividers(&child, header.response.rect, false, true);
         }
-        panels::ControlPanel::row_dividers(&child, header.response.rect, false, true);
         let track_id = self
             .editor_track()
             .filter(|track| track.kind == TrackKind::Midi)
@@ -84,17 +86,20 @@ impl DawUi {
             self.midi_editor.scale_snap_bounds = Rect::NOTHING;
             self.midi_editor.velocity_bounds = Rect::NOTHING;
         }
-        if audio {
+        if audio && (overview || !self.clip_settings_visible) {
             let allowed = ui.is_enabled() && self.editing_enabled();
             let options_bounds = Rect::from_min_max(title.response.rect.min, rect.max);
             egui::ScrollArea::vertical()
                 .id_salt("editor-clip-options-scroll")
                 .auto_shrink([false, false])
                 .show(&mut child, |ui| {
-                    self.clip_settings_body(ui, &panel, options_bounds, allowed)
+                    let track = (!overview).then_some(self.selected_track).flatten();
+                    self.clip_settings_body(ui, &panel, options_bounds, allowed, track)
                 });
-        } else if !beat {
-            self.clear_clip_settings_edits();
+        } else if !audio && !beat {
+            if overview || !self.clip_settings_visible {
+                self.clear_clip_settings_edits();
+            }
             egui::ScrollArea::vertical()
                 .id_salt("editor-options-scroll")
                 .auto_shrink([false, false])

@@ -29,6 +29,7 @@ pub(super) struct Buttons {
     pub library: egui::Response,
     pub components: Option<egui::Response>,
     pub lane: egui::Response,
+    pub editor: Option<egui::Response>,
     pub chords: Option<egui::Response>,
 }
 
@@ -44,6 +45,7 @@ pub(super) fn show(
     bounds: Rect,
     catalogs: Catalogs,
     lane_visible: bool,
+    editor_visible: Option<bool>,
     enabled: bool,
 ) -> Buttons {
     let palette = theme::palette(ui.ctx());
@@ -133,6 +135,17 @@ pub(super) fn show(
             lane_visible,
             enabled,
         ),
+        editor: editor_visible.map(|selected| {
+            toggle_at(
+                &mut rail,
+                bottom - Vec2::new(0.0, step),
+                "timeline-editor",
+                icons::Lucide::PanelBottom,
+                "Show Timeline editor",
+                selected,
+                enabled,
+            )
+        }),
     }
 }
 

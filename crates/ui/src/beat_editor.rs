@@ -1313,7 +1313,6 @@ impl DawUi {
             viewport.min + Vec2::new(TRACK_WIDTH + track_overview::LABEL_WIDTH, 0.0),
             viewport.max,
         );
-        panels::ControlPanel::row_left_divider(ui, grid, viewport);
         if pattern.is_none() {
             ui.painter_at(grid).text(
                 grid.min + Vec2::splat(8.0),

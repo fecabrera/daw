@@ -180,19 +180,25 @@ fn panel_menu_availability_and_checks_follow_the_current_view() {
     for (view, enabled) in [
         (
             ViewMode::Timeline,
-            [false, false, true, true, true, true, true, true, true],
+            [false, false, true, true, true, true, true, true, true, true],
         ),
         (
             ViewMode::Instrument,
-            [true, true, true, false, false, true, true, false, false],
+            [
+                true, true, true, false, false, true, true, false, false, false,
+            ],
         ),
         (
             ViewMode::Edit,
-            [true, false, true, true, false, false, true, false, false],
+            [
+                true, false, true, true, false, false, true, false, false, false,
+            ],
         ),
         (
             ViewMode::Mixer,
-            [false, false, true, false, false, false, true, true, true],
+            [
+                false, false, true, false, false, false, true, false, true, true,
+            ],
         ),
     ] {
         app.set_view_mode(view, &ctx);
@@ -226,6 +232,156 @@ fn panel_menu_availability_and_checks_follow_the_current_view() {
     }
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
+}
+
+#[test]
+fn timeline_editor_shares_the_lower_lane_and_resizes_from_its_top_edge() {
+    let (mut app, audio) = fixture();
+    let ctx = context();
+    let clip = app.session.project.tracks[0].clips[0].id;
+    app.select_clip(clip, audio, false);
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    let timeline_transform = (app.zoom, app.scroll);
+    let editor_toggle = app.timeline_editor.toggle_bounds.center();
+    let effects_toggle = app.effects_bounds.lane_toggle.center();
+    let click = |app: &mut DawUi, pos| {
+        super::instrument_catalog::click(app, &ctx, pos, false);
+        frame(app, &ctx, vec![]);
+    };
+    let drag = |app: &mut DawUi, start, end| {
+        frame(
+            app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    };
+
+    click(&mut app, editor_toggle);
+    assert!(app.view_panel_selected(ViewPanel::EditorPane));
+    assert!(!app.view_panel_selected(ViewPanel::EffectsLane));
+    assert!(!app.effects_bounds.strip.is_positive());
+    assert!(app.midi_editor.content.bounds.is_positive());
+    assert_eq!(app.view_mode, ViewMode::Timeline);
+    let divider = app.timeline_editor.divider_bounds;
+    assert_eq!(app.midi_editor.panel_bounds.top(), divider.top());
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::LineSegment { points, stroke }
+            if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                && points[0] == divider.left_top() + Vec2::new(0.0, 0.5)
+                && points[1] == divider.right_top() + Vec2::new(0.0, 0.5)
+    )));
+    let start = app.timeline_editor.divider_bounds.center();
+    assert!(app.timeline_bounds.bottom() <= app.timeline_editor.divider_bounds.top());
+    let end = start - Vec2::new(0.0, 80.0);
+    drag(&mut app, start, end);
+    assert!(app.timeline_editor.resizing());
+    assert!((app.timeline_editor.divider_bounds.center().y - end.y).abs() < 1.0);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    assert!(!app.timeline_editor.resizing());
+    let resized = app.timeline_editor.divider_bounds;
+    let end = resized.center() + Vec2::new(0.0, 40.0);
+    drag(&mut app, resized.center(), end);
+    assert!(app.timeline_editor.divider_bounds.top() > resized.top());
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    assert_eq!(app.timeline_editor.divider_bounds, resized);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    assert!(!app.timeline_editor.resizing());
+
+    click(&mut app, effects_toggle);
+    assert!(app.view_panel_selected(ViewPanel::EffectsLane));
+    assert!(!app.view_panel_selected(ViewPanel::EditorPane));
+    assert!(app.effects_bounds.strip.is_positive());
+    click(&mut app, editor_toggle);
+    assert_eq!(app.timeline_editor.divider_bounds, resized);
+    click(&mut app, editor_toggle);
+    assert!(!app.view_panel_selected(ViewPanel::EffectsLane));
+    assert!(!app.view_panel_selected(ViewPanel::EditorPane));
+    assert_eq!(app.selected_clip, Some(clip));
+    assert_eq!((app.zoom, app.scroll), timeline_transform);
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn timeline_editor_follows_the_selected_track_and_edits_the_shared_beat_pattern() {
+    let mut app = DawUi::default();
+    let midi = app.session.project.add_midi_track().unwrap();
+    let midi_clip = app.session.project.add_midi_pattern(midi, 0).unwrap();
+    let note = Id::new_v4();
+    let pattern = app.session.project.assets[0].midi_pattern.as_mut().unwrap();
+    pattern.notes.push(daw_core::MidiNote {
+        id: note,
+        start_tick: 0,
+        length_ticks: daw_core::MIDI_TICKS_PER_BEAT / 4,
+        pitch: 69,
+        velocity: 100,
+    });
+    let beat = app.session.project.add_beat_track().unwrap();
+    let row = daw_core::BeatSubtrack::new("Kick".into());
+    let row_id = row.id;
+    app.session
+        .project
+        .edit(Edit::Beat {
+            track_id: beat,
+            edit: daw_core::BeatEdit::Add {
+                subtrack: Box::new(row),
+                index: 0,
+            },
+        })
+        .unwrap();
+    let beat_clip = app.session.project.add_beat_pattern(beat, 0).unwrap();
+    let ctx = context();
+    app.set_timeline_editor_visible(true);
+    app.select_clip(midi_clip, midi, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.midi_editor.active_track, Some(midi));
+    assert!(
+        app.midi_editor
+            .pattern_header_bounds
+            .contains_key(&midi_clip)
+    );
+    assert!(
+        app.midi_editor
+            .content
+            .bounds
+            .intersects(app.midi_editor.note_bounds[&note])
+    );
+    app.set_view_mode(ViewMode::Edit, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(
+        app.midi_editor
+            .content
+            .bounds
+            .intersects(app.midi_editor.note_bounds[&note])
+    );
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    app.select_track(beat, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.midi_editor.active_track, Some(beat));
+    assert_eq!(app.selected_clip, Some(midi_clip));
+    app.select_clip(beat_clip, beat, false);
+    frame(&mut app, &ctx, vec![]);
+    let step = app.beat_ui.steps[&(row_id, 0)].center();
+    let before = app.session.project.clone();
+    super::instrument_catalog::click(&mut app, &ctx, step, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.view_mode, ViewMode::Timeline);
+    assert!(app.dirty);
+    assert_ne!(app.session.project, before);
+    assert_eq!(app.selected_clip, Some(beat_clip));
 }
 
 #[test]

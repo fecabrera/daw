@@ -66,6 +66,28 @@ Patterns use the existing clip move, copy/paste, drag duplication, trim, loop, s
 
 ## Editor options panel
 
+Timeline exposes a Timeline Editor toggle above the Effects Lane toggle on its
+left rail. The two panes share the lower workspace slot. The Timeline editor
+starts closed. Switching between panes and resizing are UI state. An active
+Timeline Editor toggle closes the lower pane when pressed again. Other views
+retain their existing Effects Lane behavior.
+
+Reuse the lower Editor renderer, options, viewport, and edit transactions for
+audio, MIDI, and beat tracks. Timeline uses the selected track and the active
+clip on that track. With no supported track selected, prompt for one. Omit the
+standalone overview and track header. Keep Timeline's ruler, scrollbar,
+selection, and file-drop bounds in the upper pane. Lower clip drags retain
+their track and content zoom. When the right Clip settings inspector is open,
+it owns the shared audio clip settings fields. Double-clicking a clip fits it
+in the open Timeline editor and retains Timeline view.
+
+Paint a single one-point divider flush with the top of the lower pane. Use an
+invisible six-point hit area inside the pane for primary-pointer resizing.
+Clamp its movement to keep room for
+the upper ruler and track row and the lower editor controls and content.
+Retain the chosen height across pane toggles. Escape, window focus loss, or
+blocked editing cancels the drag and restores the original height.
+
 Editor has a fixed `ControlPanel::WIDTH` left panel. Its Editor header aligns with the ruler. Below the Editor title, a shared-height track header aligns with the clip strip and contains the track icon/name dropdown, M/S, adjacent Gain/Pan knobs without numeric fields, and stereo meters. Reuse `track_selector.rs`, `mix_controls.rs`, and `meters.rs`; keep mix edits on the existing project-change path. Remove the Editor selector from the playback toolbar. Keep the piano-key gutter between the panel and the note grid; the overview ruler and clip strip share their own viewport. The lower ruler and note grid use the independent editor content viewport. Scroll the options body independently from the piano roll and retain the panel's full-height divider, including with no selected track.
 
 Overlay horizontal scrollbars within Timeline, the Editor overview, and the lower audio/MIDI editor through the shared timeline scrollbar implementation. Do not allocate a scrollbar row or subtract its height from content. The overview and track header end together; the options title and lower editor toolbar start immediately below them with matching top and bottom boundaries, including after window resizing. Use `rows::fixed` for the track header, options title, and lower toolbar so fractional display scaling cannot expand text-bearing rows or shift their borders. Continue both options-title dividers across the lower editor toolbar through the shared pinned-row top border and row-divider bottom border painters. All three panes inherit the effects lane’s standard theme scroll style and default visibility instead of forcing a solid, always-visible scrollbar. Give each floating scroll area enough height to show its hovered handle without clipping. Paint and register scrollbar interaction after content so it stays above clips. Retain scrollbar-only input here because clip canvases own wheel and drag gestures.

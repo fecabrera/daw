@@ -17,6 +17,53 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Flush Timeline editor divider — 2026-11-20
+
+- The Timeline editor test verifies a one-point divider at the pane boundary,
+  flush alignment with the options panel, drag resizing, and Escape cancellation.
+- Strict workspace Clippy, formatting, specification links, and
+  `git diff --check` passed. The macOS debug bundle rebuilt and passed signature
+  verification. Geometry and dragging were checked in egui.
+- Debug and release workspace runs each passed 3,649 tests with 22 ignored.
+  Both commands excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
+## Beat editor audition divider — 2026-11-20
+
+- UI render tests verify that the divider reaches the bottom of the pane in
+  Editor and Timeline, with and without a selected beat clip. The existing
+  tile geometry and horizontal scrollbar interaction tests also passed.
+- Strict workspace Clippy, formatting, specification file links, and
+  `git diff --check` passed. The signed macOS debug bundle passed the native
+  Save and Export smoke test. Divider geometry was verified by the render tests.
+- Debug and release workspace runs each passed 3,649 tests with 22 ignored.
+  Both commands excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
+## Resizable Timeline editor — 2026-11-20
+
+- UI checks exercise the Effects Lane and Timeline Editor toggles, retained
+  pane height, resize cancellation, and separation of arrangement and lower
+  editor bounds. They check the waveform, piano roll, and beat grid on their
+  selected tracks and edit a beat step directly from Timeline.
+- Strict workspace Clippy, formatting, changed Markdown file links, and
+  `git diff --check` passed. The signed macOS debug bundle passed the native
+  Save and Export smoke test. Native pointer resizing and audio-device
+  checks remain open.
+- `cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed 3,648 tests with 22 ignored. The command excluded the known macOS
+  Audio Unit registration case.
+- `cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed 3,648 tests with 22 ignored and the same exclusion.
+
 ## First-bar loop default and shortcut — 2026-11-20
 
 - Core tests check the disabled first-bar range at all six sample rates,

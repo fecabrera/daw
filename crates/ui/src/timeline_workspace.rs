@@ -1,7 +1,190 @@
 //! Timeline-only inspector rail, outside all canvas input and drop bounds.
 use super::*;
 
+const EDITOR_RESIZE_HIT_HEIGHT: f32 = 6.0;
+
+pub(super) struct EditorPane {
+    mode: LowerPane,
+    height: f32,
+    resize: Option<EditorResize>,
+    #[cfg(test)]
+    pub(super) toggle_bounds: Rect,
+    #[cfg(test)]
+    pub(super) divider_bounds: Rect,
+}
+
+#[derive(Default, PartialEq)]
+enum LowerPane {
+    #[default]
+    Effects,
+    Editor,
+    Hidden,
+}
+
+struct EditorResize {
+    previous_height: f32,
+    visible_height: f32,
+    origin_y: f32,
+}
+
+impl Default for EditorPane {
+    fn default() -> Self {
+        Self {
+            mode: LowerPane::default(),
+            height: 300.0,
+            resize: None,
+            #[cfg(test)]
+            toggle_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            divider_bounds: Rect::NOTHING,
+        }
+    }
+}
+
+impl EditorPane {
+    pub(super) fn resizing(&self) -> bool {
+        self.resize.is_some()
+    }
+
+    pub(super) fn shows_effects(&self) -> bool {
+        self.mode == LowerPane::Effects
+    }
+
+    pub(super) fn show_effects(&mut self) {
+        self.mode = LowerPane::Effects;
+    }
+
+    pub(super) fn layout(
+        &mut self,
+        ui: &egui::Ui,
+        bounds: Rect,
+        maximum: f32,
+        enabled: bool,
+    ) -> (f32, bool) {
+        let minimum = midi_editor::LOWER_MIN_HEIGHT.min(maximum);
+        let height = self.height.clamp(minimum, maximum);
+        let divider = |height: f32| {
+            Rect::from_min_size(
+                Pos2::new(bounds.left(), bounds.bottom() - height),
+                Vec2::new(bounds.width(), EDITOR_RESIZE_HIT_HEIGHT.min(height)),
+            )
+        };
+        let mut blocked = self.resizing();
+        let (focused, escape) =
+            ui.input(|input| (input.focused, input.key_pressed(egui::Key::Escape)));
+        let response = (enabled && focused && height > 0.0).then(|| {
+            ui.interact(
+                divider(height),
+                ui.id().with("timeline-editor-divider"),
+                Sense::drag(),
+            )
+            .on_hover_cursor(egui::CursorIcon::ResizeVertical)
+        });
+        if escape || response.is_none() {
+            if let Some(resize) = self.resize.take() {
+                self.height = resize.previous_height;
+            }
+        } else if let Some(response) = &response {
+            let button = egui::PointerButton::Primary;
+            if response.drag_started_by(button)
+                && let Some(origin) = ui.input(|input| input.pointer.press_origin())
+            {
+                self.resize = Some(EditorResize {
+                    previous_height: self.height,
+                    visible_height: height,
+                    origin_y: origin.y,
+                });
+                blocked = true;
+            }
+            if let Some(resize) = &self.resize {
+                if let Some(pointer) = response.interact_pointer_pos() {
+                    self.height = (resize.visible_height + resize.origin_y - pointer.y)
+                        .clamp(minimum, maximum);
+                }
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                if response.drag_stopped_by(button)
+                    || !ui.input(|input| input.pointer.primary_down())
+                {
+                    self.resize = None;
+                }
+            }
+        }
+        let height = self.height.clamp(minimum, maximum);
+        #[cfg(test)]
+        {
+            self.divider_bounds = divider(height);
+        }
+        (height, blocked)
+    }
+}
+
 impl DawUi {
+    pub(super) fn timeline_editor_visible(&self) -> bool {
+        self.view_mode == ViewMode::Timeline && self.timeline_editor.mode == LowerPane::Editor
+    }
+
+    pub(super) fn lower_editor_visible(&self) -> bool {
+        self.view_mode == ViewMode::Edit || self.timeline_editor_visible()
+    }
+
+    pub(super) fn set_timeline_editor_visible(&mut self, visible: bool) {
+        self.timeline_editor.mode = if visible {
+            LowerPane::Editor
+        } else {
+            LowerPane::Hidden
+        };
+        if visible {
+            self.selected_effects.clear();
+            self.effects_drag = None;
+        }
+        self.midi_editor.cancel();
+        self.midi_editor.delete_clips = true;
+        self.cancel_beat_reorder(None);
+        self.clear_clip_settings_edits();
+    }
+
+    pub(super) fn timeline_editor_pane(&mut self, ui: &mut egui::Ui, bounds: Rect, resize: bool) {
+        if !bounds.is_positive() {
+            return;
+        }
+        ui.painter()
+            .rect_filled(bounds, 0.0, theme::palette(ui.ctx()).background);
+        let mut pane = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("timeline-editor-pane")
+                .max_rect(bounds)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        pane.set_clip_rect(bounds.intersect(ui.clip_rect()));
+        pane.spacing_mut().item_spacing = Vec2::ZERO;
+        pane.add_enabled_ui(!resize, |ui| {
+            let (track, assets) = self.track_overview_content(ui);
+            self.prepare_track_overview(track.as_ref());
+            let Some(track) = track else {
+                self.midi_editor.delete_clips = true;
+                if !self.clip_settings_visible {
+                    self.clear_clip_settings_edits();
+                }
+                ui.centered_and_justified(|ui| ui.label("Select an audio, MIDI, or beat track"));
+                return;
+            };
+            self.update_editor_note_gestures(ui);
+            self.midi_editor_panel(ui, bounds, false);
+            let canvas = Rect::from_min_max(bounds.min + Vec2::new(TRACK_WIDTH, 0.0), bounds.max);
+            let mut content = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("editor-canvas")
+                    .max_rect(canvas)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            content.set_clip_rect(canvas.intersect(ui.clip_rect()));
+            if let Some(beat) = self.lower_editor(&mut content, bounds, &track, &assets) {
+                Self::paint_beat_editor_dividers(ui, bounds, canvas.left(), beat);
+            }
+        });
+        panels::ControlPanel::row_dividers(ui, bounds, true, false);
+    }
+
     pub(super) fn timeline_workspace(
         &mut self,
         ui: &mut egui::Ui,

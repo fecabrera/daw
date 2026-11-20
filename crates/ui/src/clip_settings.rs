@@ -115,7 +115,9 @@ impl super::DawUi {
         egui::ScrollArea::vertical()
             .id_salt("timeline-clip-settings-scroll")
             .auto_shrink([false, false])
-            .show(ui, |ui| self.clip_settings_body(ui, panel, bounds, enabled));
+            .show(ui, |ui| {
+                self.clip_settings_body(ui, panel, bounds, enabled, None)
+            });
     }
 
     fn clip_channel_settings(
@@ -278,6 +280,7 @@ impl super::DawUi {
         panel: &panels::ControlPanel,
         bounds: Rect,
         enabled: bool,
+        track: Option<Id>,
     ) {
         #[cfg(test)]
         {
@@ -289,6 +292,7 @@ impl super::DawUi {
         let clips: Vec<_> = self
             .selected_clip_snapshots()
             .into_iter()
+            .filter(|entry| track.is_none_or(|track| entry.track == track))
             .map(|entry| entry.clip)
             .collect();
         let Some(clip) = clips

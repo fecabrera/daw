@@ -325,7 +325,9 @@ impl DawUi {
                 });
             });
         });
-        panels::ControlPanel::pinned_row_divider(ui, toolbar.response.rect);
+        if !self.timeline_editor_visible() {
+            panels::ControlPanel::pinned_row_divider(ui, toolbar.response.rect);
+        }
         panels::ControlPanel::row_dividers(ui, toolbar.response.rect, false, true);
         let viewport = Rect::from_min_max(
             ui.next_widget_position() + Vec2::new(label_width, 0.0),

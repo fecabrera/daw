@@ -333,6 +333,10 @@ scrolling changes only the lower content clock; retain overview zoom/scroll,
 header positions and project/track/clip state. No selected clip means no pattern
 cells. Use the shared scrollbar's styling and interaction guards.
 
+In Editor and Timeline, paint the divider between the audition gutter and
+step grid from below the ruler to the bottom of the pane. Paint it outside
+the row scroll area so it extends through the horizontal scrollbar space.
+
 Beat subtrack renaming in Editor and Instrument uses `rows::name_input`, shared
 with track and Instrument layer names. Keep the same font, full available width, standard control
 height, input frame/padding and initial full-name Unicode selection. Track Mixer

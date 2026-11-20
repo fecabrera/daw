@@ -8,22 +8,9 @@ impl DawUi {
     pub(super) fn track_overview_content(&self, ui: &egui::Ui) -> (Option<Track>, Vec<Asset>) {
         let preview = self.clip_trim_preview_project(ui);
         let project = preview.as_ref().unwrap_or(&self.session.project);
-        let track = (self.view_mode == ViewMode::Edit)
-            .then(|| {
-                project.tracks.iter().find(|track| {
-                    track
-                        .clips
-                        .iter()
-                        .any(|clip| Some(clip.id) == self.selected_clip)
-                })
-            })
-            .flatten()
-            .or_else(|| {
-                project
-                    .tracks
-                    .iter()
-                    .find(|track| Some(track.id) == self.selected_track)
-            })
+        let track = self
+            .editor_track()
+            .and_then(|active| project.tracks.iter().find(|track| track.id == active.id))
             .map(|track| {
                 let mut snapshot = track_rows::header_snapshot(track);
                 snapshot.clips = track.clips.clone();
@@ -60,6 +47,9 @@ impl DawUi {
                 .map_or(0.0, |clip| self.session.project.seconds(clip.start_frame));
             self.midi_editor.active_track = Some(track.id);
             self.midi_editor.active_clip = self.selected_clip;
+        } else if track.is_none() && self.timeline_editor_visible() {
+            self.midi_editor.cancel();
+            self.midi_editor.active_track = None;
         }
     }
     pub(super) fn track_overview_ruler(&mut self, ui: &mut egui::Ui) {

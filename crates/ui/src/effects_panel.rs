@@ -185,10 +185,14 @@ impl DawUi {
 
     pub(super) fn effects_lane_visible(&self) -> bool {
         self.effects_lane_open
+            && (self.view_mode != ViewMode::Timeline || self.timeline_editor.shows_effects())
     }
 
     pub(super) fn set_effects_lane_visible(&mut self, visible: bool) {
         self.effects_lane_open = visible;
+        if visible && self.view_mode == ViewMode::Timeline {
+            self.timeline_editor.show_effects();
+        }
     }
 
     pub(super) fn chords_visible(&self) -> bool {
@@ -330,10 +334,19 @@ impl DawUi {
         };
         let below_track = (bounds.height() - minimum_content).max(0.0);
         let lane_visible = self.effects_lane_visible();
-        let strip_height = if lane_visible {
-            panels::unit_height(compact).min(below_track)
+        let editor_visible = self.timeline_editor_visible();
+        let (strip_height, editor_resize) = if editor_visible {
+            let master_height = if self.timeline_master_visible {
+                MASTER_HEIGHT
+            } else {
+                0.0
+            };
+            let maximum = (below_track - master_height).max(0.0);
+            self.timeline_editor.layout(ui, bounds, maximum, allowed)
+        } else if lane_visible {
+            (panels::unit_height(compact).min(below_track), false)
         } else {
-            0.0
+            (0.0, false)
         };
         let strip = Rect::from_min_max(
             Pos2::new(bounds.left(), bounds.bottom() - strip_height),
@@ -351,7 +364,7 @@ impl DawUi {
             || components_visible
             || chords_visible
             || tracks_visible;
-        if !clip_settings_visible && self.view_mode != ViewMode::Edit {
+        if !clip_settings_visible && !self.lower_editor_visible() {
             self.clear_clip_settings_edits();
         }
         let library = catalog_visible.then(|| panels::ControlPanel::begin(ui, upper));
@@ -566,9 +579,10 @@ impl DawUi {
                     );
                     content_ui.set_clip_rect(content_bounds.intersect(ui.clip_rect()));
                     content_ui.add_enabled_ui(
-                        (self.effects_drag.as_ref().is_none_or(|drag| !drag.active)
-                            && self.chords.drag.is_none())
-                            || self.view_mode == ViewMode::Instrument,
+                        !editor_resize
+                            && ((self.effects_drag.as_ref().is_none_or(|drag| !drag.active)
+                                && self.chords.drag.is_none())
+                                || self.view_mode == ViewMode::Instrument),
                         |ui| match self.view_mode {
                             ViewMode::Instrument => {
                                 self.timeline_bounds = Rect::NOTHING;
@@ -635,7 +649,9 @@ impl DawUi {
             original_effects = effects.clone();
             original_compact = compact;
         }
-        if lane_visible {
+        if editor_visible {
+            self.timeline_editor_pane(ui, strip, editor_resize);
+        } else if lane_visible {
             ui.painter()
                 .rect_filled(strip, 0.0, theme::palette(ui.ctx()).background);
             // The status panel owns the single separator below the effects lane.

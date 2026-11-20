@@ -3,6 +3,7 @@ use daw_core::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, TrackKind};
 
 use crate::track_overview::LABEL_WIDTH as KEY_WIDTH;
 const NOTE_HEIGHT: f32 = 18.0;
+pub(super) const LOWER_MIN_HEIGHT: f32 = RULER_HEIGHT + toolbars::HEIGHT + 22.0 + 2.0 * NOTE_HEIGHT;
 pub(super) const MIN_HEIGHT: f32 = 2.0 * RULER_HEIGHT + ROW_HEIGHT + toolbars::HEIGHT + NOTE_HEIGHT;
 pub(super) use crate::panels::UNIT_STRIP_WIDTH;
 #[derive(Clone, Copy)]
@@ -399,11 +400,13 @@ impl DawUi {
     pub(super) fn open_clip_editor(&mut self, clip: Id, track: Id, ctx: &egui::Context) {
         self.select_clip(clip, track, false);
         self.midi_editor.delete_clips = true;
-        self.set_view_mode(ViewMode::Edit, ctx);
+        if !self.timeline_editor_visible() {
+            self.set_view_mode(ViewMode::Edit, ctx);
+        }
     }
     pub(super) fn edit_view(&mut self, ui: &mut egui::Ui) {
         let bounds = ui.available_rect_before_wrap();
-        self.midi_editor_panel(ui, bounds);
+        self.midi_editor_panel(ui, bounds, true);
         let canvas = Rect::from_min_max(bounds.min + Vec2::new(TRACK_WIDTH, 0.0), bounds.max);
         let mut child = ui.new_child(
             egui::UiBuilder::new()
@@ -413,22 +416,26 @@ impl DawUi {
         );
         child.set_clip_rect(canvas.intersect(ui.clip_rect()));
         if let Some(beat_bounds) = self.edit_canvas(&mut child, bounds) {
-            // The full-width parent owns chrome that extends left of the canvas clip.
-            // Paint it after beat rows so selected fills cannot cover shared dividers.
-            let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
-            ui.painter().hline(
-                bounds.left()..=canvas.left(),
-                beat_bounds.top() - 0.5,
-                border,
-            );
-            ui.painter()
-                .vline(canvas.left() - 0.5, beat_bounds.y_range(), border);
+            Self::paint_beat_editor_dividers(ui, bounds, canvas.left(), beat_bounds);
         }
         ui.advance_cursor_after_rect(bounds);
     }
 
-    fn edit_canvas(&mut self, ui: &mut egui::Ui, editor_bounds: Rect) -> Option<Rect> {
-        ui.spacing_mut().item_spacing = Vec2::ZERO;
+    pub(super) fn paint_beat_editor_dividers(
+        ui: &egui::Ui,
+        bounds: Rect,
+        canvas_left: f32,
+        beat: Rect,
+    ) {
+        // Paint after beat rows so selected backgrounds cannot cover either divider.
+        let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
+        ui.painter()
+            .hline(bounds.left()..=canvas_left, beat.top() - 0.5, border);
+        ui.painter()
+            .vline(canvas_left - 0.5, beat.y_range(), border);
+    }
+
+    pub(super) fn update_editor_note_gestures(&mut self, ui: &egui::Ui) {
         if !ui.is_enabled()
             || !ui.input(|i| i.focused)
             || ui.input(|i| i.key_pressed(egui::Key::Escape))
@@ -448,7 +455,11 @@ impl DawUi {
         self.midi_editor.content_active = true;
         self.update_midi_notes(ui);
         self.midi_editor.content_active = false;
-        let previous_track = self.midi_editor.active_track;
+    }
+
+    fn edit_canvas(&mut self, ui: &mut egui::Ui, editor_bounds: Rect) -> Option<Rect> {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        self.update_editor_note_gestures(ui);
         let (track, assets) = self.track_overview_content(ui);
         self.prepare_track_overview(track.as_ref());
         let viewport = Rect::from_min_max(
@@ -471,8 +482,18 @@ impl DawUi {
         // the lower pane. Menus and overview gestures retain the overview clock.
         let (track, assets) = self.track_overview_content(ui);
         let track = track?;
+        self.lower_editor(ui, editor_bounds, &track, &assets)
+    }
+
+    pub(super) fn lower_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        editor_bounds: Rect,
+        track: &daw_core::Track,
+        assets: &[daw_core::Asset],
+    ) -> Option<Rect> {
         self.midi_editor.content_active = true;
-        self.editor_content_header(ui, &track);
+        self.editor_content_header(ui, track);
         if track.kind == TrackKind::Audio {
             self.midi_editor.delete_clips = true;
         } else if ui.input(|input| {
@@ -501,11 +522,15 @@ impl DawUi {
                     .layout(egui::Layout::top_down(egui::Align::Min)),
             );
             beat.set_clip_rect(bounds.intersect(editor_bounds));
-            self.beat_grid(&mut beat, &track);
+            self.beat_grid(&mut beat, track);
+            // Paint to the bottom of the pane, beyond the scroll area's hit bounds.
+            let steps =
+                Rect::from_min_max(available.min + Vec2::new(KEY_WIDTH, 0.0), available.max);
+            panels::ControlPanel::row_left_divider(ui, steps, available);
             self.editor_scrollbar(ui, ui.max_rect().bottom(), "editor_content_scrollbar");
             Some(bounds)
         } else if track.kind == TrackKind::Midi {
-            self.piano_roll(ui, &track, &assets, previous_track);
+            self.piano_roll(ui, track, assets);
             None
         } else {
             self.audio_editor(ui);
@@ -520,10 +545,10 @@ impl DawUi {
         ui: &mut egui::Ui,
         track: &daw_core::Track,
         assets: &[daw_core::Asset],
-        previous_track: Option<Id>,
     ) {
         if self.portion.is_none()
             && !self.midi_editor.selected_notes.is_empty()
+            && (!self.timeline_editor_visible() || !self.midi_editor.delete_clips)
             && ui.is_enabled()
             && self.clip_actions_available(ui.ctx())
             && !ui.input(|input| input.pointer.any_down())
@@ -539,6 +564,12 @@ impl DawUi {
         let assets = preview.as_ref().map_or(assets, |p| p.assets.as_slice());
         let headers = self.midi_pattern_headers(ui, track);
         let mut scroll = egui::ScrollArea::vertical().id_salt(("piano-roll", track.id));
+        let track_key = ui.id().with("piano-roll-track");
+        let previous_track = ui.data_mut(|data| {
+            let previous = data.get_temp::<Id>(track_key);
+            data.insert_temp(track_key, track.id);
+            previous
+        });
         if previous_track != Some(track.id) {
             scroll = scroll.vertical_scroll_offset(55.0 * NOTE_HEIGHT);
         }
@@ -711,7 +742,7 @@ impl DawUi {
             }
         }
         let allowed = playing
-            && self.view_mode == ViewMode::Edit
+            && self.lower_editor_visible()
             && self.job.is_none()
             && ctx.input(|i| i.focused);
         let mut next = Vec::new();

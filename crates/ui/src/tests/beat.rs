@@ -2089,6 +2089,39 @@ fn subtrack_preview_step_works_without_selected_or_existing_patterns_and_respect
 }
 
 #[test]
+fn audition_divider_reaches_the_bottom_in_both_beat_editor_views() {
+    let (mut app, ctx, track, _, clip) = setup();
+    for view in [ViewMode::Edit, ViewMode::Timeline] {
+        app.set_view_mode(view, &ctx);
+        if view == ViewMode::Timeline {
+            app.set_timeline_editor_visible(true);
+        }
+        for selected in [true, false] {
+            if selected {
+                app.select_clip(clip, track, false);
+            } else {
+                app.selected_clip = None;
+                app.selected_clips.clear();
+            }
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let ruler = app.midi_editor.content.ruler;
+            let bottom = app.midi_editor.content.scrollbar_bounds.bottom();
+            let divider = ruler.left() + 0.5;
+            assert!(
+                shapes.iter().any(|shape| {
+                    shape.clip_rect.contains(Pos2::new(divider, bottom - 0.5))
+                        && matches!(&shape.shape, egui::Shape::LineSegment { points, stroke }
+                        if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                            && points[0].distance(Pos2::new(divider, ruler.bottom())) < 0.1
+                            && points[1].distance(Pos2::new(divider, bottom)) < 0.1)
+                }),
+                "{view:?}, selected clip {selected}"
+            );
+        }
+    }
+}
+
+#[test]
 fn preview_steps_share_compact_tile_geometry_with_a_fixed_grid_separator() {
     for color in [
         settings::ColorTheme::Dark,
@@ -2143,9 +2176,9 @@ fn preview_steps_share_compact_tile_geometry_with_a_fixed_grid_separator() {
                     && (points[0].x - ruler.left() - 0.5).abs() < 0.1
                     && (points[1].x - points[0].x).abs() < 0.1
                     && (points[0].y - ruler.bottom()).abs() < 0.1
-                    && (points[1].y - app.midi_editor.content.scrollbar_bounds.top()).abs() < 0.1
+                    && (points[1].y - app.midi_editor.content.scrollbar_bounds.bottom()).abs() < 0.1
             )),
-            "one shared-style divider spans the grid viewport"
+            "one shared-style divider spans the full pane below the ruler"
         );
         assert_eq!(
             shapes

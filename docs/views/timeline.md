@@ -1,5 +1,20 @@
 # Timeline
 
+## Lower editor
+
+Select an audio, MIDI, or beat clip or track, then click **Timeline Editor**
+just above the Effects Lane button in the left toolbar. The lower pane shows
+the same waveform, piano roll, or beat grid as [Editor](editor.md), while the
+arrangement stays visible above it. Double-click a clip to fit it in the lower
+pane. Select a beat clip to edit its steps.
+
+Drag the divider at the top of the pane up to make the editor taller or down
+to give Timeline more space. Press Escape to cancel a resize. Click the active
+Timeline Editor button again to close the pane, or click **Effects Lane** to
+switch back to effects. The pane remembers its height when you reopen it.
+
+## Arrangement lanes
+
 The **Markers**, **Tempo** and **Signature** lanes sit below the ruler and above
 tracks. They stay visible while tracks scroll vertically. Markers show section
 names; signatures use the same blocks. Tempo uses BPM points and a step line.

@@ -10,12 +10,13 @@ pub enum ViewPanel {
     ClipSettings,
     TrackMixer,
     EffectsLane,
+    EditorPane,
     Returns,
     Master,
 }
 
 impl ViewPanel {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Tracks,
         Self::Components,
         Self::EffectsCatalog,
@@ -23,6 +24,7 @@ impl ViewPanel {
         Self::ClipSettings,
         Self::TrackMixer,
         Self::EffectsLane,
+        Self::EditorPane,
         Self::Returns,
         Self::Master,
     ];
@@ -36,6 +38,7 @@ impl ViewPanel {
             Self::ClipSettings => "Clip Settings",
             Self::TrackMixer => "Track Mixer",
             Self::EffectsLane => "Effects Lane",
+            Self::EditorPane => "Timeline Editor",
             Self::Returns => "Returns",
             Self::Master => "Master",
         }
@@ -47,7 +50,7 @@ impl ViewPanel {
             Self::Components => view == ViewMode::Instrument,
             Self::EffectsCatalog | Self::EffectsLane => true,
             Self::Chords => matches!(view, ViewMode::Timeline | ViewMode::Edit),
-            Self::ClipSettings => view == ViewMode::Timeline,
+            Self::ClipSettings | Self::EditorPane => view == ViewMode::Timeline,
             Self::TrackMixer => matches!(view, ViewMode::Timeline | ViewMode::Instrument),
             Self::Returns | Self::Master => matches!(view, ViewMode::Timeline | ViewMode::Mixer),
         }
@@ -61,6 +64,7 @@ impl DawUi {
         panel.available_in(self.view_mode)
             && self.effects_editing_available(ctx)
             && !self.strip_dragging
+            && !self.timeline_editor.resizing()
             && self.component_drag.is_none()
             && self.effects_drag.as_ref().is_none_or(|drag| !drag.active)
             && !(changes_instrument_layout && self.instrument_ui.has_layer_gesture())
@@ -79,6 +83,7 @@ impl DawUi {
                 }
                 ViewPanel::TrackMixer => self.track_mixer_visible,
                 ViewPanel::EffectsLane => self.effects_lane_visible(),
+                ViewPanel::EditorPane => self.timeline_editor_visible(),
                 ViewPanel::Returns if self.view_mode == ViewMode::Timeline => {
                     self.timeline_returns_visible
                 }
@@ -137,9 +142,16 @@ impl DawUi {
                 }
             }
             ViewPanel::EffectsLane => {
-                self.set_effects_lane_visible(!self.effects_lane_visible());
+                let visible = !self.effects_lane_visible();
+                if self.timeline_editor_visible() {
+                    self.set_timeline_editor_visible(false);
+                }
+                self.set_effects_lane_visible(visible);
                 self.selected_effects.clear();
                 self.effects_drag = None;
+            }
+            ViewPanel::EditorPane => {
+                self.set_timeline_editor_visible(!self.timeline_editor_visible())
             }
             ViewPanel::ClipSettings => {
                 self.clip_settings_visible = !self.clip_settings_visible;

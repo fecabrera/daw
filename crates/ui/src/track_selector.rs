@@ -3,6 +3,15 @@ use daw_core::TrackKind;
 
 impl DawUi {
     pub(super) fn editor_track(&self) -> Option<&daw_core::Track> {
+        if self.timeline_editor_visible() {
+            return self.session.project.tracks.iter().find(|track| {
+                Some(track.id) == self.selected_track
+                    && matches!(
+                        track.kind,
+                        TrackKind::Audio | TrackKind::Midi | TrackKind::Beat
+                    )
+            });
+        }
         self.session
             .project
             .tracks

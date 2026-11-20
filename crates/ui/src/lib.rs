@@ -945,6 +945,7 @@ pub struct DawUi {
     clip_transpose_drag: Option<clip_settings::TransposeDrag>,
     clip_settings_change: Option<clip_settings::DragChange>,
     effects_lane_open: bool,
+    timeline_editor: timeline_workspace::EditorPane,
     effects_lane_focus: selection_focus::SelectionFocus,
     effects_drag: Option<effects_reorder::EffectDrag>,
     selected_effects: HashSet<Id>,
@@ -1106,6 +1107,7 @@ impl Default for DawUi {
             clip_transpose_drag: None,
             clip_settings_change: None,
             effects_lane_open: true,
+            timeline_editor: Default::default(),
             master_selected: false,
             return_bank_height: 180.0,
             timeline_returns_visible: true,
@@ -2284,6 +2286,7 @@ impl DawUi {
 
     fn edit_shortcuts_available(&self, ctx: &egui::Context) -> bool {
         self.editing_enabled()
+            && !self.timeline_editor.resizing()
             && !self.track_browser.has_gesture()
             && !self.instrument_ui.editing_name()
             && ctx.input(|input| input.focused)
@@ -2521,10 +2524,7 @@ impl DawUi {
         self.update_clip_edge_mode(ui);
         self.editor_transients
             .poll(self.session.project.project_id, ui.ctx());
-        if self.view_mode != mixer::ViewMode::Edit
-            || self.job.is_some()
-            || self.background_media.required
-        {
+        if !self.lower_editor_visible() || self.job.is_some() || self.background_media.required {
             self.editor_transients.cancel();
         }
         self.sync_exciter_audition();
@@ -3694,6 +3694,7 @@ impl DawUi {
                     .then_some(self.chords_visible()),
             },
             self.effects_lane_visible(),
+            (self.view_mode == ViewMode::Timeline).then_some(self.timeline_editor_visible()),
             enabled,
         );
         for (panel, clicked) in [
@@ -3711,6 +3712,10 @@ impl DawUi {
                 toggles.components.as_ref().is_some_and(|r| r.clicked()),
             ),
             (ViewPanel::EffectsLane, toggles.lane.clicked()),
+            (
+                ViewPanel::EditorPane,
+                toggles.editor.as_ref().is_some_and(|r| r.clicked()),
+            ),
         ] {
             if clicked {
                 self.toggle_view_panel(panel, ui.ctx());
@@ -3732,6 +3737,8 @@ impl DawUi {
             self.effects_bounds.clip_settings_toggle = Rect::NOTHING;
             self.effects_bounds.clip_settings_toolbar = Rect::NOTHING;
             self.effects_bounds.lane_toggle = toggles.lane.rect;
+            self.timeline_editor.toggle_bounds =
+                toggles.editor.as_ref().map_or(Rect::NOTHING, |r| r.rect);
         }
         let content = Rect::from_min_max(rail.right_top(), bounds.max);
         let mut workspace = ui.new_child(
@@ -3850,6 +3857,7 @@ impl DawUi {
         );
         self.lane_bounds.clear();
         let selected_before_tracks = self.selected_clip;
+        let track_before = self.selected_track;
         let mut track_scroll = egui::ScrollArea::vertical()
             .max_height((return_rect.top() - ui.cursor().top()).max(0.0))
             .auto_shrink([false, false]);
@@ -3898,6 +3906,18 @@ impl DawUi {
                 timeline_rect,
                 tracks.inner_rect.intersect(timeline_rect),
             );
+        }
+        if self.timeline_editor_visible()
+            && (self.selected_track != track_before
+                || ui.input(|i| {
+                    i.pointer
+                        .press_origin()
+                        .is_some_and(|pos| bounds.contains(pos))
+                        && i.pointer.primary_pressed()
+                }))
+        {
+            self.midi_editor.delete_clips = true;
+            self.midi_editor.clear_note_selection();
         }
         self.finish_clip_drag(ui);
         self.update_portion(ui);
@@ -5304,6 +5324,9 @@ impl DawUi {
         .round() as i64
     }
     fn drag_destination(&self, drag: &Drag, pointer: Pos2) -> Id {
+        if self.content_clip_drag && self.timeline_editor_visible() {
+            return drag.track;
+        }
         self.clip_drop_track(pointer, self.timeline_bounds)
             .map_or(drag.track, |track| track.id)
     }
@@ -5403,7 +5426,7 @@ impl DawUi {
             && self
                 .file_target(pointer, self.timeline_bounds, true)
                 .is_some_and(|target| target.track.is_none());
-        let track_delta = if self.view_mode.has_track_overview() {
+        let track_delta = if self.view_mode.has_track_overview() || self.content_clip_drag {
             0
         } else {
             if new_tracks {

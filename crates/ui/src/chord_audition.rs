@@ -257,7 +257,7 @@ impl DawUi {
 
     fn active_audition_track(&self) -> Option<Id> {
         self.active_midi_track().or_else(|| {
-            (self.view_mode == ViewMode::Edit)
+            self.lower_editor_visible()
                 .then(|| self.editor_track())
                 .flatten()
                 .filter(|t| t.kind == daw_core::TrackKind::Beat)
@@ -332,7 +332,7 @@ impl DawUi {
         }
         let valid = enabled
             && if self.chords.audition.editor {
-                self.view_mode == ViewMode::Edit
+                self.lower_editor_visible()
                     && (self.midi_editor.audition_enabled || self.chords.audition.direct)
             } else {
                 self.chords_visible()

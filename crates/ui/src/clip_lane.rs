@@ -60,7 +60,7 @@ impl DawUi {
             self.clip_context_menu(ui, clip.id);
             self.midi_clip_note_menu(ui, clip);
         });
-        if self.view_mode == ViewMode::Edit && (response.clicked() || response.drag_started()) {
+        if self.lower_editor_visible() && (response.clicked() || response.drag_started()) {
             self.midi_editor.clear_note_selection();
             self.midi_editor.delete_clips = true;
         }
@@ -88,7 +88,7 @@ impl DawUi {
                 track_id,
                 ui.input(|input| input.modifiers.shift || input.modifiers.command),
             );
-            if self.view_mode.has_track_overview() && !self.midi_editor.content_active {
+            if self.lower_editor_visible() && !self.midi_editor.content_active {
                 self.retain_content_view();
                 self.midi_editor.content.scroll =
                     click_clip.start_frame as f64 / f64::from(self.session.project.sample_rate_hz);

@@ -368,7 +368,7 @@ impl DawUi {
         markers: Option<&[u64]>,
         stretch: Option<daw_core::ClipStretch>,
     ) {
-        if !self.midi_editor.content_active || self.view_mode != mixer::ViewMode::Edit {
+        if !self.midi_editor.content_active {
             return;
         }
         let Some(markers) = markers else {

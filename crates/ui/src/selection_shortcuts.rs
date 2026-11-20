@@ -21,7 +21,7 @@ impl DawUi {
     }
 
     pub(super) fn selection_escape(&mut self, ctx: &egui::Context) {
-        let beat_editor = self.view_mode == ViewMode::Edit
+        let beat_editor = self.lower_editor_visible()
             && self
                 .editor_track()
                 .is_some_and(|track| track.kind == daw_core::TrackKind::Beat);
@@ -29,11 +29,11 @@ impl DawUi {
             self.view_mode,
             ViewMode::Timeline | ViewMode::Instrument | ViewMode::Edit | ViewMode::Mixer
         ) || !self.selection_escape_available(ctx)
-            || (self.view_mode == ViewMode::Edit && self.midi_editor.dragging())
+            || (self.lower_editor_visible() && self.midi_editor.dragging())
             || ctx.text_edit_focused()
             || egui::Popup::is_any_open(ctx)
             || (matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
-                && (self.clip_settings_visible || self.view_mode == ViewMode::Edit)
+                && (self.clip_settings_visible || self.lower_editor_visible())
                 && (self.clip_settings_draft.is_some()
                     || self.clip_settings_change.is_some()
                     || self.clip_transpose_drag.is_some()))

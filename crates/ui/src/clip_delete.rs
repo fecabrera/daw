@@ -32,10 +32,7 @@ impl DawUi {
         {
             return;
         }
-        if self.view_mode == ViewMode::Edit
-            && !self.midi_editor.delete_clips
-            && self.portion.is_none()
-        {
+        if self.lower_editor_visible() && !self.midi_editor.delete_clips && self.portion.is_none() {
             return;
         }
         if !take_delete(ctx) {
