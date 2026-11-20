@@ -426,16 +426,26 @@ pub struct Loop {
 
 impl Default for Project {
     fn default() -> Self {
+        Self::with_audio_quality(AudioQuality::default())
+    }
+}
+
+impl Project {
+    fn with_audio_quality(quality: AudioQuality) -> Self {
+        let time_signature = TimeSignature::default();
+        let bar_frames = time_signature
+            .frames_per_beat(quality.sample_rate_hz, f64::from(DEFAULT_TEMPO_BPM))
+            * f64::from(time_signature.numerator);
         Self {
             display: ProjectDisplay::default(),
             stretch_engine: StretchEngine::default(),
             project_id: Id::new_v4(),
             name: "Untitled".into(),
-            sample_rate_hz: SAMPLE_RATE,
-            output_sample_format: SampleFormat::default(),
-            buffer_size_frames: default_buffer_size(),
+            sample_rate_hz: quality.sample_rate_hz,
+            output_sample_format: quality.output_sample_format,
+            buffer_size_frames: quality.buffer_size_frames,
             tempo_bpm: DEFAULT_TEMPO_BPM,
-            time_signature: TimeSignature::default(),
+            time_signature,
             timing: TimingMap::default(),
             markers: Vec::new(),
             master: Master {
@@ -445,7 +455,14 @@ impl Default for Project {
             },
             assets: vec![],
             tracks: vec![],
-            transport: Transport::default(),
+            transport: Transport {
+                playhead_frame: 0,
+                r#loop: Loop {
+                    enabled: false,
+                    start_frame: 0,
+                    end_frame: bar_frames.ceil() as u64,
+                },
+            },
         }
     }
 }

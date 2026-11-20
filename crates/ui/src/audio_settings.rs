@@ -619,6 +619,8 @@ mod tests {
         };
         let mut app = DawUi::new_with_audio_defaults(None, initial);
         let before = app.session.project.clone();
+        assert_eq!(before.transport.r#loop.end_frame, 88_200);
+        assert!(!before.transport.r#loop.enabled);
         let next = daw_core::AudioQuality {
             sample_rate_hz: 96000,
             output_sample_format: SampleFormat::I24,
@@ -632,6 +634,8 @@ mod tests {
         app.pending = Some(crate::Action::New);
         app.perform_pending();
         assert_eq!(app.session.project.audio_quality(), next);
+        assert_eq!(app.session.project.transport.r#loop.end_frame, 192_000);
+        assert!(!app.session.project.transport.r#loop.enabled);
         assert_ne!(app.session.project.project_id, before.project_id);
         assert!(!app.dirty);
     }

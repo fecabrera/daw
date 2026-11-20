@@ -19,7 +19,7 @@ struct MenuTargetIvars {
 enum MenuAction {
     Settings,
     Quit,
-    Transport(TransportAction),
+    Transport(TransportAction, bool),
     ProjectSettings,
     File(FileAction),
     Clip(ClipAction),
@@ -47,7 +47,13 @@ define_class!(
         fn perform_transport_action(&self, item: &NSMenuItem) {
             if let Ok(index) = usize::try_from(item.tag())
                 && let Some(action) = TransportAction::ALL.get(index) {
-                let _ = self.ivars().sender.send(MenuAction::Transport(*action));
+                let mtm = MainThreadMarker::from(self);
+                let key_event = NSApplication::sharedApplication(mtm).currentEvent()
+                    .filter(|event| action.shortcut().is_some() && event.r#type() == NSEventType::KeyDown);
+                if key_event.as_ref().is_some_and(|event| event.isARepeat()) {
+                    return;
+                }
+                let _ = self.ivars().sender.send(MenuAction::Transport(*action, key_event.is_some()));
                 self.ivars().context.request_repaint();
             }
         }
@@ -419,20 +425,27 @@ impl NativeMenu {
             if action.starts_section() {
                 transport_menu.addItem(&NSMenuItem::separatorItem(mtm));
             }
+            let key = action
+                .shortcut()
+                .map(|shortcut| shortcut.logical_key.name().to_lowercase())
+                .unwrap_or_default();
             // SAFETY: The selector is defined above with an NSMenuItem argument.
             let item = unsafe {
                 NSMenuItem::initWithTitle_action_keyEquivalent(
                     NSMenuItem::alloc(mtm),
                     &NSString::from_str(action.label()),
                     Some(sel!(performTransportAction:)),
-                    ns_string!(""),
+                    &NSString::from_str(&key),
                 )
             };
+            if action.shortcut().is_some() {
+                item.setKeyEquivalentModifierMask(NSEventModifierFlags::Command);
+            }
             item.setTag(index as isize);
             // SAFETY: NativeMenu retains the target and detaches it before dropping.
             unsafe { item.setTarget(Some(&target)) };
             transport_menu.addItem(&item);
-            items.push((MenuAction::Transport(action), item));
+            items.push((MenuAction::Transport(action, false), item));
         }
         let transport_item = NSMenuItem::new(mtm);
         transport_item.setTitle(ns_string!("Transport"));
@@ -500,7 +513,15 @@ impl NativeMenu {
             match action {
                 MenuAction::Settings => ui.open_settings(),
                 MenuAction::Quit => ui.request_desktop_close(),
-                MenuAction::Transport(action) => ui.perform_transport_action(action),
+                MenuAction::Transport(action, from_shortcut) => {
+                    if from_shortcut {
+                        // AppKit owns this press even if winit also forwards it.
+                        action.take_shortcut(ctx);
+                    }
+                    if !from_shortcut || ui.loop_shortcut_available(ctx) {
+                        ui.perform_transport_action(action);
+                    }
+                }
                 MenuAction::ProjectSettings => ui.open_project_settings(),
                 MenuAction::File(action) => ui.perform_file_action(action),
                 MenuAction::Clip(action) => ui.perform_clip_action(action, ctx),
@@ -566,7 +587,7 @@ impl NativeMenu {
             if let MenuAction::Track(action) = action {
                 item.setTitle(&NSString::from_str(ui.track_action_label(*action)));
             }
-            if let MenuAction::Transport(action) = action {
+            if let MenuAction::Transport(action, _) = action {
                 item.setTitle(&NSString::from_str(ui.transport_action_label(*action)));
                 item.setState(if ui.transport_action_selected(*action) {
                     NSControlStateValueOn
@@ -591,7 +612,7 @@ impl NativeMenu {
             item.setEnabled(match action {
                 MenuAction::Settings => ui.settings_enabled() || ui.native_settings_visible(),
                 MenuAction::Quit => true,
-                MenuAction::Transport(action) => ui.transport_action_enabled(*action),
+                MenuAction::Transport(action, _) => ui.transport_action_enabled(*action),
                 MenuAction::ProjectSettings => ui.project_settings_enabled(),
                 MenuAction::File(action) => ui.file_action_enabled(*action),
                 MenuAction::Clip(action) => ui.clip_action_enabled(*action, ctx),

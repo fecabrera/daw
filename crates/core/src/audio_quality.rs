@@ -80,12 +80,7 @@ impl AudioQuality {
 impl Project {
     pub fn new_with_audio_quality(quality: AudioQuality) -> Result<Self> {
         quality.validate()?;
-        Ok(Self {
-            sample_rate_hz: quality.sample_rate_hz,
-            output_sample_format: quality.output_sample_format,
-            buffer_size_frames: quality.buffer_size_frames,
-            ..Self::default()
-        })
+        Ok(Self::with_audio_quality(quality))
     }
     pub fn audio_quality(&self) -> AudioQuality {
         AudioQuality {
@@ -99,6 +94,34 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_projects_select_the_first_bar_with_looping_off_at_every_rate() {
+        for sample_rate_hz in SAMPLE_RATES {
+            let project = Project::new_with_audio_quality(AudioQuality {
+                sample_rate_hz,
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(project.transport.playhead_frame, 0);
+            assert_eq!(
+                project.transport.r#loop,
+                crate::Loop {
+                    enabled: false,
+                    start_frame: 0,
+                    end_frame: 2 * u64::from(sample_rate_hz),
+                }
+            );
+            assert_eq!(
+                project.transport.r#loop,
+                serde_json::from_value::<Project>(serde_json::to_value(&project).unwrap())
+                    .unwrap()
+                    .transport
+                    .r#loop
+            );
+        }
+        assert_eq!(Project::default().transport.r#loop.end_frame, 96_000);
+    }
     #[test]
     fn quality_is_concrete_validated_and_preserved_by_project_round_trip() {
         for output_sample_format in SampleFormat::ALL {
@@ -137,7 +160,9 @@ mod tests {
             .remove("output_sample_format");
         value["sample_rate_hz"] = 44100.into();
         value["buffer_size_frames"] = 128.into();
+        value["transport"]["loop"] = serde_json::to_value(crate::Loop::default()).unwrap();
         let project: Project = serde_json::from_value(value).unwrap();
+        assert_eq!(project.transport.r#loop, crate::Loop::default());
         assert_eq!(
             project.audio_quality(),
             AudioQuality {

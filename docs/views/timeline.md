@@ -264,7 +264,7 @@ background. It starts off and remembers its choice
 for the app session. It does not change the saved project. The click is a playback
 aid; exports retain the project mix.
 
-The ruler uses the saved time signature, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI and beat timing follow tempo.
+The ruler uses the saved time signature, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. New projects start with bar 1 selected and Loop off. Use Loop or press Command+L on macOS or Ctrl+L on Windows and Linux to toggle looping. Drag the selection band to choose a different range. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI and beat timing follow tempo.
 
 At a transport loop boundary, MIDI and beat releases and one-shot samples
 continue into the next iteration. Audio clips repeat only the selected loop

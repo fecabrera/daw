@@ -2662,6 +2662,12 @@ impl DawUi {
             self.toggle_playback();
         }
         if ui.is_enabled() {
+            if !self.native_menu
+                && self.loop_shortcut_available(&ctx)
+                && TransportAction::Loop.take_shortcut(&ctx)
+            {
+                self.perform_transport_action(TransportAction::Loop);
+            }
             if selection_escape_available {
                 self.selection_escape(&ctx);
             }
@@ -8639,6 +8645,7 @@ mod tests {
     fn selection_monitor_shift_drag_can_create_a_range_without_enabling_loop() {
         for target in 2..4 {
             let mut app = DawUi::default();
+            app.session.project.transport.r#loop = Default::default();
             let ctx = context();
             frame(&mut app, &ctx, vec![]);
             frame(&mut app, &ctx, vec![]);
@@ -11179,7 +11186,7 @@ mod tests {
                 );
                 assert_eq!(app.session.project.transport.playhead_frame, 0);
                 assert_eq!(app.session.project.transport.r#loop.start_frame, 0);
-                assert_eq!(app.session.project.transport.r#loop.end_frame, 0);
+                assert_eq!(app.session.project.transport.r#loop.end_frame, frames(2.0));
             }
         }
         // When the full extent fits, swiping must keep the offset at zero.
@@ -11406,6 +11413,7 @@ mod tests {
     #[test]
     fn ruler_selects_a_loop_and_track_controls_align() {
         let (mut app, track) = fixture();
+        app.session.project.transport.r#loop = Default::default();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let lane = app.lane_bounds[&track];

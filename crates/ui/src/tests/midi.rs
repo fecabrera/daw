@@ -3385,6 +3385,7 @@ fn double_click_deletes_only_the_edited_patterns_note() {
 #[test]
 fn edit_reuses_timeline_ruler_loop_seek_and_toolbar_zoom() {
     let (mut app, track, clip, _) = fixture();
+    app.session.project.transport.r#loop = Default::default();
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let timeline_zoom = app.midi_editor.zoom_bounds;

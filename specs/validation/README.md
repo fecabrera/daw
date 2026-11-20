@@ -17,6 +17,36 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## First-bar loop default and shortcut — 2026-11-20
+
+- Core tests check the disabled first-bar range at all six sample rates,
+  preservation through a project round trip, and loading a legacy empty range.
+- UI tests check startup and New at different sample rates and exercise ruler
+  selection, the Loop button, and playback with an empty project.
+- The shortcut test covers toggling the default range without moving its
+  endpoints. It checks repeat, modifier and Settings guards, and verifies
+  that a key forwarded to egui does not toggle a second time in native-menu mode.
+- The local macOS debug bundle rebuilt and passed signature verification.
+  The native Save and Export smoke test passed on that bundle. Physical
+  shortcut, visual loop-selection, and audio-device checks remain open.
+- Strict workspace Clippy, formatting, and `git diff --check` passed.
+- The debug and release workspace runs each passed 3,645 tests with 22
+  ignored. Each found the same test that assumed a new project's range was
+  empty. Both commands excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
+- After the test was updated to check both range types, all 82 project workflow
+  tests passed in each profile.
+
+  ```sh
+  cargo test --offline --locked -p daw-project --test workflow
+  cargo test --offline --locked -p daw-project --release --test workflow
+  ```
+
 ## Shared native dialog title bars — 2026-11-20
 
 - The workspace UI suite covers the shared dialog body, close behavior, and

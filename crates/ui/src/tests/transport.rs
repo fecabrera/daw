@@ -1014,6 +1014,46 @@ fn multiple_midi_arms_and_implicit_selection_are_transient() {
 }
 
 #[test]
+fn loop_shortcut_toggles_the_default_range_and_respects_input_guards() {
+    let mut app = DawUi::default();
+    let ctx = context();
+    let command = egui::Modifiers::COMMAND;
+    let key = |modifiers, repeat| egui::Event::Key {
+        key: egui::Key::L,
+        physical_key: None,
+        pressed: true,
+        repeat,
+        modifiers,
+    };
+    let release = egui::Event::Key {
+        key: egui::Key::L,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: command,
+    };
+    let original = app.session.project.transport.r#loop.clone();
+    frame(&mut app, &ctx, vec![key(command, false)]);
+    assert!(app.transport_action_selected(TransportAction::Loop));
+    frame(&mut app, &ctx, vec![key(command, true)]);
+    assert!(app.transport_action_selected(TransportAction::Loop));
+    frame(&mut app, &ctx, vec![release.clone()]);
+    for modifiers in [egui::Modifiers::NONE, command | egui::Modifiers::SHIFT] {
+        frame(&mut app, &ctx, vec![key(modifiers, false), release.clone()]);
+        assert!(app.transport_action_selected(TransportAction::Loop));
+    }
+    app.open_settings();
+    frame(&mut app, &ctx, vec![key(command, false), release.clone()]);
+    assert!(app.transport_action_selected(TransportAction::Loop));
+    app.close_application_settings();
+    frame(&mut app, &ctx, vec![key(command, false), release.clone()]);
+    assert_eq!(app.session.project.transport.r#loop, original);
+    app.use_native_menu();
+    frame(&mut app, &ctx, vec![key(command, false), release]);
+    assert_eq!(app.session.project.transport.r#loop, original);
+}
+
+#[test]
 fn empty_project_play_button_and_space_dispatch_without_a_clip() {
     let mut app = DawUi::default();
     let ctx = context();

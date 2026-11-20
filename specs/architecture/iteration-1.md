@@ -304,6 +304,10 @@ Use one transport toggle with the same Lucide Play icon while stopped, paused, o
 
 Use a Lucide Repeat icon button immediately after Stop to toggle looping, with no visible text label. Use the shared icon button size and style. Use the refined #AF8C3E background when looping is enabled. Give it a Loop tooltip and an accessible on/off state. Keep the loop range display in the toolbar and reject enabling an empty range.
 
+Initialize new projects with Loop off and a range from frame zero to the start of bar 2, with an exclusive end. Calculate the end from the project's initial tempo, meter, and sample rate. Opening a saved project restores its stored range and loop state.
+
+Bind Command+L on macOS and Ctrl+L on Windows and Linux to the shared Loop action. Show the shortcut in the Transport menu. Only the active shortcut handler dispatches the key. Honor text focus, active gestures, dialogs, window focus, and extra modifiers. Ignore auto-repeat and preserve both range endpoints.
+
 - Align track controls with their lanes during vertical scrolling. Horizontal timeline scrolling must not move the track list.
 - Place the horizontal scrollbar inside the bottom edge of the timeline viewport. Keep it there for all track counts and window sizes. Do not use a separate window-wide scrollbar panel. Align it with the timeline, not the track list. Size its thumb to the visible time range and update it when zoom changes. Do not show a numeric scroll input.
 - Two-finger pinches over the timeline, ruler, or scrollbar scale horizontal timeline zoom using egui's zoom delta, including native trackpad pinch events. Multiply the existing zoom by the gesture factor, clamp to the slider's 1–3000 pixels-per-second range, and adjust horizontal scroll to keep the timeline point under the pointer fixed where bounds permit. Clamp the resulting scroll to the shared timeline extent. Apply zoom before scrolling, grid, ruler, clip, and preview painting. Ignore invalid factors, pinches outside the timeline, jobs, dialogs, active clip or loop-selection drags, and focus loss. Do not change project data, dirty state, font sizes, or global interface scale.

@@ -38,9 +38,52 @@ impl TransportAction {
     pub fn starts_section(self) -> bool {
         matches!(self, Self::Metronome | Self::Panic)
     }
+
+    pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
+        (self == Self::Loop).then_some(egui::KeyboardShortcut::new(
+            egui::Modifiers::COMMAND,
+            egui::Key::L,
+        ))
+    }
+
+    pub fn take_shortcut(self, ctx: &egui::Context) -> bool {
+        let Some(shortcut) = self.shortcut() else {
+            return false;
+        };
+        ctx.input_mut(|input| {
+            let mut pressed = false;
+            input.events.retain(|event| {
+                if let egui::Event::Key {
+                    key,
+                    pressed: true,
+                    repeat,
+                    modifiers,
+                    ..
+                } = event
+                    && *key == shortcut.logical_key
+                    && modifiers.matches_exact(shortcut.modifiers)
+                    && !(modifiers.mac_cmd && modifiers.ctrl)
+                {
+                    pressed |= !repeat;
+                    false
+                } else {
+                    true
+                }
+            });
+            pressed
+        })
+    }
 }
 
 impl DawUi {
+    pub fn loop_shortcut_available(&self, ctx: &egui::Context) -> bool {
+        self.transport_action_enabled(TransportAction::Loop)
+            && self.selection_escape_available(ctx)
+            && !ctx.text_edit_focused()
+            && !egui::Popup::is_any_open(ctx)
+            && !ctx.input(|input| input.pointer.any_down())
+    }
+
     pub(super) fn transport_toolbar_available(&self) -> bool {
         self.export_dialog.is_none()
             && self.overwrite.is_none()
@@ -127,7 +170,10 @@ impl DawUi {
                         ui,
                         self.transport_action_selected(action),
                         self.transport_action_label(action),
-                        "",
+                        action.shortcut().map_or_else(
+                            || egui::RichText::new(""),
+                            |shortcut| crate::toolbars::menu_shortcut_text(ui.ctx(), &shortcut),
+                        ),
                     )
                 })
                 .inner

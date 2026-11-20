@@ -1794,10 +1794,18 @@ fn tempo_changes_scale_enabled_and_disabled_selections_and_reject_invalid_ranges
             }
         }
     }
-    session.project = base.clone();
-    session.project.edit(Edit::SetTempo { bpm: 60.0 }).unwrap();
-    assert_eq!(session.project.transport.r#loop.start_frame, 0);
-    assert_eq!(session.project.transport.r#loop.end_frame, 0);
+    for (region, expected_end) in [
+        (base.transport.r#loop.clone(), 192_000),
+        (daw_core::Loop::default(), 0),
+    ] {
+        session.project = base.clone();
+        session.project.transport.r#loop = region;
+        session.project.edit(Edit::SetTempo { bpm: 60.0 }).unwrap();
+        let region = &session.project.transport.r#loop;
+        assert!(!region.enabled);
+        assert_eq!(region.start_frame, 0);
+        assert_eq!(region.end_frame, expected_end);
+    }
     for (start_frame, end_frame, bpm) in [(24000, u64::MAX, 60.0), (1, 2, f32::MAX)] {
         session.project = base.clone();
         session.project.transport.r#loop = daw_core::Loop {
