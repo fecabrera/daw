@@ -65,6 +65,7 @@ pub(super) struct Alignment {
     pub tracks: Vec<Delay>,
     pub input_frames: Vec<u64>,
     pub node_frames: Vec<u64>,
+    pub captured_sends: Vec<(usize, usize)>,
     pub send_delays: Vec<(Id, usize, usize, u64)>,
     /// Feed-to-content delay after each track's effects and sibling alignment.
     pub output_frames: Vec<u64>,
@@ -79,6 +80,7 @@ impl Alignment {
     pub fn heap_bytes(&self) -> u64 {
         daw_unit_core::memory::vec_bytes(&self.node_frames)
             + daw_unit_core::memory::vec_bytes(&self.send_delays)
+            + daw_unit_core::memory::vec_bytes(&self.captured_sends)
             + daw_unit_core::memory::vec_bytes(&self.input_frames)
             + daw_unit_core::memory::vec_bytes(&self.output_frames)
             + daw_unit_core::memory::vec_bytes(&self.parents)
@@ -95,6 +97,15 @@ impl Alignment {
             .enumerate()
             .map(|(i, t)| (t.id, i))
             .collect();
+        let captured_sends: Vec<_> = project
+            .rendered_return_routes()
+            .into_iter()
+            .map(|(source, destination)| (index[&source], index[&destination]))
+            .collect();
+        let mut captured_sources = vec![Vec::new(); project.tracks.len()];
+        for &(source, destination) in &captured_sends {
+            captured_sources[destination].push(source);
+        }
         let specifications = super::audio_sidechain::specs(project);
         let pcm = super::audio_sidechain::pcm_specs(project);
         let (subtree, input_frames, track_max) = if specifications.is_empty() && pcm.is_empty() {
@@ -127,6 +138,7 @@ impl Alignment {
                     .enumerate()
                     .filter(|(_, s)| s.sends.iter().any(|send| send.return_id == t.id))
                     .map(|(i, _)| subtree[i])
+                    .chain(captured_sources[r].iter().map(|&i| subtree[i]))
                     .max()
                     .unwrap_or(0);
                 subtree[r] = input_frames[r] + track_frames(t, rate);
@@ -156,6 +168,7 @@ impl Alignment {
                             || t.sends.iter().any(|s| s.return_id == project.tracks[i].id)
                     })
                     .map(|(s, _)| subtree[s])
+                    .chain(captured_sources[i].iter().map(|&s| subtree[s]))
                     .max()
                     .unwrap_or(0);
                 let control = specifications
@@ -225,6 +238,7 @@ impl Alignment {
         Self {
             node_frames: subtree,
             send_delays,
+            captured_sends,
             input_frames,
             output_frames,
             parents: project
@@ -241,7 +255,8 @@ impl Alignment {
         }
     }
     pub fn compatible(&self, old: &Self) -> bool {
-        if self.send_delays.len() != old.send_delays.len()
+        if self.captured_sends != old.captured_sends
+            || self.send_delays.len() != old.send_delays.len()
             || !self.send_delays.iter().zip(&old.send_delays).all(|(a, b)| {
                 a.0 == b.0
                     && self.parents[a.1].0 == old.parents[b.1].0

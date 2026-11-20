@@ -1,7 +1,7 @@
 //! Captured routing uses companion recipes on the same immutable compound clock.
 use crate::{
-    Asset, COMPOUND_METADATA_LIMIT, Error, Id, Project, RenderedAudio, RenderedFeed, Result,
-    SILENT_GAIN_DB,
+    Asset, COMPOUND_METADATA_LIMIT, Error, Id, Project, RenderedAudio, RenderedFeed,
+    RenderedReturnFeed, Result, SILENT_GAIN_DB,
 };
 use std::collections::{BTreeSet, HashSet};
 
@@ -9,6 +9,7 @@ use std::collections::{BTreeSet, HashSet};
 enum Tap {
     PreSend,
     Provider(Id, bool),
+    Return(Id),
 }
 impl Project {
     /// Upgrade routing metadata transactionally, without decoding or rendering PCM.
@@ -96,14 +97,35 @@ impl Project {
                     )?,
                 });
             }
+            let returns: BTreeSet<_> = original
+                .compound_audio
+                .as_ref()
+                .unwrap()
+                .members
+                .iter()
+                .filter_map(|c| self.audio_asset(c.asset_id)?.rendered_audio.as_ref())
+                .flat_map(|r| r.return_feeds.iter().map(|f| f.return_id))
+                .collect();
+            let mut return_feeds = Vec::new();
+            for return_id in returns {
+                return_feeds.push(RenderedReturnFeed {
+                    return_id,
+                    asset: self.routing_recipe(
+                        &original,
+                        Tap::Return(return_id),
+                        &mut remaining,
+                    )?,
+                });
+            }
             self.assets
                 .iter_mut()
                 .find(|a| a.id == id)
                 .unwrap()
                 .rendered_audio = Some(RenderedAudio {
-                version: 2,
+                version: if return_feeds.is_empty() { 2 } else { 4 },
                 pre_send_asset,
                 feeds,
+                return_feeds,
             });
         }
         self.validate()
@@ -124,6 +146,7 @@ impl Project {
             .map_err(|_| Error("Cannot reserve compound routing metadata".into()))?;
         let mut asset = original.clone();
         asset.id = match tap {
+            Tap::Return(id) => derived(original.id, id, 5),
             Tap::PreSend => derived(original.id, Id::nil(), 1),
             Tap::Provider(provider, post) => {
                 derived(original.id, provider, if post { 3 } else { 2 })
@@ -136,6 +159,9 @@ impl Project {
                 .audio_asset(member.asset_id)
                 .and_then(|a| a.rendered_audio.as_ref());
             let selected = match tap {
+                Tap::Return(id) => captured
+                    .and_then(|r| r.return_feeds.iter().find(|f| f.return_id == id))
+                    .map(|f| f.asset),
                 Tap::PreSend => captured.map(|r| r.pre_send_asset),
                 Tap::Provider(provider, post) => captured
                     .and_then(|r| r.feeds.iter().find(|f| f.provider == provider))

@@ -1,8 +1,8 @@
 //! Background capture and all-or-none preparation of generated bounce media.
 use crate::{Session, error, generated_media::GeneratedDirectory};
 use daw_core::{
-    Asset, BounceOutput, BounceRequest, Clip, ClipFades, Id, RenderedAudio, RenderedFeed, Source,
-    SourceMetadata, SourceStorage, TrackKind,
+    Asset, BounceOutput, BounceRequest, Clip, ClipFades, Id, RenderedAudio, RenderedFeed,
+    RenderedReturnFeed, Source, SourceMetadata, SourceStorage, TrackKind,
 };
 use daw_media::{AudioEncoder, AudioReservation, WavCodec, WavEncoder};
 use std::sync::{
@@ -115,17 +115,18 @@ impl Session {
         let mut completed = 0;
         for (target, (end, capped)) in selection.targets.iter().zip(bounds) {
             progress.check()?;
-            let original = self
-                .project
-                .tracks
-                .iter()
-                .find(|t| t.id == target.track_id)
-                .unwrap();
+            let subtree = self.project.track_subtree(target.track_id).map_err(error)?;
+            let originals = &self.project.tracks[subtree];
+            let original = &originals[0];
             let mut capture = daw_engine::BounceCapture::new(snapshot.plan(), target)
                 .map_err(BounceError::Failed)?;
             let _memory = AudioReservation::new(0, capture.memory_bytes()).map_err(error)?;
             let providers: Vec<_> = capture.lineage_providers().collect();
-            let ids: Vec<_> = (0..3 + providers.len() * 2).map(|_| Id::new_v4()).collect();
+            let returns: Vec<_> = capture.return_destinations().collect();
+            let return_offset = 3 + providers.len() * 2;
+            let ids: Vec<_> = (0..return_offset + returns.len())
+                .map(|_| Id::new_v4())
+                .collect();
             let paths: Vec<_> = ids
                 .iter()
                 .map(|id| directory.0.join(format!("{id}.wav")))
@@ -165,7 +166,8 @@ impl Session {
                                         .lineage_frames()
                                         .iter()
                                         .flat_map(|(raw, post)| [*raw, *post]),
-                                ),
+                                )
+                                .chain(capture.return_frames().iter().copied()),
                         ) {
                             block.push(frame.map(|v| v * terminal));
                         }
@@ -226,8 +228,13 @@ impl Session {
             }
             assets[0].source.kind = "rendered_audio".into();
             assets[0].rendered_audio = Some(RenderedAudio {
-                version: 1,
+                version: if returns.is_empty() { 1 } else { 3 },
                 pre_send_asset: ids[2],
+                return_feeds: returns
+                    .into_iter()
+                    .zip(&ids[return_offset..])
+                    .map(|(return_id, &asset)| RenderedReturnFeed { return_id, asset })
+                    .collect(),
                 feeds: std::iter::once(RenderedFeed {
                     provider: original.id,
                     raw_asset: ids[1],
@@ -249,6 +256,7 @@ impl Session {
             track.id = Id::new_v4();
             track.kind = TrackKind::Audio;
             track.group_collapsed = false;
+            track.soloed = originals.iter().any(|t| t.soloed);
             track.midi_options = Default::default();
             track.instrument = None;
             track.beat = None;

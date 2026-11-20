@@ -2,6 +2,24 @@
 //! stage clocks and monitoring gates; only the target's selected excitation changes.
 use super::*;
 use daw_core::BounceTarget;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+
+struct ProviderCapture {
+    id: Id,
+    sources: Vec<ProviderSource>,
+}
+enum ProviderSource {
+    Track {
+        index: usize,
+        raw: latency::Delay,
+        post: latency::Delay,
+    },
+    Rendered {
+        raw: Box<super::captured_taps::Tap>,
+        post: Box<super::captured_taps::Tap>,
+        post_gain: [f32; 2],
+    },
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BounceFrame {
@@ -21,24 +39,30 @@ pub struct BounceCapture {
     block_offset: usize,
     block_count: usize,
     pre_capture: Option<super::captured_taps::Tap>,
-    lineage: Vec<(Id, super::captured_taps::Tap, super::captured_taps::Tap)>,
+    lineage: Vec<ProviderCapture>,
     lineage_frames: Vec<([f32; 2], [f32; 2])>,
+    return_sends: Option<super::send_routing::Sends>,
+    returns: Vec<(Id, usize)>,
+    return_frames: Vec<[f32; 2]>,
 }
 impl BounceCapture {
     pub fn new(plan: RenderPlan, target: &BounceTarget) -> Result<Self, String> {
         let mut isolated = plan.clone();
-        let track = isolated
+        let subtree = isolated
             .project
-            .tracks
-            .iter_mut()
-            .find(|t| t.id == target.track_id)
-            .ok_or("Bounce target is missing")?;
-        track.clips.retain(|c| target.clip_ids.contains(&c.id));
-        // Monitoring is not authored content. The reference retains its exact
-        // gates for external sidechains, while isolated source/layer gates stay authored.
-        for t in &mut isolated.project.tracks {
-            t.muted = false;
-            t.soloed = false;
+            .track_subtree(target.track_id)
+            .map_err(|e| e.to_string())?;
+        let clips: HashSet<_> = target.clip_ids.iter().copied().collect();
+        for track in &mut isolated.project.tracks[subtree.clone()] {
+            track.clips.retain(|c| clips.contains(&c.id));
+        }
+        // Keep the mix inside the group. Its own and downstream monitoring
+        // gates remain live on the replacement path.
+        for (index, track) in isolated.project.tracks.iter_mut().enumerate() {
+            if index == subtree.start || !subtree.contains(&index) {
+                track.muted = false;
+                track.soloed = false;
+            }
         }
         let mut reference = Renderer::try_new(plan).map_err(|e| e.to_string())?;
         let mut isolated = Renderer::try_new(isolated).map_err(|e| e.to_string())?;
@@ -73,6 +97,8 @@ impl BounceCapture {
         isolated.capture_controls = Some(reference.sidechains.values.clone());
         let latency = isolated.alignment.total;
         let delay = latency - isolated.alignment.node_frames[index];
+        let (return_sends, returns) = captured_returns(&isolated, index);
+        let return_frames = vec![[0.0; 2]; returns.len()];
         let source = &isolated.plan.project.tracks[index];
         let pre_capture = super::captured_taps::Tap::new(
             &isolated.plan,
@@ -81,40 +107,7 @@ impl BounceCapture {
             0,
             latency,
         );
-        let lineage = isolated
-            .plan
-            .project
-            .rendered_providers(source)
-            .into_iter()
-            .filter(|id| *id != target.track_id)
-            .filter_map(|id| {
-                let raw = super::captured_taps::Tap::new(
-                    &isolated.plan,
-                    source,
-                    |r| {
-                        r.feeds
-                            .iter()
-                            .find(|f| f.provider == id)
-                            .map(|f| f.raw_asset)
-                    },
-                    0,
-                    latency,
-                )?;
-                let post = super::captured_taps::Tap::new(
-                    &isolated.plan,
-                    source,
-                    |r| {
-                        r.feeds
-                            .iter()
-                            .find(|f| f.provider == id)
-                            .map(|f| f.post_asset)
-                    },
-                    0,
-                    latency,
-                )?;
-                Some((id, raw, post))
-            })
-            .collect::<Vec<_>>();
+        let lineage = captured_providers(&isolated, index);
         let lineage_frames = vec![([0.0; 2], [0.0; 2]); lineage.len()];
         Ok(Self {
             reference,
@@ -127,6 +120,9 @@ impl BounceCapture {
             pre_capture,
             lineage,
             lineage_frames,
+            return_sends,
+            returns,
+            return_frames,
             delay: latency::Delay::new(Id::nil(), delay),
             pre_delay: latency::Delay::new(Id::nil(), delay),
             raw_delay: latency::Delay::new(Id::nil(), delay),
@@ -136,10 +132,16 @@ impl BounceCapture {
         self.latency
     }
     pub fn lineage_providers(&self) -> impl Iterator<Item = Id> + '_ {
-        self.lineage.iter().map(|v| v.0)
+        self.lineage.iter().map(|provider| provider.id)
     }
     pub fn lineage_frames(&self) -> &[([f32; 2], [f32; 2])] {
         &self.lineage_frames
+    }
+    pub fn return_destinations(&self) -> impl Iterator<Item = Id> + '_ {
+        self.returns.iter().map(|&(id, _)| id)
+    }
+    pub fn return_frames(&self) -> &[[f32; 2]] {
+        &self.return_frames
     }
     /// Feed every prefix frame. `None` is pipeline priming, not missing content.
     pub fn next_frame(&mut self) -> Result<Option<BounceFrame>, String> {
@@ -201,19 +203,66 @@ impl BounceCapture {
         let mut pre_send = self.pre_delay.tick((pre, false)).0;
         if let Some(tap) = &mut self.pre_capture {
             let value = tap.sample(frame, None, false).0;
+            if let Some(error) = tap.reader.source_error() {
+                return Err(error);
+            }
             if tap.active_at(frame, None) {
                 let current_pan = track_processing::track_pan_coefficients(track)[1];
                 pre_send = std::array::from_fn(|ch| value[ch] * current_pan[ch]);
             }
         }
-        for ((_, raw, post), out) in self.lineage.iter_mut().zip(&mut self.lineage_frames) {
-            let raw = raw.sample(frame, None, false).0;
-            let post = post.sample(frame, None, false).0;
-            let current_pan = track_processing::track_pan_coefficients(track)[1];
-            *out = (
-                raw,
-                std::array::from_fn(|ch| post[ch] * current_pan[ch] * gain),
-            );
+        for (provider, output) in self.lineage.iter_mut().zip(&mut self.lineage_frames) {
+            *output = ([0.0; 2], [0.0; 2]);
+            for source in &mut provider.sources {
+                let (raw, post, gains) = match source {
+                    ProviderSource::Track { index, raw, post } => {
+                        let sample = self.isolated.buses.raw[*index];
+                        let gain = self.isolated.gains[*index].target;
+                        let base = if sample.1 { 0 } else { 2 };
+                        let post_sample = [sample.0[0] * gain[base], sample.0[1] * gain[base + 1]];
+                        (
+                            raw.tick(sample).0,
+                            post.tick((post_sample, false)).0,
+                            [1.0; 2],
+                        )
+                    }
+                    ProviderSource::Rendered {
+                        raw,
+                        post,
+                        post_gain,
+                    } => {
+                        let raw_sample = raw.sample(frame, None, false).0;
+                        let post_sample = post.sample(frame, None, false).0;
+                        if let Some(error) = raw
+                            .reader
+                            .source_error()
+                            .or_else(|| post.reader.source_error())
+                        {
+                            return Err(error);
+                        }
+                        (raw_sample, post_sample, *post_gain)
+                    }
+                };
+                for ch in 0..2 {
+                    output.0[ch] += raw[ch];
+                    output.1[ch] += post[ch] * gains[ch];
+                }
+            }
+        }
+        if let Some(sends) = &mut self.return_sends {
+            for (&(_, destination), output) in self.returns.iter().zip(&mut self.return_frames) {
+                *output = sends.sum(
+                    destination,
+                    &self.isolated.buses.raw,
+                    false,
+                    frame,
+                    None,
+                    false,
+                );
+            }
+            if let Some(error) = sends.taps().find_map(|tap| tap.reader.source_error()) {
+                return Err(error);
+            }
         }
         if let Some(e) = self
             .reference
@@ -233,6 +282,12 @@ impl BounceCapture {
         std::mem::size_of::<Self>() as u64
             + daw_unit_core::memory::vec_bytes(&self.lineage)
             + daw_unit_core::memory::vec_bytes(&self.lineage_frames)
+            + daw_unit_core::memory::vec_bytes(&self.returns)
+            + daw_unit_core::memory::vec_bytes(&self.return_frames)
+            + self
+                .return_sends
+                .as_ref()
+                .map_or(0, |sends| sends.heap_bytes())
             + self.reference.owned_memory_bytes()
             + self.isolated.owned_memory_bytes()
             + self.delay.heap_bytes()
@@ -242,9 +297,152 @@ impl BounceCapture {
             + self
                 .lineage
                 .iter()
-                .map(|(_, a, b)| a.heap_bytes() + b.heap_bytes())
+                .map(|provider| {
+                    daw_unit_core::memory::vec_bytes(&provider.sources)
+                        + provider
+                            .sources
+                            .iter()
+                            .map(|source| match source {
+                                ProviderSource::Track { raw, post, .. } => {
+                                    raw.heap_bytes() + post.heap_bytes()
+                                }
+                                ProviderSource::Rendered { raw, post, .. } => {
+                                    2 * std::mem::size_of::<super::captured_taps::Tap>() as u64
+                                        + raw.heap_bytes()
+                                        + post.heap_bytes()
+                                }
+                            })
+                            .sum::<u64>()
+                })
                 .sum::<u64>()
     }
+}
+
+fn captured_providers(renderer: &Renderer, root: usize) -> Vec<ProviderCapture> {
+    let plan = &renderer.plan;
+    let project = &plan.project;
+    let root_id = project.tracks[root].id;
+    let subtree = project.track_subtree(root_id).expect("valid bounce root");
+    let used: HashSet<_> = project
+        .audio_sidechain_routes()
+        .into_iter()
+        .filter_map(|(_, route)| route.sidechain.map(|sidechain| sidechain.track))
+        .chain(
+            project
+                .hosted_units()
+                .into_iter()
+                .flat_map(|(_, unit)| unit.audio_inputs.iter().map(|route| route.source_track)),
+        )
+        .collect();
+    let latency = renderer.alignment.total;
+    let mut sources: BTreeMap<Id, Vec<ProviderSource>> = BTreeMap::new();
+    for index in subtree {
+        let track = &project.tracks[index];
+        if index != root && used.contains(&track.id) {
+            let delay = latency - renderer.alignment.node_frames[index];
+            sources
+                .entry(track.id)
+                .or_default()
+                .push(ProviderSource::Track {
+                    index,
+                    raw: latency::Delay::new(track.id, delay),
+                    post: latency::Delay::new(track.id, delay),
+                });
+        }
+        for id in project
+            .rendered_providers(track)
+            .into_iter()
+            .filter(|id| *id != root_id)
+        {
+            let make_tap = |post| {
+                super::captured_taps::Tap::new(
+                    plan,
+                    track,
+                    |r| {
+                        r.feeds
+                            .iter()
+                            .find(|f| f.provider == id)
+                            .map(|f| if post { f.post_asset } else { f.raw_asset })
+                    },
+                    0,
+                    latency,
+                )
+            };
+            if let Some((raw, post)) = make_tap(false).zip(make_tap(true)) {
+                let gain = renderer.gains[index].target;
+                sources
+                    .entry(id)
+                    .or_default()
+                    .push(ProviderSource::Rendered {
+                        raw: Box::new(raw),
+                        post: Box::new(post),
+                        post_gain: [gain[2], gain[3]],
+                    });
+            }
+        }
+    }
+    sources
+        .into_iter()
+        .map(|(id, sources)| ProviderCapture { id, sources })
+        .collect()
+}
+
+// Descendant sends bypass the selected group. Capture their Return ingress
+// on the same content clock as the main output, before any Return processing.
+fn captured_returns(
+    renderer: &Renderer,
+    root: usize,
+) -> (Option<super::send_routing::Sends>, Vec<(Id, usize)>) {
+    let project = &renderer.plan.project;
+    let subtree = project
+        .track_subtree(project.tracks[root].id)
+        .expect("valid bounce root");
+    let alignment = &renderer.alignment;
+    if alignment.send_delays.is_empty() && alignment.captured_sends.is_empty() {
+        return (None, Vec::new());
+    }
+    let direct: Vec<_> = alignment
+        .send_delays
+        .iter()
+        .copied()
+        .filter(|&(id, source, _, _)| {
+            source != root
+                && subtree.contains(&source)
+                && project.tracks[source]
+                    .sends
+                    .iter()
+                    .any(|s| s.id == id && s.enabled && s.gain_db > daw_core::SILENT_GAIN_DB)
+        })
+        .collect();
+    let captured: Vec<_> = alignment
+        .captured_sends
+        .iter()
+        .copied()
+        .filter(|&(source, _)| subtree.contains(&source))
+        .collect();
+    let returns: BTreeSet<_> = direct
+        .iter()
+        .map(|&(_, _, index, _)| index)
+        .chain(captured.iter().map(|&(_, index)| index))
+        .collect();
+    if returns.is_empty() {
+        return (None, Vec::new());
+    }
+    let mut sends = super::send_routing::Sends::prepare(
+        &renderer.plan,
+        alignment,
+        &direct,
+        &captured,
+        Some(alignment.total),
+    );
+    sends.advance(false);
+    (
+        Some(sends),
+        returns
+            .into_iter()
+            .map(|index| (project.tracks[index].id, index))
+            .collect(),
+    )
 }
 
 /// Shared export/bounce tail ceiling, in project-rate frames.
@@ -258,9 +456,32 @@ pub fn offline_tail_cap(sample_rate_hz: u32) -> u64 {
 pub fn bounce_tail_frames(plan: &RenderPlan, track: Id) -> (u64, bool) {
     let project = &plan.project;
     let cap = offline_tail_cap(project.sample_rate_hz);
-    let Some(t) = project.tracks.iter().find(|t| t.id == track) else {
+    let Ok(subtree) = project.track_subtree(track) else {
         return (0, false);
     };
+    let mut child_tails = std::collections::HashMap::new();
+    for t in project.tracks[subtree].iter().rev() {
+        let (own, unknown) = track_tail_frames(plan, t);
+        let (children, child_unknown) = child_tails.remove(&t.id).unwrap_or((0u64, false));
+        let frames = own.saturating_add(children);
+        let unknown = unknown || child_unknown;
+        if t.id == track {
+            return (
+                if unknown { cap } else { frames.min(cap) },
+                unknown || frames > cap,
+            );
+        }
+        if let Some(parent) = t.group_id {
+            let tail = child_tails.entry(parent).or_insert((0, false));
+            tail.0 = tail.0.max(frames);
+            tail.1 |= unknown;
+        }
+    }
+    (0, false)
+}
+
+fn track_tail_frames(plan: &RenderPlan, t: &daw_core::Track) -> (u64, bool) {
+    let project = &plan.project;
     let mut tail = 0u64;
     let unknown = std::cell::Cell::new(false);
     let mut effect = |e: &daw_core::EffectInstance| {
@@ -349,15 +570,7 @@ pub fn bounce_tail_frames(plan: &RenderPlan, track: Id) -> (u64, bool) {
                 continuation.max(envelope.settings.release.frames(project.sample_rate_hz));
         }
     }
-    let requested = tail.saturating_add(continuation);
-    (
-        if unknown.get() {
-            cap
-        } else {
-            requested.min(cap)
-        },
-        unknown.get() || requested > cap,
-    )
+    (tail.saturating_add(continuation), unknown.get())
 }
 
 fn release_bound(envelope: &daw_unit_core::EnvelopeInstance, rate: u32) -> u64 {

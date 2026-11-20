@@ -88,8 +88,10 @@ may retain delegated envelopes inside companion members.
 Manifest loading upgrades older compounds that contain rendered members before
 publishing the editor model. Derived private IDs are deterministic; read-only
 inspection and opening agree, and repeated upgrades add no assets. Saving retains
-the companion recipes. Older readers reject version 2 rather than silently lose
-the feeds. File-based Bounce sources retain capability version 1.
+the companion recipes. Compound sources with captured Return feeds use capability
+version 4. They retain one companion recipe per Return and use silent members
+where a clip has no feed for that Return. Older readers reject unsupported
+capability versions. File-based Bounce sources use version 1 or 3.
 
 ## Preparation, consumers and storage
 

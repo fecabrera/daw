@@ -20,21 +20,24 @@ The clip starts at the first selected clip. Unselected clips stay enabled.
 
 ## Bounce selected tracks
 
-1. Select one or more Audio, MIDI or Beat parent tracks.
+1. Select one or more Audio, MIDI, Beat parent or Group tracks.
 2. Choose **Track > Bounce tracks**, use the track context menu, or press
    Shift+Command+B on macOS or Shift+Ctrl+B on Windows/Linux.
 3. Wait for the Bounce progress dialog.
 
 Track Bounce includes each selected track's complete arrangement. Clip selection,
-the time range, the playhead and the transport loop do not limit it. Empty tracks,
-Group tracks and Return tracks are skipped with a notice. Selecting a Group does
-not select its children for Bounce.
+the time range, the playhead and the transport loop do not limit it. A Group
+produces one audio track for its full mix, including nested groups and their
+processing. If you also select a track inside that Group, Bounce includes it
+only in the Group mix. Empty tracks, empty groups and Returns are skipped with
+a notice.
 
 ## Result and progress
 
-Each new track appears immediately after its source, in the same Group and with
-the same color. Its name starts with the source name followed by **Bounce**.
-Source clips remain in place and become disabled. Existing disabled clips stay
+Each new track appears after its source, with the same parent and color. A Group
+bounce appears below the entire Group. Its name starts with the source name
+followed by **Bounce**. Source clips remain in place and become disabled,
+including clips in nested groups. Existing disabled clips stay
 disabled. Undo restores the complete operation in one step; Redo restores the same
 audio without rendering again.
 
@@ -43,6 +46,12 @@ It copies the source's Mute, Solo and sends. Bounce captures authored sound even
 when the source track is muted or excluded by Solo; disabled clips and disabled
 instrument sources still remain silent. You can change the two tracks'
 monitoring controls independently after Bounce.
+
+A Group bounce captures the descendants' Mute and Solo mix. If a descendant
+is soloed, the new audio track also starts soloed. Any enclosing Group, Returns
+and Master continue to process the project live. The selected Group's own sends
+are copied as editable sends. Active descendant sends are captured at their
+current levels and continue feeding their live Returns through the bounced clip.
 
 The progress dialog shows preparation, rendering and publication. **Cancel**
 stops work before publication. Editing remains disabled until generated files
@@ -70,8 +79,8 @@ Cancel is no longer available once the complete result is being published.
   unavailable under the usual missing-source rules.
 - Captured routing audio follows the bounced clip's position, trims, splits,
   repeats, gain, channel edits, stretching and transpose. Copying that clip also
-  copies its contribution to existing sidechains. Bouncing it again retains those
-  associations without playing the old contribution twice.
+  copies its contributions to existing sidechains and captured Return feeds.
+  Bouncing it again retains those associations.
 - Captured routing stages remain snapshots. Later effects on the bounced track
   do not recreate its original pre-fader signal. Its new fader and pan remain live
   for normal output and sends. Sidechain Post applies its monitoring gates;

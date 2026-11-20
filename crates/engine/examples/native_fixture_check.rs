@@ -311,6 +311,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 asset.rendered_audio = Some(RenderedAudio {
                     version: 1,
                     pre_send_asset: original,
+                    return_feeds: Vec::new(),
                     feeds: vec![RenderedFeed {
                         provider: source,
                         raw_asset: original,

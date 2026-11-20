@@ -1,7 +1,7 @@
 mod bounce;
 pub use bounce::{
     BounceMode, BounceOutput, BounceRequest, BounceTarget, BounceTargets, RenderedAudio,
-    RenderedFeed,
+    RenderedFeed, RenderedReturnFeed,
 };
 mod display;
 pub use display::{ProjectDisplay, TrackHeight};

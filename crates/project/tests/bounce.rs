@@ -1191,3 +1191,208 @@ fn merged_provider_union_keeps_absent_members_silent_and_rejects_feedback() {
         assert!(cycle.validate().unwrap_err().0.contains("cycle"));
     }
 }
+
+#[test]
+fn group_bounce_replaces_nested_mix_and_keeps_return_and_master_processing_live() {
+    let fixture = Fixture::new();
+    let mut original = fixture.session();
+    let source = original.project.tracks[0].id;
+    let other = original.project.add_track().unwrap();
+    let mut later = original.project.tracks[0].clips[0].clone();
+    later.id = Id::new_v4();
+    later.start_frame = 4800;
+    original.project.tracks[1].clips.push(later);
+    let nested = Id::new_v4();
+    original
+        .project
+        .edit(Edit::GroupTracks {
+            track_ids: vec![source],
+            group_id: nested,
+            name: "Nested".into(),
+        })
+        .unwrap();
+    let group = Id::new_v4();
+    original
+        .project
+        .edit(Edit::GroupTracks {
+            track_ids: vec![nested, other],
+            group_id: group,
+            name: "Group".into(),
+        })
+        .unwrap();
+    let parent = Id::new_v4();
+    original
+        .project
+        .edit(Edit::GroupTracks {
+            track_ids: vec![group],
+            group_id: parent,
+            name: "Parent".into(),
+        })
+        .unwrap();
+    let return_id = original.project.add_return_track().unwrap();
+    for (index, track) in original.project.tracks.iter_mut().enumerate() {
+        track.gain_db = -2.0 - index as f32;
+        track.pan = 0.16 * index as f32;
+        track.effects.push(daw_core::EffectInstance::drive());
+        if [group, nested, source, other].contains(&track.id) {
+            let mut send = TrackSend::new(return_id);
+            send.gain_db = -12.0 - index as f32;
+            if track.id == source {
+                send.tap = SendTap::PreFader;
+            }
+            track.sends.push(send);
+        }
+    }
+    original
+        .project
+        .tracks
+        .iter_mut()
+        .find(|t| t.id == nested)
+        .unwrap()
+        .effects
+        .push(daw_core::EffectInstance::limiter());
+    original.project.master.gain_db = -8.0;
+    original
+        .project
+        .master
+        .effects
+        .push(daw_core::EffectInstance::drive());
+    let request = BounceRequest {
+        mode: BounceMode::Tracks,
+        ids: vec![source, group, nested, return_id],
+    };
+    let selection = original.project.bounce_targets(&request).unwrap();
+    assert_eq!(selection.targets.len(), 1);
+    assert_eq!(selection.targets[0].track_id, group);
+    assert_eq!(selection.targets[0].clip_ids.len(), 2);
+    assert_eq!(selection.warnings.len(), 1);
+
+    let mut history = SessionHistory::new(&original, false).unwrap();
+    let mut bounced = original
+        .bounce(&request, &BounceProgress::default())
+        .unwrap()
+        .session;
+    assert_eq!(
+        bounced.project.tracks.len(),
+        original.project.tracks.len() + 1
+    );
+    let subtree = bounced.project.track_subtree(group).unwrap();
+    assert!(
+        bounced.project.tracks[subtree.clone()]
+            .iter()
+            .flat_map(|t| &t.clips)
+            .all(|c| c.muted)
+    );
+    let output = &bounced.project.tracks[subtree.end];
+    assert_eq!(output.group_id, Some(parent));
+    assert_eq!(output.clips[0].start_frame, 1200);
+    assert_eq!(output.sends.len(), 1);
+    let output_id = output.id;
+    let mut invalid = bounced.project.clone();
+    let source = invalid
+        .assets
+        .iter_mut()
+        .find(|asset| asset.id == output.clips[0].asset_id)
+        .unwrap();
+    source.rendered_audio.as_mut().unwrap().version = 1;
+    assert!(invalid.validate().is_err());
+
+    let frames = 10000;
+    assert_close(&render(&original, frames), &render(&bounced, frames));
+    history.record(&bounced).unwrap();
+    assert_eq!(history.undo(&bounced).unwrap().project, original.project);
+
+    // Changing live downstream controls affects the replacement too.
+    for session in [&mut original, &mut bounced] {
+        session.project.master.effects.clear();
+        session.project.master.gain_db = -3.0;
+        let ret = session
+            .project
+            .tracks
+            .iter_mut()
+            .find(|t| t.id == return_id)
+            .unwrap();
+        ret.effects.clear();
+        ret.gain_db = -3.0;
+    }
+    assert_close(&render(&original, frames), &render(&bounced, frames));
+
+    let mut rebounced = bounced
+        .bounce(
+            &BounceRequest {
+                mode: BounceMode::Tracks,
+                ids: vec![output_id],
+            },
+            &BounceProgress::default(),
+        )
+        .unwrap()
+        .session;
+    assert_close(&render(&bounced, frames), &render(&rebounced, frames));
+    let output =
+        &mut rebounced.project.tracks[bounced.project.track_subtree(output_id).unwrap().end];
+    let first = output.clips[0].id;
+    let mut copy = output.clips[0].clone();
+    copy.id = Id::new_v4();
+    copy.start_frame = copy.end() + 1200;
+    let second = copy.id;
+    output.clips.push(copy);
+    let expected = render(&rebounced, 20000);
+    let (mut rebounced, _) = rebounced
+        .merged_audio_clips(&[first, second], &|| false)
+        .unwrap();
+    assert_close(&expected, &render(&rebounced, 20000));
+    let saved = fixture.0.join("group-bounce");
+    rebounced.save(&saved).unwrap();
+    let reopened = Session::open(&saved).unwrap();
+    assert_close(&expected, &render(&reopened, 20000));
+}
+
+#[test]
+fn group_bounce_preserves_descendant_solo_and_live_sidechain_feeds() {
+    let fixture = Fixture::new();
+    let mut original = fixture.session();
+    let source = original.project.tracks[0].id;
+    let sibling = original.project.add_track().unwrap();
+    let receiver = original.project.add_track().unwrap();
+    for index in 1..=2 {
+        let mut clip = original.project.tracks[0].clips[0].clone();
+        clip.id = Id::new_v4();
+        original.project.tracks[index].clips.push(clip);
+    }
+    let group = Id::new_v4();
+    original
+        .project
+        .edit(Edit::GroupTracks {
+            track_ids: vec![source, sibling],
+            group_id: group,
+            name: "Group".into(),
+        })
+        .unwrap();
+    original.project.tracks[1].soloed = true;
+    // The receiver uses the descendant's historical stage after the descendant's clip is disabled.
+    sidechain(
+        &mut original,
+        source,
+        receiver,
+        daw_unit_core::SidechainTap::PreFader,
+    );
+    let request = BounceRequest {
+        mode: BounceMode::Tracks,
+        ids: vec![group],
+    };
+    let prepared = original
+        .bounce(&request, &BounceProgress::default())
+        .unwrap()
+        .session;
+    let output_index = prepared.project.track_subtree(group).unwrap().end;
+    assert!(prepared.project.tracks[output_index].soloed);
+    assert_close(&render(&original, 5000), &render(&prepared, 5000));
+
+    // Turn off Solo and repeat the capture with the sidechain receiver audible.
+    original.project.tracks[1].soloed = false;
+    let prepared = original
+        .bounce(&request, &BounceProgress::default())
+        .unwrap()
+        .session;
+    assert_close(&render(&original, 5000), &render(&prepared, 5000));
+}

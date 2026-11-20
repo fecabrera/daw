@@ -58,6 +58,7 @@ impl Project {
                     .map(|p| (t.id, p))
                     .chain(t.sends.iter().map(|s| (t.id, s.return_id)))
             })
+            .chain(self.rendered_return_routes())
             .chain(
                 self.audio_sidechain_routes()
                     .into_iter()

@@ -47,24 +47,52 @@ struct Edge {
     post: Ramp,
 }
 #[derive(Clone)]
+struct CapturedSend {
+    source: usize,
+    tap: super::captured_taps::Tap,
+    audible: Ramp,
+}
+#[derive(Clone)]
 pub(super) struct Sends {
     sources: Vec<SourceMix>,
     edges: Vec<Edge>,
     incoming: Vec<Vec<usize>>,
     frames: u32,
+    captured: Vec<Vec<CapturedSend>>,
     pre_taps: Vec<Option<super::captured_taps::Tap>>,
 }
 impl Sends {
     pub fn new(plan: &RenderPlan, alignment: &latency::Alignment) -> Self {
+        Self::prepare(
+            plan,
+            alignment,
+            &alignment.send_delays,
+            &alignment.captured_sends,
+            None,
+        )
+    }
+
+    pub(super) fn prepare(
+        plan: &RenderPlan,
+        alignment: &latency::Alignment,
+        direct: &[(Id, usize, usize, u64)],
+        captured: &[(usize, usize)],
+        capture_clock: Option<u64>,
+    ) -> Self {
         let project = &plan.project;
         let audible = project.track_send_audible();
+        let mut has_direct = vec![false; project.tracks.len()];
+        for &(_, source, _, _) in direct {
+            has_direct[source] = true;
+        }
         let mut sends = Self {
+            captured: vec![Vec::new(); project.tracks.len()],
             pre_taps: project
                 .tracks
                 .iter()
                 .enumerate()
                 .map(|(i, t)| {
-                    if t.sends.is_empty() {
+                    if !has_direct[i] {
                         None
                     } else {
                         super::captured_taps::Tap::new(
@@ -77,7 +105,7 @@ impl Sends {
                     }
                 })
                 .collect(),
-            sources: if alignment.send_delays.is_empty() {
+            sources: if direct.is_empty() && captured.is_empty() {
                 Vec::new()
             } else {
                 project.tracks.iter().map(SourceMix::new).collect()
@@ -86,7 +114,8 @@ impl Sends {
             incoming: vec![vec![]; project.tracks.len()],
             frames: (project.sample_rate_hz / 200).max(1),
         };
-        for &(id, source, destination, delay) in &alignment.send_delays {
+        for &(id, source, destination, delay) in direct {
+            let delay = capture_clock.map_or(delay, |clock| clock - alignment.node_frames[source]);
             let s = project.tracks[source]
                 .sends
                 .iter()
@@ -107,13 +136,40 @@ impl Sends {
                 post: Ramp::new(f32::from(s.tap == SendTap::PostFader)),
             });
         }
+        for &(source, destination) in captured {
+            let return_id = project.tracks[destination].id;
+            if let Some(tap) = super::captured_taps::Tap::new(
+                plan,
+                &project.tracks[source],
+                |r| {
+                    r.return_feeds
+                        .iter()
+                        .find(|f| f.return_id == return_id)
+                        .map(|f| f.asset)
+                },
+                capture_clock.unwrap_or(alignment.input_frames[destination]),
+                0,
+            ) {
+                sends.captured[destination].push(CapturedSend {
+                    source,
+                    tap,
+                    audible: Ramp::new(f32::from(audible[source])),
+                });
+            }
+        }
         sends
     }
     pub(super) fn taps_mut(&mut self) -> impl Iterator<Item = &mut super::captured_taps::Tap> {
-        self.pre_taps.iter_mut().flatten()
+        self.pre_taps
+            .iter_mut()
+            .flatten()
+            .chain(self.captured.iter_mut().flatten().map(|send| &mut send.tap))
     }
     pub(super) fn taps(&self) -> impl Iterator<Item = &super::captured_taps::Tap> {
-        self.pre_taps.iter().flatten()
+        self.pre_taps
+            .iter()
+            .flatten()
+            .chain(self.captured.iter().flatten().map(|send| &send.tap))
     }
     pub(super) fn source_count(&self) -> usize {
         self.sources.len()
@@ -170,6 +226,18 @@ impl Sends {
                 sum[ch] += (pre * (1.0 - post) + sample[ch] * values[base + 4 + ch] * post) * gain;
             }
         }
+        for send in &mut self.captured[destination] {
+            let sample = send.tap.sample(frame, region, realtime).0;
+            let gate = if live {
+                send.audible.next_value()
+            } else {
+                send.audible.target()
+            };
+            let values = self.sources[send.source].current;
+            for ch in 0..2 {
+                sum[ch] += sample[ch] * values[6 + ch] * gate;
+            }
+        }
         sum
     }
     /// Called only after Alignment has verified identical ordered nodes and edges.
@@ -192,6 +260,16 @@ impl Sends {
             edge.level.set(target, self.frames);
             edge.post.set(post, self.frames);
         }
+        for (next, old) in self
+            .captured
+            .iter_mut()
+            .flatten()
+            .zip(old.captured.iter().flatten())
+        {
+            let target = next.audible.target();
+            next.audible = old.audible;
+            next.audible.set(target, self.frames);
+        }
     }
     pub fn reset(&mut self) {
         for e in &mut self.edges {
@@ -199,6 +277,9 @@ impl Sends {
             e.pre_delay.reset();
             e.level.reset();
             e.post.reset();
+        }
+        for send in self.captured.iter_mut().flatten() {
+            send.audible.reset();
         }
         for s in &mut self.sources {
             for r in &mut s.values {
@@ -209,12 +290,9 @@ impl Sends {
     pub fn heap_bytes(&self) -> u64 {
         use daw_unit_core::memory::vec_bytes;
         vec_bytes(&self.pre_taps)
-            + self
-                .pre_taps
-                .iter()
-                .flatten()
-                .map(|t| t.heap_bytes())
-                .sum::<u64>()
+            + vec_bytes(&self.captured)
+            + self.captured.iter().map(vec_bytes).sum::<u64>()
+            + self.taps().map(|tap| tap.heap_bytes()).sum::<u64>()
             + vec_bytes(&self.sources)
             + vec_bytes(&self.edges)
             + vec_bytes(&self.incoming)

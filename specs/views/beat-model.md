@@ -121,6 +121,17 @@ processing lookahead is active. This applies to MIDI and beat instruments. Nonlo
 their existing behavior. Audio clips repeat only the selected region; existing
 track, group and Master effect histories continue through the wrap.
 
+## Clip repeat tails
+
+During continuous playback and export, an internal MIDI or beat clip repeat
+ends the previous pass's scheduled gates and keeps its voices, release ages,
+and source cursors. Process note-offs before note-ons at the seam. Only events
+in the new pass can trigger notes and Stops. Hit replacement and an existing
+choke fade use the same rules as a transport wrap. Keep clip start and end
+fades. At internal seams, use the existing voice transitions for retriggers
+and let release tails pass without a clip gain fade. A direct seek still
+reconstructs the destination from the source.
+
 ## Merge beat patterns
 
 `Project::merge_pattern_clips` dispatches MIDI and beat sources through their

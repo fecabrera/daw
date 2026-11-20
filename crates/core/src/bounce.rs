@@ -32,11 +32,14 @@ pub struct RenderedAudio {
     pub version: u32,
     pub pre_send_asset: Id,
     pub feeds: Vec<RenderedFeed>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub return_feeds: Vec<RenderedReturnFeed>,
 }
 impl RenderedAudio {
     pub fn dependencies(&self) -> impl Iterator<Item = Id> + '_ {
         std::iter::once(self.pre_send_asset)
             .chain(self.feeds.iter().flat_map(|f| [f.raw_asset, f.post_asset]))
+            .chain(self.return_feeds.iter().map(|f| f.asset))
     }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -44,6 +47,11 @@ pub struct RenderedFeed {
     pub provider: Id,
     pub raw_asset: Id,
     pub post_asset: Id,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RenderedReturnFeed {
+    pub return_id: Id,
+    pub asset: Id,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct BounceOutput {
@@ -85,26 +93,34 @@ impl Project {
         if !wanted.is_subset(&present) {
             return Err(Error("Bounce selection no longer exists".into()));
         }
+        let track_roots: HashSet<_> = match request.mode {
+            BounceMode::Tracks => self
+                .track_selection_roots(&request.ids)
+                .into_iter()
+                .collect(),
+            BounceMode::Clips => HashSet::new(),
+        };
         let mut targets = Vec::new();
         let mut warnings = Vec::new();
-        for t in &self.tracks {
-            let clips: Vec<_> = t
-                .clips
-                .iter()
-                .filter(|c| match request.mode {
-                    BounceMode::Clips => wanted.contains(&c.id),
-                    BounceMode::Tracks => wanted.contains(&t.id),
-                })
-                .collect();
-            let selected =
-                !clips.is_empty() || (request.mode == BounceMode::Tracks && wanted.contains(&t.id));
-            if !selected {
-                continue;
-            }
-            if !matches!(t.kind, TrackKind::Audio | TrackKind::Midi | TrackKind::Beat)
-                || clips.is_empty()
-            {
-                warnings.push(format!("{}: skipped (no clip content to bounce)", t.name));
+        for (index, t) in self.tracks.iter().enumerate() {
+            let clips: Vec<_> = match request.mode {
+                BounceMode::Tracks if track_roots.contains(&t.id) => {
+                    self.tracks[if t.kind == TrackKind::Group {
+                        self.track_subtree(t.id)?
+                    } else {
+                        index..index + 1
+                    }]
+                    .iter()
+                    .flat_map(|track| &track.clips)
+                    .collect()
+                }
+                BounceMode::Clips => t.clips.iter().filter(|c| wanted.contains(&c.id)).collect(),
+                BounceMode::Tracks => continue,
+            };
+            if clips.is_empty() {
+                if request.mode == BounceMode::Tracks {
+                    warnings.push(format!("{}: skipped (no clip content to bounce)", t.name));
+                }
                 continue;
             }
             if clips.iter().all(|c| c.muted) {
@@ -123,9 +139,7 @@ impl Project {
             });
         }
         if targets.is_empty() {
-            return Err(Error(
-                "No selected Audio, MIDI or Beat tracks contain clips".into(),
-            ));
+            return Err(Error("No selected tracks or groups contain clips".into()));
         }
         Ok(BounceTargets { targets, warnings })
     }
@@ -143,12 +157,9 @@ impl Project {
             let output = outputs
                 .remove(&target.track_id)
                 .ok_or_else(|| Error("Bounce target mismatch".into()))?;
-            let position = next
-                .tracks
-                .iter()
-                .position(|t| t.id == target.track_id)
-                .unwrap();
-            let original = &mut next.tracks[position];
+            let subtree = next.track_subtree(target.track_id)?;
+            let original = &next.tracks[subtree.start];
+            let soloed = next.tracks[subtree.clone()].iter().any(|t| t.soloed);
             if output.track.kind != TrackKind::Audio
                 || output.track.group_id != original.group_id
                 || output.track.clips.len() != 1
@@ -181,7 +192,7 @@ impl Project {
                 || !clip.fades.fade_out.inherit_source
                 || clip.end().saturating_sub(target.end_frame) > u64::from(self.sample_rate_hz) * 10
                 || output.track.muted != original.muted
-                || output.track.soloed != original.soloed
+                || output.track.soloed != soloed
                 || output.track.color != original.color
             {
                 return Err(Error(
@@ -204,13 +215,17 @@ impl Project {
             {
                 return Err(Error("Bounce must copy sends with fresh identities".into()));
             }
-            for clip in &mut original.clips {
-                if target.clip_ids.contains(&clip.id) {
+            let clip_ids: HashSet<_> = target.clip_ids.iter().copied().collect();
+            for clip in next.tracks[subtree.clone()]
+                .iter_mut()
+                .flat_map(|t| &mut t.clips)
+            {
+                if clip_ids.contains(&clip.id) {
                     clip.muted = true;
                 }
             }
             next.assets.extend(output.assets);
-            next.tracks.insert(position + 1, output.track);
+            next.tracks.insert(subtree.end, output.track);
         }
         next.validate()?;
         Ok(next)
@@ -223,10 +238,11 @@ impl Project {
                 }
                 continue;
             };
-            let file = source.version == 1
+            let has_returns = !source.return_feeds.is_empty();
+            let file = matches!((source.version, has_returns), (1, false) | (3, true))
                 && a.source.kind == "rendered_audio"
                 && a.compound_audio.is_none();
-            let compound = source.version == 2
+            let compound = matches!((source.version, has_returns), (2, false) | (4, true))
                 && a.source.kind == "compound_audio"
                 && a.compound_audio.is_some();
             if !(file || compound)
@@ -236,6 +252,13 @@ impl Project {
                 || a.source_metadata.sample_format != "ieee_float"
                 || a.source_metadata.bits_per_sample != 32
                 || source.feeds.is_empty()
+                || source
+                    .return_feeds
+                    .iter()
+                    .any(|f| f.return_id.is_nil() || f.asset == a.id)
+                || (source.return_feeds.len() as u64)
+                    .saturating_mul(std::mem::size_of::<RenderedReturnFeed>() as u64)
+                    > COMPOUND_METADATA_LIMIT
                 || (source.feeds.len() as u64)
                     .saturating_mul(std::mem::size_of::<RenderedFeed>() as u64)
                     > COMPOUND_METADATA_LIMIT
@@ -249,6 +272,14 @@ impl Project {
                 if feed.provider.is_nil() || !providers.insert(feed.provider) {
                     return Err(Error("Invalid captured provider identity".into()));
                 }
+            }
+            let mut returns = HashSet::new();
+            if source
+                .return_feeds
+                .iter()
+                .any(|f| !returns.insert(f.return_id))
+            {
+                return Err(Error("Duplicate captured Return feed".into()));
             }
             for id in source.dependencies() {
                 let leaf = self
@@ -285,6 +316,37 @@ impl Project {
                 Some(clip)
             })
             .collect()
+    }
+    pub fn rendered_return_routes(&self) -> Vec<(Id, Id)> {
+        let feeds: HashMap<_, _> = self
+            .assets
+            .iter()
+            .filter_map(|asset| {
+                let feeds = &asset.rendered_audio.as_ref()?.return_feeds;
+                (!feeds.is_empty()).then_some((asset.id, feeds))
+            })
+            .collect();
+        if feeds.is_empty() {
+            return Vec::new();
+        }
+        let returns: HashSet<_> = self
+            .tracks
+            .iter()
+            .filter(|track| track.kind == TrackKind::Return)
+            .map(|track| track.id)
+            .collect();
+        let mut routes = Vec::new();
+        for track in &self.tracks {
+            let destinations: std::collections::BTreeSet<_> = track
+                .clips
+                .iter()
+                .filter_map(|clip| feeds.get(&clip.asset_id))
+                .flat_map(|feeds| feeds.iter().map(|feed| feed.return_id))
+                .filter(|id| returns.contains(id))
+                .collect();
+            routes.extend(destinations.into_iter().map(|id| (track.id, id)));
+        }
+        routes
     }
     pub fn rendered_providers(&self, track: &Track) -> Vec<Id> {
         let mut ids: Vec<_> = track

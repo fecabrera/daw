@@ -562,8 +562,9 @@ pub(crate) struct MidiTrackRuntime {
     fingerprint: u64,
     held_sample: [f32; 2],
     last_clip: Option<Id>,
-    last_source: Option<u64>,
+    last_repeat_pass: u128,
     next_event: usize,
+    first_stop_in_pass: usize,
     audition_gate: Option<u64>,
     shared: SharedControls,
     lfo_notes: super::lfo::NoteSchedule,
@@ -1241,8 +1242,9 @@ impl MidiTrackRuntime {
             clips,
             sample_rate_hz: project.sample_rate_hz,
             last_clip: None,
-            last_source: None,
+            last_repeat_pass: 0,
             next_event: 0,
+            first_stop_in_pass: 0,
             audition_gate: None,
             shared: SharedControls::new(
                 instrument
@@ -1885,7 +1887,6 @@ impl MidiTrackRuntime {
             voice.reset();
         }
         self.last_clip = None;
-        self.last_source = None;
     }
     /// Control-worker only. Independent reserve; scheduled clips cannot steal these slots.
     pub fn prepare_live(&mut self) {
@@ -2019,7 +2020,6 @@ impl MidiTrackRuntime {
         self.clips.clear();
         self.clip_ranges = super::schedule::Ranges::new(std::iter::empty());
         self.last_clip = None;
-        self.last_source = None;
         self.shared.event(true, None);
         if let Some(voice) = self.voices.first_mut() {
             voice.note_on_with_duration(Id::new_v4(), pitch, 100, None);
@@ -2043,7 +2043,6 @@ impl MidiTrackRuntime {
         self.clips.clear();
         self.clip_ranges = super::schedule::Ranges::new(std::iter::empty());
         self.last_clip = None;
-        self.last_source = None;
         if let Some((pitch, velocity, duration)) = trigger {
             self.shared.event(true, Some(duration));
             if let Some(voice) = self.voices.first_mut() {
@@ -2089,17 +2088,20 @@ impl MidiTrackRuntime {
 
     /// Release note gates at a continuous wrap while retaining source/release state.
     pub fn wrap_loop(&mut self) {
-        let stop = self.previous_stop_gain;
-        self.end_notes();
+        self.release_at_wrap();
+        self.last_clip = None;
         self.loop_wrapped = true;
-        self.carried_stop_gain = (stop < 1.0).then_some(stop);
+    }
+    fn release_at_wrap(&mut self) {
+        self.end_scheduled_gates();
+        let gain = self.previous_stop_gain;
+        self.carried_stop_gain = (gain < 1.0).then_some(gain);
     }
     pub fn end_notes(&mut self) {
         self.loop_wrapped = false;
         self.carried_stop_gain = None;
         self.end_scheduled_gates();
         self.last_clip = None;
-        self.last_source = None;
     }
     fn end_scheduled_gates(&mut self) {
         self.shared.end();
@@ -2286,6 +2288,23 @@ impl MidiTrackRuntime {
         let live_gain = if self.live_active() { 1.0 } else { 0.0 };
         let wrapped = self.loop_wrapped;
         let retain_tails = loop_region.is_some();
+        let clip_position = self.clip_ranges.at(frame).map(|index| {
+            let clip = &self.clips[index].clip;
+            let local =
+                self.clock
+                    .sample_reference_position(clip.start_frame, frame, self.tempo_bpm);
+            let pass = clip.repeat.map_or(0, |repeat| {
+                (u128::from(local) + u128::from(repeat.phase_frame))
+                    / u128::from(repeat.length_frames)
+            });
+            (index, local, pass)
+        });
+        let repeat_wrapped = clip_position.is_some_and(|(index, _, pass)| {
+            self.last_clip == Some(self.clips[index].clip.id) && pass > self.last_repeat_pass
+        });
+        if repeat_wrapped {
+            self.release_at_wrap();
+        }
         let carried_gain = if let Some(gain) = &mut self.carried_stop_gain {
             *gain = (*gain - 1.0 / (self.sample_rate_hz / 200).max(1) as f32).max(0.0);
             if *gain == 0.0 && !self.beat_stopped {
@@ -2305,16 +2324,13 @@ impl MidiTrackRuntime {
         } else {
             1.0
         };
-        let sample = if let Some(index) = self.clip_ranges.at(frame) {
+        let sample = if let Some((index, local_reference, repeat_pass)) = clip_position {
             // Preserve the wrap marker across a leading gap until scheduling resumes.
             self.loop_wrapped = false;
             let prepared = &self.clips[index];
             let clip = &prepared.clip;
             clip_gain = linear_gain(clip.gain_db);
             self.tail_clip_gain = clip_gain;
-            let local_reference =
-                self.clock
-                    .sample_reference_position(clip.start_frame, frame, self.tempo_bpm);
             let position = clip.source_frame(local_reference);
             let occurrence = |event: &NoteEvent| {
                 let start_ref = i128::from(local_reference)
@@ -2339,9 +2355,17 @@ impl MidiTrackRuntime {
             let source = clip
                 .stretch
                 .map_or(position, |s| s.original_frame(position));
-            let restarted = self.last_clip != Some(clip.id)
-                || self.last_source.is_none_or(|last| source < last);
-            if restarted && !wrapped {
+            let restarted = self.last_clip != Some(clip.id) || repeat_wrapped;
+            if restarted {
+                self.first_stop_in_pass = if repeat_wrapped {
+                    prepared.stops.partition_point(|stop| {
+                        output_frame(clip, *stop) < clip.source_offset_frame
+                    })
+                } else {
+                    0
+                };
+            }
+            if restarted && !wrapped && !repeat_wrapped {
                 self.carried_stop_gain = None;
                 self.beat_stopped = false;
                 self.previous_stop_gain = 1.0;
@@ -2409,7 +2433,13 @@ impl MidiTrackRuntime {
                     }
                 }
             } else {
-                if restarted {
+                if repeat_wrapped {
+                    // Admit only events in this pass, including events crossed by
+                    // the first sample when the musical clock skips source frames.
+                    self.next_event = prepared.events.partition_point(|e| {
+                        output_frame(clip, e.frame) < clip.source_offset_frame
+                    });
+                } else if restarted {
                     self.next_event = prepared.events.partition_point(|e| e.frame < source);
                 }
                 while let Some(event) = prepared
@@ -2459,7 +2489,7 @@ impl MidiTrackRuntime {
                 }
             }
             self.last_clip = Some(clip.id);
-            self.last_source = Some(source);
+            self.last_repeat_pass = repeat_pass;
             let mut stop_gain = if self.carried_stop_gain.is_some() {
                 carried_gain
             } else {
@@ -2469,6 +2499,7 @@ impl MidiTrackRuntime {
                 .stops
                 .partition_point(|f| *f <= source)
                 .checked_sub(1)
+                .filter(|index| *index >= self.first_stop_in_pass)
                 .map(|i| prepared.stops[i])
             {
                 let latest_note = prepared.slot_starts.first().and_then(|starts| {
@@ -2493,14 +2524,15 @@ impl MidiTrackRuntime {
                 }
             }
             self.previous_stop_gain = stop_gain;
+            // Retained voices remain continuous at the repeat seam. Voice
+            // retriggers have their own transition, and the clip keeps its edge fades.
             let fade = stop_gain
                 * if retain_tails {
                     1.0
                 } else {
-                    super::sample_fade(
-                        clip,
+                    clip.fades.gain(
                         frame - clip.start_frame,
-                        position,
+                        clip.length_frames,
                         self.sample_rate_hz,
                     )
                 };
@@ -2517,7 +2549,6 @@ impl MidiTrackRuntime {
                     }
                 }
             }
-            self.last_source = None;
             self.previous_stop_gain = carried_gain;
             self.voice_sample(frame, loop_region, carried_gain, true)
         };
@@ -2946,10 +2977,10 @@ mod note_timing_tests {
                 sought.sample(age);
                 assert_eq!(sought.voices[0].note_duration_frames, Some(duration));
                 assert!((sought.voices[0].controls[0].envelope.level() - expected).abs() < 1e-6);
-                // Cross the source-clock wrap, as sequential rendering does.
-                sought.sample(repeat_length - 1);
-                sought.sample(repeat_length + age);
-                assert!((sought.voices[0].controls[0].envelope.level() - expected).abs() < 1e-6);
+                // Jumping into a later pass reconstructs the trimmed note at the destination.
+                let mut later = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+                later.sample(repeat_length + age);
+                assert!((later.voices[0].controls[0].envelope.level() - expected).abs() < 1e-6);
             }
         }
     }
@@ -3023,7 +3054,6 @@ mod restart_index_tests {
                     voice.advance_envelopes(position.saturating_sub(voice.reconstructed_at));
                 }
                 reference.last_clip = Some(clip.id);
-                reference.last_source = Some(source);
                 for at in frame..frame + 300 {
                     assert_eq!(indexed.sample(at), reference.sample(at));
                 }

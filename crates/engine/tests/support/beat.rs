@@ -573,6 +573,58 @@ fn beat_loop_wrap_retains_last_one_shot_tail() {
 }
 
 #[test]
+fn beat_clip_repeat_preserves_release_with_and_without_layer_latency() {
+    for latency in [false, true] {
+        let rate = 48_000;
+        let mut plan = beat_plan(rate, false, false);
+        let row = &mut plan.project.tracks[0].beat.as_mut().unwrap().subtracks[0];
+        let layer = &mut row.instrument.layers[0];
+        layer.envelopes[0].settings.release.time_ms = 300.0;
+        if latency {
+            layer.effects.push(EffectInstance::limiter());
+        }
+        let pattern = BeatPattern::default()
+            .with_step(row.id, 3600, Some(127))
+            .unwrap();
+        let clip_id = plan.project.tracks[0].clips[0].id;
+        plan.project
+            .edit(Edit::ReplaceBeatPattern {
+                clip_id,
+                pattern: pattern.clone(),
+            })
+            .unwrap();
+        let seam = plan.project.tracks[0].clips[0].length_frames;
+        let mut reference = plan.clone();
+        reference
+            .project
+            .edit(Edit::ReplaceBeatPattern {
+                clip_id,
+                pattern: pattern.with_grid(2, BeatResolution::Sixteenth).unwrap(),
+            })
+            .unwrap();
+        let clip = &mut plan.project.tracks[0].clips[0];
+        clip.repeat = Some(ClipLoop {
+            length_frames: seam,
+            phase_frame: 0,
+        });
+        clip.length_frames *= 2;
+        plan.project.validate().unwrap();
+
+        let start = seam - u64::from(rate / 100);
+        let mut expected = vec![[0.0; 2]; (rate / 10) as usize];
+        let mut actual = expected.clone();
+        reference.render(start, &mut expected);
+        plan.render(start, &mut actual);
+        assert!(
+            expected[(rate / 100) as usize..]
+                .iter()
+                .any(|s| s[0].abs() > 0.01)
+        );
+        assert_eq!(actual, expected);
+    }
+}
+
+#[test]
 fn beat_choke_finishes_across_transport_wrap_without_recovering_gain() {
     let rate = 48000;
     let mut plan = beat_plan(rate, true, true);

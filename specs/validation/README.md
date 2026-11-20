@@ -17,6 +17,31 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## MIDI and beat clip repeat tails — 2026-11-20
+
+- `cargo test --offline -p daw-engine --test midi clip_repeat` passed both
+  regression tests. The MIDI test checks playback and offline output through a
+  phased repeat for notes held at the seam and notes already in Release. It
+  covers all three Envelope modes and checks live rendering for allocations.
+  The beat test checks release through a repeat with and without layer latency.
+- The engine MIDI integration test binary passed all nine tests matching
+  `loop`, including transport release tails and latency alignment. The beat
+  choke test also passed.
+- The unfiltered debug and release workspace suites stopped at the known macOS
+  Audio Unit registration failure. The remaining suites passed in both profiles:
+
+  ```sh
+  cargo test --offline --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
+- `cargo build --offline -p daw-cli` and `python3 tools/check_cli.py`
+  passed. Strict workspace Clippy, formatting, specification links, and
+  `git diff --check` passed.
+- `sh tools/package_macos.sh debug --local` rebuilt the local macOS bundle
+  and verified its ad hoc signature.
+- Native listening, physical device, Windows and Linux checks were not run.
+
 ## Inline Playback audio quality defaults — 2026-11-19
 
 - An egui interaction test checks that Playback displays both sections
@@ -14541,3 +14566,23 @@ Audio Unit registration test skipped.
 Strict workspace Clippy and formatting passed. The signed macOS debug
 bundle was rebuilt, and the native Save and Export smoke test passed for
 the shared host. The replacement flow was checked with automated egui input.
+
+## Group track Bounce — 2026-11-20
+
+Group Bounce captures one audio track per selected subtree. Project tests compare
+the original and bounced PCM with nested effects, latency, descendant Pre/Post
+sends, and changes to live Return and Master controls. They also check selected
+descendant deduplication, original clip disabling, solo inheritance, sidechains,
+Undo, re-bounce, Merge and save/reopen.
+
+- `cargo test -p daw-project --test bounce --release --offline` passed all 25 tests.
+- Debug and release workspace suites passed with
+  `--no-fail-fast -- --skip native_audio_component_registration_and_host_calls`.
+  Both unfiltered runs stopped at the known macOS Audio Unit registration failure.
+  Both suites include the collapsed Group shortcut test.
+- `cargo test -p daw-project --test bounce --offline group_bounce` passed both
+  Group cases with the final capability-version rejection assertion.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings` passed.
+- `cargo fmt --all --check`, `git diff --check` and documentation link checks passed.
+- `python3 tools/check_cli.py` passed.
+- Native UI, audio-device, listening, Windows and Linux checks were not run.

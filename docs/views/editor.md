@@ -133,8 +133,9 @@ Duplicating a clip into empty Timeline track space creates a fresh audio or MIDI
 
 Copies retain the clip's audio or pattern, name, trim, loop, stretch, and color override. Group timing and track gaps stay intact. Release completes a drag; Escape or focus loss cancels it. Moving MIDI clips to new track space retains their instrument. The separate Duplicate track action copies track settings into an empty track.
 
-During transport looping, MIDI instrument releases and one-shot samples continue
-across the loop boundary. New notes retain normal instrument triggering behavior.
+During MIDI clip repeats and transport looping, instrument releases and one-shot
+samples continue across the seam. New notes can replace a tail if they reuse
+the same voice.
 Audio clips repeat only the looped region; track, group and Master effect tails
 continue into the next iteration.
 

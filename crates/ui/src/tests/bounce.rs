@@ -317,3 +317,38 @@ fn window_close_remains_blocked_after_the_worker_receiver_clears() {
     assert!(app.pending.is_none());
     app.finish_bounce(result);
 }
+
+#[test]
+fn track_shortcut_bounces_a_collapsed_group_once() {
+    let (mut app, child, _) = playable();
+    let group = Id::new_v4();
+    app.session
+        .project
+        .edit(daw_core::Edit::GroupTracks {
+            track_ids: vec![child],
+            group_id: group,
+            name: "Group".into(),
+        })
+        .unwrap();
+    app.session.project.tracks[0].group_collapsed = true;
+    app.select_track(group, false);
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.track_action_enabled(TrackAction::Bounce, &ctx));
+    frame(
+        &mut app,
+        &ctx,
+        vec![key(
+            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+            false,
+        )],
+    );
+    assert!(app.bounce_status.is_some());
+    wait(&mut app);
+    assert!(app.bounce_status.is_none());
+    let tracks = &app.session.project.tracks;
+    assert_eq!(tracks.len(), 3);
+    assert_eq!(tracks[1].id, child);
+    assert!(tracks[1].clips[0].muted);
+    assert_eq!(tracks[2].name, "Group Bounce");
+}

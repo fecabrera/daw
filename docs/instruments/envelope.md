@@ -49,8 +49,10 @@ Hold Shift while dragging an Attack, Decay, or Release millisecond knob for fine
 The Envelope lane offers all three modes. Shared track effects cannot use Per note Envelopes. Note-relative Legato keeps the first held note's duration through overlapping notes.
 
 Retrigger and Legato start Release after the last held note ends. Release starts
-from the current level, even during Attack or Decay. A clip boundary or the end
-of a sample can end the sound before the contour finishes.
+from the current level, even during Attack or Decay. When a MIDI or beat clip
+repeats, held notes enter Release and existing tails continue into the next pass.
+A new note can replace a tail if it reuses the same voice. The end of the clip
+or sample can still end the sound before Release finishes.
 
 Turning an Envelope off removes its contribution while retaining its settings. Removing it retains settings and connections for restoration from the catalog. Use the receiving connection's Amount and power controls to adjust or disable its effect on a particular parameter.
 

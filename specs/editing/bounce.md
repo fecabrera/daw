@@ -7,17 +7,20 @@ User procedures belong in the [guide](../../docs/editing/bounce.md).
 ## Commands and transaction
 
 `daw-core::BounceRequest` selects whole clip IDs or track IDs. `bounce_targets`
-resolves Audio/MIDI/Beat roots in saved source order, reports named exclusions,
+resolves Audio/MIDI/Beat/Group roots in saved source order, reports named exclusions,
 retains disabled geometric extents, and rejects stale IDs or an empty eligible
-selection. Track mode ignores clip/range/loop bounds; clip mode requires whole
+selection. In track mode, selected ancestors cover selected descendants. A Group
+target's range and clip IDs come from its entire saved subtree, including
+collapsed and disabled clips. Track mode ignores clip/range/loop bounds; clip mode requires whole
 clips in the UI. Disabled-only targets produce warned silence. Target track
 monitoring does not suppress capture; authored clip, layer, source and bypass
 states remain effective. Original monitoring gates still govern external controls.
 
 `Edit::Bounce` installs every `BounceOutput` as one validated transaction. Originals
 retain identity and settings; only requested clip mute flags change. Each result
-is a fresh sibling immediately after its source, with the same parent/color and
-local Mute/Solo. It has fresh track/clip/asset/send IDs, a unique name, neutral
+is a fresh sibling after the source subtree, with the same parent/color and
+local Mute. The output starts soloed if the source or any of its descendants is
+soloed. It has fresh track/clip/asset/send IDs, a unique name, neutral
 processing and one merged clip. The output keeps internal gaps and starts at the
 first requested clip, without stored leading silence. Invalid or incomplete output
 leaves the model unchanged. One history record covers every result and mute change.
@@ -30,8 +33,9 @@ content instead of silently applying another edge fade or dropping routing audio
 Ordinary legacy assets omit the field. The main file and every auxiliary leaf are
 project-owned stereo float32 WAV files on the same source clock. Validation checks
 version, identity, format, length and leaf dependencies. `RenderedAudio::dependencies`
-enumerates the pre-send leaf and every provider's raw/Post leaves. A Post leaf may
-be the main asset; raw/pre-send leaves cannot depend on another rendered bundle.
+enumerates the pre-send leaf, every provider's raw/Post leaves and all captured
+Return leaves. A Post leaf may be the main asset. Other leaves cannot depend on
+another rendered bundle.
 
 The output delegates outer envelopes with validated `inherit_source` edges.
 Explicit cuts or fade edits resume the existing boundary-envelope behavior. Main
@@ -45,9 +49,16 @@ retain one clock. Copying a clip duplicates its contribution through the new cli
 identity. Re-bounce captures and flattens earlier provider feeds; disabling the old
 clips removes their old contribution.
 
-Audio Merge retains this capability through the version 2 companion recipes
+File bundles with captured Return feeds require version 3. Each feed identifies
+one Return and a stereo leaf on the common clip clock. A missing Return leaves
+the feed silent. The playback graph includes carrier-to-Return dependencies and
+prepares feed readers at the Return input clock. Source edits, copies, storage,
+stretch preparation and read-ahead use the same paths as other auxiliary leaves.
+
+Audio Merge retains this capability through the version 2 and 4 companion recipes
 described in [Audio Merge](audio-merge.md#prepared-source-evaluation). Version 1
-remains the file-bundle contract. Main extraction stays independent of auxiliary
+covers files without Return feeds. Version 4 is required for compound sources
+with Return feeds. Main extraction stays independent of auxiliary
 routing. Compiled activity selects the historical Pre override only for captured
 members; ordinary mixed members retain current track effects and mono/stereo pan.
 Captured stereo leaves retain their baked original pan.
@@ -67,7 +78,9 @@ Capture delays each tap to the common content clock. Main PCM is post-effect,
 post-pan and post-gain, before monitoring gates. Raw PCM preserves pre-sidechain
 channel values; panned pre-gain PCM preserves Pre sends, including silent faders
 and hard pan. Never derive these taps by inverse gain/pan. Original gain and pan
-are applied exactly once. Group, Return and Master processing remains downstream.
+are applied exactly once. Track targets capture their selected subtree through
+the root's post-mix tap. Descendant Mute/Solo gates remain in the capture.
+Enclosing Groups, Returns and Master remain downstream.
 
 Sends are copied with fresh IDs and their existing level/tap/power. Captured Pre
 readers replace the historic pre-gain stage; current output pan remains live.
@@ -76,7 +89,15 @@ modes bypass Mute and obey Solo. Old-ID sidechains sum residual live audio and
 active captured contributions before one follower. Pre is raw; Post applies the
 contributing output's current fader/pan and monitoring gates. A new output ID is
 also a normal provider. Captured provider stages are historical snapshots;
-subsequent output effects do not reconstruct them.
+subsequent output effects do not reconstruct them. Group capture also retains
+descendant stages used by existing sidechain routes and flattens captured provider
+feeds on descendant clips.
+
+A Group's own sends use the normal copied-send path. Active descendant sends
+are summed per Return at the existing Pre/Post stages, before Return processing.
+The bounced clip carries these fixed send mixes into the Return. The output
+fader and pan apply to captured Return feeds. They bypass output Mute and obey
+Solo. Re-bounce includes existing Return feeds on selected clips.
 
 The combined core graph includes contribution-to-destination dependencies, even
 for disabled routes/clips, and rejects feedback. Missing original provider IDs
@@ -98,7 +119,8 @@ note-envelope releases, including modulated release limits, prepared sample
 continuations, relevant layer/Output/track effect budgets and the short gate
 release. Granular activity and effects without a finite tail contract use the cap.
 It never uses the voice-slot reservation maximum or an energy-based early stop.
-No Group/Return/Master tail is baked. A capped result receives a baked 5 ms
+Group targets bound tails by the longest descendant path, including serial Group
+effects. Enclosing Group, Return and Master tails stay live. A capped result receives a baked 5 ms
 terminal attenuation on every retained tap, inside the ceiling. The cap and fade
 are expected behavior and do not produce a warning or notice.
 

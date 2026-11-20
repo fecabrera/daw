@@ -493,6 +493,10 @@ impl Renderer {
                 asset.id.hash(&mut rendered_hash);
                 source.version.hash(&mut rendered_hash);
                 source.pre_send_asset.hash(&mut rendered_hash);
+                for feed in &source.return_feeds {
+                    feed.return_id.hash(&mut rendered_hash);
+                    feed.asset.hash(&mut rendered_hash);
+                }
                 for feed in &source.feeds {
                     feed.provider.hash(&mut rendered_hash);
                     feed.raw_asset.hash(&mut rendered_hash);

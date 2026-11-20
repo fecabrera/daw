@@ -5458,6 +5458,93 @@ fn midi_loop_wrap_retains_one_shots_and_envelope_releases() {
     }
 }
 
+#[test]
+fn midi_clip_repeat_preserves_held_and_releasing_voices_at_the_seam() {
+    for mode in [
+        EnvelopeMode::PerNote,
+        EnvelopeMode::Retrigger,
+        EnvelopeMode::Legato,
+    ] {
+        for note_end in [3720, 3960] {
+            let rate = 48_000;
+            let mut plan = plan(Waveform::Sine, rate);
+            let envelope =
+                &mut plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0];
+            envelope.mode = mode;
+            envelope.settings.release.time_ms = 300.0;
+            let clip_id = plan.project.tracks[0].clips[0].id;
+            let repeat_start = plan.project.midi_frame(480);
+            let phase = plan.project.midi_frame(240);
+            let repeat_end = plan.project.midi_frame(3840);
+            let repeat_length = repeat_end - repeat_start;
+            let seam = repeat_length - phase;
+            let set_note = |plan: &mut RenderPlan, end: u32| {
+                plan.project
+                    .edit(Edit::ReplaceMidiPattern {
+                        clip_id,
+                        pattern: MidiPattern {
+                            length_ticks: 7680,
+                            notes: vec![MidiNote {
+                                id: Id::from_u128(1),
+                                start_tick: 3600,
+                                length_ticks: end - 3600,
+                                pitch: 57,
+                                velocity: 127,
+                            }],
+                        },
+                    })
+                    .unwrap();
+            };
+
+            set_note(&mut plan, note_end);
+            let mut reference = plan.clone();
+            set_note(&mut reference, note_end.min(3840));
+            let clip = &mut reference.project.tracks[0].clips[0];
+            clip.source_offset_frame = repeat_start + phase;
+            clip.length_frames = seam + u64::from(rate);
+            let clip = &mut plan.project.tracks[0].clips[0];
+            clip.source_offset_frame = repeat_start;
+            clip.repeat = Some(ClipLoop {
+                length_frames: repeat_length,
+                phase_frame: phase,
+            });
+            clip.length_frames = seam + repeat_length;
+            plan.project.validate().unwrap();
+            reference.project.validate().unwrap();
+
+            let start = seam - u64::from(rate / 100);
+            let mut expected = vec![[0.0; 2]; (rate / 10) as usize];
+            let mut offline = expected.clone();
+            reference.render(start, &mut expected);
+            plan.render(start, &mut offline);
+            assert!(
+                expected[(rate / 100) as usize..]
+                    .iter()
+                    .any(|s| s[0].abs() > 0.01)
+            );
+            let mut live = Renderer::new(plan);
+            live.play();
+            for _ in 0..start {
+                live.next_sample();
+            }
+            ALLOCATIONS.with(|c| c.set(0));
+            TRACK_ALLOCATIONS.with(|c| c.set(true));
+            for (frame, (expected, offline)) in expected.iter().zip(offline).enumerate() {
+                let live = live.next_sample();
+                for ch in 0..2 {
+                    assert!(
+                        (offline[ch] - expected[ch]).abs() < 1e-6,
+                        "{mode:?} {note_end} {frame}"
+                    );
+                    assert_eq!(live[ch], offline[ch]);
+                }
+            }
+            TRACK_ALLOCATIONS.with(|c| c.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        }
+    }
+}
+
 #[path = "support/noise.rs"]
 mod noise;
 

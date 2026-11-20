@@ -43,3 +43,8 @@ Save/open, Undo/Redo and export retain send routing and settings. Return-to-Retu
 [Bounce](../editing/bounce.md) keeps downstream routing live and retains captured
 audio for existing sends and sidechains. Keep the original track when its identity
 is still used as a sidechain source. Captured routing stages are snapshots.
+
+Group Bounce captures each descendant's active send at its current level and tap
+setting. The bounced clip carries that sound to its Return. Adjust the Return to
+change its processing, or undo the group bounce to change the original send mix.
+The selected Group's own sends appear on the new audio track as editable sends.
