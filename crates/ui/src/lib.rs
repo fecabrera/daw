@@ -1693,6 +1693,7 @@ impl DawUi {
         );
         let progress = status.frames.clone();
         let total = status.total.clone();
+        self.project_prompt_window.begin();
         self.export_status = Some(status);
         self.run_job(
             &format!("Exporting stereo {}", settings.format.label()),
@@ -1713,6 +1714,7 @@ impl DawUi {
     fn export_to(&mut self, path: PathBuf, settings: ExportSettings) {
         self.export_settings = settings;
         if path.exists() {
+            self.project_prompt_window.begin();
             self.overwrite = Some(path);
             self.overwrite_settings = settings;
         } else {
@@ -6281,21 +6283,6 @@ impl DawUi {
         if self.native_project_prompt().is_none() {
             self.draw_project_prompt(ctx, None);
         }
-        if let Some(path) = self.overwrite.clone() {
-            let message = format!("Replace {}?", path.display());
-            if let Some(replace) = dialogs::Dialog::new(
-                "Replace export?",
-                &message,
-                &[("Replace", true), ("Cancel", false)],
-            )
-            .show(ctx)
-            {
-                self.overwrite = None;
-                if replace {
-                    self.export(path, true, self.overwrite_settings);
-                }
-            }
-        }
         if (!self.native_settings_visible() || self.settings_root_prompt())
             && let Some(error) = self.error.clone()
             && dialogs::Dialog::new("Error", &error, &[("OK", ())])
@@ -6311,11 +6298,6 @@ impl DawUi {
             && status.show(ctx)
         {
             self.separation_status = None;
-        }
-        if let Some(status) = &self.export_status
-            && status.show(ctx)
-        {
-            self.export_status = None;
         }
     }
 }

@@ -14486,3 +14486,58 @@ Workspace Clippy and formatting passed. The signed macOS debug bundle passed
 heights, and close behavior of Save and Export. The existing
 `--settings-smoke-test` also passed. Windows and Linux native sizing were
 outside these checks.
+
+## Audible export-tail warning — 2026-11-19
+
+Export still renders the reported tail up to ten seconds. When the reported
+tail budget exceeds the cap, the completion report checks the last 50 ms of
+the rendered stereo mix for a peak of −60 dBFS or higher. The check runs
+before encoding.
+
+`cargo test --offline --locked -p daw-project --test reverbs` passed. The
+round-trip export cases check the same capped duration and render parity.
+Short reverb tails produce no cutoff warning. The sustained Ambient Reverb
+case produces the warning.
+
+The debug and release workspace suites passed with the known native Audio
+Unit registration test skipped.
+
+Strict workspace Clippy, formatting, and the CLI smoke check passed. The
+local macOS debug app was rebuilt and its signature verified. The export
+test measured the rendered file and used automated signal checks.
+
+## Native Export status window — 2026-11-19
+
+Export status uses the shared native project prompt host and the same report
+body as the embedded fallback. The focused egui test checks the native client,
+progress details, title-bar close during export, completion, and a long
+scrollable warning list with Close visible.
+
+`cargo test --offline --locked -p daw-ui export_status` passed. Existing
+embedded report tests continue to cover the job transition and data.
+
+Debug and release workspace suites passed with the known native Audio Unit
+registration test skipped. These runs started before the final close-guard
+style adjustment. The focused Export status tests passed in debug and
+release on the final source.
+
+Strict workspace Clippy and formatting passed. The signed macOS debug
+bundle was rebuilt. The macOS Save, Export Audio, and App Settings smoke
+tests covered the shared native host. The Export status lifecycle was
+checked with automated egui input.
+
+## Native Replace export confirmation — 2026-11-19
+
+The replacement confirmation uses the shared native prompt host and its
+fitted content area. The focused egui test checks that the title bar closes
+the confirmation without starting an export or changing the destination.
+It also clicks Replace, verifies that Export status takes over with the
+selected settings, and checks the written WAV format.
+
+`cargo test --offline --locked -p daw-ui native_replace_export` passed.
+The debug and release workspace suites also passed with the known native
+Audio Unit registration test skipped.
+
+Strict workspace Clippy and formatting passed. The signed macOS debug
+bundle was rebuilt, and the native Save and Export smoke test passed for
+the shared host. The replacement flow was checked with automated egui input.

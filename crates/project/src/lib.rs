@@ -54,6 +54,8 @@ fn error(e: impl std::fmt::Display) -> Error {
 }
 
 const MAX_FOLDER_NAME_BYTES: usize = 255;
+const EXPORT_TAIL_WARNING_WINDOW_MS: u64 = 50;
+const EXPORT_TAIL_WARNING_PEAK: f32 = 0.001; // -60 dBFS
 
 /// A portable folder name, shared by the naming dialog and project creation.
 pub fn project_folder_name(name: &str) -> Result<&str> {
@@ -608,6 +610,10 @@ impl Session {
             let end = arranged_end
                 .checked_add(requested_tail.min(tail_cap))
                 .ok_or_else(|| error("Export duration exceeds the supported frame range"))?;
+            let cutoff_check_start = (requested_tail > tail_cap).then(|| {
+                end - u64::from(self.project.sample_rate_hz) * EXPORT_TAIL_WARNING_WINDOW_MS / 1000
+            });
+            let mut audible_cutoff = false;
             progress(0, end);
             let mut encoder =
                 ExportEncoder::at_sample_rate(&temp, settings, self.project.sample_rate_hz)
@@ -626,6 +632,16 @@ impl Session {
                 if let Some(message) = renderer.source_error() {
                     return Err(error(message));
                 }
+                if !audible_cutoff
+                    && let Some(start) = cutoff_check_start
+                    && position + count as u64 > start
+                {
+                    let offset = start.saturating_sub(position) as usize;
+                    audible_cutoff = block[offset..count]
+                        .iter()
+                        .flatten()
+                        .any(|sample| sample.abs() >= EXPORT_TAIL_WARNING_PEAK);
+                }
                 encoder.write_frames(&block[..count]).map_err(error)?;
                 position += count as u64;
                 progress(position, end);
@@ -638,7 +654,7 @@ impl Session {
                 file_publish::create(&temp, &path).map_err(error)?;
             }
             let mut warnings = self.warnings.clone();
-            if requested_tail > tail_cap {
+            if audible_cutoff {
                 warnings.push("Audio tail limited to 10 seconds after the arrangement; the remaining tail was truncated".into());
             }
             if clipped

@@ -20,6 +20,8 @@ impl DesktopWindow {
                 ProjectPromptKind::Save => "Save project",
                 ProjectPromptKind::SaveAs => "Save project as",
                 ProjectPromptKind::Export => "Export audio",
+                ProjectPromptKind::ReplaceExport => "Replace export?",
+                ProjectPromptKind::ExportStatus => "Export status",
             },
         }
     }
@@ -30,9 +32,10 @@ impl DesktopWindow {
             Self::Project(prompt) => [
                 352,
                 match prompt.kind {
-                    ProjectPromptKind::Unsaved => 64,
+                    ProjectPromptKind::Unsaved | ProjectPromptKind::ReplaceExport => 64,
                     ProjectPromptKind::Save | ProjectPromptKind::SaveAs => 132,
                     ProjectPromptKind::Export => 168,
+                    ProjectPromptKind::ExportStatus => 224,
                 },
             ],
         }

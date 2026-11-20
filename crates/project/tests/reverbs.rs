@@ -3,6 +3,24 @@ use daw_media::{ExportSettings, WavCodec};
 use daw_project::Session;
 use std::fs;
 
+fn write_source(path: &std::path::Path, samples: impl Iterator<Item = f32>) {
+    let mut wav = hound::WavWriter::create(
+        path,
+        hound::WavSpec {
+            channels: 2,
+            sample_rate: 48000,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        },
+    )
+    .unwrap();
+    for sample in samples {
+        wav.write_sample(sample).unwrap();
+        wav.write_sample(0.0_f32).unwrap();
+    }
+    wav.finalize().unwrap();
+}
+
 #[test]
 fn reverbs_save_reopen_and_export_the_same_capped_tail_on_track_and_master() {
     let root = std::env::temp_dir().join(format!("daw-reverbs-{}", daw_core::Id::new_v4()));
@@ -15,28 +33,26 @@ fn reverbs_save_reopen_and_export_the_same_capped_tail_on_track_and_master() {
     }
     let _cleanup = Cleanup(root.clone());
     let source = root.join("impulse.wav");
-    let mut wav = hound::WavWriter::create(
-        &source,
-        hound::WavSpec {
-            channels: 2,
-            sample_rate: 48000,
-            bits_per_sample: 32,
-            sample_format: hound::SampleFormat::Float,
-        },
-    )
-    .unwrap();
-    for i in 0..4096 {
-        wav.write_sample(if i == 512 { 0.2_f32 } else { 0.0 })
-            .unwrap();
-        wav.write_sample(0.0_f32).unwrap();
-    }
-    wav.finalize().unwrap();
-    for (index, master, mut effect) in [
-        (0, false, EffectInstance::plate_reverb()),
-        (1, true, EffectInstance::ambient_reverb()),
-        (2, false, EffectInstance::shimmer_reverb()),
-        (3, true, EffectInstance::shimmer_reverb()),
-    ] {
+    write_source(&source, (0..4096).map(|i| if i == 512 { 0.2 } else { 0.0 }));
+    let sustained = root.join("sustained.wav");
+    let mut random = 1_u32;
+    write_source(
+        &sustained,
+        (0..96_000).map(|_| {
+            random = random.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (random >> 16) as f32 / 32_768.0 - 1.0
+        }),
+    );
+    for (index, (master, mut effect, audible_cutoff)) in [
+        (false, EffectInstance::plate_reverb(), false),
+        (true, EffectInstance::ambient_reverb(), false),
+        (false, EffectInstance::shimmer_reverb(), false),
+        (true, EffectInstance::shimmer_reverb(), false),
+        (true, EffectInstance::ambient_reverb(), true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
         if let daw_core::EffectSettings::PlateReverb(settings) = &mut effect.unit {
             settings.highpass_enabled = false;
             settings.drive_enabled = true;
@@ -50,9 +66,17 @@ fn reverbs_save_reopen_and_export_the_same_capped_tail_on_track_and_master() {
             settings.highpass_slope = daw_core::AmbientHighPassSlope::Db24;
             settings.lowpass_hz = 1000.0;
             settings.lowpass_slope = daw_core::ReverbFilterSlope::Db24;
+            if audible_cutoff {
+                settings.decay_seconds = 60.0;
+                settings.dry_wet = 1.0;
+                settings.level_db = 12.0;
+                settings.lowpass_enabled = false;
+            }
         }
         let mut session = Session::default();
-        session.import(&source, None, 0).unwrap();
+        session
+            .import(if audible_cutoff { &sustained } else { &source }, None, 0)
+            .unwrap();
         if master {
             session
                 .project
@@ -88,10 +112,12 @@ fn reverbs_save_reopen_and_export_the_same_capped_tail_on_track_and_master() {
                 },
             )
             .unwrap();
-        assert!(
+        assert_eq!(
             warnings
                 .iter()
-                .any(|w| w.contains("tail") && w.contains("truncated"))
+                .any(|w| w.contains("tail") && w.contains("truncated")),
+            audible_cutoff,
+            "export {index}: {warnings:?}",
         );
         let mut wav = hound::WavReader::open(output).unwrap();
         assert_eq!(u64::from(wav.len()) / 2, end + 480000);

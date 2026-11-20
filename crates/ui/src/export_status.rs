@@ -47,7 +47,7 @@ impl ExportStatus {
     }
 
     /// Returns true only when a finished report is dismissed.
-    pub fn show(&self, ctx: &egui::Context) -> bool {
+    pub fn show(&self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> bool {
         let total = self.total.load(Ordering::Acquire);
         let frames = self.frames.load(Ordering::Relaxed).min(total);
         let codec = match self.settings.format {
@@ -76,7 +76,7 @@ impl ExportStatus {
             warnings: &self.warnings,
             cancel: None,
         }
-        .show(ctx)
+        .show_surface(ctx, surface)
     }
 }
 

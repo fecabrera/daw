@@ -61,7 +61,8 @@ Use a shared row layout with vertical centering for all control rows and toolbar
 
 Use one reusable application dialog component for project naming, export options, export status, unsaved changes, export replacement, and errors. The component must share the title presentation, centered position, 8-point content padding and spacing, non-resizable sizing, wrapped message text, and button layout. Dialog titles must use the standard UI body font: 13-point Outfit. Use a default width of 320 points and a maximum width of 560 points. Button rows must wrap when needed. Each caller supplies its title, message, action labels, action values, and enabled state, then handles the selected action. Keep native file and folder pickers in `rfd`.
 
-Unsaved changes, Save project, Save project as, and Export audio use the [desktop Settings
+Unsaved changes, Save project, Save project as, Export audio, Replace export?,
+and Export status use the [desktop Settings
 window host](../views/application-settings.md) with native platform title bars,
 independent of the main-window Titlebar preference. Use the same dialog body in
 the native client and the embedded fallback. Fit the native client height to
@@ -74,6 +75,13 @@ fallback. Keep the naming prompt and main editing blocked while the chooser
 holds its owner. Export opens the native file picker with the chosen format,
 attached to the Export window when available, and keeps the existing
 replacement confirmation and export job.
+When the destination already exists, the replacement confirmation displays
+the path in the shared native prompt body. Only Replace starts the overwrite
+job with the selected export settings. The native close button cancels.
+Export status uses the same report body in the native client and the embedded
+fallback. It updates through rendering, finalization, and completion or
+failure. Keep the report open during export and accept the title-bar close
+button only after the job finishes. Keep long warnings and errors scrollable.
 
 ### Libraries and build rules
 

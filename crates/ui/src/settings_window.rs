@@ -82,7 +82,6 @@ impl DawUi {
     pub fn settings_root_prompt(&self) -> bool {
         self.midi.recovery_prompt()
             || self.project_prompt_kind().is_some()
-            || self.overwrite.is_some()
             || self.diagnostic_details.is_some()
     }
 

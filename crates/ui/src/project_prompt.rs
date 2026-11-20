@@ -9,6 +9,8 @@ pub enum ProjectPromptKind {
     Save,
     SaveAs,
     Export,
+    ReplaceExport,
+    ExportStatus,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -62,10 +64,14 @@ impl DawUi {
             } else {
                 ProjectPromptKind::Save
             })
+        } else if self.export_dialog.is_some() {
+            Some(ProjectPromptKind::Export)
+        } else if self.overwrite.is_some() {
+            Some(ProjectPromptKind::ReplaceExport)
         } else {
-            self.export_dialog
+            self.export_status
                 .as_ref()
-                .map(|_| ProjectPromptKind::Export)
+                .map(|_| ProjectPromptKind::ExportStatus)
         }
     }
 
@@ -157,7 +163,16 @@ impl DawUi {
                 self.save_named(String::new(), None)
             }
             Some(ProjectPromptKind::Export) => self.export_dialog = None,
-            None => {}
+            Some(ProjectPromptKind::ReplaceExport) => self.overwrite = None,
+            Some(ProjectPromptKind::ExportStatus)
+                if self
+                    .export_status
+                    .as_ref()
+                    .is_some_and(|status| status.state != crate::export_status::State::Running) =>
+            {
+                self.export_status = None;
+            }
+            Some(ProjectPromptKind::ExportStatus) | None => {}
         }
     }
 
@@ -265,6 +280,27 @@ impl DawUi {
                 }
                 None => self.export_dialog = Some(settings),
             }
+        } else if let Some(path) = &self.overwrite {
+            let message = format!("Replace {}?", path.display());
+            let dialog = dialogs::Dialog::new(
+                "Replace export?",
+                &message,
+                &[("Replace", true), ("Cancel", false)],
+            );
+            let replace = match surface {
+                Some(ui) => dialog.body(ui, |_| {}),
+                None => dialog.show(ctx),
+            };
+            if let Some(replace) = replace
+                && let Some(path) = self.overwrite.take()
+                && replace
+            {
+                self.export(path, true, self.overwrite_settings);
+            }
+        } else if let Some(status) = &self.export_status
+            && status.show(ctx, surface)
+        {
+            self.export_status = None;
         }
     }
 }
@@ -315,6 +351,143 @@ mod tests {
         }
     }
 
+    #[test]
+    fn native_replace_export_requires_confirmation_before_writing() {
+        struct Output(PathBuf);
+        impl Drop for Output {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let output = Output(
+            std::env::temp_dir().join(format!("daw-replace-export-{}.wav", daw_core::Id::new_v4())),
+        );
+        std::fs::write(&output.0, b"previous export").unwrap();
+        let settings = ExportSettings {
+            wav_codec: daw_media::WavCodec::Float32,
+            ..Default::default()
+        };
+        let mut app = DawUi::default();
+        app.enable_native_windows();
+        let track = app.session.project.add_midi_track().unwrap();
+        app.session.project.add_midi_pattern(track, 0).unwrap();
+        let root = egui::Context::default();
+        let child = egui::Context::default();
+
+        app.export_to(output.0.clone(), settings);
+        let window = app.desktop_window().unwrap();
+        assert_eq!(window.title(), "Replace export?");
+        assert!(!app.edit_environment_available());
+        child_frame(&mut app, &root, &child, window, vec![], true);
+        assert!(app.desktop_window().is_none() && app.job.is_none());
+        assert_eq!(std::fs::read(&output.0).unwrap(), b"previous export");
+
+        app.export_to(output.0.clone(), settings);
+        let next = app.desktop_window().unwrap();
+        assert_ne!(next, window);
+        child_frame(&mut app, &root, &child, next, vec![], false);
+        let shapes = child_frame(&mut app, &root, &child, next, vec![], false);
+        assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == next.title())));
+        assert_button_padding(&app, next, &shapes, "Cancel");
+        let point = text_bounds(&shapes, "Replace").center();
+        let button = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        child_frame(
+            &mut app,
+            &root,
+            &child,
+            next,
+            vec![egui::Event::PointerMoved(point), button(true)],
+            false,
+        );
+        child_frame(&mut app, &root, &child, next, vec![button(false)], false);
+        assert!(app.overwrite.is_none());
+        assert_eq!(app.desktop_window().unwrap().title(), "Export status");
+        assert_eq!(app.export_status.as_ref().unwrap().settings, settings);
+        for _ in 0..400 {
+            app.poll();
+            if app.job.is_none() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(
+            app.export_status.unwrap().state,
+            crate::export_status::State::Complete
+        );
+        assert_eq!(
+            hound::WavReader::open(&output.0)
+                .unwrap()
+                .spec()
+                .sample_format,
+            hound::SampleFormat::Float
+        );
+    }
+
+    #[test]
+    fn native_export_status_uses_the_shared_body_and_can_close_only_after_export() {
+        use crate::export_status::{ExportStatus, State};
+
+        let mut app = DawUi::default();
+        app.enable_native_windows();
+        app.export_status = Some(ExportStatus::new(
+            PathBuf::from("mix.wav"),
+            ExportSettings::default(),
+            48_000,
+            4096,
+            vec!["Example export warning".to_owned()],
+        ));
+        let window = app.desktop_window().unwrap();
+        assert_eq!(window.title(), "Export status");
+        assert!(!app.edit_environment_available());
+
+        let root = egui::Context::default();
+        let child = egui::Context::default();
+        let shapes = child_frame(&mut app, &root, &child, window, vec![], false);
+        let has_label = |shapes: &[egui::epaint::ClippedShape], label| {
+            shapes.iter().any(|shape| {
+                matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == label)
+            })
+        };
+        for label in [
+            "Rendering and encoding audio…",
+            "mix.wav",
+            "Example export warning",
+        ] {
+            assert!(has_label(&shapes, label), "Missing {label}");
+        }
+        for label in [window.title(), "Close", "Cancel"] {
+            assert!(!has_label(&shapes, label), "Unexpected {label}");
+        }
+        child_frame(
+            &mut app,
+            &root,
+            &child,
+            window,
+            vec![key(egui::Key::Escape)],
+            false,
+        );
+        child_frame(&mut app, &root, &child, window, vec![], true);
+        assert_eq!(app.desktop_window(), Some(window));
+        assert!(!app.edit_environment_available());
+
+        let status = app.export_status.as_mut().unwrap();
+        status.state = State::Complete;
+        status.warnings = (0..100).map(|i| format!("Export warning {i}")).collect();
+        child_frame(&mut app, &root, &child, window, vec![], false);
+        let shapes = child_frame(&mut app, &root, &child, window, vec![], false);
+        assert!(has_label(&shapes, "Export complete"));
+        assert!(has_label(&shapes, "100%"));
+        assert_button_padding(&app, window, &shapes, "Close");
+        child_frame(&mut app, &root, &child, window, vec![], true);
+        assert!(app.desktop_window().is_none());
+        assert!(app.edit_environment_available());
+    }
+
     fn text_bounds(shapes: &[egui::epaint::ClippedShape], label: &str) -> egui::Rect {
         shapes
             .iter()
@@ -331,10 +504,11 @@ mod tests {
         app: &DawUi,
         window: DesktopWindow,
         shapes: &[egui::epaint::ClippedShape],
+        label: &str,
     ) {
-        let cancel = text_bounds(shapes, "Cancel");
-        let gap = app.desktop_window_size(window)[1] as f32 - cancel.bottom();
-        assert!((8.0..=16.0).contains(&gap), "Gap below Cancel text: {gap}");
+        let bounds = text_bounds(shapes, label);
+        let gap = app.desktop_window_size(window)[1] as f32 - bounds.bottom();
+        assert!((8.0..=16.0).contains(&gap), "Gap below {label} text: {gap}");
     }
 
     #[test]
@@ -351,7 +525,7 @@ mod tests {
         let root = egui::Context::default();
         let child = egui::Context::default();
         let shapes = child_frame(&mut app, &root, &child, window, vec![], false);
-        assert_button_padding(&app, window, &shapes);
+        assert_button_padding(&app, window, &shapes, "Cancel");
         for expected in [
             "Save changes before continuing?",
             "Save",
@@ -395,7 +569,7 @@ mod tests {
         app.midi.recovery_running = false;
         let child = egui::Context::default();
         let shapes = child_frame(&mut app, &root, &child, window, vec![], false);
-        assert_button_padding(&app, window, &shapes);
+        assert_button_padding(&app, window, &shapes, "Cancel");
         let valid_height = app.desktop_window_size(window)[1];
         app.project_name_dialog.as_mut().unwrap().name.clear();
         child_frame(&mut app, &root, &child, window, vec![], false);
@@ -458,7 +632,7 @@ mod tests {
         child_frame(&mut app, &root, &child, window, vec![], false);
         let shapes = child_frame(&mut app, &root, &child, window, vec![], false);
         assert!(app.desktop_window_size(window)[1] > wav_height);
-        assert_button_padding(&app, window, &shapes);
+        assert_button_padding(&app, window, &shapes, "Cancel");
         assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == window.title())));
 
         let point = text_bounds(&shapes, "Export…").center();

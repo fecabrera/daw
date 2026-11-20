@@ -177,7 +177,7 @@ Report zero alignment latency while dry input remains immediate. Musical wet
 onset is not dry-path alignment delay. Add shared tail reporting rather than
 inheriting existing plugins' four-second default. Derive conservative maximum
 tails from full Decay/Bloom testing. DAW export retains the accepted ten-second
-tail cap with a truncation notice unless separately changed.
+tail cap. The [export cutoff warning](../architecture/modular-audio-units.md#accepted-units-mvp-scope) uses the rendered stereo output.
 
 ## Implementation and provenance
 
@@ -214,7 +214,7 @@ deadline in that probe. Small-buffer deadline acceptance requires further work;
 average CPU use alone is not sufficient. Prepared storage was about 22.8 MB per
 unit at that rate. See the validation record for the exact command and limits.
 
-Enabled Plate reports a 45-second conservative tail budget (two seconds when Gated); Ambient reports 180 seconds. Plugin host declarations use fixed product maxima so automation cannot shorten an active host tail. DAW export sums enabled budgets conservatively across buses, appends at most ten seconds and warns on truncation. These are processing budgets rather than measured audibility guarantees.
+Enabled Plate reports a 45-second conservative tail budget (two seconds when Gated); Ambient reports 180 seconds. Plugin host declarations use fixed product maxima so automation cannot shorten an active host tail. DAW export sums enabled budgets conservatively across buses and appends at most ten seconds. For a budget above the cap, the warning depends on the rendered mix near the cutoff.
 
 The supplied reports describe epicPLATE mkII and epicCLOUDS. The integration
 addendum supersedes short-settle mode comparisons: steady Gate overrides Quality;
