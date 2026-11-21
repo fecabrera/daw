@@ -144,12 +144,14 @@ pub fn placeholder(
     width: f32,
     height: f32,
     left_inset: f32,
+    lane_gap: f32,
 ) -> (egui::Rect, egui::Rect) {
     centered_with_id(ui, id, height, |ui| {
         let mut panel = ui
             .allocate_exact_size(Vec2::new(width, height), egui::Sense::hover())
             .0;
         panel.min.x += left_inset;
+        ui.add_space(lane_gap);
         let lane = ui
             .allocate_exact_size(
                 Vec2::new(ui.available_width(), height),

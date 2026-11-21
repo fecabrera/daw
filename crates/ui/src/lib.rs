@@ -169,6 +169,8 @@ pub mod window_drag;
 mod worker_result;
 
 const TRACK_WIDTH: f32 = panels::ControlPanel::WIDTH;
+const TRACK_LANE_GAP: f32 = 16.0;
+const TIMELINE_HEADER_SPAN: f32 = TRACK_WIDTH + TRACK_LANE_GAP;
 const ROW_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE + 14.0;
 const MASTER_HEIGHT: f32 = knobs::SIZE + 14.0;
 const RULER_HEIGHT: f32 = toolbars::HEIGHT;
@@ -3768,13 +3770,22 @@ impl DawUi {
     ) -> Option<(effects_panel::EffectTarget, Rect)> {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         let bounds = ui.max_rect();
-        let timeline_left = bounds.left() + TRACK_WIDTH;
+        let header_right = bounds.left() + TRACK_WIDTH;
+        let timeline_left = bounds.left() + TIMELINE_HEADER_SPAN;
         let viewport = Rect::from_min_max(Pos2::new(timeline_left, bounds.top()), bounds.max);
         self.apply_fit_all(viewport.width());
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
         let painter = ui.painter().clone();
         let control_panel = panels::ControlPanel::begin(ui, bounds);
+        painter.rect_filled(
+            Rect::from_min_max(
+                Pos2::new(header_right, bounds.top()),
+                Pos2::new(timeline_left, bounds.bottom()),
+            ),
+            0.0,
+            theme::palette(ui.ctx()).background,
+        );
 
         let master_rect = Rect::from_min_max(
             Pos2::new(
@@ -3787,7 +3798,7 @@ impl DawUi {
                     })
                 .max(bounds.top()),
             ),
-            Pos2::new(timeline_left, bounds.bottom()),
+            Pos2::new(header_right, bounds.bottom()),
         );
         #[cfg(test)]
         {
@@ -3928,28 +3939,12 @@ impl DawUi {
         self.update_portion(ui);
         self.paint_drag_preview(ui, tracks.inner_rect.intersect(timeline_rect));
         self.paint_file_hover(ui, tracks.inner_rect.intersect(timeline_rect));
-        // One shared border separates the entire header from the track workspace.
-        let header_bottom = timeline_rect.top() - 0.5;
-        for (left, right, color) in [
-            (
-                bounds.left(),
-                timeline_left,
-                theme::palette(ui.ctx()).border,
-            ),
-            (
-                timeline_left,
-                bounds.right(),
-                theme::palette(ui.ctx()).border,
-            ),
-        ] {
-            painter.line_segment(
-                [
-                    Pos2::new(left, header_bottom),
-                    Pos2::new(right, header_bottom),
-                ],
-                Stroke::new(1.0, color),
-            );
-        }
+        // Keep the horizontal separator continuous across the gap.
+        painter.hline(
+            bounds.x_range(),
+            timeline_rect.top() - 0.5,
+            Stroke::new(1.0, theme::palette(ui.ctx()).border),
+        );
 
         let track_panels = self.track_panel_containers(&tracks.inner);
         self.paint_track_group_edges(ui, &track_panels, tracks.inner_rect);
@@ -4446,6 +4441,7 @@ impl DawUi {
                     self.arrangement_toggle(ui);
                 });
             });
+            ui.add_space(TRACK_LANE_GAP);
             self.arrangement.ruler_bounds = self.time_ruler(ui);
         });
     }
@@ -4908,7 +4904,8 @@ impl DawUi {
                     || ui.ctx().egui_wants_keyboard_input();
                 let has_children = self.timeline_beat_open(id);
                 if !interacting && !row.intersects(ui.clip_rect().expand(row_height)) {
-                    let (panel, lane) = rows::placeholder(ui, id, TRACK_WIDTH, row_height, inset);
+                    let (panel, lane) =
+                        rows::placeholder(ui, id, TRACK_WIDTH, row_height, inset, TRACK_LANE_GAP);
                     self.lane_bounds.insert(id, lane);
                     outlines.push((id, panel));
                     if !returns || row_index + 1 < tracks.len() {
@@ -5109,6 +5106,7 @@ impl DawUi {
                     {
                         context_action = Some((track.id, action));
                     }
+                    ui.add_space(TRACK_LANE_GAP);
                     self.lane(
                         ui,
                         &track,
@@ -6253,7 +6251,10 @@ impl DawUi {
         painter.rect_filled(rect, 0.0, background);
         self.paint_grid(&painter, rect);
         // Keep row separators below clip shells and their selection outlines.
-        let row = Rect::from_min_max(Pos2::new(rect.left() - TRACK_WIDTH, rect.top()), rect.max);
+        let row = Rect::from_min_max(
+            Pos2::new(rect.left() - TIMELINE_HEADER_SPAN, rect.top()),
+            rect.max,
+        );
         // Every row owns one bottom separator, independent of list position.
         // Its inset follows the next row so expanded hierarchy gutters stay open.
         // The final Return shares its bottom line with the pinned Master boundary.
@@ -9022,7 +9023,7 @@ mod tests {
             let lane = app.lane_bounds[&tracks[0]];
             // Track names follow the same icon slot and gap as group names.
             assert!(
-                (name_bounds.left() - (lane.left() - TRACK_WIDTH + 57.0)).abs() < 1.0,
+                (name_bounds.left() - (lane.left() - TIMELINE_HEADER_SPAN + 57.0)).abs() < 1.0,
                 "name {name_bounds:?}, lane {lane:?}"
             );
             let button_center = |label: &str| {
@@ -9058,8 +9059,8 @@ mod tests {
             assert!((mute.y - (lane.top() + 49.0)).abs() < 1.0);
             assert!((solo.y - mute.y).abs() < 1.0);
             assert!(mute.x < solo.x);
-            assert!((solo.x - (lane.left() - TRACK_WIDTH + 57.0)).abs() < 1.0);
-            let header = Pos2::new(lane.left() - TRACK_WIDTH + 34.0, lane.top() + 21.0);
+            assert!((solo.x - (lane.left() - TIMELINE_HEADER_SPAN + 57.0)).abs() < 1.0);
+            let header = Pos2::new(lane.left() - TIMELINE_HEADER_SPAN + 34.0, lane.top() + 21.0);
             let destination = Pos2::new(header.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
             frame(
                 &mut app,
@@ -9129,7 +9130,7 @@ mod tests {
         frame(&mut app, &ctx, vec![]);
         let before = app.session.project.clone();
         let start = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
             app.lane_bounds[&tracks[0]].top() + 18.0,
         );
         let end = Pos2::new(start.x, app.lane_bounds[&group].center().y);
@@ -9173,7 +9174,7 @@ mod tests {
             let before = app.session.project.clone();
             let master = app.master_bounds;
             let start = Pos2::new(
-                app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+                app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
                 app.lane_bounds[&tracks[source]].top() + 18.0,
             );
             let slot = destination + usize::from(destination > source);
@@ -9187,7 +9188,7 @@ mod tests {
                 if source == 0 {
                     app.timeline_bounds.left() + 100.0
                 } else {
-                    app.timeline_bounds.left() - TRACK_WIDTH + 110.0
+                    app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0
                 },
                 y,
             );
@@ -9268,11 +9269,11 @@ mod tests {
             let ctx = context();
             select_group(&mut app, &ctx, [ids[0], ids[2]]);
             let start = Pos2::new(
-                app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+                app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
                 app.lane_bounds[&tracks[0]].top() + 18.0,
             );
             let end = Pos2::new(
-                app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+                app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
                 app.lane_bounds[&tracks[2]].bottom() - 10.0,
             );
             let before = format!("{:?}", app.session.project);
@@ -9326,7 +9327,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let start = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
             app.lane_bounds.values().next().unwrap().top() + 18.0,
         );
         frame(
@@ -9358,11 +9359,11 @@ mod tests {
         frame_sized(&mut app, &ctx, vec![], size);
         let master = app.master_bounds;
         let start = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
             app.lane_bounds[&first].top() + 18.0,
         );
         let end = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
             master.top() - 3.0,
         );
         frame_sized(
@@ -9396,11 +9397,11 @@ mod tests {
         // Scroll back to the top while dragging the same track upward.
         frame_sized(&mut app, &ctx, vec![], size);
         let start = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
             app.lane_bounds[&first].top() + 18.0,
         );
         let end = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
             app.timeline_bounds.top() + 3.0,
         );
         frame_sized(
@@ -9451,7 +9452,7 @@ mod tests {
             frame(&mut app, &ctx, vec![]);
             let lane = app.lane_bounds[&second];
             let panel = Rect::from_min_size(
-                Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
+                Pos2::new(lane.left() - TIMELINE_HEADER_SPAN, lane.top()),
                 Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
             );
             let point = panel.min + offset;
@@ -9509,7 +9510,7 @@ mod tests {
                 if blocked == "outside" {
                     -20.0
                 } else {
-                    lane.left() - TRACK_WIDTH + 2.0
+                    lane.left() - TIMELINE_HEADER_SPAN + 2.0
                 },
                 lane.top() + 40.0,
             );
@@ -9572,7 +9573,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let name = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 66.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 66.0,
             app.lane_bounds[&track].top() + 18.0,
         );
         let key = |key| egui::Event::Key {
@@ -11353,7 +11354,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let add = Pos2::new(
-            app.arrangement.ruler_bounds.left() - TRACK_WIDTH
+            app.arrangement.ruler_bounds.left() - TIMELINE_HEADER_SPAN
                 + f32::from(theme::TOOLBAR_PADDING)
                 + 14.0,
             app.arrangement.ruler_bounds.center().y,
@@ -11543,6 +11544,34 @@ mod tests {
         assert_eq!(app.session.project.transport.r#loop.end_frame, 144000);
         assert!(app.error.is_none());
         assert!(!app.dirty);
+    }
+
+    #[test]
+    fn timeline_gap_keeps_ruler_lanes_and_horizontal_separators_aligned() {
+        let (mut app, track) = fixture();
+        let next_track = app.session.project.add_track().unwrap();
+        let ctx = context();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let ruler = app.arrangement.ruler_bounds;
+        let lane = app.lane_bounds[&track];
+        let next_lane = app.lane_bounds[&next_track];
+        let master = app.master_bounds;
+        assert_eq!(lane.left() - master.right(), 16.0);
+        assert_eq!(ruler.left(), lane.left());
+        assert_eq!(next_lane.left(), lane.left());
+        assert_eq!(app.scrollbar_bounds.left(), lane.left());
+        assert_eq!(ruler.bottom(), lane.top());
+        assert_eq!(lane.bottom(), next_lane.top());
+
+        let stroke = Stroke::new(1.0, theme::palette(&ctx).border);
+        for (right, y) in [(ruler.right(), lane.top()), (lane.right(), lane.bottom())] {
+            let y = y - 0.5;
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::LineSegment { points, stroke: line_stroke }
+                    if *line_stroke == stroke
+                        && *points == [Pos2::new(master.left(), y), Pos2::new(right, y)]
+            )));
+        }
     }
 
     #[test]
@@ -12275,7 +12304,7 @@ mod tests {
         app.scroll = 2.0;
         let lane = app.lane_bounds[&app.session.project.tracks[0].id];
         let point = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 30.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 30.0,
             lane.center().y,
         );
         file_frame(&mut app, &ctx, &source.0, point, true);
@@ -12294,7 +12323,7 @@ mod tests {
         for point in [
             Pos2::new(30.0, 20.0),
             Pos2::new(
-                app.timeline_bounds.left() - TRACK_WIDTH + 30.0,
+                app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 30.0,
                 lane.top() - 12.0,
             ),
             Pos2::new(-10.0, lane.center().y),
@@ -13260,8 +13289,8 @@ mod tests {
             assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
                 if rect.fill == theme::PANEL && rect.rect.top() == lane.top() && rect.rect.right() <= lane.left())));
             let stripe = Rect::from_min_max(
-                Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
-                Pos2::new(lane.left() - TRACK_WIDTH + 16., lane.bottom()),
+                Pos2::new(lane.left() - TIMELINE_HEADER_SPAN, lane.top()),
+                Pos2::new(lane.left() - TIMELINE_HEADER_SPAN + 16., lane.bottom()),
             );
             assert!(
                 shapes

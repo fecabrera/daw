@@ -64,7 +64,7 @@ fn timeline_size_does_not_change_regular_editor_overviews_or_project_data() {
                 let lane = app.lane_bounds[&track];
                 assert_eq!(lane.height(), MASTER_HEIGHT);
                 let header = Rect::from_min_size(
-                    lane.min - Vec2::new(TRACK_WIDTH, 0.0),
+                    lane.min - Vec2::new(TIMELINE_HEADER_SPAN, 0.0),
                     Vec2::new(TRACK_WIDTH, MASTER_HEIGHT),
                 );
                 assert_header_meter_insets(&shapes, header, &ctx);
@@ -137,7 +137,7 @@ fn compact_headers_keep_mixing_controls_and_drop_targets_on_their_track() {
         } else {
             let lane = app.lane_bounds[&track];
             Rect::from_min_size(
-                lane.min - Vec2::new(TRACK_WIDTH, 0.0),
+                lane.min - Vec2::new(TIMELINE_HEADER_SPAN, 0.0),
                 Vec2::new(TRACK_WIDTH, MASTER_HEIGHT),
             )
         };
@@ -225,7 +225,7 @@ fn header_point(app: &DawUi, track: Id) -> Pos2 {
         Pos2::new(strip.right() - 10.0, strip.top() + 12.0)
     } else {
         Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
             app.lane_bounds[&track].top() + 18.0,
         )
     }
@@ -284,7 +284,7 @@ fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
                 (
                     Rect::from_min_size(
                         Pos2::new(
-                            app.lane_bounds[&audio].left() - TRACK_WIDTH,
+                            app.lane_bounds[&audio].left() - TIMELINE_HEADER_SPAN,
                             app.lane_bounds[&audio].top(),
                         ),
                         Vec2::new(TRACK_WIDTH, track_rows::REGULAR_HEIGHT),
@@ -294,7 +294,7 @@ fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
                 (
                     Rect::from_min_size(
                         Pos2::new(
-                            app.lane_bounds[&midi].left() - TRACK_WIDTH,
+                            app.lane_bounds[&midi].left() - TIMELINE_HEADER_SPAN,
                             app.lane_bounds[&midi].top(),
                         ),
                         Vec2::new(TRACK_WIDTH, track_rows::REGULAR_HEIGHT),
@@ -479,7 +479,7 @@ fn header_mute_solo_align_with_knobs_and_stay_on_the_left() {
                 "editor" => app.midi_editor.track_header_bounds,
                 _ => Rect::from_min_size(
                     Pos2::new(
-                        app.lane_bounds[&target].left() - TRACK_WIDTH,
+                        app.lane_bounds[&target].left() - TIMELINE_HEADER_SPAN,
                         app.lane_bounds[&target].top(),
                     ),
                     Vec2::new(TRACK_WIDTH, track_rows::REGULAR_HEIGHT),
@@ -551,7 +551,7 @@ fn removed_header_fields_do_not_take_text_focus_and_knob_values_reach_the_mixer(
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let origin = Pos2::new(
-        app.lane_bounds[&track].left() - TRACK_WIDTH,
+        app.lane_bounds[&track].left() - TIMELINE_HEADER_SPAN,
         app.lane_bounds[&track].top(),
     );
     let former_input = origin + Vec2::new(129.0, 47.0);
@@ -612,7 +612,7 @@ fn smaller_track_and_master_knobs_keep_keyboard_editing_and_double_click_reset()
             app.master_bounds.min
         } else {
             Pos2::new(
-                app.lane_bounds[&audio].left() - TRACK_WIDTH,
+                app.lane_bounds[&audio].left() - TIMELINE_HEADER_SPAN,
                 app.lane_bounds[&audio].top(),
             )
         };
@@ -713,7 +713,7 @@ fn header_spacing_selects_clips_but_names_and_controls_keep_their_actions() {
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let y = app.lane_bounds[&tracks[0]].top() + 18.0;
-    let left = app.timeline_bounds.left() - TRACK_WIDTH;
+    let left = app.timeline_bounds.left() - TIMELINE_HEADER_SPAN;
     double_click(&mut app, &ctx, Pos2::new(left + 110.0, y)); // Blank name area.
     assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[1]]));
     app.select_clip(ids[2], tracks[1], false);
@@ -907,7 +907,7 @@ fn timeline_row_dividers_share_track_panel_bounds_at_different_scales_and_scroll
                         .find_map(|shape| match &shape.shape {
                             egui::Shape::Rect(rect)
                                 if rect.fill == theme::selected_track_header_background(&ctx)
-                                    && rect.rect.right() == lane.left()
+                                    && rect.rect.right() == lane.left() - TRACK_LANE_GAP
                                     && rect.rect.center().y == lane.center().y =>
                             {
                                 Some(rect.rect)
@@ -1074,8 +1074,8 @@ fn timeline_track_and_master_selection_uses_fill_without_outline() {
             } else {
                 let lane = app.lane_bounds[&track];
                 Rect::from_min_max(
-                    Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
-                    Pos2::new(lane.left(), lane.bottom()),
+                    Pos2::new(lane.left() - TIMELINE_HEADER_SPAN, lane.top()),
+                    Pos2::new(lane.left() - TRACK_LANE_GAP, lane.bottom()),
                 )
             };
             assert!(!shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))));
@@ -1277,7 +1277,7 @@ fn large_timeline_headers_edit_sends_and_scroll_them_between_name_and_mix() {
     let before = app.session.project.clone();
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     let (sends_row, positions) = app.timeline_send_bounds[&track].clone();
-    let panel = app.lane_bounds[&track].translate(Vec2::new(-TRACK_WIDTH, 0.0));
+    let panel = app.lane_bounds[&track].translate(Vec2::new(-TIMELINE_HEADER_SPAN, 0.0));
     let name = label_rect(&shapes, panel, &before.tracks[0].name);
     let mute = label_rect(&shapes, panel, "M");
     assert!(name.bottom() < sends_row.top());
@@ -1353,8 +1353,8 @@ fn first_middle_and_last_headers_have_equal_control_geometry_and_one_bottom_sepa
                 for track in tracks {
                     let lane = app.lane_bounds[&track];
                     let panel = Rect::from_min_max(
-                        lane.min - Vec2::new(TRACK_WIDTH, 0.0),
-                        Pos2::new(lane.left(), lane.bottom()),
+                        lane.min - Vec2::new(TIMELINE_HEADER_SPAN, 0.0),
+                        Pos2::new(lane.left() - TRACK_LANE_GAP, lane.bottom()),
                     );
                     assert_eq!(panel.height(), size * knobs::SIZE + 14.0);
                     assert_eq!(panel.height() - 14.0, size * knobs::SIZE);

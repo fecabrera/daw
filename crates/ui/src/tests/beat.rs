@@ -3248,7 +3248,7 @@ fn timeline_beat_children_use_group_geometry_and_saved_disclosure() {
             assert_eq!(lane.left(), app.lane_bounds[&parent].left());
             assert_eq!(
                 panel.left(),
-                lane.left() - TRACK_WIDTH + panels::GroupPanel::indent(2)
+                lane.left() - TIMELINE_HEADER_SPAN + panels::GroupPanel::indent(2)
             );
             assert!(
                 !app.lane_bounds.contains_key(&child),
@@ -3557,7 +3557,7 @@ fn timeline_subtrack_mix_shortcuts_toggle_selected_buses_as_one_history_edit() {
     }
     let parent_lane = app.lane_bounds[&parent];
     let point = Pos2::new(
-        parent_lane.left() - TRACK_WIDTH + 60.0,
+        parent_lane.left() - TIMELINE_HEADER_SPAN + 60.0,
         parent_lane.top() + 18.0,
     );
     click(&mut app, &ctx, point);

@@ -4,7 +4,7 @@ use daw_core::ClipPlacement;
 /// Include track controls in the same drop workspace as their timeline lanes.
 pub(super) fn drop_bounds(viewport: Rect) -> Rect {
     Rect::from_min_max(
-        Pos2::new(viewport.left() - TRACK_WIDTH, viewport.top()),
+        Pos2::new(viewport.left() - TIMELINE_HEADER_SPAN, viewport.top()),
         viewport.max,
     )
 }

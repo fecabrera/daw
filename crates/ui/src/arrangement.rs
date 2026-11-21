@@ -380,7 +380,10 @@ impl DawUi {
                 row.min,
                 Pos2::new(row.left() + panels::ControlPanel::WIDTH, row.bottom()),
             );
-            let lane = Rect::from_min_max(header.right_top(), row.max);
+            let lane = Rect::from_min_max(
+                Pos2::new(row.left() + TIMELINE_HEADER_SPAN, row.top()),
+                row.max,
+            );
             ui.painter().rect_filled(lane, 0.0, palette.background);
             self.paint_grid(&ui.painter().with_clip_rect(lane), lane);
             ui.painter().rect_filled(header, 0.0, palette.panel);
@@ -762,11 +765,6 @@ impl DawUi {
             ui.painter().hline(
                 row.x_range(),
                 row.bottom() - 0.5,
-                egui::Stroke::new(1.0, palette.border),
-            );
-            ui.painter().vline(
-                header.right(),
-                row.y_range(),
                 egui::Stroke::new(1.0, palette.border),
             );
         }

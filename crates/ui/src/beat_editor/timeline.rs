@@ -178,7 +178,7 @@ impl DawUi {
             );
             let panel = panels::GroupPanel::bounds(bounds, TRACK_WIDTH, depth);
             let lane = Rect::from_min_max(
-                Pos2::new(bounds.left() + TRACK_WIDTH, bounds.top()),
+                Pos2::new(bounds.left() + TIMELINE_HEADER_SPAN, bounds.top()),
                 bounds.max,
             );
             self.timeline_beats

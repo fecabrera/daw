@@ -221,7 +221,7 @@ impl DawUi {
             } else {
                 TRACK_WIDTH
             };
-            width.min((rail.left() - bounds.left() - TRACK_WIDTH - 1.0).max(0.0))
+            width.min((rail.left() - bounds.left() - TIMELINE_HEADER_SPAN - 1.0).max(0.0))
         } else {
             0.0
         };

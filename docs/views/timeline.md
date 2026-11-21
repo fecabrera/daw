@@ -1,5 +1,8 @@
 # Timeline
 
+A narrow gap separates the track headers from the timeline grid. Horizontal
+lines continue across the gap below the ruler and between track rows.
+
 ## Lower editor
 
 Select an audio, MIDI, or beat clip or track, then click **Timeline Editor**

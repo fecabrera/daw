@@ -17,7 +17,7 @@ fn track_toolbar_collapses_arrangement_without_leaving_a_row() {
     let open_top = ruler.bottom() + 3.0 * beat_editor::SUBTRACK_LANE_HEIGHT;
     let project = app.session.project.clone();
     let toggle = Pos2::new(
-        ruler.left() - f32::from(theme::TOOLBAR_PADDING) - 14.0,
+        ruler.left() - TRACK_LANE_GAP - f32::from(theme::TOOLBAR_PADDING) - 14.0,
         ruler.center().y,
     );
     for expected_top in [open_top, ruler.bottom()] {
@@ -49,7 +49,7 @@ fn lane_headers_use_semibold_labels_and_offer_only_visibility_actions() {
         }
         let ruler = app.arrangement.ruler_bounds;
         let point = Pos2::new(
-            ruler.left() - TRACK_WIDTH + 25.0,
+            ruler.left() - TIMELINE_HEADER_SPAN + 25.0,
             ruler.bottom() + (lane as f32 + 0.5) * beat_editor::SUBTRACK_LANE_HEIGHT,
         );
         let track_top = app.lane_bounds[&track].top();
@@ -115,7 +115,7 @@ fn metadata_lanes_follow_the_ruler_and_marker_drags_commit_or_cancel() {
         egui::Color32::from_gray(43)
     );
     assert_eq!(ruler.bottom(), app.effects_bounds.header.bottom());
-    assert!(shapes.iter().any(|shape|matches!(&shape.shape,egui::Shape::LineSegment{points,stroke} if *stroke==Stroke::new(1.0,theme::palette(&ctx).border)&&points[0].x==ruler.left()-TRACK_WIDTH&&points[1].x==ruler.right()&&points[0].y==app.effects_bounds.header.bottom()-0.5&&points[1].y==points[0].y)));
+    assert!(shapes.iter().any(|shape|matches!(&shape.shape,egui::Shape::LineSegment{points,stroke} if *stroke==Stroke::new(1.0,theme::palette(&ctx).border)&&points[0].x==ruler.left()-TIMELINE_HEADER_SPAN&&points[1].x==ruler.right()&&points[0].y==app.effects_bounds.header.bottom()-0.5&&points[1].y==points[0].y)));
     let playhead_x = ruler.left() + 2.0 * app.zoom;
     let marker_fill = shapes
         .iter()
@@ -1047,7 +1047,7 @@ fn lane_plus_buttons_add_at_the_playhead_without_collapsing_or_opening_dialogs()
         frame(&mut app, &ctx, vec![]);
         let ruler = app.arrangement.ruler_bounds;
         let point = Pos2::new(
-            ruler.left() - 8.0 - icons::COMPACT_BUTTON_SIZE * 0.5,
+            ruler.left() - TRACK_LANE_GAP - 8.0 - icons::COMPACT_BUTTON_SIZE * 0.5,
             ruler.bottom() + beat_editor::SUBTRACK_LANE_HEIGHT * (lane as f32 + 0.5),
         );
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
@@ -1114,7 +1114,7 @@ fn lane_plus_buttons_are_disabled_during_conflicting_jobs() {
     app.job = Some(receiver);
     for lane in 0..3 {
         let point = Pos2::new(
-            ruler.left() - 8.0 - icons::COMPACT_BUTTON_SIZE * 0.5,
+            ruler.left() - TRACK_LANE_GAP - 8.0 - icons::COMPACT_BUTTON_SIZE * 0.5,
             ruler.bottom() + beat_editor::SUBTRACK_LANE_HEIGHT * (lane as f32 + 0.5),
         );
         frame(

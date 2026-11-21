@@ -19,6 +19,34 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Timeline header gap — 2026-11-21
+
+The egui layout test checks the 6-point gap, shared alignment of the ruler,
+track lanes and scrollbar, and continuous horizontal separators below the
+ruler and between tracks. The UI suite passed 1,096 tests with 3 ignored.
+Formatting and strict workspace Clippy passed. The local macOS debug app
+rebuilt and passed signature verification. Native visual inspection remains
+pending.
+
+The debug and release workspace suites each passed 3,671 tests with 22 ignored.
+Both runs excluded the macOS Audio Unit registration cases, which failed
+under the sandbox in the unfiltered runs.
+
+```sh
+cargo test --locked --offline --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --locked --offline --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+### Increase to 16 points
+
+The layout test verifies a 16-point gap and continuous horizontal separators.
+The history shortcut test uses the header edge to locate the gain knob.
+The workspace runs used the same Audio Unit exclusion. They found only the
+stale gain knob test coordinate. After that correction, the debug and release
+UI suites each passed 1,096 tests with 3 ignored. Formatting and strict
+workspace Clippy passed. The local macOS debug app rebuilt and passed
+signature verification. Native visual inspection remains pending.
+
 ## Fast effect duplication — 2026-11-21
 
 The release probe used the same temporary project copy and the MacBook Pro

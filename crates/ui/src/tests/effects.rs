@@ -3704,7 +3704,8 @@ fn timeline_places_catalog_left_of_tracks_and_lane_below_grid_in_both_themes() {
                 let bounds = &app.effects_bounds;
                 assert_eq!(app.view_mode, ViewMode::Timeline);
                 assert!(
-                    (bounds.library.right() - (app.timeline_bounds.left() - TRACK_WIDTH)).abs()
+                    (bounds.library.right() - (app.timeline_bounds.left() - TIMELINE_HEADER_SPAN))
+                        .abs()
                         < 0.1
                 );
                 assert_eq!(bounds.library.left(), bounds.strip.left());
@@ -3747,7 +3748,7 @@ fn timeline_track_click_switches_effect_chain_and_retains_state_across_view_chan
     let original = serde_json::to_string(&app.session.project).unwrap();
     app.dirty = false;
     let point = Pos2::new(
-        app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+        app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 110.0,
         app.lane_bounds[&second].top() + 18.0,
     );
     click(&mut app, &ctx, point);
@@ -4385,7 +4386,7 @@ fn timeline_tracks_share_one_left_divider_with_catalog_or_toolbar() {
                     frame_shapes(&mut app, &ctx, vec![], size);
                     let shapes = frame_shapes(&mut app, &ctx, vec![], size);
                     let palette = theme::palette(&ctx);
-                    let left = app.timeline_bounds.left() - TRACK_WIDTH;
+                    let left = app.timeline_bounds.left() - TIMELINE_HEADER_SPAN;
                     let adjacent = if catalog {
                         app.effects_bounds.library
                     } else {

@@ -1595,7 +1595,7 @@ fn plain_timeline_click_replaces_selected_group_before_track_actions() {
     app.select_track(b, true);
     frame(&mut app, &ctx, vec![]);
     let point = Pos2::new(
-        app.timeline_bounds.left() - TRACK_WIDTH + 60.0,
+        app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 60.0,
         app.lane_bounds[&b].top() + 18.0,
     );
     click(&mut app, &ctx, point);

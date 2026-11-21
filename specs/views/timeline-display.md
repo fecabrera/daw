@@ -3,6 +3,11 @@
 Draw the playhead line from the bottom of the ruler across the arrangement
 lanes and track workspace. Draw it over lane content and below the scrollbar.
 
+Reserve a 16-point gap after the track header column. Align the ruler,
+arrangement lanes, track lanes, and horizontal scrollbar at the far edge of
+the gap. Keep the Master header at the width of the track header column.
+Horizontal separators below the ruler and between rows span the gap.
+
 ## Toolbar and sizes
 
 Timeline offers a continuous Track height slider from 1 to 3 with 0.01 steps.

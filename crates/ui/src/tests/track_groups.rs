@@ -52,7 +52,7 @@ fn track_color_strips_cover_headers_and_only_the_group_nesting_gutter() {
                 app.dirty = false;
                 let before = app.session.project.clone();
                 let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280., 900.));
-                let left = app.timeline_bounds.left() - TRACK_WIDTH;
+                let left = app.timeline_bounds.left() - TIMELINE_HEADER_SPAN;
                 for index in app.session.project.visible_tracks() {
                     let track = &app.session.project.tracks[index];
                     let lane = app.lane_bounds[&track.id];
@@ -211,7 +211,9 @@ fn group_actions_reuse_selection_effect_targets_history_and_collapse_in_both_vie
             assert!(app.lane_bounds.contains_key(&group));
             assert!(!app.lane_bounds.contains_key(&ids[0]));
             let point = Pos2::new(
-                app.timeline_bounds.left() - TRACK_WIDTH + 7.0 + toolbars::CONTROL_HEIGHT * 0.5,
+                app.timeline_bounds.left() - TIMELINE_HEADER_SPAN
+                    + 7.0
+                    + toolbars::CONTROL_HEIGHT * 0.5,
                 app.lane_bounds[&group].top() + 18.0,
             );
             frame(
@@ -253,7 +255,7 @@ fn group_drop_geometry_accepts_children_rejects_cycles_and_allows_root_exit() {
     assert_eq!(index, 3);
     assert!(app.track_drop_target(group, inside).is_none());
     let after = Pos2::new(
-        row.left() - TRACK_WIDTH + 10.0,
+        row.left() - TIMELINE_HEADER_SPAN + 10.0,
         app.lane_bounds[&ids[2]].bottom() + 1.0,
     );
     let (parent, index, _) = app.track_drop_target(ids[0], after).unwrap();
@@ -315,7 +317,7 @@ fn pointer_track_drops_commit_on_release_and_escape_keeps_the_original_tree() {
         let (mut app, ctx, group, ids) = grouped_fixture();
         let original = app.session.project.clone();
         let start = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 18.0,
+            app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 18.0,
             app.lane_bounds[&ids[2]].top() + 18.0,
         );
         let end = Pos2::new(start.x, app.lane_bounds[&group].center().y);
@@ -385,7 +387,7 @@ fn group_and_master_titles_align_with_their_view_and_group_disclosures_have_no_f
                     let lane = app.lane_bounds[&group];
                     (
                         Rect::from_min_max(
-                            Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
+                            Pos2::new(lane.left() - TIMELINE_HEADER_SPAN, lane.top()),
                             lane.left_bottom(),
                         ),
                         23.0,
@@ -513,7 +515,7 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                         (ViewMode::Timeline, Some(id)) => {
                             let lane = app.lane_bounds[&id];
                             (
-                                lane.left() - TRACK_WIDTH
+                                lane.left() - TIMELINE_HEADER_SPAN
                                     + crate::panels::GroupPanel::indent(
                                         app.session.project.track_depth(id),
                                     ),
@@ -657,7 +659,10 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                             .collect();
                         assert_eq!(rails.len(), 2, "{name_text}");
                         assert!(
-                            (rails[1].right() - (app.timeline_bounds.left() - 7.0)).abs() < 1.0,
+                            (rails[1].right()
+                                - (app.timeline_bounds.left() - TRACK_LANE_GAP - 7.0))
+                                .abs()
+                                < 1.0,
                             "{name_text} meter must align with the control column's right inset: {:?}",
                             rails[1]
                         );
@@ -684,7 +689,7 @@ fn track_type_icons_reuse_release_only_dragging_and_cancellation() {
             frame(&mut app, &ctx, vec![]);
             let original = app.session.project.clone();
             let start = Pos2::new(
-                app.timeline_bounds.left() - TRACK_WIDTH + 21.0,
+                app.timeline_bounds.left() - TIMELINE_HEADER_SPAN + 21.0,
                 app.lane_bounds[&track].top() + 18.0,
             );
             let end = Pos2::new(start.x, app.lane_bounds[&next].bottom() - 2.0);
@@ -737,7 +742,7 @@ fn group_name_and_blank_header_drags_move_the_complete_subtree() {
         app.effects_lane_open = false;
         frame(&mut app, &ctx, vec![]);
         let original = app.session.project.clone();
-        let header_left = app.timeline_bounds.left() - TRACK_WIDTH;
+        let header_left = app.timeline_bounds.left() - TIMELINE_HEADER_SPAN;
         let start = Pos2::new(header_left + start_x, app.lane_bounds[&group].top() + 18.0);
         let end = Pos2::new(header_left + 18.0, app.lane_bounds[&ids[2]].bottom() - 2.0);
         assert!(app.timeline_bounds.y_range().contains(end.y));
@@ -864,7 +869,7 @@ fn nested_track_panels_share_container_edges_and_keep_timeline_lanes_aligned() {
                     .unwrap()
                     .group_collapsed = collapsed;
                 let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-                let left = app.timeline_bounds.left() - TRACK_WIDTH;
+                let left = app.timeline_bounds.left() - TIMELINE_HEADER_SPAN;
                 let right = app.timeline_bounds.left();
                 assert!(
                     app.lane_bounds
@@ -924,7 +929,7 @@ fn nested_track_panels_share_container_edges_and_keep_timeline_lanes_aligned() {
 fn inset_child_drops_keep_the_parent_and_group_append_preview_uses_the_container_bottom() {
     let (app, _, group, ids) = grouped_fixture();
     let child = app.lane_bounds[&ids[1]];
-    let header_left = child.left() - TRACK_WIDTH;
+    let header_left = child.left() - TIMELINE_HEADER_SPAN;
     let header_x = header_left + 8.0 + 23.0 + toolbars::CONTROL_HEIGHT * 0.5;
     let (parent, index, y) = app
         .track_drop_target(ids[0], Pos2::new(header_x, child.bottom() - 2.0))
@@ -976,7 +981,7 @@ fn scrolled_groups_retain_offscreen_headers_and_virtual_child_bounds_without_out
         ],
     );
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-    let left = app.timeline_bounds.left() - TRACK_WIDTH;
+    let left = app.timeline_bounds.left() - TIMELINE_HEADER_SPAN;
     let rect = Rect::from_min_max(
         Pos2::new(left, app.lane_bounds[&group].top()),
         Pos2::new(

@@ -229,7 +229,7 @@ impl DawUi {
                 let mut anchor = index;
                 let mut parent = track.group_id;
                 // Pointer position inside the fixed header chooses an ancestor boundary.
-                let header_left = rect.left() - TRACK_WIDTH;
+                let header_left = rect.left() - TIMELINE_HEADER_SPAN;
                 let header_anchor = 23.0 + toolbars::CONTROL_HEIGHT * 0.5;
                 let desired = ((pointer.x - header_left - header_anchor).max(0.0)
                     / panels::GroupPanel::indent(1))

@@ -749,8 +749,8 @@ fn return_selection_backgrounds_keep_shared_borders_and_pinned_dividers() {
                 for id in &returns {
                     let lane = app.lane_bounds[id];
                     let header = Rect::from_min_max(
-                        Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
-                        Pos2::new(lane.left(), lane.bottom()),
+                        Pos2::new(lane.left() - TIMELINE_HEADER_SPAN, lane.top()),
+                        Pos2::new(lane.left() - TRACK_LANE_GAP, lane.bottom()),
                     );
                     let Some(selected) = shapes.iter().enumerate().find(|(_, shape)| matches!(&shape.shape,
                         egui::Shape::Rect(rect) if rect.rect == header && rect.fill == theme::selected_track_header_background(&ctx)

@@ -1056,7 +1056,7 @@ fn fader_scales_fit_the_strips_and_silence_survives_view_changes() {
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let lane = app.lane_bounds[&track];
         let track_panel = Rect::from_min_size(
-            Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
+            Pos2::new(lane.left() - TIMELINE_HEADER_SPAN, lane.top()),
             Vec2::new(TRACK_WIDTH, app.track_row_height()),
         );
         for panel in [track_panel, app.master_bounds] {

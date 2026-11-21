@@ -3,7 +3,7 @@ use super::*;
 fn panel(app: &DawUi, id: Id) -> Rect {
     let lane = app.lane_bounds[&id];
     Rect::from_min_size(
-        Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
+        Pos2::new(lane.left() - TIMELINE_HEADER_SPAN, lane.top()),
         Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
     )
 }
@@ -1412,7 +1412,7 @@ fn track_toolbar_point(app: &DawUi, duplicate: bool) -> Pos2 {
     let padding = f32::from(theme::TOOLBAR_PADDING);
     let offset = if duplicate { 28.0 + padding } else { 0.0 };
     Pos2::new(
-        ruler.left() - TRACK_WIDTH + padding + 14.0 + offset,
+        ruler.left() - TIMELINE_HEADER_SPAN + padding + 14.0 + offset,
         ruler.center().y,
     )
 }
