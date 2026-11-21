@@ -2,7 +2,7 @@
 
 A desktop digital audio workstation for macOS, Windows and Linux, written in Rust. It imports external WAV, MP3, AAC, and Opus sources, and shares its rendering engine with a headless command-line interface.
 
-![Timeline during playback, with audio, MIDI and beat tracks and a track effects chain](docs/assets/screenshots/timeline-playback.png)
+![Timeline during playback with beat, audio and MIDI clips, and Shimmer Reverb, Saturator and Compressor in the effects lane](docs/assets/screenshots/timeline-playback.png)
 
 <p align="center">
 <a href="https://github.com/fecabrera/daw/commits/main/">
@@ -26,29 +26,33 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 <details>
 <summary><h2>More screenshots</h2></summary>
 
-**[Timeline](docs/views/timeline.md) with master effects**
+**[Timeline effects](docs/views/timeline.md#add-effects)**
 
-![Timeline arrangement with Shimmer Reverb and Saturator on the master effects lane](docs/assets/screenshots/timeline-effects.png)
+![Timeline effects lane with two Compressors, Bitcrusher and Multiband EQ during playback](docs/assets/screenshots/timeline-effects.png)
 
-**[Instrument](docs/views/instrument.md)**
+**[Audio editor](docs/views/editor.md#audio-clips)**
 
-![Layered instrument with oscillator modulation, layer meters and Output effects](docs/assets/screenshots/instrument.png)
+![Timeline with the lower audio editor open on a stereo waveform](docs/assets/screenshots/audio-editor.png)
 
-**[Audio editor](docs/views/editor.md)**
+**[MIDI editor](docs/views/editor.md#create-and-edit-a-pattern)**
 
-![Audio editor with a stereo waveform, transient markers, clip options and the track overview above it](docs/assets/screenshots/audio-editor.png)
+![Bass notes in the lower piano roll with F major selected](docs/assets/screenshots/midi-editor.png)
 
-**[MIDI editor](docs/views/editor.md)**
-
-![Piano roll with a chord pattern and the track overview above it](docs/assets/screenshots/midi-editor.png)
+![Pad chords in the lower piano roll](docs/assets/screenshots/midi-editor-chords.png)
 
 **[Beat editor](docs/views/beat-editor.md)**
 
-![Beat pattern with six subtracks, step controls and live subtrack meters](docs/assets/screenshots/beat-editor.png)
+![Timeline with a six-subtrack beat pattern open in the lower step editor](docs/assets/screenshots/beat-editor.png)
+
+**[Instrument](docs/views/instrument.md)**
+
+![Instrument Sources tab showing oscillator and amplitude controls across three layers](docs/assets/screenshots/instrument.png)
+
+![Instrument Modulation tab with LFO and Envelope controls above the effects lane](docs/assets/screenshots/instrument-modulation.png)
 
 **[Mixer](docs/views/mixer.md)**
 
-![Mixer with four track strips, output routing, sends and the pinned Master strip](docs/assets/screenshots/mixer.png)
+![Mixer during playback with four track strips, live meters and the pinned Master strip](docs/assets/screenshots/mixer.png)
 
 </details>
 
