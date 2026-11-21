@@ -178,7 +178,163 @@ fn check_delayed_live_insert(
     assert_eq!(next.transport_state(), expected.transport_state());
     assert!(note > 0.001 && tail > 0.00001);
     assert!(next.hosted_fault().is_none());
+    check_delayed_live_duplication(edited.clone())?;
+    check_delayed_live_move(edited.clone(), unit)?;
     check_delayed_live_removal(edited, plan, unit)
+}
+
+fn check_delayed_live_duplication(mut original: RenderPlan) -> daw_plugin_host::Result<()> {
+    let track = &mut original.project.tracks[0];
+    let main = &mut track.instrument.as_mut().unwrap().main;
+    let target = EffectChainTarget::Layer {
+        track: track.id,
+        layer: main.id,
+    };
+    let mut builtin = EffectInstance::saturator();
+    *builtin.unit.enabled_mut().unwrap() = false;
+    let native = &main.effects[1];
+    let EffectSettings::Hosted(settings) = &native.unit else {
+        unreachable!();
+    };
+    let added = u64::from(settings.latency_frames) + 32;
+    let (unit, rate, channels) = (
+        settings.id,
+        settings.metadata_rate,
+        settings.output_channels,
+    );
+    let selected = [native.id, builtin.id];
+    main.effects.push(builtin);
+    // A project can be saved with latency metadata from another setup.
+    original
+        .project
+        .set_prepared_hosted_metadata(unit, rate, 0, 0, channels)
+        .unwrap();
+    let transfer = original
+        .project
+        .transfer_effects(target, target, &selected, 3, true)
+        .unwrap();
+    let mut copied = original.clone();
+    copied.project.edit(transfer.edit).unwrap();
+    let mut active = Renderer::try_new(original.clone())?;
+    let mut reference = Renderer::try_new(original.clone())?;
+    let mut next = Renderer::try_new_for_effect_additions(copied)?;
+    assert!(next.prepare_live_effect_additions(&original));
+    let state = TransportState {
+        playing: true,
+        playback_start: Some(0),
+        ..Default::default()
+    };
+    active.prepare_fast_seek(state).unwrap();
+    reference.prepare_fast_seek(state).unwrap();
+    for _ in 0..4099 {
+        assert_eq!(measured(|| active.next_sample()), reference.next_sample());
+    }
+    let pending = active.pending_hosted_frames();
+    assert!(pending > 0);
+    assert_eq!(next.latency_frames(), active.latency_frames() + added);
+    assert!(measured(|| next.try_insert_effect_group(&mut active)));
+    assert_eq!(next.pending_hosted_frames(), pending);
+    let mut held = 0;
+    let mut note = 0.0f32;
+    let mut tail = 0.0f32;
+    for i in 0..40_000 {
+        let frame = next.playhead;
+        let actual = measured(|| next.next_sample());
+        if next.playhead == frame {
+            held += 1;
+            continue;
+        }
+        let expected = reference.next_sample();
+        if i < pending || i >= pending + added as usize + 240 {
+            assert!((actual[0] - expected[0]).abs() < 1e-5, "frame {i}");
+        }
+        if (1024..4096).contains(&i) {
+            note = note.max(actual[0].abs());
+        }
+        if i > 25_000 {
+            tail = tail.max(actual[0].abs());
+        }
+    }
+    assert_eq!(held, added);
+    assert!(note > 0.001 && tail > 0.00001);
+    assert!(next.hosted_fault().is_none());
+    Ok(())
+}
+
+fn check_delayed_live_move(mut original: RenderPlan, native: Id) -> daw_plugin_host::Result<()> {
+    original.project.add_track().unwrap();
+    original
+        .project
+        .tracks
+        .last_mut()
+        .unwrap()
+        .effects
+        .push(EffectInstance::saturator());
+    let track = &original.project.tracks[0];
+    let main = &track.instrument.as_ref().unwrap().main;
+    let source = EffectChainTarget::Layer {
+        track: track.id,
+        layer: main.id,
+    };
+    let id = main.effects.iter().find(|effect| {
+        matches!(&effect.unit, EffectSettings::Hosted(settings) if settings.id == native)
+    }).unwrap().id;
+    let transfer = original
+        .project
+        .transfer_effects(source, EffectChainTarget::Master, &[id], 0, false)
+        .unwrap();
+    let mut moved = original.clone();
+    moved.project.edit(transfer.edit).unwrap();
+    let mut active = Renderer::try_new(original.clone())?;
+    let mut reference = Renderer::try_new(moved.clone())?;
+    let mut next = Renderer::try_new(moved)?;
+    assert!(next.prepare_live_effect_move(&original));
+    let state = TransportState {
+        playing: true,
+        playback_start: Some(0),
+        ..Default::default()
+    };
+    active.prepare_fast_seek(state).unwrap();
+    reference.prepare_fast_seek(state).unwrap();
+    for _ in 0..4099 {
+        measured(|| active.next_sample());
+    }
+    assert!(active.pending_hosted_frames() > 0);
+    assert!(!measured(|| next.try_move_effects_live(&mut active)));
+    while active.pending_hosted_frames() > 0 {
+        measured(|| active.next_sample());
+    }
+    let boundary = active.playhead;
+    for _ in 0..boundary {
+        reference.next_sample();
+    }
+    let extra = next.latency_frames() - active.latency_frames();
+    assert!(extra > 0);
+    assert!(measured(|| next.try_move_effects_live(&mut active)));
+    for _ in 0..extra {
+        measured(|| next.next_sample());
+        assert_eq!(next.playhead, boundary);
+    }
+    let mut tail = 0.0f32;
+    for i in 0..40000 {
+        let actual = measured(|| next.next_sample());
+        let expected = reference.next_sample();
+        if i >= 240 {
+            assert!(
+                (actual[0] - expected[0])
+                    .abs()
+                    .max((actual[1] - expected[1]).abs())
+                    < 1e-5,
+                "frame {i}: {actual:?} vs {expected:?}"
+            );
+        }
+        if i > 25000 {
+            tail = tail.max(actual[0].abs());
+        }
+    }
+    assert!(tail > 0.00001);
+    assert_eq!(next.transport_state(), reference.transport_state());
+    Ok(())
 }
 
 fn check_delayed_live_removal(

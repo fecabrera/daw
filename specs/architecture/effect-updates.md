@@ -136,6 +136,16 @@ Only the new effect starts fresh. Exact mode and incompatible candidates use
 normal worker reconstruction. Built-ins that keep delay compensation can use
 the targeted update path above in either mode.
 
+Fast duplication uses the live insertion path for a single effect when
+possible. For grouped copies and built-in copies in native graphs, the worker
+verifies that the original chains remain in order and that the rest of the
+processing plan is compatible. It prepares delay storage from the old and new
+layouts without feeding earlier samples to the copies. The callback transfers
+held voices, original processors and compatible delay history. It fills any
+increase in compensation from the current input cursor. Each copy has a new
+identity and starts fresh. Exact retains normal preparation for copies that
+require reconstruction.
+
 Fast also accepts an isolated effect removal against the acknowledged plan.
 It reuses surviving sources, voices, processors and delay history. When the
 total delay decreases, it advances the audible clock by the decrease and
@@ -144,6 +154,16 @@ frames at the new clock. Growing lines bridge samples that have no retained
 history with the last input. The output transition covers the handoff.
 If a native graph already evaluated audio, the callback switches when it
 finishes that block. Exact and unsupported transfers use the worker rebuild.
+
+For Fast moves and reorders, the worker verifies that the effects and their
+settings match by ID and that source content and routing agree. It prepares
+the old and new owner slots for moved built-ins and the delay-line storage.
+The callback transfers the same processors into their new chains and keeps
+voice state. Each resized delay line uses its own old and new clocks.
+An increase in total compensation fills from the current source cursor.
+A decrease moves the audible clock ahead by the removed delay. Native
+graphs finish the current output block before switching. Exact retains
+normal preparation. Incompatible input histories use the worker rebuild.
 
 Fallback, replay, retry and publication receipts use the submitted snapshot
 until its revision is acknowledged. Keep playback preparation pending until

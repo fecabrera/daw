@@ -135,7 +135,9 @@ pub(super) struct LiveEffectBase {
 pub(super) enum LiveEffectRequest {
     Effect(Arc<RenderPlan>),
     Builtin(Id),
+    Additions(Arc<RenderPlan>),
     Remove(Arc<RenderPlan>),
+    Move(Arc<RenderPlan>),
 }
 enum Request {
     Warm(Arc<RenderPlan>, Option<Arc<RenderPlan>>),
@@ -349,6 +351,7 @@ impl Worker {
                             continue;
                         }
                         Request::Plan(plan, transport, requested_at, predecessor, live_effect) => {
+                            let mut layout_base = None;
                             let live_effect = live_effect.and_then(|base| {
                                 let kind = match base.edit {
                                     LiveEffectRequest::Effect(previous) => {
@@ -370,6 +373,14 @@ impl Worker {
                                             LiveEffectKind::UnverifiedRemoval,
                                             LiveEffectKind::Remove,
                                         )
+                                    }
+                                    LiveEffectRequest::Move(previous) => {
+                                        layout_base = Some(beat_plans.resolve(previous));
+                                        LiveEffectKind::Move
+                                    }
+                                    LiveEffectRequest::Additions(previous) => {
+                                        layout_base = Some(beat_plans.resolve(previous));
+                                        LiveEffectKind::Additions
                                     }
                                 };
                                 Some(LiveEffect {
@@ -406,6 +417,28 @@ impl Worker {
                                 }
                             };
                             let mut renderer = renderer;
+                            if let Some(previous) = layout_base {
+                                let prepared = match live_effect.map(|effect| effect.kind) {
+                                    Some(LiveEffectKind::Move) => {
+                                        renderer.prepare_live_effect_move(&previous)
+                                    }
+                                    Some(LiveEffectKind::Additions) => {
+                                        renderer.prepare_live_effect_additions(&previous)
+                                    }
+                                    _ => unreachable!(
+                                        "layout base only supplied for moves and additions"
+                                    ),
+                                };
+                                if prepared {
+                                    let bytes = renderer.renderer.owned_memory_bytes();
+                                    if let Err(error) = renderer._memory.try_resize(bytes) {
+                                        publish_error(&worker, revision, error);
+                                        continue;
+                                    }
+                                } else {
+                                    renderer.live_effect = None;
+                                }
+                            }
                             renderer.allow_checkpoint_reuse = retained;
                             renderer.requested_at = Some(requested_at);
                             (renderer, bindings, transport, None)

@@ -552,6 +552,224 @@ fn fast_output_saturator_adds_latency_without_replaying_held_notes_or_tails() {
 }
 
 #[test]
+fn fast_effect_duplication_keeps_notes_and_tails_when_compensation_grows() {
+    let mut original = note_plan();
+    let track = &mut original.project.tracks[0];
+    let main = &mut track.instrument.as_mut().unwrap().main;
+    let owner = daw_core::EffectChainTarget::Layer {
+        track: track.id,
+        layer: main.id,
+    };
+    let mut saturator = E::saturator();
+    *saturator.unit.enabled_mut().unwrap() = false;
+    let second = saturator.duplicate();
+    let selected = [saturator.id, second.id];
+    main.effects = vec![E::plate_reverb(), saturator, second];
+    let mut copied = original.clone();
+    let transfer = original
+        .project
+        .transfer_effects(owner, owner, &selected, 3, true)
+        .unwrap();
+    copied.project.edit(transfer.edit).unwrap();
+    let chain = copied.project.effect_chain(owner).unwrap().0;
+    assert_eq!(chain.len(), 5);
+    assert_eq!(chain[1].id, selected[0]);
+    assert_eq!(chain[2].id, selected[1]);
+    assert!(chain[3..].iter().all(|unit| !selected.contains(&unit.id)));
+
+    let (mut output, mut callback) =
+        crate::preparation_tests::controlled_output_for_plan(48_000, original.clone());
+    output.preparation = preparation::Worker::new(output.status.clone()).unwrap();
+    output.active_plan = Some(output.plan.clone());
+    callback.renderer.play();
+    let mut reference = Renderer::new(original);
+    reference.play();
+    let frame = 5000;
+    assert_eq!(callback.renderer.latency_frames(), 64);
+    for _ in 0..frame {
+        assert_eq!(realtime(|| callback.next()), reference.next_sample());
+    }
+    output.status.publish_transport(&callback.renderer);
+    output
+        .sync_with_mode(copied.clone(), PlaybackSeek::Fast)
+        .unwrap();
+    let revision = output.requested_revision();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while output.applied_revision() != revision {
+        assert!(std::time::Instant::now() < deadline);
+        output.drain();
+        realtime(|| callback.update());
+        assert!(callback.scheduled.is_none());
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(callback.renderer.plan.project, copied.project);
+    assert_eq!(callback.renderer.latency_frames(), 128);
+    assert_eq!(callback.renderer.playhead, frame);
+    let mut note = 0.0f32;
+    let mut tail = 0.0f32;
+    realtime(|| {
+        for _ in 0..64 {
+            callback.next();
+            assert_eq!(callback.renderer.playhead, frame);
+        }
+        for i in 0..36_000 {
+            let actual = callback.next();
+            let expected = reference.next_sample();
+            if i >= 240 {
+                assert!((actual[0] - expected[0]).abs() < 1e-5, "frame {i}");
+            }
+            if (240..2000).contains(&i) {
+                note = note.max(actual[0].abs());
+            }
+            if i > 25_000 {
+                tail = tail.max(actual[0].abs());
+            }
+        }
+    });
+    assert!(note > 0.001 && tail > 0.00001);
+    assert_eq!(output.status.performance.snapshot().cache_memory[7], 0);
+}
+
+#[test]
+fn fast_effect_move_grows_and_shrinks_compensation_without_replaying() {
+    use daw_core::EffectChainTarget as Target;
+    let mut original = note_plan();
+    original.project.add_track().unwrap();
+    original.project.tracks[1].effects.push(E::saturator());
+    let track = &mut original.project.tracks[0];
+    let output = &mut track.instrument.as_mut().unwrap().main;
+    let source = Target::Layer {
+        track: track.id,
+        layer: output.id,
+    };
+    output.effects.push(E::plate_reverb());
+    let mut moved_effect = E::saturator();
+    *moved_effect.unit.enabled_mut().unwrap() = false;
+    let id = moved_effect.id;
+    output.effects.push(moved_effect);
+    let mut moved = original.clone();
+    let transfer = original
+        .project
+        .transfer_effects(source, Target::Master, &[id], 0, false)
+        .unwrap();
+    moved.project.edit(transfer.edit).unwrap();
+    for (before, after, old_delay, new_delay) in [
+        (&original, &moved, 32_u64, 64_u64),
+        (&moved, &original, 64, 32),
+    ] {
+        let (mut output, mut callback) =
+            crate::preparation_tests::controlled_output_for_plan(48_000, before.clone());
+        output.preparation = preparation::Worker::new(output.status.clone()).unwrap();
+        output.active_plan = Some(output.plan.clone());
+        callback.renderer.play();
+        let frame = 5000;
+        for _ in 0..frame {
+            realtime(|| callback.next());
+        }
+        assert_eq!(callback.renderer.latency_frames(), old_delay);
+        output.status.publish_transport(&callback.renderer);
+        output
+            .sync_with_mode(after.clone(), PlaybackSeek::Fast)
+            .unwrap();
+        let revision = output.requested_revision();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while output.applied_revision() != revision {
+            assert!(std::time::Instant::now() < deadline);
+            output.drain();
+            realtime(|| callback.update());
+            assert!(callback.scheduled.is_none());
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(callback.renderer.plan.project, after.project);
+        assert_eq!(callback.renderer.latency_frames(), new_delay);
+        let position = frame + old_delay.saturating_sub(new_delay);
+        assert_eq!(callback.renderer.playhead, position);
+        let mut expected = Renderer::new(after.clone());
+        expected.play();
+        for _ in 0..position {
+            expected.next_sample();
+        }
+        let mut peak = 0.0f32;
+        let mut tail = 0.0f32;
+        realtime(|| {
+            for _ in 0..new_delay.saturating_sub(old_delay) {
+                callback.next();
+                assert_eq!(callback.renderer.playhead, position);
+            }
+            for i in 0..36_000 {
+                let sample = callback.next();
+                let reference = expected.next_sample();
+                if i >= 240 {
+                    assert!(
+                        (sample[0] - reference[0]).abs() < 1e-5,
+                        "{old_delay} to {new_delay}, at {i}: {sample:?} vs {reference:?}"
+                    );
+                }
+                if (240..2000).contains(&i) {
+                    peak = peak.max(sample[0].abs());
+                }
+                if i > 25_000 {
+                    tail = tail.max(sample[0].abs());
+                }
+            }
+        });
+        assert!(peak > 0.001 && tail > 0.00001);
+        assert_eq!(output.status.performance.snapshot().cache_memory[7], 0);
+    }
+}
+
+#[test]
+fn moving_a_reverb_to_output_carries_its_decaying_tail() {
+    use daw_core::EffectChainTarget as Target;
+    let mut original = note_plan();
+    let track = &mut original.project.tracks[0];
+    let instrument = track.instrument.as_mut().unwrap();
+    let layer = &mut instrument.layers[0];
+    layer.effects = vec![E::plate_reverb(), E::saturator()];
+    let ids: Vec<_> = layer.effects.iter().map(|e| e.id).collect();
+    let from = Target::Layer {
+        track: track.id,
+        layer: layer.id,
+    };
+    let to = Target::Layer {
+        track: track.id,
+        layer: instrument.main.id,
+    };
+    let transfer = original
+        .project
+        .transfer_effects(from, to, &ids, 0, false)
+        .unwrap();
+    let mut moved = original.clone();
+    moved.project.edit(transfer.edit).unwrap();
+    let mut active = Renderer::new(original.clone());
+    active.play();
+    let mut expected = Renderer::new(moved.clone());
+    expected.play();
+    for _ in 0..31_000 {
+        active.next_sample();
+        expected.next_sample();
+    }
+    let mut next = Renderer::new(moved);
+    assert!(next.prepare_live_effect_move(&original));
+    realtime(|| assert!(next.try_move_effects_live(&mut active)));
+    let mut tail = 0.0f32;
+    realtime(|| {
+        for i in 0..10_000 {
+            let sample = next.next_sample();
+            let reference = expected.next_sample();
+            if i >= 240 {
+                assert!(
+                    (sample[0] - reference[0]).abs() < 1e-5,
+                    "frame {i}: {sample:?} vs {reference:?}"
+                );
+                tail = tail.max(sample[0].abs());
+            }
+        }
+    });
+    assert!(tail > 0.00001);
+}
+
+#[test]
 fn fast_output_saturator_removal_keeps_held_notes_and_tails() {
     let mut removed = note_plan();
     let output_chain =

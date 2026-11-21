@@ -1369,7 +1369,49 @@ impl MidiTrackRuntime {
                 Some(cost + next.delay.removal_copy_frames(&previous.delay, drop)?)
             })
     }
-    pub(super) fn inherit_live_edit_delays(&mut self, prepared: &mut Self, removal: bool) {
+    pub(super) fn prepare_move_delays(&mut self, old: &daw_core::InstrumentSettings) {
+        let before = super::layer_effects::parallel_latency(old, self.sample_rate_hz);
+        let count = self.layer_effects.len() - 1;
+        for next in self.layer_effects.iter_mut().take(count) {
+            if let Some(layer) = old.layers.iter().find(|layer| layer.id == next.id) {
+                let intrinsic = super::latency::chain_frames(&layer.effects, self.sample_rate_hz)
+                    + layer
+                        .hosted
+                        .as_ref()
+                        .and_then(|source| source.settings())
+                        .map_or(0, |settings| u64::from(settings.latency_frames));
+                next.delay.prepare_move(
+                    (before - intrinsic) as usize,
+                    before,
+                    self.parallel_latency,
+                );
+            }
+        }
+    }
+    pub(super) fn move_copy_frames(&self, old: &Self) -> Option<usize> {
+        if !self.voice_state_compatible(old) {
+            return None;
+        }
+        self.layer_effects
+            .iter()
+            .zip(&old.layer_effects)
+            .take(self.layer_effects.len() - 1)
+            .try_fold(0, |cost, (next, previous)| {
+                Some(
+                    cost + next.delay.move_copy_frames(
+                        &previous.delay,
+                        old.parallel_latency,
+                        self.parallel_latency,
+                    )?,
+                )
+            })
+    }
+    pub(super) fn inherit_live_edit_delays(
+        &mut self,
+        prepared: &mut Self,
+        removal: bool,
+        moving: bool,
+    ) {
         let layers = self.layer_effects.len() - 1;
         for (old, next) in self
             .layer_effects
@@ -1377,7 +1419,13 @@ impl MidiTrackRuntime {
             .zip(&mut prepared.layer_effects)
             .take(layers)
         {
-            if removal {
+            if moving {
+                next.delay.inherit_move(
+                    &mut old.delay,
+                    self.parallel_latency,
+                    prepared.parallel_latency,
+                );
+            } else if removal {
                 let drop = (self.parallel_latency - prepared.parallel_latency) as usize;
                 next.delay.inherit_removal(&mut old.delay, drop);
             } else {
@@ -1399,7 +1447,7 @@ impl MidiTrackRuntime {
     }
     /// Retarget compatible voices before swapping them into the new renderer.
     /// All storage stays owned by the two prepared renderers; no DSP state is dropped here.
-    pub fn retarget_controls(&mut self, prepared: &mut Self) {
+    pub fn retarget_controls(&mut self, prepared: &mut Self, keep_chain_owners: bool) {
         let fade_frames = (self.sample_rate_hz / 200).max(1);
         // Pitch-only edits retain the schedule shape and voice slots. Transfer the newly
         // prepared pitches/mailboxes while leaving envelopes, clocks and source phase alive.
@@ -1418,7 +1466,9 @@ impl MidiTrackRuntime {
         }
         for next in &mut prepared.layer_effects {
             for old in &mut self.layer_effects {
-                next.chain.inherit_chain(&mut old.chain, &next.settings);
+                if !keep_chain_owners || next.id == old.id {
+                    next.chain.inherit_chain(&mut old.chain, &next.settings);
+                }
             }
         }
         let idle = self.voices.iter().all(|v| !v.active_last_sample);
@@ -3270,7 +3320,7 @@ mod live_pitch_tests {
             prepared.bind_live_pitches(track, &committed);
             assert!(runtime.compatible(&prepared));
             let age = runtime.voices[0].held_frames;
-            runtime.retarget_controls(&mut prepared);
+            runtime.retarget_controls(&mut prepared, false);
             assert_eq!(runtime.voices[0].held_frames, age);
             // Bind the same committed schedule to the uninterrupted reference. Source phase
             // and contour timing must match the compatible publication sample for sample.
@@ -3288,7 +3338,7 @@ mod live_pitch_tests {
             let undo_inputs = super::super::LiveMidiPitches::prepare(&undo, &committed);
             let mut next = MidiTrackRuntime::new(&undo, &undo.tracks[0]).unwrap();
             next.bind_live_pitches(track, &undo_inputs);
-            runtime.retarget_controls(&mut next);
+            runtime.retarget_controls(&mut next, false);
             runtime.sample(2500);
             assert_eq!(runtime.voices[0].pitch, 60);
             assert!(runtime.voices[0].held_frames > age);

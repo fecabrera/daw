@@ -17,16 +17,20 @@ during preparation. Timing or routing changes can take longer. A preparation
 failure keeps the active playback and shows an error. The edited settings
 remain available for correction or Undo.
 
-In **Fast** Seek mode, you can add or remove a built-in or external effect
-during playback. Held notes and the tails of remaining effects continue.
-An addition can briefly hold the audible position while the engine fills
+In **Fast** Seek mode, you can add, remove, move, reorder or duplicate built-in
+and external effects during playback. Held notes and existing effect tails
+continue, including the tails of moved or copied originals. You can copy one
+effect or a selection. The copies keep the settings and start with fresh
+processing state.
+An addition or copy can briefly hold the audible position while the engine fills
 added delay. A removal can advance the audible position by the compensated
-delay it removes. An external effect removal finishes the audio block that
-is already queued before switching. Fast uses the background rebuild when
+delay it removes. A move uses the same short timing transition if it
+changes the overall delay. A native effect move or removal finishes the
+queued audio block before switching. Fast uses the background rebuild when
 the routing or plug-in configuration prevents it from transferring state.
 
 **Exact** uses the background rebuild for external effect additions and
-removals, and for built-in edits that change delay compensation.
+removals, and for copies, moves and other edits that require timing reconstruction.
 
 ## Unit layout
 

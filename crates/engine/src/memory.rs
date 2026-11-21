@@ -163,6 +163,8 @@ impl Renderer {
                 + std::mem::size_of::<Self>() as u64
                 + map_bytes(&self.track_index)
                 + map_bytes(&self.effect_tracks)
+                + self.effect_moves.as_ref().map_or(0, vec_bytes)
+                + self.effect_additions.as_ref().map_or(0, vec_bytes)
                 + vec_bytes(&self.gains)
                 + vec_bytes(&self.effects)
                 + self.effects.iter().map(|e| e.heap_bytes()).sum::<u64>()

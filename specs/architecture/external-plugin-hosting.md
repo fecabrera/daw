@@ -119,11 +119,23 @@ processing quanta. Only the inserted effect starts fresh. A stale candidate
 or incompatible route follows normal preparation. Exact mode uses normal
 reconstruction for hosted effect additions.
 
+Fast duplication can insert multiple copies in one publication, including
+mixed native and built-in groups. The copies recall the saved plug-in
+configuration under new unit IDs. The callback retains the original native
+leases and their queued output and starts the copies with fresh signal history.
+Native copies still require recallable plug-in state. Exact retains normal
+preparation.
+
 Fast removal waits for the end of the current evaluated block. It transfers
 the surviving leases, note identities, effect state and compatible input
 history. If the last hosted effect leaves, the sample renderer resumes from
 the same source cursor. When compensation shrinks, the audible clock moves
 ahead by the decrease. Exact uses normal reconstruction for removals.
+
+Fast moves and reorders retain native leases by unit ID across chain owners.
+The callback finishes the already evaluated block before applying new
+compensation. Existing auxiliary audio and modulation delay histories must
+fit the new routing. Other changes use normal worker preparation.
 
 Native processors use bounded stereo/mono buses, one output bus, up to 32 input
 buses and at most one note input. Before setup/activation, VST3 negotiation

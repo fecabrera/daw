@@ -167,6 +167,61 @@ impl Delay {
             *target = frame;
         }
     }
+
+    fn move_layout(&self, previous: usize, before: u64, after: u64) -> (usize, usize, usize) {
+        let skip = (before.saturating_sub(after) as usize).min(previous);
+        let lead = (after.saturating_sub(before) as usize).min(self.frames());
+        let pending = (previous - skip).saturating_sub(self.frames() - lead);
+        (skip, lead, pending)
+    }
+
+    pub fn prepare_move(&mut self, previous: usize, before: u64, after: u64) {
+        let (_, _, pending) = self.move_layout(previous, before, after);
+        if pending > 0 && pending <= MAX_LIVE_DELAY_COPY {
+            self.prepare_splice(pending);
+        }
+    }
+
+    pub fn move_copy_frames(&self, old: &Self, before: u64, after: u64) -> Option<usize> {
+        if old.splicing() {
+            return None;
+        }
+        if before == after && self.frames() == old.frames() {
+            return Some(0);
+        }
+        let (_, _, pending) = self.move_layout(old.frames(), before, after);
+        (pending == 0
+            || self
+                .splice
+                .as_ref()
+                .is_some_and(|s| s.samples.len() >= pending))
+        .then_some(self.frames() + pending)
+    }
+
+    pub fn inherit_move(&mut self, old: &mut Self, before: u64, after: u64) {
+        if before == after && self.frames() == old.frames() {
+            self.inherit(old, 0);
+            return;
+        }
+        let (skip, lead, pending) = self.move_layout(old.frames(), before, after);
+        let (first, last) = old.samples.split_at(old.index);
+        let mut queued = last.iter().chain(first).skip(skip).copied();
+        self.index = 0;
+        self.last_input = old.last_input;
+        self.samples[..lead].fill(([0.0; 2], false));
+        for sample in &mut self.samples[lead..] {
+            *sample = queued.next().unwrap_or(self.last_input);
+        }
+        if pending != 0 {
+            let splice = self.splice.as_mut().expect("prepared move delay");
+            splice.skip = after.saturating_sub(before) as usize - lead;
+            splice.cursor = 0;
+            splice.count = pending;
+            for (sample, value) in splice.samples[..pending].iter_mut().zip(queued) {
+                *sample = value;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -506,13 +561,47 @@ impl Alignment {
             },
         )
     }
-    pub fn inherit(&mut self, old: &mut Self, removal: bool) {
+    pub fn prepare_move(&mut self, old: &Self) {
+        if self.parents != old.parents {
+            return;
+        }
+        for (i, (next, previous)) in self.tracks.iter_mut().zip(&old.tracks).enumerate() {
+            next.prepare_move(
+                previous.frames(),
+                old.output_frames[i],
+                self.output_frames[i],
+            );
+        }
+    }
+    pub fn move_copy_frames(&self, old: &Self) -> Option<usize> {
+        if self.parents != old.parents
+            || self.captured_sends != old.captured_sends
+            || self.send_delays != old.send_delays
+        {
+            return None;
+        }
+        self.tracks.iter().zip(&old.tracks).enumerate().try_fold(
+            0,
+            |cost, (i, (next, previous))| {
+                Some(
+                    cost + next.move_copy_frames(
+                        previous,
+                        old.output_frames[i],
+                        self.output_frames[i],
+                    )?,
+                )
+            },
+        )
+    }
+    pub fn inherit(&mut self, old: &mut Self, removal: bool, moving: bool) {
         for (index, a) in self.tracks.iter_mut().enumerate() {
             if let Some(&previous) = old.index.get(&a.id) {
                 let b = &mut old.tracks[previous];
                 let next_clock = self.output_frames[index];
                 let old_clock = old.output_frames[previous];
-                if removal {
+                if moving {
+                    a.inherit_move(b, old_clock, next_clock);
+                } else if removal {
                     a.inherit_removal(b, (old_clock - next_clock) as usize);
                 } else {
                     a.inherit(b, next_clock.saturating_sub(old_clock) as usize);

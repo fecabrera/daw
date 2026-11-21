@@ -163,13 +163,19 @@ struct LiveEffect {
 enum LiveEffectKind {
     Hosted(Id),
     Builtin(Id),
+    Additions,
     Remove(Option<Id>),
+    Move,
     UnverifiedRemoval,
 }
 impl PreparedRenderer {
-    fn is_live_removal(&self) -> bool {
-        self.live_effect
-            .is_some_and(|effect| matches!(effect.kind, LiveEffectKind::Remove(_)))
+    fn needs_native_boundary(&self) -> bool {
+        self.live_effect.is_some_and(|effect| {
+            matches!(
+                effect.kind,
+                LiveEffectKind::Remove(_) | LiveEffectKind::Move
+            )
+        })
     }
     #[cfg(test)]
     fn new(plan: RenderPlan, meters: &HashMap<Id, Arc<StereoMeter>>) -> Self {
@@ -199,6 +205,7 @@ impl PreparedRenderer {
                 Renderer::try_new_for_builtin_insert(plan, effect)
             }
             Some(LiveEffectKind::Hosted(unit)) => Renderer::try_new_for_hosted_insert(plan, unit),
+            Some(LiveEffectKind::Additions) => Renderer::try_new_for_effect_additions(plan),
             _ => Renderer::try_new(plan),
         }
         .map_err(|e| e.to_string())?;
@@ -975,9 +982,12 @@ impl AudioOutput {
         request: Option<preparation::TransportRequest>,
         live_effect: Option<preparation::LiveEffectBase>,
     ) {
-        let live_removal = live_effect
-            .as_ref()
-            .is_some_and(|effect| matches!(effect.edit, preparation::LiveEffectRequest::Remove(_)));
+        let defer_controls = live_effect.as_ref().is_some_and(|effect| {
+            matches!(
+                effect.edit,
+                preparation::LiveEffectRequest::Remove(_) | preparation::LiveEffectRequest::Move(_)
+            )
+        });
         if request.is_some_and(|request| !request.state.playing) {
             self.resume_needs_preparation = true;
         }
@@ -1014,7 +1024,7 @@ impl AudioOutput {
         self.pending_controls = None;
         self.pending_effects = None;
         self.effect_error = None;
-        if !live_removal {
+        if !defer_controls {
             self.submit_control_update(true);
         }
     }
@@ -1051,26 +1061,41 @@ impl AudioOutput {
             && transport.is_none()
             && self.status.playing.load(Ordering::Acquire)
             && self.current_plan_published();
-        let live_effect = (live
-            && plan.project.all_effects().count() == self.plan.project.all_effects().count() + 1
-            && (plan.project.hosted_units().len() == self.plan.project.hosted_units().len() + 1
-                || plan.latency_effect_count() == self.plan.latency_effect_count() + 1))
-            .then(|| preparation::LiveEffectBase {
-                publication: self.active_publication,
-                edit: preparation::LiveEffectRequest::Effect(self.plan.clone()),
+        let live_edit = live
+            .then(|| {
+                use preparation::LiveEffectRequest::*;
+                let before = self.plan.project.all_effects().count();
+                let after = plan.project.all_effects().count();
+                if after == before {
+                    return self
+                        .plan
+                        .needs_live_effect_move(&plan)
+                        .then(|| Move(self.plan.clone()));
+                }
+                let old_native = self.plan.project.hosted_units().len();
+                let new_native = plan.project.hosted_units().len();
+                let old_delayed = self.plan.latency_effect_count();
+                let new_delayed = plan.latency_effect_count();
+                if after == before + 1
+                    && (new_native == old_native + 1
+                        || (new_native == 0 && new_delayed == old_delayed + 1))
+                {
+                    Some(Effect(self.plan.clone()))
+                } else if after > before && (new_native != 0 || new_delayed > old_delayed) {
+                    Some(Additions(self.plan.clone()))
+                } else if before == after + 1
+                    && (old_native == new_native + 1 || old_delayed == new_delayed + 1)
+                {
+                    Some(Remove(self.plan.clone()))
+                } else {
+                    None
+                }
             })
-            .or_else(|| {
-                (live
-                    && self.plan.project.all_effects().count()
-                        == plan.project.all_effects().count() + 1
-                    && (self.plan.project.hosted_units().len()
-                        == plan.project.hosted_units().len() + 1
-                        || self.plan.latency_effect_count() == plan.latency_effect_count() + 1))
-                    .then(|| preparation::LiveEffectBase {
-                        publication: self.active_publication,
-                        edit: preparation::LiveEffectRequest::Remove(self.plan.clone()),
-                    })
-            });
+            .flatten();
+        let live_effect = live_edit.map(|edit| preparation::LiveEffectBase {
+            publication: self.active_publication,
+            edit,
+        });
         self.plan = Arc::new(plan);
         self.saturator_flight = None;
         match edit {
@@ -1922,7 +1947,7 @@ impl Callback {
                             break;
                         }
                     }
-                    if next.is_live_removal()
+                    if next.needs_native_boundary()
                         && next
                             .live_effect
                             .is_some_and(|edit| edit.base_publication == self.renderer.publication)
@@ -2011,9 +2036,11 @@ impl Callback {
                     next.try_insert_hosted_effect(&mut self.renderer, unit)
                 }
                 LiveEffectKind::Builtin(_) => next.try_insert_builtin_effect(&mut self.renderer),
+                LiveEffectKind::Additions => next.try_insert_effect_group(&mut self.renderer),
                 LiveEffectKind::Remove(unit) => {
                     next.try_remove_effect_live(&mut self.renderer, unit)
                 }
+                LiveEffectKind::Move => next.try_move_effects_live(&mut self.renderer),
                 LiveEffectKind::UnverifiedRemoval => false,
             }
         {
@@ -2081,7 +2108,7 @@ impl Callback {
         let mut next = self.scheduled.take().unwrap();
         if stale {
             let _ = self.retired.push(next);
-        } else if next.is_live_removal() {
+        } else if next.needs_native_boundary() {
             if self.inherit_plan(&mut next) {
                 self.install(next);
             } else {

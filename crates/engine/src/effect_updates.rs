@@ -10,6 +10,22 @@ pub enum MidiOutputSaturatorEdit {
 }
 
 impl RenderPlan {
+    /// Latency-neutral built-ins already use the smaller effect transaction.
+    pub fn needs_live_effect_move(&self, next: &Self) -> bool {
+        let hosted = !self.project.hosted_units().is_empty();
+        let rate = self.project.sample_rate_hz;
+        self.project
+            .effect_chains()
+            .zip(next.project.effect_chains())
+            .any(|((owner, before), (destination, after))| {
+                owner == destination
+                    && !before.iter().map(|e| e.id).eq(after.iter().map(|e| e.id))
+                    && (hosted
+                        || super::latency::chain_frames(before, rate)
+                            != super::latency::chain_frames(after, rate))
+            })
+    }
+
     /// Match one deletion and return the native unit identity when it was hosted.
     pub fn live_effect_removed(&self, next: &Self) -> Option<Option<Id>> {
         if self.external.offline
@@ -230,6 +246,108 @@ enum Owner {
     Master,
     Track(usize),
     Layer(usize, usize),
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct EffectMove {
+    from: Owner,
+    old_slot: usize,
+    to: Owner,
+    new_slot: usize,
+}
+
+fn same_effect_context(old: &RenderPlan, desired: &RenderPlan) -> bool {
+    if old.external.offline
+        || desired.external.offline
+        || old.external.publish != desired.external.publish
+    {
+        return false;
+    }
+    match (&old.external.host, &desired.external.host) {
+        (Some(a), Some(b)) if std::sync::Arc::ptr_eq(a, b) => {}
+        (None, None) => {}
+        _ => return false,
+    }
+    let mut a = old.clone();
+    let mut b = desired.clone();
+    clear_effects(&mut a.project);
+    clear_effects(&mut b.project);
+    a.same_processing_plan(&b)
+}
+
+/// Verify that every existing effect stays in its original chain and order.
+pub(super) fn prepare_additions(old: &RenderPlan, desired: &RenderPlan) -> Option<Vec<Id>> {
+    if !same_effect_context(old, desired) {
+        return None;
+    }
+    let mut native = Vec::new();
+    let mut added = false;
+    for ((from, before), (to, after)) in owners(&old.project)
+        .into_iter()
+        .zip(owners(&desired.project))
+    {
+        if from != to {
+            return None;
+        }
+        let mut existing = before.iter().peekable();
+        for effect in after {
+            if existing.peek() == Some(&effect) {
+                existing.next();
+            } else {
+                added = true;
+                if let EffectSettings::Hosted(settings) = &effect.unit {
+                    native.push(settings.id);
+                }
+            }
+        }
+        if existing.next().is_some() {
+            return None;
+        }
+    }
+    added.then_some(native)
+}
+
+pub(super) fn prepare_moves(old: &RenderPlan, desired: &RenderPlan) -> Option<Vec<EffectMove>> {
+    if !same_effect_context(old, desired) {
+        return None;
+    }
+    let old = owners(&old.project);
+    let next = owners(&desired.project);
+    if old == next {
+        return None;
+    }
+    let mut slots: HashMap<_, _> = old
+        .iter()
+        .flat_map(|(owner, effects)| {
+            effects
+                .iter()
+                .enumerate()
+                .map(|(slot, unit)| (unit.id, (*owner, slot, unit)))
+        })
+        .collect();
+    let mut moves = Vec::new();
+    for (to, effects) in next {
+        for (new_slot, effect) in effects.iter().enumerate() {
+            let (from, old_slot, before) = slots.remove(&effect.id)?;
+            if before != effect {
+                return None;
+            }
+            if from != to
+                && !matches!(
+                    effect.unit,
+                    EffectSettings::Hosted(_) | EffectSettings::Missing { .. }
+                )
+            {
+                moves.push(EffectMove {
+                    from,
+                    old_slot,
+                    to,
+                    new_slot,
+                });
+            }
+        }
+    }
+    (slots.is_empty() && moves.len() <= 4096).then_some(moves)
 }
 
 struct ChainUpdate {
@@ -780,6 +898,28 @@ impl Renderer {
                     .expect("prepared instrument")
                     .layer_effects[l]
                     .chain
+            }
+        }
+    }
+
+    pub(super) fn inherit_effect_moves(&mut self, old: &mut Self) {
+        let count = self.effect_moves.as_ref().map_or(0, Vec::len);
+        for index in 0..count {
+            let EffectMove {
+                from,
+                old_slot,
+                to,
+                new_slot,
+            } = self.effect_moves.as_ref().expect("prepared moves")[index];
+            let previous = old.effect_chain_mut(from);
+            let next = self.effect_chain_mut(to);
+            std::mem::swap(&mut previous.units[old_slot].1, &mut next.units[new_slot].1);
+            if let (Some(old), Some(next)) = (
+                &mut previous.output_taps[old_slot],
+                &mut next.output_taps[new_slot],
+            ) {
+                old.retarget(next);
+                std::mem::swap(old, next);
             }
         }
     }

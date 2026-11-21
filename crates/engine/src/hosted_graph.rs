@@ -483,11 +483,16 @@ impl HostedGraph {
                 .all(|node| previous.native().any(|old| node.compatible(old)))
     }
     pub fn can_insert(&self, inserted: Id, previous: Option<&Self>) -> bool {
-        self.native().any(|node| node.id == inserted)
-            && self.native().count() == previous.map_or(0, |g| g.native().count()) + 1
+        self.can_insert_group(&[inserted], previous)
+    }
+    pub fn can_insert_group(&self, inserted: &[Id], previous: Option<&Self>) -> bool {
+        inserted
+            .iter()
+            .all(|id| self.native().any(|node| node.id == *id))
+            && self.native().count() == previous.map_or(0, |g| g.native().count()) + inserted.len()
             && self
                 .nodes()
-                .filter(|node| node.native.id != inserted)
+                .filter(|node| !inserted.contains(&node.native.id))
                 .all(|node| {
                     previous.is_some_and(|graph| {
                         graph.nodes().any(|old| {

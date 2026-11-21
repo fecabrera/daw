@@ -19,6 +19,78 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Fast effect duplication — 2026-11-21
+
+The release probe used the same temporary project copy and the MacBook Pro
+speakers at 48 kHz and 512 frames. It duplicated effects at the end of the
+MIDI 4 Output chain during playback. One Saturator copy added 32 frames
+(0.67 ms) of compensation. Two copies added 64 frames (1.33 ms). The mixed
+case copied one built-in Saturator while a CLAP Saturator was active in the
+chain. Cache warming was disabled. Each time is the median of five trials
+from the copy request to audio callback publication.
+
+| Effect copied | Count | Fast at 4 s | Fast at 24 s | Exact at 4 s | Exact at 24 s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Built-in Saturator | 1 | 7.47 ms | 7.53 ms | 543 ms | 2.46 s |
+| Built-in Saturator | 2 | 7.35 ms | 7.29 ms | 586 ms | 2.73 s |
+| Built-in Saturator with CLAP active | 1 | 18.59 ms | 18.70 ms | 1.45 s | 7.97 s |
+| Saturator CLAP | 1 | 29.26 ms | 29.45 ms | 1.41 s | 7.46 s |
+| Saturator CLAP | 2 | 50.85 ms | 50.85 ms | 1.69 s | 8.67 s |
+
+No Fast trial fell back to history reconstruction. The device callback
+recorded no overruns during these trials. The device probe measures audio
+publication through the normal model edit and output paths. It does not
+measure pointer input or speaker output.
+
+The controlled output test verifies a 64-frame compensation increase with
+uninterrupted held notes and a decaying Plate Reverb tail. CLAP and VST3
+fixtures duplicate a mixed native and built-in selection from a project with
+stale saved latency metadata. They verify that the handoff keeps already
+evaluated native audio, held notes and the original reverb tail. A callback
+heap guard covers the handoffs and sample processing.
+
+The debug and release workspace suites each passed 3,670 tests with 22
+ignored. Both excluded the known macOS Audio Unit registration case.
+Formatting, strict workspace Clippy, CLI smoke checks and macOS debug bundle
+signature verification also passed.
+
+## Fast effect moves and reorders — 2026-11-21
+
+- The built-in tests compare moves that increase and decrease compensation
+  with uninterrupted playback. They check held MIDI notes and a remaining
+  reverb tail. A separate test moves a reverb while its tail is decaying
+  and compares that tail with a continuous reference. CLAP and VST3 fixtures
+  test the native block boundary and the delayed handoff. The callback heap
+  guard covers the transfer and sample processing.
+- The release probe used the same project copy at 48 kHz and 512 frames on
+  the MacBook Pro speakers. It put a 32-frame Saturator on MIDI 1 Output as
+  well as the effect under test on MIDI 4 Output. Moving the effect under
+  test to Master increased overall compensation from 32 to 64 frames.
+  Reordering it ahead of Drive V2 in MIDI 4 Output kept total compensation.
+  Each cell is the median of five trials from the edit request to callback
+  publication. Optional cache warming was disabled.
+
+  | Effect | Edit | Playback position | Fast | Exact |
+  | --- | --- | --- | ---: | ---: |
+  | Built-in Saturator | Move to Master | About 4 s | 17.49 ms | 575.47 ms |
+  | Built-in Saturator | Move to Master | About 24 s | 17.49 ms | 2,772.85 ms |
+  | Saturator CLAP | Move to Master | About 4 s | 18.72 ms | 1,377.33 ms |
+  | Saturator CLAP | Move to Master | About 24 s | 18.74 ms | 7,435.32 ms |
+  | Built-in Saturator | Reorder on Output | About 4 s | 6.82 ms | 6.81 ms |
+  | Built-in Saturator | Reorder on Output | About 24 s | 7.32 ms | 6.77 ms |
+  | Saturator CLAP | Reorder on Output | About 4 s | 18.71 ms | 28.86 ms |
+  | Saturator CLAP | Reorder on Output | About 24 s | 18.59 ms | 18.69 ms |
+
+- None of the Fast edits required history replay. Neither mode needed
+  replay for the tested same-chain reorders. The callback overrun counter
+  did not change in the 80 trials. The probe excludes editor input, repaint
+  and physical output latency.
+- Formatting, strict Clippy, the CLI smoke check, and the native CLAP and
+  VST3 fixture checks passed. The debug and release workspace suites each
+  passed 3,669 tests with 22 ignored. Both excluded the known macOS Audio
+  Unit registration case. The rebuilt macOS debug bundle passed signature
+  verification.
+
 ## Fast effect removal — 2026-11-21
 
 - Output and delay tests verify that the shorter compensation retains queued
