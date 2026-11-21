@@ -33,6 +33,7 @@ pub enum PreparationMode {
 }
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PreparationStats {
+    pub reused_prefix_frames: u64,
     pub parallel_blocks: u64,
     pub serial_blocks: u64,
     pub parallel_bytes: u64,

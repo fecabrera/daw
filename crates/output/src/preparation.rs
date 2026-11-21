@@ -119,13 +119,44 @@ pub(super) struct Anchor {
     pub clock: u64,
 }
 enum Request {
-    Warm(Arc<RenderPlan>),
+    Warm(Arc<RenderPlan>, Option<Arc<RenderPlan>>),
     Plan(
         Arc<RenderPlan>,
         Option<daw_engine::TransportState>,
         std::time::Instant,
+        Option<Arc<RenderPlan>>,
     ),
     Prepared(Box<PreparedRenderer>, Anchor),
+}
+
+fn resolve_cache_plan(
+    beat_plans: &mut BeatPlans,
+    cached_plan: &mut Option<Arc<RenderPlan>>,
+    cache: &mut Option<daw_engine::TransportCache>,
+    plan: Arc<RenderPlan>,
+    predecessor: Option<Arc<RenderPlan>>,
+    previous_was_donor: bool,
+) -> (Arc<RenderPlan>, bool) {
+    let matches_predecessor = predecessor.is_some_and(|predecessor| {
+        cache
+            .as_ref()
+            .is_some_and(|cache| cache.matches_predecessor(&beat_plans.resolve(predecessor)))
+    });
+    let plan = beat_plans.resolve(plan);
+    let retained = matches_predecessor
+        && cache
+            .as_ref()
+            .is_some_and(|cache| cache.can_retain_for_append(&plan));
+    if !retained
+        && (previous_was_donor
+            || cached_plan
+                .as_ref()
+                .is_none_or(|p| !Arc::ptr_eq(p, &plan) && !p.same_processing_plan(&plan)))
+    {
+        *cache = None;
+    }
+    *cached_plan = Some(plan.clone());
+    (plan, retained)
 }
 #[derive(Default)]
 struct State {
@@ -148,16 +179,17 @@ impl Worker {
                 let mut cached_plan: Option<Arc<RenderPlan>> = None;
                 let mut beat_plans = BeatPlans::default();
                 let mut cache: Option<daw_engine::TransportCache> = None;
+                let mut donor_revision = None;
                 let mut needs_cache = false;
                 let mut applied_controls = 0;
                 let mut schedule = WarmSchedule::default();
                 'requests: loop {
-                    let (request, controls) = {
+                    let (request, controls, latest) = {
                         let (lock, wake) = &*worker;
                         let mut state = lock.lock().unwrap();
                         while state.request.is_none() && !state.closed {
-                            let can_warm =
-                                needs_cache || cache.as_ref().is_some_and(|c| c.can_warm());
+                            let can_warm = donor_revision.is_none()
+                                && (needs_cache || cache.as_ref().is_some_and(|c| c.can_warm()));
                             let delay = schedule.delay(
                                 state.cache_controls,
                                 status.playing.load(Ordering::Relaxed),
@@ -166,6 +198,7 @@ impl Worker {
                             );
                             if state.cache_controls.revision != applied_controls
                                 || (can_warm && delay.is_zero())
+                                || donor_revision.is_some_and(|revision| revision != state.revision)
                             {
                                 break;
                             }
@@ -183,7 +216,7 @@ impl Worker {
                         if state.closed {
                             return;
                         }
-                        (state.request.take(), state.cache_controls)
+                        (state.request.take(), state.cache_controls, state.revision)
                     };
                     if applied_controls != controls.revision {
                         if let Some(cache) = &mut cache {
@@ -194,6 +227,15 @@ impl Worker {
                     }
                     let policy = controls.profile.policy();
                     let Some((revision, plan, previous)) = request else {
+                        if let Some(donor) = donor_revision {
+                            if donor != latest {
+                                donor_revision = None;
+                                cache = None;
+                                cached_plan = None;
+                                status.performance.cache(Default::default());
+                            }
+                            continue;
+                        }
                         if schedule
                             .delay(
                                 controls,
@@ -237,34 +279,40 @@ impl Worker {
                         }
                         continue;
                     };
+                    let mut allow_checkpoint_reuse = false;
                     let (mut renderer, bindings, transport, anchor) = match plan {
-                        Request::Warm(plan) => {
-                            let plan = beat_plans.resolve(plan);
-                            if cached_plan
-                                .as_ref()
-                                .is_none_or(|p| !p.same_processing_plan(&plan))
-                            {
-                                cache = None;
-                                status.performance.cache(Default::default());
-                                cached_plan = Some(plan);
-                            }
+                        Request::Warm(plan, predecessor) => {
+                            let (_, retained) = resolve_cache_plan(
+                                &mut beat_plans,
+                                &mut cached_plan,
+                                &mut cache,
+                                plan,
+                                predecessor,
+                                donor_revision.take().is_some(),
+                            );
+                            donor_revision = retained.then_some(revision);
                             needs_cache = cache.is_none()
                                 && cached_plan
                                     .as_ref()
                                     .is_some_and(|p| p.project.hosted_units().is_empty());
-                            if let Some(cache) = &cache {
-                                status.performance.cache(cache.memory_usage());
-                            }
+                            status.performance.cache(cache.as_ref().map_or_else(
+                                Default::default,
+                                daw_engine::TransportCache::memory_usage,
+                            ));
                             continue;
                         }
-                        Request::Plan(plan, transport, requested_at) => {
-                            let plan = beat_plans.resolve(plan);
-                            if cached_plan.as_ref().is_none_or(|p| {
-                                !Arc::ptr_eq(p, &plan) && !p.same_processing_plan(&plan)
-                            }) {
-                                cache = None;
+                        Request::Plan(plan, transport, requested_at, predecessor) => {
+                            let (plan, retained) = resolve_cache_plan(
+                                &mut beat_plans,
+                                &mut cached_plan,
+                                &mut cache,
+                                plan,
+                                predecessor,
+                                donor_revision.take().is_some(),
+                            );
+                            donor_revision = retained.then_some(revision);
+                            if cache.is_none() {
                                 status.performance.cache(Default::default());
-                                cached_plan = Some(plan.clone());
                             }
                             let bindings = Bindings::prepare(&plan, &previous);
                             let renderer = match PreparedRenderer::try_new(
@@ -274,6 +322,7 @@ impl Worker {
                                 Ok(renderer) => Box::new(renderer),
                                 Err(error) => {
                                     cache = None;
+                                    donor_revision = None;
                                     needs_cache = false;
                                     status.performance.cache(Default::default());
                                     publish_error(&worker, revision, error);
@@ -281,10 +330,12 @@ impl Worker {
                                 }
                             };
                             let mut renderer = renderer;
+                            renderer.allow_checkpoint_reuse = retained;
                             renderer.requested_at = Some(requested_at);
                             (renderer, bindings, transport, None)
                         }
                         Request::Prepared(renderer, anchor) => {
+                            allow_checkpoint_reuse = renderer.allow_checkpoint_reuse;
                             let lead = renderer.preparation_lead;
                             let requested_at = renderer.requested_at;
                             // Reconstruct unbound DSP so worker pre-roll cannot write active meters.
@@ -298,6 +349,7 @@ impl Worker {
                                     Ok(renderer) => Box::new(renderer),
                                     Err(error) => {
                                         cache = None;
+                                        donor_revision = None;
                                         needs_cache = false;
                                         status.performance.cache(Default::default());
                                         publish_error(&worker, revision, error);
@@ -329,18 +381,38 @@ impl Worker {
                                 }
                             }
                         } else {
-                            let cache = cache.get_or_insert_with(|| {
-                                daw_engine::TransportCache::with_profile(
-                                    renderer.plan.clone(),
-                                    controls.profile,
-                                )
-                            });
-                            let Some(prepared) = cache.prepare(transport, || {
+                            let cancelled = || {
                                 let state = worker.0.lock().unwrap();
                                 state.closed || state.revision != revision
-                            }) else {
+                            };
+                            let prepared = if let Some(donor) = donor_revision.take()
+                                && let Some(predecessor) = cache.take()
+                            {
+                                let (next, prepared) =
+                                    daw_engine::TransportCache::prepare_with_predecessor(
+                                        &renderer.renderer,
+                                        transport,
+                                        controls.profile,
+                                        predecessor,
+                                        allow_checkpoint_reuse && donor == revision,
+                                        cancelled,
+                                    );
+                                cache = Some(next);
+                                prepared
+                            } else {
+                                cache
+                                    .get_or_insert_with(|| {
+                                        daw_engine::TransportCache::with_profile(
+                                            renderer.plan.clone(),
+                                            controls.profile,
+                                        )
+                                    })
+                                    .prepare(transport, cancelled)
+                            };
+                            let Some(prepared) = prepared else {
                                 continue;
                             };
+                            let cache = cache.as_ref().expect("cache used for preparation");
                             status.performance.cache(cache.memory_usage());
                             renderer.renderer = prepared;
                         }
@@ -508,23 +580,35 @@ impl Worker {
         }
     }
     pub fn prewarm(&self, plan: Arc<RenderPlan>) {
-        let previous = {
+        self.submit_warm(plan, None);
+    }
+    fn submit_warm(&self, plan: Arc<RenderPlan>, predecessor: Option<Arc<RenderPlan>>) -> u64 {
+        let (previous, revision) = {
             let mut state = self.0.0.lock().unwrap();
             state.revision += 1;
             state.error = None;
             state.cache_controls.last_activity = Some(std::time::Instant::now());
             let revision = state.revision;
-            state
-                .request
-                .replace((revision, Request::Warm(plan), Bindings::default()))
+            (
+                state.request.replace((
+                    revision,
+                    Request::Warm(plan, predecessor),
+                    Bindings::default(),
+                )),
+                revision,
+            )
         };
         self.0.1.notify_one();
         drop(previous);
+        revision
     }
     /// Invalidate exact-history coverage and cancel stale reconstruction after a live edit.
-    pub fn update_effect_cache(&self, plan: Arc<RenderPlan>) -> u64 {
-        self.prewarm(plan);
-        self.0.0.lock().unwrap().revision
+    pub fn update_effect_cache(
+        &self,
+        plan: Arc<RenderPlan>,
+        predecessor: Option<Arc<RenderPlan>>,
+    ) -> u64 {
+        self.submit_warm(plan, predecessor)
     }
     pub fn set_waker(&self, wake: impl Fn() + Send + Sync + 'static) {
         let mut state = self.0.0.lock().unwrap();
@@ -538,6 +622,23 @@ impl Worker {
         previous: Bindings,
         transport: Option<daw_engine::TransportState>,
     ) -> u64 {
+        self.submit_plan(plan.into(), previous, transport, None)
+    }
+    pub fn submit_append(
+        &self,
+        plan: Arc<RenderPlan>,
+        previous: Bindings,
+        predecessor: Arc<RenderPlan>,
+    ) -> u64 {
+        self.submit_plan(plan, previous, None, Some(predecessor))
+    }
+    fn submit_plan(
+        &self,
+        plan: Arc<RenderPlan>,
+        previous: Bindings,
+        transport: Option<TransportState>,
+        predecessor: Option<Arc<RenderPlan>>,
+    ) -> u64 {
         let (request, ready, revision) = {
             let mut state = self.0.0.lock().unwrap();
             state.revision += 1;
@@ -547,7 +648,7 @@ impl Worker {
             (
                 state.request.replace((
                     revision,
-                    Request::Plan(plan.into(), transport, std::time::Instant::now()),
+                    Request::Plan(plan, transport, std::time::Instant::now(), predecessor),
                     previous,
                 )),
                 state.ready.take(),
@@ -575,6 +676,7 @@ impl Worker {
             state.revision += 1;
             (state.revision, state.request.take(), state.ready.take())
         };
+        self.0.1.notify_one();
         drop((request, ready));
         revision
     }

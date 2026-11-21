@@ -154,10 +154,15 @@ owned accounting. Shared-media owner accounting remains outside audio.
 
 ## Exact caches and diagnostics
 
-Every processing edit invalidates exact DSP checkpoints through the existing
-strict plan comparison. Optional warming follows the new desired plan and yields
-to editing. PCM, peaks and valid prepared media stay shared. Never seed exact
-checkpoints from histories accumulated through live edits.
+Processing edits invalidate whole-plan DSP checkpoints through the strict plan
+comparison. A guarded top-level MIDI Instrument Output Saturator append can
+hold one predecessor cache through its preparation revision and transfer
+unchanged root state. It replays the changed root and repairs outgoing delays
+before the usual sample-clocked install. Drive edits during that flight still
+coalesce through the existing control path. Optional warming follows the new
+desired plan and yields to editing. PCM, peaks and valid prepared media stay
+shared. Never seed exact checkpoints from histories accumulated through live
+edits. [Checkpoint reuse and fallback](performance.md#idle-coverage-and-exact-reuse)
 
 Future seeks/starts reconstruct the captured desired settings through the normal
 renderer/cache path. Offline export uses that same saved model and DSP. Continuous

@@ -28,6 +28,13 @@ impl Delay {
         self.index = 0;
     }
 
+    /// Set the cursor of an empty ring after a linear prefix of this length.
+    pub fn skip_reset_prefix(&mut self, frames: u64) {
+        if !self.samples.is_empty() {
+            self.index = (frames % self.samples.len() as u64) as usize;
+        }
+    }
+
     pub fn tick(&mut self, sample: Sample) -> Sample {
         if self.samples.is_empty() {
             return sample;

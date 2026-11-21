@@ -1378,6 +1378,13 @@ impl Renderer {
     pub fn has_live_midi_routes(&self) -> bool {
         self.midi.iter().flatten().any(|r| r.live_enabled())
     }
+    pub fn allows_checkpoint_reuse(&self) -> bool {
+        self.playing
+            && !self.paused
+            && !self.recording
+            && !self.has_live_midi_routes()
+            && !self.live_midi_active()
+    }
     pub fn live_midi_note(&mut self, token: Id, attack: Option<(u8, u8)>) -> bool {
         let mut ready = true;
         for runtime in self.midi.iter_mut().flatten() {

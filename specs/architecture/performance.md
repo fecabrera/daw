@@ -85,7 +85,30 @@ Completed checkpoints survive cancellation and profile switches. A smaller profi
 
 Checkpoint spacing is the greater of the profile minimum and arrangement duration divided by available slots. Slot selection also reserves four renderer equivalents within the existing 512 MiB preparation allowance for base, warm cursor, active state and candidate. A large renderer can leave zero optional slots. Exact preparation still works without checkpoints. The allowance sizes optional storage; it is not a combined process memory reservation. Profile changes do not discard required DSP history or substitute approximate processing. No cache data is saved to the project.
 
-The output worker reuses a cache for the same plan allocation or a structurally equal plan with the same prepared sample allocations and rates. Only the requested playhead is excluded from project comparison. Note, source, effect, route, tempo, loop and other project edits invalidate the cache conservatively. Equal sample values in a new allocation do not establish compatibility. Live/paused and stopped reconstruction use different loop rules and invalidate each other's checkpoints. No cache data is saved to the project.
+The output worker reuses a whole cache for the same plan allocation or a
+structurally equal plan with the same prepared sample allocations and rates.
+Plan comparison ignores the requested playhead, markers and group disclosure.
+Note, source, effect, route, tempo and loop edits invalidate whole-plan reuse.
+Live/paused and stopped reconstruction use different loop rules and invalidate
+each other's checkpoints.
+
+A single Saturator append to a top-level MIDI Instrument Output can borrow
+unchanged root state from the acknowledged predecessor's completed live
+checkpoint. The preparation worker retains that cache through the append
+request. At the playback anchor it takes at most one useful checkpoint and
+releases the predecessor cache before building the new cache. The guard requires
+the same prepared inputs and root order, resident built-in processing, unchanged
+internal delay edges and an empty Master chain. Sends, Returns, sidechains,
+unknown units, active live MIDI and recording use ordinary exact preparation.
+Light also uses ordinary exact preparation.
+
+The worker replays the edited root from reset and transfers unchanged
+subtree state at the checkpoint. It resumes ordinary replay in project order
+and fills each changed outgoing root delay with the new graph's exact history.
+It waits one further frame after the longest new delay fills before publishing
+another checkpoint. It then primes latency and catches up at the existing
+project sample clock. Missing, incompatible or over-budget history uses normal
+exact preparation. Superseded requests release retained state on the worker.
 
 The accepted F05 policy preserves exact history. No timeout switches to approximate processing. A cold or uncovered seek still needs history work; a worker that cannot outrun playback can leave an incompatible edit pending while old audio continues. `PerformanceSnapshot` records completed request-to-activation durations in logarithmic microsecond buckets and an exact maximum, including worker and delivery time. It also reports warm coverage and frames replayed by the last cached preparation. Cancelled/uncompleted requests are not duration samples. Native end-to-end percentiles under load remain a separate measurement task.
 

@@ -127,6 +127,7 @@ struct PreparedRenderer {
     publication: u64,
     prepared_transport: bool,
     reprepare: Option<preparation::Anchor>,
+    allow_checkpoint_reuse: bool,
     activate_at: Option<u64>,
     preparation_lead: u64,
     ready_at: Option<std::time::Instant>,
@@ -164,6 +165,7 @@ impl PreparedRenderer {
             publication: 0,
             prepared_transport: false,
             reprepare: None,
+            allow_checkpoint_reuse: false,
             activate_at: None,
             preparation_lead: 0,
             ready_at: None,
@@ -917,9 +919,18 @@ impl AudioOutput {
             self.resume_needs_preparation = true;
         }
         self.preparation_failed = false;
-        self.prepare_revision =
+        self.prepare_revision = if let Some(predecessor) = self.append_predecessor()
+            && state.is_none()
+        {
+            self.preparation.submit_append(
+                self.dispatched_plan().clone(),
+                self.bindings.clone(),
+                predecessor,
+            )
+        } else {
             self.preparation
-                .submit(self.dispatched_plan().clone(), self.bindings.clone(), state);
+                .submit(self.dispatched_plan().clone(), self.bindings.clone(), state)
+        };
         self.status
             .requested_revision
             .store(self.prepare_revision, Ordering::Release);
@@ -997,7 +1008,7 @@ impl AudioOutput {
         };
         self.prepare_revision = self
             .preparation
-            .update_effect_cache(self.dispatched_plan().clone());
+            .update_effect_cache(self.dispatched_plan().clone(), self.append_predecessor());
         self.status
             .requested_revision
             .store(self.prepare_revision, Ordering::Release);
@@ -1025,6 +1036,12 @@ impl AudioOutput {
         self.saturator_flight
             .as_ref()
             .map_or(&self.plan, |flight| &flight.submitted)
+    }
+    fn append_predecessor(&self) -> Option<Arc<RenderPlan>> {
+        self.saturator_flight
+            .as_ref()
+            .filter(|flight| !flight.controls_only)?;
+        self.active_plan.clone()
     }
     fn saturator_controls_only(&self) -> bool {
         self.saturator_flight
@@ -1784,6 +1801,8 @@ impl Callback {
                     } else {
                         // Rebuild at this exact clock, then catch up on the worker.
                         // The current renderer keeps playing throughout preparation.
+                        next.allow_checkpoint_reuse =
+                            next.allow_checkpoint_reuse && self.renderer.allows_checkpoint_reuse();
                         next.reprepare = Some(self.preparation_anchor());
                         let _ = self.retired.push(next);
                         continue;

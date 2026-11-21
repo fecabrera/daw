@@ -51,6 +51,15 @@ pub struct TransportCache {
     covered_frame: u64,
     replayed_frames: u64,
 }
+
+/// A complete pre-prime checkpoint owned by the preparation worker.
+struct AppendCheckpoint {
+    renderer: Renderer,
+    frame: u64,
+    edited: usize,
+    repair: u64,
+}
+
 impl TransportCache {
     pub fn new(plan: RenderPlan) -> Self {
         Self::with_profile(plan, CacheProfile::default())
@@ -317,6 +326,201 @@ impl TransportCache {
         self.configure();
     }
 
+    /// Check the prepared append again after Beat lowering. A new effect ID
+    /// can change generated IDs, so logical edit classification alone is insufficient.
+    pub fn matches_predecessor(&self, plan: &RenderPlan) -> bool {
+        self.live
+            && !self.checkpoints.is_empty()
+            && self.base.plan.same_checkpoint_plan(plan, |_| {})
+            && self.base.plan.external.offline == plan.external.offline
+            && self.base.plan.external.publish == plan.external.publish
+    }
+
+    fn append_track(&self, next: &RenderPlan) -> Option<usize> {
+        use super::MidiOutputSaturatorEdit;
+        let Some(MidiOutputSaturatorEdit::Append(_)) = self.base.plan.midi_output_edit(next) else {
+            return None;
+        };
+        let index = self
+            .base
+            .plan
+            .project
+            .tracks
+            .iter()
+            .zip(&next.project.tracks)
+            .position(|(before, after)| before != after)?;
+        let before = &self.base.plan.project.tracks[index]
+            .instrument
+            .as_ref()?
+            .main;
+        (next.project.tracks[index].group_id.is_none()
+            && self.base.plan.same_checkpoint_plan(next, |project| {
+                let output = &mut project.tracks[index].instrument.as_mut().unwrap().main;
+                output.effects.pop();
+                output.component_order.clone_from(&before.component_order);
+            }))
+        .then_some(index)
+    }
+
+    pub fn can_retain_for_append(&self, next: &RenderPlan) -> bool {
+        self.live
+            && !self.checkpoints.is_empty()
+            && next.project.tracks.len() > 1
+            && self.append_track(next).is_some()
+    }
+
+    /// Take one donor and retire the predecessor cache before allocating the new cache.
+    fn take_append_checkpoint(
+        mut self,
+        next: &Renderer,
+        state: TransportState,
+        profile: CacheProfile,
+    ) -> Option<AppendCheckpoint> {
+        if !state.playing
+            || state.paused
+            || !self.live
+            || profile == CacheProfile::Light
+            || !Self::independent_resident(&self.base)
+            || !Self::independent_resident(next)
+            || !next.plan.project.master.effects.is_empty()
+            || !next.alignment.captured_sends.is_empty()
+            || next
+                .plan
+                .project
+                .all_effects()
+                .any(|effect| matches!(effect.unit, daw_core::EffectSettings::Missing { .. }))
+        {
+            return None;
+        }
+        let edited = self.append_track(&next.plan)?;
+        let old = &self.base.alignment;
+        let new = &next.alignment;
+        let mut repair = 1;
+        for (index, track) in next.plan.project.tracks.iter().enumerate() {
+            if index == edited {
+                continue;
+            }
+            if old.input_frames[index] != new.input_frames[index]
+                || old.node_frames[index] != new.node_frames[index]
+            {
+                return None;
+            }
+            let old_delay = old.tracks[index].frames();
+            let new_delay = new.tracks[index].frames();
+            if old_delay != new_delay {
+                if track.group_id.is_some() {
+                    return None;
+                }
+                repair = repair.max(new_delay as u64 + 1);
+            }
+        }
+        let donor_bytes = self.renderer_memory.owned_bytes();
+        if donor_bytes > profile.policy().checkpoint_bytes
+            || donor_bytes.saturating_add(next.memory_usage().owned_bytes().saturating_mul(4))
+                > PREPARATION_BYTES
+        {
+            return None;
+        }
+        let (index, _) = self
+            .checkpoints
+            .iter()
+            .enumerate()
+            .filter(|(_, (frame, _))| {
+                *frame >= GRAIN && frame.saturating_add(repair) <= state.frame
+            })
+            .max_by_key(|(_, (frame, _))| *frame)?;
+        let (frame, renderer) = self.checkpoints.swap_remove_back(index)?;
+        Some(AppendCheckpoint {
+            renderer,
+            frame,
+            edited,
+            repair,
+        })
+    }
+
+    /// Reconstruct the changed root from reset, then resume ordinary replay
+    /// once every donated delay edge contains the new graph's exact history.
+    fn prepare_append(
+        &mut self,
+        state: TransportState,
+        checkpoint: AppendCheckpoint,
+        mut cancelled: impl FnMut() -> bool,
+    ) -> Option<Renderer> {
+        let AppendCheckpoint {
+            renderer: mut donor,
+            frame,
+            edited,
+            repair,
+        } = checkpoint;
+        let mut renderer = self.base.snapshot()?;
+        let block = u64::from(renderer.plan.project.buffer_size_frames.max(1));
+        let region = renderer.loop_region(true);
+        renderer.suspend_analysis(true);
+        for at in 0..frame {
+            if at.is_multiple_of(block) && cancelled() {
+                return None;
+            }
+            renderer.sample_leaf(edited, at, region, true, false, false);
+        }
+        for index in 0..renderer.plan.project.tracks.len() {
+            if index == edited {
+                continue;
+            }
+            std::mem::swap(
+                &mut renderer.audio_tracks[index],
+                &mut donor.audio_tracks[index],
+            );
+            std::mem::swap(&mut renderer.midi[index], &mut donor.midi[index]);
+            std::mem::swap(&mut renderer.effects[index], &mut donor.effects[index]);
+            std::mem::swap(&mut renderer.gains[index], &mut donor.gains[index]);
+            let delay = &mut renderer.alignment.tracks[index];
+            if delay.frames() == donor.alignment.tracks[index].frames() {
+                std::mem::swap(delay, &mut donor.alignment.tracks[index]);
+            } else {
+                delay.skip_reset_prefix(frame);
+            }
+        }
+        drop(donor);
+        for at in frame..frame + repair {
+            if cancelled() {
+                return None;
+            }
+            renderer.offline_frame(at, true, false);
+        }
+        self.replayed_frames = state.frame;
+        self.stats.reused_prefix_frames = frame;
+        if !self.replay(&mut renderer, frame + repair, state.frame, &mut cancelled) {
+            self.stats.reused_prefix_frames = 0;
+            return None;
+        }
+        Self::finish_preparation(&mut renderer, state);
+        Some(renderer)
+    }
+
+    /// Prepare a validated append on the worker. Releasing the previous cache
+    /// before creating the new one bounds the transfer to one retained snapshot.
+    pub fn prepare_with_predecessor(
+        next: &Renderer,
+        state: TransportState,
+        profile: CacheProfile,
+        predecessor: Self,
+        allow_reuse: bool,
+        cancelled: impl FnMut() -> bool,
+    ) -> (Self, Option<Renderer>) {
+        let checkpoint = if allow_reuse {
+            predecessor.take_append_checkpoint(next, state, profile)
+        } else {
+            drop(predecessor);
+            None
+        };
+        let mut cache = Self::with_profile(next.plan.clone(), profile);
+        let renderer = match checkpoint {
+            Some(checkpoint) => cache.prepare_append(state, checkpoint, cancelled),
+            None => cache.prepare(state, cancelled),
+        };
+        (cache, renderer)
+    }
+
     fn start(&self, frame: u64) -> (u64, Renderer) {
         if self.base.hosted.is_some() {
             return (0, Renderer::new(self.base.plan.clone()));
@@ -381,6 +585,9 @@ impl TransportCache {
                         // snapshot with the reference path if a preparation worker fails.
                         self.disable_pool();
                         let (restart, fresh) = self.start(frame);
+                        if restart < self.stats.reused_prefix_frames {
+                            self.stats.reused_prefix_frames = 0;
+                        }
                         *renderer = fresh;
                         return self.replay(renderer, restart, to, cancelled);
                     }
@@ -414,6 +621,7 @@ impl TransportCache {
         state: TransportState,
         mut cancelled: impl FnMut() -> bool,
     ) -> Option<Renderer> {
+        self.stats.reused_prefix_frames = 0;
         if self.base.hosted.is_some() {
             let mut renderer = Renderer::try_new(self.base.plan.clone()).ok()?;
             return renderer
@@ -438,12 +646,15 @@ impl TransportCache {
         if !self.replay(&mut renderer, from, state.frame, &mut cancelled) {
             return None;
         }
+        Self::finish_preparation(&mut renderer, state);
+        Some(renderer)
+    }
+    fn finish_preparation(renderer: &mut Renderer, state: TransportState) {
         renderer.playhead = state.frame;
         renderer.playing = state.playing;
         renderer.paused = state.paused;
         renderer.playback_start = state.playback_start;
-        renderer.prime_latency(live, false);
-        Some(renderer)
+        renderer.prime_latency(state.playing || state.paused, false);
     }
     pub fn memory_usage(&self) -> TransportCacheMemory {
         TransportCacheMemory {

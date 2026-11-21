@@ -14869,3 +14869,26 @@ prefix workers and two catch-up workers. The harness simulated 48 kHz,
 passed. Both `cargo test --workspace` and `cargo test --workspace --release`
 passed 3,654 tests with the native Audio Unit registration test filtered out.
 The local macOS release bundle was rebuilt and passed signature verification.
+
+## Exact checkpoint reuse for MIDI Output Saturator — 2026-11-21
+
+A regression exercises unchanged subtree reuse, new delay history, a nonzero
+loop and exact fallback with empty or declined predecessor coverage. The saved
+MIDI 4 project matched both sample channels through a common swap at clock
+12,288, or 16.256 s in the arrangement. The comparison covered 1,548,288
+stereo frames, including an entire 32-second loop after activation. The reuse
+arm borrowed the pre-prime checkpoint at frame 768,000.
+
+Six matched release pairs per condition used simulated 48 kHz, 512-frame
+callbacks near the 16-second midpoint. With a compatible old checkpoint,
+median activation fell from 3.233 s to 1.395 s. With cold history it changed
+from 3.220 s to 3.227 s. The worker reused frame 768,000 in all final hit
+trials. A partial-coverage probe reused frame 384,000. One run of ordinary
+simulated playback from frame zero with Balanced reached a midpoint hit and
+activated in 1.038 s. Some timed trials exceeded the simulated callback
+budget. Native UI, device and audible activation latency remain unmeasured.
+
+Formatting, strict workspace Clippy and the CLI smoke check passed. The debug
+and release workspace suites each passed 3,655 tests, with 22 ignored and
+the native Audio Unit registration test filtered out. The local macOS
+release bundle was rebuilt and passed strict signature verification.

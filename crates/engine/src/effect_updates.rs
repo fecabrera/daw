@@ -12,11 +12,16 @@ pub enum MidiOutputSaturatorEdit {
 impl RenderPlan {
     /// Match a single Output Saturator edit without ignoring other processing settings.
     pub fn midi_output_saturator_edit(&self, next: &Self) -> Option<MidiOutputSaturatorEdit> {
+        if !self.beat_tracks.is_empty() || !next.beat_tracks.is_empty() {
+            return None;
+        }
+        self.midi_output_edit(next)
+    }
+
+    pub(super) fn midi_output_edit(&self, next: &Self) -> Option<MidiOutputSaturatorEdit> {
         if self.external.offline != next.external.offline
             || self.external.publish != next.external.publish
             || self.project.tracks.len() != next.project.tracks.len()
-            || !self.beat_tracks.is_empty()
-            || !next.beat_tracks.is_empty()
         {
             return None;
         }

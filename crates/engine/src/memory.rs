@@ -28,6 +28,23 @@ impl RenderPlan {
         other: &Self,
         normalize_other: impl FnOnce(&mut Project),
     ) -> bool {
+        self.compare_processing_plan(other, normalize_other, false)
+    }
+
+    pub(super) fn same_checkpoint_plan(
+        &self,
+        other: &Self,
+        normalize_other: impl FnOnce(&mut Project),
+    ) -> bool {
+        self.compare_processing_plan(other, normalize_other, true)
+    }
+
+    fn compare_processing_plan(
+        &self,
+        other: &Self,
+        normalize_other: impl FnOnce(&mut Project),
+        exact: bool,
+    ) -> bool {
         let mut a = self.project.clone();
         let mut b = other.project.clone();
         normalize_other(&mut b);
@@ -41,21 +58,29 @@ impl RenderPlan {
         for track in &mut b.tracks {
             track.group_collapsed = false;
         }
+        let same_audio = |a: &AudioData, b: &AudioData| {
+            a.sample_rate_hz == b.sample_rate_hz
+                && Arc::ptr_eq(&a.samples, &b.samples)
+                && (!exact
+                    || a.metadata == b.metadata
+                        && match (&a.disk, &b.disk) {
+                            (None, None) => true,
+                            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                            _ => false,
+                        })
+        };
         a == b
+            // Rust float equality treats signed zero as equal. A borrowed DSP
+            // checkpoint requires bit-compatible settings across the append.
+            && (!exact || serde_json::to_vec(&a).is_ok_and(|a| serde_json::to_vec(&b).is_ok_and(|b| a == b)))
             && self.beat_tracks == other.beat_tracks
             && self.audio.len() == other.audio.len()
             && self.audio.iter().all(|(id, a)| {
-                other.audio.get(id).is_some_and(|b| {
-                    a.sample_rate_hz == b.sample_rate_hz
-                        && std::sync::Arc::ptr_eq(&a.samples, &b.samples)
-                })
+                other.audio.get(id).is_some_and(|b| same_audio(a, b))
             })
             && self.stretched_audio.len() == other.stretched_audio.len()
             && self.stretched_audio.iter().all(|(id, a)| {
-                other.stretched_audio.get(id).is_some_and(|b| {
-                    a.audio.sample_rate_hz == b.audio.sample_rate_hz
-                        && std::sync::Arc::ptr_eq(&a.audio.samples, &b.audio.samples)
-                })
+                other.stretched_audio.get(id).is_some_and(|b| same_audio(&a.audio, &b.audio))
             })
             && self.sampler_audio.len() == other.sampler_audio.len()
             && self.sampler_audio.iter().all(|(id, a)| {
@@ -64,16 +89,15 @@ impl RenderPlan {
                         && a.duration_variants().zip(b.duration_variants()).all(
                             |((la, a), (lb, b))| {
                                 la == lb
+                                    && (!exact || a.variants().count() == b.variants().count())
                                     && a.variants().zip(b.variants()).all(|((ka, a), (kb, b))| {
-                                        ka == kb && std::sync::Arc::ptr_eq(&a.samples, &b.samples)
+                                        ka == kb && if exact { same_audio(a, b) } else { Arc::ptr_eq(&a.samples, &b.samples) }
                                     })
                             },
                         )
                         && a.variants().count() == b.variants().count()
                         && a.variants().zip(b.variants()).all(|((ka, a), (kb, b))| {
-                            ka == kb
-                                && a.sample_rate_hz == b.sample_rate_hz
-                                && std::sync::Arc::ptr_eq(&a.samples, &b.samples)
+                            ka == kb && same_audio(a, b)
                         })
                 })
             })

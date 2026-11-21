@@ -117,32 +117,43 @@ impl Renderer {
             self.sample_sidechain_graph(frame, region, playing, live, realtime);
             return;
         }
-        for (index, track) in self.plan.project.tracks.iter().enumerate() {
-            if super::send_routing::is_bus(track.kind) {
+        for index in 0..self.plan.project.tracks.len() {
+            if super::send_routing::is_bus(self.plan.project.tracks[index].kind) {
                 continue;
             }
-            let (sample, mono) = track_processing::TrackProcessor {
-                monitor_only: self.monitor_only,
-                paused: self.paused,
-                sidechains: &[],
-                sidechain_sources: None,
-                audio: &mut self.audio_tracks[index],
-                midi: &mut self.midi[index],
-                effects: &mut self.effects[index],
-                delay: &mut self.alignment.tracks[index],
-                clips: &track.clips,
-            }
-            .sample_unaligned(
-                frame,
-                self.plan.project.tempo_bpm,
-                region,
-                playing,
-                realtime,
-            );
-            self.buses.raw[index] = (sample, mono);
-            let (sample, mono) = self.alignment.tracks[index].tick((sample, mono));
-            self.buses.output[index] = self.gains[index].apply(sample, mono, live, self.ramp);
+            self.sample_leaf(index, frame, region, playing, live, realtime);
         }
+    }
+    pub(super) fn sample_leaf(
+        &mut self,
+        index: usize,
+        frame: u64,
+        region: Option<(u64, u64)>,
+        playing: bool,
+        live: bool,
+        realtime: bool,
+    ) {
+        let (sample, mono) = track_processing::TrackProcessor {
+            monitor_only: self.monitor_only,
+            paused: self.paused,
+            sidechains: &[],
+            sidechain_sources: None,
+            audio: &mut self.audio_tracks[index],
+            midi: &mut self.midi[index],
+            effects: &mut self.effects[index],
+            delay: &mut self.alignment.tracks[index],
+            clips: &self.plan.project.tracks[index].clips,
+        }
+        .sample_unaligned(
+            frame,
+            self.plan.project.tempo_bpm,
+            region,
+            playing,
+            realtime,
+        );
+        self.buses.raw[index] = (sample, mono);
+        let (sample, mono) = self.alignment.tracks[index].tick((sample, mono));
+        self.buses.output[index] = self.gains[index].apply(sample, mono, live, self.ramp);
     }
     pub(super) fn sample_buses(
         &mut self,

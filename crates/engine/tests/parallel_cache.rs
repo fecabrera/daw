@@ -17,6 +17,97 @@ fn compare(mut serial: Renderer, mut parallel: Renderer, count: usize) {
 }
 
 #[test]
+fn append_reuses_independent_subtrees_and_repairs_alignment_before_the_loop() {
+    let mut plan = fixture::midi_project(48_000, 3, 0);
+    let asset = fixture::add_audio(&mut plan, 1, 0, true);
+    plan.project
+        .assets
+        .iter_mut()
+        .find(|source| source.id == asset)
+        .unwrap()
+        .source_metadata
+        .sample_format = "ieee_float".into();
+    plan.audio.get_mut(&asset).unwrap().metadata.sample_format = "ieee_float".into();
+    let group = plan.project.add_group_track().unwrap();
+    let donor_track = plan.project.tracks[1].id;
+    let index = plan.project.tracks.len() - 1;
+    plan.project
+        .edit(Edit::MoveTrack {
+            track_id: donor_track,
+            group_id: Some(group),
+            index,
+        })
+        .unwrap();
+    let group = plan
+        .project
+        .tracks
+        .iter_mut()
+        .find(|t| t.id == group)
+        .unwrap();
+    group.effects.push(EffectInstance::ambient_reverb());
+    plan.project.transport.r#loop = Loop {
+        enabled: true,
+        start_frame: 1234,
+        end_frame: 24_000,
+    };
+    plan.project.validate().unwrap();
+    let mut edited = plan.clone();
+    let track = &plan.project.tracks[0];
+    let main = &track.instrument.as_ref().unwrap().main;
+    edited
+        .project
+        .edit(Edit::SetLayerEffects {
+            track_id: track.id,
+            layer_id: main.id,
+            effects: vec![EffectInstance::saturator()],
+            compact: main.collapsed,
+        })
+        .unwrap();
+    let state = TransportState {
+        frame: 23_000,
+        playing: true,
+        playback_start: Some(1234),
+        ..Default::default()
+    };
+    let profile = CacheProfile::Responsive;
+    for (warm, allow_reuse) in [(true, true), (false, true), (true, false)] {
+        let mut predecessor = TransportCache::with_profile(plan.clone(), profile);
+        if warm {
+            predecessor
+                .prepare(
+                    TransportState {
+                        frame: 19_000,
+                        ..state
+                    },
+                    || false,
+                )
+                .unwrap();
+            assert!(predecessor.matches_predecessor(&plan));
+            assert!(predecessor.can_retain_for_append(&edited));
+        }
+        let (cache, prepared) = TransportCache::prepare_with_predecessor(
+            &Renderer::new(edited.clone()),
+            state,
+            profile,
+            predecessor,
+            allow_reuse,
+            || false,
+        );
+        assert_eq!(
+            cache.preparation_stats().reused_prefix_frames > 0,
+            warm && allow_reuse
+        );
+        let mut reference =
+            TransportCache::with_mode(edited.clone(), profile, PreparationMode::Serial);
+        compare(
+            reference.prepare(state, || false).unwrap(),
+            prepared.unwrap(),
+            26_000,
+        );
+    }
+}
+
+#[test]
 fn live_tiles_preserve_audible_and_latency_feed_wraps() {
     let mut plan = fixture::midi_project(48_000, 3, 1);
     fixture::add_audio(&mut plan, 1, 0, false);
