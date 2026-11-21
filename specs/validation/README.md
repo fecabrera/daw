@@ -14810,3 +14810,28 @@ Formatting, strict workspace Clippy, the debug and release workspace tests,
 and the CLI smoke check passed. The workspace runs skipped the native Audio
 Unit registration test. The local macOS release app was rebuilt and its
 signature verified.
+
+## Exact live catch-up and replay width — 2026-11-20
+
+The engine regression mixed parallel tiles and scalar frames across audible
+and latency-adjusted loop wraps. The renderer recovered exact output after a
+simulated worker disconnect.
+
+The saved MIDI 4 project matched bit for bit at a common swap clock of 12,288
+frames, or 16.256 s in the arrangement. The comparison covered 1,548,288
+stereo frames, including a full 32-second loop after activation. The candidate
+used three prefix workers and two catch-up workers.
+
+Over six matched release trials at the saved project's 16-second midpoint,
+median activation fell from 2.793 s to 1.863 s. With two workers in both
+stages it took 2.249 s. With four prefix workers and two catch-up workers it
+took 1.434 s. In three trials per tested width with additional CPU load, four
+workers exceeded the simulated callback budget twice in one trial. Two and
+three workers stayed within budget. The automatic policy uses at most three
+prefix workers and two catch-up workers. The harness simulated 48 kHz,
+512-frame callbacks. Native device and listening latency remain unmeasured.
+
+`cargo fmt --all --check`, strict workspace Clippy, and the CLI smoke check
+passed. Both `cargo test --workspace` and `cargo test --workspace --release`
+passed 3,654 tests with the native Audio Unit registration test filtered out.
+The local macOS release bundle was rebuilt and passed signature verification.

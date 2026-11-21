@@ -39,7 +39,7 @@ use daw_core::{Clip, Id, Project, linear_gain};
 use daw_media::AudioData;
 use std::collections::HashMap;
 use std::sync::Arc;
-pub use transport_cache::{TransportCache, TransportCacheMemory};
+pub use transport_cache::{LiveCatchUp, TransportCache, TransportCacheMemory};
 
 /// Maximum bounded PCM chunk accepted by note-audition hosts.
 pub const NOTE_AUDITION_MAX_CHUNK_FRAMES: usize = 1 << 20;
@@ -1558,14 +1558,8 @@ impl Renderer {
             self.buffering = false;
         }
 
-        let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1) as f32;
         let monitor = self.has_live_midi_routes() || self.live_midi_active();
-        let target = if self.playing || monitor { 1.0 } else { 0.0 };
-        self.ramp = if self.ramp < target {
-            (self.ramp + 1.0 / fade_frames).min(target)
-        } else {
-            (self.ramp - 1.0 / fade_frames).max(target)
-        };
+        self.advance_live_ramp(self.playing || monitor);
         let mut mix = [0.0; 2];
         let live = monitor;
         if self.playing || self.ramp > 0.0 && !live {
@@ -1620,6 +1614,20 @@ impl Renderer {
             self.monitor_only = false;
             self.live_clock = self.live_clock.wrapping_add(1);
         }
+        self.finish_live_mix(mix, live)
+    }
+
+    fn advance_live_ramp(&mut self, active: bool) {
+        let step = 1.0 / (self.plan.project.sample_rate_hz / 200).max(1) as f32;
+        let target = if active { 1.0 } else { 0.0 };
+        self.ramp = if self.ramp < target {
+            (self.ramp + step).min(target)
+        } else {
+            (self.ramp - step).max(target)
+        };
+    }
+
+    fn finish_live_mix(&mut self, mut mix: [f32; 2], live: bool) -> [f32; 2] {
         self.advance_live_master();
         for x in &mut mix {
             *x *= self.master
@@ -1629,7 +1637,7 @@ impl Renderer {
                     self.ramp
                 };
         }
-        self.finish_live_sample(mix, fade_frames)
+        self.finish_live_sample(mix, (self.plan.project.sample_rate_hz / 200).max(1) as f32)
     }
 
     fn advance_live_master(&mut self) {

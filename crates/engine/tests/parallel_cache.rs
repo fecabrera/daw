@@ -1,7 +1,9 @@
 #[path = "support/cache_project.rs"]
 mod fixture;
 use daw_core::*;
-use daw_engine::{CacheProfile, PreparationMode, Renderer, TransportCache, TransportState};
+use daw_engine::{
+    CacheProfile, LiveCatchUp, PreparationMode, Renderer, TransportCache, TransportState,
+};
 
 fn compare(mut serial: Renderer, mut parallel: Renderer, count: usize) {
     assert_eq!(serial.transport_state(), parallel.transport_state());
@@ -12,6 +14,54 @@ fn compare(mut serial: Renderer, mut parallel: Renderer, count: usize) {
             "sample {frame}"
         );
     }
+}
+
+#[test]
+fn live_tiles_preserve_audible_and_latency_feed_wraps() {
+    let mut plan = fixture::midi_project(48_000, 3, 1);
+    fixture::add_audio(&mut plan, 1, 0, false);
+    plan.project.master.effects.push(EffectInstance::limiter());
+    plan.project.transport.r#loop = Loop {
+        enabled: true,
+        start_frame: 1234,
+        end_frame: 12000,
+    };
+    let state = TransportState {
+        frame: 8500,
+        playing: true,
+        playback_start: Some(1234),
+        ..Default::default()
+    };
+    let mut cache = TransportCache::with_mode(
+        plan.clone(),
+        CacheProfile::Balanced,
+        PreparationMode::Parallel,
+    );
+    let mut reference = Renderer::new(plan);
+    reference.prepare_transport(state);
+    let mut candidate = cache.prepare(state, || false).unwrap();
+    let mut advanced = 0;
+    let mut tiled = 0;
+    while advanced < 24000 {
+        let frames = match cache.catch_up_tile(&mut candidate, 24000 - advanced, || false) {
+            LiveCatchUp::Advanced(frames) => {
+                tiled += frames;
+                frames
+            }
+            LiveCatchUp::Scalar => {
+                candidate.next_sample();
+                1
+            }
+            _ => panic!("usable worker pool failed"),
+        };
+        for _ in 0..frames {
+            reference.next_sample();
+        }
+        assert_eq!(reference.transport_state(), candidate.transport_state());
+        advanced += frames;
+    }
+    assert!(tiled > 18000);
+    compare(reference, candidate, 12000);
 }
 
 #[test]

@@ -602,6 +602,14 @@ impl AudioTrack {
             || self.readers.iter().any(daw_media::FrameReader::failed)
             || self.compounds.iter().flatten().any(|s| s.source_failed())
     }
+    pub(super) fn has_streaming_readers(&self) -> bool {
+        !self.readers.is_empty()
+            || self
+                .compounds
+                .iter()
+                .flatten()
+                .any(|child| child.has_streaming_readers())
+    }
     pub fn prepare_streaming(&mut self) -> daw_media::Result<()> {
         for source in self.compounds.iter_mut().flatten() {
             source.prepare_streaming()?;

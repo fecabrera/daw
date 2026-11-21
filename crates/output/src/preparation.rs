@@ -151,7 +151,7 @@ impl Worker {
                 let mut needs_cache = false;
                 let mut applied_controls = 0;
                 let mut schedule = WarmSchedule::default();
-                loop {
+                'requests: loop {
                     let (request, controls) = {
                         let (lock, wake) = &*worker;
                         let mut state = lock.lock().unwrap();
@@ -370,6 +370,13 @@ impl Worker {
                             .max(u64::from(renderer.plan.project.sample_rate_hz) / 10);
                         renderer.preparation_lead = lead;
                         let mut clock = anchor.clock;
+                        let cancelled = || {
+                            let state = worker.0.lock().unwrap();
+                            state.closed || state.revision != revision
+                        };
+                        let mut parallel = cache
+                            .as_mut()
+                            .filter(|cache| cache.can_parallel_catch_up(&renderer.renderer));
                         'catch_up: loop {
                             let target = status
                                 .rendered_frames
@@ -378,10 +385,34 @@ impl Worker {
                                 .saturating_add(lead);
                             let block = u64::from(renderer.plan.project.buffer_size_frames.max(1));
                             while clock < target {
-                                if clock % block == 0 {
-                                    let state = worker.0.lock().unwrap();
-                                    if state.closed || state.revision != revision {
-                                        break;
+                                if clock % block == 0 && cancelled() {
+                                    break;
+                                }
+                                if let Some(cache) = parallel.as_deref_mut() {
+                                    match cache.catch_up_tile(
+                                        &mut renderer.renderer,
+                                        target - clock,
+                                        cancelled,
+                                    ) {
+                                        daw_engine::LiveCatchUp::Scalar => {}
+                                        daw_engine::LiveCatchUp::Advanced(frames) => {
+                                            clock += frames;
+                                            continue;
+                                        }
+                                        daw_engine::LiveCatchUp::Cancelled => continue 'requests,
+                                        daw_engine::LiveCatchUp::Restart => {
+                                            // The cache has disabled its failed pool. Rebuild
+                                            // from the same anchor and complete checkpoints.
+                                            let mut state = worker.0.lock().unwrap();
+                                            if !state.closed && state.revision == revision {
+                                                state.request = Some((
+                                                    revision,
+                                                    Request::Prepared(renderer, anchor),
+                                                    bindings,
+                                                ));
+                                            }
+                                            continue 'requests;
+                                        }
                                     }
                                 }
                                 renderer.next_sample();

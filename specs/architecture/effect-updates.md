@@ -122,6 +122,14 @@ the latest requested Drive reaches audio. A complete controls update keeps the
 submitted plan identity after the worker proves processing equivalence. A
 return to the submitted value needs no second DSP update.
 
+During exact replacement the preparation worker can advance the detached
+renderer through resident, independent parts of live catch-up using the
+[parallel preparation pool](performance.md#parallel-track-preparation).
+The project sample clock advances only by complete tiles or successful scalar
+samples. If a tile fails, discard its renderer and reconstruct from complete
+history at the same anchor with scalar catch-up. A newer request can supersede
+either attempt. The callback still installs at the scheduled sample.
+
 Undo/Redo use normal validated project edits; no DSP state or acknowledgment is
 stored in history or manifests. Failure keeps prior playback and reports through
 the existing preparation-error path. Later edits or Undo can retry.

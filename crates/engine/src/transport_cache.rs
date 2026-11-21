@@ -8,6 +8,14 @@ use std::collections::VecDeque;
 // Leave four renderer equivalents for base, warm cursor, active and candidate.
 const PREPARATION_BYTES: u64 = 512 * 1024 * 1024;
 
+/// Result of one worker-only tile. A failed candidate must be reconstructed.
+pub enum LiveCatchUp {
+    Scalar,
+    Advanced(u64),
+    Cancelled,
+    Restart,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TransportCacheMemory {
     pub renderer: super::RendererMemory,
@@ -30,6 +38,7 @@ pub struct TransportCache {
     parallel: Option<ParallelTracks>,
     parallel_unavailable: bool,
     parallel_candidate: bool,
+    prefix_width: usize,
     stats: PreparationStats,
     base: Renderer,
     checkpoints: VecDeque<(u64, Renderer)>,
@@ -68,6 +77,7 @@ impl TransportCache {
                     })
             })
             .count();
+        let slots = std::thread::available_parallelism().map_or(1, |n| n.get());
         let parallel_candidate = plan.project.hosted_units().is_empty()
             && plan
                 .project
@@ -76,10 +86,22 @@ impl TransportCache {
                 .filter(|t| !super::send_routing::is_bus(t.kind))
                 .count()
                 >= 2
-            && (mode == PreparationMode::Parallel
-                || (complex_tracks >= 2
-                    && std::thread::available_parallelism().is_ok_and(|n| n.get() >= 2)));
+            && (matches!(
+                mode,
+                PreparationMode::Parallel | PreparationMode::ParallelWithWidth(_)
+            ) || (complex_tracks >= 2 && slots >= 2));
         let mut base = Renderer::new(plan);
+        // A wider cold prefix reserves a core each for device output and
+        // coordination. Keep the reference two-worker pool for other graphs.
+        let prefix_width = match mode {
+            PreparationMode::ParallelWithWidth(width) => usize::from(width.clamp(2, 4)),
+            PreparationMode::Auto
+                if slots >= 6 && complex_tracks >= 4 && Self::independent_resident(&base) =>
+            {
+                3
+            }
+            _ => 2,
+        };
         base.reset_processing();
         let history = base.needs_processing_history();
         let renderer_memory = base.memory_usage();
@@ -89,6 +111,7 @@ impl TransportCache {
             parallel: None,
             parallel_unavailable: false,
             parallel_candidate,
+            prefix_width,
             stats: PreparationStats::default(),
             base,
             checkpoint_limit: 0,
@@ -169,16 +192,131 @@ impl TransportCache {
         self.mode != PreparationMode::Serial
             && self.parallel_candidate
             && !self.parallel_unavailable
-            && (self.mode == PreparationMode::Parallel || self.profile != CacheProfile::Light)
+            && (matches!(
+                self.mode,
+                PreparationMode::Parallel | PreparationMode::ParallelWithWidth(_)
+            ) || self.profile != CacheProfile::Light)
             && frames >= 512
     }
     pub fn preparation_stats(&self) -> PreparationStats {
         PreparationStats {
             parallel_bytes: self.parallel.as_ref().map_or(0, |p| p.bytes()),
-            workers: if self.parallel.is_some() { 2 } else { 0 },
+            workers: self.parallel.as_ref().map_or(0, |p| p.workers()),
             ..self.stats
         }
     }
+
+    /// Use only with a detached renderer returned by this cache, with no competing
+    /// live input or bound meters. Resident readers can be preflighted per track.
+    pub fn can_parallel_catch_up(&self, renderer: &Renderer) -> bool {
+        self.use_parallel(512)
+            && renderer.playing
+            && !renderer.paused
+            && !renderer.recording
+            && !renderer.monitor_only
+            && !renderer.has_live_midi_routes()
+            && !renderer.live_midi_active()
+            && Self::independent_resident(renderer)
+    }
+
+    fn independent_resident(renderer: &Renderer) -> bool {
+        renderer.hosted.is_none()
+            && !renderer.sidechains.active()
+            && !renderer
+                .plan
+                .project
+                .tracks
+                .iter()
+                .any(|t| t.kind == daw_core::TrackKind::Return || !t.sends.is_empty())
+            && !renderer
+                .audio_tracks
+                .iter()
+                .any(super::schedule::AudioTrack::has_streaming_readers)
+            && !renderer.plan.sampler_audio.values().any(|sampler| {
+                sampler
+                    .duration_variants()
+                    .any(|(_, variant)| variant.variants().any(|(_, audio)| audio.disk.is_some()))
+            })
+    }
+
+    /// Advance one contiguous span. Scalar processing owns audible and feed
+    /// wraps and therefore performs the usual note reset and declick.
+    pub fn catch_up_tile(
+        &mut self,
+        renderer: &mut Renderer,
+        remaining: u64,
+        mut cancelled: impl FnMut() -> bool,
+    ) -> LiveCatchUp {
+        if remaining < 512 || renderer.prime_pending || renderer.buffering {
+            return LiveCatchUp::Scalar;
+        }
+        let region = renderer.loop_region(true);
+        let frame = renderer.playhead;
+        let feed = super::latency::advanced_frame(frame, renderer.alignment.total, region);
+        if renderer.alignment.total > 0
+            && renderer
+                .alignment
+                .previous_feed
+                .is_some_and(|old| feed < old)
+        {
+            return LiveCatchUp::Scalar;
+        }
+        let span = if let Some((start, end)) = region {
+            if frame < start || frame >= end {
+                return LiveCatchUp::Scalar;
+            }
+            remaining.min(end - frame).min(end - feed)
+        } else {
+            remaining.min(u64::MAX - feed).min(u64::MAX - frame)
+        };
+        if span < 512 || !self.can_parallel_catch_up(renderer) {
+            return LiveCatchUp::Scalar;
+        }
+        self.ensure_pool(renderer, 0);
+        let Some(pool) = &mut self.parallel else {
+            return LiveCatchUp::Scalar;
+        };
+        if cancelled() {
+            return LiveCatchUp::Cancelled;
+        }
+        let frames = span.min(pool.block());
+        match pool.process(renderer, feed..feed + frames, true, true, &mut cancelled) {
+            Ok(true) => LiveCatchUp::Advanced(frames),
+            Ok(false) => LiveCatchUp::Cancelled,
+            Err(()) => {
+                self.disable_pool();
+                LiveCatchUp::Restart
+            }
+        }
+    }
+
+    fn ensure_pool(&mut self, renderer: &Renderer, prefix_remaining: u64) {
+        if self.parallel.is_none() {
+            let available = PREPARATION_BYTES
+                .saturating_sub(self.renderer_memory.owned_bytes().saturating_mul(4));
+            let width = if self.mode == PreparationMode::Auto
+                && prefix_remaining < u64::from(renderer.plan.project.sample_rate_hz)
+            {
+                2
+            } else {
+                self.prefix_width
+            };
+            self.parallel = ParallelTracks::new(renderer, available, width);
+            if width > 2 && self.parallel.is_none() {
+                self.parallel = ParallelTracks::new(renderer, available, 2);
+            }
+            self.parallel_unavailable = self.parallel.is_none();
+            self.configure();
+            self.trim_checkpoints();
+        }
+    }
+
+    fn disable_pool(&mut self) {
+        self.parallel = None;
+        self.parallel_unavailable = true;
+        self.configure();
+    }
+
     fn start(&self, frame: u64) -> (u64, Renderer) {
         if self.base.hosted.is_some() {
             return (0, Renderer::new(self.base.plan.clone()));
@@ -229,26 +367,19 @@ impl TransportCache {
                 u64::MAX
             };
             let end = frame.saturating_add(span.min(until_checkpoint)).min(to);
-            if self.use_parallel(end - frame) && self.parallel.is_none() {
-                let available = PREPARATION_BYTES
-                    .saturating_sub(self.renderer_memory.owned_bytes().saturating_mul(4));
-                self.parallel = ParallelTracks::new(renderer, available);
-                self.parallel_unavailable = self.parallel.is_none();
-                self.configure();
-                self.trim_checkpoints();
+            if self.use_parallel(end - frame) {
+                self.ensure_pool(renderer, to - frame);
             }
             if self.use_parallel(end - frame)
                 && let Some(pool) = &mut self.parallel
             {
-                match pool.process(renderer, frame, end, self.live, cancelled) {
+                match pool.process(renderer, frame..end, self.live, false, cancelled) {
                     Ok(true) => self.stats.parallel_blocks += 1,
                     Ok(false) => return false,
                     Err(()) => {
                         // No partial track state can escape. Reconstruct from a complete
                         // snapshot with the reference path if a preparation worker fails.
-                        self.parallel = None;
-                        self.parallel_unavailable = true;
-                        self.configure();
+                        self.disable_pool();
                         let (restart, fresh) = self.start(frame);
                         *renderer = fresh;
                         return self.replay(renderer, restart, to, cancelled);
@@ -455,30 +586,44 @@ mod tests {
             sampler_audio: Default::default(),
             stretched_audio: Default::default(),
         };
-        let mut cache = TransportCache::with_mode(
-            plan.clone(),
-            CacheProfile::Responsive,
-            PreparationMode::Parallel,
-        );
-        let state = TransportState {
-            frame: 4096,
-            playing: true,
-            ..Default::default()
-        };
-        cache.prepare(state, || false).unwrap();
-        cache.parallel.as_mut().unwrap().disconnect_worker();
-        let state = TransportState {
-            frame: 9000,
-            ..state
-        };
-        let mut recovered = cache.prepare(state, || false).unwrap();
-        let mut reference = Renderer::new(plan);
-        reference.prepare_transport(state);
-        for _ in 0..512 {
-            assert_eq!(recovered.next_sample(), reference.next_sample());
+        for during_catchup in [false, true] {
+            let mut cache = TransportCache::with_mode(
+                plan.clone(),
+                CacheProfile::Responsive,
+                PreparationMode::Parallel,
+            );
+            let state = TransportState {
+                frame: 4096,
+                playing: true,
+                ..Default::default()
+            };
+            let mut candidate = cache.prepare(state, || false).unwrap();
+            cache.parallel.as_mut().unwrap().disconnect_worker();
+            let state = if during_catchup {
+                assert!(matches!(
+                    cache.catch_up_tile(&mut candidate, 2048, || false),
+                    LiveCatchUp::Restart
+                ));
+                assert!(!cache.can_parallel_catch_up(&candidate));
+                state
+            } else {
+                TransportState {
+                    frame: 9000,
+                    ..state
+                }
+            };
+            let mut recovered = cache.prepare(state, || false).unwrap();
+            let mut reference = Renderer::new(plan.clone());
+            reference.prepare_transport(state);
+            for _ in 0..512 {
+                assert_eq!(
+                    recovered.next_sample().map(f32::to_bits),
+                    reference.next_sample().map(f32::to_bits)
+                );
+            }
+            assert!(cache.parallel_unavailable);
+            assert_eq!(cache.preparation_stats().workers, 0);
         }
-        assert!(cache.parallel_unavailable);
-        assert_eq!(cache.preparation_stats().workers, 0);
     }
 
     #[test]

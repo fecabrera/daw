@@ -18,15 +18,18 @@ pub(super) const GRAIN: u64 = 2048;
 const STACK: usize = 512 * 1024;
 const SCRATCH_LIMIT: u64 = 64 * 1024 * 1024;
 
-/// Auto selects two workers for substantial multi-track history. Serial is a
-/// reference/benchmark path. Parallel requests two workers even for cheap tracks;
+/// Auto selects an eligible worker width for substantial multi-track history.
+/// Serial is a reference path. Parallel requests two workers even for cheap tracks;
 /// budget admission or thread-start failure still falls back to serial processing.
+/// ParallelWithWidth qualifies a two- to four-worker prefix while live catch-up
+/// remains two workers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PreparationMode {
     #[default]
     Auto,
     Serial,
     Parallel,
+    ParallelWithWidth(u8),
 }
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PreparationStats {
@@ -43,7 +46,7 @@ struct TrackWork {
     effects: EffectChain,
     delay: Delay,
     gains: [f32; 4],
-    output: Vec<[f32; 2]>,
+    output: Vec<super::latency::Sample>,
     raw: Vec<super::latency::Sample>,
     elapsed: u64,
 }
@@ -55,6 +58,7 @@ struct Batch {
     tempo: f32,
     region: Option<(u64, u64)>,
     cancel_block: u64,
+    live_tile: bool,
     complete: bool,
     failed: bool,
 }
@@ -62,7 +66,7 @@ impl Batch {
     fn process(&mut self, cancel: &AtomicBool) -> bool {
         for work in &mut self.items {
             let started = Instant::now();
-            work.output.resize(self.frames, [0.0; 2]);
+            work.output.resize(self.frames, ([0.0; 2], false));
             work.raw.resize(self.frames, ([0.0; 2], false));
             if work.group {
                 continue;
@@ -85,11 +89,32 @@ impl Batch {
                 {
                     return false;
                 }
-                let raw = processor.sample_unaligned(frame, self.tempo, self.region, true, false);
+                if self.live_tile
+                    && !processor
+                        .audio
+                        .ready(processor.clips, frame, self.region.map(|r| r.0))
+                {
+                    self.failed = true;
+                    return false;
+                }
+                let raw = processor.sample_unaligned(
+                    frame,
+                    self.tempo,
+                    self.region,
+                    true,
+                    self.live_tile,
+                );
                 work.raw[offset] = raw;
                 let (sample, mono) = processor.delay.tick(raw);
                 let base = if mono { 0 } else { 2 };
-                *output = std::array::from_fn(|ch| sample[ch] * work.gains[base + ch]);
+                *output = if self.live_tile {
+                    (sample, mono)
+                } else {
+                    (
+                        std::array::from_fn(|ch| sample[ch] * work.gains[base + ch]),
+                        mono,
+                    )
+                };
             }
             work.elapsed = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         }
@@ -101,9 +126,9 @@ pub(super) struct ParallelTracks {
     done: mpsc::Receiver<(usize, Batch)>,
     threads: Vec<JoinHandle<()>>,
     cancel: Arc<AtomicBool>,
-    batches: [Option<Batch>; 2],
+    batches: Vec<Option<Batch>>,
     slots: Vec<Option<TrackWork>>,
-    buffers: Vec<Vec<[f32; 2]>>,
+    buffers: Vec<Vec<super::latency::Sample>>,
     raw_buffers: Vec<Vec<super::latency::Sample>>,
     times: Vec<u64>,
     order: Vec<usize>,
@@ -112,7 +137,7 @@ pub(super) struct ParallelTracks {
     block: usize,
 }
 impl ParallelTracks {
-    pub fn estimate(renderer: &Renderer) -> u64 {
+    fn estimate(renderer: &Renderer, workers: usize) -> u64 {
         let tracks = &renderer.plan.project.tracks;
         let block = u64::from(renderer.plan.project.buffer_size_frames).max(GRAIN);
         let metadata = tracks
@@ -120,16 +145,17 @@ impl ParallelTracks {
             .flat_map(|t| &t.clips)
             .map(|c| std::mem::size_of::<Clip>() as u64 + c.name.len() as u64)
             .sum::<u64>();
-        (2 * STACK + 64 * 1024) as u64
+        (workers * STACK + 64 * 1024) as u64
             + metadata
             + tracks.len() as u64
                 * (block * 32
-                    + 3 * (std::mem::size_of::<TrackWork>()
-                        + std::mem::size_of::<Option<TrackWork>>())
+                    + ((workers + 1)
+                        * (std::mem::size_of::<TrackWork>()
+                            + std::mem::size_of::<Option<TrackWork>>()))
                         as u64
                     + 128)
     }
-    pub fn new(renderer: &Renderer, available: u64) -> Option<Self> {
+    pub fn new(renderer: &Renderer, available: u64, workers: usize) -> Option<Self> {
         let project = &renderer.plan.project;
         // Captured Return inputs still need the shared serial routing path.
         if renderer.sidechains.active()
@@ -138,7 +164,7 @@ impl ParallelTracks {
         {
             return None;
         }
-        let bytes = Self::estimate(renderer);
+        let bytes = Self::estimate(renderer, workers);
         if bytes > available.min(SCRATCH_LIMIT) {
             return None;
         }
@@ -153,26 +179,29 @@ impl ParallelTracks {
                 .collect(),
         );
         let block = u64::from(renderer.plan.project.buffer_size_frames).max(GRAIN) as usize;
-        let (done_tx, done) = mpsc::sync_channel(2);
+        let (done_tx, done) = mpsc::sync_channel(workers);
         let cancel = Arc::new(AtomicBool::new(false));
         let mut pool = Self {
-            senders: Vec::with_capacity(2),
+            senders: Vec::with_capacity(workers),
             done,
-            threads: Vec::with_capacity(2),
+            threads: Vec::with_capacity(workers),
             cancel: cancel.clone(),
-            batches: std::array::from_fn(|_| {
-                Some(Batch {
-                    items: Vec::with_capacity(count),
-                    clips: Arc::clone(&clips),
-                    from: 0,
-                    frames: 0,
-                    tempo: 120.0,
-                    region: None,
-                    cancel_block: 512,
-                    complete: false,
-                    failed: false,
+            batches: (0..workers)
+                .map(|_| {
+                    Some(Batch {
+                        items: Vec::with_capacity(count),
+                        clips: Arc::clone(&clips),
+                        from: 0,
+                        frames: 0,
+                        tempo: 120.0,
+                        region: None,
+                        cancel_block: 512,
+                        live_tile: false,
+                        complete: false,
+                        failed: false,
+                    })
                 })
-            }),
+                .collect(),
             slots: (0..count).map(|_| None).collect(),
             buffers: (0..count).map(|_| Vec::with_capacity(block)).collect(),
             raw_buffers: (0..count).map(|_| Vec::with_capacity(block)).collect(),
@@ -182,7 +211,7 @@ impl ParallelTracks {
             bytes,
             block,
         };
-        for worker in 0..2 {
+        for worker in 0..workers {
             let (sender, receiver) = mpsc::sync_channel::<Batch>(1);
             let finished = done_tx.clone();
             let cancel = cancel.clone();
@@ -216,16 +245,24 @@ impl ParallelTracks {
     pub fn bytes(&self) -> u64 {
         self.bytes
     }
+    pub fn block(&self) -> u64 {
+        self.block as u64
+    }
+    pub fn workers(&self) -> usize {
+        self.threads.len()
+    }
     /// A partial job is never a checkpoint. Restore ownership before returning;
     /// callers discard a cancelled cursor and restart from a complete checkpoint.
     pub fn process(
         &mut self,
         renderer: &mut Renderer,
-        from: u64,
-        to: u64,
+        range: std::ops::Range<u64>,
         live: bool,
+        live_tile: bool,
         cancelled: &mut impl FnMut() -> bool,
     ) -> Result<bool, ()> {
+        let from = range.start;
+        let to = range.end;
         let frames = (to - from) as usize;
         if frames > self.block {
             return Err(());
@@ -233,9 +270,11 @@ impl ParallelTracks {
         self.cancel.store(false, Ordering::Relaxed);
         self.order
             .sort_unstable_by_key(|&i| std::cmp::Reverse(self.times[i]));
-        let mut loads = [0_u64; 2];
+        let count = if live_tile { 2 } else { self.workers() };
+        let mut loads = [0_u64; 4];
+        let loads = &mut loads[..count];
         for &index in &self.order {
-            let group = usize::from(loads[1] < loads[0]);
+            let group = (0..count).min_by_key(|&worker| loads[worker]).unwrap();
             self.groups[index] = group;
             loads[group] = loads[group].saturating_add(self.times[index].max(1));
         }
@@ -246,6 +285,7 @@ impl ParallelTracks {
             batch.tempo = renderer.plan.project.tempo_bpm;
             batch.region = region;
             batch.cancel_block = u64::from(renderer.plan.project.buffer_size_frames.max(1));
+            batch.live_tile = live_tile;
             batch.complete = false;
             batch.failed = false;
         }
@@ -274,12 +314,12 @@ impl ParallelTracks {
                     elapsed: 0,
                 });
         }
-        for worker in 0..2 {
+        for worker in 0..count {
             self.senders[worker]
                 .send(self.batches[worker].take().ok_or(())?)
                 .map_err(|_| ())?;
         }
-        for _ in 0..2 {
+        for _ in 0..count {
             loop {
                 match self.done.recv_timeout(Duration::from_millis(1)) {
                     Ok((worker, batch)) => {
@@ -298,9 +338,9 @@ impl ParallelTracks {
                 }
             }
         }
-        let mut complete = self.batches.iter().flatten().all(|b| b.complete);
-        let failed = self.batches.iter().flatten().any(|b| b.failed);
-        for batch in self.batches.iter_mut().flatten() {
+        let mut complete = self.batches[..count].iter().flatten().all(|b| b.complete);
+        let failed = self.batches[..count].iter().flatten().any(|b| b.failed);
+        for batch in self.batches[..count].iter_mut().flatten() {
             for item in batch.items.drain(..) {
                 let index = item.index;
                 self.times[index] = item.elapsed.max(1);
@@ -319,19 +359,38 @@ impl ParallelTracks {
         }
         if complete && !failed {
             for offset in 0..frames {
-                if (from + offset as u64)
-                    .is_multiple_of(u64::from(renderer.plan.project.buffer_size_frames.max(1)))
+                let frame = from + offset as u64;
+                if frame.is_multiple_of(u64::from(renderer.plan.project.buffer_size_frames.max(1)))
                     && cancelled()
                 {
                     complete = false;
                     break;
                 }
+                if live_tile {
+                    renderer.advance_live_ramp(true);
+                }
                 for (index, buffer) in self.buffers.iter().enumerate() {
-                    renderer.buses.output[index] = buffer[offset];
+                    let (sample, mono) = buffer[offset];
+                    if live_tile
+                        && super::send_routing::is_bus(renderer.plan.project.tracks[index].kind)
+                    {
+                        continue;
+                    }
+                    renderer.buses.output[index] = if live_tile {
+                        renderer.gains[index].apply(sample, mono, true, renderer.ramp)
+                    } else {
+                        sample
+                    };
                     renderer.buses.raw[index] = self.raw_buffers[index][offset];
                 }
-                let mix = renderer.sample_buses(from + offset as u64, region, false, false);
-                renderer.sample_master(mix, from + offset as u64, region, false);
+                let mix = renderer.sample_buses(frame, region, live_tile, live_tile);
+                let mix = renderer.sample_master(mix, frame, region, live_tile);
+                if live_tile {
+                    renderer.alignment.previous_feed = Some(frame);
+                    renderer.latent_held_mix = mix;
+                    renderer.playhead += 1;
+                    renderer.finish_live_mix(mix, false);
+                }
             }
         }
         if failed {
