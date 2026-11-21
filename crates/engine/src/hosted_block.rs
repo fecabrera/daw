@@ -205,6 +205,28 @@ impl Node {
             next.inherit(old);
         }
     }
+    pub fn can_keep_input_history(&self, previous: &Self) -> bool {
+        self.main == previous.main
+            && self.routes.len() == previous.routes.len()
+            && self.routes.iter().zip(&previous.routes).all(|(a, b)| {
+                a.settings == b.settings
+                    && a.source == b.source
+                    && a.bus == b.bus
+                    && a.delay.frames() == b.delay.frames()
+                    && a.captured.len() == b.captured.len()
+                    && a.captured.iter().zip(&b.captured).all(|(a, b)| {
+                        a.source == b.source
+                            && a.tap.clock_delay == b.tap.clock_delay
+                            && a.tap.delay.frames() == b.tap.delay.frames()
+                            && a.tap.reader.same_source(&b.tap.reader)
+                    })
+            })
+            && match (&self.control_delay, &previous.control_delay) {
+                (Some(next), Some(old)) => next.compatible(old),
+                (None, None) => true,
+                _ => false,
+            }
+    }
     pub fn begin(&mut self) {
         self.native.begin();
     }
@@ -473,9 +495,9 @@ impl Chain {
             }
         }
     }
-    pub fn native(&self) -> impl Iterator<Item = &HostedNode> {
+    pub fn nodes(&self) -> impl Iterator<Item = &Node> {
         self.stages.iter().filter_map(|s| match s {
-            Stage::Native { node, .. } => Some(&node.native),
+            Stage::Native { node, .. } => Some(node.as_ref()),
             _ => None,
         })
     }

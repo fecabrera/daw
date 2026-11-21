@@ -103,6 +103,8 @@ pub(super) struct HostedGraph {
     pub output: Vec<[f32; 2]>,
     pub consumed: usize,
     pub count: usize,
+    // Describes the arrangement block even while the monitor block is swapped in.
+    pub latency_padding: bool,
     // Monitoring must not consume already-evaluated arrangement samples during pause.
     monitor_output: Vec<[f32; 2]>,
     monitor_consumed: usize,
@@ -277,6 +279,7 @@ impl HostedGraph {
             output: vec![[0.0; 2]; maximum],
             consumed: 0,
             count: 0,
+            latency_padding: false,
             monitor_output: vec![[0.0; 2]; maximum],
             monitor_consumed: 0,
             monitor_count: 0,
@@ -408,18 +411,21 @@ impl HostedGraph {
             + self.send_values.iter().map(vec_bytes).sum::<u64>()
     }
     fn native(&self) -> impl Iterator<Item = &super::hosted_node::HostedNode> {
+        self.nodes().map(|node| &node.native)
+    }
+    fn nodes(&self) -> impl Iterator<Item = &Node> {
         self.tracks
             .iter()
             .flat_map(|t| {
-                t.chain.native().chain(t.instrument.iter().flat_map(|i| {
-                    i.main.native().chain(i.layers.iter().flat_map(|l| {
-                        l.chain
-                            .native()
-                            .chain(l.source.iter().map(|s| &s.node.native))
-                    }))
+                t.chain.nodes().chain(t.instrument.iter().flat_map(|i| {
+                    i.main.nodes().chain(
+                        i.layers
+                            .iter()
+                            .flat_map(|l| l.chain.nodes().chain(l.source.iter().map(|s| &s.node))),
+                    )
                 }))
             })
-            .chain(self.master.native())
+            .chain(self.master.nodes())
     }
     fn native_mut(&mut self) -> impl Iterator<Item = &mut super::hosted_node::HostedNode> {
         self.tracks
@@ -480,11 +486,32 @@ impl HostedGraph {
         self.native().any(|node| node.id == inserted)
             && self.native().count() == previous.map_or(0, |g| g.native().count()) + 1
             && self
-                .native()
-                .filter(|node| node.id != inserted)
+                .nodes()
+                .filter(|node| node.native.id != inserted)
                 .all(|node| {
-                    previous.is_some_and(|graph| graph.native().any(|old| node.compatible(old)))
+                    previous.is_some_and(|graph| {
+                        graph.nodes().any(|old| {
+                            node.native.compatible(&old.native) && node.can_keep_input_history(old)
+                        })
+                    })
                 })
+    }
+    pub fn can_remove(&self, removed: Option<Id>, next: Option<&Self>) -> bool {
+        let removed_count = usize::from(removed.is_some());
+        if removed.is_some_and(|id| !self.native().any(|node| node.id == id))
+            || self.native().count() != next.map_or(0, |g| g.native().count()) + removed_count
+        {
+            return false;
+        }
+        next.is_none_or(|graph| {
+            graph.nodes().all(|node| {
+                self.nodes().any(|old| {
+                    Some(old.native.id) != removed
+                        && node.native.compatible(&old.native)
+                        && node.can_keep_input_history(old)
+                })
+            })
+        })
     }
     pub fn inherit_dry_delays(&mut self, previous: &mut Self) {
         self.master.inherit_dry_delays(&mut previous.master);
@@ -531,6 +558,7 @@ impl HostedGraph {
         std::mem::swap(&mut self.output, &mut previous.output);
         self.consumed = previous.consumed;
         self.count = previous.count;
+        self.latency_padding = previous.latency_padding;
         std::mem::swap(&mut self.monitor_output, &mut previous.monitor_output);
         self.monitor_consumed = previous.monitor_consumed;
         self.monitor_count = previous.monitor_count;
@@ -563,6 +591,7 @@ impl HostedGraph {
         self.count = 0;
         self.consumed = 0;
         self.primed = false;
+        self.latency_padding = false;
         self.clear_monitor_output();
     }
     pub fn clear_monitor_output(&mut self) {
@@ -900,6 +929,10 @@ impl HostedGraph {
         );
         self.count = count;
         self.consumed = 0;
+        if advancing {
+            renderer.alignment.previous_feed =
+                Some(latency::advanced_frame(start, (count - 1) as u64, region));
+        }
     }
 }
 

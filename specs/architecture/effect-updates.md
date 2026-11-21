@@ -136,6 +136,15 @@ Only the new effect starts fresh. Exact mode and incompatible candidates use
 normal worker reconstruction. Built-ins that keep delay compensation can use
 the targeted update path above in either mode.
 
+Fast also accepts an isolated effect removal against the acknowledged plan.
+It reuses surviving sources, voices, processors and delay history. When the
+total delay decreases, it advances the audible clock by the decrease and
+keeps the next source input frame. Shorter lines keep their still-pending
+frames at the new clock. Growing lines bridge samples that have no retained
+history with the last input. The output transition covers the handoff.
+If a native graph already evaluated audio, the callback switches when it
+finishes that block. Exact and unsupported transfers use the worker rebuild.
+
 Fallback, replay, retry and publication receipts use the submitted snapshot
 until its revision is acknowledged. Keep playback preparation pending until
 the latest requested Drive reaches audio. A complete controls update keeps the

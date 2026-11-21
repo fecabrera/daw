@@ -19,6 +19,67 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Fast effect removal — 2026-11-21
+
+- Output and delay tests verify that the shorter compensation retains queued
+  audio, held MIDI notes and a remaining reverb tail. CLAP and VST3 fixtures
+  verify removal after Fast Play, both when another native processor remains
+  and when the last hosted effect leaves. They verify the native block
+  boundary and guard removal and sampling against heap activity.
+- The release probe removed the built-in Saturator or Saturator CLAP from
+  MIDI 4 Output on the same project copy used in the insertion tests. Both
+  effects added 32 frames. The MacBook Pro speakers ran at 48 kHz with a
+  512-frame buffer. Cache warming was disabled. Each result is the median of
+  five trials from the removal request to final callback publication.
+
+  | Effect | Playback position | Fast | Exact |
+  | --- | --- | ---: | ---: |
+  | Built-in Saturator | About 4 s | 7.41 ms | 522.28 ms |
+  | Built-in Saturator | About 24 s | 7.46 ms | 2,280.47 ms |
+  | Saturator CLAP | About 4 s | 7.93 ms | 523.44 ms |
+  | Saturator CLAP | About 24 s | 8.37 ms | 2,389.51 ms |
+
+- Fast ranged from 6.82 to 17.86 ms and replayed zero historical frames.
+  Exact used the background rebuild in all 20 Exact runs. The callback
+  overrun counter did not change in the 40 trials. The probe excludes
+  editor input, repaint and physical output latency.
+- The debug and release workspace suites each passed 3,667 tests with 22
+  ignored. Both excluded the known macOS Audio Unit registration case.
+  After the final delay-cursor correction, all 169 Engine and Output library
+  tests passed in each profile. Strict Clippy and the CLI smoke check passed.
+  The final macOS debug bundle passed signature verification.
+
+## Fast insertion for latency-adding external effects — 2026-11-21
+
+- The CLAP and VST3 fixtures add a latency-reporting effect to a portable
+  MIDI instrument and to a running native instrument. The checks compare
+  held notes and reverb tails with uninterrupted playback, preserve the
+  remaining old native block, and guard the handoff and sampling against
+  heap activity.
+- The release probe added Saturator CLAP or Limiter CLAP to MIDI 4 Output
+  on the same project copy used for the previous insertion tests. The
+  MacBook Pro speakers ran at 48 kHz with a 512-frame buffer. Cache warming
+  was disabled. Each result is the median of five trials from the add
+  request to callback publication.
+
+  | Effect | Reported delay | Playback position | Fast | Exact |
+  | --- | ---: | --- | ---: | ---: |
+  | Saturator CLAP | 32 frames | About 4 s | 39.35 ms | 1,321.97 ms |
+  | Saturator CLAP | 32 frames | About 24 s | 39.20 ms | 6,920.56 ms |
+  | Limiter CLAP | 512 frames | About 4 s | 28.66 ms | 1,289.95 ms |
+  | Limiter CLAP | 512 frames | About 24 s | 28.88 ms | 6,611.36 ms |
+
+- The first loads took 231 ms for Saturator and 242 ms for Limiter. More
+  than 200 ms of each was spent before graph submission, during plug-in
+  installation. Later Fast trials took 28–40 ms. The callback overrun
+  counter did not change in the 40 trials. The probe excludes editor input,
+  repaint and physical output latency.
+- Formatting, strict workspace Clippy, the CLI smoke check, and the native
+  CLAP and VST3 fixture and graph checks passed. Both workspace suites
+  passed 3,665 tests with 22 ignored. Each excluded the known macOS Audio
+  Unit registration case. The rebuilt Mac debug bundle passed signature
+  verification.
+
 ## Fast built-in effect insertion — 2026-11-21
 
 - The effect catalog test exercised live state transfer for each built-in

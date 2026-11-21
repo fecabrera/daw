@@ -128,13 +128,14 @@ impl From<TransportState> for TransportRequest {
         Self { state, fast: false }
     }
 }
-pub(super) struct LiveInsertBase {
+pub(super) struct LiveEffectBase {
     pub publication: u64,
-    pub edit: LiveInsertEdit,
+    pub edit: LiveEffectRequest,
 }
-pub(super) enum LiveInsertEdit {
+pub(super) enum LiveEffectRequest {
     Effect(Arc<RenderPlan>),
     Builtin(Id),
+    Remove(Arc<RenderPlan>),
 }
 enum Request {
     Warm(Arc<RenderPlan>, Option<Arc<RenderPlan>>),
@@ -143,7 +144,7 @@ enum Request {
         Option<TransportRequest>,
         std::time::Instant,
         Option<Arc<RenderPlan>>,
-        Option<LiveInsertBase>,
+        Option<LiveEffectBase>,
     ),
     Prepared(Box<PreparedRenderer>, Anchor),
 }
@@ -347,25 +348,31 @@ impl Worker {
                             ));
                             continue;
                         }
-                        Request::Plan(plan, transport, requested_at, predecessor, live_insert) => {
-                            let live_insert = live_insert.and_then(|base| {
+                        Request::Plan(plan, transport, requested_at, predecessor, live_effect) => {
+                            let live_effect = live_effect.and_then(|base| {
                                 let kind = match base.edit {
-                                    LiveInsertEdit::Effect(previous) => {
+                                    LiveEffectRequest::Effect(previous) => {
                                         if plan.project.hosted_units().is_empty() {
-                                            LiveInsertKind::Builtin(
+                                            LiveEffectKind::Builtin(
                                                 previous.builtin_effect_inserted(&plan)?,
                                             )
                                         } else {
-                                            LiveInsertKind::Hosted(
+                                            LiveEffectKind::Hosted(
                                                 previous.hosted_effect_inserted(&plan)?,
                                             )
                                         }
                                     }
-                                    LiveInsertEdit::Builtin(effect) => {
-                                        LiveInsertKind::Builtin(effect)
+                                    LiveEffectRequest::Builtin(effect) => {
+                                        LiveEffectKind::Builtin(effect)
+                                    }
+                                    LiveEffectRequest::Remove(previous) => {
+                                        previous.live_effect_removed(&plan).map_or(
+                                            LiveEffectKind::UnverifiedRemoval,
+                                            LiveEffectKind::Remove,
+                                        )
                                     }
                                 };
-                                Some(LiveInsert {
+                                Some(LiveEffect {
                                     base_publication: base.publication,
                                     kind,
                                 })
@@ -386,7 +393,7 @@ impl Worker {
                             let renderer = match PreparedRenderer::try_new_with_insert(
                                 (*plan).clone(),
                                 &bindings.tracks,
-                                live_insert,
+                                live_effect,
                             ) {
                                 Ok(renderer) => Box::new(renderer),
                                 Err(error) => {
@@ -733,12 +740,12 @@ impl Worker {
     ) -> u64 {
         self.submit_plan(plan.into(), previous, transport, None, None)
     }
-    pub fn submit_live_insert(
+    pub fn submit_live_effect(
         &self,
         plan: Arc<RenderPlan>,
         previous: Bindings,
         predecessor: Option<Arc<RenderPlan>>,
-        insert: LiveInsertBase,
+        insert: LiveEffectBase,
     ) -> u64 {
         self.submit_plan(plan, previous, None, predecessor, Some(insert))
     }
@@ -756,7 +763,7 @@ impl Worker {
         previous: Bindings,
         transport: Option<TransportRequest>,
         predecessor: Option<Arc<RenderPlan>>,
-        live_insert: Option<LiveInsertBase>,
+        live_effect: Option<LiveEffectBase>,
     ) -> u64 {
         let (request, ready, revision) = {
             let mut state = self.0.0.lock().unwrap();
@@ -772,7 +779,7 @@ impl Worker {
                         transport,
                         std::time::Instant::now(),
                         predecessor,
-                        live_insert,
+                        live_effect,
                     ),
                     previous,
                 )),

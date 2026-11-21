@@ -79,15 +79,17 @@ impl ControlDelay {
         }
         (&self.current, &self.index)
     }
-    pub fn inherit(&mut self, previous: &mut Self) {
-        if self.frames == previous.frames
+    pub fn compatible(&self, previous: &Self) -> bool {
+        self.frames == previous.frames
             && self.delayed == previous.delayed
             && self
                 .current
                 .iter()
                 .map(|v| v.source)
                 .eq(previous.current.iter().map(|v| v.source))
-        {
+    }
+    pub fn inherit(&mut self, previous: &mut Self) {
+        if self.compatible(previous) {
             std::mem::swap(&mut self.history, &mut previous.history);
             self.write = previous.write;
         }

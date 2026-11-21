@@ -10,6 +10,26 @@ pub enum MidiOutputSaturatorEdit {
 }
 
 impl RenderPlan {
+    /// Match one deletion and return the native unit identity when it was hosted.
+    pub fn live_effect_removed(&self, next: &Self) -> Option<Option<Id>> {
+        if self.external.offline
+            || next.external.offline
+            || self.external.publish != next.external.publish
+        {
+            return None;
+        }
+        match (&self.external.host, &next.external.host) {
+            (Some(a), Some(b)) if std::sync::Arc::ptr_eq(a, b) => {}
+            (None, None) => {}
+            _ => return None,
+        }
+        match &next.single_effect_insert(self)?.unit {
+            EffectSettings::Hosted(settings) => Some(Some(settings.id)),
+            EffectSettings::Missing { .. } => None,
+            _ => Some(None),
+        }
+    }
+
     pub fn hosted_effect_inserted(&self, next: &Self) -> Option<Id> {
         if self.external.offline
             || next.external.offline

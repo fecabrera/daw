@@ -1356,8 +1356,20 @@ impl MidiTrackRuntime {
                 Some(cost + next.delay.live_copy_frames(&previous.delay, lead)?)
             })
     }
-    pub(super) fn inherit_live_insert_delays(&mut self, prepared: &mut Self) {
-        let lead = (prepared.parallel_latency - self.parallel_latency) as usize;
+    pub(super) fn live_removal_copy_frames(&self, old: &Self) -> Option<usize> {
+        if !self.voice_state_compatible(old) {
+            return None;
+        }
+        let drop = old.parallel_latency.checked_sub(self.parallel_latency)? as usize;
+        self.layer_effects
+            .iter()
+            .zip(&old.layer_effects)
+            .take(self.layer_effects.len() - 1)
+            .try_fold(0, |cost, (next, previous)| {
+                Some(cost + next.delay.removal_copy_frames(&previous.delay, drop)?)
+            })
+    }
+    pub(super) fn inherit_live_edit_delays(&mut self, prepared: &mut Self, removal: bool) {
         let layers = self.layer_effects.len() - 1;
         for (old, next) in self
             .layer_effects
@@ -1365,7 +1377,13 @@ impl MidiTrackRuntime {
             .zip(&mut prepared.layer_effects)
             .take(layers)
         {
-            next.delay.inherit(&mut old.delay, lead);
+            if removal {
+                let drop = (self.parallel_latency - prepared.parallel_latency) as usize;
+                next.delay.inherit_removal(&mut old.delay, drop);
+            } else {
+                let lead = (prepared.parallel_latency - self.parallel_latency) as usize;
+                next.delay.inherit(&mut old.delay, lead);
+            }
             std::mem::swap(&mut next.delay, &mut old.delay);
         }
         self.parallel_latency = prepared.parallel_latency;

@@ -80,6 +80,174 @@ fn render(plan: RenderPlan, count: usize) -> daw_plugin_host::Result<Vec<[f32; 2
     assert_eq!(&output[1000..1032], &sought);
     Ok(output)
 }
+
+fn check_delayed_live_insert(
+    mut plan: RenderPlan,
+    mut effect: HostedSettings,
+    instrument: Option<HostedSettings>,
+) -> daw_plugin_host::Result<()> {
+    plan.external.offline = false;
+    let track = plan.project.add_midi_track().unwrap();
+    let instrument_settings = plan.project.tracks[0].instrument.as_mut().unwrap();
+    let already_hosted = instrument.is_some();
+    if let Some(source) = instrument {
+        instrument_settings.layers[0].clear_sources();
+        instrument_settings.layers[0].hosted = Some(HostedSource::Known(source));
+    }
+    instrument_settings
+        .main
+        .effects
+        .push(EffectInstance::plate_reverb());
+    let target = EffectChainTarget::Layer {
+        track,
+        layer: instrument_settings.main.id,
+    };
+    let clip_id = plan.project.add_midi_pattern(track, 0).unwrap();
+    plan.project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id,
+            pattern: MidiPattern {
+                length_ticks: 3840,
+                notes: vec![MidiNote {
+                    id: Id::new_v4(),
+                    start_tick: 0,
+                    length_ticks: 960,
+                    pitch: 60,
+                    velocity: 100,
+                }],
+            },
+        })
+        .unwrap();
+    let mut edited = plan.clone();
+    let (chain, compact) = plan.project.effect_chain(target).unwrap();
+    let mut chain = chain.to_vec();
+    effect.enabled = false; // Compare the delayed dry signal to the uninterrupted reference.
+    let unit = effect.id;
+    let added = u64::from(effect.latency_frames);
+    chain.push(EffectInstance {
+        id: Id::new_v4(),
+        unit: EffectSettings::Hosted(effect),
+    });
+    edited.project.edit(target.edit(chain, compact)).unwrap();
+
+    let mut expected = Renderer::try_new(plan.clone())?;
+    let mut active = Renderer::try_new(plan.clone())?;
+    let mut next = Renderer::try_new_for_hosted_insert(edited.clone(), unit)?;
+    expected.play();
+    active.play();
+    // Stop partway through an evaluated native block when there is one.
+    for _ in 0..4099 {
+        assert_eq!(active.next_sample(), expected.next_sample());
+    }
+    let original = active.transport_state();
+    assert_eq!(next.latency_frames(), active.latency_frames() + added);
+    assert!(measured(|| next.try_insert_hosted_effect(&mut active, unit)));
+    assert_eq!(next.transport_state(), original);
+
+    let mut held = 0;
+    let mut first_hold = None;
+    let mut note = 0.0f32;
+    let mut tail = 0.0f32;
+    for i in 0..40_000 {
+        let frame = next.playhead;
+        let actual = measured(|| next.next_sample());
+        if next.playhead == frame {
+            held += 1;
+            first_hold.get_or_insert(i);
+            continue;
+        }
+        let reference = expected.next_sample();
+        if first_hold.is_none_or(|first| i >= first + added + 240) {
+            assert!(
+                (actual[0] - reference[0])
+                    .abs()
+                    .max((actual[1] - reference[1]).abs())
+                    < 1e-5,
+                "frame {i}, hosted source {already_hosted}: {actual:?} vs {reference:?}"
+            );
+        }
+        if (1024..4096).contains(&i) {
+            note = note.max(actual[0].abs());
+        }
+        if i > 25000 {
+            tail = tail.max(actual[0].abs());
+        }
+    }
+    assert_eq!(held, added);
+    assert_eq!(first_hold == Some(0), !already_hosted);
+    assert_eq!(next.transport_state(), expected.transport_state());
+    assert!(note > 0.001 && tail > 0.00001);
+    assert!(next.hosted_fault().is_none());
+    check_delayed_live_removal(edited, plan, unit)
+}
+
+fn check_delayed_live_removal(
+    original: RenderPlan,
+    remaining: RenderPlan,
+    removed: Id,
+) -> daw_plugin_host::Result<()> {
+    assert_eq!(
+        original.live_effect_removed(&remaining),
+        Some(Some(removed))
+    );
+    let mut active = Renderer::try_new(original)?;
+    let mut reference = Renderer::try_new(remaining.clone())?;
+    let mut next = Renderer::try_new(remaining)?;
+    let start = TransportState {
+        playing: true,
+        playback_start: Some(0),
+        ..Default::default()
+    };
+    // The application can reach the removal from an ordinary Fast Play.
+    active.prepare_fast_seek(start).unwrap();
+    reference.prepare_fast_seek(start).unwrap();
+    for _ in 0..4099 {
+        measured(|| active.next_sample());
+    }
+    assert!(active.pending_hosted_frames() > 0);
+    let pending = active.transport_state();
+    assert!(!measured(
+        || next.try_remove_effect_live(&mut active, Some(removed))
+    ));
+    assert_eq!(active.transport_state(), pending);
+    while active.pending_hosted_frames() > 0 {
+        measured(|| active.next_sample());
+    }
+    let frame = active.playhead + active.latency_frames() - next.latency_frames();
+    for _ in 0..frame {
+        reference.next_sample();
+    }
+    assert!(measured(
+        || next.try_remove_effect_live(&mut active, Some(removed))
+    ));
+    assert_eq!(next.playhead, frame);
+    let mut note = 0.0f32;
+    let mut tail = 0.0f32;
+    for i in 0..40_000 {
+        let actual = measured(|| next.next_sample());
+        let expected = reference.next_sample();
+        if i >= 240 {
+            assert!(
+                (actual[0] - expected[0])
+                    .abs()
+                    .max((actual[1] - expected[1]).abs())
+                    < 1e-5,
+                "frame {i}: {actual:?} vs {expected:?}"
+            );
+        }
+        if (1024..4096).contains(&i) {
+            note = note.max(actual[0].abs());
+        }
+        if i > 25000 {
+            tail = tail.max(actual[0].abs());
+        }
+    }
+    assert!(note > 0.001 && tail > 0.00001);
+    assert_eq!(next.transport_state(), reference.transport_state());
+    assert!(next.hosted_fault().is_none());
+    Ok(())
+}
+
 fn add_audio(plan: &mut RenderPlan, samples: Vec<[f32; 2]>) -> Id {
     let track = plan.project.add_track().unwrap();
     let asset = Id::new_v4();
@@ -197,6 +365,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         present: true,
     });
     let (mut service, client) = HostService::new(registry);
+    for already_hosted in [false, true] {
+        let (effect_settings, mut states, _) =
+            mapped(&mut service, &candidate, &effect, 48000, 512)?;
+        let source = if already_hosted {
+            let (settings, source_states, _) =
+                mapped(&mut service, &candidate, &instrument, 48000, 512)?;
+            states.merge(&source_states);
+            Some(settings)
+        } else {
+            None
+        };
+        let plan = base_plan(48000, 512, client.clone(), states);
+        service.run(move || check_delayed_live_insert(plan, effect_settings, source))?;
+    }
     for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
         for block in [32, 64, 128, 256, 512, 1024, 2048, 4096] {
             let (settings, states, _) = mapped(&mut service, &candidate, &instrument, rate, block)?;

@@ -143,7 +143,7 @@ struct PreparedRenderer {
     revision: u64,
     publication: u64,
     prepared_transport: bool,
-    live_insert: Option<LiveInsert>,
+    live_effect: Option<LiveEffect>,
     reprepare: Option<preparation::Anchor>,
     allow_checkpoint_reuse: bool,
     activate_at: Option<u64>,
@@ -155,16 +155,22 @@ struct PreparedRenderer {
     modulation: Vec<(ModulationTarget, ModulationMeter)>,
 }
 #[derive(Clone, Copy)]
-struct LiveInsert {
+struct LiveEffect {
     base_publication: u64,
-    kind: LiveInsertKind,
+    kind: LiveEffectKind,
 }
 #[derive(Clone, Copy)]
-enum LiveInsertKind {
+enum LiveEffectKind {
     Hosted(Id),
     Builtin(Id),
+    Remove(Option<Id>),
+    UnverifiedRemoval,
 }
 impl PreparedRenderer {
+    fn is_live_removal(&self) -> bool {
+        self.live_effect
+            .is_some_and(|effect| matches!(effect.kind, LiveEffectKind::Remove(_)))
+    }
     #[cfg(test)]
     fn new(plan: RenderPlan, meters: &HashMap<Id, Arc<StereoMeter>>) -> Self {
         Self::try_new(plan, meters).expect("test renderer fits output budget")
@@ -175,7 +181,7 @@ impl PreparedRenderer {
     fn try_new_with_insert(
         plan: RenderPlan,
         meters: &HashMap<Id, Arc<StereoMeter>>,
-        insert: Option<LiveInsert>,
+        insert: Option<LiveEffect>,
     ) -> Result<Self, String> {
         let handles = plan
             .project
@@ -189,9 +195,10 @@ impl PreparedRenderer {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mut renderer = match insert.map(|insert| insert.kind) {
-            Some(LiveInsertKind::Builtin(effect)) => {
+            Some(LiveEffectKind::Builtin(effect)) => {
                 Renderer::try_new_for_builtin_insert(plan, effect)
             }
+            Some(LiveEffectKind::Hosted(unit)) => Renderer::try_new_for_hosted_insert(plan, unit),
             _ => Renderer::try_new(plan),
         }
         .map_err(|e| e.to_string())?;
@@ -205,7 +212,7 @@ impl PreparedRenderer {
             revision: 0,
             publication: 0,
             prepared_transport: false,
-            live_insert: insert,
+            live_effect: insert,
             reprepare: None,
             allow_checkpoint_reuse: false,
             activate_at: None,
@@ -966,14 +973,17 @@ impl AudioOutput {
     fn prepare_plan(
         &mut self,
         request: Option<preparation::TransportRequest>,
-        live_insert: Option<preparation::LiveInsertBase>,
+        live_effect: Option<preparation::LiveEffectBase>,
     ) {
+        let live_removal = live_effect
+            .as_ref()
+            .is_some_and(|effect| matches!(effect.edit, preparation::LiveEffectRequest::Remove(_)));
         if request.is_some_and(|request| !request.state.playing) {
             self.resume_needs_preparation = true;
         }
         self.preparation_failed = false;
-        self.prepare_revision = if let Some(insert) = live_insert {
-            self.preparation.submit_live_insert(
+        self.prepare_revision = if let Some(insert) = live_effect {
+            self.preparation.submit_live_effect(
                 self.dispatched_plan().clone(),
                 self.bindings.clone(),
                 self.append_predecessor(),
@@ -1004,7 +1014,9 @@ impl AudioOutput {
         self.pending_controls = None;
         self.pending_effects = None;
         self.effect_error = None;
-        self.submit_control_update(true);
+        if !live_removal {
+            self.submit_control_update(true);
+        }
     }
     pub fn sync(&mut self, plan: RenderPlan) -> Result<(), String> {
         self.sync_with_mode(plan, PlaybackSeek::default())
@@ -1039,28 +1051,40 @@ impl AudioOutput {
             && transport.is_none()
             && self.status.playing.load(Ordering::Acquire)
             && self.current_plan_published();
-        let live_insert = (live
+        let live_effect = (live
             && plan.project.all_effects().count() == self.plan.project.all_effects().count() + 1
             && (plan.project.hosted_units().len() == self.plan.project.hosted_units().len() + 1
                 || plan.latency_effect_count() == self.plan.latency_effect_count() + 1))
-            .then(|| preparation::LiveInsertBase {
+            .then(|| preparation::LiveEffectBase {
                 publication: self.active_publication,
-                edit: preparation::LiveInsertEdit::Effect(self.plan.clone()),
+                edit: preparation::LiveEffectRequest::Effect(self.plan.clone()),
+            })
+            .or_else(|| {
+                (live
+                    && self.plan.project.all_effects().count()
+                        == plan.project.all_effects().count() + 1
+                    && (self.plan.project.hosted_units().len()
+                        == plan.project.hosted_units().len() + 1
+                        || self.plan.latency_effect_count() == plan.latency_effect_count() + 1))
+                    .then(|| preparation::LiveEffectBase {
+                        publication: self.active_publication,
+                        edit: preparation::LiveEffectRequest::Remove(self.plan.clone()),
+                    })
             });
         self.plan = Arc::new(plan);
         self.saturator_flight = None;
         match edit {
             Some(MidiOutputSaturatorEdit::Append(effect)) => {
-                let insert = live.then_some(preparation::LiveInsertBase {
+                let insert = live.then_some(preparation::LiveEffectBase {
                     publication: self.active_publication,
-                    edit: preparation::LiveInsertEdit::Builtin(effect),
+                    edit: preparation::LiveEffectRequest::Builtin(effect),
                 });
                 self.start_saturator_insertion(effect, insert);
             }
             Some(MidiOutputSaturatorEdit::Drive(effect)) => {
                 self.start_saturator_flight(effect, true);
             }
-            None if live_insert.is_some() => self.prepare_plan(None, live_insert),
+            None if live_effect.is_some() => self.prepare_plan(None, live_effect),
             None if transport.is_some() || self.active_plan.is_none() => {
                 self.prepare_dispatched(transport)
             }
@@ -1141,7 +1165,7 @@ impl AudioOutput {
     fn start_saturator_insertion(
         &mut self,
         effect: Id,
-        insert: Option<preparation::LiveInsertBase>,
+        insert: Option<preparation::LiveEffectBase>,
     ) {
         if let Some(insert) = insert {
             self.saturator_flight = Some(SaturatorFlight {
@@ -1663,6 +1687,14 @@ impl AudioOutput {
             if old.revision == self.prepare_revision
                 && let Some(transport) = old.reprepare.take()
             {
+                if old.live_effect.is_some_and(|effect| {
+                    matches!(
+                        effect.kind,
+                        LiveEffectKind::Remove(_) | LiveEffectKind::UnverifiedRemoval
+                    )
+                }) {
+                    self.submit_control_update(true);
+                }
                 self.preparation.reprepare(
                     preparation::Ready {
                         revision: old.revision,
@@ -1890,6 +1922,18 @@ impl Callback {
                             break;
                         }
                     }
+                    if next.is_live_removal()
+                        && next
+                            .live_effect
+                            .is_some_and(|edit| edit.base_publication == self.renderer.publication)
+                        && self.renderer.playing
+                    {
+                        let pending = self.renderer.pending_hosted_frames();
+                        if pending != 0 {
+                            next.activate_at =
+                                Some(self.rendered_frames.saturating_add(pending as u64));
+                        }
+                    }
                     if next.activate_at.is_some() {
                         self.scheduled = Some(next);
                         self.activate_scheduled();
@@ -1907,10 +1951,7 @@ impl Callback {
                     } else if !self.inherit_plan(&mut next) {
                         // Rebuild at this exact clock, then catch up on the worker.
                         // The current renderer keeps playing throughout preparation.
-                        next.allow_checkpoint_reuse =
-                            next.allow_checkpoint_reuse && self.renderer.allows_checkpoint_reuse();
-                        next.reprepare = Some(self.preparation_anchor());
-                        let _ = self.retired.push(next);
+                        self.reprepare_plan(next);
                         continue;
                     }
                     self.install(next);
@@ -1963,13 +2004,17 @@ impl Callback {
             .commands(started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64);
     }
     fn inherit_plan(&mut self, next: &mut PreparedRenderer) -> bool {
-        if let Some(insert) = next.live_insert
+        if let Some(insert) = next.live_effect
             && insert.base_publication == self.renderer.publication
             && match insert.kind {
-                LiveInsertKind::Hosted(unit) => {
+                LiveEffectKind::Hosted(unit) => {
                     next.try_insert_hosted_effect(&mut self.renderer, unit)
                 }
-                LiveInsertKind::Builtin(_) => next.try_insert_builtin_effect(&mut self.renderer),
+                LiveEffectKind::Builtin(_) => next.try_insert_builtin_effect(&mut self.renderer),
+                LiveEffectKind::Remove(unit) => {
+                    next.try_remove_effect_live(&mut self.renderer, unit)
+                }
+                LiveEffectKind::UnverifiedRemoval => false,
             }
         {
             return true;
@@ -1985,6 +2030,11 @@ impl Callback {
             transport: self.renderer.transport_state(),
             clock: self.rendered_frames,
         }
+    }
+    fn reprepare_plan(&mut self, mut next: Box<PreparedRenderer>) {
+        next.allow_checkpoint_reuse &= self.renderer.allows_checkpoint_reuse();
+        next.reprepare = Some(self.preparation_anchor());
+        let _ = self.retired.push(next);
     }
     fn install(&mut self, mut next: Box<PreparedRenderer>) {
         if next.prepared_transport {
@@ -2031,6 +2081,12 @@ impl Callback {
         let mut next = self.scheduled.take().unwrap();
         if stale {
             let _ = self.retired.push(next);
+        } else if next.is_live_removal() {
+            if self.inherit_plan(&mut next) {
+                self.install(next);
+            } else {
+                self.reprepare_plan(next);
+            }
         } else if at < self.rendered_frames {
             // UI/queue delays can miss a deadline. Retry with more delivery headroom;
             // never rewind the active transport or replay DSP on this thread.

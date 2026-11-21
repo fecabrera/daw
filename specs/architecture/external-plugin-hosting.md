@@ -109,12 +109,21 @@ Fast seeks prepare fresh processors at the destination.
 In Fast Seek mode, a single hosted effect insertion during playback can
 install at the next callback boundary. The worker prepares the candidate and
 checks the edit against the active plan. The callback requires the original
-processing publication, compatible source and routing state, and unchanged
-delay compensation. It transfers held voices, existing effect DSP, native
-leases, parameter smoothers, delay lines and already evaluated audio. The new
-effect starts processing when its first input block arrives. A stale or
-incompatible candidate follows normal preparation. Exact mode uses the
-normal reconstruction path for hosted effect additions.
+processing publication and compatible source, routing and native input state.
+It transfers held voices, existing effect DSP, native leases, parameter
+smoothers, delay lines and already evaluated audio. The worker uses measured
+plug-in latency to prepare the new compensation lines. After draining the old
+output, the block renderer feeds any added frames from the next live input
+clock while it holds the audible position. This fill is split into ordinary
+processing quanta. Only the inserted effect starts fresh. A stale candidate
+or incompatible route follows normal preparation. Exact mode uses normal
+reconstruction for hosted effect additions.
+
+Fast removal waits for the end of the current evaluated block. It transfers
+the surviving leases, note identities, effect state and compatible input
+history. If the last hosted effect leaves, the sample renderer resumes from
+the same source cursor. When compensation shrinks, the audible clock moves
+ahead by the decrease. Exact uses normal reconstruction for removals.
 
 Native processors use bounded stereo/mono buses, one output bus, up to 32 input
 buses and at most one note input. Before setup/activation, VST3 negotiation

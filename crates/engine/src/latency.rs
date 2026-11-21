@@ -17,6 +17,7 @@ pub(super) struct Delay {
     pub(super) id: Id,
     samples: Vec<Sample>,
     index: usize,
+    last_input: Sample,
     splice: Option<Box<DelaySplice>>,
 }
 impl Delay {
@@ -35,12 +36,14 @@ impl Delay {
             id,
             samples: vec![([0.0; 2], false); frames as usize],
             index: 0,
+            last_input: ([0.0; 2], false),
             splice: None,
         }
     }
     pub fn reset(&mut self) {
         self.samples.fill(([0.0; 2], false));
         self.index = 0;
+        self.last_input = ([0.0; 2], false);
         if let Some(splice) = &mut self.splice {
             splice.skip = 0;
             splice.count = 0;
@@ -66,6 +69,7 @@ impl Delay {
                 splice.cursor += 1;
             }
         }
+        self.last_input = sample;
         if self.samples.is_empty() {
             return sample;
         }
@@ -102,6 +106,7 @@ impl Delay {
         .then_some(old.frames())
     }
     pub fn inherit(&mut self, old: &mut Self, clock_growth: usize) {
+        self.last_input = old.last_input;
         if self.frames() == old.frames() && clock_growth == 0 {
             std::mem::swap(&mut self.samples, &mut old.samples);
             self.index = old.index;
@@ -129,6 +134,37 @@ impl Delay {
             for (slot, value) in splice.samples.iter_mut().zip(history) {
                 *slot = value;
             }
+        }
+    }
+
+    pub fn removal_copy_frames(&self, old: &Self, clock_drop: usize) -> Option<usize> {
+        if old.splicing() {
+            return None;
+        }
+        Some(if self.frames() == old.frames() && clock_drop == 0 {
+            0
+        } else {
+            self.frames()
+        })
+    }
+
+    pub fn inherit_removal(&mut self, old: &mut Self, clock_drop: usize) {
+        if self.frames() == old.frames() && clock_drop == 0 {
+            self.inherit(old, 0);
+            return;
+        }
+        self.index = 0;
+        self.last_input = old.last_input;
+        let (first, last) = old.samples.split_at(old.index);
+        // The source cursor stays put. Keep the samples that still fall inside
+        // the new delay and bridge any unavailable interval with the last input.
+        let history = last.iter().chain(first).skip(clock_drop).copied();
+        for (target, frame) in self
+            .samples
+            .iter_mut()
+            .zip(history.chain(std::iter::repeat(self.last_input)))
+        {
+            *target = frame;
         }
     }
 }
@@ -159,6 +195,29 @@ fn live_effect_splice_retains_pending_audio_until_the_new_effect_fills() {
             let actual = new.tick(fresh);
             if tick >= growth {
                 assert_eq!(actual, ([(old_frames + tick - growth) as f32; 2], true));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn live_removal_retains_the_next_frames_at_the_shorter_clock() {
+    let id = Id::new_v4();
+    for (new_size, drop, pending) in [(3, 2, [4.0, 5.0, 6.0]), (6, 0, [2.0, 3.0, 4.0])] {
+        let mut old = Delay::new(id, 5);
+        for index in 0..7 {
+            old.tick(([index as f32; 2], true));
+        }
+        let mut new = Delay::new(id, new_size);
+        new.tick(([99.0; 2], true)); // A prepared candidate can have a nonzero ring cursor.
+        new.inherit_removal(&mut old, drop);
+        for frame in pending {
+            assert_eq!(new.tick(([7.0; 2], true)), ([frame; 2], true));
+        }
+        if new_size > 3 {
+            for frame in [5.0, 6.0, 6.0] {
+                assert_eq!(new.tick(([7.0; 2], true)), ([frame; 2], true));
             }
         }
     }
@@ -431,12 +490,33 @@ impl Alignment {
             },
         )
     }
-    pub fn inherit(&mut self, old: &mut Self) {
+    pub fn removal_copy_frames(&self, old: &Self) -> Option<usize> {
+        if self.total > old.total
+            || self.parents != old.parents
+            || self.captured_sends != old.captured_sends
+            || self.send_delays != old.send_delays
+        {
+            return None;
+        }
+        self.tracks.iter().zip(&old.tracks).enumerate().try_fold(
+            0,
+            |cost, (i, (next, previous))| {
+                let drop = old.output_frames[i].checked_sub(self.output_frames[i])?;
+                Some(cost + next.removal_copy_frames(previous, drop as usize)?)
+            },
+        )
+    }
+    pub fn inherit(&mut self, old: &mut Self, removal: bool) {
         for (index, a) in self.tracks.iter_mut().enumerate() {
             if let Some(&previous) = old.index.get(&a.id) {
                 let b = &mut old.tracks[previous];
-                let growth = self.output_frames[index].saturating_sub(old.output_frames[previous]);
-                a.inherit(b, growth as usize);
+                let next_clock = self.output_frames[index];
+                let old_clock = old.output_frames[previous];
+                if removal {
+                    a.inherit_removal(b, (old_clock - next_clock) as usize);
+                } else {
+                    a.inherit(b, next_clock.saturating_sub(old_clock) as usize);
+                }
             }
         }
         self.live = old.live;

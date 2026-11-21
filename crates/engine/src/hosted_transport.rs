@@ -6,6 +6,7 @@ impl Renderer {
         let mut graph = self.hosted.take().expect("hosted graph");
         self.prime_hosted(&mut graph, true, false);
         self.hosted = Some(graph);
+        self.prime_pending = false;
     }
     fn prime_hosted(&mut self, graph: &mut HostedGraph, live: bool, realtime: bool) {
         if graph.primed {
@@ -116,12 +117,22 @@ impl Renderer {
             graph.swap_monitor_output();
         }
         if graph.consumed >= graph.count {
+            let padding = if self.playing { self.latency_fill } else { 0 };
             let start = if self.playing {
-                latency::advanced_frame(self.playhead, self.alignment.total, self.loop_region(true))
+                latency::advanced_frame(
+                    self.playhead,
+                    self.alignment.total - padding,
+                    self.loop_region(true),
+                )
             } else {
                 self.live_clock
             };
-            let count = self.hosted_quantum(&graph, start, graph.quantum, true);
+            let limit = if padding == 0 {
+                graph.quantum
+            } else {
+                graph.quantum.min(padding as usize)
+            };
+            let count = self.hosted_quantum(&graph, start, limit, true);
             let region = self.loop_region(self.playing);
             let mut ready = self.streaming_ready(start, region);
             for tap in graph.taps_mut() {
@@ -136,10 +147,24 @@ impl Renderer {
                 return [0.0; 2];
             }
             self.buffering = false;
+            if self.playing {
+                graph.latency_padding = padding != 0;
+            }
             graph.render(self, start, count, true, self.playing, true);
         }
         let mut sample = graph.output[graph.consumed];
         graph.consumed += 1;
+        // Consume any output evaluated by the old graph first. Then feed the
+        // additional delay from its exact next input clock, one quantum at a time.
+        if self.playing && graph.latency_padding {
+            self.latency_fill -= 1;
+            if self.latency_fill == 0 {
+                self.transition_from = self.previous;
+                self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
+            }
+            self.hosted = Some(graph);
+            return self.previous;
+        }
         self.latent_held_mix = sample;
         sample = self.hosted_finish(sample, monitor);
         if self.playing {

@@ -142,8 +142,8 @@ Choose **Exact** to reconstruct the sound at the destination, including held
 notes and effect tails. Seeks can take longer when the destination is far from a
 cached position. The setting applies on this computer.
 
-Fast also keeps the current sound when you add a compatible external effect
-during playback. Only the new effect starts fresh. See [effect changes during
+Fast also keeps held notes and remaining effect tails during compatible
+effect additions and removals. See [effect changes during
 playback](../editing/units.md#effect-changes-during-playback).
 
 ## Seek cache profiles

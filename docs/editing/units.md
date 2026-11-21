@@ -17,19 +17,16 @@ during preparation. Timing or routing changes can take longer. A preparation
 failure keeps the active playback and shows an error. The edited settings
 remain available for correction or Undo.
 
-While playback runs in **Fast** Seek mode, adding one external effect starts
-that plug-in when it is ready and keeps held notes and existing effect tails.
-The handoff requires unchanged delay compensation. If a plug-in changes delay
-compensation or another edit changes the signal path at the same time, the
-engine uses its normal background rebuild. **Exact** Seek mode uses that
-rebuild for external effect additions.
+In **Fast** Seek mode, you can add or remove a built-in or external effect
+during playback. Held notes and the tails of remaining effects continue.
+An addition can briefly hold the audible position while the engine fills
+added delay. A removal can advance the audible position by the compensated
+delay it removes. An external effect removal finishes the audio block that
+is already queued before switching. Fast uses the background rebuild when
+the routing or plug-in configuration prevents it from transferring state.
 
-In **Fast** mode, built-in effects can join playback from the current position,
-including effects that add delay. Held notes and existing effect tails continue.
-If the new effect increases the overall delay, playback makes a short transition
-while filling the new delay. **Exact** uses the background rebuild when an
-addition changes delay compensation. Fast also uses that rebuild when the
-current routing or plug-in graph cannot carry its state into the new layout.
+**Exact** uses the background rebuild for external effect additions and
+removals, and for built-in edits that change delay compensation.
 
 ## Unit layout
 

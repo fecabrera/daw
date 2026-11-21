@@ -194,6 +194,7 @@ impl HostedNode {
             && self.settings.plugin.identity == previous.settings.plugin.identity
             && self.settings.metadata_rate == previous.settings.metadata_rate
             && self.settings.latency_frames == previous.settings.latency_frames
+            && self.settings.output_channels == previous.settings.output_channels
             && self.state_tag == previous.native.processor.state_tag()
             && self.settings.audio_inputs == previous.settings.audio_inputs
             && self.settings.parameters.len() == previous.settings.parameters.len()

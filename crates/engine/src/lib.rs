@@ -307,6 +307,18 @@ struct TrackGains {
     remaining: u32,
     peak: [f32; 2],
 }
+enum InsertEffect {
+    Builtin(Id),
+    Hosted(Id),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StateHandoff {
+    Reprime,
+    Preserve,
+    InsertBuiltin,
+    InsertHosted,
+    Remove,
+}
 impl Renderer {
     /// Worker-only built-in snapshot. Native processing state must be rebuilt
     /// independently and replayed, so hosted graphs have no clone operation.
@@ -368,12 +380,17 @@ impl Renderer {
         plan: RenderPlan,
         effect: Id,
     ) -> daw_plugin_host::Result<Self> {
-        Self::try_new_inner(plan, Some(effect))
+        Self::try_new_inner(plan, Some(InsertEffect::Builtin(effect)))
+    }
+
+    /// Hosted latency is measured by the broker before the delay lines are prepared.
+    pub fn try_new_for_hosted_insert(plan: RenderPlan, unit: Id) -> daw_plugin_host::Result<Self> {
+        Self::try_new_inner(plan, Some(InsertEffect::Hosted(unit)))
     }
 
     fn try_new_inner(
         plan: RenderPlan,
-        builtin_insert: Option<Id>,
+        insert: Option<InsertEffect>,
     ) -> daw_plugin_host::Result<Self> {
         let mut plan = plan.prepare_beats();
         let mut native = hosted_node::HostedNode::prepare_instances(&mut plan)?;
@@ -584,24 +601,31 @@ impl Renderer {
                 &mut native,
             )?);
         }
-        if let Some(effect) = builtin_insert {
-            let delay = renderer
+        if let Some(insert) = insert {
+            let effect = renderer
                 .plan
                 .project
                 .all_effects()
-                .find(|unit| unit.id == effect)
-                .map_or(0, |unit| {
-                    latency::chain_frames(
-                        std::slice::from_ref(unit),
-                        renderer.plan.project.sample_rate_hz,
-                    )
+                .find(|effect| match insert {
+                    InsertEffect::Builtin(id) => effect.id == id,
+                    InsertEffect::Hosted(id) => matches!(&effect.unit,
+                        daw_core::EffectSettings::Hosted(settings) if settings.id == id),
                 });
+            let (id, delay) = effect.map_or((Id::nil(), 0), |effect| {
+                (
+                    effect.id,
+                    latency::chain_frames(
+                        std::slice::from_ref(effect),
+                        renderer.plan.project.sample_rate_hz,
+                    ),
+                )
+            });
             renderer.live_insert_latency = delay;
             if delay > 0
-                && let Some(&Some(track)) = renderer.effect_tracks.get(&effect)
+                && let Some(&Some(track)) = renderer.effect_tracks.get(&id)
             {
                 if let Some(runtime) = &mut renderer.midi[track] {
-                    runtime.prepare_effect_insert(effect, delay as usize);
+                    runtime.prepare_effect_insert(id, delay as usize);
                 }
                 let mut owner = Some(track);
                 while let Some(index) = owner {
@@ -1144,29 +1168,23 @@ impl Renderer {
         self.paused = false;
     }
     pub fn inherit(&mut self, old: &mut Self) {
-        let aligned = self.can_inherit_without_preroll(old);
-        self.inherit_current(old, aligned, false, false);
+        let handoff = if self.can_inherit_without_preroll(old) {
+            StateHandoff::Preserve
+        } else {
+            StateHandoff::Reprime
+        };
+        self.inherit_current(old, handoff);
     }
 
     /// Use only for a worker-verified single hosted effect insertion based on
     /// this exact active publication. Keep the evaluated cursor and all existing DSP.
     pub fn try_insert_hosted_effect(&mut self, old: &mut Self, inserted: Id) -> bool {
-        if !old.playing
-            || old.prime_pending
-            || old.latency_fill != 0
-            || self.plan.project.tracks.len() != old.plan.project.tracks.len()
-            || self.source_fingerprint != old.source_fingerprint
-            || !self.alignment.compatible(&old.alignment)
-            || !self.sidechains.compatible(&old.sidechains)
-            || !self
-                .midi
-                .iter()
-                .zip(&old.midi)
-                .all(|(next, previous)| match (next, previous) {
-                    (Some(next), Some(previous)) => next.compatible(previous),
-                    (None, None) => true,
-                    _ => false,
-                })
+        if !self.can_edit_effect_live(old, false)
+            || old.hosted.as_ref().is_some_and(|graph| !graph.primed)
+            || self.midi.iter().enumerate().any(|(index, runtime)| {
+                runtime.is_some()
+                    && self.alignment.input_frames[index] != old.alignment.input_frames[index]
+            })
             || !self
                 .hosted
                 .as_ref()
@@ -1174,17 +1192,87 @@ impl Renderer {
         {
             return false;
         }
-        self.inherit_current(old, true, true, false);
+        self.inherit_current(old, StateHandoff::InsertHosted);
+        self.latency_fill = self.alignment.total - old.alignment.total;
+        if let Some((start, end)) = self.loop_region(true)
+            && !(start..end).contains(&self.playhead)
+        {
+            // The scalar renderer can publish the exclusive loop endpoint.
+            // Enter the block renderer at the normalized position with its inherited DSP.
+            self.playhead = start;
+        }
         true
     }
 
     /// Transfer active DSP for a worker-verified single built-in effect insertion.
     pub fn try_insert_builtin_effect(&mut self, old: &mut Self) -> bool {
+        if self.hosted.is_some() || old.hosted.is_some() || !self.can_edit_effect_live(old, false) {
+            return false;
+        }
+        self.inherit_current(old, StateHandoff::InsertBuiltin);
+        self.latency_fill = self.alignment.total - old.alignment.total;
+        true
+    }
+
+    /// Live removals use the next unevaluated sample at a native block boundary.
+    pub fn pending_hosted_frames(&self) -> usize {
+        self.hosted
+            .as_ref()
+            .map_or(0, |graph| graph.count - graph.consumed)
+    }
+
+    pub fn try_remove_effect_live(&mut self, old: &mut Self, native_unit: Option<Id>) -> bool {
+        if !self.can_edit_effect_live(old, true)
+            || old.pending_hosted_frames() != 0
+            || match &old.hosted {
+                Some(graph) => {
+                    !graph.primed
+                        || !graph.can_remove(native_unit, self.hosted.as_ref())
+                        || self.midi.iter().enumerate().any(|(index, runtime)| {
+                            runtime.is_some()
+                                && self.alignment.input_frames[index]
+                                    != old.alignment.input_frames[index]
+                        })
+                }
+                None => native_unit.is_some() || self.hosted.is_some(),
+            }
+        {
+            return false;
+        }
+        self.inherit_current(old, StateHandoff::Remove);
+        let drop = old.alignment.total - self.alignment.total;
+        let region = self.loop_region(true);
+        if drop > 0 {
+            // Reduce the audible lag while keeping the next source input frame.
+            self.playhead = latency::advanced_frame(self.playhead, drop, region);
+        }
+        if self.hosted.is_none() && old.hosted.is_some() {
+            for runtime in self.midi.iter_mut().flatten() {
+                runtime.collect_block_sources(false);
+            }
+        }
+        if self.hosted.is_none()
+            && self.alignment.total == 0
+            && !self.sidechains.active()
+            && let Some((start, end)) = region
+            && (self.playhead >= end
+                || self
+                    .alignment
+                    .previous_feed
+                    .is_some_and(|frame| frame > self.playhead))
+        {
+            self.playhead = latency::advanced_frame(self.playhead.max(start), 0, region);
+            for runtime in self.midi.iter_mut().flatten() {
+                runtime.wrap_loop();
+            }
+        }
+        true
+    }
+
+    fn can_edit_effect_live(&self, old: &Self, removal: bool) -> bool {
         if !old.playing
             || old.prime_pending
             || old.latency_fill != 0
-            || self.hosted.is_some()
-            || old.hosted.is_some()
             || self.source_fingerprint != old.source_fingerprint
             || !self.sidechains.compatible(&old.sidechains)
             || ((self.sidechains.active() || !self.alignment.captured_sends.is_empty())
@@ -1192,10 +1280,12 @@ impl Renderer {
         {
             return false;
         }
-        let Some(delay_cost) = self
-            .alignment
-            .live_copy_frames(&old.alignment, self.live_insert_latency)
-        else {
+        let Some(delay_cost) = (if removal {
+            self.alignment.removal_copy_frames(&old.alignment)
+        } else {
+            self.alignment
+                .live_copy_frames(&old.alignment, self.live_insert_latency)
+        }) else {
             return false;
         };
         let cost =
@@ -1205,28 +1295,28 @@ impl Renderer {
                 .try_fold(delay_cost, |cost, (next, previous)| {
                     match (next, previous) {
                         (Some(next), Some(previous)) => {
-                            Some(cost + next.live_insert_copy_frames(previous)?)
+                            let frames = if removal {
+                                next.live_removal_copy_frames(previous)?
+                            } else {
+                                next.live_insert_copy_frames(previous)?
+                            };
+                            Some(cost + frames)
                         }
                         (None, None) => Some(cost),
                         _ => None,
                     }
                 });
-        if cost.is_none_or(|frames| frames > latency::MAX_LIVE_DELAY_COPY) {
-            return false;
-        }
-        self.inherit_current(old, true, false, true);
-        self.latency_fill = self.alignment.total - old.alignment.total;
-        true
+        cost.is_some_and(|frames| frames <= latency::MAX_LIVE_DELAY_COPY)
     }
 
-    fn inherit_current(
-        &mut self,
-        old: &mut Self,
-        aligned: bool,
-        hosted_insert: bool,
-        builtin_insert: bool,
-    ) {
-        let insertion = hosted_insert || builtin_insert;
+    fn inherit_current(&mut self, old: &mut Self, handoff: StateHandoff) {
+        let aligned = handoff != StateHandoff::Reprime;
+        let hosted_insert = handoff == StateHandoff::InsertHosted;
+        let removal = handoff == StateHandoff::Remove;
+        let resize_delays = matches!(
+            handoff,
+            StateHandoff::InsertBuiltin | StateHandoff::InsertHosted | StateHandoff::Remove
+        );
         let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
         self.playhead = old.playhead;
         self.playing = old.playing;
@@ -1249,7 +1339,7 @@ impl Renderer {
         }
         self.ramp = old.ramp;
         self.master = old.master;
-        self.master_remaining = if insertion {
+        self.master_remaining = if resize_delays {
             old.master_remaining
         } else {
             fade_frames
@@ -1290,11 +1380,11 @@ impl Renderer {
                 && runtime
                     .as_ref()
                     .zip(old.midi[previous].as_ref())
-                    .is_some_and(|(a, b)| builtin_insert || a.compatible(b))
+                    .is_some_and(|(a, b)| resize_delays || a.compatible(b))
             {
                 if let Some((next, previous)) = runtime.as_mut().zip(old.midi[previous].as_mut()) {
-                    if builtin_insert {
-                        previous.inherit_live_insert_delays(next);
+                    if resize_delays {
+                        previous.inherit_live_edit_delays(next, removal);
                     }
                     previous.retarget_controls(next);
                 }
@@ -1302,7 +1392,7 @@ impl Renderer {
             }
         }
         if aligned && self.plan.project.sample_rate_hz == old.plan.project.sample_rate_hz {
-            self.alignment.inherit(&mut old.alignment);
+            self.alignment.inherit(&mut old.alignment, removal);
             self.buses.sends.inherit(&mut old.buses.sends);
             self.sidechains.inherit(&mut old.sidechains);
             self.master_effects
@@ -1316,7 +1406,7 @@ impl Renderer {
         for g in &mut self.gains {
             if let Some(&index) = old.track_index.get(&g.id) {
                 g.value = old.gains[index].value;
-                g.remaining = if insertion && g.target == old.gains[index].target {
+                g.remaining = if resize_delays && g.target == old.gains[index].target {
                     old.gains[index].remaining
                 } else {
                     fade_frames
@@ -1329,7 +1419,7 @@ impl Renderer {
         if aligned && let Some(next) = self.hosted.as_mut() {
             if let Some(previous) = old.hosted.as_mut() {
                 next.inherit(previous);
-                if hosted_insert {
+                if hosted_insert || removal {
                     next.inherit_dry_delays(previous);
                     self.sidechains.inherit_block_clocks(&old.sidechains);
                 }

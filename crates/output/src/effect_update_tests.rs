@@ -552,6 +552,83 @@ fn fast_output_saturator_adds_latency_without_replaying_held_notes_or_tails() {
 }
 
 #[test]
+fn fast_output_saturator_removal_keeps_held_notes_and_tails() {
+    let mut removed = note_plan();
+    let output_chain =
+        |plan: &mut RenderPlan| plan.project.tracks[0].instrument.as_mut().unwrap().main.id;
+    let layer = output_chain(&mut removed);
+    let owner = daw_core::EffectChainTarget::Layer {
+        track: removed.project.tracks[0].id,
+        layer,
+    };
+    removed
+        .project
+        .edit(owner.edit(vec![E::plate_reverb()], false))
+        .unwrap();
+    let mut original = removed.clone();
+    let mut effects = original.project.effect_chain(owner).unwrap().0.to_vec();
+    let mut saturator = E::saturator();
+    *saturator.unit.enabled_mut().unwrap() = false;
+    effects.push(saturator);
+    original.project.edit(owner.edit(effects, false)).unwrap();
+    assert_eq!(original.live_effect_removed(&removed), Some(None));
+
+    let (mut output, mut callback) =
+        crate::preparation_tests::controlled_output_for_plan(48_000, original);
+    output.preparation = preparation::Worker::new(output.status.clone()).unwrap();
+    output.active_plan = Some(output.plan.clone());
+    callback.renderer.play();
+    let mut expected = Renderer::new(removed.clone());
+    expected.play();
+    let frame = 5000;
+    let drop = callback.renderer.latency_frames();
+    assert_eq!(drop, 32);
+    for _ in 0..frame {
+        realtime(|| callback.next());
+    }
+    for _ in 0..frame + drop {
+        expected.next_sample();
+    }
+    output.status.publish_transport(&callback.renderer);
+    output
+        .sync_with_mode(removed.clone(), PlaybackSeek::Fast)
+        .unwrap();
+    let revision = output.requested_revision();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while output.applied_revision() != revision {
+        assert!(std::time::Instant::now() < deadline);
+        output.drain();
+        realtime(|| callback.update());
+        assert!(callback.scheduled.is_none());
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(callback.renderer.plan.project, removed.project);
+    assert_eq!(callback.renderer.playhead, frame + drop);
+    let mut note = 0.0f32;
+    let mut tail = 0.0f32;
+    realtime(|| {
+        for i in 0..36_000 {
+            let actual = callback.next();
+            let reference = expected.next_sample();
+            if i >= 240 {
+                assert!(
+                    (actual[0] - reference[0]).abs() < 1e-5,
+                    "frame {i}: {actual:?} vs {reference:?}"
+                );
+            }
+            if (240..2000).contains(&i) {
+                note = note.max(actual[0].abs());
+            }
+            if i > 25_000 {
+                tail = tail.max(actual[0].abs());
+            }
+        }
+    });
+    assert!(note > 0.001 && tail > 0.00001);
+    assert_eq!(output.status.performance.snapshot().cache_memory[7], 0);
+}
+
+#[test]
 fn removed_output_saturator_bypasses_while_latency_rebuild_is_pending() {
     let removed = note_plan();
     let mut original = removed.clone();
@@ -588,7 +665,9 @@ fn removed_output_saturator_bypasses_while_latency_rebuild_is_pending() {
         std::thread::sleep(std::time::Duration::from_millis(1));
     };
 
-    output.sync(removed.clone()).unwrap();
+    output
+        .sync_with_mode(removed.clone(), PlaybackSeek::Exact)
+        .unwrap();
     // The exact renderer worker is suspended, so only the control update can land.
     while callback.renderer.plan.project != bypassed.project {
         tick(&mut output, &mut callback);
