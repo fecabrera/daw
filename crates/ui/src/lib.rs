@@ -3207,6 +3207,25 @@ impl DawUi {
         }
         self.edit(command);
     }
+    fn timing_readout(&mut self, ui: &mut egui::Ui, playing: bool) {
+        ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
+            transport_controls::readout_group(ui, |ui| {
+                ui.add_enabled_ui(!playing, |ui| {
+                    let signature = self.active_signature();
+                    match self.time_signature_control.show(ui, signature) {
+                        Ok(Some(signature)) if signature != self.active_signature() => {
+                            self.set_active_signature(signature)
+                        }
+                        Err(error) => self.fail(error),
+                        _ => {}
+                    }
+                    transport_controls::readout_separator(ui);
+                    self.tempo_control(ui);
+                });
+            });
+        });
+    }
+
     fn tempo_control(&mut self, ui: &mut egui::Ui) {
         let previous = self
             .session
@@ -3589,23 +3608,7 @@ impl DawUi {
             if count_in.clicked() {
                 self.perform_transport_action(TransportAction::CountIn);
             }
-            ui.add_enabled_ui(
-                self.job.is_none() && !self.midi.busy() && !self.is_playing(),
-                |ui| {
-                    transport_controls::readout_group(ui, |ui| {
-                        let signature = self.active_signature();
-                        match self.time_signature_control.show(ui, signature) {
-                            Ok(Some(signature)) if signature != self.active_signature() => {
-                                self.set_active_signature(signature)
-                            }
-                            Err(error) => self.fail(error),
-                            _ => {}
-                        }
-                        transport_controls::readout_separator(ui);
-                        self.tempo_control(ui);
-                    });
-                },
-            );
+            self.timing_readout(ui, self.is_playing());
             #[cfg(test)]
             {
                 self.mixer_returns_bounds = Rect::NOTHING;
@@ -8954,6 +8957,27 @@ mod tests {
             input_background(app.tempo_bounds.center())
         );
         assert!(input_background(app.selection_bounds[0].center()).is_none());
+    }
+    #[test]
+    fn timing_readout_keeps_its_background_during_playback() {
+        let mut app = DawUi::default();
+        let ctx = context();
+        for playing in [false, true] {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                ui.horizontal(|ui| app.timing_readout(ui, playing));
+            });
+            output.textures_delta.clear();
+            let fill = theme::palette(&ctx).input;
+            assert!(
+                output.shapes.iter().any(|shape| {
+                    matches!(&shape.shape, egui::Shape::Rect(surface)
+                    if surface.fill == fill
+                        && surface.rect.contains(app.time_signature_control.bounds[1].center())
+                        && surface.rect.contains(app.tempo_bounds.center()))
+                }),
+                "missing timing readout background with playing={playing}"
+            );
+        }
     }
     #[test]
     fn tempo_monitor_reserves_equal_digit_slots() {

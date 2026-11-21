@@ -19,6 +19,22 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Playback timing readout background — 2026-11-21
+
+- `cargo test --offline --locked -p daw-ui timing_readout_keeps_its_background_during_playback`
+  passed. The egui regression checks that one input-colored surface covers the
+  time signature and tempo in both transport states.
+- Formatting and strict workspace Clippy passed.
+- `sh tools/package_macos.sh debug --local` rebuilt the local macOS bundle.
+  Signature verification passed. Native appearance was not checked.
+- The debug and release workspace suites each passed 3,656 tests with 22
+  ignored. Both runs excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
 ## Instrument tabs on beat folders — 2026-11-21
 
 - The egui beat selection test verifies that a beat folder blocks tab switches

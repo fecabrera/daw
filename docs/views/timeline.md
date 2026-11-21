@@ -261,7 +261,8 @@ Beat patterns also support **Merge** with the same command and shortcut. See
 ## Navigate and play
 
 The toolbar groups the elapsed time and bars and beats readouts in one field.
-The time signature and Tempo share a separate field.
+The time signature and Tempo share a separate field. Its background stays the
+same during playback. Pause or stop to edit either value.
 
 Play, Stop and Loop are separate standard buttons. They use the standard hover highlight and keep their green, red and gold active colors.
 
