@@ -2,11 +2,22 @@
 use daw_core::{EffectInstance, EffectSettings, Id, Project};
 
 pub(super) type Sample = ([f32; 2], bool);
+pub(super) const MAX_LIVE_DELAY_COPY: usize = 4096;
+
+#[derive(Clone)]
+struct DelaySplice {
+    samples: Vec<Sample>,
+    skip: usize,
+    cursor: usize,
+    count: usize,
+}
+
 #[derive(Clone)]
 pub(super) struct Delay {
     pub(super) id: Id,
     samples: Vec<Sample>,
     index: usize,
+    splice: Option<Box<DelaySplice>>,
 }
 impl Delay {
     pub fn frames(&self) -> usize {
@@ -14,6 +25,9 @@ impl Delay {
     }
     pub fn heap_bytes(&self) -> u64 {
         daw_unit_core::memory::vec_bytes(&self.samples)
+            + self.splice.as_ref().map_or(0, |splice| {
+                size_of::<DelaySplice>() as u64 + daw_unit_core::memory::vec_bytes(&splice.samples)
+            })
     }
 
     pub fn new(id: Id, frames: u64) -> Self {
@@ -21,11 +35,17 @@ impl Delay {
             id,
             samples: vec![([0.0; 2], false); frames as usize],
             index: 0,
+            splice: None,
         }
     }
     pub fn reset(&mut self) {
         self.samples.fill(([0.0; 2], false));
         self.index = 0;
+        if let Some(splice) = &mut self.splice {
+            splice.skip = 0;
+            splice.count = 0;
+            splice.cursor = 0;
+        }
     }
 
     /// Set the cursor of an empty ring after a linear prefix of this length.
@@ -35,7 +55,17 @@ impl Delay {
         }
     }
 
-    pub fn tick(&mut self, sample: Sample) -> Sample {
+    pub fn tick(&mut self, mut sample: Sample) -> Sample {
+        if let Some(splice) = &mut self.splice
+            && splice.cursor < splice.count
+        {
+            if splice.skip > 0 {
+                splice.skip -= 1;
+            } else {
+                sample = splice.samples[splice.cursor];
+                splice.cursor += 1;
+            }
+        }
         if self.samples.is_empty() {
             return sample;
         }
@@ -44,7 +74,96 @@ impl Delay {
         self.index = (self.index + 1) % self.samples.len();
         output
     }
+    pub fn prepare_splice(&mut self, frames: usize) {
+        self.splice = Some(Box::new(DelaySplice {
+            samples: vec![([0.0; 2], false); frames],
+            skip: 0,
+            cursor: 0,
+            count: 0,
+        }));
+    }
+    fn splicing(&self) -> bool {
+        self.splice.as_ref().is_some_and(|s| s.cursor < s.count)
+    }
+    pub fn live_copy_frames(&self, old: &Self, clock_growth: usize) -> Option<usize> {
+        if old.splicing() {
+            return None;
+        }
+        if self.frames() == old.frames() && clock_growth == 0 {
+            return Some(0);
+        }
+        let kept = self.frames().saturating_sub(clock_growth);
+        let pending = old.frames().checked_sub(kept)?;
+        (pending == 0
+            || self
+                .splice
+                .as_ref()
+                .is_some_and(|s| s.samples.len() >= pending))
+        .then_some(old.frames())
+    }
+    pub fn inherit(&mut self, old: &mut Self, clock_growth: usize) {
+        if self.frames() == old.frames() && clock_growth == 0 {
+            std::mem::swap(&mut self.samples, &mut old.samples);
+            self.index = old.index;
+            if old.splicing() {
+                std::mem::swap(&mut self.splice, &mut old.splice);
+            }
+            return;
+        }
+        let (first, last) = old.samples.split_at(old.index);
+        let mut history = last.iter().chain(first).copied();
+        let new_frames = self.frames();
+        let old_frames = old.frames();
+        // Added leading frames are consumed while the playback clock holds.
+        let leading = clock_growth.min(new_frames);
+        for (slot, value) in self.samples[leading..].iter_mut().zip(&mut history) {
+            *slot = value;
+        }
+        if old_frames > new_frames - leading {
+            // A new effect replaces the delay removed from this line. Use
+            // pending old audio until the first fresh effect output arrives.
+            let splice = self.splice.as_mut().expect("prepared delay splice");
+            splice.skip = clock_growth - leading;
+            splice.cursor = 0;
+            splice.count = old_frames - (new_frames - leading);
+            for (slot, value) in splice.samples.iter_mut().zip(history) {
+                *slot = value;
+            }
+        }
+    }
 }
+
+#[cfg(test)]
+#[test]
+fn live_effect_splice_retains_pending_audio_until_the_new_effect_fills() {
+    const SATURATOR_DELAY: usize = 32;
+    let id = Id::new_v4();
+    for (old_frames, growth) in [(16, 16), (32, 0), (49, 0)] {
+        let mut old = Delay::new(id, old_frames);
+        let mut new = Delay::new(id, old_frames + growth - SATURATOR_DELAY as u64);
+        new.prepare_splice(SATURATOR_DELAY);
+        // Wrap the old ring before handing it off.
+        for i in 0..old_frames * 2 {
+            old.tick(([i as f32; 2], true));
+        }
+        new.inherit(&mut old, growth as usize);
+        for tick in 0..96 {
+            let fresh = if tick < SATURATOR_DELAY as u64 {
+                ([0.0; 2], false)
+            } else {
+                (
+                    [(old_frames * 2 + tick - SATURATOR_DELAY as u64) as f32; 2],
+                    true,
+                )
+            };
+            let actual = new.tick(fresh);
+            if tick >= growth {
+                assert_eq!(actual, ([(old_frames + tick - growth) as f32; 2], true));
+            }
+        }
+    }
+}
+
 pub(super) fn track_frames(track: &daw_core::Track, rate: u32) -> u64 {
     chain_frames(&track.effects, rate)
         + track
@@ -296,12 +415,28 @@ impl Alignment {
                 })
             })
     }
+    pub fn live_copy_frames(&self, old: &Self, max_delay: u64) -> Option<usize> {
+        if self.total.checked_sub(old.total)? > max_delay
+            || self.parents != old.parents
+            || self.captured_sends != old.captured_sends
+            || self.send_delays != old.send_delays
+        {
+            return None;
+        }
+        self.tracks.iter().zip(&old.tracks).enumerate().try_fold(
+            0,
+            |cost, (i, (next, old_delay))| {
+                let growth = self.output_frames[i].checked_sub(old.output_frames[i])?;
+                Some(cost + next.live_copy_frames(old_delay, growth as usize)?)
+            },
+        )
+    }
     pub fn inherit(&mut self, old: &mut Self) {
-        for a in &mut self.tracks {
-            if let Some(&index) = old.index.get(&a.id) {
-                let b = &mut old.tracks[index];
-                std::mem::swap(&mut a.samples, &mut b.samples);
-                a.index = b.index;
+        for (index, a) in self.tracks.iter_mut().enumerate() {
+            if let Some(&previous) = old.index.get(&a.id) {
+                let b = &mut old.tracks[previous];
+                let growth = self.output_frames[index].saturating_sub(old.output_frames[previous]);
+                a.inherit(b, growth as usize);
             }
         }
         self.live = old.live;
@@ -309,8 +444,7 @@ impl Alignment {
     }
     pub fn reset(&mut self) {
         for delay in &mut self.tracks {
-            delay.samples.fill(([0.0; 2], false));
-            delay.index = 0;
+            delay.reset();
         }
         self.previous_feed = None;
     }

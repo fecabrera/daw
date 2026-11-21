@@ -10,8 +10,6 @@ pub enum MidiOutputSaturatorEdit {
 }
 
 impl RenderPlan {
-    /// Match one hosted effect insertion in any project chain. Compare the
-    /// complete plan after removing it, so concurrent edits use normal preparation.
     pub fn hosted_effect_inserted(&self, next: &Self) -> Option<Id> {
         if self.external.offline
             || next.external.offline
@@ -25,6 +23,44 @@ impl RenderPlan {
         {
             return None;
         }
+        match &self.single_effect_insert(next)?.unit {
+            EffectSettings::Hosted(settings) => Some(settings.id),
+            _ => None,
+        }
+    }
+
+    pub fn builtin_effect_inserted(&self, next: &Self) -> Option<Id> {
+        if self.external.offline
+            || next.external.offline
+            || self.external.publish != next.external.publish
+            || !self.project.hosted_units().is_empty()
+            || !next.project.hosted_units().is_empty()
+        {
+            return None;
+        }
+        let effect = self.single_effect_insert(next)?;
+        (!matches!(
+            effect.unit,
+            EffectSettings::Hosted(_) | EffectSettings::Missing { .. }
+        ))
+        .then_some(effect.id)
+    }
+
+    /// Cheap request routing. Zero-latency built-ins use the targeted effect worker.
+    pub fn latency_effect_count(&self) -> usize {
+        self.project
+            .all_effects()
+            .filter(|effect| {
+                super::latency::chain_frames(
+                    std::slice::from_ref(effect),
+                    self.project.sample_rate_hz,
+                ) != 0
+            })
+            .count()
+    }
+
+    /// Compare the complete plan after removing the inserted effect.
+    fn single_effect_insert<'a>(&self, next: &'a Self) -> Option<&'a EffectInstance> {
         let (target, before, after) = self
             .project
             .effect_chains()
@@ -39,9 +75,6 @@ impl RenderPlan {
             .position(|(a, b)| a != b)
             .unwrap_or(before.len());
         let effect = &after[index];
-        let EffectSettings::Hosted(settings) = &effect.unit else {
-            return None;
-        };
         if before[index..] != after[index + 1..] {
             return None;
         }
@@ -87,8 +120,7 @@ impl RenderPlan {
                     .component_order = order;
             }
         }
-        self.same_processing_plan(&normalized)
-            .then_some(settings.id)
+        self.same_processing_plan(&normalized).then_some(effect)
     }
 
     /// Match a single Output Saturator edit without ignoring other processing settings.

@@ -24,6 +24,13 @@ compensation or another edit changes the signal path at the same time, the
 engine uses its normal background rebuild. **Exact** Seek mode uses that
 rebuild for external effect additions.
 
+In **Fast** mode, built-in effects can join playback from the current position,
+including effects that add delay. Held notes and existing effect tails continue.
+If the new effect increases the overall delay, playback makes a short transition
+while filling the new delay. **Exact** uses the background rebuild when an
+addition changes delay compensation. Fast also uses that rebuild when the
+current routing or plug-in graph cannot carry its state into the new layout.
+
 ## Unit layout
 
 Units have a vertical title header on the left. Double-click it to collapse or expand the unit. The power dot stays at the top of the header and shows the on/off state.

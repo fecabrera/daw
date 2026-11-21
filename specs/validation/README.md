@@ -19,6 +19,37 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Fast built-in effect insertion — 2026-11-21
+
+- The effect catalog test exercised live state transfer for each built-in
+  effect on an instrument layer, MIDI Output, a track chain and Master.
+  Added tests check the worker-to-callback path for Master Limiter and MIDI
+  Output Saturator, compare held notes and a reverb tail with uninterrupted
+  playback, and verify the queued audio in shortened compensation lines.
+- The release probe appended the built-in Saturator to MIDI 4 Output on the
+  same project copy used for the hosted effect test. The MacBook Pro speakers
+  ran at 48 kHz with a 512-frame buffer. Cache warming was disabled. Each cell
+  is the median of five trials from the add request to callback publication.
+
+  | Playback position | Fast | Exact |
+  | --- | ---: | ---: |
+  | About 4 s | 18.08 ms | 533.02 ms |
+  | About 24 s | 18.07 ms | 2,378.17 ms |
+
+- Fast ranged from 7.43 to 18.61 ms and replayed zero historical frames.
+  Exact replayed the arrangement to the insertion position. The callback
+  overrun counter did not change in the 20 trials. The probe excludes editor
+  input, repaint and physical output latency.
+- Formatting, strict workspace Clippy, the CLI smoke check, and native CLAP
+  and VST3 graph checks passed. Both workspace suites passed 3,665 tests with
+  22 ignored. Each suite excluded the known macOS Audio Unit registration
+  case. The rebuilt macOS debug bundle passed signature verification.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
 ## Fast hosted effect insertion — 2026-11-21
 
 - Native CLAP and VST3 graph checks compared a held MIDI note and its Plate

@@ -123,6 +123,19 @@ explicit transport commands, can supersede the request with the latest plan.
 Use strict processing compatibility for all settings and media outside the
 admitted append or Drive change.
 
+In Fast Seek mode, one built-in effect that changes delay compensation can
+install at the next callback boundary once the worker prepares the candidate.
+The callback requires the acknowledged base publication, matching voice state,
+and compatible routing and sidechain clocks. It transfers active DSP and
+queued layer and track delay samples. If the new graph adds overall delay,
+playback feeds the added frames from the existing source cursor while holding
+the audible position. The hold is bounded by the new effect's delay and ends
+with the usual output transition. If the effect takes over existing delay
+compensation, the line supplies its queued audio while the new effect fills.
+Only the new effect starts fresh. Exact mode and incompatible candidates use
+normal worker reconstruction. Built-ins that keep delay compensation can use
+the targeted update path above in either mode.
+
 Fallback, replay, retry and publication receipts use the submitted snapshot
 until its revision is acknowledged. Keep playback preparation pending until
 the latest requested Drive reaches audio. A complete controls update keeps the

@@ -143,7 +143,7 @@ struct PreparedRenderer {
     revision: u64,
     publication: u64,
     prepared_transport: bool,
-    hosted_insert: Option<HostedInsert>,
+    live_insert: Option<LiveInsert>,
     reprepare: Option<preparation::Anchor>,
     allow_checkpoint_reuse: bool,
     activate_at: Option<u64>,
@@ -155,9 +155,14 @@ struct PreparedRenderer {
     modulation: Vec<(ModulationTarget, ModulationMeter)>,
 }
 #[derive(Clone, Copy)]
-struct HostedInsert {
+struct LiveInsert {
     base_publication: u64,
-    unit: Id,
+    kind: LiveInsertKind,
+}
+#[derive(Clone, Copy)]
+enum LiveInsertKind {
+    Hosted(Id),
+    Builtin(Id),
 }
 impl PreparedRenderer {
     #[cfg(test)]
@@ -165,6 +170,13 @@ impl PreparedRenderer {
         Self::try_new(plan, meters).expect("test renderer fits output budget")
     }
     fn try_new(plan: RenderPlan, meters: &HashMap<Id, Arc<StereoMeter>>) -> Result<Self, String> {
+        Self::try_new_with_insert(plan, meters, None)
+    }
+    fn try_new_with_insert(
+        plan: RenderPlan,
+        meters: &HashMap<Id, Arc<StereoMeter>>,
+        insert: Option<LiveInsert>,
+    ) -> Result<Self, String> {
         let handles = plan
             .project
             .tracks
@@ -176,7 +188,13 @@ impl PreparedRenderer {
                     .ok_or_else(|| format!("Missing output meter binding for track {}", t.id))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut renderer = Renderer::try_new(plan).map_err(|e| e.to_string())?;
+        let mut renderer = match insert.map(|insert| insert.kind) {
+            Some(LiveInsertKind::Builtin(effect)) => {
+                Renderer::try_new_for_builtin_insert(plan, effect)
+            }
+            _ => Renderer::try_new(plan),
+        }
+        .map_err(|e| e.to_string())?;
         renderer.prepare_live_midi();
         renderer.prepare_streaming()?;
         let memory =
@@ -187,7 +205,7 @@ impl PreparedRenderer {
             revision: 0,
             publication: 0,
             prepared_transport: false,
-            hosted_insert: None,
+            live_insert: insert,
             reprepare: None,
             allow_checkpoint_reuse: false,
             activate_at: None,
@@ -948,16 +966,17 @@ impl AudioOutput {
     fn prepare_plan(
         &mut self,
         request: Option<preparation::TransportRequest>,
-        hosted_insert: Option<preparation::HostedInsertBase>,
+        live_insert: Option<preparation::LiveInsertBase>,
     ) {
         if request.is_some_and(|request| !request.state.playing) {
             self.resume_needs_preparation = true;
         }
         self.preparation_failed = false;
-        self.prepare_revision = if let Some(insert) = hosted_insert {
-            self.preparation.submit_hosted_insert(
+        self.prepare_revision = if let Some(insert) = live_insert {
+            self.preparation.submit_live_insert(
                 self.dispatched_plan().clone(),
                 self.bindings.clone(),
+                self.append_predecessor(),
                 insert,
             )
         } else if let Some(predecessor) = self.append_predecessor()
@@ -1016,25 +1035,32 @@ impl AudioOutput {
         } else {
             None
         };
-        let hosted_insert = (mode == PlaybackSeek::Fast
+        let live = mode == PlaybackSeek::Fast
             && transport.is_none()
             && self.status.playing.load(Ordering::Acquire)
-            && self.current_plan_published()
-            && plan.project.hosted_units().len() == self.plan.project.hosted_units().len() + 1)
-            .then(|| preparation::HostedInsertBase {
+            && self.current_plan_published();
+        let live_insert = (live
+            && plan.project.all_effects().count() == self.plan.project.all_effects().count() + 1
+            && (plan.project.hosted_units().len() == self.plan.project.hosted_units().len() + 1
+                || plan.latency_effect_count() == self.plan.latency_effect_count() + 1))
+            .then(|| preparation::LiveInsertBase {
                 publication: self.active_publication,
-                plan: self.plan.clone(),
+                edit: preparation::LiveInsertEdit::Effect(self.plan.clone()),
             });
         self.plan = Arc::new(plan);
         self.saturator_flight = None;
         match edit {
             Some(MidiOutputSaturatorEdit::Append(effect)) => {
-                self.start_saturator_flight(effect, false);
+                let insert = live.then_some(preparation::LiveInsertBase {
+                    publication: self.active_publication,
+                    edit: preparation::LiveInsertEdit::Builtin(effect),
+                });
+                self.start_saturator_insertion(effect, insert);
             }
             Some(MidiOutputSaturatorEdit::Drive(effect)) => {
                 self.start_saturator_flight(effect, true);
             }
-            None if hosted_insert.is_some() => self.prepare_plan(None, hosted_insert),
+            None if live_insert.is_some() => self.prepare_plan(None, live_insert),
             None if transport.is_some() || self.active_plan.is_none() => {
                 self.prepare_dispatched(transport)
             }
@@ -1111,6 +1137,22 @@ impl AudioOutput {
             controls_only,
         });
         self.prepare_effects();
+    }
+    fn start_saturator_insertion(
+        &mut self,
+        effect: Id,
+        insert: Option<preparation::LiveInsertBase>,
+    ) {
+        if let Some(insert) = insert {
+            self.saturator_flight = Some(SaturatorFlight {
+                effect,
+                submitted: self.plan.clone(),
+                controls_only: false,
+            });
+            self.prepare_plan(None, Some(insert));
+        } else {
+            self.start_saturator_flight(effect, false);
+        }
     }
     fn finish_saturator_flight(&mut self) {
         if self.active_revision != self.prepare_revision
@@ -1921,9 +1963,14 @@ impl Callback {
             .commands(started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64);
     }
     fn inherit_plan(&mut self, next: &mut PreparedRenderer) -> bool {
-        if let Some(insert) = next.hosted_insert
+        if let Some(insert) = next.live_insert
             && insert.base_publication == self.renderer.publication
-            && next.try_insert_hosted_effect(&mut self.renderer, insert.unit)
+            && match insert.kind {
+                LiveInsertKind::Hosted(unit) => {
+                    next.try_insert_hosted_effect(&mut self.renderer, unit)
+                }
+                LiveInsertKind::Builtin(_) => next.try_insert_builtin_effect(&mut self.renderer),
+            }
         {
             return true;
         }

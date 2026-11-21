@@ -1311,22 +1311,64 @@ impl MidiTrackRuntime {
         }
     }
     pub fn compatible(&self, other: &Self) -> bool {
-        self.fingerprint == other.fingerprint
-            && self.effect_latency == other.effect_latency
+        self.effect_latency == other.effect_latency
+            && self.voice_state_compatible(other)
             && self.parallel_latency == other.parallel_latency
             && self
                 .layer_effects
                 .iter()
                 .zip(&other.layer_effects)
+                .take(self.layer_effects.len() - 1)
                 .all(|(a, b)| {
                     super::latency::chain_frames(&a.settings, self.sample_rate_hz)
                         == super::latency::chain_frames(&b.settings, self.sample_rate_hz)
                 })
+    }
+    fn voice_state_compatible(&self, other: &Self) -> bool {
+        self.fingerprint == other.fingerprint
+            && self.layer_effects.len() == other.layer_effects.len()
             && self.control_modes().all(|a| {
                 other
                     .control_modes()
                     .all(|b| a.source != b.source || a.mode == b.mode)
             })
+    }
+    pub(super) fn prepare_effect_insert(&mut self, effect: Id, delay: usize) {
+        if let Some(layer) = self.layer_effects.iter_mut().find(|layer| {
+            layer
+                .settings
+                .iter()
+                .any(|candidate| candidate.id == effect)
+        }) {
+            layer.delay.prepare_splice(delay);
+        }
+    }
+    pub(super) fn live_insert_copy_frames(&self, old: &Self) -> Option<usize> {
+        if !self.voice_state_compatible(old) {
+            return None;
+        }
+        let lead = self.parallel_latency.checked_sub(old.parallel_latency)? as usize;
+        self.layer_effects
+            .iter()
+            .zip(&old.layer_effects)
+            .take(self.layer_effects.len() - 1)
+            .try_fold(0, |cost, (next, previous)| {
+                Some(cost + next.delay.live_copy_frames(&previous.delay, lead)?)
+            })
+    }
+    pub(super) fn inherit_live_insert_delays(&mut self, prepared: &mut Self) {
+        let lead = (prepared.parallel_latency - self.parallel_latency) as usize;
+        let layers = self.layer_effects.len() - 1;
+        for (old, next) in self
+            .layer_effects
+            .iter_mut()
+            .zip(&mut prepared.layer_effects)
+            .take(layers)
+        {
+            next.delay.inherit(&mut old.delay, lead);
+            std::mem::swap(&mut next.delay, &mut old.delay);
+        }
+        self.parallel_latency = prepared.parallel_latency;
     }
     fn control_modes(&self) -> impl Iterator<Item = &Control> {
         self.shared
@@ -1370,6 +1412,7 @@ impl MidiTrackRuntime {
             old.retarget(next, fade_frames, idle);
         }
         self.mono = prepared.mono;
+        self.effect_latency = prepared.effect_latency;
         self.has_bus_effects = prepared.has_bus_effects;
         self.envelope_history = prepared.envelope_history;
         if self.main_target != prepared.main_target {

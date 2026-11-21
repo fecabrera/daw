@@ -287,6 +287,8 @@ pub struct Renderer {
     effect_fingerprint: u64,
     prime_offset: u64,
     prime_pending: bool,
+    latency_fill: u64,
+    live_insert_latency: u64,
     buffering: bool,
 }
 /// Coherent transport metadata for worker preparation; no DSP ownership crosses threads here.
@@ -349,6 +351,8 @@ impl Renderer {
             effect_fingerprint: self.effect_fingerprint,
             prime_offset: self.prime_offset,
             prime_pending: self.prime_pending,
+            latency_fill: self.latency_fill,
+            live_insert_latency: self.live_insert_latency,
             buffering: self.buffering,
         })
     }
@@ -356,6 +360,21 @@ impl Renderer {
         Self::try_new(plan).expect("renderer preparation failed")
     }
     pub fn try_new(plan: RenderPlan) -> daw_plugin_host::Result<Self> {
+        Self::try_new_inner(plan, None)
+    }
+
+    /// Prepare the insertion off audio. The new effect starts at the live cursor.
+    pub fn try_new_for_builtin_insert(
+        plan: RenderPlan,
+        effect: Id,
+    ) -> daw_plugin_host::Result<Self> {
+        Self::try_new_inner(plan, Some(effect))
+    }
+
+    fn try_new_inner(
+        plan: RenderPlan,
+        builtin_insert: Option<Id>,
+    ) -> daw_plugin_host::Result<Self> {
         let mut plan = plan.prepare_beats();
         let mut native = hosted_node::HostedNode::prepare_instances(&mut plan)?;
         let clock = Arc::new(
@@ -555,6 +574,8 @@ impl Renderer {
             effect_fingerprint,
             prime_offset: 0,
             prime_pending: false,
+            latency_fill: 0,
+            live_insert_latency: 0,
             buffering: false,
         };
         if !renderer.plan.project.hosted_units().is_empty() {
@@ -563,7 +584,36 @@ impl Renderer {
                 &mut native,
             )?);
         }
-        renderer.prime_latency(false, false);
+        if let Some(effect) = builtin_insert {
+            let delay = renderer
+                .plan
+                .project
+                .all_effects()
+                .find(|unit| unit.id == effect)
+                .map_or(0, |unit| {
+                    latency::chain_frames(
+                        std::slice::from_ref(unit),
+                        renderer.plan.project.sample_rate_hz,
+                    )
+                });
+            renderer.live_insert_latency = delay;
+            if delay > 0
+                && let Some(&Some(track)) = renderer.effect_tracks.get(&effect)
+            {
+                if let Some(runtime) = &mut renderer.midi[track] {
+                    runtime.prepare_effect_insert(effect, delay as usize);
+                }
+                let mut owner = Some(track);
+                while let Some(index) = owner {
+                    renderer.alignment.tracks[index].prepare_splice(delay as usize);
+                    owner = renderer.plan.project.tracks[index]
+                        .group_id
+                        .and_then(|id| renderer.track_index.get(&id).copied());
+                }
+            }
+        } else {
+            renderer.prime_latency(false, false);
+        }
         Ok(renderer)
     }
     /// Read the last processed parameters without advancing DSP or allocating.
@@ -1095,7 +1145,7 @@ impl Renderer {
     }
     pub fn inherit(&mut self, old: &mut Self) {
         let aligned = self.can_inherit_without_preroll(old);
-        self.inherit_current(old, aligned, false);
+        self.inherit_current(old, aligned, false, false);
     }
 
     /// Use only for a worker-verified single hosted effect insertion based on
@@ -1103,6 +1153,7 @@ impl Renderer {
     pub fn try_insert_hosted_effect(&mut self, old: &mut Self, inserted: Id) -> bool {
         if !old.playing
             || old.prime_pending
+            || old.latency_fill != 0
             || self.plan.project.tracks.len() != old.plan.project.tracks.len()
             || self.source_fingerprint != old.source_fingerprint
             || !self.alignment.compatible(&old.alignment)
@@ -1123,11 +1174,59 @@ impl Renderer {
         {
             return false;
         }
-        self.inherit_current(old, true, true);
+        self.inherit_current(old, true, true, false);
         true
     }
 
-    fn inherit_current(&mut self, old: &mut Self, aligned: bool, insertion: bool) {
+    /// Transfer active DSP for a worker-verified single built-in effect insertion.
+    pub fn try_insert_builtin_effect(&mut self, old: &mut Self) -> bool {
+        if !old.playing
+            || old.prime_pending
+            || old.latency_fill != 0
+            || self.hosted.is_some()
+            || old.hosted.is_some()
+            || self.source_fingerprint != old.source_fingerprint
+            || !self.sidechains.compatible(&old.sidechains)
+            || ((self.sidechains.active() || !self.alignment.captured_sends.is_empty())
+                && self.alignment.input_frames != old.alignment.input_frames)
+        {
+            return false;
+        }
+        let Some(delay_cost) = self
+            .alignment
+            .live_copy_frames(&old.alignment, self.live_insert_latency)
+        else {
+            return false;
+        };
+        let cost =
+            self.midi
+                .iter()
+                .zip(&old.midi)
+                .try_fold(delay_cost, |cost, (next, previous)| {
+                    match (next, previous) {
+                        (Some(next), Some(previous)) => {
+                            Some(cost + next.live_insert_copy_frames(previous)?)
+                        }
+                        (None, None) => Some(cost),
+                        _ => None,
+                    }
+                });
+        if cost.is_none_or(|frames| frames > latency::MAX_LIVE_DELAY_COPY) {
+            return false;
+        }
+        self.inherit_current(old, true, false, true);
+        self.latency_fill = self.alignment.total - old.alignment.total;
+        true
+    }
+
+    fn inherit_current(
+        &mut self,
+        old: &mut Self,
+        aligned: bool,
+        hosted_insert: bool,
+        builtin_insert: bool,
+    ) {
+        let insertion = hosted_insert || builtin_insert;
         let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
         self.playhead = old.playhead;
         self.playing = old.playing;
@@ -1135,6 +1234,7 @@ impl Renderer {
         self.recording = old.recording;
         self.live_clock = old.live_clock;
         self.playback_start = old.playback_start;
+        self.latency_fill = old.latency_fill;
         // Equivalent prepared sources retain read-ahead, loop pins and staged PCM.
         // The unused candidate moves into the renderer retired by the host.
         for (index, track) in self.plan.project.tracks.iter().enumerate() {
@@ -1156,7 +1256,7 @@ impl Renderer {
         };
         self.previous = old.previous;
         self.latent_held_mix = old.latent_held_mix;
-        if insertion
+        if hosted_insert
             || (self.source_fingerprint == old.source_fingerprint
                 && self.effect_fingerprint == old.effect_fingerprint)
         {
@@ -1190,9 +1290,12 @@ impl Renderer {
                 && runtime
                     .as_ref()
                     .zip(old.midi[previous].as_ref())
-                    .is_some_and(|(a, b)| a.compatible(b))
+                    .is_some_and(|(a, b)| builtin_insert || a.compatible(b))
             {
                 if let Some((next, previous)) = runtime.as_mut().zip(old.midi[previous].as_mut()) {
+                    if builtin_insert {
+                        previous.inherit_live_insert_delays(next);
+                    }
                     previous.retarget_controls(next);
                 }
                 std::mem::swap(runtime, &mut old.midi[previous]);
@@ -1226,11 +1329,11 @@ impl Renderer {
         if aligned && let Some(next) = self.hosted.as_mut() {
             if let Some(previous) = old.hosted.as_mut() {
                 next.inherit(previous);
-                if insertion {
+                if hosted_insert {
                     next.inherit_dry_delays(previous);
                     self.sidechains.inherit_block_clocks(&old.sidechains);
                 }
-            } else if insertion {
+            } else if hosted_insert {
                 // The sample renderer already fed the latency lines. The first
                 // block starts at the next input sample with the same voice cursor.
                 next.primed = true;
@@ -1363,6 +1466,7 @@ impl Renderer {
         }
         self.prime_offset = 0;
         self.prime_pending = true;
+        self.latency_fill = 0;
         self.alignment.reset();
         self.buses.sends.reset();
         self.sidechains.reset();
@@ -1651,7 +1755,7 @@ impl Renderer {
             }
             let future = latency::advanced_frame(
                 self.playhead,
-                self.alignment.total,
+                self.alignment.total - self.latency_fill,
                 self.loop_region(true),
             );
             self.buffering =
@@ -1688,7 +1792,7 @@ impl Renderer {
                 let frame = if self.playing {
                     let future = latency::advanced_frame(
                         self.playhead,
-                        self.alignment.total,
+                        self.alignment.total - self.latency_fill,
                         self.loop_region(true),
                     );
                     self.feed_frame(future, true)
@@ -1708,6 +1812,13 @@ impl Renderer {
                 self.latent_held_mix = mix;
             }
             if self.playing {
+                if self.latency_fill != 0 {
+                    // Feed the original source cursor into the enlarged delay
+                    // lines. Keep the last aligned output until the extra
+                    // frames are ready, then use the normal output transition.
+                    self.latency_fill -= 1;
+                    return self.previous;
+                }
                 self.playhead = self.playhead.saturating_add(1);
             }
         }

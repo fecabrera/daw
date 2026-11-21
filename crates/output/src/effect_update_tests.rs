@@ -339,7 +339,9 @@ fn dragging_output_saturator_drive_does_not_restart_pending_insertion() {
         };
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let insertion = plan_at(0.0);
-        output.sync(insertion.clone()).unwrap();
+        output
+            .sync_with_mode(insertion.clone(), PlaybackSeek::Exact)
+            .unwrap();
         let topology_revision = output.requested_revision();
         output.sync(plan_at(6.0)).unwrap();
         // Fallback can advance the revision once. Moving Drive cannot replace it.
@@ -389,6 +391,164 @@ fn dragging_output_saturator_drive_does_not_restart_pending_insertion() {
         assert_eq!(stats.effect_processors_prepared, 0);
         assert_eq!(stats.effect_updates, u64::from(final_drive != 0.0));
     }
+}
+
+#[test]
+fn built_in_effects_can_join_a_running_graph_in_each_chain() {
+    for effect in effects() {
+        for destination in 0..4 {
+            use daw_core::EffectChainTarget;
+            let base = note_plan();
+            let track = &base.project.tracks[0];
+            let instrument = track.instrument.as_ref().unwrap();
+            let target = match destination {
+                0 => EffectChainTarget::Master,
+                1 => EffectChainTarget::Track(track.id),
+                2 => EffectChainTarget::Layer {
+                    track: track.id,
+                    layer: instrument.main.id,
+                },
+                _ => EffectChainTarget::Layer {
+                    track: track.id,
+                    layer: instrument.layers[0].id,
+                },
+            };
+            let mut changed = base.clone();
+            changed
+                .project
+                .edit(target.edit(vec![effect.clone()], false))
+                .unwrap();
+            assert_eq!(base.builtin_effect_inserted(&changed), Some(effect.id));
+            let mut active = Renderer::new(base.clone());
+            active.play();
+            for _ in 0..1024 {
+                active.next_sample();
+            }
+            let mut candidate = Renderer::try_new_for_builtin_insert(changed, effect.id).unwrap();
+            realtime(|| {
+                assert!(
+                    candidate.try_insert_builtin_effect(&mut active),
+                    "{:?}, {target:?}",
+                    effect.unit
+                );
+                assert_eq!(candidate.playhead, 1024);
+                for _ in 0..candidate.latency_frames() + 512 {
+                    assert!(candidate.next_sample().iter().all(|s| s.is_finite()));
+                }
+                assert_eq!(candidate.playhead, 1536);
+            });
+        }
+    }
+}
+
+#[test]
+fn fast_master_limiter_uses_live_publication() {
+    let base = note_plan();
+    let mut added = base.clone();
+    added.project.master.effects.push(E::limiter());
+    let (mut output, mut callback) =
+        crate::preparation_tests::controlled_output_for_plan(48_000, base);
+    output.preparation = preparation::Worker::new(output.status.clone()).unwrap();
+    output.active_plan = Some(output.plan.clone());
+    callback.renderer.play();
+    for _ in 0..1024 {
+        realtime(|| callback.next());
+    }
+    output.status.publish_transport(&callback.renderer);
+    output
+        .sync_with_mode(added.clone(), PlaybackSeek::Fast)
+        .unwrap();
+    let revision = output.requested_revision();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while output.applied_revision() != revision {
+        assert!(std::time::Instant::now() < deadline);
+        output.drain();
+        realtime(|| callback.update());
+        assert!(callback.scheduled.is_none());
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(callback.renderer.plan.project, added.project);
+    assert_eq!(callback.renderer.playhead, 1024);
+    assert!(callback.renderer.latency_frames() >= 480);
+    assert_eq!(output.status.performance.snapshot().cache_memory[7], 0);
+}
+
+#[test]
+fn fast_output_saturator_adds_latency_without_replaying_held_notes_or_tails() {
+    let mut base = note_plan();
+    let track = base.project.tracks[0].id;
+    let output_chain = &mut base.project.tracks[0].instrument.as_mut().unwrap().main;
+    let layer = output_chain.id;
+    output_chain.effects.push(E::plate_reverb());
+    let mut effects = output_chain.effects.clone();
+    let mut saturator = E::saturator();
+    // Dry output makes existing voice and reverb state directly comparable.
+    *saturator.unit.enabled_mut().unwrap() = false;
+    effects.push(saturator);
+    let mut added = base.clone();
+    added
+        .project
+        .edit(daw_core::Edit::SetLayerEffects {
+            track_id: track,
+            layer_id: layer,
+            effects,
+            compact: false,
+        })
+        .unwrap();
+    let (mut output, mut callback) =
+        crate::preparation_tests::controlled_output_for_plan(48_000, base.clone());
+    output.preparation = preparation::Worker::new(output.status.clone()).unwrap();
+    output.active_plan = Some(output.plan.clone());
+    callback.renderer.play();
+    let start_frame = 5_000;
+    for _ in 0..start_frame {
+        realtime(|| callback.next());
+    }
+    let mut reference = callback.renderer.snapshot().unwrap();
+    output.status.publish_transport(&callback.renderer);
+    output
+        .sync_with_mode(added.clone(), PlaybackSeek::Fast)
+        .unwrap();
+    let revision = output.requested_revision();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while output.applied_revision() != revision {
+        assert!(std::time::Instant::now() < deadline);
+        output.drain();
+        realtime(|| callback.update());
+        assert!(callback.scheduled.is_none());
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(callback.renderer.plan.project, added.project);
+    assert_eq!(callback.renderer.playhead, start_frame);
+    assert_eq!(callback.renderer.latency_frames(), 32);
+    realtime(|| {
+        for _ in 0..32 {
+            callback.next();
+            assert_eq!(callback.renderer.playhead, start_frame);
+        }
+    });
+    let mut note = 0.0f32;
+    let mut tail = 0.0f32;
+    realtime(|| {
+        for i in 0..36_000 {
+            let actual = callback.next();
+            let expected = reference.next_sample();
+            if i >= 240 {
+                assert!(
+                    (actual[0] - expected[0]).abs() < 1e-5,
+                    "frame {i}: {actual:?} vs {expected:?}"
+                );
+            }
+            if (240..2000).contains(&i) {
+                note = note.max(actual[0].abs());
+            }
+            if i > 25_000 {
+                tail = tail.max(actual[0].abs());
+            }
+        }
+    });
+    assert!(note > 0.001 && tail > 0.00001);
+    assert_eq!(output.status.performance.snapshot().cache_memory[7], 0);
 }
 
 #[test]

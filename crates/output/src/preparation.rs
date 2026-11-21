@@ -128,9 +128,13 @@ impl From<TransportState> for TransportRequest {
         Self { state, fast: false }
     }
 }
-pub(super) struct HostedInsertBase {
+pub(super) struct LiveInsertBase {
     pub publication: u64,
-    pub plan: Arc<RenderPlan>,
+    pub edit: LiveInsertEdit,
+}
+pub(super) enum LiveInsertEdit {
+    Effect(Arc<RenderPlan>),
+    Builtin(Id),
 }
 enum Request {
     Warm(Arc<RenderPlan>, Option<Arc<RenderPlan>>),
@@ -139,7 +143,7 @@ enum Request {
         Option<TransportRequest>,
         std::time::Instant,
         Option<Arc<RenderPlan>>,
-        Option<HostedInsertBase>,
+        Option<LiveInsertBase>,
     ),
     Prepared(Box<PreparedRenderer>, Anchor),
 }
@@ -343,20 +347,28 @@ impl Worker {
                             ));
                             continue;
                         }
-                        Request::Plan(
-                            plan,
-                            transport,
-                            requested_at,
-                            predecessor,
-                            hosted_insert,
-                        ) => {
-                            let hosted_insert = hosted_insert.and_then(|base| {
-                                base.plan
-                                    .hosted_effect_inserted(&plan)
-                                    .map(|unit| HostedInsert {
-                                        base_publication: base.publication,
-                                        unit,
-                                    })
+                        Request::Plan(plan, transport, requested_at, predecessor, live_insert) => {
+                            let live_insert = live_insert.and_then(|base| {
+                                let kind = match base.edit {
+                                    LiveInsertEdit::Effect(previous) => {
+                                        if plan.project.hosted_units().is_empty() {
+                                            LiveInsertKind::Builtin(
+                                                previous.builtin_effect_inserted(&plan)?,
+                                            )
+                                        } else {
+                                            LiveInsertKind::Hosted(
+                                                previous.hosted_effect_inserted(&plan)?,
+                                            )
+                                        }
+                                    }
+                                    LiveInsertEdit::Builtin(effect) => {
+                                        LiveInsertKind::Builtin(effect)
+                                    }
+                                };
+                                Some(LiveInsert {
+                                    base_publication: base.publication,
+                                    kind,
+                                })
                             });
                             let (plan, retained) = resolve_cache_plan(
                                 &mut beat_plans,
@@ -371,9 +383,10 @@ impl Worker {
                                 status.performance.cache(Default::default());
                             }
                             let bindings = Bindings::prepare(&plan, &previous);
-                            let renderer = match PreparedRenderer::try_new(
+                            let renderer = match PreparedRenderer::try_new_with_insert(
                                 (*plan).clone(),
                                 &bindings.tracks,
+                                live_insert,
                             ) {
                                 Ok(renderer) => Box::new(renderer),
                                 Err(error) => {
@@ -388,7 +401,6 @@ impl Worker {
                             let mut renderer = renderer;
                             renderer.allow_checkpoint_reuse = retained;
                             renderer.requested_at = Some(requested_at);
-                            renderer.hosted_insert = hosted_insert;
                             (renderer, bindings, transport, None)
                         }
                         Request::Prepared(renderer, anchor) => {
@@ -721,13 +733,14 @@ impl Worker {
     ) -> u64 {
         self.submit_plan(plan.into(), previous, transport, None, None)
     }
-    pub fn submit_hosted_insert(
+    pub fn submit_live_insert(
         &self,
         plan: Arc<RenderPlan>,
         previous: Bindings,
-        insert: HostedInsertBase,
+        predecessor: Option<Arc<RenderPlan>>,
+        insert: LiveInsertBase,
     ) -> u64 {
-        self.submit_plan(plan, previous, None, None, Some(insert))
+        self.submit_plan(plan, previous, None, predecessor, Some(insert))
     }
     pub fn submit_append(
         &self,
@@ -743,7 +756,7 @@ impl Worker {
         previous: Bindings,
         transport: Option<TransportRequest>,
         predecessor: Option<Arc<RenderPlan>>,
-        hosted_insert: Option<HostedInsertBase>,
+        live_insert: Option<LiveInsertBase>,
     ) -> u64 {
         let (request, ready, revision) = {
             let mut state = self.0.0.lock().unwrap();
@@ -759,7 +772,7 @@ impl Worker {
                         transport,
                         std::time::Instant::now(),
                         predecessor,
-                        hosted_insert,
+                        live_insert,
                     ),
                     previous,
                 )),
