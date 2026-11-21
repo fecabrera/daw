@@ -52,7 +52,7 @@ Returns and tracks without sends retain an empty middle row.
 
 ## Project persistence
 
-The optional `Project.display` metadata contains `track_height` (legacy strings
+The optional `Project.display` metadata includes `track_height` (legacy strings
 compact/regular/large, or a numeric size from 1 to 3), `horizontal_zoom` (logical
 points per second), `horizontal_scroll_seconds`, `vertical_scroll_points`, and
 `arrangement_expanded`. Missing values default to Regular, 70 pt/s, zero offsets,
@@ -60,6 +60,14 @@ and collapsed arrangement lanes. Validation rejects nonfinite heights and
 heights outside 1…3, nonfinite or non-positive zoom, and nonfinite or negative
 offsets.
 Fit all can produce positive zoom outside manual slider limits; retain it.
+
+Store the preferred lower editor height in `timeline_editor_height_points`,
+in logical points. The default is 300 points for new projects and old
+manifests without the field. Require a finite, positive value. Capture the
+last completed resize even if the editor is hidden. During a resize, capture
+the height from before the drag. Clamp the displayed height to the current
+window without replacing the preference. Keep panel visibility independent
+of the saved height.
 
 Capture current display state in regular Save, blocking Save, Save As and
 Collect project sources snapshots. Collection carries save-only presentation

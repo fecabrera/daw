@@ -31,7 +31,7 @@ impl Default for EditorPane {
     fn default() -> Self {
         Self {
             mode: LowerPane::default(),
-            height: 300.0,
+            height: daw_core::ProjectDisplay::default().timeline_editor_height_points,
             resize: None,
             #[cfg(test)]
             toggle_bounds: Rect::NOTHING,
@@ -44,6 +44,17 @@ impl Default for EditorPane {
 impl EditorPane {
     pub(super) fn resizing(&self) -> bool {
         self.resize.is_some()
+    }
+
+    pub(super) fn saved_height(&self) -> f32 {
+        self.resize
+            .as_ref()
+            .map_or(self.height, |resize| resize.previous_height)
+    }
+
+    pub(super) fn restore_height(&mut self, height: f32) {
+        self.height = height;
+        self.resize = None;
     }
 
     pub(super) fn shows_effects(&self) -> bool {

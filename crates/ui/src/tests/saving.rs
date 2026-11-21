@@ -361,9 +361,20 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
         app.zoom = 150.0;
         app.scroll = 8.0;
         app.timeline_vertical_scroll = 180.0;
+        let editor_height = 360.0 + index as f32 * 10.5;
+        app.timeline_editor.restore_height(editor_height);
+        assert!(!app.timeline_editor_visible());
         let before_save = app.session.project.clone();
         let written = app.display_save_snapshot().unwrap().save(&folder).unwrap();
         assert_eq!(written.session.project.display.horizontal_zoom, 150.0);
+        assert_eq!(
+            written
+                .session
+                .project
+                .display
+                .timeline_editor_height_points,
+            editor_height
+        );
         assert_eq!(
             written.session.project.display.arrangement_expanded,
             expanded
@@ -377,6 +388,8 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
         reopened.arrangement.collapsed = expanded;
         reopened.install_loaded_session(Session::open(&folder).unwrap(), false);
         assert_eq!(reopened.arrangement.collapsed, !expanded);
+        assert_eq!(reopened.timeline_editor.saved_height(), editor_height);
+        assert!(!reopened.timeline_editor_visible());
         assert_eq!(reopened.timeline_track_size, size);
         assert_eq!(reopened.track_row_height(), expected);
         assert_eq!(
@@ -394,5 +407,7 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
         assert_eq!(reopened.session.project.tracks, original.tracks);
         assert!(!reopened.dirty);
     }
+    app.request(Action::New);
+    assert_eq!(app.timeline_editor.saved_height(), 300.0);
     std::fs::remove_dir_all(folder).unwrap();
 }

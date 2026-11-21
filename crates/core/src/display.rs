@@ -70,6 +70,7 @@ pub struct ProjectDisplay {
     pub horizontal_scroll_seconds: f64,
     pub vertical_scroll_points: f32,
     pub arrangement_expanded: bool,
+    pub timeline_editor_height_points: f32,
 }
 impl Default for ProjectDisplay {
     fn default() -> Self {
@@ -79,6 +80,7 @@ impl Default for ProjectDisplay {
             horizontal_scroll_seconds: 0.0,
             vertical_scroll_points: 0.0,
             arrangement_expanded: false,
+            timeline_editor_height_points: 300.0,
         }
     }
 }
@@ -92,6 +94,8 @@ impl ProjectDisplay {
             || self.horizontal_scroll_seconds < 0.0
             || !self.vertical_scroll_points.is_finite()
             || self.vertical_scroll_points < 0.0
+            || !self.timeline_editor_height_points.is_finite()
+            || self.timeline_editor_height_points <= 0.0
         {
             return Err(crate::Error("Invalid project display geometry".into()));
         }
@@ -111,6 +115,7 @@ mod tests {
                 horizontal_scroll_seconds: 12.5,
                 vertical_scroll_points: 300.0,
                 arrangement_expanded: true,
+                timeline_editor_height_points: 420.5,
             },
             ..Default::default()
         };
@@ -121,15 +126,15 @@ mod tests {
                 .display,
             project.display
         );
-        encoded["display"]
-            .as_object_mut()
-            .unwrap()
-            .remove("arrangement_expanded");
+        let display = encoded["display"].as_object_mut().unwrap();
+        display.remove("arrangement_expanded");
+        display.remove("timeline_editor_height_points");
         let restored = serde_json::from_value::<crate::Project>(encoded.clone()).unwrap();
         assert_eq!(
             restored.display,
             ProjectDisplay {
                 arrangement_expanded: false,
+                timeline_editor_height_points: 300.0,
                 ..project.display
             }
         );
@@ -174,6 +179,9 @@ mod tests {
         for value in [f32::NAN, f32::INFINITY, 0.0, -1.0] {
             let mut project = crate::Project::default();
             project.display.horizontal_zoom = value;
+            assert!(project.validate().is_err());
+            project.display.horizontal_zoom = ProjectDisplay::default().horizontal_zoom;
+            project.display.timeline_editor_height_points = value;
             assert!(project.validate().is_err());
         }
         let mut project = crate::Project::default();

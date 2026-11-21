@@ -279,8 +279,16 @@ fn timeline_editor_shares_the_lower_lane_and_resizes_from_its_top_edge() {
     drag(&mut app, start, end);
     assert!(app.timeline_editor.resizing());
     assert!((app.timeline_editor.divider_bounds.center().y - end.y).abs() < 1.0);
+    assert_eq!(
+        app.current_project_display().timeline_editor_height_points,
+        300.0
+    );
     frame(&mut app, &ctx, vec![button(end, false)]);
     assert!(!app.timeline_editor.resizing());
+    assert_eq!(
+        app.current_project_display().timeline_editor_height_points,
+        380.0
+    );
     let resized = app.timeline_editor.divider_bounds;
     let end = resized.center() + Vec2::new(0.0, 40.0);
     drag(&mut app, resized.center(), end);
@@ -305,6 +313,14 @@ fn timeline_editor_shares_the_lower_lane_and_resizes_from_its_top_edge() {
     assert!(!app.view_panel_selected(ViewPanel::EditorPane));
     assert!(app.effects_bounds.strip.is_positive());
     click(&mut app, editor_toggle);
+    assert_eq!(app.timeline_editor.divider_bounds, resized);
+    frame_sized(&mut app, &ctx, vec![], Vec2::new(1280.0, 400.0));
+    assert!(app.midi_editor.panel_bounds.height() < 380.0);
+    assert_eq!(
+        app.current_project_display().timeline_editor_height_points,
+        380.0
+    );
+    frame(&mut app, &ctx, vec![]);
     assert_eq!(app.timeline_editor.divider_bounds, resized);
     click(&mut app, editor_toggle);
     assert!(!app.view_panel_selected(ViewPanel::EffectsLane));

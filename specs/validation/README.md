@@ -19,6 +19,20 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Saved lower editor height — 2026-11-21
+
+The project display tests passed for manifest round trips, invalid heights
+and the 300-point default in old manifests. The Timeline tests passed for
+completed and cancelled resize gestures, temporary window clamping, saving
+with the editor hidden, reopening and new-project reset. Source collection
+saved the preferred height on both the copy and zero-copy paths.
+
+Formatting and strict workspace Clippy passed. The debug and release
+workspace suites each passed 3,672 tests with 22 ignored. Both excluded the
+sandbox-limited Audio Unit registration cases. The local macOS debug app
+rebuilt and passed signature verification. Native window checks remain
+pending.
+
 ## Fade hover and header shading — 2026-11-21
 
 The fade tests passed in the arrangement and lower audio editor. They check

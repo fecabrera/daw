@@ -702,10 +702,13 @@ fn collection_saves_live_display_for_copy_and_zero_copy_without_history_edits() 
         let mut app = fixture.app();
         app.timeline_track_size = height.value();
         let revision = app.change_revision;
-        for (zoom, scroll, vertical) in [(160.0, 12.5, 300.0), (95.0, 3.0, 50.0)] {
+        for (zoom, scroll, vertical, editor_height) in
+            [(160.0, 12.5, 300.0, 380.0), (95.0, 3.0, 50.0, 450.0)]
+        {
             app.zoom = zoom;
             app.scroll = scroll;
             app.timeline_vertical_scroll = vertical;
+            app.timeline_editor.restore_height(editor_height);
             app.perform_file_action(FileAction::CollectSources);
             assert!(app.job.is_some());
             wait(&mut app);
@@ -723,6 +726,7 @@ fn collection_saves_live_display_for_copy_and_zero_copy_without_history_edits() 
                     horizontal_scroll_seconds: scroll,
                     vertical_scroll_points: vertical,
                     arrangement_expanded: false,
+                    timeline_editor_height_points: editor_height,
                 }
             );
             assert_eq!(app.session.project.display, saved.display);

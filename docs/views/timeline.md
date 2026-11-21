@@ -14,7 +14,8 @@ arrangement visible above it. Double-click a clip to open and fit it in the
 Drag the divider at the top of the pane up to make the editor taller or down
 to give the arrangement more space. Press Escape to cancel a resize. Click the active
 Timeline Editor button again to close the pane, or click **Effects Lane** to
-switch back to effects. The pane remembers its height when you reopen it.
+switch back to effects. Save the project to keep the editor height for the
+next time you open that project, even if the pane is closed when you save.
 
 ## Arrangement lanes
 

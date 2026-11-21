@@ -15,6 +15,7 @@ impl DawUi {
             horizontal_scroll_seconds: self.scroll,
             vertical_scroll_points: self.timeline_vertical_scroll,
             arrangement_expanded: !self.arrangement.collapsed,
+            timeline_editor_height_points: self.timeline_editor.saved_height(),
         }
     }
 
@@ -26,5 +27,7 @@ impl DawUi {
         self.scroll = display.horizontal_scroll_seconds;
         self.timeline_vertical_scroll = display.vertical_scroll_points;
         self.timeline_vertical_restore = Some(display.vertical_scroll_points);
+        self.timeline_editor
+            .restore_height(display.timeline_editor_height_points);
     }
 }
