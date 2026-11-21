@@ -14,6 +14,23 @@ use daw_engine::{MidiOutputSaturatorEdit, ModulationTarget, RenderPlan, Renderer
 pub use devices::{
     AudioSettings, Configuration, DeviceId, DeviceInfo, Devices, SampleFormat, discover_devices,
 };
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlaybackSeek {
+    Exact,
+    #[default]
+    #[serde(other)]
+    Fast,
+}
+impl PlaybackSeek {
+    pub const ALL: [Self; 2] = [Self::Fast, Self::Exact];
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Fast => "Fast",
+            Self::Exact => "Exact",
+        }
+    }
+}
 use rtrb::{Consumer, Producer, RingBuffer};
 use rubato::Resampler;
 use std::collections::HashMap;
@@ -126,6 +143,7 @@ struct PreparedRenderer {
     revision: u64,
     publication: u64,
     prepared_transport: bool,
+    hosted_insert: Option<HostedInsert>,
     reprepare: Option<preparation::Anchor>,
     allow_checkpoint_reuse: bool,
     activate_at: Option<u64>,
@@ -135,6 +153,11 @@ struct PreparedRenderer {
     meters: Vec<Arc<StereoMeter>>,
     layer_meters: layer_meters::Layers,
     modulation: Vec<(ModulationTarget, ModulationMeter)>,
+}
+#[derive(Clone, Copy)]
+struct HostedInsert {
+    base_publication: u64,
+    unit: Id,
 }
 impl PreparedRenderer {
     #[cfg(test)]
@@ -164,6 +187,7 @@ impl PreparedRenderer {
             revision: 0,
             publication: 0,
             prepared_transport: false,
+            hosted_insert: None,
             reprepare: None,
             allow_checkpoint_reuse: false,
             activate_at: None,
@@ -601,7 +625,7 @@ pub struct AudioOutput {
     audition: audition::Sender,
     plan: Arc<RenderPlan>,
     saturator_flight: Option<SaturatorFlight>,
-    desired_transport: Option<(u64, TransportState)>,
+    desired_transport: Option<(u64, preparation::TransportRequest)>,
     resume_needs_preparation: bool,
     project_rate_hz: u32,
     buffer_size_frames: u32,
@@ -876,7 +900,7 @@ impl AudioOutput {
             .filter(|flight| !flight.submitted.same_processing_plan(&self.plan));
         if self
             .desired_transport
-            .is_some_and(|(_, state)| !state.playing)
+            .is_some_and(|(_, request)| !request.state.playing)
         {
             // Retain Stop/Pause intent and its immediate callback command even
             // when reconstruction fails before the callback consumes it. Play
@@ -903,24 +927,41 @@ impl AudioOutput {
     pub fn displayed_frame(&self) -> u64 {
         displayed_frame(self.current_transport(), self.status.transport())
     }
-    fn current_transport(&self) -> TransportState {
+    fn pending_transport(&self) -> Option<preparation::TransportRequest> {
         self.desired_transport
             .filter(|(revision, _)| {
                 *revision > self.status.applied_revision.load(Ordering::Acquire)
             })
-            .map_or_else(|| self.status.transport(), |(_, state)| state)
+            .map(|(_, request)| request)
+    }
+    fn current_transport(&self) -> TransportState {
+        self.pending_transport()
+            .map_or_else(|| self.status.transport(), |request| request.state)
     }
     fn prepare(&mut self, state: Option<TransportState>) {
         self.saturator_flight = None;
-        self.prepare_dispatched(state);
+        self.prepare_dispatched(state.map(Into::into));
     }
-    fn prepare_dispatched(&mut self, state: Option<TransportState>) {
-        if state.is_some_and(|state| !state.playing) {
+    fn prepare_dispatched(&mut self, request: Option<preparation::TransportRequest>) {
+        self.prepare_plan(request, None);
+    }
+    fn prepare_plan(
+        &mut self,
+        request: Option<preparation::TransportRequest>,
+        hosted_insert: Option<preparation::HostedInsertBase>,
+    ) {
+        if request.is_some_and(|request| !request.state.playing) {
             self.resume_needs_preparation = true;
         }
         self.preparation_failed = false;
-        self.prepare_revision = if let Some(predecessor) = self.append_predecessor()
-            && state.is_none()
+        self.prepare_revision = if let Some(insert) = hosted_insert {
+            self.preparation.submit_hosted_insert(
+                self.dispatched_plan().clone(),
+                self.bindings.clone(),
+                insert,
+            )
+        } else if let Some(predecessor) = self.append_predecessor()
+            && request.is_none()
         {
             self.preparation.submit_append(
                 self.dispatched_plan().clone(),
@@ -928,13 +969,16 @@ impl AudioOutput {
                 predecessor,
             )
         } else {
-            self.preparation
-                .submit(self.dispatched_plan().clone(), self.bindings.clone(), state)
+            self.preparation.submit_transport(
+                self.dispatched_plan().clone(),
+                self.bindings.clone(),
+                request,
+            )
         };
         self.status
             .requested_revision
             .store(self.prepare_revision, Ordering::Release);
-        self.desired_transport = state.map(|state| (self.prepare_revision, state));
+        self.desired_transport = request.map(|request| (self.prepare_revision, request));
         self.prepared = None;
         self.effects.cancel(self.prepare_revision);
         self.controls.cancel(self.prepare_revision);
@@ -944,6 +988,9 @@ impl AudioOutput {
         self.submit_control_update(true);
     }
     pub fn sync(&mut self, plan: RenderPlan) -> Result<(), String> {
+        self.sync_with_mode(plan, PlaybackSeek::default())
+    }
+    pub fn sync_with_mode(&mut self, plan: RenderPlan, mode: PlaybackSeek) -> Result<(), String> {
         if plan.project.sample_rate_hz != self.project_rate_hz
             || plan.project.buffer_size_frames != self.buffer_size_frames
             || plan.project.output_sample_format != self.plan.project.output_sample_format
@@ -951,10 +998,7 @@ impl AudioOutput {
             return Err("Recreate output after changing project audio settings".into());
         }
         self.drain();
-        let transport = self
-            .desired_transport
-            .filter(|(r, _)| *r > self.status.applied_revision.load(Ordering::Acquire))
-            .map(|(_, s)| s);
+        let transport = self.pending_transport();
         if let Some(flight) = &self.saturator_flight
             && (self.plan.midi_output_saturator_edit(&plan)
                 == Some(MidiOutputSaturatorEdit::Drive(flight.effect))
@@ -972,6 +1016,15 @@ impl AudioOutput {
         } else {
             None
         };
+        let hosted_insert = (mode == PlaybackSeek::Fast
+            && transport.is_none()
+            && self.status.playing.load(Ordering::Acquire)
+            && self.current_plan_published()
+            && plan.project.hosted_units().len() == self.plan.project.hosted_units().len() + 1)
+            .then(|| preparation::HostedInsertBase {
+                publication: self.active_publication,
+                plan: self.plan.clone(),
+            });
         self.plan = Arc::new(plan);
         self.saturator_flight = None;
         match edit {
@@ -981,7 +1034,10 @@ impl AudioOutput {
             Some(MidiOutputSaturatorEdit::Drive(effect)) => {
                 self.start_saturator_flight(effect, true);
             }
-            None if transport.is_some() || self.active_plan.is_none() => self.prepare(transport),
+            None if hosted_insert.is_some() => self.prepare_plan(None, hosted_insert),
+            None if transport.is_some() || self.active_plan.is_none() => {
+                self.prepare_dispatched(transport)
+            }
             None => self.prepare_effects(),
         }
         Ok(())
@@ -1308,6 +1364,9 @@ impl AudioOutput {
             .map_or([0.0; 3], |meter| meter.readings())
     }
     pub fn play(&mut self) -> Result<(), String> {
+        self.play_with_mode(PlaybackSeek::default())
+    }
+    pub fn play_with_mode(&mut self, mode: PlaybackSeek) -> Result<(), String> {
         self.drain();
         let mut state = self.current_transport();
         if state.playing {
@@ -1325,7 +1384,7 @@ impl AudioOutput {
         if resume {
             self.immediate(state, true)
         } else {
-            self.prepare(Some(state));
+            self.prepare_playback_position(state, mode);
             Ok(())
         }
     }
@@ -1334,7 +1393,7 @@ impl AudioOutput {
         let mut state = self.current_transport();
         if state.playing && !self.preparing() {
             // An ordinary pause retains active playback history. A prepared seek
-            // instead clears it for silent monitoring and must replay on Play.
+            // clears it for silent monitoring and needs preparation on Play.
             self.resume_needs_preparation = false;
         }
         state.paused |= state.playing;
@@ -1360,7 +1419,7 @@ impl AudioOutput {
         self.status
             .requested_revision
             .store(revision, Ordering::Release);
-        self.desired_transport = Some((revision, state));
+        self.desired_transport = Some((revision, state.into()));
         self.send(if resume {
             Command::ResumeAt(revision)
         } else {
@@ -1384,11 +1443,21 @@ impl AudioOutput {
             .map_err(|_| "Audio command queue is full; try again".into())
     }
     pub fn seek(&mut self, frame: u64) -> Result<(), String> {
+        self.seek_with_mode(frame, PlaybackSeek::default())
+    }
+    pub fn seek_with_mode(&mut self, frame: u64, mode: PlaybackSeek) -> Result<(), String> {
         self.drain();
         let mut state = self.current_transport();
         state.frame = frame;
-        self.prepare(Some(state));
+        self.prepare_playback_position(state, mode);
         Ok(())
+    }
+    fn prepare_playback_position(&mut self, state: TransportState, mode: PlaybackSeek) {
+        self.saturator_flight = None;
+        self.prepare_dispatched(Some(preparation::TransportRequest {
+            state,
+            fast: state.playing && mode == PlaybackSeek::Fast,
+        }));
     }
     /// Publication receipt for hosts that stage an atomic model transaction.
     pub fn current_plan_published(&self) -> bool {
@@ -1537,10 +1606,7 @@ impl AudioOutput {
                     if let Some(reason) = ready.fallback {
                         self.status.performance.effect_fallback(reason);
                     }
-                    let transport = self
-                        .desired_transport
-                        .filter(|(r, _)| *r > self.status.applied_revision.load(Ordering::Acquire))
-                        .map(|(_, s)| s);
+                    let transport = self.pending_transport();
                     self.prepare_dispatched(transport);
                 }
                 Err(error) => {
@@ -1796,9 +1862,7 @@ impl Callback {
                         if !self.initial_renderer || next.playing || self.renderer.playing {
                             self.discard_buffered_output();
                         }
-                    } else if next.can_inherit_without_preroll(&self.renderer) {
-                        next.inherit(&mut self.renderer);
-                    } else {
+                    } else if !self.inherit_plan(&mut next) {
                         // Rebuild at this exact clock, then catch up on the worker.
                         // The current renderer keeps playing throughout preparation.
                         next.allow_checkpoint_reuse =
@@ -1855,6 +1919,19 @@ impl Callback {
         self.status
             .performance
             .commands(started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64);
+    }
+    fn inherit_plan(&mut self, next: &mut PreparedRenderer) -> bool {
+        if let Some(insert) = next.hosted_insert
+            && insert.base_publication == self.renderer.publication
+            && next.try_insert_hosted_effect(&mut self.renderer, insert.unit)
+        {
+            return true;
+        }
+        if next.can_inherit_without_preroll(&self.renderer) {
+            next.inherit(&mut self.renderer);
+            return true;
+        }
+        false
     }
     fn preparation_anchor(&self) -> preparation::Anchor {
         preparation::Anchor {

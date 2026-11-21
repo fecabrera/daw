@@ -190,6 +190,7 @@ pub struct AppSettings {
     )]
     pub custom_theme_id: Option<String>,
     pub titlebar: TitlebarStyle,
+    pub playback_seek: daw_output::PlaybackSeek,
     pub seek_cache: CacheProfile,
     /// How MIDI notes that cross the playhead are divided. Audio clips are unaffected.
     pub midi_note_split: daw_core::MidiNoteSplit,
@@ -732,6 +733,32 @@ fn playback(
     if let Some(error) = audio.error {
         ui.label(error);
     }
+    crate::rows::field(
+        ui,
+        label_width,
+        |ui| {
+            ui.label("Seek mode");
+        },
+        |ui| {
+            crate::menus::Dropdown::from_id_salt("playback_seek")
+                .selected_text(settings.playback_seek.name())
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    for mode in daw_output::PlaybackSeek::ALL {
+                        let description = match mode {
+                            daw_output::PlaybackSeek::Fast => {
+                                "Start at the destination with fresh effects and new note starts"
+                            }
+                            daw_output::PlaybackSeek::Exact => {
+                                "Reconstruct earlier notes and effect history"
+                            }
+                        };
+                        ui.selectable_value(&mut settings.playback_seek, mode, mode.name())
+                            .on_hover_text(description);
+                    }
+                });
+        },
+    );
     crate::rows::field(
         ui,
         label_width,
@@ -1543,6 +1570,25 @@ mod tests {
         ));
         assert_eq!(legacy_split.midi_note_split, daw_core::MidiNoteSplit::Split);
         assert_eq!(legacy_split.theme, ColorTheme::Light);
+    }
+
+    #[test]
+    fn seek_mode_defaults_to_fast_and_persists_exact() {
+        use daw_output::PlaybackSeek;
+
+        let ctx = Context::default();
+        crate::theme::configure(&ctx);
+        let mut settings = AppSettings::from_json(Some(r#"{"theme":"light"}"#));
+        assert_eq!(settings.playback_seek, PlaybackSeek::Fast);
+        frame(&ctx, &mut settings, vec![]);
+        click(&ctx, &mut settings, "Playback");
+        click(&ctx, &mut settings, "Fast");
+        click(&ctx, &mut settings, "Exact");
+        assert_eq!(settings.playback_seek, PlaybackSeek::Exact);
+        assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
+        click(&ctx, &mut settings, "Exact");
+        click(&ctx, &mut settings, "Fast");
+        assert_eq!(settings.playback_seek, PlaybackSeek::Fast);
     }
 
     #[test]

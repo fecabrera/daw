@@ -44,6 +44,26 @@ impl Renderer {
                 .chain(self.hosted.iter().flat_map(|g| g.taps()))
                 .any(|t| t.reader.source_failed())
     }
+    /// Worker-only. Request the startup range before replacing active playback.
+    pub fn fast_seek_streaming_ready(&mut self) -> bool {
+        if !self.plan.audio.values().any(|audio| audio.disk.is_some())
+            && !self
+                .plan
+                .stretched_audio
+                .values()
+                .any(|audio| audio.audio.disk.is_some())
+        {
+            return true;
+        }
+        let region = self.loop_region(true);
+        let count = (self.plan.project.buffer_size_frames as usize)
+            .max(self.hosted.as_ref().map_or(0, |graph| graph.quantum));
+        let start = latency::advanced_frame(self.playhead, self.alignment.total, region);
+        (0..count as u64).all(|offset| {
+            let frame = latency::advanced_frame(start, offset, region);
+            self.streaming_ready(frame, region)
+        })
+    }
     pub(super) fn streaming_ready(&mut self, frame: u64, region: Option<(u64, u64)>) -> bool {
         let frame = latency::wrapped_frame(frame, region);
         let mut ready = true;

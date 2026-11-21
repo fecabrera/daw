@@ -562,6 +562,7 @@ pub(crate) struct MidiTrackRuntime {
     fingerprint: u64,
     held_sample: [f32; 2],
     last_clip: Option<Id>,
+    fast_seek_lead: Option<u64>,
     last_repeat_pass: u128,
     next_event: usize,
     first_stop_in_pass: usize,
@@ -1242,6 +1243,7 @@ impl MidiTrackRuntime {
             clips,
             sample_rate_hz: project.sample_rate_hz,
             last_clip: None,
+            fast_seek_lead: None,
             last_repeat_pass: 0,
             next_event: 0,
             first_stop_in_pass: 0,
@@ -1887,6 +1889,12 @@ impl MidiTrackRuntime {
             voice.reset();
         }
         self.last_clip = None;
+        self.fast_seek_lead = None;
+    }
+    pub(super) fn start_without_chasing(&mut self, lead: u64) {
+        self.fast_seek_lead = Some(lead);
+        self.layer_samples.fill([0.0; 2]);
+        self.block_source_fade = 0.0;
     }
     /// Control-worker only. Independent reserve; scheduled clips cannot steal these slots.
     pub fn prepare_live(&mut self) {
@@ -2281,6 +2289,13 @@ impl MidiTrackRuntime {
         self.sample_in_region(frame, None)
     }
     pub fn sample_in_region(&mut self, frame: u64, loop_region: Option<(u64, u64)>) -> [f32; 2] {
+        if let Some(lead) = &mut self.fast_seek_lead
+            && *lead > 0
+        {
+            *lead -= 1;
+            return [0.0; 2];
+        }
+        let fast_start = self.fast_seek_lead.take().is_some();
         if self.audition_gate.is_some_and(|gate| frame >= gate) {
             self.audition_gate = None;
             self.end_notes();
@@ -2357,7 +2372,11 @@ impl MidiTrackRuntime {
                 .map_or(position, |s| s.original_frame(position));
             let restarted = self.last_clip != Some(clip.id) || repeat_wrapped;
             if restarted {
-                self.first_stop_in_pass = if repeat_wrapped {
+                self.first_stop_in_pass = if fast_start {
+                    prepared
+                        .stops
+                        .partition_point(|stop| output_frame(clip, *stop) < position)
+                } else if repeat_wrapped {
                     prepared.stops.partition_point(|stop| {
                         output_frame(clip, *stop) < clip.source_offset_frame
                     })
@@ -2365,7 +2384,7 @@ impl MidiTrackRuntime {
                     0
                 };
             }
-            if restarted && !wrapped && !repeat_wrapped {
+            if restarted && !wrapped && !repeat_wrapped && !fast_start {
                 self.carried_stop_gain = None;
                 self.beat_stopped = false;
                 self.previous_stop_gain = 1.0;
@@ -2433,7 +2452,11 @@ impl MidiTrackRuntime {
                     }
                 }
             } else {
-                if repeat_wrapped {
+                if fast_start {
+                    self.next_event = prepared
+                        .events
+                        .partition_point(|event| output_frame(clip, event.frame) < position);
+                } else if repeat_wrapped {
                     // Admit only events in this pass, including events crossed by
                     // the first sample when the musical clock skips source frames.
                     self.next_event = prepared.events.partition_point(|e| {
@@ -2838,6 +2861,64 @@ mod tests {
         let mut low = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
         low.sample(2_000);
         assert_eq!(low.voices[0].pitch, 0);
+    }
+
+    #[test]
+    fn fast_seek_skips_earlier_note_starts_and_keeps_notes_at_the_destination() {
+        let mut project = Project {
+            tempo_bpm: 120.0,
+            ..Default::default()
+        };
+        let track = project.add_midi_track().unwrap();
+        let clip = project.add_midi_pattern(track, 0).unwrap();
+        let held = Id::new_v4();
+        let starts_at_seek = Id::new_v4();
+        project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: MidiPattern {
+                    length_ticks: 3840,
+                    notes: vec![
+                        MidiNote {
+                            id: held,
+                            start_tick: 0,
+                            length_ticks: 1920,
+                            pitch: 60,
+                            velocity: 127,
+                        },
+                        MidiNote {
+                            id: starts_at_seek,
+                            start_tick: 960,
+                            length_ticks: 960,
+                            pitch: 64,
+                            velocity: 127,
+                        },
+                    ],
+                },
+            })
+            .unwrap();
+        project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
+        for stretch in [None, daw_core::ClipStretch::new(2, 3)] {
+            let clip = &mut project.tracks[0].clips[0];
+            clip.stretch = stretch;
+            clip.length_frames = stretch.map_or(96_000, |s| s.scale(96_000).unwrap());
+            let target = output_frame(clip, 24_000);
+            let mut fast = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+            fast.start_without_chasing(2);
+            for frame in target - 2..target {
+                assert_eq!(fast.sample(frame), [0.0; 2]);
+            }
+            fast.sample(target);
+            assert!(
+                fast.voices
+                    .iter()
+                    .any(|v| v.current == Some(starts_at_seek))
+            );
+            assert!(!fast.voices.iter().any(|v| v.current == Some(held)));
+            let mut exact = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+            exact.sample(target);
+            assert!(exact.voices.iter().any(|v| v.current == Some(held)));
+        }
     }
 
     #[test]

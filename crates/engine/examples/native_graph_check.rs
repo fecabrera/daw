@@ -2,6 +2,87 @@
 use daw_core::*;
 use daw_engine::*;
 use daw_plugin_host::*;
+
+#[path = "support/allocations.rs"]
+mod allocations;
+
+fn check_live_insert(
+    mut plan: RenderPlan,
+    settings: &HostedSettings,
+    already_hosted: bool,
+) -> daw_plugin_host::Result<()> {
+    let instrument = plan.project.tracks[0].instrument.as_mut().unwrap();
+    instrument.main.effects.push(EffectInstance::plate_reverb());
+    plan.project.add_beat_track().unwrap();
+    // The note ends while the new graph is running. Its reverb tail must be
+    // identical to uninterrupted playback, as must the first held samples.
+    let hosted = EffectInstance {
+        id: Id::new_v4(),
+        unit: EffectSettings::Hosted(settings.clone()),
+    };
+    if already_hosted {
+        plan.project.master.effects.push(hosted.clone());
+    }
+    let mut new_effect = hosted.duplicate();
+    let EffectSettings::Hosted(new_settings) = &mut new_effect.unit else {
+        unreachable!();
+    };
+    new_settings.enabled = false;
+    let inserted = new_settings.id;
+    let mut edited = plan.clone();
+    let track = &edited.project.tracks[0];
+    let target = EffectChainTarget::Layer {
+        track: track.id,
+        layer: track.instrument.as_ref().unwrap().main.id,
+    };
+    let (effects, compact) = edited.project.effect_chain(target).unwrap();
+    let mut effects = effects.to_vec();
+    effects.push(new_effect);
+    edited.project.edit(target.edit(effects, compact)).unwrap();
+    assert_eq!(plan.hosted_effect_inserted(&edited), Some(inserted));
+    let mut changed = edited.clone();
+    changed.project.master.gain_db -= 1.0;
+    assert_eq!(plan.hosted_effect_inserted(&changed), None);
+
+    let mut reference = Renderer::try_new(plan.clone())?;
+    let mut playing = Renderer::try_new(plan)?;
+    let mut candidate = Renderer::try_new(edited)?;
+    reference.play();
+    playing.play();
+    for _ in 0..4099 {
+        assert_eq!(reference.next_sample(), playing.next_sample());
+    }
+    allocations::measured(|| {
+        assert!(candidate.try_insert_hosted_effect(&mut playing, inserted));
+    });
+    assert_eq!(candidate.transport_state(), reference.transport_state());
+    let mut peak = 0.0f32;
+    let mut tail = 0.0f32;
+    for i in 0..72_000 {
+        let a = reference.next_sample();
+        let b = if i < 1024 {
+            let mut sample = [0.0; 2];
+            allocations::measured(|| sample = candidate.next_sample());
+            sample
+        } else {
+            candidate.next_sample()
+        };
+        assert!(
+            (a[0] - b[0]).abs().max((a[1] - b[1]).abs()) < 1e-5,
+            "existing audio changed at frame {i} (existing plugin: {already_hosted}): {a:?} vs {b:?}"
+        );
+        if i < 2048 {
+            peak = peak.max(a[0].abs());
+        }
+        if i >= 57_000 {
+            tail = tail.max(a[0].abs());
+        }
+    }
+    assert!(peak > 0.001 && tail > 0.00001, "held {peak}, tail {tail}");
+    assert!(candidate.hosted_fault().is_none());
+    Ok(())
+}
+
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let format = match args.next().and_then(|s| s.into_string().ok()).as_deref() {
@@ -105,6 +186,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 sampler_audio: Default::default(),
                 stretched_audio: Default::default(),
             };
+            if rate == 48000 && block == 512 {
+                assert_eq!(settings.latency_frames, 0);
+                let live = plan.clone();
+                let settings = settings.clone();
+                service.run(move || {
+                    check_live_insert(live.clone(), &settings, false)?;
+                    check_live_insert(live, &settings, true)
+                })?;
+            }
             let portable = EffectInstance {
                 id: Id::new_v4(),
                 unit: EffectSettings::Drive(state.to_settings()),

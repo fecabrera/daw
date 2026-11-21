@@ -283,6 +283,19 @@ pub(super) struct Chain {
     output_mono: Option<bool>,
 }
 impl Chain {
+    pub fn inherit_dry_delays(&mut self, previous: &mut Self) {
+        for stage in &mut self.stages {
+            if let Stage::Dry { delay, .. } = stage
+                && let Some(old) = previous.stages.iter_mut().find_map(|stage| match stage {
+                    Stage::Dry { delay: old, .. } if old.id == delay.id => Some(old),
+                    _ => None,
+                })
+            {
+                std::mem::swap(delay, old);
+            }
+        }
+    }
+
     pub fn prepare(
         effects: &[EffectInstance],
         plan: &RenderPlan,

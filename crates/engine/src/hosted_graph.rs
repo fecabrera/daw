@@ -476,6 +476,29 @@ impl HostedGraph {
                 .native()
                 .all(|node| previous.native().any(|old| node.compatible(old)))
     }
+    pub fn can_insert(&self, inserted: Id, previous: Option<&Self>) -> bool {
+        self.native().any(|node| node.id == inserted)
+            && self.native().count() == previous.map_or(0, |g| g.native().count()) + 1
+            && self
+                .native()
+                .filter(|node| node.id != inserted)
+                .all(|node| {
+                    previous.is_some_and(|graph| graph.native().any(|old| node.compatible(old)))
+                })
+    }
+    pub fn inherit_dry_delays(&mut self, previous: &mut Self) {
+        self.master.inherit_dry_delays(&mut previous.master);
+        for (track, old) in self.tracks.iter_mut().zip(&mut previous.tracks) {
+            track.chain.inherit_dry_delays(&mut old.chain);
+            if let Some((instrument, old)) = track.instrument.as_mut().zip(old.instrument.as_mut())
+            {
+                instrument.main.inherit_dry_delays(&mut old.main);
+                for (layer, old) in instrument.layers.iter_mut().zip(&mut old.layers) {
+                    layer.chain.inherit_dry_delays(&mut old.chain);
+                }
+            }
+        }
+    }
     pub fn inherit(&mut self, previous: &mut Self) {
         for node in self.nodes_mut() {
             if let Some(old) = previous

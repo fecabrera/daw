@@ -1208,6 +1208,42 @@ fn disk_buffering_holds_the_worker_activation_clock_with_the_transport() {
 }
 
 #[test]
+fn fast_seek_primes_disk_audio_at_the_destination_before_callback_install() {
+    let mut plan = tests::transport_plan();
+    let id = plan.project.assets[0].id;
+    let audio = &plan.audio[&id];
+    let mut writer = daw_media::DiskAudioWriter::new(audio.frame_count()).unwrap();
+    writer.write(&audio.samples).unwrap();
+    let disk = writer
+        .finish(audio.sample_rate_hz, audio.metadata.clone())
+        .unwrap();
+    plan.audio.insert(id, disk);
+    let (mut output, mut callback) = controlled_output_for_plan(48_000, plan);
+    output.preparation = preparation::Worker::new(output.status.clone()).unwrap();
+    callback.renderer.play();
+    output.status.publish_transport(&callback.renderer);
+    let destination = 40_000;
+    output.seek(destination).unwrap();
+    let prepared = ready(&output.preparation);
+    output
+        .commands
+        .push(Command::Plan(prepared.renderer))
+        .unwrap();
+    realtime(|| {
+        callback.update();
+        assert_eq!(callback.renderer.playhead, destination);
+        for _ in 0..output.buffer_size_frames {
+            callback.next_project_sample();
+            assert!(!callback.renderer.buffering());
+        }
+        assert_eq!(
+            callback.renderer.playhead,
+            destination + u64::from(output.buffer_size_frames)
+        );
+    });
+}
+
+#[test]
 fn metronome_updates_and_callback_processing_are_allocation_free() {
     for rate in [44_100, 48_000, 96_000] {
         let (output, mut callback) = controlled_output(rate);
@@ -1220,6 +1256,93 @@ fn metronome_updates_and_callback_processing_are_allocation_free() {
                     assert!(callback.next().iter().all(|s| s.is_finite()));
                 }
             });
+        }
+    }
+}
+
+#[test]
+fn seek_mode_applies_to_fresh_playback_and_playing_jumps() {
+    #[derive(Clone, Copy, Debug)]
+    enum Start {
+        SavedPosition,
+        StoppedSeek,
+        PausedSeek,
+        PlayingSeek,
+    }
+
+    let destination = 6_400;
+    for start in [
+        Start::SavedPosition,
+        Start::StoppedSeek,
+        Start::PausedSeek,
+        Start::PlayingSeek,
+    ] {
+        for mode in PlaybackSeek::ALL {
+            let mut plan = tests::transport_plan();
+            plan.project.tracks[0].clips[0].length_frames = 4_800;
+            plan.project.tracks[0]
+                .effects
+                .push(daw_core::EffectInstance::ambient_reverb());
+            if matches!(start, Start::SavedPosition) {
+                plan.project.transport.playhead_frame = destination;
+            }
+            let (mut output, mut callback) = controlled_output_for_plan(48_000, plan);
+            output.preparation = preparation::Worker::new(output.status.clone()).unwrap();
+            if matches!(start, Start::PausedSeek | Start::PlayingSeek) {
+                callback.renderer.play();
+            }
+            output.status.publish_transport(&callback.renderer);
+
+            if matches!(start, Start::PausedSeek) {
+                output.pause().unwrap();
+                realtime(|| callback.update());
+            }
+            if matches!(start, Start::PlayingSeek) {
+                match mode {
+                    PlaybackSeek::Fast => output.seek(destination),
+                    PlaybackSeek::Exact => output.seek_with_mode(destination, mode),
+                }
+                .unwrap();
+            } else {
+                if matches!(start, Start::StoppedSeek | Start::PausedSeek) {
+                    output.seek(destination).unwrap();
+                }
+                match mode {
+                    PlaybackSeek::Fast => output.play(),
+                    PlaybackSeek::Exact => output.play_with_mode(mode),
+                }
+                .unwrap();
+            }
+
+            let revision = output.requested_revision();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while output.applied_revision() != revision {
+                output.drain();
+                realtime(|| callback.update());
+                assert!(
+                    Instant::now() < deadline,
+                    "{start:?} {mode:?} did not activate"
+                );
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(callback.renderer.playhead, destination);
+            assert!(callback.renderer.playing);
+            let mut peak = 0.0f32;
+            for i in 0..4096 {
+                let sample = realtime(|| callback.next_project_sample());
+                if i >= 240 {
+                    peak = peak.max(sample[0].abs()).max(sample[1].abs());
+                }
+            }
+            match mode {
+                PlaybackSeek::Fast => assert_eq!(peak, 0.0, "{start:?} retained an old tail"),
+                PlaybackSeek::Exact => {
+                    assert!(
+                        peak > 0.0001,
+                        "{start:?} expected a reconstructed tail, got {peak}"
+                    );
+                }
+            }
         }
     }
 }
@@ -1250,7 +1373,7 @@ fn paused_seek_is_silent_and_play_reconstructs_exact_history_before_resuming() {
     realtime(|| callback.update());
     assert!(callback.renderer.transport_state().paused);
     assert!(output.resume_needs_preparation);
-    output.play().unwrap();
+    output.play_with_mode(PlaybackSeek::Exact).unwrap();
     assert!(output.prepare_revision > seek_revision);
     let state = output.transport_intent();
     assert_eq!(state.frame, 12000);

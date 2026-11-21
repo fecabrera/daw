@@ -19,6 +19,86 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Fast hosted effect insertion — 2026-11-21
+
+- Native CLAP and VST3 graph checks compared a held MIDI note and its Plate
+  Reverb tail with uninterrupted playback. They exercised the first hosted
+  effect and an addition to an existing hosted graph, with Beat Output present.
+  The handoff and first rendered blocks had no heap activity.
+- A release probe added the zero-latency Drive CLAP to MIDI 4 Output on a
+  temporary copy of the reported project. It used the MacBook Pro speakers at
+  48 kHz and 512 frames. Each cell is the median of five trials from the
+  installation request to publication on the audio callback.
+
+  | Playback position | Fast | Exact |
+  | --- | ---: | ---: |
+  | About 4 s | 28.81 ms | 1,279.46 ms |
+  | About 24 s | 29.04 ms | 6,654.55 ms |
+
+- Fast ranged from 28.35 to 39.70 ms. The median from renderer submission to
+  publication was 17.53 ms at 4 s and 17.66 ms at 24 s. No callback went over
+  budget during the 20 trials. The probe excludes editor input, repaint and
+  physical output latency. Activation timing was measured with Drive on macOS.
+- Formatting, strict workspace Clippy, and the CLI smoke check passed. The
+  debug and release workspace suites each passed 3,661 tests with 22 ignored.
+  Both suites excluded the known macOS Audio Unit registration case. The
+  macOS debug bundle rebuilt and passed signature verification.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
+## Seek mode when starting Play — 2026-11-21
+
+- `cargo test --offline --locked -p daw-output --lib seek` passed all 11
+  tests. The mode test compares reverb after Play from a saved position, Play
+  after a stopped or paused seek, and seeking during playback. Fast clears
+  the tail and Exact reconstructs it. The paused transport test also verifies
+  direct resume from retained state.
+- Formatting, strict workspace Clippy, and the debug and release workspace
+  suites passed. Both suites excluded the known macOS Audio Unit registration
+  case. The macOS debug bundle rebuilt and passed signature verification.
+  Native playback timing was not measured for this follow-up.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
+## Fast playback seek — 2026-11-21
+
+- The focused Engine, Output, and UI seek tests passed. They cover omission of
+  earlier MIDI note starts, inclusion of a note at the target on a stretched
+  clip, fresh reverb state in Fast, reconstructed reverb in Exact, paused-seek
+  behavior, and the Seek mode preference round trip. The output test guards
+  callback activation and sampling against allocation and deallocation.
+- The native release probe replayed a temporary copy of the reported project on
+  the MacBook Pro speakers at 48 kHz and 512 frames. It measured request to
+  callback activation, with five trials per position and condition. Times are
+  medians in milliseconds. The warm cases used the Balanced profile.
+
+  | Destination | Fast cold | Fast warm | Exact cold | Exact warm |
+  | --- | ---: | ---: | ---: | ---: |
+  | 2.25 s | 17.65 | 10.67 | 188.05 | 223.94 |
+  | 12.25 s | 17.50 | 10.62 | 967.23 | 426.64 |
+  | 28.25 s | 17.33 | 10.65 | 2,225.87 | 426.68 |
+
+- Fast replayed zero historical frames. Cold Fast ranged from 6.68 to
+  17.95 ms. These figures exclude pointer handling, repaint, and acoustic output.
+  This project did not exercise third-party plug-in seeks or other platforms.
+- The disk-backed regression confirms that a fast seek beyond the first PCM
+  page has audio ready for its first project buffer. The local macOS debug
+  bundle rebuilt and passed signature verification. Formatting and strict
+  workspace Clippy passed.
+- The debug and release workspace suites each passed 3,661 tests with 22
+  ignored. Both runs excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
 ## Bypass during effect removal — 2026-11-21
 
 - `cargo test --offline --locked -p daw-output --lib effect_update_tests`

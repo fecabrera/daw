@@ -1,6 +1,12 @@
 //! Hosted graphs keep evaluated block state separate from the consumed cursor.
 use super::{Renderer, TransportState, hosted_graph::HostedGraph, latency};
 impl Renderer {
+    pub(super) fn prime_fast_hosted_seek(&mut self) {
+        self.alignment.live = true;
+        let mut graph = self.hosted.take().expect("hosted graph");
+        self.prime_hosted(&mut graph, true, false);
+        self.hosted = Some(graph);
+    }
     fn prime_hosted(&mut self, graph: &mut HostedGraph, live: bool, realtime: bool) {
         if graph.primed {
             return;

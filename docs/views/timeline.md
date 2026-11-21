@@ -260,6 +260,11 @@ Beat patterns also support **Merge** with the same command and shortcut. See
 
 ## Navigate and play
 
+Use [Seek mode](../projects/README.md#seek-mode) to choose how playback starts
+from a selected position or jumps when you click or drag the ruler. Fast
+starts fresh at the destination. Exact reconstructs the notes and effect
+tails you would hear in continuous playback.
+
 The toolbar groups the elapsed time and bars and beats readouts in one field.
 The time signature and Tempo share a separate field. Its background stays the
 same during playback. Pause or stop to edit either value.

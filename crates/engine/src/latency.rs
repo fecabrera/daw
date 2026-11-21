@@ -4,7 +4,7 @@ use daw_core::{EffectInstance, EffectSettings, Id, Project};
 pub(super) type Sample = ([f32; 2], bool);
 #[derive(Clone)]
 pub(super) struct Delay {
-    id: Id,
+    pub(super) id: Id,
     samples: Vec<Sample>,
     index: usize,
 }

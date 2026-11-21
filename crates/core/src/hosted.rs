@@ -96,8 +96,42 @@ impl Project {
             .find(|s| s.id == id)
     }
     pub(crate) fn replace_hosted(&mut self, id: Id, settings: HostedSettings) -> Result<()> {
-        let units = self
-            .tracks
+        let current = self.hosted_unit_mut(id)?;
+        if settings.id != id
+            || settings.plugin.identity != current.plugin.identity
+            || settings.plugin.role != current.plugin.role
+        {
+            return Err(Error(
+                "Hosted control edit cannot replace the plugin identity".into(),
+            ));
+        }
+        *current = settings;
+        Ok(())
+    }
+    /// Record metadata on a renderer's owned plan, including lowered beat buses.
+    /// The plan's logical project and routing are already validated.
+    pub fn set_prepared_hosted_metadata(
+        &mut self,
+        id: Id,
+        rate: u32,
+        latency_frames: u32,
+        tail_frames: u64,
+        output_channels: u32,
+    ) -> Result<()> {
+        let current = self.hosted_unit_mut(id)?;
+        let mut next = current.clone();
+        next.metadata_rate = rate;
+        next.latency_frames = latency_frames;
+        next.tail_frames = tail_frames;
+        next.output_channels = output_channels;
+        if !next.valid() {
+            return Err(Error("Invalid prepared plugin metadata".into()));
+        }
+        *current = next;
+        Ok(())
+    }
+    fn hosted_unit_mut(&mut self, id: Id) -> Result<&mut HostedSettings> {
+        self.tracks
             .iter_mut()
             .flat_map(|track| {
                 track
@@ -113,22 +147,9 @@ impl Project {
                         )
                     }))
             })
-            .chain(self.master.effects.iter_mut().filter_map(effect_mut));
-        for current in units {
-            if current.id == id {
-                if settings.id != id
-                    || settings.plugin.identity != current.plugin.identity
-                    || settings.plugin.role != current.plugin.role
-                {
-                    return Err(Error(
-                        "Hosted control edit cannot replace the plugin identity".into(),
-                    ));
-                }
-                *current = settings;
-                return Ok(());
-            }
-        }
-        Err(Error("Hosted unit is no longer present".into()))
+            .chain(self.master.effects.iter_mut().filter_map(effect_mut))
+            .find(|current| current.id == id)
+            .ok_or_else(|| Error("Hosted unit is no longer present".into()))
     }
     pub(crate) fn validate_hosted_units(&self) -> Result<()> {
         let mut ids: std::collections::HashSet<Id> = self

@@ -1945,7 +1945,7 @@ impl DawUi {
         self.change_revision = self.change_revision.wrapping_add(1);
         self.dirty = true;
         if let Some(output) = &mut self.output
-            && let Err(e) = output.seek(frame)
+            && let Err(e) = output.seek_with_mode(frame, self.settings.playback_seek)
         {
             self.fail(e);
         }
@@ -1989,7 +1989,7 @@ impl DawUi {
         }
         self.configure_audio_cache(false);
         if let Some(output) = &mut self.output
-            && let Err(e) = output.play()
+            && let Err(e) = output.play_with_mode(self.settings.playback_seek)
         {
             self.fail(e);
         }
@@ -2831,10 +2831,11 @@ impl DawUi {
         {
             match graph_preview::State::plan(&self.session, wanted.as_ref()) {
                 Ok(plan) => {
-                    let success = self
-                        .output
-                        .as_mut()
-                        .is_none_or(|output| output.sync(plan).is_ok());
+                    let success = self.output.as_mut().is_none_or(|output| {
+                        output
+                            .sync_with_mode(plan, self.settings.playback_seek)
+                            .is_ok()
+                    });
                     if success {
                         self.sync_needed = false;
                         self.graph_preview.synced(wanted, self.output.is_some());

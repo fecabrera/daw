@@ -118,15 +118,57 @@ pub(super) struct Anchor {
     pub transport: TransportState,
     pub clock: u64,
 }
+#[derive(Clone, Copy)]
+pub(super) struct TransportRequest {
+    pub state: TransportState,
+    pub fast: bool,
+}
+impl From<TransportState> for TransportRequest {
+    fn from(state: TransportState) -> Self {
+        Self { state, fast: false }
+    }
+}
+pub(super) struct HostedInsertBase {
+    pub publication: u64,
+    pub plan: Arc<RenderPlan>,
+}
 enum Request {
     Warm(Arc<RenderPlan>, Option<Arc<RenderPlan>>),
     Plan(
         Arc<RenderPlan>,
-        Option<daw_engine::TransportState>,
+        Option<TransportRequest>,
         std::time::Instant,
         Option<Arc<RenderPlan>>,
+        Option<HostedInsertBase>,
     ),
     Prepared(Box<PreparedRenderer>, Anchor),
+}
+
+fn prepare_fast_seek(
+    renderer: &mut PreparedRenderer,
+    state: TransportState,
+    cancelled: impl Fn() -> bool,
+) -> Result<bool, String> {
+    if cancelled() {
+        return Ok(false);
+    }
+    renderer.prepare_fast_seek(state)?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        if cancelled() {
+            return Ok(false);
+        }
+        if renderer.fast_seek_streaming_ready() {
+            return Ok(true);
+        }
+        if let Some(error) = renderer.source_error() {
+            return Err(error);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err("Timed out preparing audio at the seek destination".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
 }
 
 fn resolve_cache_plan(
@@ -301,7 +343,21 @@ impl Worker {
                             ));
                             continue;
                         }
-                        Request::Plan(plan, transport, requested_at, predecessor) => {
+                        Request::Plan(
+                            plan,
+                            transport,
+                            requested_at,
+                            predecessor,
+                            hosted_insert,
+                        ) => {
+                            let hosted_insert = hosted_insert.and_then(|base| {
+                                base.plan
+                                    .hosted_effect_inserted(&plan)
+                                    .map(|unit| HostedInsert {
+                                        base_publication: base.publication,
+                                        unit,
+                                    })
+                            });
                             let (plan, retained) = resolve_cache_plan(
                                 &mut beat_plans,
                                 &mut cached_plan,
@@ -332,6 +388,7 @@ impl Worker {
                             let mut renderer = renderer;
                             renderer.allow_checkpoint_reuse = retained;
                             renderer.requested_at = Some(requested_at);
+                            renderer.hosted_insert = hosted_insert;
                             (renderer, bindings, transport, None)
                         }
                         Request::Prepared(renderer, anchor) => {
@@ -358,13 +415,37 @@ impl Worker {
                                 };
                             renderer.preparation_lead = lead;
                             renderer.requested_at = requested_at;
-                            (renderer, bindings, Some(anchor.transport), Some(anchor))
+                            (
+                                renderer,
+                                bindings,
+                                Some(anchor.transport.into()),
+                                Some(anchor),
+                            )
                         }
                     };
                     renderer.revision = revision;
-                    if let Some(transport) = transport {
+                    if let Some(request) = transport {
+                        let transport = request.state;
                         needs_cache = false;
-                        if !renderer.plan.project.hosted_units().is_empty() {
+                        if request.fast {
+                            match prepare_fast_seek(&mut renderer, transport, || {
+                                let state = worker.0.lock().unwrap();
+                                state.closed || state.revision != revision
+                            }) {
+                                Ok(true) => {}
+                                Ok(false) => continue,
+                                Err(error) => {
+                                    publish_error(&worker, revision, error);
+                                    continue;
+                                }
+                            }
+                            let mut memory = cache.as_ref().map_or_else(
+                                Default::default,
+                                daw_engine::TransportCache::memory_usage,
+                            );
+                            memory.replayed_frames = 0;
+                            status.performance.cache(memory);
+                        } else if !renderer.plan.project.hosted_units().is_empty() {
                             let result = renderer.renderer.try_prepare_transport_cancellable(
                                 transport,
                                 || {
@@ -422,8 +503,15 @@ impl Worker {
                         // Transport snapshots deliberately omit live input reserves.
                         // Rebuild them on this worker after replacing the renderer,
                         // and admit their actual storage before publication.
-                        renderer.prepare_live_midi();
-                        let prepared = renderer.prepare_streaming().and_then(|()| {
+                        if !request.fast {
+                            renderer.prepare_live_midi();
+                        }
+                        let streaming = if request.fast {
+                            Ok(())
+                        } else {
+                            renderer.prepare_streaming()
+                        };
+                        let prepared = streaming.and_then(|()| {
                             let bytes = renderer.memory_usage().owned_bytes();
                             renderer._memory.try_resize(bytes)
                         });
@@ -616,13 +704,30 @@ impl Worker {
             state.wake_ui = Some(Arc::new(wake));
         }
     }
+    #[cfg(test)]
     pub fn submit(
         &self,
         plan: impl Into<Arc<RenderPlan>>,
         previous: Bindings,
-        transport: Option<daw_engine::TransportState>,
+        transport: Option<TransportState>,
     ) -> u64 {
-        self.submit_plan(plan.into(), previous, transport, None)
+        self.submit_transport(plan, previous, transport.map(Into::into))
+    }
+    pub fn submit_transport(
+        &self,
+        plan: impl Into<Arc<RenderPlan>>,
+        previous: Bindings,
+        transport: Option<TransportRequest>,
+    ) -> u64 {
+        self.submit_plan(plan.into(), previous, transport, None, None)
+    }
+    pub fn submit_hosted_insert(
+        &self,
+        plan: Arc<RenderPlan>,
+        previous: Bindings,
+        insert: HostedInsertBase,
+    ) -> u64 {
+        self.submit_plan(plan, previous, None, None, Some(insert))
     }
     pub fn submit_append(
         &self,
@@ -630,14 +735,15 @@ impl Worker {
         previous: Bindings,
         predecessor: Arc<RenderPlan>,
     ) -> u64 {
-        self.submit_plan(plan, previous, None, Some(predecessor))
+        self.submit_plan(plan, previous, None, Some(predecessor), None)
     }
     fn submit_plan(
         &self,
         plan: Arc<RenderPlan>,
         previous: Bindings,
-        transport: Option<TransportState>,
+        transport: Option<TransportRequest>,
         predecessor: Option<Arc<RenderPlan>>,
+        hosted_insert: Option<HostedInsertBase>,
     ) -> u64 {
         let (request, ready, revision) = {
             let mut state = self.0.0.lock().unwrap();
@@ -648,7 +754,13 @@ impl Worker {
             (
                 state.request.replace((
                     revision,
-                    Request::Plan(plan, transport, std::time::Instant::now(), predecessor),
+                    Request::Plan(
+                        plan,
+                        transport,
+                        std::time::Instant::now(),
+                        predecessor,
+                        hosted_insert,
+                    ),
                     previous,
                 )),
                 state.ready.take(),

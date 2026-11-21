@@ -957,6 +957,41 @@ impl Renderer {
     pub fn prepare_transport(&mut self, state: TransportState) {
         self.prepare_transport_cancellable(state, || false);
     }
+    /// Worker-only playback jump. Start fresh processing at the destination
+    /// and feed only the samples required by latency compensation.
+    pub fn prepare_fast_seek(&mut self, state: TransportState) -> Result<(), String> {
+        debug_assert!(state.playing);
+        self.playing = true;
+        self.paused = false;
+        self.playback_start = state.playback_start;
+        let region = self.loop_region(true);
+        self.playhead = region
+            .filter(|(start, end)| state.frame < *start || state.frame >= *end)
+            .map_or(state.frame, |(start, _)| start);
+        self.reset_processing();
+        for (index, runtime) in self.midi.iter_mut().enumerate() {
+            if let Some(runtime) = runtime {
+                let mut lead = if self.hosted.is_some() || self.sidechains.active() {
+                    self.alignment.input_frames[index]
+                } else {
+                    0
+                };
+                if region.is_none() {
+                    lead = lead.min(self.playhead);
+                }
+                runtime.start_without_chasing(lead);
+            }
+        }
+        if self.hosted.is_some() {
+            self.prime_fast_hosted_seek();
+        } else {
+            self.prime_latency(true, false);
+        }
+        if let Some(unit) = self.hosted_fault() {
+            return Err(format!("Plugin seek preparation failed in unit {unit}"));
+        }
+        self.source_error().map_or(Ok(()), Err)
+    }
     pub fn try_prepare_transport_cancellable(
         &mut self,
         state: TransportState,
@@ -1059,8 +1094,41 @@ impl Renderer {
         self.paused = false;
     }
     pub fn inherit(&mut self, old: &mut Self) {
-        let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
         let aligned = self.can_inherit_without_preroll(old);
+        self.inherit_current(old, aligned, false);
+    }
+
+    /// Use only for a worker-verified single hosted effect insertion based on
+    /// this exact active publication. Keep the evaluated cursor and all existing DSP.
+    pub fn try_insert_hosted_effect(&mut self, old: &mut Self, inserted: Id) -> bool {
+        if !old.playing
+            || old.prime_pending
+            || self.plan.project.tracks.len() != old.plan.project.tracks.len()
+            || self.source_fingerprint != old.source_fingerprint
+            || !self.alignment.compatible(&old.alignment)
+            || !self.sidechains.compatible(&old.sidechains)
+            || !self
+                .midi
+                .iter()
+                .zip(&old.midi)
+                .all(|(next, previous)| match (next, previous) {
+                    (Some(next), Some(previous)) => next.compatible(previous),
+                    (None, None) => true,
+                    _ => false,
+                })
+            || !self
+                .hosted
+                .as_ref()
+                .is_some_and(|graph| graph.can_insert(inserted, old.hosted.as_ref()))
+        {
+            return false;
+        }
+        self.inherit_current(old, true, true);
+        true
+    }
+
+    fn inherit_current(&mut self, old: &mut Self, aligned: bool, insertion: bool) {
+        let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
         self.playhead = old.playhead;
         self.playing = old.playing;
         self.paused = old.paused;
@@ -1081,11 +1149,16 @@ impl Renderer {
         }
         self.ramp = old.ramp;
         self.master = old.master;
-        self.master_remaining = fade_frames;
+        self.master_remaining = if insertion {
+            old.master_remaining
+        } else {
+            fade_frames
+        };
         self.previous = old.previous;
         self.latent_held_mix = old.latent_held_mix;
-        if self.source_fingerprint == old.source_fingerprint
-            && self.effect_fingerprint == old.effect_fingerprint
+        if insertion
+            || (self.source_fingerprint == old.source_fingerprint
+                && self.effect_fingerprint == old.effect_fingerprint)
         {
             self.transition_from = old.transition_from;
             self.transition = old.transition;
@@ -1140,13 +1213,38 @@ impl Renderer {
         for g in &mut self.gains {
             if let Some(&index) = old.track_index.get(&g.id) {
                 g.value = old.gains[index].value;
+                g.remaining = if insertion && g.target == old.gains[index].target {
+                    old.gains[index].remaining
+                } else {
+                    fade_frames
+                };
             } else {
                 g.value = [0.0; 4];
+                g.remaining = fade_frames;
             }
-            g.remaining = fade_frames;
         }
-        if aligned && let (Some(next), Some(previous)) = (&mut self.hosted, &mut old.hosted) {
-            next.inherit(previous);
+        if aligned && let Some(next) = self.hosted.as_mut() {
+            if let Some(previous) = old.hosted.as_mut() {
+                next.inherit(previous);
+                if insertion {
+                    next.inherit_dry_delays(previous);
+                    self.sidechains.inherit_block_clocks(&old.sidechains);
+                }
+            } else if insertion {
+                // The sample renderer already fed the latency lines. The first
+                // block starts at the next input sample with the same voice cursor.
+                next.primed = true;
+                if !self.sidechains.active() {
+                    self.sidechains.seed_block_clocks(
+                        old.alignment.previous_feed,
+                        &self.alignment.input_frames,
+                        old.loop_region(true),
+                    );
+                }
+                for runtime in self.midi.iter_mut().flatten() {
+                    runtime.collect_block_sources(true);
+                }
+            }
         }
         if !aligned {
             self.reset_processing();

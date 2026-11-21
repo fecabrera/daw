@@ -129,9 +129,26 @@ The output device must support the project's output bit depth. If playback repor
 
 Advice below these controls uses the same smaller grey text as separation model information.
 
+## Seek mode
+
+Open **Settings → Playback → Seek mode**. **Fast** is the default when you
+start Play from a selected position or jump while playback is running. Audio
+clips play from the destination offset. MIDI notes and beat hits play from
+their next start, including starts at the destination. Reverb and delay tails
+from before the destination clear. Pausing and resuming at the same position
+continues the sound in progress.
+
+Choose **Exact** to reconstruct the sound at the destination, including held
+notes and effect tails. Seeks can take longer when the destination is far from a
+cached position. The setting applies on this computer.
+
+Fast also keeps the current sound when you add a compatible external effect
+during playback. Only the new effect starts fresh. See [effect changes during
+playback](../editing/units.md#effect-changes-during-playback).
+
 ## Seek cache profiles
 
-Open application **Settings** and choose **Playback > Seek cache**. The choice applies on this computer and is retained across restarts. **Balanced** is the default. It is separate from Project Settings and is not saved in the project.
+Open application **Settings** and choose **Playback > Seek cache** to control background preparation for exact reconstruction. The choice applies on this computer and is retained across restarts. **Balanced** is the default. It is separate from Project Settings and is not saved in the project.
 
 | Profile | Checkpoint memory limit | Background behavior and tradeoff |
 | --- | --- | --- |

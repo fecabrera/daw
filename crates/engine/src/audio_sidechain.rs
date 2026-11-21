@@ -343,6 +343,19 @@ impl Sidechains {
             }
         }
     }
+    pub fn inherit_block_clocks(&mut self, previous: &Self) {
+        self.clocks.copy_from_slice(&previous.clocks);
+    }
+    pub fn seed_block_clocks(
+        &mut self,
+        previous_feed: Option<u64>,
+        input_frames: &[u64],
+        region: Option<(u64, u64)>,
+    ) {
+        for (clock, delay) in self.clocks.iter_mut().zip(input_frames) {
+            *clock = previous_feed.map(|frame| latency::delayed_frame(frame, *delay, region));
+        }
+    }
     pub fn heap_bytes(&self) -> u64 {
         use daw_unit_core::memory::vec_bytes;
         vec_bytes(&self.edges)

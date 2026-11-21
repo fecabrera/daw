@@ -103,9 +103,18 @@ Native handles remain in the main-thread broker. A unique processing lease is
 Send, never Clone or Sync. Dropping the lease returns ownership; the broker
 retires the instance, editor, COM objects and module. Preparation, export, seeks
 and bounce each obtain independent instances. Native graph checkpoints and
-parallel warming are disabled. Seeking rebuilds and replays on a cancellable worker.
-A compatible live replacement swaps prepared leases and keeps pending output,
-note identities, parameter smoothers and audio/control delay history.
+parallel warming are disabled. Exact seeks replay on a cancellable worker.
+Fast seeks prepare fresh processors at the destination.
+
+In Fast Seek mode, a single hosted effect insertion during playback can
+install at the next callback boundary. The worker prepares the candidate and
+checks the edit against the active plan. The callback requires the original
+processing publication, compatible source and routing state, and unchanged
+delay compensation. It transfers held voices, existing effect DSP, native
+leases, parameter smoothers, delay lines and already evaluated audio. The new
+effect starts processing when its first input block arrives. A stale or
+incompatible candidate follows normal preparation. Exact mode uses the
+normal reconstruction path for hosted effect additions.
 
 Native processors use bounded stereo/mono buses, one output bus, up to 32 input
 buses and at most one note input. Before setup/activation, VST3 negotiation

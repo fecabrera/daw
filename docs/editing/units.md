@@ -17,8 +17,12 @@ during preparation. Timing or routing changes can take longer. A preparation
 failure keeps the active playback and shows an error. The edited settings
 remain available for correction or Undo.
 
-Seeking or restarting reconstructs sound from the current settings. Its result
-can differ from a tail accumulated while you changed controls during playback.
+While playback runs in **Fast** Seek mode, adding one external effect starts
+that plug-in when it is ready and keeps held notes and existing effect tails.
+The handoff requires unchanged delay compensation. If a plug-in changes delay
+compensation or another edit changes the signal path at the same time, the
+engine uses its normal background rebuild. **Exact** Seek mode uses that
+rebuild for external effect additions.
 
 ## Unit layout
 

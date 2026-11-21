@@ -101,7 +101,8 @@ need a selection retain their usual empty-selection prompts.
 - [Command-line interface](cli/README.md): track inspection, validation, source collection and export.
 - [Application Settings](projects/README.md#application-settings): Appearance, Playback, Time stretch, MIDI, Stem Separation, and Plugins.
 - [Audio devices](projects/README.md#audio-devices): output/input selection and output sample rate, bit depth, and buffer size.
-- [Seek cache profiles](projects/README.md#seek-cache-profiles): choose background CPU and memory use.
+- [Seek mode](projects/README.md#seek-mode) chooses how playback starts or jumps.
+- [Seek cache profiles](projects/README.md#seek-cache-profiles) control background CPU and memory use.
 - [Split MIDI notes](projects/README.md#split-midi-notes): choose how a note that crosses the playhead is divided.
 - [Features and roadmap](roadmap.md).
 

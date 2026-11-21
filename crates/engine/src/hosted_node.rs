@@ -59,21 +59,23 @@ impl HostedNode {
                 "Native plugin services are not attached to this render plan".into(),
             )
         })?;
-        for mut settings in units {
+        let sample_rate_hz = plan.project.sample_rate_hz;
+        for settings in units {
             if factory.is_missing(&settings.plugin.identity) {
                 // Delayed dry effects and silent sources retain saved alignment.
-                let rate = u64::from(plan.project.sample_rate_hz);
-                settings.latency_frames = (u64::from(settings.latency_frames) * rate
-                    / u64::from(settings.metadata_rate))
-                    as u32;
-                settings.tail_frames =
+                let rate = u64::from(sample_rate_hz);
+                let latency = (u64::from(settings.latency_frames) * rate
+                    / u64::from(settings.metadata_rate)) as u32;
+                let tail =
                     settings.tail_frames.saturating_mul(rate) / u64::from(settings.metadata_rate);
-                settings.metadata_rate = plan.project.sample_rate_hz;
                 plan.project
-                    .edit(daw_core::Edit::SetHosted {
-                        unit_id: settings.id,
-                        settings: Box::new(settings),
-                    })
+                    .set_prepared_hosted_metadata(
+                        settings.id,
+                        sample_rate_hz,
+                        latency,
+                        tail,
+                        settings.output_channels,
+                    )
                     .map_err(|e| daw_plugin_host::Error::Invalid(e.to_string()))?;
                 continue;
             }
@@ -88,21 +90,20 @@ impl HostedNode {
                 .transpose()?;
             let native = factory.prepare_mode(
                 &settings,
-                plan.project.sample_rate_hz,
+                sample_rate_hz,
                 plan.project.buffer_size_frames,
                 state,
                 plan.external.offline,
             )?;
-            settings.metadata_rate = plan.project.sample_rate_hz;
-            settings.output_channels = native.metadata.outputs[0].channels;
-            settings.latency_frames = native.metadata.latency_frames;
-            settings.tail_frames = native.metadata.tail_frames;
             let id = settings.id;
             plan.project
-                .edit(daw_core::Edit::SetHosted {
-                    unit_id: id,
-                    settings: Box::new(settings),
-                })
+                .set_prepared_hosted_metadata(
+                    id,
+                    sample_rate_hz,
+                    native.metadata.latency_frames,
+                    native.metadata.tail_frames,
+                    native.metadata.outputs[0].channels,
+                )
                 .map_err(|e| daw_plugin_host::Error::Invalid(e.to_string()))?;
             bank.insert(id, native);
         }

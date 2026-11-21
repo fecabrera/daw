@@ -10,6 +10,87 @@ pub enum MidiOutputSaturatorEdit {
 }
 
 impl RenderPlan {
+    /// Match one hosted effect insertion in any project chain. Compare the
+    /// complete plan after removing it, so concurrent edits use normal preparation.
+    pub fn hosted_effect_inserted(&self, next: &Self) -> Option<Id> {
+        if self.external.offline
+            || next.external.offline
+            || self.external.publish != next.external.publish
+            || !self
+                .external
+                .host
+                .as_ref()
+                .zip(next.external.host.as_ref())
+                .is_some_and(|(a, b)| std::sync::Arc::ptr_eq(a, b))
+        {
+            return None;
+        }
+        let (target, before, after) = self
+            .project
+            .effect_chains()
+            .zip(next.project.effect_chains())
+            .find_map(|((owner, before), (target, after))| {
+                (owner == target && after.len() == before.len() + 1)
+                    .then_some((target, before, after))
+            })?;
+        let index = before
+            .iter()
+            .zip(after)
+            .position(|(a, b)| a != b)
+            .unwrap_or(before.len());
+        let effect = &after[index];
+        let EffectSettings::Hosted(settings) = &effect.unit else {
+            return None;
+        };
+        if before[index..] != after[index + 1..] {
+            return None;
+        }
+        let mut normalized = next.clone();
+        let (_, compact) = next.project.effect_chain(target)?;
+        normalized
+            .project
+            .edit(target.edit(before.to_vec(), compact))
+            .ok()?;
+        if let daw_core::EffectChainTarget::Layer { track, layer } = target {
+            // An inline drop can materialize the default order when inserting.
+            // Restore its original representation only if the remaining order agrees.
+            let before = self.project.instrument_snapshot(track)?;
+            let after = normalized.project.instrument_snapshot(track)?;
+            let order = if layer == before.main.id {
+                (before.main.retained_units() == after.main.retained_units())
+                    .then_some(before.main.component_order)
+            } else {
+                let before = before.layers.into_iter().find(|l| l.id == layer)?;
+                let after = after.layers.iter().find(|l| l.id == layer)?;
+                (before.retained_units() == after.retained_units())
+                    .then_some(before.component_order)
+            }?;
+            if let Some(instrument) = normalized.project.instrument_settings_mut(track) {
+                if layer == instrument.main.id {
+                    instrument.main.component_order = order;
+                } else {
+                    instrument
+                        .layers
+                        .iter_mut()
+                        .find(|l| l.id == layer)?
+                        .component_order = order;
+                }
+            } else {
+                // Beat Output uses the same Main order model with a separate owner.
+                normalized
+                    .project
+                    .tracks
+                    .iter_mut()
+                    .filter_map(|t| t.beat.as_mut())
+                    .find(|b| b.output.id == layer)?
+                    .output
+                    .component_order = order;
+            }
+        }
+        self.same_processing_plan(&normalized)
+            .then_some(settings.id)
+    }
+
     /// Match a single Output Saturator edit without ignoring other processing settings.
     pub fn midi_output_saturator_edit(&self, next: &Self) -> Option<MidiOutputSaturatorEdit> {
         if !self.beat_tracks.is_empty() || !next.beat_tracks.is_empty() {
