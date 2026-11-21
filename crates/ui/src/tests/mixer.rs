@@ -565,7 +565,8 @@ fn strips_scroll_in_project_order_with_master_pinned_during_resize() {
     for size in [Vec2::new(760.0, 500.0), Vec2::new(1400.0, 900.0)] {
         let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         for pair in tracks.windows(2) {
-            let x = app.mixer_bounds[&pair[1]].left();
+            let strip = app.mixer_bounds[&pair[1]];
+            let x = strip.left();
             if x < 1.0 || x + 1.0 >= app.master_bounds.left() {
                 continue;
             }
@@ -575,6 +576,7 @@ fn strips_scroll_in_project_order_with_master_pinned_during_resize() {
                     matches!(&shape.shape,
                         egui::Shape::LineSegment { points, stroke }
                             if points[0].x == points[1].x && (points[0].x - x).abs() <= 1.0
+                                && points[0].y <= strip.center().y && points[1].y >= strip.center().y
                                 && *stroke == egui::Stroke::new(1.0, theme::palette(&ctx).border)
                     )
                 })

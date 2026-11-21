@@ -189,6 +189,32 @@ impl DawUi {
 pub(super) const PLAY_FILL: egui::Color32 = egui::Color32::from_rgb(51, 133, 85);
 pub(super) const STOP_FILL: egui::Color32 = egui::Color32::from_rgb(197, 78, 88);
 
+pub(super) fn readout_group(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
+    egui::Frame::new()
+        .fill(theme::palette(ui.ctx()).input)
+        .corner_radius(5)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.spacing_mut().interact_size.y = icons::TOOLBAR_BUTTON_SIZE;
+            content(ui);
+        });
+}
+
+pub(super) fn readout_separator(ui: &mut Ui) {
+    let (rect, _) = ui.allocate_exact_size(
+        Vec2::new(1.0, icons::TOOLBAR_BUTTON_SIZE),
+        egui::Sense::hover(),
+    );
+    let x = rect.center().x;
+    ui.painter().line_segment(
+        [
+            egui::pos2(x, rect.top() + 4.0),
+            egui::pos2(x, rect.bottom() - 4.0),
+        ],
+        egui::Stroke::new(1.0, theme::palette(ui.ctx()).border),
+    );
+}
+
 // Run before widgets so a focused button or catalog cannot also handle Space.
 // Text editors keep their input; holding Space must not cycle play/pause.
 pub(super) fn take_play_pause(ctx: &egui::Context) -> bool {

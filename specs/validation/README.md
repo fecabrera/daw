@@ -17,6 +17,38 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Transport readout groups — 2026-11-20
+
+- The egui rendering test checks that each pair shares one input-colored
+  background at the same height as the Play button. It verifies that each
+  background has one internal vertical separator.
+- The 18 targeted transport tests, formatting, strict workspace Clippy, and
+  `git diff --check` passed. The local macOS debug bundle rebuilt and passed
+  signature verification. Native appearance was not checked.
+- The debug and release workspace runs each passed 3,652 tests with 22 ignored
+  and excluded the known macOS Audio Unit registration case. Both runs flagged
+  the Mixer divider assertion because it also counted toolbar lines. The
+  assertion now checks lines that cross the Mixer strip. The debug UI rerun
+  passed 1,093 tests with 3 ignored. The corrected Mixer test also passed in
+  release.
+
+## Transport readout backgrounds and height — 2026-11-20
+
+- The egui rendering test verifies the text input fill on the elapsed time, bars
+  and beats, tempo, and time signature readouts. It compares their top and bottom
+  edges with the Play button. Tempo and time signature editing tests passed.
+  The UI suite passed 1,093 tests with 3 ignored.
+- Formatting, strict workspace Clippy, and `git diff --check` passed. The local
+  macOS debug bundle rebuilt and passed signature verification. Native appearance
+  on macOS, Windows, and Linux was not checked.
+- Debug and release workspace runs each passed 3,653 tests with 22 ignored.
+  Both runs excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
 ## Mixer view shortcut — 2026-11-20
 
 - The numbered-view tests verify that Command+3 and Ctrl+3 select Mixer with

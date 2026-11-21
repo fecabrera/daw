@@ -3222,7 +3222,7 @@ impl DawUi {
                 .text_color(theme::palette(ui.ctx()).text)
                 .horizontal_align(egui::Align::Center)
                 .desired_width(edit.width)
-                .min_size(Vec2::new(edit.width, toolbars::CONTROL_HEIGHT))
+                .min_size(Vec2::new(edit.width, icons::TOOLBAR_BUTTON_SIZE))
                 .show(ui);
             output.response.widget_info(|| {
                 egui::WidgetInfo::text_edit(
@@ -3558,10 +3558,11 @@ impl DawUi {
                 self.perform_transport_action(TransportAction::Record);
             }
             ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
-                self.time_control(ui)
-            });
-            ui.add_enabled_ui(self.job.is_none() && !self.midi.busy(), |ui| {
-                self.musical_control(ui)
+                transport_controls::readout_group(ui, |ui| {
+                    self.time_control(ui);
+                    transport_controls::readout_separator(ui);
+                    self.musical_control(ui);
+                });
             });
             ui.separator();
             let metronome = transport_controls::metronome(
@@ -3591,19 +3592,19 @@ impl DawUi {
             ui.add_enabled_ui(
                 self.job.is_none() && !self.midi.busy() && !self.is_playing(),
                 |ui| {
-                    let signature = self.active_signature();
-                    match self.time_signature_control.show(ui, signature) {
-                        Ok(Some(signature)) if signature != self.active_signature() => {
-                            self.set_active_signature(signature)
+                    transport_controls::readout_group(ui, |ui| {
+                        let signature = self.active_signature();
+                        match self.time_signature_control.show(ui, signature) {
+                            Ok(Some(signature)) if signature != self.active_signature() => {
+                                self.set_active_signature(signature)
+                            }
+                            Err(error) => self.fail(error),
+                            _ => {}
                         }
-                        Err(error) => self.fail(error),
-                        _ => {}
-                    }
+                        transport_controls::readout_separator(ui);
+                        self.tempo_control(ui);
+                    });
                 },
-            );
-            ui.add_enabled_ui(
-                self.job.is_none() && !self.midi.busy() && !self.is_playing(),
-                |ui| self.tempo_control(ui),
             );
             #[cfg(test)]
             {
@@ -8223,7 +8224,7 @@ mod tests {
         assert!(app.tempo_edit.is_some());
         frame(app, ctx, vec![]);
         assert!(ctx.egui_wants_keyboard_input());
-        assert_eq!(app.tempo_bounds.width(), monitor.width());
+        assert_eq!(app.tempo_bounds, monitor);
     }
     #[test]
     fn toolbar_tempo_double_click_commits_cancels_and_rejects_invalid_values() {
@@ -8910,6 +8911,49 @@ mod tests {
         let hour = PositionStep::Frames(3600 * 48000);
         assert_eq!(hour.shift(u64::MAX - 10, 1), u64::MAX);
         assert_eq!(hour.shift(0, i64::MIN), 0);
+    }
+    #[test]
+    fn transport_readout_pairs_share_a_button_height_field_with_a_divider() {
+        let mut app = DawUi::default();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let fill = ctx.global_style().visuals.text_edit_bg_color.unwrap();
+        let input_background = |point| {
+            shapes.iter().find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(surface)
+                    if surface.fill == fill && surface.rect.contains(point) =>
+                {
+                    Some(surface.rect)
+                }
+                _ => None,
+            })
+        };
+        let play_button = app.transport_bounds[0];
+        for (left, right) in [
+            (app.time_bounds[2], app.musical_bounds[0]),
+            (app.time_signature_control.bounds[1], app.tempo_bounds),
+        ] {
+            let background = input_background(left.center()).unwrap();
+            assert_eq!(input_background(right.center()), Some(background));
+            assert_eq!(background.top(), play_button.top());
+            assert_eq!(background.bottom(), play_button.bottom());
+            assert_eq!(right.left() - left.right(), 1.0);
+            let divider_x = left.right() + 0.5;
+            let dividers = shapes.iter().filter(|shape| {
+                matches!(&shape.shape, egui::Shape::LineSegment { points, stroke }
+                    if points[0].x == divider_x && points[1].x == divider_x
+                        && points[0].y > background.top() && points[1].y < background.bottom()
+                        && points[0].y < background.center().y && points[1].y > background.center().y
+                        && stroke.color == theme::palette(&ctx).border)
+            }).count();
+            assert_eq!(dividers, 1);
+        }
+        assert_ne!(
+            input_background(app.time_bounds[2].center()),
+            input_background(app.tempo_bounds.center())
+        );
+        assert!(input_background(app.selection_bounds[0].center()).is_none());
     }
     #[test]
     fn tempo_monitor_reserves_equal_digit_slots() {

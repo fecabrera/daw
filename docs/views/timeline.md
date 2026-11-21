@@ -261,6 +261,9 @@ Beat patterns also support **Merge** with the same command and shortcut. See
 
 ## Navigate and play
 
+The toolbar groups the elapsed time and bars and beats readouts in one field.
+The time signature and Tempo share a separate field.
+
 Play, Stop and Loop are separate standard buttons. They use the standard hover highlight and keep their green, red and gold active colors.
 
 Playback can start anywhere, including an empty project or silence after the last clip. It continues until you pause or stop. With Loop enabled, it repeats the selected range. Export duration still ends at the last clip.

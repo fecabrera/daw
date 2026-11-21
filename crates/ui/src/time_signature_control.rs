@@ -78,6 +78,7 @@ impl State {
         {
             self.editor_bounds = None;
         }
+        let input_fill = theme::palette(ui.ctx()).input;
         let monitor = transport_monitor_control(
             ui,
             &format!("{}/{}", preview.numerator, preview.denominator),
@@ -123,13 +124,14 @@ impl State {
         }
         if let Some(mut edit) = self.edit.take() {
             let rect = responses[edit.part].rect;
-            ui.painter().rect_filled(rect, 0.0, ui.visuals().panel_fill);
+            ui.painter().rect_filled(rect, 0.0, input_fill);
             let mut output = egui::TextEdit::singleline(&mut edit.text)
                 .id(monitor.response.id.with("edit"))
                 .font(fonts::semibold(13.0))
                 // Keep the display slot fixed; leave enough room for its digit.
                 .margin(egui::Margin::symmetric(1, 2))
                 .desired_width(rect.width())
+                .min_size(rect.size())
                 .horizontal_align(egui::Align::Center)
                 .show(&mut ui.new_child(egui::UiBuilder::new().max_rect(rect)));
             #[cfg(test)]

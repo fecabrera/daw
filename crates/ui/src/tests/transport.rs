@@ -699,11 +699,6 @@ fn timing_section_orders_metronome_signature_tempo_and_keeps_project_and_transpo
                     && surface.stroke.is_empty()
             )));
             assert!(app.metronome_bounds.right() < app.time_signature_control.bounds[0].left());
-            assert!(
-                (app.tempo_bounds.left() - app.time_signature_control.bounds[1].right() - 7.0)
-                    .abs()
-                    < 0.1
-            );
             let dividers = shapes
                 .iter()
                 .filter(|shape| {
@@ -752,10 +747,6 @@ fn time_signature_double_click_edits_each_number_and_preserves_tempo_and_frames(
         frame(&mut app, &ctx, vec![]);
         frame(&mut app, &ctx, vec![]);
         let original = app.session.project.clone();
-        assert!(
-            (app.tempo_bounds.left() - app.time_signature_control.bounds[1].right() - 7.0).abs()
-                < 0.1
-        );
         let point = app.time_signature_control.bounds[part].center();
         for _ in 0..2 {
             frame(
