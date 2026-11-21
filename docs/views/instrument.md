@@ -56,7 +56,7 @@ Use Up/Down to move through visible folders and components. On a folder, Enter h
 
 ## Layers
 
-With an audio track, group, Master, or no track selected, the Layers panel remains visible. Its Add layer button is disabled, and the empty layer area shows **Select an instrument track**. Select a MIDI track to show its instrument layers and enable the button.
+With an audio track, group, Master, or no track selected, the Layers panel shows **Select an instrument track**. The Add layer button and the Sources, Effects, and Modulation tabs are disabled. A selected beat folder also disables these controls. Select a MIDI track or beat subtrack to edit its instrument layers.
 
 A new MIDI track starts with a sine-wave Oscillator in Layer 1. Play MIDI notes or add them to a pattern to hear it. A layer can contain one of Oscillator, Sampler, Granulizer, or Noise. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a compatible lane.
 

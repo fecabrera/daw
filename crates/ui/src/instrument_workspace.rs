@@ -32,7 +32,12 @@ impl InstrumentSubview {
 
 impl DawUi {
     fn instrument_subview_tabs(&mut self, ui: &mut egui::Ui) {
-        let enabled = self.view_panel_enabled(ViewPanel::TrackMixer, ui.ctx())
+        let has_instrument = self
+            .selected_instrument_owner()
+            .and_then(|owner| self.session.project.instrument_settings(owner))
+            .is_some();
+        let enabled = has_instrument
+            && self.view_panel_enabled(ViewPanel::TrackMixer, ui.ctx())
             && !self.instrument_ui.editing_name()
             && self.effects_drag.is_none();
         ui.spacing_mut().item_spacing.y = 0.0;
@@ -49,7 +54,7 @@ impl DawUi {
                             ui.add_enabled(
                                 enabled,
                                 egui::Button::new(subview.label())
-                                    .selected(self.instrument_subview == subview)
+                                    .selected(has_instrument && self.instrument_subview == subview)
                                     .min_size(Vec2::new(0.0, toolbars::CONTROL_HEIGHT)),
                             )
                         })

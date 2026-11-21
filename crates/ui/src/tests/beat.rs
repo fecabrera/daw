@@ -267,13 +267,12 @@ fn beat_grid_click_edits_only_active_source_and_survives_view_switch() {
 }
 #[test]
 fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_output() {
+    use crate::instrument_workspace::InstrumentSubview;
+
     let (mut app, ctx, track, row, _) = setup();
     app.navigate_beat_owner(track, Some(row), false);
     app.view_mode = ViewMode::Instrument;
-    app.set_instrument_subview(
-        crate::instrument_workspace::InstrumentSubview::Effects,
-        &ctx,
-    );
+    app.set_instrument_subview(InstrumentSubview::Effects, &ctx);
     let size = Vec2::new(1600.0, 1400.0);
     let shapes = frame_shapes(&mut app, &ctx, vec![], size);
     let text: Vec<_> = shapes
@@ -319,6 +318,16 @@ fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_outpu
         app.selected_instrument_owner(),
         Some(app.session.project.beat(track).unwrap().output.id)
     );
+    let [sources, _, modulation] = app.instrument_catalog_bounds.subviews;
+    for tab in [sources, modulation] {
+        click(&mut app, &ctx, tab.center());
+        assert_eq!(app.instrument_subview, InstrumentSubview::Effects);
+    }
+    app.navigate_beat_owner(track, Some(row), false);
+    frame_shapes(&mut app, &ctx, vec![], size);
+    let modulation = app.instrument_catalog_bounds.subviews[2];
+    click(&mut app, &ctx, modulation.center());
+    assert_eq!(app.instrument_subview, InstrumentSubview::Modulation);
 }
 
 #[test]

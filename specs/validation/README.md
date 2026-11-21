@@ -17,6 +17,38 @@
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Instrument tabs on beat folders — 2026-11-21
+
+- The egui beat selection test verifies that a beat folder blocks tab switches
+  and that selecting a subtrack enables them again.
+- Formatting, strict workspace Clippy, and `git diff --check` passed. The local
+  macOS debug bundle rebuilt and passed signature verification. Native appearance
+  was not checked.
+- Debug and release workspace runs each passed 3,654 tests with 22 ignored.
+  Both runs excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
+## Instrument editor availability — 2026-11-21
+
+- The egui input test covers audio, group, Master, and no track selection in
+  Dark, Light, and Mist. It checks that the editor tabs and Add layer ignore
+  clicks, and that both accept input after MIDI selection. The beat Output and
+  subtrack layout test passed.
+- Formatting, strict workspace Clippy, and `git diff --check` passed. The local
+  macOS debug bundle rebuilt and passed signature verification. Native appearance
+  was not checked.
+- Debug and release workspace runs each passed 3,654 tests with 22 ignored.
+  Both runs excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
 ## Transport readout groups — 2026-11-20
 
 - The egui rendering test checks that each pair shares one input-colored

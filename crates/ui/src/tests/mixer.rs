@@ -1265,15 +1265,18 @@ fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
 }
 
 #[test]
-fn instrument_empty_states_keep_the_layers_panel_and_disable_add_until_midi_selection() {
+fn instrument_empty_states_disable_editor_controls_until_midi_selection() {
+    use crate::instrument_workspace::InstrumentSubview;
+
     for color_theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
         settings::ColorTheme::Mist,
     ] {
-        for target in ["audio", "none", "master"] {
+        for target in ["audio", "group", "none", "master"] {
             let (mut app, audio) = fixture();
             let midi = app.session.project.add_midi_track().unwrap();
+            let group = app.session.project.add_group_track().unwrap();
             let ctx = context();
             app.set_settings(
                 &ctx,
@@ -1290,6 +1293,7 @@ fn instrument_empty_states_keep_the_layers_panel_and_disable_add_until_midi_sele
             assert!(!app.midi_editor.layer_bounds.is_empty());
             match target {
                 "audio" => app.select_track(audio, false),
+                "group" => app.select_track(group, false),
                 "master" => app.select_master(),
                 _ => {
                     app.selected_track = None;
@@ -1343,6 +1347,10 @@ fn instrument_empty_states_keep_the_layers_panel_and_disable_add_until_midi_sele
                 );
                 frame(&mut app, &ctx, vec![button(add.center(), false)]);
             }
+            for tab in app.instrument_catalog_bounds.subviews {
+                super::instrument_catalog::click(&mut app, &ctx, tab.center(), false);
+                assert_eq!(app.instrument_subview, InstrumentSubview::Sources);
+            }
             assert_eq!(app.session.project, before);
             assert_eq!(app.selected_clip, selected_clip);
             assert!(!app.dirty);
@@ -1384,6 +1392,9 @@ fn instrument_empty_states_keep_the_layers_panel_and_disable_add_until_midi_sele
             );
             assert_eq!(app.session.project.tracks[0], before.tracks[0]);
             assert!(app.dirty);
+            let effects = app.instrument_catalog_bounds.subviews[1];
+            super::instrument_catalog::click(&mut app, &ctx, effects.center(), false);
+            assert_eq!(app.instrument_subview, InstrumentSubview::Effects);
         }
     }
 }
