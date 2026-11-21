@@ -101,8 +101,8 @@ these hit areas. Before starting a gesture, the platform stretch modifier
 (Option on macOS, Ctrl on Windows/Linux) hides and disables fade/crossfade
 endpoint and midpoint handles in both the Timeline arrangement and its waveform pane.
 They must not capture hover or presses while that modifier is held; normal
-clip-edge stretch handling takes priority. Curves and waveform gain remain
-visible. An already captured fade gesture retains its identity and controls
+clip-edge stretch handling takes priority. Continue to apply the same curve
+hover rules and waveform gain. An already captured fade gesture retains its identity and controls
 until release/cancellation, including if the modifier changes mid-drag.
 Handle gestures preserve an existing whole-clip selection when the owner is
 selected; otherwise select the owner alone. Capture selected audio snapshots on
@@ -173,8 +173,9 @@ owner's opposing curve. The original side between the curves stays clear;
 the extended side receives two composited layers. The upper and lower caps
 receive one layer. Put both masks into one mesh and apply that mesh once per
 host, so intentional overlap doubles attenuation without duplicate host passes.
-Ordinary fades shade only above their curve. Keep
-header text outside the attenuation mesh. Draw the owner header extension in
+Ordinary fades use the same mesh painter with only the upper mask. Start the
+upper mask at the header bottom for both modes. Keep header text outside the
+attenuation mesh. Draw the owner header extension in
 the neighbor's background pass. Dark curve ink and transparent marker bodies
 supersede the previous secondary curves and white marker bodies.
 
@@ -198,10 +199,10 @@ crossfade headers, including neighbor header extensions. Retain fade guides,
 curve strokes and the single outer selection outline;
 MIDI and beat clip outlines retain their existing behavior.
 
-Show dark crossfade curves only while the pointer is inside the visible crossover
-span, or while its owner edge is actively dragged. Hide both curves when the
-pointer leaves. Keep background masks, waveforms and ordinary-fade guides visible; ordinary fade curves
-retain their existing visibility.
+Use the same visibility rule for fade and crossfade curves. Show curves while
+the pointer is inside the visible fade span below the header or while its owner
+edge is actively dragged. Show vertical guides only while the span is hovered.
+Keep the background masks and waveforms visible at all times.
 
 Curve strokes are one logical point wide. Paint fade handles and midpoints last
 with the lane clip rather than clipping them to their owner body. Repaint adjacent
@@ -224,14 +225,13 @@ including its crossover, for hover ownership. Clicking or double-clicking in the
 crossover resolves to the visual owner for selection/editor opening, preserving
 selection modifiers. Keep shared handle and viewport clipping allowances.
 
-Crossfade guides are hover-only at both crossover edges. Draw each with a
+Draw crossfade guides at both crossover edges with a
 one-point dark stroke from the header bottom (22 points below the clip top,
 including the handle band) to the clip bottom. Crossover shading starts at the
 same header bottom, leaving no unshaded strip. Use the shared header height
 for the header fill, shade boundary and guide tops. Curve endpoints retain
 their handle-top attachment at 23 points. Inset each stroke center by half a point toward the overlap to
-keep the full stroke inside the host clip. Show the pair only when the crossover
-is hovered, including during a drag; dragging outside does not retain guides.
+keep the full stroke inside the host clip.
 
 Compound source wrappers can delegate an edge through `inherit_source`. Captured
 member clocks retain their envelopes; edits and new cuts use the boundary rules

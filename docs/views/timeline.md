@@ -323,22 +323,19 @@ source audio prevent a blend.
 
 A circle on each curve controls its shape. Drag it horizontally to change its
 position within the fade, or vertically to change its level. Neither changes
-the fade duration. The S-curve starts at the top of its square handle. Handles and midpoint controls
-have transparent bodies with dark borders, and the curve line is dark. The area
-above the curve is darkened to show attenuation; waveform colors stay unchanged. Crossfades show both
-opposing curves when you hover over the blend or drag a fade control.
-Hover a clip to show its fade handles and midpoint controls. Clicking a
+the fade duration. The S-curve starts at the top of its square handle. Handles
+and midpoint controls have transparent bodies with dark borders. Hover over a
+fade or crossfade to show its dark curves and vertical guides. The curves also
+appear while you drag a fade control. The shading stays visible and meets the
+header. Hover anywhere on a clip to show its fade handles and midpoint controls. Clicking a
 crossover selects the clip whose header and waveform extend across it. The owning clip’s header and source waveform extend into the neighboring clip
 through the overlap region. The original side between the curves keeps its normal brightness. The extended
 side between the curves receives two layers of shading; the upper and lower
 regions receive one layer.
 Drag the crossing point vertically to change the gain where the curves meet, or horizontally to change its time. Raising the crossing can increase the transition level; lowering it can reduce it. Both waveforms keep their colors. Their heights follow the fade curves, including while you drag a handle. Ordinary fades also reduce the displayed waveform height toward silence. Audio waveform bodies and crossfade headers have no extra border;
 selected clips keep their lighter header color across the full visible crossfade. Clip
-timing stays unchanged. For an ordinary fade, a dark vertical guide runs from its duration handle
-through the waveform, marking the fade-in end or fade-out start. Crossfades show
-a vertical guide at each edge only while the crossover is hovered. Both guides
-start directly below the header and reach the waveform bottom. The crossover
-shading also meets the header without a gap.
+timing stays unchanged. The guide for an ordinary fade marks the fade-in end
+or fade-out start. A crossfade has a guide at each edge.
 Release commits the change; Escape or loss of window focus cancels. When the dragged clip is selected, these controls edit all selected audio clips.
 An unselected clip starts a new selection. Duration drags apply the same time
 change to each clip. Midpoint drags apply the same gain and normalized-position

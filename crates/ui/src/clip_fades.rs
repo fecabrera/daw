@@ -101,43 +101,21 @@ fn curve_points_for_gain(
         })
         .collect()
 }
-fn shade_above(painter: &egui::Painter, curve: &[Pos2], top: f32) {
-    let mut mesh = egui::Mesh::default();
-    let shade = FADE_SHADE;
-    for pair in curve.windows(2) {
-        let (left, right) = if pair[0].x < pair[1].x {
-            (pair[0], pair[1])
-        } else {
-            (pair[1], pair[0])
-        };
-        let index = mesh.vertices.len() as u32;
-        for point in [Pos2::new(left.x, top), Pos2::new(right.x, top), right, left] {
-            mesh.colored_vertex(point, shade);
-        }
-        mesh.add_triangle(index, index + 1, index + 2);
-        mesh.add_triangle(index, index + 2, index + 3);
-    }
-    painter.add(egui::Shape::mesh(mesh));
-}
-
-/// Two independent attenuation masks give clear, single- and double-shaded
-/// regions. Keep both in one mesh so the host paints the crossover once.
-fn shade_crossfade(
+/// Add both attenuation masks to one mesh so a crossover is painted once.
+fn shade_fade(
     painter: &egui::Painter,
     curve: &[Pos2],
-    companion: &[Pos2],
-    top: f32,
-    bottom: f32,
+    companion: Option<&[Pos2]>,
+    vertical: egui::Rangef,
 ) {
     let mut mesh = egui::Mesh::default();
-    for (own, other) in curve.windows(2).zip(companion.windows(2)) {
-        let (a, b, c, d) = (own[0], own[1], other[0], other[1]);
-        for points in [
-            [Pos2::new(c.x, top), Pos2::new(d.x, top), d, c],
-            [a, b, Pos2::new(b.x, bottom), Pos2::new(a.x, bottom)],
-        ] {
+    let masks = std::iter::once((companion.unwrap_or(curve), vertical.min))
+        .chain(companion.map(|_| (curve, vertical.max)));
+    for (boundary, edge) in masks {
+        for pair in boundary.windows(2) {
+            let [a, b] = [pair[0], pair[1]];
             let index = mesh.vertices.len() as u32;
-            for point in points {
+            for point in [Pos2::new(a.x, edge), Pos2::new(b.x, edge), b, a] {
                 mesh.colored_vertex(point, FADE_SHADE);
             }
             mesh.add_triangle(index, index + 1, index + 2);
@@ -159,27 +137,18 @@ fn paint_fade_curves(painter: &egui::Painter, curve: Vec<Pos2>, companion: Optio
     paint_curve(painter, curve);
 }
 
-fn paint_guide(painter: &egui::Painter, handle: Pos2, bottom: f32) {
+fn paint_guide(painter: &egui::Painter, x: f32, top: f32, bottom: f32) {
     painter.line_segment(
-        [
-            Pos2::new(handle.x, handle.y + HANDLE_RADIUS),
-            Pos2::new(handle.x, bottom),
-        ],
+        [Pos2::new(x, top), Pos2::new(x, bottom)],
         Stroke::new(1.0, DARK_INK),
     );
 }
 
-fn paint_crossover_guides(painter: &egui::Painter, waveform: Rect) {
+fn paint_crossover_guides(painter: &egui::Painter, area: Rect) {
     // Keep the full one-point stroke inside the crossover's host clip.
-    let inset = 0.5_f32.min(waveform.width() * 0.5);
-    for x in [waveform.left() + inset, waveform.right() - inset] {
-        painter.line_segment(
-            [
-                Pos2::new(x, waveform.top()),
-                Pos2::new(x, waveform.bottom()),
-            ],
-            Stroke::new(1.0, DARK_INK),
-        );
+    let inset = 0.5_f32.min(area.width() * 0.5);
+    for x in [area.left() + inset, area.right() - inset] {
+        paint_guide(painter, x, area.top(), area.bottom());
     }
 }
 
@@ -421,52 +390,51 @@ impl DawUi {
         let rate = self.session.project.sample_rate_hz;
         for (left, fade) in [(true, fades.fade_in), (false, fades.fade_out)] {
             let fade = self.bounded_fade(clip.id, left, fade);
+            if fade.length_frames == 0 {
+                continue;
+            }
             let (endpoint, _) = points(block, fade, left, self.view_zoom(), rate);
-            if fade.length_frames > 0 {
-                let curve = curve_points(block, fade, left, endpoint);
-                if background {
+            let anchor = if left { block.left() } else { block.right() };
+            let area = Rect::from_two_pos(
+                Pos2::new(
+                    anchor,
+                    (block.top() + clip_paint::HEADER_HEIGHT).min(block.bottom()),
+                ),
+                Pos2::new(endpoint.x, block.bottom()),
+            );
+            if !background {
+                let hovered = painter
+                    .ctx()
+                    .pointer_hover_pos()
+                    .is_some_and(|pos| area.contains(pos) && painter.clip_rect().contains(pos));
+                if hovered {
                     if fade.crossfade {
-                        let companion = curve_points_for_gain(block, fade, left, endpoint, true);
-                        shade_crossfade(
-                            painter,
-                            &curve,
-                            &companion,
-                            (block.top() + clip_paint::HEADER_HEIGHT).min(block.bottom()),
-                            block.bottom(),
-                        );
+                        paint_crossover_guides(painter, area);
                     } else {
-                        shade_above(painter, &curve, endpoint.y - HANDLE_RADIUS);
+                        paint_guide(
+                            painter,
+                            endpoint.x,
+                            endpoint.y + HANDLE_RADIUS,
+                            area.bottom(),
+                        );
                     }
+                }
+                let dragging = self.drag.as_ref().is_some_and(|drag| {
+                    (drag.clip.id == clip.id || drag.clips.iter().any(|c| c.clip.id == clip.id))
+                        && matches!(drag.mode, ClipDragMode::Fade { left: edge, .. } if edge == left)
+                });
+                if !hovered && !dragging {
                     continue;
                 }
-                let anchor = if left { block.left() } else { block.right() };
-                let crossover = Rect::from_two_pos(
-                    Pos2::new(
-                        anchor,
-                        (block.top() + clip_paint::HEADER_HEIGHT).min(block.bottom()),
-                    ),
-                    Pos2::new(endpoint.x, block.bottom()),
-                );
-                let hovered = painter.ctx().pointer_hover_pos().is_some_and(|pos| {
-                    crossover.contains(pos) && painter.clip_rect().contains(pos)
-                });
-                if fade.crossfade {
-                    if hovered {
-                        paint_crossover_guides(painter, crossover);
-                    }
-                } else {
-                    paint_guide(painter, endpoint, block.bottom());
-                }
-                let dragging = self.drag.as_ref().is_some_and(|drag| (drag.clip.id == clip.id || drag.clips.iter().any(|c| c.clip.id == clip.id))
-                    && matches!(drag.mode, ClipDragMode::Fade { left: edge, .. } if edge == left));
-                if !fade.crossfade || hovered || dragging {
-                    paint_fade_curves(
-                        painter,
-                        curve,
-                        fade.crossfade
-                            .then(|| curve_points_for_gain(block, fade, left, endpoint, true)),
-                    );
-                }
+            }
+            let curve = curve_points(block, fade, left, endpoint);
+            let companion = fade
+                .crossfade
+                .then(|| curve_points_for_gain(block, fade, left, endpoint, true));
+            if background {
+                shade_fade(painter, &curve, companion.as_deref(), area.y_range());
+            } else {
+                paint_fade_curves(painter, curve, companion);
             }
         }
     }
@@ -1233,8 +1201,14 @@ mod tests {
                 };
                 let (handle, _) = points(block, fade, left, 100.0, 100);
                 let curve = curve_points(block, fade, left, handle);
+                let header_bottom = block.top() + clip_paint::HEADER_HEIGHT;
                 let mut output = ctx.run_ui(Default::default(), |ui| {
-                    shade_above(ui.painter(), &curve, handle.y - HANDLE_RADIUS)
+                    shade_fade(
+                        ui.painter(),
+                        &curve,
+                        None,
+                        egui::Rangef::new(header_bottom, block.bottom()),
+                    )
                 });
                 let mesh = output
                     .shapes
@@ -1245,10 +1219,11 @@ mod tests {
                     })
                     .expect("grey overlay mesh");
                 assert!(mesh.is_valid());
+                assert_eq!(mesh.calc_bounds().top(), header_bottom);
                 let anchor = if left { block.left() } else { block.right() };
                 for vertex in &mesh.vertices {
                     assert!(vertex.color.a() > 0 && vertex.color.a() < 255);
-                    assert!(vertex.pos.y >= handle.y - HANDLE_RADIUS);
+                    assert!(vertex.pos.y >= header_bottom);
                     let progress = (vertex.pos.x - anchor) / (handle.x - anchor);
                     assert!((0.0..=1.0).contains(&progress));
                     let curve_y =
@@ -1301,12 +1276,11 @@ mod tests {
             let curve = curve_points(block, fade, left, handle);
             let companion = curve_points_for_gain(block, fade, left, handle, true);
             let mut output = ctx.run_ui(Default::default(), |ui| {
-                shade_crossfade(
+                shade_fade(
                     ui.painter(),
                     &curve,
-                    &companion,
-                    handle.y - HANDLE_RADIUS,
-                    block.bottom(),
+                    Some(&companion),
+                    egui::Rangef::new(block.top() + clip_paint::HEADER_HEIGHT, block.bottom()),
                 )
             });
             let mesh = output
@@ -1434,7 +1408,7 @@ mod tests {
                     Pos2::new(center.x, center.y - HANDLE_RADIUS),
                 ],
             );
-            paint_guide(ui.painter(), center, 100.0);
+            paint_guide(ui.painter(), center.x, center.y + HANDLE_RADIUS, 100.0);
             paint_crossover_guides(
                 ui.painter(),
                 Rect::from_min_max(Pos2::new(20.0, 30.0), Pos2::new(80.0, 100.0)),

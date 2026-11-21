@@ -19,6 +19,17 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Fade hover and header shading — 2026-11-21
+
+The fade tests passed in the arrangement and lower audio editor. They check
+that the curve and guide appear over the hovered fade, that clip hover shows
+the handles, and that both fade masks meet the header. The existing crossover
+test still verifies the two guides, two curves and single combined mesh.
+Formatting and strict workspace Clippy passed. The macOS debug app rebuilt
+and passed signature verification. Native visual inspection remains pending.
+The debug and release workspace suites each passed 3,672 tests with 22 ignored.
+Both runs excluded the sandbox-limited Audio Unit registration cases.
+
 ## Timeline header gap — 2026-11-21
 
 The egui layout test checks the 6-point gap, shared alignment of the ruler,

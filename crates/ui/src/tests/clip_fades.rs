@@ -753,6 +753,82 @@ fn midpoint_drags_stop_at_position_and_shape_limits_in_both_directions_and_modes
 }
 
 #[test]
+fn ordinary_fades_share_the_hover_and_shading_rules_in_both_panes() {
+    let size = Vec2::new(1280.0, 800.0);
+    let (mut app, ctx, track, _) = super::audio_editor::audio_fixture();
+    app.zoom = 1500.0;
+    let track_color = app.session.project.tracks[0].color;
+    let clip = &mut app.session.project.tracks[0].clips[0];
+    clip.fades.fade_in = daw_core::ClipFade {
+        length_frames: clip.length_frames / 4,
+        inherit_source: false,
+        ..Default::default()
+    };
+    clip.fades.fade_out = clip.fades.fade_in;
+    let clip = clip.clone();
+    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+    let timeline = app.clip_block(app.lane_bounds[&track], &clip, clip.start_frame);
+    let editor = shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Rect(rect)
+                if rect.fill == theme::clip_colors(track_color, None).body
+                    && rect.rect.top() >= app.midi_editor.track_bounds.bottom() =>
+            {
+                Some(rect.rect)
+            }
+            _ => None,
+        })
+        .expect("audio clip in the lower editor");
+    for block in [timeline, editor] {
+        let header_bottom = block.top() + clip_paint::HEADER_HEIGHT;
+        let position =
+            |fraction| Pos2::new(block.left() + block.width() * fraction, block.center().y);
+        let ink = egui::Color32::from_rgb(32, 32, 32);
+        for (pointer, lines, handles) in [
+            (egui::Event::PointerGone, 0, 0),
+            (egui::Event::PointerMoved(position(0.5)), 0, 2),
+            (egui::Event::PointerMoved(position(0.125)), 1, 2),
+            (egui::Event::PointerMoved(position(0.875)), 1, 2),
+            (egui::Event::PointerMoved(position(0.5)), 0, 2),
+        ] {
+            let shapes = frame_shapes(&mut app, &ctx, vec![pointer], size);
+            let clip_shapes = || {
+                shapes
+                    .iter()
+                    .filter(|shape| shape.clip_rect.contains(block.center()))
+            };
+            assert_eq!(
+                clip_shapes()
+                    .filter(|shape| matches!(&shape.shape,
+                        egui::Shape::Path(path) if path.points.len() == 33
+                            && path.stroke.color == egui::epaint::ColorMode::Solid(ink)
+                    ))
+                    .count(),
+                lines
+            );
+            assert_eq!(clip_shapes().filter(|shape| matches!(&shape.shape,
+                egui::Shape::LineSegment { points, stroke } if *stroke == Stroke::new(1.0, ink)
+                    && points[0].x == points[1].x && points[1].y == block.bottom()
+            )).count(), lines);
+            assert_eq!(
+                clip_shapes()
+                    .filter(|shape| matches!(&shape.shape,
+                        egui::Shape::Rect(rect) if rect.rect.size() == Vec2::splat(6.0)
+                            && block.contains(rect.rect.center()) && rect.stroke.color == ink
+                    ))
+                    .count(),
+                handles
+            );
+            assert_eq!(clip_shapes().filter(|shape| matches!(&shape.shape,
+                egui::Shape::Mesh(mesh) if mesh.calc_bounds().top() == header_bottom
+                    && mesh.vertices.iter().all(|vertex| vertex.color == crate::clip_fades::FADE_SHADE)
+            )).count(), 2);
+        }
+    }
+}
+
+#[test]
 fn fade_controls_are_hover_only_and_whole_at_shared_boundaries() {
     let (mut app, track) = fixture();
     let ctx = context();
