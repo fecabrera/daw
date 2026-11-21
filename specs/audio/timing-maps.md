@@ -69,7 +69,7 @@ rebuilding audio.
 
 ## Timeline
 
-Allocate three pinned rows with the shared Beat Editor subtrack lane height
+Allocate three pinned rows with the shared beat editor subtrack lane height
 (32 points) after the existing ruler and before the first track: Markers, Tempo,
 Signature. Keep the existing control-column width and
 frame-linear horizontal geometry. Paint a full-width shared border between the
@@ -89,7 +89,7 @@ segment's starting musical position, then checks ownership using rounded frame
 coordinates (`segment_start <= frame < next_event`). A bar whose ceil-rounded
 frame equals a tempo transition belongs to the following segment and must appear
 once with its ruler label. Do not skip it by rounding the musical index upward.
-Editor reuses map-aware rulers and note coordinates,
+The Timeline editor reuses map-aware rulers and note coordinates,
 without metadata lanes. Sampler's local source view retains its source clock.
 
 Double-click empty lane space or use its menu to add. Each expanded lane header

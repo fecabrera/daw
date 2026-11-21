@@ -62,7 +62,7 @@ Mixer track-type icons, group disclosure arrows, header labels and Master use th
 
 Timeline insets each complete child control panel, including the name, mix controls, and meters, by 8 logical points per hierarchy level (capped at 24 to retain usable controls). Remove the old name-only indent. Keep all timeline lanes at the fixed control-column boundary. Extend each group selection rectangle through its last visible descendant, using the shared selection painter and unclipped subtree geometry even when its header is virtualized offscreen. Nested row dividers own only their inset left edge; the workspace owns the root left edge and shared right border. The last child and all enclosing groups share the same bottom boundary. Do not add a second root-group left stroke. Group append previews use the full container bottom. Before/after drops use the hovered row's parent and the inset header position to choose ancestor scope, retaining that parent when reordering a child at its bottom edge.
 
-Timeline and Editor track headers and regular Instrument layer headers use the shared 22-point gain/pan knobs centered in 28-point slots. Reuse `mix_controls::header_row` for a common second row: Mute/Solo at the left, Pan then Gain at the right, with a six-point M/S gap and four-point knob-slot gap. Retain the scaled `unit-ui` mappings, fine input, reset, capture and shared hover/drag tooltips. Use 68-point headers in Editor. Timeline uses size 1…3 (default 2), with `28 * size` inner points plus 14 points of padding and the control layout of `floor(size)`, under the [Timeline display contract](../views/timeline-display.md). Retain layer expanded/collapsed heights and fixed Output placement, and keep selection/drag guards. Layer collapse stays at its first-row right inset. Output has only the right-aligned gain knob, without Pan, Mute or Solo. Timeline Master uses a single 42-point row with icon/name at the left and gain immediately before the meters at the right. Timeline track header rails use the full `28 * size` content height. Editor rails use its existing 54-point content height. Master rails use 28 points. Retain seven-point outer meter insets, the six-point gap before meters and four-point stereo channel gap. Scale-free header meters omit the five-point endpoint-label inset; scaled meters retain their label space. Preserve meter mappings, reset, tooltips and clipping indicators. Track/layer/Output/Editor headers have no gain/pan text inputs or numeric draft state. The Editor dropdown fills its first row after the icon to the six-point gap before the meters. Mixer strips and unit/plugin body knobs retain their existing sizes and layout.
+Timeline track headers and regular Instrument layer headers use the shared 22-point gain/pan knobs centered in 28-point slots. Reuse `mix_controls::header_row` for a common second row: Mute/Solo at the left, Pan then Gain at the right, with a six-point M/S gap and four-point knob-slot gap. Retain the scaled `unit-ui` mappings, fine input, reset, capture and shared hover/drag tooltips. Timeline uses size 1…3 (default 2), with `28 * size` inner points plus 14 points of padding and the control layout of `floor(size)`, under the [Timeline display contract](../views/timeline-display.md). Retain layer expanded/collapsed heights and fixed Output placement, and keep selection/drag guards. Layer collapse stays at its first-row right inset. Output has only the right-aligned gain knob, without Pan, Mute or Solo. Timeline Master uses a single 42-point row with icon/name at the left and gain immediately before the meters at the right. Timeline track header rails use the full `28 * size` content height. Master rails use 28 points. Retain seven-point outer meter insets, the six-point gap before meters and four-point stereo channel gap. Scale-free header meters omit the five-point endpoint-label inset; scaled meters retain their label space. Preserve meter mappings, reset, tooltips and clipping indicators. Track, layer, and Output headers have no gain or pan text inputs or numeric draft state. Mixer strips and unit/plugin body knobs retain their existing sizes and layout.
 
 The group effects target is the existing `EffectChainTarget::Track(group_id)`. No new processor, panel, catalog registration, or effect transfer implementation is needed. Existing scope validation rejects a child's instrument source on a group effect. Groups do not publish modulation providers and do not host an Instrument view. Audio imports and clip placement reject buses. Custom sends, feedback, sidechains, and pre-fader routing are outside this change.
 
@@ -96,7 +96,7 @@ See [validation history](../validation/README.md) for executed checks and platfo
 
 ## Shared Tracks browser
 
-Instrument and Editor support project-track reorder and group membership through the [shared browser contract](../views/instrument-tracks.md#reordering-and-group-membership). Move complete group subtrees through the core transaction. Beat subtracks are virtual browser children, not project groups; their drags remain inside the original beat parent.
+Instrument supports project-track reorder and group membership through the [shared browser contract](../views/instrument-tracks.md#reordering-and-group-membership). Move complete group subtrees through the core transaction. Beat subtracks are virtual browser children, not project groups; their drags remain inside the original beat parent.
 
 Dragging a selected project track moves all selected tracks in project order. Selected groups include their complete subtrees; selected descendants move once. Drop in the middle of an existing group row to add the selection to that group, including collapsed groups. Edge drops reorder the selection. The move commits as one undoable transaction on release.
 
@@ -130,11 +130,11 @@ suppression. Timeline and Instrument Mute/Solo dispatch remains unchanged.
 Track, Group, Return, Master, beat-subtrack and instrument-layer selection uses
 background fills without accent selection outlines. Remove track/container
 selection strokes in Timeline, pinned banks, Mixer and Inspector strips, and
-layer/Output/provider header strokes in Instrument and Beat Editor. Retain the
+layer/Output/provider header strokes in Instrument and the beat editor. Retain the
 shared selected header and lane theme colors, selection membership, keyboard
 focus, gesture handling and all neutral structural dividers. Mixer strip bodies
 use selected_track_header_background while their colored header bands keep the
-track palette. Track overview headers reuse the same selected track background.
+track palette.
 
 Effect/component unit selection and drag-target feedback retain their own
 existing outlines. Keep shared selection_border for those callers; do not mask
@@ -142,7 +142,7 @@ or change it globally. Tests must verify background highlights and absence of
 track/layer selection strokes across themes, scrolling and multiple selection,
 while retaining structural borders and unit interaction coverage.
 
-Compact Timeline and Editor track headers reserve only the Mute/Solo group beside the name and meters. Hide Pan and Gain, including Timeline Master gain, without changing their saved values. Expanded headers retain their mix knobs. Beat subtracks in Timeline follow the same mode. Instrument and lower Beat Editor mix controls retain their existing layout.
+Compact Timeline track headers reserve only the Mute/Solo group beside the name and meters. Hide Pan and Gain, including Timeline Master gain, without changing their saved values. Expanded headers retain their mix knobs. Beat subtracks in Timeline follow the same mode. Instrument and beat editor mix controls retain their existing layout.
 
 ## Mixer hierarchy gutters
 

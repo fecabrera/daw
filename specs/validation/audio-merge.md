@@ -1,5 +1,7 @@
 # Compound audio Merge validation
 
+This record covers the former standalone Editor view. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
+
 Date: 2026-11-12.
 
 Implementation contract: [Audio clip Merge](../editing/audio-merge.md).

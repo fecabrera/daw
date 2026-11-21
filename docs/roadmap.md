@@ -6,7 +6,7 @@ DAW provides audio, MIDI and beat arrangement, layered instruments, effects, mix
 
 - Arrange audio, MIDI and beat clips in Timeline. Move, copy, trim, loop and stretch clips with grid snapping. Shape audio [fades and adjacent crossfades](views/timeline.md#fades-and-crossfades) with handles or Clip settings.
 - Build [beat patterns](views/beat-editor.md) with independently configured subtrack instruments. Mix the parent and expandable subtracks in [Mixer](views/mixer.md#beat-tracks).
-- Create MIDI patterns and edit notes in Editor's piano roll.
+- Create MIDI patterns and edit notes in the Timeline editor’s piano roll.
 - Play and [record MIDI](editing/midi-recording.md) with multiple R-enabled tracks, selected-track fallback, count-in and sustain capture.
 - Build MIDI instruments from Oscillator, Sampler, Granulizer, Noise, Envelope, LFO, Amplitude and Macro components.
 - Use [audio sidechain modulation](modulation/audio-sidechain.md) from tracks, groups and Returns, with detector and 0–1 mapping controls beside each connection.

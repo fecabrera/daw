@@ -1,5 +1,7 @@
 # Findings and options
 
+The former Editor view in this record refers to the version under review. Current clip editing opens in the [Timeline editor pane](../../instruments/midi-patterns.md#editor-options-panel).
+
 [Review index](README.md) · Baseline `2dbb347`
 
 These findings describe the reviewed baseline. Follow-up status is recorded separately below. “Confirmed” below means confirmed in code unless a measurement is named. It does not mean an audible/native failure was reproduced. Relative effort includes regression work, not a delivery estimate.

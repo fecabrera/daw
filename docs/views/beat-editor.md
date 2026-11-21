@@ -6,16 +6,13 @@ Use beat tracks to build rhythms from independently configured instruments. Mixe
 
 1. Choose **Add beat track** from the Track menu, the Tracks panel Plus menu, or its empty-space context menu.
 2. Double-click empty space on that track to create a pattern. Double-click the clip to open the Timeline editor and fit its full source pattern.
-3. Click the **Plus** button in Editor’s **Beat subtracks** header, or choose **Add subtrack** from the Tracks Plus menu or the Track menubar with a beat selected. You can also right-click the beat parent and choose **Add subtrack**. New subtracks start with an empty source layer.
+3. Click the **Plus** button in the Timeline editor’s **Beat subtracks** header, or choose **Add subtrack** from the Track menu with a beat selected. You can also right-click the beat parent and choose **Add subtrack**. New subtracks start with an empty source layer.
 4. Switch to Instrument, open **Tracks**, and select the subtrack. Add Oscillator, Sampler or Granulizer to its layer through the shared component catalog. Each subtrack is an instrument; there is no audio/MIDI type choice.
-5. Return to Editor and click steps to enable or disable them. Turn on the headphones button above the step rows to hear each step you enable. Press Play to hear the pattern.
+5. Return to the beat editor pane in Timeline and click steps to enable or disable them. Turn on the headphones button above the step rows to hear each step you enable. Press Play to hear the pattern.
 
-Select a beat clip in the track overview to edit its source pattern below. The
-grid shows that complete pattern once, including steps outside the clip’s trimmed
+While the pane is open, select a beat clip in the arrangement. The grid shows that complete pattern once, including steps outside the clip’s trimmed
 range. Other clips, loop repetitions and empty cells beyond the source are not
-shown. With no clip selected, subtrack controls and audition buttons remain
-available; select a clip to show its steps. Double-click empty space in the track
-overview to create a pattern.
+shown. Subtrack controls and audition buttons remain available without a clip selected.
 
 The lower ruler shows source bars starting at 1.1. Fit and zoom apply to the full
 source, independently of clip position, trim, stretch and loops. Use the upper
@@ -87,7 +84,7 @@ oversized result and leaves the clips unchanged.
 ## Trim and restore beat steps
 
 Trimming either clip edge excludes steps outside that range from playback and
-the clip overview. The full source grid still shows and edits those steps.
+the arrangement clip thumbnail. The full source grid still shows and edits those steps.
 Their positions, lane assignments and velocities remain stored. Drag the clip
 edge back to include them in playback, including after saving and reopening.
 Undo/Redo restores the previous clip range without changing the stored steps.
@@ -98,7 +95,7 @@ when you want a new pattern that contains only the visible hits.
 
 ## Extend a beat clip
 
-In Timeline or Editor’s track overview, drag either edge of an unlooped clip’s
+In the Timeline arrangement, drag either edge of an unlooped clip’s
 body to extend it. Hold Shift to bypass snapping. Release to apply; Escape
 cancels. The opposite edge stays fixed. Extending beyond the saved source grows
 that clip’s pattern, up to 16 bars, and leaves other clips unchanged. Existing
@@ -119,17 +116,17 @@ use closely spaced rectangular tiles with small rounded corners. They keep their
 existing on/off and hover colors. Dividers separate subtrack rows across both headers and the step grid. The separator below the ruler also spans the headers to the left toolbar. Subtrack Mute and Solo use the shared joined M / S
 button group; each button remains independent.
 
-Editor and Instrument share the same names, order, selection and mix controls. Timeline also exposes these mix controls in expandable child rows under the beat parent. Its child lanes stay empty; beat hits remain in Editor. Projects save each Timeline beat folder’s open/closed state. The **Tracks** panel in both views lists subtracks below their beat parent. Its right-pinned Mute, Solo, Pan and Gain controls change the corresponding track or subtrack without selecting it.
+The beat editor and Instrument share subtrack names, order, selection, and mix settings. Timeline shows subtrack mix controls in expandable child rows under the beat parent. Edit steps in the beat editor pane. Projects save each Timeline beat folder’s open or closed state. Instrument’s **Tracks** panel lists subtracks below their beat parent.
 Subtrack names use the same hoverable name buttons as other tracks and align to the standard left padding. Hover to see the full name. A single click selects; double-click the name to rename it.
-Selecting a subtrack in Editor also selects its instrument when you return to
+Selecting a subtrack in the beat editor also selects its instrument when you return to
 Instrument, including after selecting the final Output.
 
-- Click a name to select one subtrack; Shift-click headers to toggle group membership. In Editor, clicking any part of a subtrack header, including its controls or empty space, selects that subtrack. Press Escape to clear subtrack selection in Editor or Instrument. Escape first cancels an active rename or drag.
+- Click a name to select one subtrack; Shift-click headers to toggle group membership. In the beat editor, clicking any part of a subtrack header, including its controls or empty space, selects that subtrack. Press Escape to clear subtrack selection in the beat editor or Instrument. Escape first cancels an active rename or drag.
 - Right-click anywhere in a subtrack header, including its controls, meters or empty space, to open its context menu. Opening or dismissing the menu does not change controls or pattern content.
-- Double-click a name, or use its context menu, to rename it. In Editor, double-clicking the empty header area beside the name also starts renaming. Mix controls retain their own double-click actions. The name uses the same text input as track names and starts with the whole name selected. Enter accepts; Escape or moving focus elsewhere cancels.
-- Drag a selected name to reorder the selected subtracks together. Release over a subtrack in the same beat track and panel to apply the move. Only the panel where the drag started scrolls at its edges. Editor reordering works with Tracks open or closed. Moving a subtrack to a different panel, beat track, project group or Master is rejected. Escape, focus loss, closing the originating panel or an outside release cancels it.
+- Double-click a name, or use its context menu, to rename it. In the beat editor, double-clicking the empty header area beside the name also starts renaming. Mix controls retain their own double-click actions. The name uses the same text input as track names and starts with the whole name selected. Enter accepts; Escape or moving focus elsewhere cancels.
+- Drag a selected name to reorder the selected subtracks together. Release over a subtrack in the same beat track and panel to apply the move. Only the panel where the drag started scrolls at its edges. Moving a subtrack to a different panel, beat track, project group or Master is rejected. Escape, focus loss, closing the originating panel or an outside release cancels it.
 - Use the name's context menu to delete selected subtracks. Delete/Backspace also removes them while a subtrack name has keyboard focus. Text, step and unit controls retain their own keyboard behavior.
-- Use Mute, Solo, Pan and Gain in either view. Solo applies within the beat instrument; parent track and group controls still apply to the complete output.
+- Use Mute, Solo, Pan and Gain in the beat editor or Instrument. Solo applies within the beat instrument; parent track and group controls still apply to the complete output.
 
 Deleting a subtrack removes its stop links. Its old pattern steps remain dormant and do not transfer to a newly added subtrack. Track duplication copies processing settings into fresh subtrack identities and starts with no clips, like audio and MIDI track duplication.
 
@@ -164,9 +161,9 @@ the steps contains the same headphones audition control as the MIDI editor.
 Audition is off by default. Removing a step or clicking a disabled step is silent.
 
 Use the scrollbar below the steps to move through time without moving the
-track overview or subtrack headers. It remains available without a selected pattern.
+Timeline arrangement or subtrack headers. It remains available without a selected pattern.
 
-In **Tracks**, the beat parent's chevron hides or shows its subtrack rows. Beat parents start expanded. Hiding rows retains playback and the selected instrument. The Output strip's toolbar controls that strip separately.
+In Instrument’s **Tracks** panel, the beat parent's chevron hides or shows its subtrack rows. Beat parents start expanded. Hiding rows retains playback and the selected instrument. The Output strip's toolbar controls that strip separately.
 
 When a beat clip repeats or the transport loop restarts, beat one-shots and
 release tails continue into the next pass. A new hit on the same subtrack

@@ -1,5 +1,7 @@
 # Settings sidebar — 2026-11-16
 
+This record covers the former standalone Editor view. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
+
 The Settings dialog now uses five sidebar groups and shows only the selected
 page. See [the specification](../views/application-settings.md) and
 [user guide](../../docs/projects/README.md#application-settings).

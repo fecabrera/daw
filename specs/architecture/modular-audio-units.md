@@ -12,7 +12,7 @@ For a source-backed map of the current implementation and its review findings, s
 
 Status: design baseline with implemented track/Master effects, MIDI sources and the [Beat MVP](../views/beat-model.md). Graph tools remain pending; Beat native platform acceptance remains open. Last updated: 2026-11-01.
 
-Users build MIDI instruments and beat subtrack instruments in Instrument. Track and Master effect chains are available in Timeline and Mixer, with displayed-track effects in Editor and MIDI track effects also available in Instrument. These replace the earlier combined Units view. Audio tracks accept effects; MIDI tracks accept sources and effects. Editor provides waveform, MIDI pattern and beat pattern editors. Beat steps trigger independent subtrack instruments, each with source layers, modulators and effects. Units share a reusable core and support independent distribution. The Units MVP scope below is accepted; detailed graph API and layout choices remain proposals or implementation details.
+Users build MIDI instruments and beat subtrack instruments in Instrument. Track and Master effect chains are available in Timeline and Mixer, with MIDI track effects also available in Instrument. These replace the earlier combined Units view. Audio tracks accept effects; MIDI tracks accept sources and effects. Editor provides waveform, MIDI pattern and beat pattern editors. Beat steps trigger independent subtrack instruments, each with source layers, modulators and effects. Units share a reusable core and support independent distribution. The Units MVP scope below is accepted; detailed graph API and layout choices remain proposals or implementation details.
 
 ## Terms
 
@@ -33,6 +33,8 @@ Users build MIDI instruments and beat subtrack instruments in Instrument. Track 
 
 ## Confirmed decisions
 
+D05, D09, D28, D33, and D34 record earlier navigation designs. See [View names and responsibilities](#view-names-and-responsibilities) for current placement.
+
 | ID | Decision | Consequence |
 | --- | --- | --- |
 | D01 | Units must be modular so users can build synths and effect chains. | Avoid monolithic instruments or effects that cannot expose reusable components. |
@@ -40,7 +42,7 @@ Users build MIDI instruments and beat subtrack instruments in Instrument. Track 
 | D03 | Audio tracks accept effects only. MIDI tracks accept sources and effects. | Track capabilities must constrain unit placement. Basic MIDI tracks and oscillator instruments are implemented; serial track EQ chains are implemented; Master effects are implemented; beat subtrack layer and Output effects and final beat Output effects are implemented; see the [Beat model](../views/beat-model.md). |
 | D04 | All units share a base core and can ship independently. | Separate common contracts from individual implementations and DAW integration. Distribution targets are defined in D10. |
 | D05 | Add a beat pattern editor in the Editor view with lanes and step toggles for easy beat creation. | Keep step editing distinct from unit/source/effect configuration. |
-| D06 | Support three track types: audio, MIDI, and beat. | Keep track identity separate from editor view mode. |
+| D06 | Support three track types: audio, MIDI, and beat. | Keep track identity separate from the active clip editor. |
 | D07 | Every beat subtrack is an instrument with its own source layers and effects; B33 supersedes the earlier audio/MIDI lane split. | Model instrument ownership and processing independently within each beat track. |
 | D08 | Future polyphonic MIDI tracks use multiple voices of one instrument. Each beat subtrack is an instrument; beat subtracks can gain polyphony later, and different subtracks can use different sources. | Keep instrument configuration separate from MIDI voice state. |
 | D09 | Name the views Timeline, Units, Editor, and Mixer. | Editor chooses an editor for the clip type; use these names in future view buttons and menus. |
@@ -84,6 +86,8 @@ D35 (2026-10-13) adds effect unit selection and header drag reordering to the Ef
 
 ### Shared effects workspace in Editor and Mixer — 2026-10-28
 
+This section records the 2026 layout. The former Editor view and its effects workspace were removed on 2026-11-20.
+
 Editor and Mixer now reuse the same effect catalog/lane shell and left rail as Timeline and Instrument. Editor offers Effects, Chords and Effects lane; its existing options column remains and there is no Clip settings rail button. Mixer offers Effects and Effects lane for selected tracks/groups or Master. Editor/Mixer panels start closed and retain independent UI-only visibility. Since 2026-11-02, upper catalog choices are independent in every view; only the Timeline/Instrument bottom lane retains shared visibility. This supersedes their earlier shared upper-catalog flag. Reuse target resolution, controls, keyboard/focus/drag guards and saved chains without DSP or schema changes. See [workspace requirements](iteration-1.md#timeline-and-mixer-views).
 
 ## Accepted Units MVP scope
@@ -113,26 +117,21 @@ The initial performance target is eight simultaneous voices with representative 
 
 ## View names and responsibilities
 
-The view names were revised on 2026-10-11. D28 replaces the standalone Beat view with Editor and updates D05 and D09. The beat pattern editor remains a dedicated editor within Editor.
-
 | View | Responsibility |
 | --- | --- |
-| Timeline | Arrange clips and patterns on tracks. |
-| Units | Configure sources, effects, and modulators for tracks and beat lanes. |
-| Editor | Edit the active clip using its audio, MIDI pattern, or beat pattern editor. |
-| Mixer | Control tracks, including each beat track as a whole. |
-
-The clip-editing view was renamed from Edit to Editor on 2026-10-12. The application exposes Timeline, Units, Editor, and Mixer. Units currently configures layered oscillator instruments; Editor currently provides the MIDI piano roll. The remaining source/effect graph tools, audio editor, and beat editor are pending.
+| Timeline | Arrange clips and patterns. Use the lower editor pane to edit audio, MIDI, and beat clips. |
+| Instrument | Configure sources, effects, and modulators for MIDI tracks and beat subtracks. |
+| Mixer | Control tracks and individual beat subtracks. |
 
 ### Clip editors
 
-| Clip type | Editor in the Editor view |
+| Clip type | Timeline editor pane |
 | --- | --- |
 | Audio | Audio editor. |
 | MIDI | MIDI pattern editor. |
 | Beat | Beat pattern editor. |
 
-Select the editor from the clip being edited, rather than its track or a beat lane's instrument type. A beat clip driving subtrack instruments still opens the beat pattern editor, regardless of their source units. Retain the active clip context when switching between Timeline, Editor, and Units; beat clips also retain their selected lane. Unit configuration stays in Units, and Mixer controls tracks.
+Double-click a clip or choose Edit clip to open the Timeline editor pane. It fits the clip range for audio and MIDI, or the complete source pattern for beat clips. Beat clips use the beat pattern editor regardless of the source units in their subtracks. Retain the clip and subtrack selection when switching between Timeline and Instrument.
 
 The first MIDI editor and opening gesture are defined in [MIDI patterns and oscillators](../instruments/midi-patterns.md). Audio-editor tools and further multi-clip editor behavior remain to be specified. The [beat pattern editor design](../views/beat-editor.md) retains the accepted step-editing scope. All editors must preserve source recordings and the pattern-source isolation rules below.
 
@@ -146,7 +145,7 @@ Track-level auxiliary routing uses [track sends and dedicated Returns](../editin
 | MIDI | Sources and effects. |
 | Beat | Each subtrack instrument has its own source layers, effects and controls in Instrument. The parent track retains its own effects lane. |
 
-The [Beat pattern editor design and decisions](../views/beat-editor.md) defines the accepted Beat MVP scope and remaining implementation details. The beat pattern editor in Editor handles beat creation. Units configures lane sources, effects, modulators, independent controls, and parent-track effects. Mixer controls each beat track as a whole. Beat lanes should reuse the shared unit core and processing runtime described here.
+The [Beat pattern editor design and decisions](../views/beat-editor.md) defines the accepted Beat MVP scope and remaining implementation details. The Timeline editor pane handles beat pattern editing. Instrument configures subtrack sources, effects, modulators, and controls. Mixer controls the parent track and its subtracks. Beat lanes should reuse the shared unit core and processing runtime described here.
 
 ### Confirmed instrument and voice model
 
@@ -240,14 +239,9 @@ This is the first working path. The ADSR Envelope is implemented under D31. Seri
 
 ### Shared stereo meter
 
-The Editor track overview reads both live levels and per-channel held peaks from
-its selected track meter and uses `meters::stereo_panel_held`, matching compact
-Timeline and Instrument headers. Keep its existing compact/expanded geometry.
-Each channel's shared held marker remains visible through silence; either rail
-or the gap resets both peaks and the shared clipping latch without editing the
-project or changing current meter levels.
+Compact Timeline and Instrument headers use `meters::stereo_panel_held` for live levels and per-channel held peaks. Each channel’s peak marker remains visible through silence. Either rail or the gap resets both peaks and the shared clipping latch.
 
-Track, Master, regular instrument layer and Output meters use [meters.rs](../../crates/ui/src/meters.rs). Mixer shows one scale for both channels. Timeline, Editor and Instrument headers show only the bars, without scale labels, ticks, or reserved scale width. Instrument buses follow the [layer meter contract](../instruments/layer-effects.md#layer-bus-level-meters). Both use a linear −60 to 0 dBFS display, with Mixer marking 0, −3, −6, −9, −12, −15, −18, −21, −24, −30, −35, −40, −45, −50, and −60. Emphasize zero. Add 1 dB subdivisions above −30 and 5 dB below it when spacing is at least 3 points. Fit labels inside the panel and omit interior labels that collide at short heights. Reserve a 24-point scale column only in Mixer; its strips are 120 points wide.
+Track, Master, regular instrument layer and Output meters use [meters.rs](../../crates/ui/src/meters.rs). Mixer shows one scale for both channels. Timeline and Instrument headers show only the bars, without scale labels, ticks, or reserved scale width. Instrument buses follow the [layer meter contract](../instruments/layer-effects.md#layer-bus-level-meters). Both use a linear −60 to 0 dBFS display, with Mixer marking 0, −3, −6, −9, −12, −15, −18, −21, −24, −30, −35, −40, −45, −50, and −60. Emphasize zero. Add 1 dB subdivisions above −30 and 5 dB below it when spacing is at least 3 points. Fit labels inside the panel and omit interior labels that collide at short heights. Reserve a 24-point scale column only in Mixer; its strips are 120 points wide.
 
 In Mixer track and Master strips, center the gain field above the complete fader column and a matching read-only peak field above the complete stereo meter column. Both fields share a row and the standard centered 36-point numeric style; include the scale labels and tick marks in column centering. The peak field displays the highest L/R peak since its last reset in dBFS with one decimal place, −∞ for silence, and a plus sign above zero. It holds that maximum as the live bars fall, including pause, Stop, and view changes. Clicking the field resets it to −∞; subsequent output can raise it again. The output callback captures peaks with atomic maximum updates, so brief peaks between UI frames remain available. Track holds follow track IDs through reorder and live plan updates. Holds reset with a new output monitor or project and are not saved in project data. Reset clears the held peak and shared stereo clipping latch without changing gain or current meter bars.
 
@@ -375,12 +369,12 @@ These details must preserve the accepted behavior. Specify future polyphony, nes
 1. Define the shared API and persisted graph model within the accepted scope. Specify the remaining implementation details needed for the first units.
 2. Validate the architecture with a polyphonic MIDI instrument containing reusable oscillator units, and an audio-track effect graph. Use one source container per track and keep the initial unit set small.
 3. Integrate block processing, events, transport, and atomic graph publication into the shared engine.
-4. Add the Units view and project persistence over that same model. Add Editor with editor selection by clip type. Implement the accepted beat pattern editor MVP scope over shared event scheduling and unit processing, after specifying its remaining implementation details.
+4. Add Instrument and project persistence over that same model. Add clip-type selection to the Timeline editor pane. Implement the accepted beat pattern editor MVP scope over shared event scheduling and unit processing, after specifying its remaining implementation details.
 5. Package reusable Rust crates and add standalone tools after the unit contract works in both playback and export.
 
 Before expanding the unit set, check source rejection on audio tracks, invalid-graph rollback, parameter smoothing, event timing, every supported project rate/buffer size, variable block sizes, save/reopen, and playback/export consistency. Measure callback allocation and blocking behavior, CPU/memory use, and native-device stability. Verify independent MIDI voices and note-offs, Beat lane retrigger replacement, transport resets, preserved pause state, loop note-off with continuing instrument releases, one-shots and effects, mute processing, smooth bypass, and atomic graph replacement. Test zero latency for earlier units and compensated Limiter timing, tail rendering and truncation notices, missing-unit fallback/data preservation, and pattern-versus-track ownership. Verify that multiple oscillator units form one instrument with independent per-voice oscillator state, one aggregate output bus, and preserved routing/settings after save/reopen. Measure the accepted eight-voice workload and record its hardware and results.
 
-Verify that audio, MIDI, and beat clips open their respective editors in Editor, including beat clips using subtrack instruments with different source units. Check clip/lane context retention across Timeline, Editor, and Units. Beat-specific validation criteria are recorded in the [beat pattern editor design](../views/beat-editor.md#validation-criteria).
+Verify that audio, MIDI, and beat clips open and fit in their respective Timeline editors, including beat clips using subtrack instruments with different source units. Check that clip and subtrack selection persist between Timeline and Instrument. Beat-specific validation criteria are recorded in the [beat pattern editor design](../views/beat-editor.md#validation-criteria).
 
 ## Decision record maintenance
 
@@ -430,7 +424,7 @@ The first installed Timeline effect shares the toolbar's left divider. The share
 
 ## Timeline-only effects
 
-On 2026-10-14, the dedicated Effects view was removed from the shared view enum, buttons, egui menu, and native menus. The remaining views are Timeline, Instrument, Editor, and Mixer. This supersedes D33/D34's separate Effects workspace placement. Timeline retains the catalog, lane, independent visibility toggles, selected audio/MIDI track chain, all unit controls and editing gestures, and saved presentation. Only Editor uses the selected-track overview and its separate zoom/scroll. View removal changes no project schema, effect IDs/settings, or audio processing.
+On 2026-10-14, the dedicated Effects view was removed from the shared view enum, buttons, egui menu, and native menus. At that time, the remaining views were Timeline, Instrument, Editor, and Mixer. This supersedes D33/D34's separate Effects workspace placement. Timeline retains the catalog, lane, independent visibility toggles, selected audio/MIDI track chain, all unit controls and editing gestures, and saved presentation. View removal changes no project schema, effect IDs/settings, or audio processing.
 
 ## Master effects implementation — 2026-10-14
 
@@ -730,9 +724,9 @@ Instrument exposes all project tracks and nested groups through a left-toolbar T
 
 ## Beat subtrack groups — 2026-10-31
 
-Implemented. The [beat-track implementation plan](../views/beat-tracks-plan.md) supersedes D33's historical exclusion of beat processing from Instrument. The lower Editor shows one step row per beat subtrack. As confirmed on 2026-11-01, the shared [Tracks browser](../views/instrument-tracks.md) lists subtracks under their beat parent. Selecting a subtrack opens the standard MIDI Layers page with local LFO/Envelope lanes and its Output; selecting the parent shows only final beat Output. This replaces the simultaneous expandable Instrument groups accepted on 2026-10-31. Browser Mute/Solo/Pan/Gain and subtrack Output controls edit the existing canonical bus. No processing stage is added.
+Implemented. The [beat-track implementation plan](../views/beat-tracks-plan.md) supersedes D33's historical exclusion of beat processing from Instrument. The Timeline editor pane shows one step row per beat subtrack. As confirmed on 2026-11-01, the Instrument [Tracks browser](../views/instrument-tracks.md) lists subtracks under their beat parent. Selecting a subtrack opens the standard MIDI Layers page with local LFO/Envelope lanes and its Output; selecting the parent shows only final beat Output. This replaces the simultaneous expandable Instrument groups accepted on 2026-10-31. Browser Mute/Solo/Pan/Gain and subtrack Output controls edit the existing canonical bus. No processing stage is added.
 
-Retain one beat instrument per parent track, immutable pattern sources, independent subtrack processing and one active voice per subtrack for the MVP. Sum subtrack outputs into final Output before parent-track effects and controls. Provider ownership and discovery stay local to the subtrack. Both views share creation, single/group selection, deletion, rename and release-only reordering. Subtracks can reorder only within their original beat parent. Project track-group buses remain separate. Mixer shows the parent and expandable virtual subtrack strips through the [shared Mixer contract](../views/mixer.md#beat-subtrack-strips), superseding the earlier parent-only restriction. Add beat track uses the shared menu/Plus/context action path. Automated evidence and remaining native checks are recorded in validation.
+Retain one beat instrument per parent track, immutable pattern sources, independent subtrack processing and one active voice per subtrack for the MVP. Sum subtrack outputs into final Output before parent-track effects and controls. Provider ownership and discovery stay local to the subtrack. The Timeline editor pane and Instrument share creation, selection, deletion, rename, and release-only reordering. Subtracks can reorder only within their original beat parent. Project track-group buses remain separate. Mixer shows the parent and expandable virtual subtrack strips through the [shared Mixer contract](../views/mixer.md#beat-subtrack-strips), superseding the earlier parent-only restriction. Add beat track uses the shared menu/Plus/context action path. Automated evidence and remaining native checks are recorded in validation.
 
 ## Beat subtrack instrument identity — 2026-10-31
 

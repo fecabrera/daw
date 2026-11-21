@@ -136,7 +136,7 @@ additional presets and transition types are separate pending feature work.
 ### 2A: clip fades
 
 Audio clips save fade-in/out lengths and movable midpoint curve controls.
-Timeline and the audio Editor provide dedicated handles, previews, release-only
+The Timeline arrangement and audio editor pane provide dedicated handles, previews, release-only
 transactions, Escape/focus-loss cancellation and group editing. Clip settings
 uses the same values. The shared-boundary trim press region remains separate.
 Playback/export use the shared evaluator. The topic contract governs rate/tempo

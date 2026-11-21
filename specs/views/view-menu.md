@@ -2,20 +2,21 @@
 
 ## Accepted behavior
 
-The View menu lists Timeline, Instrument, Editor and Mixer, followed by a
+The View menu lists Timeline, Instrument, and Mixer, followed by a
 separator, all toggleable workspace panels, a second separator, and the
 full-screen command. macOS retains AppKit's native full-screen command. The
 in-app menu sends the equivalent viewport command.
 
 | Panel | Available views |
 | --- | --- |
-| Tracks | Instrument, Editor |
+| Tracks | Instrument |
 | Components | Instrument |
 | Effects Catalog | All |
-| Chords | Timeline, Editor |
+| Chords | Timeline |
 | Clip Settings | Timeline |
 | Track Mixer | Timeline, Instrument |
 | Effects Lane | All |
+| Timeline Editor | Timeline |
 | Returns | Timeline, Mixer |
 | Master | Timeline, Mixer |
 
@@ -28,7 +29,9 @@ Timeline. Catalogs and inspectors may still show their existing empty-selection
 placeholders; menu availability matches the corresponding toolbar panel.
 
 The Effects Lane starts open and shares one visibility setting across Timeline,
-Instrument, Editor and Mixer. Each view remembers its own catalog choice.
+Instrument, and Mixer. In Timeline, the editor and Effects Lane share the
+lower slot. Opening one hides the other. Each view remembers its own
+catalog choice.
 
 ## Shared state and dispatch
 

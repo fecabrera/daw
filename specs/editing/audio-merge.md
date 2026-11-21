@@ -2,7 +2,7 @@
 
 Audio Merge creates one visible clip over an immutable compound audio source.
 It uses the existing Clip menu, context command and Command/Ctrl+J dispatch in
-Timeline and Editor. MIDI and beat Merge retain their own construction rules.
+Timeline. MIDI and beat Merge retain their own construction rules.
 
 ## Transaction and identity
 

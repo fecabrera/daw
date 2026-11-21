@@ -1,5 +1,7 @@
 # UI, editing and presentation pipelines
 
+The former Editor view in this record refers to the version under review. Current clip editing opens in the [Timeline editor pane](../../instruments/midi-patterns.md#editor-options-panel).
+
 [Review index](README.md) · Baseline `2dbb347`
 
 Follow-up on 2026-10-19 supersedes the baseline cache/history limits and same-allocation-only reuse described below. See [exact idle preparation and memory policy](../performance.md#idle-coverage-and-exact-reuse) and [F05/F06 status](findings.md#f05-cold-history-replay-can-still-take-a-long-time). Other baseline observations remain review evidence.

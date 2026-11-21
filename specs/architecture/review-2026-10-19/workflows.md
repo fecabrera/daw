@@ -1,5 +1,7 @@
 # Workflow catalog
 
+The former Editor view in this record refers to the version under review. Current clip editing opens in the [Timeline editor pane](../../instruments/midi-patterns.md#editor-options-panel).
+
 [Review index](README.md) · Baseline `2dbb347`
 
 This catalog traces user actions through processing stages. **Model publication** makes an edit visible and undoable. **Audio activation** makes its prepared renderer audible. They can occur at different times. File publication is a separate boundary.

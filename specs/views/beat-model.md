@@ -20,7 +20,7 @@ Project validation checks required/forbidden payloads, owner/effect/sample ident
 
 `Asset::beat_pattern` holds a `BeatPatternSource` with the same ID as its Asset. It binds a versioned pattern to one beat container ID. The source uses `kind: beat_pattern`, `path_kind: embedded` and Embedded storage; no media path is decoded or copied. Asset payloads cannot contain both beat and MIDI content. `Asset::is_audio` and `pattern_length_ticks` centralize classification and timing.
 
-A pattern has 1–16 bars in 4/4 and Quarter, Eighth, Sixteenth or ThirtySecond resolution. Defaults are one bar and Sixteenth. Coordinates use 960 ticks per beat; the finest slot is 120 ticks. Each enabled `BeatStep` has an ID, subtrack ID, tick and velocity 1–127. Editor enables at velocity 100. Trigger pitch is subtrack-owned, defaults to MIDI 60 and accepts 0–127. Duplicate IDs/positions, nil bindings, invalid values and hits shorter than one project frame are rejected.
+A pattern has 1–16 bars in 4/4 and Quarter, Eighth, Sixteenth or ThirtySecond resolution. Defaults are one bar and Sixteenth. Coordinates use 960 ticks per beat; the finest slot is 120 ticks. Each enabled `BeatStep` has an ID, subtrack ID, tick and velocity 1–127. The beat editor enables steps at velocity 100. Trigger pitch is subtrack-owned, defaults to MIDI 60 and accepts 0–127. Duplicate IDs/positions, nil bindings, invalid values and hits shorter than one project frame are rejected.
 
 Grid edits retain all stored steps. Hits outside the selected length or between visible grid slots are silent; restoring the grid restores their IDs, positions and velocities. Deleted-row content remains dormant and cannot bind to a new row by name or index. Reorder does not rewrite patterns.
 
@@ -52,19 +52,19 @@ Output meters and parameter snapshots use the same stable subtrack/unit IDs as n
 
 ## UI and acceptance
 
-Editor headers and step rows copy presentation metadata without processing
+Beat editor headers and step rows copy presentation metadata without processing
 graphs. Beat thumbnails cache overview levels by immutable source, project
 revision and ordered subtrack IDs. Coarser levels combine subpixel hits; sorted
 start ticks limit traversal and drawing to the visible source interval. Detailed
 thumbnails retain the shared MIDI trim, repeat, phase and stretch mapping.
 Keep full ordered row indices rather than mapping rows into MIDI's pitch range.
-Timeline and Editor resize painters pass staged beat content alongside staged
-MIDI/audio sources. Disposable source-growth IDs do not enter the live overview
+Timeline arrangement resize painters pass staged beat content alongside staged
+MIDI/audio sources. Disposable source-growth IDs do not enter the live arrangement
 cache; previews retain hit positions and leave the session unchanged.
 
-Editor and Instrument share subtrack selection, name/context controls, mix widgets and release-only group reorder. One shared context menu owns the full subtrack header rectangle, including controls, meters and padding, in the Editor and Tracks browser. Reuse the canonical compound-control popup opening guard; secondary clicks do not trigger primary control actions or project edits. Selecting a subtrack name, control or header background clears final Output targeting through one selection transition. Drag cancellation covers Escape, focus loss, outside release and model revision changes. Delete requires subtrack-header focus and does not act on text, steps or units. Removing the primary row selects a deterministic neighboring primary; removed IDs are pruned. Selection and source identity survive view changes.
+The Timeline editor pane and Instrument share subtrack selection, name/context controls, mix widgets and release-only group reorder. One shared context menu owns the full subtrack header rectangle, including controls, meters and padding, in the beat editor pane and Instrument’s Tracks browser. Reuse the canonical compound-control popup opening guard; secondary clicks do not trigger primary control actions or project edits. Selecting a subtrack name, control or header background clears final Output targeting through one selection transition. Drag cancellation covers Escape, focus loss, outside release and model revision changes. Delete requires subtrack-header focus and does not act on text, steps or units. Removing the primary row selects a deterministic neighboring primary; removed IDs are pruned. Selection and source identity survive view changes.
 
-Editor indexes hits by stable subtrack ID and source tick for each immutable asset revision, including hidden hits. Update the index after an edit within the same paint so repeated cells remain consistent. Generate source cells only for the visible time interval; construct row widgets only where they intersect the viewport. Retain complete row rectangles for group insertion and edge scrolling, and keep active controls and rename widgets until normal gesture/focus cleanup completes. Presentation culling does not remove content or alter clip mapping, selection or editing transactions.
+The beat editor indexes hits by stable subtrack ID and source tick for each immutable asset revision, including hidden hits. Update the index after an edit within the same paint so repeated cells remain consistent. Generate source cells only for the visible time interval; construct row widgets only where they intersect the viewport. Retain complete row rectangles for group insertion and edge scrolling, and keep active controls and rename widgets until normal gesture/focus cleanup completes. Presentation culling does not remove content or alter clip mapping, selection or editing transactions.
 
 Instrument opens one selected owner at a time. A selected subtrack reuses the standard MIDI Layers body with its header/Plus, local provider lanes and Output. The parent shows only final Output. Tracks contains compact child rows with canonical mix controls; parent disclosure only hides browser children. No nested source groups or hidden child drop geometry remain. Component registration controls lane compatibility and sources/providers retain their local scope. See [shared Tracks contract](instrument-tracks.md).
 
@@ -72,8 +72,7 @@ Automated coverage includes legacy/model round trips, isolated sources, transfer
 
 ## Beat body-edge source extension
 
-Unlooped beat clips use `Project::pattern_trim_bounds` through the same Timeline
-and Editor body-edge drag, snapping, group-preview and release-only resize paths
+Unlooped beat clips use `Project::pattern_trim_bounds` through the same Timeline arrangement body-edge drag, snapping, group-preview and release-only resize paths
 as MIDI. MIDI keeps its existing tick-domain bounds. Beat bounds remain in sample
 frames: retain ordinary fractional-bar trims, allow outward growth beyond the
 saved source, clamp to project zero/timeline limits and at most 16 source bars.
@@ -91,7 +90,7 @@ complete stored step vector, source ID and source metadata unchanged. Preserve
 step IDs, subtrack IDs, start ticks and velocities, including steps hidden by
 source length or subdivision. Expansion within the retained source restores
 those steps without creating a new asset. These guarantees survive save/reopen
-and undo/redo and apply to the shared Timeline/Editor gesture path. Merge is the
+and undo/redo and apply to the shared Timeline gesture path. Merge is the
 explicit operation that writes visible hits only into a fresh source.
 
 For left expansion beyond source zero, prepend whole bars and shift every stored
@@ -181,7 +180,7 @@ including source-sharing copies and beat instrument/lane settings. Combined
 length/subdivision masking must retain every stored step and reveal the original
 IDs/velocities when source length and resolution permit them again.
 
-The paired egui regression drives actual inward trims and expansion in Timeline
-and Editor. Check preview-only movement, source identity/content, hidden/revealed
-step hit regions, and undo/redo. This verifies the existing retention path;
+Drive inward trims and expansion in the Timeline arrangement through egui. Check
+preview-only movement, source identity and content, hidden and revealed step hit
+regions, and undo/redo. This verifies the existing retention path;
 no new DSP, source format or rendering implementation is required.

@@ -4,7 +4,7 @@ Normalize audio clips to a chosen peak or loudness level. Normalization changes
 clip Gain before track effects. It does not change the source file, track Gain,
 Master Gain, clip timing, or mute state.
 
-1. Select one or more audio clips in Timeline or Editor.
+1. Select one or more audio clips in Timeline.
 2. Right-click a selected clip and choose **Normalize gain**. You can also use the
    **Clip** menu. Right-clicking an unselected clip targets only that clip.
 3. Choose a measurement and target:

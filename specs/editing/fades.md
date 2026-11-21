@@ -1,7 +1,7 @@
 # Audio clip fades and crossfades
 
 Initial implementation: dedicated edge handles, midpoint shaping and selected-group
-settings in Timeline and the shared audio Editor. For operation, see
+settings in the Timeline arrangement and waveform pane. For operation, see
 [Timeline](../../docs/views/timeline.md#fades-and-crossfades).
 
 ## Model and curve
@@ -99,7 +99,7 @@ commits one core edit; Escape, focus loss or blocked editing cancels. Preserve
 existing trim, shared-boundary, header-loop and modifier-stretch gestures outside
 these hit areas. Before starting a gesture, the platform stretch modifier
 (Option on macOS, Ctrl on Windows/Linux) hides and disables fade/crossfade
-endpoint and midpoint handles in both views, including Editor's lower waveform.
+endpoint and midpoint handles in both the Timeline arrangement and its waveform pane.
 They must not capture hover or presses while that modifier is held; normal
 clip-edge stretch handling takes priority. Curves and waveform gain remain
 visible. An already captured fade gesture retains its identity and controls

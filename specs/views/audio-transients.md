@@ -1,4 +1,4 @@
-# Audio transient indicators in Editor
+# Audio transient indicators in the Timeline editor
 
 Status: initial visual implementation, 2026-11-08. Detector behavior is specified
 in [Audio analysis](../audio/analysis.md). This feature adds presentation and
@@ -6,7 +6,7 @@ optional worker analysis; it does not change stretch detection or playback.
 
 ## Controls and presentation
 
-Audio tracks show **Show transients** in the lower Editor toolbar, above its
+Audio tracks show **Show transients** in the Timeline editor toolbar, above its
 ruler. It defaults off at application startup and remains view state during the
 running application. It is not a project edit or saved analysis asset. MIDI/beat
 editors do not show the control. Toggling, analysis completion and cache changes
@@ -16,8 +16,7 @@ When enabled, paint thin translucent vertical lines from the bottom of each
 clip's 22-point name header to the clip bottom. Include the 8-point fade-handle
 strip above the waveform. Clip to the visible clip/viewport; keep the header text
 clear. Paint before fade curves/controls and selection outlines. Lines span both
-stereo lanes and have no pointer hit areas. Only the lower audio Editor shows
-indicators; Timeline and the Editor overview do not. Existing fade, stretch,
+stereo lanes and have no pointer hit areas. The waveform pane shows indicators below the Timeline arrangement. Existing fade, stretch,
 trim, selection and context-menu gestures retain their ownership.
 Use the dark palette's beat-grid color in every theme at 45% opacity, above the active clip grid's 10%
 opacity. Preserve marker positions, line width and clip background colors.
@@ -61,7 +60,7 @@ editor_transients::State owns at most one worker/result channel per app instance
 Use a bounded one-result channel and a cancellation token. Poll without waiting;
 request repaint on completion and periodically while waiting. Required audio and
 foreground preparation take priority: cancel optional analysis when such jobs
-start. Leaving Editor, changing to MIDI/beat content, disabling the toggle or
+start. Closing the editor pane, leaving Timeline, changing to MIDI/beat content, disabling the toggle or
 dropping the state also cancels. Retain the pending receiver until completion,
 so repeated toggles cannot start overlapping workers.
 
@@ -95,5 +94,5 @@ weak cache ownership, replacement invalidation, stale completion rejection,
 worker completion/reuse, 33-source success/failure admission, late completion
 without visible eviction, navigation re-admission, toggle/dirty-state behavior, lower-editor-only painting
 and exact header-bottom/clip-bottom line geometry. Run shared waveform/fade and
-Editor interaction tests after mapping or painting changes. Native screenshot
+Timeline editor interaction tests after mapping or painting changes. Native screenshot
 review, device behavior and Windows/Linux execution are separate checks.

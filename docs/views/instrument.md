@@ -19,7 +19,7 @@ Use **Track Mixer** at the top of the right toolbar or in **View** to show the s
 
 ## Project tracks
 
-Use **Tracks** in the left toolbar to open the project track list. [Editor](editor.md) reuses this list with its own visibility toggle. It shows audio, MIDI and beat icons, with group chevrons and indented children in project order. Tracks, Instrument components and Effects share the same panel space; opening one hides the other.
+Use **Tracks** in the left toolbar to open the project track list. It shows audio, MIDI and beat icons, with group chevrons and indented children in project order. Tracks, Instrument components and Effects share the same panel space; opening one hides the other.
 
 Click a group chevron to expand or collapse it; click its name to select the group. Groups start collapsed and retain their browser choices while the project is open. These choices do not change group collapse state in Timeline or Mixer. Nested groups are supported.
 

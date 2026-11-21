@@ -9,7 +9,7 @@ MIDI tracks have an **R** button in its own group after M/S on the same row. Ena
 
 For beat tracks, the lower editor shows the [beat step grid](beat-editor.md) and shared subtrack headers.
 
-Clips in the track overview and audio editor have a small visual gap between them and stay borderless when selected. At a crossfade, the gap follows the owning clip’s fade endpoint. Selecting a clip uses a lighter shade of its color family in the header. Headers have rounded top corners and square bottom corners.
+Clips in the Timeline arrangement and audio editor have a small visual gap between them and stay borderless when selected. At a crossfade, the gap follows the owning clip’s fade endpoint. Selecting a clip uses a lighter shade of its color family in the header. Headers have rounded top corners and square bottom corners.
 
 For audio and MIDI tracks, the lower editor shows every clip on the displayed
 track. Looped sections after each clip’s first cycle use dimmer versions of their
@@ -17,11 +17,11 @@ original colors and are read-only. Edit notes or audio controls in the first
 cycle; those source changes also appear in its repetitions. Scrolling to a later
 cycle does not make it editable.
 
-For beat tracks, select a clip in the overview to show its complete source pattern
+For beat tracks, select a clip in the arrangement to show its complete source pattern
 once, including trimmed steps. Other clips and loop repetitions stay in the
-overview. Beat gaps separate source beats without dots. The lower ruler shows
+arrangement. Beat gaps separate source beats without dots. The lower ruler shows
 source bars; use the upper ruler to seek and select a project loop. Use the
-overview to move, trim, loop or stretch the complete clip.
+arrangement to move, trim, loop or stretch the complete clip.
 
 MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
 
@@ -55,12 +55,12 @@ Selecting a clip keeps its notes in their original colors. Selected notes use th
 
 A plain empty-space drag selects notes with a rectangle. Shift-click toggles individual notes; Shift-drag toggles notes within the rectangle. Delete or Backspace removes selected notes. Hold Option on macOS or Ctrl on Windows/Linux while moving notes to copy them. Escape cancels an active gesture.
 
-To select several clips, drag a rectangle from empty space in the clip overview,
+To select several clips, drag a rectangle from empty space in the arrangement,
 the audio waveform pane, or the MIDI clip-header strip. Every clip touched by
 the rectangle is selected. Hold Shift to toggle clips in the rectangle. Escape
 or loss of window focus cancels the selection and restores the previous group.
 Dragging a clip still moves it; dragging in the piano-roll note area still selects
-notes. The overview and lower pane keep their own zoom and scroll.
+notes. The arrangement and lower pane keep their own zoom and scroll.
 
 Use the Timeline arrangement for time-range selection. Both the arrangement and the editor support clip selection, copy and paste, split, move, trim, loop, and stretch. Delete or Backspace removes all selected clips when clip editing is active. Note and beat-step editing keep Delete in their own pane. Click a clip header to switch back to clip deletion; selecting notes gives note deletion priority. A selected time range takes precedence and removes only that range. Clip deletion supports Undo and keeps source media. Text fields, active gestures, dialogs and unfocused windows retain their existing keyboard protection. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Clip moves inside the editor keep their track assignments. Shift bypasses grid snapping.
 
@@ -100,21 +100,21 @@ Previews use velocity 100 and sustain while the mouse button is held. Releasing 
 
 The Timeline arrangement and lower editor have independent horizontal viewports. The playback toolbar’s zoom control and the scrollbar below the arrangement control the arrangement. **Fit all clips**, immediately left of that zoom control, shows all clips in the arrangement, including gaps between them. It leaves the lower editor’s view unchanged and is disabled when the project has no clips. The **Fit clip** button (outward arrows between two vertical edges), the zoom control immediately to its right above the lower ruler, and the bottom scrollbar control the waveform or piano roll. Pinch or scroll horizontally over the pane you want to change. The selected clip initially fills the lower editor width. Fit clip restores that view; while fitted, resizing the window keeps the clip fitted. For beat tracks, the lower fit/zoom/scroll controls apply to the full source pattern rather than the clip’s visible playback range.
 
-Zoom out in either audio or MIDI content to see other clips on that track. MIDI note selection and group edits across clips keep the working viewport. Single-click a clip in the overview to select it and scroll the lower pane to its start while keeping the current zoom. Double-click it to select and fit the clip. Both rulers control the same project loop. In either ruler’s upper band, drag the loop body to move it, drag an edge to resize it, or drag empty space to select a new range. Click the range to turn looping on or off. Hold Shift to bypass snapping. Escape or loss of window focus cancels a drag. The lower band positions the playhead. The lower ruler uses its own zoom and scroll, and loop gestures keep both viewports unchanged. Zoom, scroll, and Fit clip do not modify the project. Seeking retains the overview ruler’s saved-navigation behavior.
+Zoom out in either audio or MIDI content to see other clips on that track. MIDI note selection and group edits across clips keep the working viewport. Single-click a clip in the arrangement to select it and scroll the lower pane to its start while keeping the current zoom. Double-click it to open the pane and fit the clip. Both rulers control the same project loop. In either ruler’s upper band, drag the loop body to move it, drag an edge to resize it, or drag empty space to select a new range. Click the range to turn looping on or off. Hold Shift to bypass snapping. Escape or loss of window focus cancels a drag. The lower band positions the playhead. The lower ruler uses its own zoom and scroll, and loop gestures keep both viewports unchanged. Zoom, scroll, and Fit clip do not modify the project. Seeking retains the arrangement ruler’s saved-navigation behavior.
 
 ## Audio clips
 
 Use [Normalize gain](../editing/normalize-gain.md) from an audio clip’s context menu to adjust its dry peak or loudness level. Selected audio clips are normalized individually.
 
-The lower audio editor shows the selected track’s clips, including when no clip is selected. Clearing selection keeps the current zoom and scroll. Clips outside the visible range remain available by zooming out or scrolling. The lower editor has its own ruler, horizontal zoom, and scroll. Zoom and scroll remain available without a selected clip; Fit clip requires one. Single-click an overview clip to select it and scroll the lower editor to its start without changing zoom. Double-click to fit it to the editor width. Zoom out to see other clips on the same track. Both rulers follow the project playhead. Mono uses one waveform lane; stereo shows both channels. Trim offsets, loop phases, and prepared stretch or transpose audio match Timeline. Overview clip clicks keep the overview viewport unchanged. Click a waveform in the lower editor to select its clip and update Clip options without changing either viewport’s zoom or scroll. Right-click a waveform to open the same clip context menu as Timeline. Opening the menu keeps the current selection, zoom, and scroll; actions use the clicked clip or its selected group. Missing recordings show “Missing source”.
+The lower audio editor shows the selected track’s clips, including when no clip is selected. Clearing selection keeps the current zoom and scroll. Clips outside the visible range remain available by zooming out or scrolling. The lower editor has its own ruler, horizontal zoom, and scroll. Zoom and scroll remain available without a selected clip; Fit clip requires one. Single-click an overview clip to select it and scroll the lower editor to its start without changing zoom. Double-click to fit it to the editor width. Zoom out to see other clips on the same track. Both rulers follow the project playhead. Mono uses one waveform lane; stereo shows both channels. Trim offsets, loop phases, and prepared stretch or transpose audio match Timeline. Overview clip clicks keep the arrangement viewport unchanged. Click a waveform in the lower editor to select its clip and update Clip options without changing either viewport’s zoom or scroll. Right-click a waveform to open the same clip context menu as Timeline. Opening the menu keeps the current selection, zoom, and scroll; actions use the clicked clip or its selected group. Missing recordings show “Missing source”.
 
 Double-click a lower waveform clip header to select and fit that clip. Double-clicking the waveform body keeps the current zoom and scroll.
 
-The first cycle in the lower waveform editor supports the same clip gestures as the overview. Drag a clip header to move the selected clips. Drag a header edge to loop them, or a waveform edge to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Drag the dividing line between adjacent waveforms to move their shared boundary while keeping their outer endpoints fixed. These gestures preview changes and apply them on release; Escape or focus loss cancels. Zoom and scroll stay unchanged. A failed stretch keeps the original clips and audio. Dragging inside a waveform body does not move or select clips. If a shared-boundary trim removes the selected clip, the remaining clips stay visible at the same zoom and scroll.
+The first cycle in the lower waveform editor supports the same clip gestures as the arrangement. Drag a clip header to move the selected clips. Drag a header edge to loop them, or a waveform edge to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Drag the dividing line between adjacent waveforms to move their shared boundary while keeping their outer endpoints fixed. These gestures preview changes and apply them on release; Escape or focus loss cancels. Zoom and scroll stay unchanged. A failed stretch keeps the original clips and audio. Dragging inside a waveform body does not move or select clips. If a shared-boundary trim removes the selected clip, the remaining clips stay visible at the same zoom and scroll.
 
 Audio clips also share the [fade and crossfade handles](timeline.md#fades-and-crossfades). The midpoint circle moves horizontally and vertically to change the S-curve shape; the area above the curve is greyed out.
 
-The **Clip options** section shows the same Name, Source, Gain, Transpose, audio channel/polarity and audio fade controls as [Timeline clip settings](timeline.md#clip-settings). Select a clip in the overview strip to edit it; with no selection, the panel shows “Select a clip”. Changes appear in both views and support Undo/Redo. Switching tracks or views discards unconfirmed text and audio transpose previews.
+The **Clip options** section shows the same Name, Source, Gain, Transpose, audio channel/polarity and audio fade controls as [Timeline clip settings](timeline.md#clip-settings). Select a clip in the arrangement strip to edit it; with no selection, the panel shows “Select a clip”. Changes appear in both views and support Undo/Redo. Switching tracks or views discards unconfirmed text and audio transpose previews.
 
 ## Add sound
 

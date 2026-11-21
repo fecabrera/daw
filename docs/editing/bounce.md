@@ -6,7 +6,7 @@ processing live. Audio, MIDI and Beat parent tracks are supported.
 
 ## Bounce selected clips
 
-1. Select whole clips in Timeline or Editor. Clear any time-range selection first.
+1. Select whole clips in Timeline. Clear any time-range selection first.
 2. Choose **Clip > Bounce clips**, use the clip context menu, or press Command+B
    on macOS or Ctrl+B on Windows/Linux.
 3. Wait for the Bounce progress dialog. Editing is disabled while it runs.

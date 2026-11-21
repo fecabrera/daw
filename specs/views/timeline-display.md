@@ -25,8 +25,7 @@ between them. Center 22-point name/buttons and compact knob faces in these slots
 keep standard control sizes and the 7-point outer padding. The bottom slot has
 M/S at the left and Pan then Gain at the right. All project tracks and nested beat
 rows use the selected height so lanes, meters, previews and scrolling align.
-Master remains 42 pt. Editor overview headers retain their independent 68-point
-layout and have no track-size control. No unit or instrument header changes.
+Master remains 42 pt. The lower editor retains its own layout.
 
 Each Timeline row uses one one-point bottom separator, inside the bottom padding
 and outside the content slots. Do not add a top separator based on row index or
@@ -71,6 +70,6 @@ history checkpoint comparison, as with the navigation-only playhead.
 ## Checks
 
 Cover all three slider positions, toolbar order, modal/drag guards, row geometry,
-Editor independence, send editing and overflow scrolling. Round-trip real save /
+lower editor independence, send editing and overflow scrolling. Round-trip real save /
 open snapshots for every size and retain legacy/default validation. Native UI
 and platform checks are separate from automated egui and project checks.

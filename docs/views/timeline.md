@@ -9,7 +9,7 @@ arrangement visible above it. Double-click a clip to open and fit it in the
 [Timeline editor](editor.md). For beat clips, this fits the full source pattern.
 
 Drag the divider at the top of the pane up to make the editor taller or down
-to give Timeline more space. Press Escape to cancel a resize. Click the active
+to give the arrangement more space. Press Escape to cancel a resize. Click the active
 Timeline Editor button again to close the pane, or click **Effects Lane** to
 switch back to effects. The pane remembers its height when you reopen it.
 
@@ -86,7 +86,7 @@ MIDI tracks have an **R** button in its own group after M/S on the same row. Ena
 
 The left toolbar lists **Effects** and **Chords**. **Clip settings** uses the toolbar at the right of the timeline area, from the playback toolbar down to the effects lane.
 
-Timeline arranges audio and MIDI clips on tracks. Use Editor for MIDI notes, Instrument for MIDI sounds, and Mixer for track levels. Its horizontal scrollbar floats over the content, like the effects lane’s scrollbar; hover near the bottom of the timeline to reveal and expand it.
+Timeline arranges audio and MIDI clips on tracks. Use the editor pane for MIDI notes, Instrument for MIDI sounds, and Mixer for track levels. Its horizontal scrollbar floats over the content, like the effects lane’s scrollbar; hover near the bottom of the timeline to reveal and expand it.
 
 Selected tracks use background highlights without a selection outline. Each selected track is highlighted while its musical grid and clips remain visible. Selected track headers use a raised shade; unselected headers retain their normal theme fill.
 
@@ -95,7 +95,7 @@ Audio track headers show a waveform icon; MIDI track headers show a keyboard ico
 Add and Duplicate sit on the left of the track toolbar. The arrangement toggle
 sits on the right. These buttons share the rounded, borderless M/S style.
 
-Click the arrow beside a beat track to show or hide its subtracks. They start collapsed. Subtracks appear inside the parent, with the same indentation and selection style as track groups. Each row has Mute, Solo, Pan, Gain and level meters shared with Editor and Instrument. Subtrack names use the same hoverable name buttons as other tracks. A single click selects; double-click the name to rename it. Click a subtrack header to select it; Shift-click selects several. Escape clears subtrack selection. The child timeline lanes stay empty; arrange clips on the parent and edit beat hits in Editor. The project saves each beat folder’s open/closed state. Expanding or collapsing it supports Undo/Redo, like track groups.
+Click the arrow beside a beat track to show or hide its subtracks. They start collapsed. Subtracks appear inside the parent, with the same indentation and selection style as track groups. Each row has Mute, Solo, Pan, Gain and level meters shared with the beat editor and Instrument. Subtrack names use the same hoverable name buttons as other tracks. A single click selects; double-click the name to rename it. Click a subtrack header to select it; Shift-click selects several. Escape clears subtrack selection. The child timeline lanes stay empty; arrange clips on the parent and edit beat hits in the lower editor pane. The project saves each beat folder’s open/closed state. Expanding or collapsing it supports Undo/Redo, like track groups.
 
 Touching clips have a small visual gap. At a crossfade, the gap follows the owning clip’s fade endpoint. Audio, MIDI and beat clips have no selection border. Selected clips use a lighter shade of their color family in the header. Headers have rounded top corners and square bottom corners. The same style applies in the track overview and audio editor.
 
@@ -105,11 +105,11 @@ their colors and headers stay unchanged.
 These overlay lines use the dark palette's colors in every theme so they remain
 visible against colored clips.
 
-**M** and **S** share one joined button group with a divider. They remain independent: either or both can be enabled. The same group appears in Editor, Instrument, Beat Editor, the Tracks panel and Mixer.
+**M** and **S** share one joined button group with a divider. They remain independent: either or both can be enabled. The same group appears in Instrument, the beat editor, the Tracks panel, and Mixer.
 
 Each L/R meter bar has a held-peak marker. Click either bar or the gap between them to reset both held peaks and the clipping warning. This applies to tracks, groups, Returns and Master. Held levels are shared with Mixer.
 
-Use the **Track height** slider between Fit all clips and horizontal zoom to choose a size from **1** to **3**, including decimals. A divider separates these sliders from the buttons. Size 2 is the default. The slider sticks slightly near whole numbers. Arrow keys allow fine adjustments away from them. Height scales continuously; the controls use the selected value rounded down for their layout. For example, 1.5 uses the one-row layout, and 2.5 uses two rows. Size 3 adds a middle row containing the track’s send-level knobs, with the name above and M/S, Pan and Gain below. Each row uses the same vertical slot height. Headers keep the same spacing whether they appear first, in the middle, or last. Scroll the sends row horizontally when its knobs do not fit. The row remains empty for tracks without sends. The expand/collapse button switches between sizes 1 and 2. Master stays on one row, and Editor’s track overview always uses size 2. Save the project to retain Timeline track size, horizontal zoom, and horizontal/vertical scroll positions. Changing these display settings does not change audio or add an Undo step.
+Use the **Track height** slider between Fit all clips and horizontal zoom to choose a size from **1** to **3**, including decimals. A divider separates these sliders from the buttons. Size 2 is the default. The slider sticks slightly near whole numbers. Arrow keys allow fine adjustments away from them. Height scales continuously; the controls use the selected value rounded down for their layout. For example, 1.5 uses the one-row layout, and 2.5 uses two rows. Size 3 adds a middle row containing the track’s send-level knobs, with the name above and M/S, Pan and Gain below. Each row uses the same vertical slot height. Headers keep the same spacing whether they appear first, in the middle, or last. Scroll the sends row horizontally when its knobs do not fit. The row remains empty for tracks without sends. The expand/collapse button switches between sizes 1 and 2. Master stays on one row. Save the project to retain Timeline track size, horizontal zoom, and horizontal/vertical scroll positions. Changing these display settings does not change audio or add an Undo step.
 
 Use the **Return tracks** arrow and **Master track** boom box buttons in the
 right toolbar to show or hide the pinned Return rows and Master. The buttons sit
@@ -141,7 +141,7 @@ returns them to the bottom of the full-height toolbar.
 3. Drag a chord onto a MIDI track. Drop below the tracks to create a new MIDI track. A drop on a track header starts at frame zero.
 4. Follow the preview of the chord’s name, notes, and one-bar bounds. Covered clips preview their remaining ranges. Release to apply the placement. Hold Shift to bypass grid snapping; Escape or loss of window focus cancels.
 
-Each chord is one 4/4 bar at the project tempo. Its notes sound together for the full bar, with roots from C4 through B4 and velocity 100. The catalog includes major, minor, diminished, augmented, sus2, sus4, major sixth, minor sixth, dominant seventh, major seventh, minor seventh, and half-diminished seventh chords. Edit the resulting notes in Editor.
+Each chord is one 4/4 bar at the project tempo. Its notes sound together for the full bar, with roots from C4 through B4 and velocity 100. The catalog includes major, minor, diminished, augmented, sus2, sus4, major sixth, minor sixth, dominant seventh, major seventh, minor seventh, and half-diminished seventh chords. Double-click the resulting clip to edit its notes in the lower pane.
 
 Select a MIDI track, then click a chord or select it with Up/Down to hear it through that track’s instrument and effects. A new selection replaces the previous preview. The preview lasts one bar, up to eight seconds, with up to one second for release and effect tails. Track, group, and Master mix controls apply; other tracks’ Solo settings do not block the preview. Empty instruments and muted tracks remain silent. Audition does not insert notes, move the playhead, or change the project. Stop or Escape cancels it; changing tracks, leaving Chords, or losing window focus also stops it. Sample-based instruments may need a short preparation delay.
 
@@ -186,7 +186,7 @@ Right-click a clip for the same last two groups: Split/Merge/Bounce clips/Stem s
 
 Click a clip to select it. Shift-click toggles group membership. Drag a rectangle in empty space to select intersecting clips; Shift-drag toggles them against the starting selection.
 
-Hold Command on macOS, or Ctrl on Windows and Linux, and drag across a track to select a time range. The pointer uses the same crosshair as creating a loop range. The range can cover part of a clip, several clips, and the silence between them. Drag the range to move its contents. Hold Option on macOS, or Ctrl on Windows and Linux, and drag the range to duplicate it. On Windows and Linux, start that drag inside the range; Ctrl-drag outside the range selects a new range. Copy with Command+C or Ctrl+C, and paste at the playhead. The copy keeps the gaps and any silence before the first clip. Delete or Backspace removes the selected time and leaves the rest of each clip. The same range is available in Editor. Shift bypasses grid snapping. Escape or a click outside the range clears it.
+Hold Command on macOS, or Ctrl on Windows and Linux, and drag across a track to select a time range. The pointer uses the same crosshair as creating a loop range. The range can cover part of a clip, several clips, and the silence between them. Drag the range to move its contents. Hold Option on macOS, or Ctrl on Windows and Linux, and drag the range to duplicate it. On Windows and Linux, start that drag inside the range; Ctrl-drag outside the range selects a new range. Copy with Command+C or Ctrl+C, and paste at the playhead. The copy keeps the gaps and any silence before the first clip. Delete or Backspace removes the selected time and leaves the rest of each clip. Opening the editor pane with its toolbar button keeps the time range selected. Shift bypasses grid snapping. Escape or a click outside the range clears it.
 
 The pointer shows a forbidden symbol over incompatible targets. Releasing there cancels the whole move or copy and retains the clips, selected range and Undo history.
 
@@ -199,7 +199,7 @@ you want a new pattern without the hidden content.
 
 Copy with Command+C on macOS or Ctrl+C on Windows/Linux. Paste with Command+V or Ctrl+V at the playhead on the selected track. Copies keep their source content, trim, repeats, stretch, and color override.
 
-Split the selected clips at the playhead with Clip > Split at playhead, or with Command+T on macOS or Ctrl+T on Windows/Linux. The same command is available in Editor. It is disabled when no clip is selected, when the playhead is not inside a selected clip, and in Mixer and Instrument. If several clips are selected, every selected clip that crosses the playhead is split together. The original clip ends at the playhead and a new clip starts there. Audio keeps its recording, trim, loop, and stretch. Right-click a clip and choose Split at playhead to split that clip, or the whole selection when the clicked clip is selected.
+Split the selected clips at the playhead with Clip > Split at playhead, or with Command+T on macOS or Ctrl+T on Windows/Linux. It is disabled when no clip is selected, when the playhead is not inside a selected clip, and in Mixer and Instrument. If several clips are selected, every selected clip that crosses the playhead is split together. The original clip ends at the playhead and a new clip starts there. Audio keeps its recording, trim, loop, and stretch. Right-click a clip and choose Split at playhead to split that clip, or the whole selection when the clicked clip is selected.
 
 MIDI notes that cross the playhead follow Settings > MIDI > Split MIDI notes. Split into two is the default: the note becomes two notes. Preserve first keeps the part before the playhead on the original clip and does not continue it. The choice is saved on this computer, not in the project. Undo restores both pieces in one step. If a looping MIDI clip needs note rewriting, one split operation can unfold up to 4,096 note occurrences across the selection. A larger operation reports an error and leaves the project unchanged. Shorten the looping clips before retrying. Splitting between notes does not have this limit.
 
@@ -235,8 +235,7 @@ long silent gaps also count toward the limit.
 
 Select two or more MIDI clips on the same track. They can touch or have gaps. Choose **Merge**
 from the **Clip** menu or a selected clip's context menu. You can also press
-**Command+J** on macOS or **Ctrl+J** on Windows and Linux. This works in Timeline
-and Editor. The result spans the first selected clip's start to the last selected
+**Command+J** on macOS or **Ctrl+J** on Windows and Linux. The result spans the first selected clip's start to the last selected
 clip's end. Gaps remain silent; later notes keep their timeline positions.
 Select any intervening clips too: Merge cannot cover an unselected clip.
 
@@ -294,7 +293,7 @@ Recently prepared positions use cached sound state for faster seeks. The first s
 
 Use **Fit all clips**, immediately left of the playback toolbar’s zoom control, to show every clip across all tracks. It fits from the earliest clip start to the latest clip end, including gaps. The button is disabled when there are no clips. It changes only the view.
 
-Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a MIDI clip to open it in [Editor](editor.md).
+Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a clip to open and fit it in the [Timeline editor](editor.md).
 
 ## Fades and crossfades
 
@@ -364,7 +363,7 @@ the saved durations. Loop seams retain their automatic anti-click fades.
 
 ## Clip settings
 
-In Timeline, use the headphone-file button in the right toolbar to open Clip settings beside it. The panel can stay open with the Effects or Chords catalog on the left. Closing it gives its space back to the timeline. When the effects lane is hidden, the right toolbar extends to the status bar. Leaving Timeline closes this panel and discards any unconfirmed text. Audio tracks also offer these controls under **Clip options** in [Editor](editor.md).
+In Timeline, use the headphone-file button in the right toolbar to open Clip settings beside it. The panel can stay open with the Effects or Chords catalog on the left. Closing it gives its space back to the timeline. The inspector rail stops above the lower pane when it is open. Leaving Timeline closes this panel and discards any unconfirmed text. Close the right inspector to use the same audio controls under **Clip options** in the [Timeline editor](editor.md).
 
 Audio clips also have **Channels** and **Polarity** rows after Transpose, before
 the fade sections. The joined **L** and **R** buttons independently enable the

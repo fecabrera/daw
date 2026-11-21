@@ -32,7 +32,7 @@ surface styling lives in the shared theme.
 Control-panel header titles, including Tracks, Layers, Beat subtracks and
 catalog headers, use the shared semibold font at their existing Body text size.
 
-Timeline, Instrument, Editor and Mixer view buttons use the shared semibold
+Timeline, Instrument, and Mixer view buttons use the shared semibold
 font at their existing Button text size. Preserve their padding, colors,
 selection and navigation behavior. View buttons own click-and-drag gestures;
 a drag that starts on one must not move the native window or activate a view.

@@ -74,7 +74,7 @@ the text after applying input so it follows the current value. Stop forced displ
 release, disabled editing or focus loss; retain normal hover behavior afterward.
 Modulation-marker gestures do not force the knob tooltip; they use the separate
 show/open action tooltip. Implement this once in `unit-ui::knobs` for
-track/layer/Output/Editor controls, source/modulator/effect controls,
+track, layer, Output, and Timeline editor controls, source/modulator/effect controls,
 scaled/choice/amount knobs and standalone plugin bodies. Tooltip rendering must not
 emit extra parameter edits or change capture, reset, scale or gesture ownership.
 

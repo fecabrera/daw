@@ -2,7 +2,7 @@
 
 ## Accepted behavior
 
-Expose **Normalize gain** in the shared Clip/context menu in Timeline and Editor.
+Expose **Normalize gain** in the shared Clip/context menu in Timeline.
 Use the existing menu target rules: a selected target uses all selected clips; an
 unselected context target uses only that clip. Enable only for an all-audio
 selection. Retain the shared job, modal, focus, text-editing and gesture guards.

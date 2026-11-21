@@ -77,7 +77,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [View menu panels](views/view-menu.md): shared panel toggles, view availability and checked states.
 - [Tooltip presentation](views/tooltips.md): canonical types, concise formats, accessibility and Details reports. See the [acceptance inventory](acceptance/tooltips.md) for shared editor coverage.
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).
-- [Instrument and Editor project track browser](views/instrument-tracks.md).
+- [Instrument project track browser](views/instrument-tracks.md).
 - [Beat editor design](views/beat-editor.md): implemented MVP and native acceptance criteria.
 - [Beat model and rendering](views/beat-model.md): versioned embedded patterns, scoped instruments, retained hidden hits, rejected cross-track destinations and shared rendering.
 - [Beat tracks and editor plan](views/beat-tracks-plan.md): shared subtrack controls, step rows, independent Instrument groups with LFO/Envelope sublanes, creation menus and staged delivery.
@@ -147,6 +147,6 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 - [Remaining guitar low-end regression and revision-7 auditions](validation/transient-lowend-r7.md).
 
-- [Audio Editor transient indicators](views/audio-transients.md): optional analysis, marker mapping, caching and display.
+- [Timeline editor transient indicators](views/audio-transients.md): optional analysis, marker mapping, caching and display.
 
 - [Timeline display state](views/timeline-display.md): track heights, send rows and saved zoom/scroll.

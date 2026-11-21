@@ -73,7 +73,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Export and CLI:** export stereo WAV, MP3, or AAC files; inspect tracks, validate projects, collect sources and render audio with the [CLI](docs/cli/README.md).
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 
-Audio, MIDI and Beat workflows are available in four views: **Timeline**, **Instrument**, **Editor**, and **Mixer**.
+Audio, MIDI and Beat workflows are available in three views: **Timeline**, **Instrument**, and **Mixer**. The [Timeline editor pane](docs/views/editor.md) edits audio, MIDI, and beat clips.
 
 Normal imports retain external references; included recordings stay inside the project folder. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
 

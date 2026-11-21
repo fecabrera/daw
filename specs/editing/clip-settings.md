@@ -1,6 +1,6 @@
 # Clip settings
 
-Timeline Clip settings occupies a separate 250-point column immediately left of the timeline’s right toolbar. `timeline_workspace.rs` composes this rail/panel around the existing `timeline_content` canvas. The rail and panel span only the upper workspace, below the playback toolbar and above the effects lane (or status when the lane is hidden). The left Effects/Chords catalog remains independent. Editor reuses its fields under the audio track’s Clip options section. The `clip_settings_panel` wrapper supplies Timeline’s title; `clip_settings_body` supplies the shared fields and empty-selection prompt without adding another header. It uses `panels::ControlPanel`, its `padded_body` helper, and `field_row` over the shared field layout. The helper owns horizontal padding and available content width. Form rows use the small-text height plus two standard toolbar padding units, with no extra body top gap or inter-row gap. Rows provide the vertical padding. Catalog rows now follow the independent [canonical list spacing](../views/dropdowns.md#catalog-panels); form baselines and row spacing do not track catalog spacing changes. The empty-selection prompt uses the same inset and row geometry. This supersedes the Library/Gallery Horizontal-only rail described in the 2026-10-14 toolbar sections. Those sections remain the record of that change.
+Timeline Clip settings occupies a separate 250-point column immediately left of the timeline’s right toolbar. `timeline_workspace.rs` composes this rail/panel around the existing `timeline_content` canvas. The rail and panel span only the upper workspace, below the playback toolbar and above the lower workspace or the status bar. The left Effects/Chords catalog remains independent. The lower editor pane reuses its fields under the audio track’s Clip options section. The `clip_settings_panel` wrapper supplies Timeline’s title; `clip_settings_body` supplies the shared fields and empty-selection prompt without adding another header. It uses `panels::ControlPanel`, its `padded_body` helper, and `field_row` over the shared field layout. The helper owns horizontal padding and available content width. Form rows use the small-text height plus two standard toolbar padding units, with no extra body top gap or inter-row gap. Rows provide the vertical padding. Catalog rows now follow the independent [canonical list spacing](../views/dropdowns.md#catalog-panels); form baselines and row spacing do not track catalog spacing changes. The empty-selection prompt uses the same inset and row geometry. This supersedes the Library/Gallery Horizontal-only rail described in the 2026-10-14 toolbar sections. Those sections remain the record of that change.
 
 ## Visibility
 
@@ -11,7 +11,7 @@ Timeline Clip settings occupies a separate 250-point column immediately left of 
 - Clip settings shares its right column with [Track Mixer](../views/view-menu.md#timeline-track-mixer). Opening either inspector closes the other; opening Track Mixer clears Clip settings drafts.
 - Clip settings and left catalogs can remain open together. Toggling either side does not change the other’s visibility. Keep normal pane-focus selection cleanup. All panels can be closed.
 - Toggling is UI state and does not mark the project modified.
-- The Clip settings rail is available only in Timeline. Editor displays the shared body below its existing Clip options header for audio tracks, with its own scroll region and the same editing guards. Editor’s new left rail omits the Clip settings button and retains its existing options column. Instrument/Mixer do not display these fields. The shared effects workspace must not clear Editor field drafts during ordinary repainting; retain the existing selection/view-change cleanup. Switching views discards field drafts and audio transpose previews without a project edit. Editor track/clip selection changes discard drafts for the old selection; entering MIDI options clears clip field state. Reuse `clear_clip_settings_edits` for lifecycle cleanup.
+- The Clip settings rail is available only in Timeline. The Timeline editor displays the shared Clip options body for audio tracks when the right inspector is closed. It uses its own scroll region and the same editing guards. The right inspector owns the shared controls while open. Instrument/Mixer do not display these fields. The shared effects workspace must not clear editor pane field drafts during ordinary repainting; retain the existing selection/view-change cleanup. Switching views discards field drafts and audio transpose previews without a project edit. Track or clip selection changes in Timeline discard drafts for the old selection; entering MIDI options clears clip field state. Reuse `clear_clip_settings_edits` for lifecycle cleanup.
 - Hiding the panel returns its width to the inner Timeline canvas, without removing the right rail or changing Timeline zoom/scroll. Keep ruler, lanes, scrolling, clip gestures, file/chord/effect drops and seek hit regions inside that reduced canvas. Right-rail and inspector clicks/drops must not act on the timeline beneath them. Preserve Track/Master control widths; clamp the inspector in very narrow layouts. The right inspector reuses `ControlPanel` and its leading divider; the rail owns their shared trailing divider. Retain the fixed inspector header and scroll only its shared fields.
 
 ## Fields
@@ -64,7 +64,7 @@ Reject an empty or control-character name, a non-finite gain or a gain outside s
 ## Audio channel and polarity controls
 
 Place Channels and Polarity field rows after Transpose and before the fade-section
-divider in the shared Timeline/Editor body. Channels joins the compact 18-point
+divider in the shared Timeline Clip options body. Channels joins the compact 18-point
 L and R toggles with 10-point text in the shared input-group frame: 5-point outer
 corners, no outline and a 1-point divider that adds to the total width. Each
 channel remains independently toggleable. An Invert checkbox follows the group.
@@ -100,16 +100,15 @@ callback allocation, I/O or audio preparation. Source waveforms remain unchanged
 
 Audio selections also show the shared [fade and crossfade controls](fades.md), including group editing. They use the same saved envelope and curve as clip handles.
 
-## Editor Escape selection
+## Escape selection
 
-The shared view-level selection handler supports Editor. An unmodified,
-non-repeated Escape clears whole-clip selection and the clip time range without
-changing the displayed track, viewport, project, history or dirty state. With
-no clips selected, Editor Escape does not clear track selection. Beat subtrack
-selection takes precedence: clear it first, then clear clips on a later press.
-Text input, popups, active clip/note/range gestures, disabled editing, dialogs,
-jobs and focus loss retain their existing guards. Cancel active gestures without
-also clearing clip selection on that press.
+An unmodified, non-repeated Escape clears the selected beat subtracks first
+when they own selection. A subsequent press clears clip selection and the
+clip time range. With neither selection active, Escape clears the Timeline
+track or Master selection. Escape preserves the viewport, project, and history.
+Text input, popups, active gestures, jobs, dialogs, and window focus retain
+their existing guards. Cancel an active gesture without also clearing selection
+on that press.
 
 ## CLI clip details
 

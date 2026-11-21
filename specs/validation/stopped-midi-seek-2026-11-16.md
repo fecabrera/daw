@@ -1,5 +1,7 @@
 # Silent stopped MIDI seeks — 2026-11-16
 
+This record covers the former standalone Editor view. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
+
 Moving the playhead in Timeline or Editor briefly emitted a note when a MIDI input
 was selected. The user identified Auto-filter in the affected track chain.
 
