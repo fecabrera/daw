@@ -7,10 +7,92 @@ fn compare(mut serial: Renderer, mut parallel: Renderer, count: usize) {
     assert_eq!(serial.transport_state(), parallel.transport_state());
     for frame in 0..count {
         assert_eq!(
-            serial.next_sample(),
-            parallel.next_sample(),
+            serial.next_sample().map(f32::to_bits),
+            parallel.next_sample().map(f32::to_bits),
             "sample {frame}"
         );
+    }
+}
+
+#[test]
+fn rendered_audio_replays_exactly_and_retains_serial_captured_returns() {
+    let mut plan = fixture::midi_project(48_000, 2, 1);
+    let rendered = fixture::add_audio(&mut plan, 1, 0, false);
+    let companion = fixture::add_audio(&mut plan, 0, 0, false);
+    for asset in &mut plan.project.assets {
+        if [rendered, companion].contains(&asset.id) {
+            asset.source_metadata.sample_format = "ieee_float".into();
+        }
+    }
+    let output = &mut plan.project.tracks[0].instrument.as_mut().unwrap().main;
+    output.effects = vec![EffectInstance::drive_v2(), EffectInstance::saturator()];
+    plan.project.master.effects.push(EffectInstance::limiter());
+    plan.project.transport.r#loop = Loop {
+        enabled: true,
+        start_frame: 1_235,
+        end_frame: 24_567,
+    };
+    let provider = plan.project.tracks[2].id;
+    let rendered_index = plan
+        .project
+        .assets
+        .iter()
+        .position(|a| a.id == rendered)
+        .unwrap();
+    let source = &mut plan.project.assets[rendered_index];
+    source.source.kind = "rendered_audio".into();
+    source.rendered_audio = Some(RenderedAudio {
+        version: 1,
+        pre_send_asset: companion,
+        feeds: vec![RenderedFeed {
+            provider,
+            raw_asset: companion,
+            post_asset: rendered,
+        }],
+        return_feeds: vec![],
+    });
+    plan.project.validate().unwrap();
+
+    let state = TransportState {
+        frame: 23_000,
+        playing: true,
+        playback_start: Some(1_235),
+        ..Default::default()
+    };
+    for with_return in [false, true] {
+        if with_return {
+            let return_id = plan.project.add_return_track().unwrap();
+            let source = plan.project.assets[rendered_index]
+                .rendered_audio
+                .as_mut()
+                .unwrap();
+            source.version = 3;
+            source.return_feeds.push(RenderedReturnFeed {
+                return_id,
+                asset: companion,
+            });
+            plan.project.validate().unwrap();
+        }
+        let mut serial = TransportCache::with_mode(
+            plan.clone(),
+            CacheProfile::Balanced,
+            PreparationMode::Serial,
+        );
+        let mut parallel = TransportCache::with_mode(
+            plan.clone(),
+            CacheProfile::Balanced,
+            PreparationMode::Parallel,
+        );
+        for _ in 0..2 {
+            compare(
+                serial.prepare(state, || false).unwrap(),
+                parallel.prepare(state, || false).unwrap(),
+                4096,
+            );
+        }
+        let stats = parallel.preparation_stats();
+        assert_eq!(stats.workers, if with_return { 0 } else { 2 });
+        assert_eq!(stats.parallel_blocks > 0, !with_return);
     }
 }
 #[test]

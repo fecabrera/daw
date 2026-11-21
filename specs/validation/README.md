@@ -14756,3 +14756,25 @@ drag took 118.6 ms before and 118.4 ms after. An isolated installed Drive change
 took 6.60 ms before and 6.66 ms after at matched rates, with twelve trials per
 version. The timing checks measured software output. Native gesture, device
 and listening latency remain unmeasured.
+
+## Parallel replay with rendered audio — 2026-11-20
+
+The engine regression compared serial and parallel replay bit for bit with
+rendered audio, unequal bus latency and a nonzero loop. A captured Return
+feed retained serial replay. The before and after release builds produced
+matching sample digests over 24,576 stereo frames on the saved MIDI 4 project.
+The candidate also matched 1,552,384 stereo frames bit for bit against serial
+replay, including a full 32-second loop and a repeated midpoint seek. The
+candidate used two workers when preparing that graph.
+
+Ten matched release pairs compared Saturator insertion near the project's
+16-second midpoint. Median time from append to renderer activation fell from
+4.481 s to 2.446 s. Median exact prefix preparation fell from 3.004 s to
+1.551 s. Each run completed one exact replay. The harness used the production
+Output workers and simulated a 48 kHz, 512-frame callback. Native UI, device
+and listening latency remain unmeasured.
+
+Formatting, strict workspace Clippy, the debug and release workspace tests,
+and the CLI smoke check passed. The workspace runs skipped the native Audio
+Unit registration test. The local macOS release app was rebuilt and its
+signature verified.

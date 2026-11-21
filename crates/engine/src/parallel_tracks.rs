@@ -3,7 +3,7 @@ use super::{
     Renderer, effects::EffectChain, latency::Delay, midi::MidiTrackRuntime, schedule::AudioTrack,
     track_processing::TrackProcessor,
 };
-use daw_core::Clip;
+use daw_core::{Clip, TrackKind};
 use std::{
     sync::{
         Arc,
@@ -130,13 +130,11 @@ impl ParallelTracks {
                     + 128)
     }
     pub fn new(renderer: &Renderer, available: u64) -> Option<Self> {
+        let project = &renderer.plan.project;
+        // Captured Return inputs still need the shared serial routing path.
         if renderer.sidechains.active()
-            || renderer
-                .plan
-                .project
-                .assets
-                .iter()
-                .any(|a| a.rendered_audio.is_some())
+            || (project.tracks.iter().any(|t| t.kind == TrackKind::Return)
+                && project.assets.iter().any(|a| a.rendered_audio.is_some()))
         {
             return None;
         }

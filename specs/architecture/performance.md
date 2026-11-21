@@ -97,6 +97,11 @@ TransportCache uses a persistent pair of worker threads for eligible exact-histo
 
 `track_processing::TrackProcessor` is the common source → typed modulation/instrument → track effects → alignment stage for callback playback, offline rendering and cache jobs. Master processing uses the common `Renderer::sample_master` stage. Parallel preparation does not add a separate DSP implementation. The callback never owns the pool, sends jobs, acquires these channel locks, joins threads or waits for preparation. Returned Renderer values carry ordinary DSP state only.
 
+Rendered audio can use parallel preparation in a graph without Return buses or
+active audio sidechains. It retains its baked clip boundary handling. A graph
+with both rendered audio and a Return uses serial replay so captured Return
+feeds follow the shared routing path.
+
 Each dispatch covers up to the greater of 2,048 frames and the project buffer size, split at checkpoint boundaries. Workers return post-gain samples in reusable track buffers. The coordinator sums these buffers in the original project track order, preserving every floating-point addition, then advances the serial Master chain. Only a complete track-and-Master boundary can become a checkpoint. Job assignment uses prior per-track elapsed times to distribute work; this does not change signal order.
 
 Cancellation is polled while waiting for results (1 ms timeout) and at project-buffer boundaries during Master processing. Workers observe an atomic cancellation flag at their own project-buffer boundaries. Cancelled jobs return ownership, but their partial cursor is discarded; later work restores a complete checkpoint. If a worker fails or its channel disconnects, preparation releases the pool and reconstructs the requested result through the serial reference path. No partial renderer can activate. A single costly DSP block can still exceed a nominal slice.
