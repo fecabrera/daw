@@ -1028,14 +1028,12 @@ impl DawUi {
                     } else {
                         vec![effect.id]
                     };
-                    let supported = crate::unit_power::effect_enabled(&mut effect.unit).is_some();
+                    let supported = effect.unit.enabled_mut().is_some();
                     let menu = crate::unit_power::PowerMenu::new(
                         power_states
                             .iter_mut()
                             .filter(|e| targets.contains(&e.id))
-                            .filter_map(|e| {
-                                crate::unit_power::effect_enabled(&mut e.unit).copied()
-                            }),
+                            .filter_map(|e| e.unit.enabled_mut().copied()),
                     );
 
                     let mut scope_info = crate::unit_selection::scope_info(
@@ -1783,9 +1781,7 @@ impl DawUi {
                                 .as_ref()
                                 .and_then(|o| o.effect_output_meter(effect.id)),
                         ),
-                        crate::unit_power::effect_enabled(&mut effect.unit)
-                            .copied()
-                            .unwrap_or(false),
+                        effect.unit.enabled_mut().copied().unwrap_or(false),
                     );
                     if crate::unit_selection::clicked(
                         ui,
@@ -1822,7 +1818,7 @@ impl DawUi {
                     .push((layer, targets, enable));
             } else {
                 for effect in effects.iter_mut().filter(|e| targets.contains(&e.id)) {
-                    if let Some(state) = crate::unit_power::effect_enabled(&mut effect.unit) {
+                    if let Some(state) = effect.unit.enabled_mut() {
                         *state = enable;
                     }
                 }

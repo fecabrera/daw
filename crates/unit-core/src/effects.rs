@@ -448,6 +448,35 @@ impl<'de> Deserialize<'de> for EffectSettings {
     }
 }
 impl EffectSettings {
+    /// Saved bypass state for an effect that supports power controls.
+    pub fn enabled_mut(&mut self) -> Option<&mut bool> {
+        match self {
+            Self::Hosted(s) => Some(&mut s.enabled),
+            Self::Eq3(s) => Some(&mut s.enabled),
+            Self::MultibandEq(s) => Some(&mut s.enabled),
+            Self::Exciter(s) => Some(&mut s.enabled),
+            Self::MultibandCompressor(s) => Some(&mut s.enabled),
+            Self::Drive(s) => Some(&mut s.enabled),
+            Self::DriveV2(s) => Some(&mut s.enabled),
+            Self::AutoFilter(s) => Some(&mut s.enabled),
+            Self::Filter(s) => Some(&mut s.enabled),
+            Self::Compressor(s) => Some(&mut s.enabled),
+            Self::HarmonicLift(s) => Some(&mut s.enabled),
+            Self::Ott(s) => Some(&mut s.enabled),
+            Self::Limiter(s) => Some(&mut s.enabled),
+            Self::DirectionMixer(s) => Some(&mut s.enabled),
+            Self::StereoSpread(s) => Some(&mut s.enabled),
+            Self::Saturator(s) => Some(&mut s.enabled),
+            Self::Bitcrusher(s) => Some(&mut s.enabled),
+            Self::Chorus(s) => Some(&mut s.enabled),
+            Self::Loudness(s) => Some(&mut s.enabled),
+            Self::AmbientReverb(s) => Some(&mut s.enabled),
+            Self::ShimmerReverb(s) => Some(&mut s.enabled),
+            Self::PlateReverb(s) => Some(&mut s.enabled),
+            Self::Missing { .. } => None,
+        }
+    }
+
     /// Saved panel state for effects with a unit panel.
     pub fn collapsed_mut(&mut self) -> Option<&mut bool> {
         match self {

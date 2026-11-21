@@ -232,14 +232,8 @@ fn effect_power_menu_changes_group_or_unselected_target() {
                 _ => app.session.project.tracks[0].effects.clone(),
             };
             assert_eq!(app.selected_effects.len(), if selected { 2 } else { 1 });
-            assert_eq!(
-                crate::unit_power::effect_enabled(&mut effects[0].unit).copied(),
-                Some(false)
-            );
-            assert_eq!(
-                crate::unit_power::effect_enabled(&mut effects[1].unit).copied(),
-                Some(!selected)
-            );
+            assert_eq!(effects[0].unit.enabled_mut().copied(), Some(false));
+            assert_eq!(effects[1].unit.enabled_mut().copied(), Some(!selected));
             app.perform_history_action(HistoryAction::Undo, &ctx);
             assert_eq!(app.session.project, before);
         }

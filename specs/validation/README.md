@@ -19,6 +19,25 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Bypass during effect removal — 2026-11-21
+
+- `cargo test --offline --locked -p daw-output --lib effect_update_tests`
+  passed all 17 tests. With renderer preparation suspended, removal bypassed
+  the MIDI Output Saturator through the control worker. Playback stayed active
+  at the same position and the removal revision remained pending. Restoring the
+  original plan re-enabled the effect. A transfer kept the same effect identity
+  and did not submit a bypass.
+- Formatting and strict workspace Clippy passed. The local macOS debug bundle
+  rebuilt with `sh tools/package_macos.sh debug --local` and passed signature
+  verification. Native playback and device timing were not checked.
+- The debug and release workspace suites each passed 3,657 tests with 22
+  ignored. Both runs excluded the known macOS Audio Unit registration case.
+
+  ```sh
+  cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+  ```
+
 ## Playback timing readout background — 2026-11-21
 
 - `cargo test --offline --locked -p daw-ui timing_readout_keeps_its_background_during_playback`

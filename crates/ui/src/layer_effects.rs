@@ -136,7 +136,7 @@ impl DawUi {
         for (owner, targets, enable) in &self.instrument_ui.inline_power_actions {
             if *owner == layer.id {
                 for effect in layer.effects.iter_mut().filter(|e| targets.contains(&e.id)) {
-                    if let Some(state) = crate::unit_power::effect_enabled(&mut effect.unit) {
+                    if let Some(state) = effect.unit.enabled_mut() {
                         *state = *enable;
                     }
                 }

@@ -10,10 +10,12 @@ keep its existing tail after a move while it starts receiving different input.
 Downstream effects continue processing the changed sound.
 
 Changes that require preparation run in the background. Playback continues with
-the previous arrangement until the change is ready. Controls on compatible units
-that remain installed can still update during preparation. Timing or routing
-changes can take longer. A preparation failure keeps the previous playback and
-shows an error; the edited settings remain available for correction or Undo.
+the active arrangement until the change is ready. When you remove a built-in
+effect such as Saturator, playback bypasses it while the updated chain is
+prepared. Controls on compatible units that remain installed can still update
+during preparation. Timing or routing changes can take longer. A preparation
+failure keeps the active playback and shows an error. The edited settings
+remain available for correction or Undo.
 
 Seeking or restarting reconstructs sound from the current settings. Its result
 can differ from a tail accumulated while you changed controls during playback.

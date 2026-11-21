@@ -81,6 +81,13 @@ pending request and one ready result; superseded results are discarded off audio
 
 The control worker can prepare an effective plan for surviving compatible units
 while topology preparation is pending. That plan retains the active topology.
+For an effect-only removal, the worker applies the existing power bypass to
+each deleted built-in instance that is still active. The old renderer keeps that
+processor's latency and bypass ramp until the new chain takes over. Match IDs
+across all chains so moves retain power and processing history. The bypass is
+part of the active playback snapshot only. The removal remains one project and
+Undo edit. If Undo restores the instance before replacement, the newest control
+update restores its saved power state.
 Controls for new units and incompatible internal topology wait for the complete
 transaction. A partial control publication advances a distinct effective token
 but does not acknowledge the uninstalled desired topology.

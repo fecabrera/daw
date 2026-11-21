@@ -28,33 +28,6 @@ fn effects() -> Vec<E> {
     ]
 }
 
-fn disable(s: &mut S) {
-    match s {
-        S::Eq3(s) => s.enabled = false,
-        S::Drive(s) => s.enabled = false,
-        S::DriveV2(s) => s.enabled = false,
-        S::Filter(s) => s.enabled = false,
-        S::AutoFilter(s) => s.enabled = false,
-        S::Compressor(s) => s.enabled = false,
-        S::Ott(s) => s.enabled = false,
-        S::Limiter(s) => s.enabled = false,
-        S::DirectionMixer(s) => s.enabled = false,
-        S::StereoSpread(s) => s.enabled = false,
-        S::Saturator(s) => s.enabled = false,
-        S::Bitcrusher(s) => s.enabled = false,
-        S::Chorus(s) => s.enabled = false,
-        S::PlateReverb(s) => s.enabled = false,
-        S::AmbientReverb(s) => s.enabled = false,
-        S::ShimmerReverb(s) => s.enabled = false,
-        S::Loudness(s) => s.enabled = false,
-        S::HarmonicLift(s) => s.enabled = false,
-        S::MultibandEq(s) => s.enabled = false,
-        S::Exciter(s) => s.enabled = false,
-        S::MultibandCompressor(s) => s.enabled = false,
-        S::Hosted(_) | S::Missing { .. } => unreachable!(),
-    }
-}
-
 #[test]
 fn all_effect_controls_preserve_history_without_construction_or_callback_heap_calls() {
     for effect in effects() {
@@ -67,7 +40,10 @@ fn all_effect_controls_preserve_history_without_construction_or_callback_heap_ca
         }
         let mut old_reference = active.snapshot().expect("built-in snapshot");
         let mut next = plan.clone();
-        disable(&mut next.project.tracks[0].effects[1].unit);
+        *next.project.tracks[0].effects[1]
+            .unit
+            .enabled_mut()
+            .unwrap() = false;
         let mut update =
             daw_engine::EffectUpdate::prepare(&plan, next.clone()).expect("control update");
         assert_eq!(update.prepared_processors(), 0);
@@ -250,7 +226,10 @@ fn surviving_controls_apply_before_topology_without_acknowledging_uninstalled_un
     status.applied_revision.store(1, Ordering::Release);
     status.requested_revision.store(2, Ordering::Release);
     let mut desired = plan.clone();
-    disable(&mut desired.project.tracks[0].effects[0].unit);
+    *desired.project.tracks[0].effects[0]
+        .unit
+        .enabled_mut()
+        .unwrap() = false;
     desired.project.tracks[0].effects.push(E::filter());
     let old_topology = prepared(&plan, desired.clone(), 1, 2);
     let update = daw_engine::EffectUpdate::prepare_controls(&plan, &desired).unwrap();
@@ -413,6 +392,69 @@ fn dragging_output_saturator_drive_does_not_restart_pending_insertion() {
 }
 
 #[test]
+fn removed_output_saturator_bypasses_while_latency_rebuild_is_pending() {
+    let removed = note_plan();
+    let mut original = removed.clone();
+    let mut bypassed = original.clone();
+    let saturator = E::saturator();
+    original.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .main
+        .effects
+        .push(saturator.clone());
+    let mut bypassed_saturator = saturator;
+    *bypassed_saturator.unit.enabled_mut().unwrap() = false;
+    bypassed.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .main
+        .effects
+        .push(bypassed_saturator);
+    let (mut output, mut callback) =
+        crate::preparation_tests::controlled_output_for_plan(48_000, original.clone());
+    output.active_plan = Some(output.plan.clone());
+    callback.renderer.play();
+    output.status.publish_transport(&callback.renderer);
+    let position = callback.renderer.playhead;
+    let applied = output.applied_revision();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let tick = |output: &mut AudioOutput, callback: &mut Callback| {
+        assert!(std::time::Instant::now() < deadline);
+        output.drain();
+        realtime(|| callback.update());
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    };
+
+    output.sync(removed.clone()).unwrap();
+    // The exact renderer worker is suspended, so only the control update can land.
+    while callback.renderer.plan.project != bypassed.project {
+        tick(&mut output, &mut callback);
+    }
+    assert!(callback.renderer.playing);
+    assert_eq!(callback.renderer.playhead, position);
+    assert_eq!(output.applied_revision(), applied);
+    assert!(output.preparing());
+    assert_eq!(output.plan.project, removed.project);
+    assert_eq!(
+        output
+            .status
+            .performance
+            .snapshot()
+            .effect_processors_prepared,
+        0
+    );
+
+    output.sync(original.clone()).unwrap();
+    while !output.current_plan_published() {
+        tick(&mut output, &mut callback);
+    }
+    assert_eq!(callback.renderer.plan.project, original.project);
+}
+
+#[test]
 fn layer_and_output_moves_retain_voice_state_and_reject_changed_delay_distribution() {
     for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {
         let mut plan = note_plan();
@@ -423,6 +465,7 @@ fn layer_and_output_moves_retain_voice_state_and_reject_changed_delay_distributi
         let mut next = plan.clone();
         let i = next.project.tracks[0].instrument.as_mut().unwrap();
         i.main.effects.push(i.layers[0].effects.remove(0));
+        assert!(daw_engine::EffectUpdate::prepare_controls(&plan, &next).is_none());
         let mut update = daw_engine::EffectUpdate::prepare(&plan, next.clone()).unwrap();
         assert_eq!(update.prepared_processors(), 0);
         realtime(|| active.apply_effect_update(&mut update));
@@ -609,7 +652,7 @@ fn beat_compilation_retains_derived_owners_for_effect_controls_and_reorders() {
         .layers[0]
         .effects;
     effects.swap(0, 1);
-    disable(&mut effects[1].unit);
+    *effects[1].unit.enabled_mut().unwrap() = false;
     let mut update = daw_engine::EffectUpdate::prepare(&plan, next.clone()).unwrap();
     assert_eq!(update.prepared_processors(), 0);
     let mut active = Renderer::new(plan);

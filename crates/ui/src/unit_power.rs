@@ -1,7 +1,5 @@
 //! Context-menu power actions share one target state and commit through their owning lane.
-use daw_core::{
-    EffectSettings, InstrumentBusSettings, InstrumentComponent, InstrumentLayerSettings,
-};
+use daw_core::{InstrumentBusSettings, InstrumentComponent, InstrumentLayerSettings};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -48,34 +46,6 @@ impl PowerMenu {
         ui.stack()
             .iter()
             .find_map(|s| s.tags().get_downcast::<Self>(TAG).cloned())
-    }
-}
-
-pub(super) fn effect_enabled(settings: &mut EffectSettings) -> Option<&mut bool> {
-    match settings {
-        EffectSettings::Hosted(s) => Some(&mut s.enabled),
-        EffectSettings::Eq3(s) => Some(&mut s.enabled),
-        EffectSettings::MultibandEq(s) => Some(&mut s.enabled),
-        EffectSettings::Exciter(s) => Some(&mut s.enabled),
-        EffectSettings::MultibandCompressor(s) => Some(&mut s.enabled),
-        EffectSettings::Drive(s) => Some(&mut s.enabled),
-        EffectSettings::DriveV2(s) => Some(&mut s.enabled),
-        EffectSettings::AutoFilter(s) => Some(&mut s.enabled),
-        EffectSettings::Filter(s) => Some(&mut s.enabled),
-        EffectSettings::Compressor(s) => Some(&mut s.enabled),
-        EffectSettings::HarmonicLift(s) => Some(&mut s.enabled),
-        EffectSettings::Ott(s) => Some(&mut s.enabled),
-        EffectSettings::Limiter(s) => Some(&mut s.enabled),
-        EffectSettings::DirectionMixer(s) => Some(&mut s.enabled),
-        EffectSettings::StereoSpread(s) => Some(&mut s.enabled),
-        EffectSettings::Saturator(s) => Some(&mut s.enabled),
-        EffectSettings::Bitcrusher(s) => Some(&mut s.enabled),
-        EffectSettings::Chorus(s) => Some(&mut s.enabled),
-        EffectSettings::Loudness(s) => Some(&mut s.enabled),
-        EffectSettings::AmbientReverb(s) => Some(&mut s.enabled),
-        EffectSettings::ShimmerReverb(s) => Some(&mut s.enabled),
-        EffectSettings::PlateReverb(s) => Some(&mut s.enabled),
-        EffectSettings::Missing { .. } => None,
     }
 }
 

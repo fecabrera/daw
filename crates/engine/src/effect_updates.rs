@@ -520,7 +520,7 @@ impl EffectUpdate {
     }
 
     /// Apply eligible controls to the active topology while a structural candidate is
-    /// pending. New/removed units and incompatible controls wait for the complete edit.
+    /// pending. Bypass deleted units until publication can retire their processors.
     pub fn prepare_controls(previous: &RenderPlan, desired: &RenderPlan) -> Option<Self> {
         let mut hybrid = previous.clone().prepare_beats();
         let desired = desired.clone().prepare_beats();
@@ -539,12 +539,17 @@ impl EffectUpdate {
         let mut changed = false;
         let mut update = |effects: &mut Vec<EffectInstance>| {
             for effect in effects {
-                if let Some(next) = settings.get(&effect.id)
-                    && effect.unit != **next
-                    && reusable(&effect.unit, next)
-                {
-                    effect.unit = (*next).clone();
-                    changed = true;
+                match settings.get(&effect.id) {
+                    Some(next) if effect.unit != **next && reusable(&effect.unit, next) => {
+                        effect.unit = (*next).clone();
+                        changed = true;
+                    }
+                    None => {
+                        if let Some(enabled) = effect.unit.enabled_mut() {
+                            changed |= std::mem::replace(enabled, false);
+                        }
+                    }
+                    _ => {}
                 }
             }
         };
