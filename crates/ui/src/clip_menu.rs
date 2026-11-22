@@ -10,13 +10,14 @@ pub enum ClipMenuAction {
     Merge,
     Separate,
     Normalize,
+    Reverse,
     Edit,
     ToggleMuted,
     Delete,
 }
 
 impl ClipMenuAction {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Import,
         Self::AddMidi,
         Self::Split,
@@ -24,6 +25,7 @@ impl ClipMenuAction {
         Self::Bounce,
         Self::Separate,
         Self::Normalize,
+        Self::Reverse,
         Self::Edit,
         Self::ToggleMuted,
         Self::Delete,
@@ -31,7 +33,7 @@ impl ClipMenuAction {
     pub const GROUPS: [&'static [Self]; 4] = [
         &[Self::Import, Self::AddMidi],
         &[Self::Split, Self::Merge, Self::Bounce],
-        &[Self::Separate, Self::Normalize],
+        &[Self::Separate, Self::Normalize, Self::Reverse],
         &[Self::Edit, Self::ToggleMuted, Self::Delete],
     ];
 
@@ -44,6 +46,7 @@ impl ClipMenuAction {
             Self::Bounce => "Bounce clips",
             Self::Separate => "Stem separation",
             Self::Normalize => "Normalize gain",
+            Self::Reverse => "Reverse",
             Self::Edit => "Edit clip",
             Self::ToggleMuted => "Disable clip",
             Self::Delete => "Delete clip",
@@ -160,8 +163,8 @@ impl DawUi {
             ClipMenuAction::Split => !self
                 .clips_crossed_by_playhead(&self.menu_clip_targets(clip.id))
                 .is_empty(),
-            ClipMenuAction::Normalize => {
-                self.normalization_targets_are_audio(&self.menu_clip_targets(clip.id))
+            ClipMenuAction::Normalize | ClipMenuAction::Reverse => {
+                self.clip_targets_are_audio(&self.menu_clip_targets(clip.id))
             }
             ClipMenuAction::Separate => {
                 self.view_mode == ViewMode::Timeline
@@ -217,6 +220,12 @@ impl DawUi {
             ClipMenuAction::Normalize => {
                 self.normalize_dialog = Some(normalize::Draft::new(self.menu_clip_targets(id)));
             }
+            ClipMenuAction::Reverse => self.edit(Edit::Batch(
+                self.menu_clip_targets(id)
+                    .into_iter()
+                    .map(Edit::ReverseClip)
+                    .collect(),
+            )),
             ClipMenuAction::Edit => self.open_clip_editor(id, track, ctx),
             ClipMenuAction::ToggleMuted => self.edit(Edit::SetClipMuted {
                 clip_id: id,
@@ -252,6 +261,11 @@ impl DawUi {
                 menus::separator(ui);
             }
             for &action in *group {
+                if action == ClipMenuAction::Reverse
+                    && target.is_some_and(|id| !self.clip_targets_are_audio(&[id]))
+                {
+                    continue;
+                }
                 let mut button = menus::action_button(self.clip_menu_label_for(action, target));
                 if let Some(shortcut) = action.shortcut() {
                     button =

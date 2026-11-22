@@ -49,6 +49,7 @@ fn fixture(rate: u32, mono: bool) -> (RenderPlan, Vec<Id>) {
             gain_db: i as f32 - 5.0,
             transpose: 0,
             muted: false,
+            reversed: false,
             channels: ClipChannels {
                 swapped: i % 2 == 1,
                 inverted: i == 2,
@@ -99,6 +100,23 @@ fn fixture(rate: u32, mono: bool) -> (RenderPlan, Vec<Id>) {
         },
         ids,
     )
+}
+
+#[test]
+fn reversing_a_merged_clip_reads_its_captured_members_backward() {
+    let (mut plan, ids) = fixture(48_000, false);
+    let (project, id) = plan.project.merge_audio_clips(&ids).unwrap();
+    plan.project = project;
+    let render = |plan: &RenderPlan| {
+        let mut renderer = daw_engine::Renderer::try_new(plan.clone()).unwrap();
+        let mut output = vec![[0.; 2]; 4_000];
+        renderer.render_offline_at(1_000, &mut output);
+        output
+    };
+    let mut expected = render(&plan);
+    expected.reverse();
+    plan.project.edit(daw_core::Edit::ReverseClip(id)).unwrap();
+    assert_eq!(render(&plan), expected);
 }
 
 #[test]

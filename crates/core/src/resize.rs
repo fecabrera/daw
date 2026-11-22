@@ -45,13 +45,21 @@ impl Clip {
             let repeat = repeat.shifted(i128::from(advance));
             // A full copy with nonzero phase still wraps: do not reset its phase.
             if clip.length_frames <= repeat.length_frames - repeat.phase_frame {
-                clip.source_offset_frame += repeat.phase_frame;
+                clip.source_offset_frame += if clip.reversed {
+                    repeat.length_frames - repeat.phase_frame - clip.length_frames
+                } else {
+                    repeat.phase_frame
+                };
                 clip.repeat = None;
             } else {
                 clip.repeat = Some(repeat);
             }
         } else {
-            clip.source_offset_frame += advance;
+            clip.source_offset_frame += if clip.reversed {
+                self.end() - end
+            } else {
+                advance
+            };
         }
         clip
     }
@@ -112,17 +120,21 @@ impl Project {
             clip.length_frames = candidate.length_frames;
             clip.repeat = candidate.repeat;
             if !update_stretch {
-                if clip.source_offset_frame != original.source_offset_frame
-                    && clip.fades.fade_in.inherit_source
-                {
+                let source_low_changed = clip.source_offset_frame != original.source_offset_frame;
+                let source_high_changed =
+                    clip.source_offset_frame.saturating_add(clip.length_frames)
+                        != original
+                            .source_offset_frame
+                            .saturating_add(original.length_frames);
+                let (start_changed, end_changed) = if clip.reversed {
+                    (source_high_changed, source_low_changed)
+                } else {
+                    (source_low_changed, source_high_changed)
+                };
+                if start_changed && clip.fades.fade_in.inherit_source {
                     clip.fades.fade_in = Default::default();
                 }
-                if clip.source_offset_frame.saturating_add(clip.length_frames)
-                    != original
-                        .source_offset_frame
-                        .saturating_add(original.length_frames)
-                    && clip.fades.fade_out.inherit_source
-                {
+                if end_changed && clip.fades.fade_out.inherit_source {
                     clip.fades.fade_out = Default::default();
                 }
             }
@@ -248,6 +260,7 @@ mod tests {
             project.tracks[0].clips.push(Clip {
                 channels: Default::default(),
                 fades: Default::default(),
+                reversed: false,
                 muted: false,
                 id: Id::new_v4(),
                 asset_id: asset,

@@ -21,6 +21,8 @@ pub enum SamplerTrigger {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SamplerInput {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reversed: bool,
     pub asset_id: Uuid,
     pub name: String,
     pub source_offset_frame: u64,
@@ -214,6 +216,7 @@ mod tests {
             let mut s = SamplerSettings {
                 end_frame: u64::from(rate),
                 input: Some(SamplerInput {
+                    reversed: false,
                     asset_id: Uuid::new_v4(),
                     name: "Sample".into(),
                     source_offset_frame: 0,

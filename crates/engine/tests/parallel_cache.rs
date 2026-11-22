@@ -367,6 +367,7 @@ fn mixed_audio_and_sampler_tracks_preserve_source_positions_gaps_fades_and_stere
         end_frame: 40000,
         trigger: SamplerTrigger::Gate,
         input: Some(SamplerInput {
+            reversed: false,
             asset_id: asset,
             name: "sample".into(),
             source_offset_frame: 0,

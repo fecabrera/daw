@@ -113,6 +113,7 @@ pub fn add_audio(plan: &mut RenderPlan, count: usize, fx: usize, mono: bool) -> 
         track.clips.push(Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             id: Id::new_v4(),
             asset_id: asset,

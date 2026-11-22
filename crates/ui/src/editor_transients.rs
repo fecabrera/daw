@@ -414,6 +414,7 @@ mod tests {
             length_frames: 100,
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             color: None,
             repeat: None,

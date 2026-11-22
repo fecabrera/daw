@@ -150,12 +150,7 @@ impl crate::Clip {
     /// Continue source time beyond either clip edge, retaining loop phase.
     /// Non-looped clips return None before source frame zero or on overflow.
     pub fn extended_source_frame(&self, local: i128) -> Option<u64> {
-        let position = if let Some(repeat) = self.repeat {
-            i128::from(repeat.shifted(local).phase_frame)
-        } else {
-            local
-        };
-        u64::try_from(i128::from(self.source_offset_frame).checked_add(position)?).ok()
+        u64::try_from(self.source_position(local)).ok()
     }
 }
 

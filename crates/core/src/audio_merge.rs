@@ -51,6 +51,7 @@ impl Project {
             && first.stretch.is_none()
             && first.channels == ClipChannels::default()
             && !first.muted
+            && !first.reversed
             && first.fades.fade_in.inherit_source
             && first.fades.fade_out.inherit_source
         {
@@ -104,6 +105,7 @@ impl Project {
         merged.channels = ClipChannels::default();
         merged.transpose = 0;
         merged.muted = false;
+        merged.reversed = false;
         next.prepare_compound_routing()?;
         Ok((next, id))
     }

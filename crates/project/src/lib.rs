@@ -507,6 +507,7 @@ impl Session {
         let clip = Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             stretch: None,
             id: clip_id,

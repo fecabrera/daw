@@ -106,6 +106,7 @@ mod tests {
         let neighbor = Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             id: Id::new_v4(),
             asset_id,

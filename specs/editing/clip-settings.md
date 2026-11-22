@@ -39,6 +39,18 @@ During a drag with multiple clips selected, show only the signed cumulative appl
 
 Shared gain/transpose edit builders accept a value mapping, omit unchanged clips and emit the existing typed core edits. Relative drags and absolute text commits use these same builders. Submit the complete field change through one `Edit::Batch` and the existing `DawUi::edit` path. A typed value equal to the primary must still update other selected clips that differ. An unchanged selection stays clean and creates no history entry. The existing pointer gesture history groups drag updates into one undo step; a text commit is one transaction. Unselected clips retain their settings.
 
+## Reverse audio clips
+
+Expose Reverse in the Clip menubar and clip context menu. Enable it when the
+target clips are all audio. Toggle each target in one undoable edit. Keep the
+clip's timeline position, length, fades, transpose, and asset reference.
+Play the audible source window backward after stretch and pitch preparation.
+Reflect the phase of a phased loop over the visible clip length so the entire
+audible sequence reverses. Store direction per clip and default older
+projects to forward. Use the same mapping for waveform peaks, subsequent trim
+and split edits, playback, and export. Keep disk read-ahead in the direction
+of source playback and keep disk I/O off the audio callback.
+
 The open text field stays in UI state. Closing the panel or changing the primary or selection membership discards it without saving. Store primary ID and ordered selected IDs on the field draft and audio transpose preview so a changed group cannot receive an old edit. If any selected clip is audio, transpose previews the entire group in UI state until release, then uses the shared audio worker once for the full batch. A zero-offset release leaves the selection unchanged. Escape, focus loss, selection changes, hiding the panel, switching views, or entering MIDI options discards that preview. MIDI-only selections retain their existing live transpose drag updates.
 
 ## Playback

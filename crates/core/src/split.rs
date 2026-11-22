@@ -207,6 +207,7 @@ fn linear_piece(clip: &Clip, asset_id: Id, start: u64, end: u64, id: Id) -> Clip
     Clip {
         channels: clip.channels,
         fades: Default::default(),
+        reversed: false,
         muted: clip.muted,
         id,
         asset_id,
@@ -535,6 +536,7 @@ mod tests {
         project.tracks[0].clips.push(Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             id: clip,
             asset_id: asset,

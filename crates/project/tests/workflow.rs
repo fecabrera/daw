@@ -46,6 +46,70 @@ impl Fixture {
 }
 
 #[test]
+fn reversed_trimmed_stretch_reuses_prepared_audio_and_exports_after_reopen() {
+    use daw_media::{ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let source = fixture.wav("reverse.wav", 48_000, 2, 32, true);
+    let bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    let id = session.import(&source, None, 2_000).unwrap();
+    let clip = &mut session.project.tracks[0].clips[0];
+    clip.stretch = daw_core::ClipStretch::new(2, 3);
+    clip.source_offset_frame = 900;
+    clip.length_frames = 4_000;
+    session.prepare_stretches().unwrap();
+    let renderer = |session: &Session| {
+        let mut renderer = daw_engine::Renderer::try_new(session.plan()).unwrap();
+        let mut samples = vec![[0.; 2]; 4_000];
+        renderer.render_offline_at(2_000, &mut samples);
+        samples
+    };
+    let mut expected = renderer(&session);
+    expected.reverse();
+    let original = session.project.clone();
+    session.project.edit(Edit::ReverseClip(id)).unwrap();
+    assert!(!session.audio_preparation_needed(&session.project));
+    assert_eq!(renderer(&session), expected);
+
+    let folder = fixture.0.join("reversed");
+    session.save(&folder).unwrap();
+    let loaded = Session::open(&folder).unwrap();
+    assert_eq!(loaded.project.tracks, session.project.tracks);
+    let output = fixture.0.join("rendered.wav");
+    loaded
+        .export_with_settings(
+            &output,
+            false,
+            ExportSettings {
+                wav_codec: WavCodec::Float32,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let actual = daw_media::decode_wav(&output).unwrap();
+    assert_eq!(&actual.samples[2_000..6_000], expected);
+    assert_eq!(fs::read(source).unwrap(), bytes);
+
+    let (split, _) = loaded
+        .project
+        .split_clips(&[id], 3_500, Default::default())
+        .unwrap();
+    let before = &loaded.project.tracks[0].clips[0];
+    for clip in &split.tracks[0].clips {
+        for local in 0..clip.length_frames {
+            assert_eq!(
+                clip.source_frame(local),
+                before.source_frame(clip.start_frame - before.start_frame + local),
+            );
+        }
+    }
+    assert_eq!(
+        loaded.project.edited(Edit::ReverseClip(id)).unwrap().tracks,
+        original.tracks
+    );
+}
+
+#[test]
 fn included_storage_roundtrips_save_save_as_and_session_open() {
     let fixture = Fixture::new();
     let source = fixture.wav("original.wav", 48_000, 2, 24, false);

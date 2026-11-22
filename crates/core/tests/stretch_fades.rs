@@ -39,6 +39,7 @@ fn stretch_transactions_retain_scaled_group_fades_and_trim_neighbors() {
             stretch: None,
             gain_db: 0.0,
             transpose: 0,
+            reversed: false,
             muted: false,
             color: None,
             channels: Default::default(),

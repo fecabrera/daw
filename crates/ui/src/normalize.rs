@@ -57,7 +57,7 @@ impl Draft {
     }
 }
 impl DawUi {
-    pub(super) fn normalization_targets_are_audio(&self, ids: &[Id]) -> bool {
+    pub(super) fn clip_targets_are_audio(&self, ids: &[Id]) -> bool {
         !ids.is_empty()
             && ids.iter().all(|id| {
                 self.session

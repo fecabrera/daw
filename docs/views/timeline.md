@@ -177,14 +177,16 @@ Use [Normalize gain](../editing/normalize-gain.md) to set each selected audio cl
 Open **Clip** in the macOS menu bar or the Windows/Linux application menu. Its actions have three groups, separated by lines:
 
 - **Import clip**, **Add MIDI pattern**.
-- **Split at playhead**, **Merge**, **Bounce clips**, **Stem separation**, **Normalize gain**.
+- **Split at playhead**, **Merge**, **Bounce clips**, **Stem separation**, **Normalize gain**, **Reverse**.
 - **Edit clip**, **Disable clip**, **Delete clip**.
 
 Choose **Add MIDI pattern** with a MIDI track selected to place a new pattern at the playhead. It follows the same placement rules as other new clips: covered clips are trimmed, split, or removed. Undo restores the previous arrangement. Import clip accepts WAV, MP3, AAC-LC, and Opus audio. Use Command+Shift+I on macOS or Ctrl+Shift+I on Windows/Linux to import a clip.
 
 Edit, Disable and Stem separation use the primary selected clip. Disable changes to **Enable clip** for a disabled clip. Delete removes all selected clips. Split acts on selected clips that cross the playhead. Unavailable actions are disabled; Stem separation requires an audio clip in Timeline and a validated model.
 
-Right-click a clip for the same last two groups: Split/Merge/Bounce clips/Stem separation/Normalize gain, then Edit/Disable/Delete. Edit, Disable and Stem separation use the clicked clip. Split, Merge, Bounce clips, Normalize gain and Delete use the selected group when the clicked clip belongs to it; otherwise they use that clip. See the requirements for [audio merging](#merge-audio-clips), [MIDI merging](#merge-midi-clips), [beat merging](beat-editor.md#merge-beat-patterns), and [Normalize gain](../editing/normalize-gain.md). MIDI headers retain the separate selected-note Velocity and Delete note controls.
+Right-click a clip to access its clip actions. Edit, Disable and Stem separation use the clicked clip. Split, Merge, Bounce clips, Normalize gain, Reverse and Delete use the selected group when the clicked clip belongs to it. Otherwise they use the clicked clip. See [audio merging](#merge-audio-clips), [MIDI merging](#merge-midi-clips), [beat merging](beat-editor.md#merge-beat-patterns), and [Normalize gain](../editing/normalize-gain.md). MIDI headers retain the separate selected-note Velocity and Delete note controls.
+
+Choose **Reverse** from the **Clip** menu or an audio clip's context menu. It plays the audible slice of each selected audio clip backward, including its trims, time stretch, and repeats. Clip position, duration, transpose, and timeline fades stay in place. Reverse again to restore the original direction, or use Undo to revert the edit.
 
 ## Select and edit clips
 

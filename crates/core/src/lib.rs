@@ -380,6 +380,9 @@ pub struct Clip {
     /// Disabled clips retain their content but do not generate audio or note events.
     #[serde(default)]
     pub muted: bool,
+    /// Read the audio source range from its last frame to its first.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reversed: bool,
     pub id: Id,
     pub asset_id: Id,
     pub name: String,
@@ -481,6 +484,16 @@ impl Project {
     }
 }
 impl Clip {
+    pub fn reverse_audio(&mut self) {
+        if let Some(repeat) = &mut self.repeat
+            && repeat.phase_frame < repeat.length_frames
+        {
+            repeat.phase_frame =
+                repeat.length_frames - 1 - repeat.position(self.length_frames.saturating_sub(1));
+        }
+        self.reversed = !self.reversed;
+    }
+
     pub fn source_length(&self, original_frames: u64) -> Option<u64> {
         self.stretch.map_or(Some(original_frames), |stretch| {
             stretch.scale(original_frames)
@@ -529,7 +542,31 @@ impl Clip {
 
     /// Map a timeline position inside a validated clip to its source frame.
     pub fn source_frame(&self, local: u64) -> u64 {
-        self.source_offset_frame + self.repeat.map_or(local, |repeat| repeat.position(local))
+        let (length, offset) = self.repeat.map_or((self.length_frames, local), |repeat| {
+            (repeat.length_frames, repeat.position(local))
+        });
+        self.source_offset_frame
+            + if self.reversed {
+                length - 1 - offset
+            } else {
+                offset
+            }
+    }
+
+    /// Signed source position, including audio handles beyond the clip edges.
+    pub fn source_position(&self, local: i128) -> i128 {
+        let (length, offset) = self.repeat.map_or((self.length_frames, local), |repeat| {
+            (
+                repeat.length_frames,
+                i128::from(repeat.shifted(local).phase_frame),
+            )
+        });
+        let offset = if self.reversed {
+            (i128::from(length) - 1).saturating_sub(offset)
+        } else {
+            offset
+        };
+        i128::from(self.source_offset_frame).saturating_add(offset)
     }
 
     /// Source windows covered by a local interval, with at most one wrap.
@@ -539,12 +576,31 @@ impl Clip {
             return [(0, 0); 2];
         }
         let Some(repeat) = self.repeat else {
-            return [(self.source_frame(local), count), (0, 0)];
+            return [
+                (
+                    self.source_frame(if self.reversed {
+                        local + count - 1
+                    } else {
+                        local
+                    }),
+                    count,
+                ),
+                (0, 0),
+            ];
         };
         if count >= repeat.length_frames {
             return [(self.source_offset_frame, repeat.length_frames), (0, 0)];
         }
         let first = count.min(repeat.length_frames - repeat.position(local));
+        if self.reversed {
+            return [
+                (self.source_frame(local + first - 1), first),
+                (
+                    self.source_offset_frame + repeat.length_frames - (count - first),
+                    count - first,
+                ),
+            ];
+        }
         [
             (self.source_frame(local), first),
             (self.source_offset_frame, count - first),
@@ -553,7 +609,14 @@ impl Clip {
 
     /// First local frame and repeat period for a source frame inside the clip.
     pub fn source_occurrence(&self, source: u64) -> Option<(u64, Option<u64>)> {
-        let offset = source.checked_sub(self.source_offset_frame)?;
+        let mut offset = source.checked_sub(self.source_offset_frame)?;
+        if self.reversed {
+            offset = self
+                .repeat
+                .map_or(self.length_frames, |repeat| repeat.length_frames)
+                .checked_sub(offset)?
+                .checked_sub(1)?;
+        }
         let (first, period) = match self.repeat {
             Some(repeat) if offset < repeat.length_frames => {
                 let first = repeat.first_local_frame(offset);
@@ -574,7 +637,11 @@ impl Clip {
             // Returning to one copy exits looping, including after opposite-edge resizes.
             self.repeat = None;
         } else if self.length_frames <= repeat.length_frames - repeat.phase_frame {
-            self.source_offset_frame += repeat.phase_frame;
+            self.source_offset_frame += if self.reversed {
+                repeat.length_frames - repeat.phase_frame - self.length_frames
+            } else {
+                repeat.phase_frame
+            };
             self.repeat = None;
         }
     }
@@ -820,6 +887,9 @@ impl Project {
         }
         if !a.is_audio() && !c.channels.is_default() {
             return Err(invalid("Channel settings require an audio clip"));
+        }
+        if c.reversed && !a.is_audio() {
+            return Err(invalid("Reverse requires an audio clip"));
         }
         if !c.fades.valid() || (!a.is_audio() && !c.fades.is_default()) {
             return Err(invalid("Invalid audio clip fades"));
@@ -1241,6 +1311,9 @@ impl Project {
             Edit::SetClipMuted { clip_id, muted } => {
                 self.clip_mut(clip_id)?.muted = muted;
             }
+            Edit::ReverseClip(clip_id) => {
+                self.clip_mut(clip_id)?.reverse_audio();
+            }
             Edit::SetClipChannels { clip_id, channels } => {
                 self.clip_mut(clip_id)?.channels = channels;
             }
@@ -1371,7 +1444,7 @@ impl Project {
                 let mut right = Clip {
                     id: Id::new_v4(),
                     start_frame: at,
-                    source_offset_frame: if c.repeat.is_some() {
+                    source_offset_frame: if c.repeat.is_some() || c.reversed {
                         c.source_offset_frame
                     } else {
                         c.source_offset_frame + source_advance
@@ -1382,6 +1455,9 @@ impl Project {
                         .map(|repeat| repeat.shifted(i128::from(source_advance))),
                     ..c.clone()
                 };
+                if c.reversed && c.repeat.is_none() {
+                    c.source_offset_frame += c.length_frames - left_len;
+                }
                 c.length_frames = left_len;
                 if c.fades.fade_out.inherit_source {
                     c.fades.fade_out = Default::default();
@@ -1559,6 +1635,7 @@ pub enum Edit {
         clip_id: Id,
         muted: bool,
     },
+    ReverseClip(Id),
     SetClipChannels {
         clip_id: Id,
         channels: ClipChannels,
@@ -1726,6 +1803,7 @@ mod tests {
         let clip = Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             id: Id::nil(),
             asset_id: Id::nil(),
@@ -1788,6 +1866,7 @@ mod tests {
             let mut clip = Clip {
                 channels: Default::default(),
                 fades: Default::default(),
+                reversed: false,
                 muted: false,
                 stretch: None,
                 id: Id::nil(),
@@ -1963,6 +2042,7 @@ mod tests {
         project.tracks[0].clips.push(Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             id: clip_id,
             asset_id,

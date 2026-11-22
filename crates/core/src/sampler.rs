@@ -6,6 +6,7 @@ impl From<&SamplerInput> for Clip {
             channels: Default::default(),
             fades: Default::default(),
             muted: false,
+            reversed: input.reversed,
             id: input.asset_id,
             asset_id: input.asset_id,
             name: input.name.clone(),
@@ -23,6 +24,7 @@ impl From<&SamplerInput> for Clip {
 impl From<&Clip> for SamplerInput {
     fn from(clip: &Clip) -> Self {
         Self {
+            reversed: clip.reversed,
             asset_id: clip.asset_id,
             name: clip.name.clone(),
             source_offset_frame: clip.source_offset_frame,

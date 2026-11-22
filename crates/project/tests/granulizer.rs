@@ -192,6 +192,7 @@ fn switching_to_granular_drops_unused_offline_pitches_and_reuses_the_root_buffer
     };
     let mut settings = SamplerSettings {
         input: Some(daw_core::SamplerInput {
+            reversed: false,
             asset_id: Id::new_v4(),
             name: "sample".into(),
             source_offset_frame: 0,

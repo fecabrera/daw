@@ -3373,6 +3373,7 @@ fn sampler_plan(rate: u32, trigger: SamplerTrigger) -> RenderPlan {
         trigger,
         end_frame: length,
         input: Some(SamplerInput {
+            reversed: false,
             asset_id: asset,
             name: "Stereo sample".into(),
             source_offset_frame: 0,

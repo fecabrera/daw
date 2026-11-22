@@ -929,6 +929,7 @@ mod tests {
             for tempo in [60.0, 120.0, 180.0] {
                 let mut settings = SamplerSettings {
                     input: Some(daw_core::SamplerInput {
+                        reversed: false,
                         asset_id: Id::new_v4(),
                         name: "Sample".into(),
                         source_offset_frame: 0,

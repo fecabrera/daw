@@ -443,6 +443,7 @@ fn add_audio(plan: &mut RenderPlan, samples: Vec<[f32; 2]>) -> Id {
         transpose: 0,
         channels: Default::default(),
         fades: Default::default(),
+        reversed: false,
         muted: false,
         stretch: None,
     });

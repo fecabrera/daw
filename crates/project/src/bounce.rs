@@ -284,6 +284,7 @@ impl Session {
                 transpose: 0,
                 channels: Default::default(),
                 fades,
+                reversed: false,
                 muted: false,
             }];
             outputs.push(BounceOutput {

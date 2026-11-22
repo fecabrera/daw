@@ -2598,6 +2598,7 @@ mod tests {
         project.tracks[0].clips.push(Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             stretch: None,
             id: Id::new_v4(),

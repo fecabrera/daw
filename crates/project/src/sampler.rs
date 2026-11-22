@@ -136,6 +136,7 @@ impl Session {
             track,
             layer,
             SamplerInput {
+                reversed: false,
                 asset_id: id,
                 name,
                 source_offset_frame: 0,

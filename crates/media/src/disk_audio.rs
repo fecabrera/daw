@@ -175,6 +175,7 @@ pub struct ReadAhead {
     slots: Vec<Slot>,
     wanted: AtomicU64,
     pinned: AtomicU64,
+    reverse: AtomicBool,
     _memory: AudioReservation,
 }
 impl ReadAhead {
@@ -187,6 +188,7 @@ impl ReadAhead {
             slots: (0..slots).map(|_| Slot::new()).collect(),
             wanted: AtomicU64::new(0),
             pinned: AtomicU64::new(EMPTY),
+            reverse: AtomicBool::new(false),
             _memory: memory,
         });
         worker()?
@@ -195,6 +197,10 @@ impl ReadAhead {
         Ok(cache)
     }
     pub fn request(&self, frame: u64, pinned: Option<u64>) {
+        self.request_direction(frame, pinned, false);
+    }
+    fn request_direction(&self, frame: u64, pinned: Option<u64>, reverse: bool) {
+        self.reverse.store(reverse, Ordering::Relaxed);
         self.wanted.store(frame, Ordering::Relaxed);
         self.pinned
             .store(pinned.unwrap_or(EMPTY), Ordering::Relaxed);
@@ -218,10 +224,19 @@ impl ReadAhead {
         let align = |n: u64| n / STREAM_CHUNK_FRAMES as u64 * STREAM_CHUNK_FRAMES as u64;
         let wanted = align(self.wanted.load(Ordering::Relaxed));
         let pinned = self.pinned.load(Ordering::Relaxed);
+        let reverse = self.reverse.load(Ordering::Relaxed);
+        let ahead = |chunks| {
+            let distance = chunks * STREAM_CHUNK_FRAMES as u64;
+            if reverse {
+                wanted.checked_sub(distance).unwrap_or(EMPTY)
+            } else {
+                wanted.saturating_add(distance)
+            }
+        };
         let targets = [
             wanted,
-            wanted.saturating_add(STREAM_CHUNK_FRAMES as u64),
-            wanted.saturating_add(2 * STREAM_CHUNK_FRAMES as u64),
+            ahead(1),
+            ahead(2),
             if pinned == EMPTY {
                 EMPTY
             } else {
@@ -328,13 +343,16 @@ impl FrameReader {
         Ok(())
     }
     pub fn ready(&self, frame: u64, pinned: Option<u64>) -> bool {
+        self.ready_direction(frame, pinned, false)
+    }
+    pub fn ready_direction(&self, frame: u64, pinned: Option<u64>, reverse: bool) -> bool {
         if self.audio.disk.is_none() || frame >= self.audio.frame_count() {
             return true;
         }
         let Some(cache) = &self.live else {
             return false;
         };
-        cache.request(frame, pinned);
+        cache.request_direction(frame, pinned, reverse);
         !cache.failed() && cache.ready(frame)
     }
     /// Callback-safe. Call ready before advancing any renderer state.
@@ -601,6 +619,21 @@ mod tests {
         }
         assert_eq!(cache.sample(position as u64), Some(frames[position]));
         assert_eq!(cache.sample(19), Some(frames[19]));
+        let mut reader = FrameReader::new(&audio);
+        reader.prepare_live().unwrap();
+        let backward_from = position + STREAM_CHUNK_FRAMES;
+        let earlier = position;
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !reader.ready_direction(backward_from as u64, None, true)
+            || reader.try_live_sample(earlier as u64).is_none()
+        {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(
+            reader.try_live_sample(earlier as u64),
+            Some(frames[earlier])
+        );
         assert_eq!(
             audio.materialized(&|| false).unwrap().samples.as_slice(),
             frames

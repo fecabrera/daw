@@ -172,6 +172,7 @@ impl DawUi {
             i128::from(owner.length_frames)
         };
         let mut current = owner.clone();
+        let mut backwards = false;
         let mut gain_db = 0.0;
         let mut channels = daw_core::ClipChannels::default();
         for depth in 0..64 {
@@ -183,6 +184,25 @@ impl DawUi {
                 channels = current.channels.then(channels);
             }
             let cached = self.session.audio_for_clip(&current);
+            let span = i128::from(length.checked_sub(1)?);
+            let other = if backwards {
+                local - span
+            } else {
+                local + span
+            };
+            let point = current.source_position(local);
+            let source_start = point.min(current.source_position(other));
+            let mut visual = current.clone();
+            visual.start_frame = start;
+            visual.length_frames = length;
+            if let Some(repeat) = current.repeat {
+                visual.repeat = Some(repeat.shifted(local.min(other)));
+                if backwards {
+                    visual.reverse_audio();
+                }
+            } else {
+                visual.reversed ^= backwards;
+            }
             let context = daw_media::prepared_clip_audio(
                 &current,
                 &self.session.audio,
@@ -196,23 +216,17 @@ impl DawUi {
                 .or_else(|| self.session.audio.get(&current.asset_id))
             {
                 let prefix = context.map_or(0, |c| c.start_frame);
-                let mut visual = current.clone();
-                if let Some(repeat) = current.repeat {
-                    visual.repeat = Some(repeat.shifted(local));
+                if visual.repeat.is_some() {
                     visual.source_offset_frame = visual.source_offset_frame.checked_add(prefix)?;
                 } else {
-                    visual.source_offset_frame = u64::try_from(
-                        i128::from(current.source_offset_frame) + local + i128::from(prefix),
-                    )
-                    .ok()?;
+                    visual.source_offset_frame =
+                        u64::try_from(source_start + i128::from(prefix)).ok()?;
                     if cached.is_some()
                         && visual.source_offset_frame.checked_add(length)? > audio.frame_count()
                     {
                         return None;
                     }
                 }
-                visual.start_frame = start;
-                visual.length_frames = length;
                 return Some(ContinuationWaveform {
                     clip: visual,
                     source: ContinuationSource::Audio(
@@ -228,41 +242,34 @@ impl DawUi {
                 });
             }
             let view = self.session.compound_views.get(&current.asset_id)?;
-            let point = current.extended_source_frame(local).map_or_else(
-                || i128::from(current.source_offset_frame) + local,
-                i128::from,
-            );
             let size = self
                 .session
                 .project
                 .audio_asset(current.asset_id)?
                 .decoded_frame_count;
             if current.repeat.is_some()
-                || (point >= 0 && point + i128::from(length) <= i128::from(size))
+                || (source_start >= 0 && source_start + i128::from(length) <= i128::from(size))
             {
-                if let Some(repeat) = current.repeat {
-                    current.repeat = Some(repeat.shifted(local));
-                } else {
-                    current.source_offset_frame = u64::try_from(point).ok()?;
+                if visual.repeat.is_none() {
+                    visual.source_offset_frame = u64::try_from(source_start).ok()?;
                 }
-                current.start_frame = start;
-                current.length_frames = length;
-                current.gain_db = gain_db;
-                current.channels = channels;
-                current.muted = false;
+                visual.gain_db = gain_db;
+                visual.channels = channels;
+                visual.muted = false;
                 return Some(ContinuationWaveform {
-                    clip: current,
+                    clip: visual,
                     source: ContinuationSource::Compound,
                     gain: 1.0,
                     channels: Default::default(),
                 });
             }
-            let leaf = if point < 0 {
+            let leaf = if source_start < 0 {
                 view.track.clips.first()?
             } else {
                 view.track.clips.last()?
             };
             local = point - i128::from(leaf.start_frame);
+            backwards ^= current.reversed;
             current = leaf.clone();
         }
         None

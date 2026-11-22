@@ -31,14 +31,19 @@ impl Clip {
                 let minimum = if clip.repeat.is_some() {
                     0
                 } else {
-                    -offset.min(start)
+                    let handles = if clip.reversed {
+                        i128::from(clip.source_length(original_frames)?) - offset - length
+                    } else {
+                        offset
+                    };
+                    -handles.min(start)
                 };
                 let effective = delta.max(minimum);
                 clip.start_frame = (start + effective) as u64;
                 clip.length_frames = (length - effective) as u64;
                 if let Some(repeat) = clip.repeat {
                     clip.repeat = Some(repeat.shifted(effective));
-                } else {
+                } else if !clip.reversed {
                     clip.source_offset_frame = (offset + effective) as u64;
                 }
                 effective
@@ -48,13 +53,21 @@ impl Clip {
                     0
                 } else {
                     let source = i128::from(clip.source_length(original_frames)?);
-                    (source - offset - length).min(i128::from(u64::MAX) - start - length)
+                    let handles = if clip.reversed {
+                        offset
+                    } else {
+                        source - offset - length
+                    };
+                    handles.min(i128::from(u64::MAX) - start - length)
                 };
                 if maximum < 0 {
                     return None;
                 }
                 let effective = delta.min(maximum);
                 clip.length_frames = (length + effective) as u64;
+                if clip.reversed && clip.repeat.is_none() {
+                    clip.source_offset_frame = (offset - effective) as u64;
+                }
                 effective
             }
         };
@@ -84,6 +97,7 @@ mod tests {
         Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             id: Id::new_v4(),
             asset_id: Id::new_v4(),
@@ -96,6 +110,40 @@ mod tests {
             stretch: None,
             gain_db: 0.0,
             transpose: 0,
+        }
+    }
+
+    #[test]
+    fn reverse_preserves_the_audible_slice_and_trims_the_playback_edges() {
+        let mut original = clip();
+        original.stretch = ClipStretch::new(1, 2);
+        for repeat in [
+            None,
+            Some(ClipLoop {
+                length_frames: 15,
+                phase_frame: 3,
+            }),
+        ] {
+            original.repeat = repeat;
+            let mut reversed = original.clone();
+            reversed.reverse_audio();
+            for local in 0..original.length_frames {
+                assert_eq!(
+                    reversed.source_frame(local),
+                    original.source_frame(original.length_frames - 1 - local)
+                );
+            }
+            for (edge, delta, advance) in [(ClipEdge::Left, 7, 7), (ClipEdge::Right, -7, 0)] {
+                let trimmed = reversed.trimmed_by(edge, delta, 100).unwrap();
+                for local in 0..trimmed.length_frames {
+                    assert_eq!(
+                        trimmed.source_frame(local),
+                        reversed.source_frame(local + advance)
+                    );
+                }
+            }
+            reversed.reverse_audio();
+            assert_eq!(reversed, original);
         }
     }
 

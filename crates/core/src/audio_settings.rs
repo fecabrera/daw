@@ -167,6 +167,7 @@ mod tests {
             .push(crate::Clip {
                 channels: Default::default(),
                 fades: Default::default(),
+                reversed: false,
                 muted: false,
                 id: crate::Id::new_v4(),
                 asset_id: asset,

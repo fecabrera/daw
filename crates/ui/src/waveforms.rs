@@ -272,6 +272,7 @@ mod tests {
         Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             stretch: None,
             id: Id::nil(),
@@ -305,17 +306,21 @@ mod tests {
                 phase_frame: 731,
             }),
         ] {
-            let clip = clip(100, if repeat.is_some() { 3000 } else { 800 }, repeat);
-            for local in [0, 1, 68, 69, 255, 500, 799] {
-                for count in [1, 3, 70, 256, 700, 800, 2000] {
-                    for channel in 0..2 {
-                        let mut expected = [0.0_f32; 2];
-                        for frame in local..(local + count).min(clip.length_frames) {
-                            let sample = audio.samples[clip.source_frame(frame) as usize][channel];
-                            expected[0] = expected[0].min(sample);
-                            expected[1] = expected[1].max(sample);
+            let mut clip = clip(100, if repeat.is_some() { 3000 } else { 800 }, repeat);
+            for reversed in [false, true] {
+                clip.reversed = reversed;
+                for local in [0, 1, 68, 69, 255, 500, 799] {
+                    for count in [1, 3, 70, 256, 700, 800, 2000] {
+                        for channel in 0..2 {
+                            let mut expected = [0.0_f32; 2];
+                            for frame in local..(local + count).min(clip.length_frames) {
+                                let sample =
+                                    audio.samples[clip.source_frame(frame) as usize][channel];
+                                expected[0] = expected[0].min(sample);
+                                expected[1] = expected[1].max(sample);
+                            }
+                            assert_eq!(extrema(&audio, &clip, local, count, channel), expected);
                         }
-                        assert_eq!(extrema(&audio, &clip, local, count, channel), expected);
                     }
                 }
             }

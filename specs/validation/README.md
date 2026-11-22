@@ -2,6 +2,21 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Reverse audio clips — 2026-11-22
+
+The menu input test exercises the context and Clip menus, multi-clip Undo,
+and the guard on MIDI clips. The model and renderer tests check phased
+repeats, trim edges, splits, reversed compound audio, waveform windows, and
+backward disk read-ahead. The project workflow confirms that a trimmed,
+stretched clip reuses its prepared audio and exports the same reversed samples
+after saving and reopening.
+
+Formatting, strict workspace Clippy, the CLI smoke test, and signed macOS
+bundle verification passed. The debug and release workspace suites each
+passed 3,690 tests with the known macOS Audio Unit registration case excluded. Menu interaction
+was tested through egui. Native menu clicks and audio device playback were
+not checked.
+
 ## Export range, audio tail and Timeline Select All — 2026-11-22
 
 The export tests check default range precedence, independent Start and End

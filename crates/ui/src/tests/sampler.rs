@@ -1278,6 +1278,7 @@ fn sample_preview_uses_presentation_color_for_midi_and_nested_sources() {
             // Paint-only input: decoding is not needed to verify the shared header/body colors.
             let sampler = daw_core::SamplerSettings {
                 input: Some(daw_core::SamplerInput {
+                    reversed: false,
                     asset_id: Id::new_v4(),
                     name: "Color preview".into(),
                     source_offset_frame: 0,

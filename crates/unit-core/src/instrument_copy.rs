@@ -541,6 +541,7 @@ mod tests {
         layer.oscillator_modulations.clear();
         layer.sampler = Some(SamplerSettings {
             input: Some(SamplerInput {
+                reversed: false,
                 asset_id: Uuid::new_v4(),
                 name: "Sample".into(),
                 source_offset_frame: 20,

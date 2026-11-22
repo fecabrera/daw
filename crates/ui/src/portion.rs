@@ -317,6 +317,7 @@ impl DawUi {
                     clip: Clip {
                         channels: Default::default(),
                         fades: Default::default(),
+                        reversed: false,
                         muted: false,
                         id: Id::nil(),
                         asset_id: Id::nil(),

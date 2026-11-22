@@ -202,3 +202,33 @@ fn clip_menu_separation_requires_a_selected_audio_clip_and_validated_model() {
         app.separation_models.validated.set(kind, None);
     }
 }
+
+#[test]
+fn reverse_context_and_menubar_use_the_same_undoable_audio_edit() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    let first = app.session.project.tracks[0].clips[0].clone();
+    let second = Clip {
+        id: Id::new_v4(),
+        start_frame: first.end(),
+        ..first.clone()
+    };
+    app.session.project.tracks[0].clips.push(second.clone());
+    app.select_clip(first.id, track, false);
+    click(&mut app, &ctx, Some(second.id), "Reverse");
+    assert!(!app.session.project.tracks[0].clips[0].reversed);
+    assert!(app.session.project.tracks[0].clips[1].reversed);
+    assert_eq!(app.selected_clip, Some(first.id));
+    app.select_clip(second.id, track, true);
+    click(&mut app, &ctx, None, "Reverse");
+    assert!(app.session.project.tracks[0].clips[0].reversed);
+    assert!(!app.session.project.tracks[0].clips[1].reversed);
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert!(!app.session.project.tracks[0].clips[0].reversed);
+    assert!(app.session.project.tracks[0].clips[1].reversed);
+
+    let midi = app.session.project.add_midi_track().unwrap();
+    let pattern = app.session.project.add_midi_pattern(midi, 0).unwrap();
+    app.select_clip(pattern, midi, false);
+    assert!(!app.clip_menu_action_enabled(ClipMenuAction::Reverse, &ctx));
+}

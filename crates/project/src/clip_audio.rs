@@ -247,6 +247,7 @@ fn audio_mapping(clip: &Clip) -> impl PartialEq + use<> {
         clip.repeat,
         clip.stretch,
         clip.transpose,
+        clip.reversed,
     )
 }
 

@@ -132,7 +132,7 @@ fn normalize_menu_guards_mixed_midi_selection_and_modal_cancel() {
     assert!(!app.dirty);
     app.session.project.assets[0].midi_pattern = Some(Default::default());
     assert!(!app.clip_menu_action_enabled(ClipMenuAction::Normalize, &ctx));
-    assert!(!app.normalization_targets_are_audio(&[id, Id::new_v4()]));
+    assert!(!app.clip_targets_are_audio(&[id, Id::new_v4()]));
 }
 
 #[test]

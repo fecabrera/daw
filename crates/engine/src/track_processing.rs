@@ -155,6 +155,7 @@ mod channel_tests {
                     next.layers[0].oscillators.clear();
                     next.layers[0].sampler = Some(daw_core::SamplerSettings {
                         input: Some(daw_core::SamplerInput {
+                            reversed: false,
                             asset_id: daw_core::Id::new_v4(),
                             name: "sample".into(),
                             source_offset_frame: 0,

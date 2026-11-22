@@ -35,6 +35,7 @@ pub fn plan(rate: u32, mono: bool) -> RenderPlan {
     project.tracks[0].clips.push(Clip {
         channels: Default::default(),
         fades: Default::default(),
+        reversed: false,
         muted: false,
         id: Id::new_v4(),
         asset_id: id,

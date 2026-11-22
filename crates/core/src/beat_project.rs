@@ -214,6 +214,7 @@ impl Project {
                 .filter(|n| *n > 0)
                 .ok_or_else(|| Error("Beat clip exceeds timing bounds".into()))?,
             source_offset_frame: 0,
+            reversed: false,
             muted: false,
             color: None,
             repeat: None,

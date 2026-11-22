@@ -150,15 +150,19 @@ impl Project {
             .filter_map(|a| a.compound_audio.as_ref())
             .flat_map(|s| &s.members)
     }
-    /// A cropped immutable composition needs its complete source clock, including
-    /// captured transitions on the removed side of a new cut.
+    /// A cropped composition or a reversed transition needs the complete source
+    /// clock, including captured handles outside the visible window.
     pub fn compound_window_requires_preparation(&self, clip: &Clip) -> bool {
-        clip.repeat.is_none()
-            && self.audio_asset(clip.asset_id).is_some_and(|a| {
-                a.compound_audio.is_some()
+        self.audio_asset(clip.asset_id).is_some_and(|a| {
+            a.compound_audio.is_some()
+                && ((clip.repeat.is_none()
                     && (clip.source_offset_frame != 0
-                        || clip.length_frames != a.decoded_frame_count)
-            })
+                        || clip.length_frames != a.decoded_frame_count))
+                    || (clip.reversed
+                        && [clip.fades.fade_in, clip.fades.fade_out]
+                            .iter()
+                            .any(|fade| fade.crossfade && fade.length_frames > 0)))
+        })
     }
     pub fn audio_asset(&self, id: Id) -> Option<&Asset> {
         self.assets.iter().find(|a| a.id == id && a.is_audio())
@@ -276,6 +280,7 @@ impl Project {
             let cut = self.compound_window_requires_preparation(&wrapper);
             if source.is_none()
                 || cut
+                || wrapper.reversed
                 || wrapper.repeat.is_some()
                 || wrapper.stretch.is_some()
                 || wrapper.transpose != 0
@@ -467,7 +472,7 @@ impl Project {
         let Some(recipe) = &asset.compound_audio else {
             let handles = if clip.repeat.is_some() {
                 u64::MAX
-            } else if left {
+            } else if left != clip.reversed {
                 clip.source_offset_frame
             } else {
                 clip.source_length(asset.decoded_frame_count)?
@@ -493,25 +498,29 @@ impl Project {
             .find(|m| m.start_frame <= source_point && source_point < m.end())?;
         let mut exposed = member.clone();
         let advance = source_point - member.start_frame;
-        if left {
+        let source_left = left != clip.reversed;
+        if source_left {
             if let Some(repeat) = exposed.repeat {
                 exposed.repeat = Some(repeat.shifted(i128::from(advance)));
-            } else {
-                exposed.source_offset_frame = exposed.source_frame(advance);
+            } else if !exposed.reversed {
+                exposed.source_offset_frame += advance;
             }
             exposed.length_frames = exposed.length_frames.saturating_sub(advance);
         } else {
+            if exposed.reversed && exposed.repeat.is_none() {
+                exposed.source_offset_frame += exposed.length_frames - advance - 1;
+            }
             exposed.length_frames = advance + 1;
         }
-        let child = self.edge_geometry_at(&exposed, left, depth + 1, cache)?;
+        let child = self.edge_geometry_at(&exposed, source_left, depth + 1, cache)?;
         let scale = |frames| clip.stretch.map_or(Some(frames), |s| s.scale(frames));
         let inherited = if left {
             clip.fades.fade_in.inherit_source
         } else {
             clip.fades.fade_out.inherit_source
         };
-        let extension = self.compound_extension_at(asset.id, left, depth + 1, cache);
-        let interior = if left {
+        let extension = self.compound_extension_at(asset.id, source_left, depth + 1, cache);
+        let interior = if source_left {
             source_point
         } else {
             asset.decoded_frame_count.saturating_sub(source_point + 1)

@@ -5938,6 +5938,7 @@ impl DawUi {
         let clip = Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             stretch: None,
             id: Id::nil(),
@@ -6520,6 +6521,7 @@ mod tests {
         app.session.project.tracks[0].clips.push(Clip {
             channels: Default::default(),
             fades: Default::default(),
+            reversed: false,
             muted: false,
             stretch: None,
             id: Id::new_v4(),

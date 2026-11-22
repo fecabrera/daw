@@ -109,6 +109,7 @@ impl AudioTrack {
         self.baked_loops.hash(hash);
         self.clips.len().hash(hash);
         for (i, clip) in self.clips.iter().enumerate() {
+            clip.reversed.hash(hash);
             // Private provenance IDs and presentation do not change source samples.
             format!(
                 "{:?}",
@@ -366,7 +367,7 @@ impl AudioTrack {
                 if let Some(context) = &contexts[owner] {
                     let handles = if clip.repeat.is_some() {
                         u64::MAX
-                    } else if left {
+                    } else if left != clip.reversed {
                         context.start_frame.saturating_add(clip.source_offset_frame)
                     } else {
                         context.audio.frame_count().saturating_sub(
@@ -619,7 +620,7 @@ impl AudioTrack {
         }
         Ok(())
     }
-    fn ready_primary(&mut self, frame: u64, loop_start: Option<u64>) -> bool {
+    fn ready_primary(&mut self, frame: u64, loop_start: Option<u64>, reverse: bool) -> bool {
         let clips = &self.clips;
         if let Some(start) = loop_start {
             if self.loop_pin.as_ref().is_none_or(|(old, _)| *old != start) {
@@ -636,11 +637,13 @@ impl AudioTrack {
             return true;
         };
         if let Some(source) = &mut self.compounds[index] {
-            return source.ready(
-                &[],
-                clips[index].source_frame(frame - clips[index].start_frame),
+            let clip = &clips[index];
+            return source.ready_direction(
+                clip.source_frame(frame - clip.start_frame),
                 loop_start
-                    .map(|f| clips[index].source_frame(f.saturating_sub(clips[index].start_frame))),
+                    .filter(|&f| f >= clip.start_frame && f < clip.end())
+                    .map(|f| clip.source_frame(f - clip.start_frame)),
+                reverse ^ clip.reversed,
             );
         }
         if self.audio[index].is_none() {
@@ -659,8 +662,14 @@ impl AudioTrack {
         let pinned = pin
             .filter(|(other, _)| *other == reader)
             .map(|(_, frame)| frame);
+        let reverse = reverse ^ clip.reversed;
+        let pinned = pinned.or_else(|| {
+            clip.repeat
+                .filter(|_| reverse)
+                .map(|repeat| clip.source_offset_frame + repeat.length_frames - 1)
+        });
         let position = clip.source_frame(frame - clip.start_frame);
-        let ready = self.readers[reader].ready(position, pinned);
+        let ready = self.readers[reader].ready_direction(position, pinned, reverse);
         self.staged = self.readers[reader]
             .try_live_sample(position)
             .map(|value| (index, position, value));
@@ -672,8 +681,11 @@ impl AudioTrack {
         frame: u64,
         loop_start: Option<u64>,
     ) -> bool {
+        self.ready_direction(frame, loop_start, false)
+    }
+    fn ready_direction(&mut self, frame: u64, loop_start: Option<u64>, reverse: bool) -> bool {
         self.staged_continuation = None;
-        let primary = self.ready_primary(frame, loop_start);
+        let primary = self.ready_primary(frame, loop_start, reverse);
         let clips = &self.clips;
         if let Some(i) = self.transition_ranges.at(frame) {
             let t = &self.transitions[i];
@@ -681,10 +693,11 @@ impl AudioTrack {
             let signed = signed_source_position(clip, i128::from(frame));
             let position = self.continuation_position(t.owner, signed).max(0) as u64;
             if let Some(source) = &mut self.compounds[t.owner] {
-                return source.ready(&[], position, None) && primary;
+                return source.ready_direction(position, None, reverse ^ clip.reversed) && primary;
             }
             if let Some(reader) = self.continuation_reader(t.owner) {
-                let ready = self.readers[reader].ready(position, None);
+                let ready =
+                    self.readers[reader].ready_direction(position, None, reverse ^ clip.reversed);
                 self.staged_continuation = self.readers[reader]
                     .try_live_sample(position)
                     .map(|value| (i, position, value));
@@ -897,8 +910,7 @@ fn read_pcm(
 
 fn signed_source_position(clip: &daw_core::Clip, frame: i128) -> i128 {
     let local = frame - i128::from(clip.start_frame);
-    clip.extended_source_frame(local)
-        .map_or_else(|| i128::from(clip.source_offset_frame) + local, i128::from)
+    clip.source_position(local)
 }
 
 fn repeat_fade(baked: bool, clip: &daw_core::Clip, position: u64, rate: u32) -> f32 {
