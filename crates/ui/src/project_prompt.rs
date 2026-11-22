@@ -1,7 +1,6 @@
 //! Hosts project prompts and their destination choosers on a desktop window.
 use crate::dialogs::FooterAction;
 use crate::{DawUi, DesktopPicker, dialogs, export_dialog, project_name_dialog};
-use daw_media::ExportSettings;
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -59,7 +58,7 @@ impl ProjectPromptWindow {
 
 enum Destination {
     Project(String),
-    Export(ExportSettings),
+    Export(export_dialog::Request),
 }
 
 #[derive(Clone, Copy)]
@@ -172,7 +171,9 @@ impl DawUi {
         }
         Some(match destination {
             Destination::Project(_) => DesktopPicker::ProjectLocation(*request),
-            Destination::Export(settings) => DesktopPicker::ExportFile(*request, settings.format),
+            Destination::Export(export) => {
+                DesktopPicker::ExportFile(*request, export.settings.format)
+            }
         })
     }
 
@@ -204,10 +205,13 @@ impl DawUi {
         }
     }
 
-    fn finish_export_picker(&mut self, path: Option<PathBuf>, settings: ExportSettings) {
+    fn finish_export_picker(&mut self, path: Option<PathBuf>, request: export_dialog::Request) {
         self.export_dialog = None;
         if let Some(path) = path {
-            self.export_to(path.with_extension(settings.format.extension()), settings);
+            self.export_to(
+                path.with_extension(request.settings.format.extension()),
+                request,
+            );
         }
     }
 
@@ -442,29 +446,25 @@ impl DawUi {
                 }
                 None => self.project_name_dialog = Some(draft),
             }
-        } else if let Some(mut settings) = self.export_dialog {
-            match export_dialog::show(
-                ctx,
-                &mut settings,
-                self.session.project.sample_rate_hz,
-                surface,
-            ) {
+        } else if let Some(mut draft) = self.export_dialog.take() {
+            match export_dialog::show(ctx, &mut draft, &self.session.project, surface) {
                 Some(export_dialog::Action::Cancel) => self.export_dialog = None,
                 Some(export_dialog::Action::Export) if self.native_desktop_windows_enabled() => {
-                    self.export_dialog = Some(settings);
-                    self.pick_destination(ProjectPromptKind::Export, Destination::Export(settings));
+                    let request = draft.request;
+                    self.export_dialog = Some(draft);
+                    self.pick_destination(ProjectPromptKind::Export, Destination::Export(request));
                 }
                 Some(export_dialog::Action::Export) => {
-                    let format = settings.format;
+                    let format = draft.request.settings.format;
                     let path = rfd::FileDialog::new()
                         .set_file_name(format!("mix.{}", format.extension()))
                         .add_filter(format.label(), &[format.extension()])
                         .save_file();
-                    self.finish_export_picker(path, settings);
+                    self.finish_export_picker(path, draft.request);
                 }
-                None => self.export_dialog = Some(settings),
+                None => self.export_dialog = Some(draft),
             }
-        } else if let Some(path) = &self.overwrite {
+        } else if let Some((path, _)) = &self.overwrite {
             let message = format!("Replace {}?", path.display());
             let replace = dialogs::Dialog::new(
                 "Replace export?",
@@ -476,10 +476,10 @@ impl DawUi {
             )
             .show_message(ctx, surface);
             if let Some(replace) = replace
-                && let Some(path) = self.overwrite.take()
+                && let Some((path, request)) = self.overwrite.take()
                 && replace
             {
-                self.export(path, true, self.overwrite_settings);
+                self.export(path, true, request);
             }
         } else if let Some(status) = &self.export_status {
             if status.show(ctx, surface) {
@@ -506,6 +506,7 @@ impl DawUi {
 mod tests {
     use super::*;
     use crate::{Action, DesktopPicker, DesktopWindow};
+    use daw_media::ExportSettings;
 
     fn child_frame(
         app: &mut DawUi,
@@ -624,7 +625,7 @@ mod tests {
         let root = egui::Context::default();
         let child = egui::Context::default();
 
-        app.export_to(output.0.clone(), settings);
+        app.export_to(output.0.clone(), app.export_request(settings));
         let window = app.desktop_window().unwrap();
         assert_eq!(window.title(), "Replace export?");
         assert!(!app.edit_environment_available());
@@ -632,7 +633,7 @@ mod tests {
         assert!(app.desktop_window().is_none() && app.job.is_none());
         assert_eq!(std::fs::read(&output.0).unwrap(), b"previous export");
 
-        app.export_to(output.0.clone(), settings);
+        app.export_to(output.0.clone(), app.export_request(settings));
         let next = app.desktop_window().unwrap();
         assert_ne!(next, window);
         child_frame(&mut app, &root, &child, next, vec![], false);
@@ -894,9 +895,14 @@ mod tests {
 
         let root = egui::Context::default();
         let child = egui::Context::default();
+        crate::fonts::configure(&child);
         child_frame(&mut app, &root, &child, window, vec![], false);
         let wav_height = app.desktop_window_size(window)[1];
-        app.export_dialog.as_mut().unwrap().format = ExportFormat::Mp3;
+        let draft = app.export_dialog.as_mut().unwrap();
+        draft.request.settings.format = ExportFormat::Mp3;
+        draft.request.region.start_frame = 100;
+        draft.request.region.include_tail = false;
+        let expected = draft.request;
         child_frame(&mut app, &root, &child, window, vec![], false);
         let shapes = child_frame(&mut app, &root, &child, window, vec![], false);
         assert!(app.desktop_window_size(window)[1] > wav_height);
@@ -919,6 +925,8 @@ mod tests {
             false,
         );
         child_frame(&mut app, &root, &child, window, vec![mouse(false)], false);
+        assert!(matches!(app.project_prompt_window.picker.as_ref(),
+            Some((_, Destination::Export(export))) if *export == expected));
         let request = app.take_desktop_picker().unwrap();
         assert!(matches!(
             request,

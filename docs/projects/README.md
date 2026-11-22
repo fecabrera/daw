@@ -184,7 +184,11 @@ Repeated imports of the same unchanged file can share audio storage. They remain
 
 ## Export
 
-Choose a format in the **Export audio** window, then click the highlighted **Export** button to open the system file picker. Close the Export window to cancel. WAV supports PCM16, PCM24, and float32 at the project rate; PCM24 is the default. MP3 supports 128, 192, 256, and 320 kbps; the default is 192 kbps. MP3 uses 48 kHz when the project rate is higher.
+In **Export audio**, drag the bar or beat digits in **Start** and **End** to
+adjust the range. The dialog starts with the enabled loop, otherwise the active
+time selection or the span of the selected clips, otherwise the full project.
+The range applies to the stereo mix. Choose a format and click **Export** to open
+the system file picker. Close the Export window to cancel. WAV supports PCM16, PCM24, and float32 at the project rate; PCM24 is the default. MP3 supports 128, 192, 256, and 320 kbps; the default is 192 kbps. MP3 uses 48 kHz when the project rate is higher.
 
 AAC exports stereo AAC-LC in an ADTS `.aac` file. Choose a target bitrate of 128,
 192, 256, or 320 kbps; the default is 192 kbps. Frame sizes vary with the audio.
@@ -197,7 +201,9 @@ exports include codec priming and a padded final frame. Reimported AAC clips can
 therefore start with a short delay and last slightly longer than the arrangement.
 Use WAV when exact sample alignment is required.
 
-Export includes the arranged project duration and appends enabled effect tails up to ten seconds. Bypassed effects add no tail. The completion report warns about the cutoff only if the rendered mix reaches −60 dBFS in the final 50 ms of a capped tail. Extend the arrangement with silence for longer fades. It follows the same mute, solo, pan, and effect settings as playback. Missing sources produce warnings and silence. Integer WAV, MP3, and AAC clamp clipping and report it. Float32 WAV retains levels above 0 dBFS without a warning. No automatic normalization is applied.
+**Include audio tail** is on by default. It lets enabled effects decay for up
+to ten seconds after End. Clips stop at End. Clear the checkbox to end the file
+at the selected boundary. Bypassed effects add no tail. The completion report warns about the cutoff only if the rendered mix reaches −60 dBFS in the final 50 ms of a capped tail. Extend the arrangement with silence for longer fades. It follows the same mute, solo, pan, and effect settings as playback. Missing sources produce warnings and silence. Integer WAV, MP3, and AAC clamp clipping and report it. Float32 WAV retains levels above 0 dBFS without a warning. No automatic normalization is applied.
 
 Progress and completion appear in the **Export status** window with a system title bar. An existing destination opens the **Replace export?** window. Select **Replace** to continue, or close the confirmation to cancel. The status window can close after the export finishes. Failure leaves the previous destination intact.
 

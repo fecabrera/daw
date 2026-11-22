@@ -80,7 +80,7 @@ Discrete selectors are not modulation destinations. A compatible edit preserves
 the tail. Pause and looping retain history; seeking prepares history before
 playback. DAW Stop clears it.
 
-Export appends an effect tail, capped at ten seconds after the arrangement. A
+Export with **Include audio tail** appends an effect tail, capped at ten seconds after End. A
 warning reports truncation. Leave silence at the end of the arrangement when a
 longer tail must fit inside the export. Bypassed reverbs add no tail budget.
 

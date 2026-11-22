@@ -295,7 +295,11 @@ fn export_prepares_the_pending_snapshot_instead_of_rendering_the_previous_bank()
         .prepare_project_audio(&|| false, &|_, _| {})
         .unwrap();
     reference.export(&root.join("expected.wav"), false).unwrap();
-    app.export(root.join("actual.wav"), false, ExportSettings::default());
+    app.export(
+        root.join("actual.wav"),
+        false,
+        app.export_request(ExportSettings::default()),
+    );
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     while app.job.is_some() {
         assert!(std::time::Instant::now() < deadline);

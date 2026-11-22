@@ -86,3 +86,12 @@ Cover all three slider positions, toolbar order, modal/drag guards, row geometry
 lower editor independence, send editing and overflow scrolling. Round-trip real save /
 open snapshots for every size and retain legacy/default validation. Native UI
 and platform checks are separate from automated egui and project checks.
+
+## Timeline clip selection shortcut
+
+When the Timeline clip area owns keyboard focus, Command+A on macOS or Ctrl+A
+on Windows/Linux replaces the time selection with every clip in the project.
+Include clips outside the viewport and in collapsed groups. Retain the primary
+clip if it is still present. Text fields, other panes, active gestures and
+modal dialogs retain their own shortcut handling. Selection does not change
+project data or history.

@@ -1013,6 +1013,7 @@ pub struct DawUi {
     loop_drag: Option<LoopDrag>,
     lane_bounds: HashMap<Id, Rect>,
     timeline_bounds: Rect,
+    timeline_clips_focused: bool,
     fit_all_requested: bool,
     timeline_track_size: f32,
     timeline_vertical_scroll: f32,
@@ -1055,9 +1056,10 @@ pub struct DawUi {
     unsaved_prompt: bool,
     project_prompt_window: project_prompt::ProjectPromptWindow,
     project_name_dialog: Option<project_name_dialog::ProjectNameDialog>,
-    overwrite: Option<PathBuf>,
+    overwrite: Option<(PathBuf, export_dialog::Request)>,
     export_settings: ExportSettings,
-    export_dialog: Option<ExportSettings>,
+    export_include_tail: bool,
+    export_dialog: Option<export_dialog::Draft>,
     export_status: Option<export_status::ExportStatus>,
     collection_status: Option<collection::Status>,
     collection_message: Option<String>,
@@ -1072,7 +1074,6 @@ pub struct DawUi {
     bounce_block_pointer: bool,
     normalize_dialog: Option<normalize::Draft>,
     normalize_progress: Option<daw_project::NormalizeProgress>,
-    overwrite_settings: ExportSettings,
     allow_close: bool,
     native_menu: bool,
     window_title: String,
@@ -1188,6 +1189,7 @@ impl Default for DawUi {
             loop_drag: None,
             lane_bounds: HashMap::new(),
             timeline_bounds: Rect::NOTHING,
+            timeline_clips_focused: false,
             fit_all_requested: false,
             timeline_track_size: 2.0,
             timeline_vertical_scroll: 0.0,
@@ -1232,6 +1234,7 @@ impl Default for DawUi {
             project_name_dialog: None,
             overwrite: None,
             export_settings: ExportSettings::default(),
+            export_include_tail: true,
             export_dialog: None,
             export_status: None,
             collection_status: None,
@@ -1247,7 +1250,6 @@ impl Default for DawUi {
             bounce_block_pointer: false,
             normalize_dialog: None,
             normalize_progress: None,
-            overwrite_settings: ExportSettings::default(),
             allow_close: false,
             native_menu: false,
             window_title: String::new(),
@@ -1686,16 +1688,47 @@ impl DawUi {
             None => self.file_hover = None,
         }
     }
-    fn export(&mut self, path: PathBuf, overwrite: bool, settings: ExportSettings) {
-        if self.defer_hosted(hosting::Deferred::Export(path.clone(), overwrite, settings)) {
+    fn export_request(&self, settings: ExportSettings) -> export_dialog::Request {
+        let project = &self.session.project;
+        let looping = &project.transport.r#loop;
+        let (start_frame, end_frame) = if looping.enabled && looping.start_frame < looping.end_frame
+        {
+            (looping.start_frame, looping.end_frame)
+        } else if let Some(selection) = &self.portion {
+            (selection.start_frame, selection.end_frame)
+        } else {
+            project
+                .tracks
+                .iter()
+                .flat_map(|track| &track.clips)
+                .filter(|clip| self.clip_selected(clip.id))
+                .map(|clip| (clip.start_frame, clip.end()))
+                .reduce(|(start, end), (next_start, next_end)| {
+                    (start.min(next_start), end.max(next_end))
+                })
+                .unwrap_or_else(|| (0, project.end()))
+        };
+        export_dialog::Request {
+            settings,
+            region: daw_project::ExportRegion {
+                start_frame,
+                end_frame,
+                include_tail: self.export_include_tail,
+            },
+        }
+    }
+
+    fn export(&mut self, path: PathBuf, overwrite: bool, request: export_dialog::Request) {
+        if self.defer_hosted(hosting::Deferred::Export(path.clone(), overwrite, request)) {
             return;
         }
+        let export_dialog::Request { settings, region } = request;
         let mut session = self.session.clone();
         let status = export_status::ExportStatus::new(
             path.clone(),
             settings,
             session.project.sample_rate_hz,
-            session.project.end(),
+            region.end_frame.saturating_sub(region.start_frame),
             session.warnings.clone(),
         );
         let progress = status.frames.clone();
@@ -1709,23 +1742,29 @@ impl DawUi {
                     .prepare_project_audio(&|| false, &|_, _| {})
                     .map_err(|e| e.to_string())?;
                 session
-                    .export_with_progress(&path, overwrite, settings, |frames, export_total| {
-                        total.store(export_total, Ordering::Release);
-                        progress.store(frames, Ordering::Relaxed);
-                    })
+                    .export_region_with_progress(
+                        &path,
+                        overwrite,
+                        settings,
+                        region,
+                        |frames, export_total| {
+                            total.store(export_total, Ordering::Release);
+                            progress.store(frames, Ordering::Relaxed);
+                        },
+                    )
                     .map(Job::Exported)
                     .map_err(|e| e.to_string())
             },
         );
     }
-    fn export_to(&mut self, path: PathBuf, settings: ExportSettings) {
-        self.export_settings = settings;
+    fn export_to(&mut self, path: PathBuf, request: export_dialog::Request) {
+        self.export_settings = request.settings;
+        self.export_include_tail = request.region.include_tail;
         if path.exists() {
             self.project_prompt_window.begin();
-            self.overwrite = Some(path);
-            self.overwrite_settings = settings;
+            self.overwrite = Some((path, request));
         } else {
-            self.export(path, false, settings);
+            self.export(path, false, request);
         }
     }
     fn poll(&mut self) {
@@ -2522,6 +2561,9 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        if self.view_mode != ViewMode::Timeline {
+            self.timeline_clips_focused = false;
+        }
         if self.settings_modal() || self.project_prompt_kind().is_some() {
             ui.disable();
         }
@@ -3190,7 +3232,10 @@ impl DawUi {
             FileAction::CollectSources => self.collect_sources(),
             FileAction::Export => {
                 self.project_prompt_window.begin();
-                self.export_dialog = Some(self.export_settings);
+                self.export_dialog = Some(export_dialog::Draft::new(
+                    self.export_request(self.export_settings),
+                    self.session.project.end(),
+                ));
             }
         }
     }
@@ -3930,6 +3975,14 @@ impl DawUi {
                 tracks.inner_rect.intersect(timeline_rect),
             );
         }
+        let clip_focus_bounds = Rect::from_min_max(
+            timeline_rect.min,
+            Pos2::new(
+                timeline_rect.right(),
+                return_rect.top().min(scrollbar_rect.top()),
+            ),
+        );
+        self.timeline_select_all(ui, clip_focus_bounds);
         if self.timeline_editor_visible()
             && (self.selected_track != track_before
                 || ui.input(|i| {
@@ -6698,7 +6751,10 @@ mod tests {
         app.open_settings();
         assert!(!app.settings_open);
         app.job = None;
-        app.export_dialog = Some(ExportSettings::default());
+        app.export_dialog = Some(export_dialog::Draft::new(
+            app.export_request(ExportSettings::default()),
+            app.session.project.end(),
+        ));
         app.open_settings();
         assert!(!app.settings_open);
         app.export_dialog = None;
@@ -10292,7 +10348,12 @@ mod tests {
                 0 => app.job = Some(receiver),
                 1 => app.error = Some("Pending error".into()),
                 2 => app.unsaved_prompt = true,
-                3 => app.overwrite = Some(PathBuf::from("existing.wav")),
+                3 => {
+                    app.overwrite = Some((
+                        PathBuf::from("existing.wav"),
+                        app.export_request(ExportSettings::default()),
+                    ))
+                }
                 4 => {}
                 _ => {
                     app.track_name_edit = Some(TrackNameEdit {
@@ -10723,14 +10784,17 @@ mod tests {
         frame(&mut app, &ctx, vec![]);
         let before = format!("{:?}", app.session.project);
         frame(&mut app, &ctx, vec![shortcut_event(FileAction::Export)]);
-        assert_eq!(app.export_dialog, Some(ExportSettings::default()));
+        assert_eq!(
+            app.export_dialog.as_ref().unwrap().request.settings,
+            ExportSettings::default()
+        );
         assert!(app.job.is_none());
         assert!(
             FileAction::ALL
                 .into_iter()
                 .all(|action| !app.file_action_enabled(action))
         );
-        app.export_dialog.as_mut().unwrap().format = daw_media::ExportFormat::Mp3;
+        app.export_dialog.as_mut().unwrap().request.settings.format = daw_media::ExportFormat::Mp3;
         let point = Pos2::new(21.0, app.lane_bounds[&track].top() + 47.0);
         frame(
             &mut app,
@@ -10756,11 +10820,95 @@ mod tests {
         assert!(!app.dirty);
         assert!(app.job.is_none());
         app.perform_file_action(FileAction::Export);
-        assert_eq!(app.export_dialog, Some(ExportSettings::default()));
+        assert_eq!(
+            app.export_dialog.as_ref().unwrap().request.settings,
+            ExportSettings::default()
+        );
         app.perform_pending();
         app.pending = Some(Action::New);
         app.perform_pending();
         assert!(app.export_dialog.is_none());
+    }
+
+    #[test]
+    fn export_defaults_follow_loop_time_selection_clips_and_project() {
+        let (mut app, track) = fixture();
+        let mut second = app.session.project.tracks[0].clips[0].clone();
+        second.id = Id::new_v4();
+        second.start_frame = second.end() + 1000;
+        let clip_range = (second.start_frame, second.end());
+        let id = second.id;
+        app.session.project.tracks[0].clips.push(second);
+        let range = |app: &DawUi| {
+            let region = app.export_request(ExportSettings::default()).region;
+            assert!(region.include_tail);
+            (region.start_frame, region.end_frame)
+        };
+        assert_eq!(range(&app), (0, clip_range.1));
+        app.selected_clip = Some(id);
+        assert_eq!(range(&app), clip_range);
+        app.portion = Some(portion::ClipPortion {
+            tracks: vec![track],
+            start_frame: 31,
+            end_frame: 67,
+        });
+        assert_eq!(range(&app), (31, 67));
+        app.session.project.transport.r#loop = daw_core::Loop {
+            enabled: true,
+            start_frame: 100,
+            end_frame: clip_range.1 + 1000,
+        };
+        assert_eq!(range(&app), (100, clip_range.1 + 1000));
+    }
+
+    #[test]
+    fn timeline_select_all_requires_clip_lane_focus_and_selects_hidden_clips() {
+        let (mut app, track) = fixture();
+        let mut second = app.session.project.tracks[0].clips[0].clone();
+        second.id = Id::new_v4();
+        second.start_frame = frames(600.0);
+        app.session.project.tracks[0].clips.push(second.clone());
+        let first = app.session.project.tracks[0].clips[0].id;
+        let ctx = context();
+        let key = || clip_key(egui::Key::A, cfg!(target_os = "macos"));
+        let key_up = egui::Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&mut app, &ctx, vec![key(), key_up.clone()]);
+        assert!(app.selected_clips.is_empty());
+        let lane = app.lane_bounds[&track];
+        let point = app
+            .clip_block(
+                lane,
+                &app.session.project.tracks[0].clips[0],
+                app.session.project.tracks[0].clips[0].start_frame,
+            )
+            .center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        assert_eq!(app.selected_clip, Some(first));
+        frame(&mut app, &ctx, vec![key(), key_up.clone()]);
+        assert_eq!(app.selected_clips, HashSet::from([first, second.id]));
+        assert_eq!(app.selected_clip, Some(first));
+        assert!(!app.dirty);
+        let header = Pos2::new(lane.left() - 20.0, point.y);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(header), button(header, true)],
+        );
+        frame(&mut app, &ctx, vec![button(header, false)]);
+        app.selected_clips = HashSet::from([first]);
+        frame(&mut app, &ctx, vec![key(), key_up]);
+        assert_eq!(app.selected_clips, HashSet::from([first]));
     }
     #[test]
     fn export_jobs_use_selected_settings_and_overwrite_retains_them() {
@@ -10790,14 +10938,14 @@ mod tests {
                 settings.format.extension()
             ));
             std::fs::write(&output, b"existing").unwrap();
-            app.export_to(output.clone(), settings);
-            assert_eq!(app.overwrite, Some(output.clone()));
-            assert_eq!(app.overwrite_settings, settings);
+            let request = app.export_request(settings);
+            app.export_to(output.clone(), request);
+            assert_eq!(app.overwrite, Some((output.clone(), request)));
             assert_eq!(app.export_settings, settings);
             assert!(app.job.is_none());
             assert_eq!(std::fs::read(&output).unwrap(), b"existing");
             app.overwrite = None;
-            app.export(output.clone(), true, app.overwrite_settings);
+            app.export(output.clone(), true, request);
             assert!(app.job.is_some());
             assert!(app.busy.contains(settings.format.label()));
             for _ in 0..400 {
@@ -11204,7 +11352,12 @@ mod tests {
                 2 => pointer.y = app.scrollbar_bounds.bottom() + 10.0,
                 3 => app.error = Some("Blocked".into()),
                 4 => app.unsaved_prompt = true,
-                5 => app.overwrite = Some(PathBuf::from("blocked.wav")),
+                5 => {
+                    app.overwrite = Some((
+                        PathBuf::from("blocked.wav"),
+                        app.export_request(ExportSettings::default()),
+                    ))
+                }
                 6 => app.job = Some(receiver),
                 7 => {
                     app.drag = Some(Drag {

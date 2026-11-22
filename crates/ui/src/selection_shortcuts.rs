@@ -1,7 +1,68 @@
-//! Shared Escape handling for arrangement, instrument layers and beat subtracks.
+//! Keyboard shortcuts for clip selection and clearing selections.
 use super::*;
 
 impl DawUi {
+    pub(super) fn timeline_select_all(&mut self, ui: &egui::Ui, bounds: Rect) {
+        let ctx = ui.ctx();
+        if let Some(inside) = ctx.input(|input| {
+            input.pointer.any_pressed().then(|| {
+                input
+                    .pointer
+                    .press_origin()
+                    .is_some_and(|origin| bounds.contains(origin))
+            })
+        }) {
+            self.timeline_clips_focused = ui.is_enabled() && inside;
+        }
+        if !self.timeline_clips_focused
+            || !ui.is_enabled()
+            || !ctx.input(|input| input.key_pressed(egui::Key::A) && !input.pointer.any_down())
+            || !self.selection_escape_available(ctx)
+            || ctx.text_edit_focused()
+            || egui::Popup::is_any_open(ctx)
+        {
+            return;
+        }
+        let select = ctx.input_mut(|input| {
+            let mut pressed = false;
+            input.events.retain(|event| {
+                if let egui::Event::Key {
+                    key: egui::Key::A,
+                    pressed: true,
+                    repeat,
+                    modifiers,
+                    ..
+                } = event
+                    && modifiers.matches_exact(egui::Modifiers::COMMAND)
+                    && !(modifiers.mac_cmd && modifiers.ctrl)
+                {
+                    pressed |= !repeat;
+                    false
+                } else {
+                    true
+                }
+            });
+            pressed
+        });
+        if select {
+            let mut ids = self
+                .session
+                .project
+                .tracks
+                .iter()
+                .flat_map(|track| &track.clips)
+                .map(|clip| clip.id);
+            let first = ids.next();
+            self.selected_clips = first.into_iter().chain(ids).collect();
+            self.selected_clip = self
+                .selected_clip
+                .filter(|id| self.selected_clips.contains(id))
+                .or(first);
+            self.portion = None;
+            ctx.request_repaint();
+        }
+    }
+
     pub(super) fn selection_shortcut_environment_available(&self, ctx: &egui::Context) -> bool {
         self.edit_shortcuts_available(ctx)
             && self.track_name_edit.is_none()

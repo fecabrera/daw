@@ -61,6 +61,13 @@ const MAX_FOLDER_NAME_BYTES: usize = 255;
 const EXPORT_TAIL_WARNING_WINDOW_MS: u64 = 50;
 const EXPORT_TAIL_WARNING_PEAK: f32 = 0.001; // -60 dBFS
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExportRegion {
+    pub start_frame: u64,
+    pub end_frame: u64,
+    pub include_tail: bool,
+}
+
 /// A portable folder name, shared by the naming dialog and project creation.
 pub fn project_folder_name(name: &str) -> Result<&str> {
     let name = name.trim();
@@ -601,7 +608,35 @@ impl Session {
         settings: ExportSettings,
         range: std::ops::Range<u64>,
     ) -> Result<Vec<String>> {
-        self.export_interval(path, false, settings, Some(range), |_, _| {})
+        let arranged_end = self.project.end();
+        if arranged_end != 0 && (range.start >= range.end || range.end > arranged_end) {
+            return Err(error(
+                "Export range must be inside the arrangement and have positive length",
+            ));
+        }
+        self.export_region_with_progress(
+            path,
+            false,
+            settings,
+            ExportRegion {
+                start_frame: range.start,
+                end_frame: range.end,
+                include_tail: false,
+            },
+            |_, _| {},
+        )
+    }
+
+    /// Render a desktop export interval. The end may follow the last clip.
+    pub fn export_region_with_progress(
+        &self,
+        path: &Path,
+        overwrite: bool,
+        settings: ExportSettings,
+        region: ExportRegion,
+        progress: impl FnMut(u64, u64),
+    ) -> Result<Vec<String>> {
+        self.export_interval(path, overwrite, settings, Some(region), progress)
     }
 
     fn export_interval(
@@ -609,7 +644,7 @@ impl Session {
         path: &Path,
         overwrite: bool,
         settings: ExportSettings,
-        range: Option<std::ops::Range<u64>>,
+        region: Option<ExportRegion>,
         mut progress: impl FnMut(u64, u64),
     ) -> Result<Vec<String>> {
         self.project.validate().map_err(error)?;
@@ -617,13 +652,13 @@ impl Session {
         if arranged_end == 0 {
             return Err(error("Cannot export a project with no clips"));
         }
-        if range
-            .as_ref()
-            .is_some_and(|range| range.start >= range.end || range.end > arranged_end)
-        {
-            return Err(error(
-                "Export range must be inside the arrangement and have positive length",
-            ));
+        let region = region.unwrap_or(ExportRegion {
+            start_frame: 0,
+            end_frame: arranged_end,
+            include_tail: true,
+        });
+        if region.start_frame >= region.end_frame {
+            return Err(error("Export range must have positive length"));
         }
         let requested = absolute(path)?;
         let path = file_publish::canonical_entry(&requested).map_err(error)?;
@@ -632,6 +667,18 @@ impl Session {
         let temp = parent.join(format!(".export-{}.tmp", Id::new_v4()));
         let result = (|| {
             let mut snapshot = self.clone();
+            if region.include_tail && region.end_frame < arranged_end {
+                let tracks: Vec<_> = snapshot
+                    .project
+                    .tracks
+                    .iter()
+                    .map(|track| track.id)
+                    .collect();
+                snapshot.project = snapshot
+                    .project
+                    .without_clip_range(&tracks, region.end_frame, arranged_end)
+                    .map_err(error)?;
+            }
             snapshot.prepare_stretches_in_place(&|| false, |candidate| {
                 candidate.prepare_sampler_audio(&|| false)
             })?;
@@ -640,16 +687,15 @@ impl Session {
             plan.external.publish = false;
             let mut renderer = daw_engine::Renderer::try_new(plan).map_err(error)?;
             renderer.try_seek(0).map_err(error)?;
-            let start = range.as_ref().map_or(0, |range| range.start);
-            let requested_tail = if range.is_some() {
-                0
-            } else {
+            let start = region.start_frame;
+            let requested_tail = if region.include_tail {
                 renderer.offline_tail_frames()
+            } else {
+                0
             };
             let tail_cap = daw_engine::offline_tail_cap(self.project.sample_rate_hz);
-            let end = range
-                .as_ref()
-                .map_or(arranged_end, |range| range.end)
+            let end = region
+                .end_frame
                 .checked_add(requested_tail.min(tail_cap))
                 .ok_or_else(|| error("Export duration exceeds the supported frame range"))?;
             let cutoff_check_start = (requested_tail > tail_cap).then(|| {
@@ -704,7 +750,7 @@ impl Session {
             }
             let mut warnings = self.warnings.clone();
             if audible_cutoff {
-                warnings.push("Audio tail limited to 10 seconds after the arrangement; the remaining tail was truncated".into());
+                warnings.push("Audio tail limited to 10 seconds after the export end; the remaining tail was truncated".into());
             }
             if clipped
                 && !(settings.format == ExportFormat::Wav

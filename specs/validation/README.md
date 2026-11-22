@@ -2,6 +2,21 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Export range, audio tail and Timeline Select All — 2026-11-22
+
+The export tests check default range precedence, independent Start and End
+drags, and transfer of the range and tail setting to the destination picker.
+The offline workflow checks exact range length with the tail off and compares
+the export with the tail on against a reference that contains only the audio
+before End. The Timeline input test checks that the shortcut includes clips
+outside the viewport and stops applying when focus leaves the clip area.
+
+Formatting, strict workspace Clippy, CLI smoke and the signed macOS bundle
+check passed. The debug and release workspace suites each passed 3,686 tests
+with the known macOS Audio Unit registration case excluded. Native inspection
+confirmed the grouped readouts and the tail checkbox. Endpoint drags and
+Timeline Select All were verified through automated input tests.
+
 ## Beat-subtrack Solo routing — 2026-11-22
 
 The renderer test checks a soloed beat subtrack inside a group, alongside a

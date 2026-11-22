@@ -537,6 +537,59 @@ fn export_progress_tracks_encoded_frames_without_changing_audio() {
 }
 
 #[test]
+fn export_region_appends_only_the_tail_of_audio_before_its_end() {
+    use daw_media::{ExportSettings, WavCodec};
+    use daw_project::ExportRegion;
+    let fixture = Fixture::new();
+    let source = fixture.wav("range-source.wav", 48_000, 2, 32, true);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    session.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::plate_reverb());
+    let region = ExportRegion {
+        start_frame: 1000,
+        end_frame: 4000,
+        include_tail: true,
+    };
+    let mut cutoff = session.clone();
+    cutoff.project.tracks[0].clips[0].length_frames = region.end_frame;
+    session.import(&source, None, 4800).unwrap();
+    let settings = ExportSettings {
+        wav_codec: WavCodec::Float32,
+        ..Default::default()
+    };
+    let tail = fixture.0.join("with-tail.wav");
+    let reference = fixture.0.join("tail-reference.wav");
+    let mut total = 0;
+    session
+        .export_region_with_progress(&tail, false, settings, region, |_, frames| total = frames)
+        .unwrap();
+    cutoff
+        .export_region_with_progress(&reference, false, settings, region, |_, _| {})
+        .unwrap();
+    assert!(total > region.end_frame - region.start_frame);
+    assert_eq!(fs::read(tail).unwrap(), fs::read(reference).unwrap());
+
+    let dry = fixture.0.join("no-tail.wav");
+    let region = ExportRegion {
+        include_tail: false,
+        ..region
+    };
+    session
+        .export_region_with_progress(&dry, false, settings, region, |_, _| {})
+        .unwrap();
+    assert_eq!(hound::WavReader::open(&dry).unwrap().duration(), 3000);
+    session
+        .export_range(&fixture.0.join("cli-range.wav"), settings, 1000..4000)
+        .unwrap();
+    assert_eq!(
+        fs::read(dry).unwrap(),
+        fs::read(fixture.0.join("cli-range.wav")).unwrap()
+    );
+}
+
+#[test]
 fn export_formats_write_selected_codecs_and_mp3_preserves_gapless_length() {
     use daw_media::{ExportFormat, ExportSettings, Mp3Bitrate, WavCodec};
     use symphonia::core::{

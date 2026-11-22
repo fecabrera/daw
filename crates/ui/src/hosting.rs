@@ -48,7 +48,7 @@ pub(super) struct State {
 pub(super) enum Deferred {
     Save(bool),
     SaveNamed(String, Option<PathBuf>),
-    Export(PathBuf, bool, ExportSettings),
+    Export(PathBuf, bool, export_dialog::Request),
 }
 struct Barrier {
     project: Id,

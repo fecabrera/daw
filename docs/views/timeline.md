@@ -203,6 +203,10 @@ you want a new pattern without the hidden content.
 
 Copy with Command+C on macOS or Ctrl+C on Windows/Linux. Paste with Command+V or Ctrl+V at the playhead on the selected track. Copies keep their source content, trim, repeats, stretch, and color override.
 
+Click the Timeline clip area to focus it. Press Command+A on macOS or Ctrl+A
+on Windows/Linux to select every clip, including clips outside the visible
+area.
+
 Split the selected clips at the playhead with Clip > Split at playhead, or with Command+T on macOS or Ctrl+T on Windows/Linux. It is disabled when no clip is selected, when the playhead is not inside a selected clip, and in Mixer and Instrument. If several clips are selected, every selected clip that crosses the playhead is split together. The original clip ends at the playhead and a new clip starts there. Audio keeps its recording, trim, loop, and stretch. Right-click a clip and choose Split at playhead to split that clip, or the whole selection when the clicked clip is selected.
 
 MIDI notes that cross the playhead follow Settings > MIDI > Split MIDI notes. Split into two is the default: the note becomes two notes. Preserve first keeps the part before the playhead on the original clip and does not continue it. The choice is saved on this computer, not in the project. Undo restores both pieces in one step. If a looping MIDI clip needs note rewriting, one split operation can unfold up to 4,096 note occurrences across the selection. A larger operation reports an error and leaves the project unchanged. Shorten the looping clips before retrying. Splitting between notes does not have this limit.
