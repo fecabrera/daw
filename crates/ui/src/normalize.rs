@@ -1,5 +1,6 @@
 //! Normalization options and status-bar-only worker lifecycle.
 use super::*;
+use crate::dialogs::FooterAction;
 use daw_project::{NormalizeMode, NormalizeOptions, NormalizeProgress};
 
 pub(super) struct Draft {
@@ -44,11 +45,10 @@ impl Draft {
             if let Err(error) = &valid { ui.label(error.to_string()); }
             valid.is_ok()
         }, |ui, valid| {
-            if ui.add_enabled(valid, egui::Button::new("Normalize")).clicked() {
-                Some(true)
-            } else {
-                ui.button("Cancel").clicked().then_some(false)
-            }
+            dialogs::footer(ui, &[
+                FooterAction::cancel("Cancel", false),
+                FooterAction::accept("Normalize", true).enabled(valid),
+            ])
         });
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             return Some(false);

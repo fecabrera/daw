@@ -18,9 +18,9 @@ Master Gain, clip timing, or mute state.
 4. Set **Target** between −70 and 0 in the selected unit. Leave **Allow gain
    increase** enabled to raise quiet clips. Clear it to allow gain reductions only,
    relative to each clip’s current Gain.
-5. Click **Normalize**. The options dialog closes. The status bar shows progress
-   and **Cancel**. No completion dialog opens. An error opens the standard error
-   dialog.
+5. Click the highlighted **Normalize** button. The options dialog closes. The
+   status bar shows progress and **Cancel**. No completion dialog opens. An
+   error opens the standard error dialog.
 
 Each clip reaches the chosen target independently. Both channels receive the
 same gain change. The measurement uses only the clip’s arranged source section,

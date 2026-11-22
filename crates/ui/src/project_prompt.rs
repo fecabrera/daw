@@ -1,4 +1,5 @@
 //! Hosts project prompts and their destination choosers on a desktop window.
+use crate::dialogs::FooterAction;
 use crate::{DawUi, DesktopPicker, dialogs, export_dialog, project_name_dialog};
 use daw_media::ExportSettings;
 use std::path::PathBuf;
@@ -293,7 +294,7 @@ impl DawUi {
         match self.project_prompt_kind() {
             Some(Kind::Error) => {
                 if let Some(error) = self.error.as_deref()
-                    && dialogs::Dialog::new("Error", "", &[("OK", ())])
+                    && dialogs::Dialog::new("Error", "", &[FooterAction::accept("OK", ())])
                         .show_surface(ctx, surface, |ui| {
                             egui::ScrollArea::vertical()
                                 .max_height(300.0)
@@ -356,10 +357,14 @@ impl DawUi {
             Some(Kind::ModelValidation) => {
                 if let Some(cancel) = &self.settings_cancel {
                     use std::sync::atomic::Ordering;
-                    if dialogs::Dialog::new("Model validation", &self.busy, &[("Cancel", ())])
-                        .actions_enabled(!cancel.load(Ordering::Relaxed))
-                        .show_surface(ctx, surface, |_| {})
-                        .is_some()
+                    if dialogs::Dialog::new(
+                        "Model validation",
+                        &self.busy,
+                        &[FooterAction::cancel("Cancel", ())],
+                    )
+                    .actions_enabled(!cancel.load(Ordering::Relaxed))
+                    .show_message(ctx, surface)
+                    .is_some()
                     {
                         cancel.store(true, Ordering::Relaxed);
                     }
@@ -368,9 +373,13 @@ impl DawUi {
             }
             Some(Kind::SettingsMessage) => {
                 if let Some(message) = self.settings_window.message.as_deref()
-                    && dialogs::Dialog::new("Settings window", message, &[("OK", ())])
-                        .show_surface(ctx, surface, |_| {})
-                        .is_some()
+                    && dialogs::Dialog::new(
+                        "Settings window",
+                        message,
+                        &[FooterAction::accept("OK", ())],
+                    )
+                    .show_message(ctx, surface)
+                    .is_some()
                 {
                     self.settings_window.message = None;
                 }
@@ -385,29 +394,23 @@ impl DawUi {
             } else {
                 ("Save project", "Choosing a project location…")
             };
-            let waiting =
-                dialogs::Dialog::new(title, message, &[("Cancel", ())]).actions_enabled(false);
-            match surface {
-                Some(ui) => waiting.body(ui, |_| {}),
-                None => waiting.show(ctx),
-            };
+            dialogs::Dialog::new(title, message, &[FooterAction::cancel("Cancel", ())])
+                .actions_enabled(false)
+                .show_message(ctx, surface);
             return;
         }
         if self.unsaved_prompt {
-            let dialog = dialogs::Dialog::new(
+            let choice = dialogs::Dialog::new(
                 "Unsaved changes",
                 "Save changes before continuing?",
                 &[
-                    ("Save", UnsavedChoice::Save),
-                    ("Discard", UnsavedChoice::Discard),
-                    ("Cancel", UnsavedChoice::Cancel),
+                    FooterAction::accept("Save", UnsavedChoice::Save),
+                    FooterAction::deny("Discard", UnsavedChoice::Discard),
+                    FooterAction::cancel("Cancel", UnsavedChoice::Cancel),
                 ],
             )
-            .actions_enabled(self.job.is_none());
-            let choice = match surface {
-                Some(ui) => dialog.body(ui, |_| {}),
-                None => dialog.show(ctx),
-            };
+            .actions_enabled(self.job.is_none())
+            .show_message(ctx, surface);
             if self.job.is_none() {
                 if ctx
                     .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
@@ -463,15 +466,15 @@ impl DawUi {
             }
         } else if let Some(path) = &self.overwrite {
             let message = format!("Replace {}?", path.display());
-            let dialog = dialogs::Dialog::new(
+            let replace = dialogs::Dialog::new(
                 "Replace export?",
                 &message,
-                &[("Replace", true), ("Cancel", false)],
-            );
-            let replace = match surface {
-                Some(ui) => dialog.body(ui, |_| {}),
-                None => dialog.show(ctx),
-            };
+                &[
+                    FooterAction::accept("Replace", true),
+                    FooterAction::cancel("Cancel", false),
+                ],
+            )
+            .show_message(ctx, surface);
             if let Some(replace) = replace
                 && let Some(path) = self.overwrite.take()
                 && replace
@@ -483,11 +486,12 @@ impl DawUi {
                 self.export_status = None;
             }
         } else if let Some(notice) = &self.background_media.stretch_upgrade_notice {
-            let dialog = dialogs::Dialog::new("Time stretch upgrade", notice, &[("OK", ())]);
-            let acknowledged = match surface {
-                Some(ui) => dialog.body(ui, |_| {}),
-                None => dialog.show(ctx),
-            };
+            let acknowledged = dialogs::Dialog::new(
+                "Time stretch upgrade",
+                notice,
+                &[FooterAction::accept("OK", ())],
+            )
+            .show_message(ctx, surface);
             if acknowledged.is_some()
                 || ctx
                     .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
@@ -781,6 +785,21 @@ mod tests {
         ] {
             assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == expected)));
         }
+        let save = text_bounds(&shapes, "Save").center();
+        let discard = text_bounds(&shapes, "Discard").center();
+        let accent = crate::theme::accent(&child);
+        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Rect(rect) if rect.fill == accent
+                && rect.rect.contains(save) && !rect.rect.contains(discard)
+        )));
+        let message = text_bounds(&shapes, "Save changes before continuing?");
+        let padding = f32::from(dialogs::PADDING);
+        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::LineSegment { points, .. }
+                if (padding - 1.0..=padding + 2.0).contains(&(points[0].y - message.bottom()))
+                    && points[0].y == points[1].y
+                    && (points[1].x - points[0].x) >= 350.0
+        )));
         assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == window.title())));
         app.request_desktop_close();
         assert!(app.take_desktop_focus(window));
@@ -884,7 +903,7 @@ mod tests {
         assert_button_padding(&app, window, &shapes, "Cancel");
         assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == window.title())));
 
-        let point = text_bounds(&shapes, "Export…").center();
+        let point = text_bounds(&shapes, "Export").center();
         let mouse = |pressed| egui::Event::PointerButton {
             pos: point,
             button: egui::PointerButton::Primary,

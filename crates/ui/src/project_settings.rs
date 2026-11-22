@@ -1,3 +1,4 @@
+use crate::dialogs::FooterAction;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Action {
     Apply(Values),
@@ -55,7 +56,10 @@ impl ProjectSettings {
         let action = crate::dialogs::Dialog::new(
             "Project Settings",
             "",
-            &[("Apply", true), ("Cancel", false)],
+            &[
+                FooterAction::accept("Apply", true),
+                FooterAction::cancel("Cancel", false),
+            ],
         )
         .show_surface(ctx, surface, |ui| {
             let label_width = ui

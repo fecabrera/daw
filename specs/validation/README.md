@@ -2,6 +2,51 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## White dialog button text — 2026-11-22
+
+The shared footer test checks white glyphs on an Amber accent button. The
+signed macOS build showed white text on the red Close button in Settings.
+Formatting and strict workspace Clippy passed. The debug and release workspace
+suites each passed 3,681 tests with the known macOS Audio Unit registration
+case excluded.
+
+## Shared accent at Material 400 — 2026-11-22
+
+The Settings test checks all eight swatch fills and the exact shared accent
+after each selection. The Save and Save As tests check the exact Red and
+Indigo 400 button fills. The full UI suite passed 1,099 tests. Formatting and
+strict workspace Clippy passed. The signed macOS build showed the eight
+swatches in one row and the same red on the selected swatch and Close button.
+The debug and release workspace suites each passed 3,681 tests with the known
+macOS Audio Unit registration case excluded.
+
+## Dialog button accent shade — 2026-11-22
+
+The Save naming dialog tests check the exact Material 600 fills for the
+default Red and for Indigo. The full UI suite passed 1,099 tests. Formatting,
+strict workspace Clippy, and the signed local macOS bundle checks passed.
+Appearance checks for the new shade ran through egui tests.
+
+The debug and release workspace suites each passed 3,681 tests with the known
+macOS Audio Unit registration case excluded.
+
+## Dialog footer actions — 2026-11-22
+
+UI tests check the accent fill on Save Project, Save As, Unsaved Changes,
+Normalize Gain, and Export Audio. They check the Cancel and Save order in
+the naming dialog, the Export label and destination-picker handoff, and the
+gap from the Unsaved Changes message to its full-width footer divider.
+The shared footer test covers Accept alone, Cancel and Accept, Deny with
+Cancel and Accept, and Cancel alone during a cancellable operation. It checks
+button presence, alignment, order, and the Accept accent fill. The signed
+local macOS build showed right-aligned Cancel and red Save buttons in the
+embedded Save Project dialog. Other final appearance checks ran through egui
+tests.
+
+The debug and release workspace suites each passed 3,681 tests with the known
+macOS Audio Unit registration case excluded. Formatting, strict workspace
+Clippy, and the local macOS bundle signature checks passed.
+
 ## Modal dialog footers — 2026-11-22
 
 The dialog layout test checks that the footer divider spans the native client

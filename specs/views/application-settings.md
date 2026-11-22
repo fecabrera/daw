@@ -47,7 +47,13 @@ window resizes.
 
 Use the same footer in project prompts and reports. Fit the native client
 around the content and footer. Keep dialog actions below the divider during
-progress and on validation errors.
+progress and on validation errors. Align Deny at the left and Accept at the
+right. Place Cancel immediately to the left of Accept when both are present.
+Show only the actions the dialog offers. Use the shared accent color with
+white text for Accept, including Close on an acknowledgement dialog.
+Cancel and Deny use neutral buttons. Use the right edge for a progress dialog
+that only offers Cancel. Place Open last saved in the secondary position in
+the recovery footer.
 
 Treat the active native dialog as modal to the main window. The desktop
 host keeps the dialog above the owner and blocks owner input. If another
@@ -91,15 +97,15 @@ preference and recording action paths.
 
 ## Accent color
 
-Show eight circular Material 500 swatches in a single row to the right of
+Show eight circular Material 400 swatches in a single row to the right of
 the Accent color label. Order them Red, Deep Orange, Amber, Green, Indigo,
 Deep Purple, Pink, and Blue Grey. Reduce their spacing and diameter together
 when the content narrows. Give the selected swatch a contrasting ring.
 Each swatch has a tooltip, an accessible name and selection state, and
 supports keyboard activation.
 
-Apply the chosen color immediately through the shared appearance settings.
-Use Red for new settings. Continue to load any previously saved
+Apply the chosen Material 400 shade immediately as the main accent for all
+themed controls. Use Red for new settings. Continue to load any previously saved
 accent. When the saved accent is outside the current palette, show its name
 on label hover and leave the swatches unselected until the user picks one.
 

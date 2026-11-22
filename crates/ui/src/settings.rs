@@ -1,10 +1,11 @@
+use crate::dialogs::FooterAction;
 pub use daw_engine::CacheProfile;
 use egui::{Color32, Context, Rect, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
 
 pub const STORAGE_KEY: &str = "daw.settings";
 
-/// Material Design's 500 shades, in palette order.
+/// Material Design color families, in palette order.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccentColor {
@@ -88,27 +89,28 @@ impl AccentColor {
         }
     }
 
+    /// The application's main accent and Settings swatch use Material 400.
     pub const fn color(self) -> Color32 {
         let hex = match self {
-            Self::Red => 0xf44336,
-            Self::Pink => 0xe91e63,
-            Self::Purple => 0x9c27b0,
-            Self::DeepPurple => 0x673ab7,
-            Self::Indigo => 0x3f51b5,
-            Self::Blue => 0x2196f3,
-            Self::LightBlue => 0x03a9f4,
-            Self::Cyan => 0x00bcd4,
-            Self::Teal => 0x009688,
-            Self::Green => 0x4caf50,
-            Self::LightGreen => 0x8bc34a,
-            Self::Lime => 0xcddc39,
-            Self::Yellow => 0xffeb3b,
-            Self::Amber => 0xffc107,
-            Self::Orange => 0xff9800,
-            Self::DeepOrange => 0xff5722,
-            Self::Brown => 0x795548,
-            Self::Grey => 0x9e9e9e,
-            Self::BlueGrey => 0x607d8b,
+            Self::Red => 0xef5350,
+            Self::Pink => 0xec407a,
+            Self::Purple => 0xab47bc,
+            Self::DeepPurple => 0x7e57c2,
+            Self::Indigo => 0x5c6bc0,
+            Self::Blue => 0x42a5f5,
+            Self::LightBlue => 0x29b6f6,
+            Self::Cyan => 0x26c6da,
+            Self::Teal => 0x26a69a,
+            Self::Green => 0x66bb6a,
+            Self::LightGreen => 0x9ccc65,
+            Self::Lime => 0xd4e157,
+            Self::Yellow => 0xffee58,
+            Self::Amber => 0xffca28,
+            Self::Orange => 0xffa726,
+            Self::DeepOrange => 0xff7043,
+            Self::Brown => 0x8d6e63,
+            Self::Grey => 0xbdbdbd,
+            Self::BlueGrey => 0x78909c,
         };
         Color32::from_rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
     }
@@ -1195,14 +1197,14 @@ pub(super) fn show_surface(
             .show_separator_line(false)
             .frame(egui::Frame::new().fill(palette.panel))
             .show(surface, |ui| {
-                crate::dialogs::footer(ui, |ui| ui.button("Close").clicked().then_some(()))
+                crate::dialogs::footer(ui, &[FooterAction::accept("Close", ())])
             });
         egui::CentralPanel::default()
             .frame(frame)
             .show(surface, content);
         footer.inner
     } else {
-        crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
+        crate::dialogs::Dialog::new("Settings", "", &[FooterAction::accept("Close", ())])
             .width(width)
             .show_with_content(ctx, content)
     };
@@ -1864,11 +1866,25 @@ mod tests {
                 .windows(2)
                 .all(|pair| pair[0].x < pair[1].x && pair[0].y == pair[1].y)
         );
-        let accent = |settings: &AppSettings| crate::theme::accent(&ctx) == settings.accent.color();
-        for (color, center) in AccentColor::CHOICES.into_iter().zip(centers) {
+        let expected = [
+            [0xef, 0x53, 0x50],
+            [0xff, 0x70, 0x43],
+            [0xff, 0xca, 0x28],
+            [0x66, 0xbb, 0x6a],
+            [0x5c, 0x6b, 0xc0],
+            [0x7e, 0x57, 0xc2],
+            [0xec, 0x40, 0x7a],
+            [0x78, 0x90, 0x9c],
+        ];
+        for ((color, center), [red, green, blue]) in
+            AccentColor::CHOICES.into_iter().zip(centers).zip(expected)
+        {
             assert!(!click_at(&ctx, &mut settings, center));
             assert_eq!(settings.accent, color);
-            assert!(accent(&settings));
+            assert_eq!(
+                crate::theme::accent(&ctx),
+                Color32::from_rgb(red, green, blue)
+            );
             assert!(!egui::Popup::is_any_open(&ctx));
             assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
         }

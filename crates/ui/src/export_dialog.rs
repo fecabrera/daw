@@ -1,3 +1,4 @@
+use crate::dialogs::FooterAction;
 use daw_media::{ExportFormat, ExportSettings, Mp3Bitrate, WavCodec};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,11 +17,11 @@ pub fn show(
         "Stereo · {} kHz",
         settings.output_sample_rate(project_rate_hz) as f32 / 1000.0
     );
-    let dialog = crate::dialogs::Dialog::new(
-        "Export audio",
-        &description,
-        &[("Export…", Action::Export), ("Cancel", Action::Cancel)],
-    );
+    let actions = [
+        FooterAction::accept("Export", Action::Export),
+        FooterAction::cancel("Cancel", Action::Cancel),
+    ];
+    let dialog = crate::dialogs::Dialog::new("Export audio", &description, &actions);
     let content = |ui: &mut egui::Ui| {
         egui::Grid::new("export_settings")
             .num_columns(2)
@@ -87,10 +88,7 @@ pub fn show(
                 }
             });
     };
-    let action = match surface {
-        Some(ui) => dialog.body(ui, content),
-        None => dialog.show_with_content(ctx, content),
-    };
+    let action = dialog.show_surface(ctx, surface, content);
     action.or_else(|| {
         ctx.input(|input| input.key_pressed(egui::Key::Escape))
             .then_some(Action::Cancel)
@@ -150,9 +148,23 @@ mod tests {
         let ctx = egui::Context::default();
         crate::theme::configure(&ctx);
         crate::fonts::configure(&ctx);
+        ctx.global_style_mut(|style| style.animation_time = 0.0);
         let mut settings = ExportSettings::default();
         frame(&ctx, &mut settings, vec![]);
-        frame(&ctx, &mut settings, vec![]);
+        let (_, shapes) = frame(&ctx, &mut settings, vec![]);
+        let export = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Export" => {
+                    Some(text.pos + text.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .unwrap();
+        let accent = crate::theme::accent(&ctx);
+        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Rect(rect) if rect.fill == accent && rect.rect.contains(export)
+        )));
         click(&ctx, &mut settings, "PCM 24-bit");
         click(&ctx, &mut settings, "IEEE float 32-bit");
         assert_eq!(settings.wav_codec, WavCodec::Float32);
@@ -176,7 +188,7 @@ mod tests {
         click(&ctx, &mut settings, "AAC");
         click(&ctx, &mut settings, "WAV");
         assert_eq!(settings.wav_codec, WavCodec::Float32);
-        assert_eq!(click(&ctx, &mut settings, "Export…"), Some(Action::Export));
+        assert_eq!(click(&ctx, &mut settings, "Export"), Some(Action::Export));
         assert_eq!(click(&ctx, &mut settings, "Cancel"), Some(Action::Cancel));
     }
 }

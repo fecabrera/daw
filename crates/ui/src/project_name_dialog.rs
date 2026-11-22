@@ -1,3 +1,4 @@
+use crate::dialogs::FooterAction;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Action {
     Continue(String),
@@ -33,10 +34,14 @@ impl ProjectNameDialog {
 
     pub fn show(&mut self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> Option<Action> {
         let mut enter = false;
+        let actions = [
+            FooterAction::cancel("Cancel", false),
+            FooterAction::accept("Save", true),
+        ];
         let dialog = crate::dialogs::Dialog::new(
             self.title(),
             "Enter a name, then choose where to create the project folder.",
-            &[("Continue…", true), ("Cancel", false)],
+            &actions,
         );
         let content = |ui: &mut egui::Ui| {
             ui.label("Project name");
@@ -68,10 +73,7 @@ impl ProjectNameDialog {
                 );
             }
         };
-        let action = match surface {
-            Some(ui) => dialog.body(ui, content),
-            None => dialog.show_with_content(ctx, content),
-        };
+        let action = dialog.show_surface(ctx, surface, content);
         if action == Some(false)
             || ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
         {
@@ -148,9 +150,36 @@ mod tests {
             let ctx = egui::Context::default();
             crate::theme::configure(&ctx);
             crate::fonts::configure(&ctx);
+            ctx.global_style_mut(|style| style.animation_time = 0.0);
+            if save_as {
+                crate::theme::set_accent(&ctx, crate::settings::AccentColor::Indigo.color());
+            }
             let mut dialog = ProjectNameDialog::new("Untitled".into(), save_as);
             frame(&ctx, &mut dialog, vec![]);
-            frame(&ctx, &mut dialog, vec![]);
+            let (_, shapes) = frame(&ctx, &mut dialog, vec![]);
+            let label_position = |label| {
+                shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == label => {
+                            Some(text.pos + text.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .unwrap()
+            };
+            let cancel = label_position("Cancel");
+            let save = label_position("Save");
+            assert!(cancel.x < save.x);
+            let accent = if save_as {
+                egui::Color32::from_rgb(0x5c, 0x6b, 0xc0)
+            } else {
+                egui::Color32::from_rgb(0xef, 0x53, 0x50)
+            };
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Rect(rect) if rect.fill == accent
+                    && rect.rect.contains(save) && !rect.rect.contains(cancel)
+            )));
             frame(
                 &ctx,
                 &mut dialog,
@@ -163,7 +192,7 @@ mod tests {
             );
             for invalid in ["", "../escape", "CON", "cOm¹", "LPT².wav", "lpt³.project"] {
                 dialog.name = invalid.into();
-                assert_eq!(click(&ctx, &mut dialog, "Continue…"), None);
+                assert_eq!(click(&ctx, &mut dialog, "Save"), None);
                 let (_, shapes) = frame(&ctx, &mut dialog, vec![]);
                 let error = daw_project::project_folder_name(invalid)
                     .unwrap_err()
@@ -172,7 +201,7 @@ mod tests {
             }
             dialog.name = "  New mix  ".into();
             assert_eq!(
-                click(&ctx, &mut dialog, "Continue…"),
+                click(&ctx, &mut dialog, "Save"),
                 Some(Action::Continue("New mix".into()))
             );
             assert_eq!(click(&ctx, &mut dialog, "Cancel"), Some(Action::Cancel));

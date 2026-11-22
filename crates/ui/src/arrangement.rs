@@ -1,5 +1,6 @@
 //! Pinned conductor lanes. Model changes commit through the ordinary history path.
 use super::*;
+use crate::dialogs::FooterAction;
 mod add;
 mod gestures;
 mod tempo;
@@ -803,7 +804,10 @@ impl DawUi {
         let action = dialogs::Dialog::new(
             "Arrangement event",
             "",
-            &[("Apply", true), ("Cancel", false)],
+            &[
+                FooterAction::accept("Apply", true),
+                FooterAction::cancel("Cancel", false),
+            ],
         )
         .show_surface(ctx, surface, |ui| match draft.item.kind {
             Kind::Marker => {}

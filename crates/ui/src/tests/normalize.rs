@@ -34,6 +34,7 @@ fn normalize_menu_dialog_runs_without_a_completion_modal_and_undo_restores_gain(
     for view in [ViewMode::Timeline, ViewMode::Edit] {
         let (mut app, id) = playable();
         let ctx = context();
+        ctx.global_style_mut(|style| style.animation_time = 0.0);
         app.set_view_mode(view, &ctx);
         frame(&mut app, &ctx, vec![]);
         let before = app.session.project.clone();
@@ -51,6 +52,10 @@ fn normalize_menu_dialog_runs_without_a_completion_modal_and_undo_restores_gain(
                 _ => None,
             })
             .unwrap();
+        let accent = crate::theme::accent(&ctx);
+        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Rect(rect) if rect.fill == accent && rect.rect.contains(point)
+        )));
         for pressed in [true, false] {
             frame(
                 &mut app,

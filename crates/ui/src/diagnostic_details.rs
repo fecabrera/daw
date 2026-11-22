@@ -1,5 +1,6 @@
 //! Explicit, read-only diagnostic reports. Opening a report never edits the session.
 use super::*;
+use crate::dialogs::FooterAction;
 
 pub(super) enum Report {
     Memory,
@@ -28,7 +29,7 @@ impl DawUi {
             Report::Transients(_) => "Transient details",
         };
         let native = surface.is_some();
-        let close = dialogs::Dialog::new(title, "", &[("Close", ())])
+        let close = dialogs::Dialog::new(title, "", &[FooterAction::accept("Close", ())])
             .show_surface(ctx, surface, |ui| {
                 let mut scroll = egui::ScrollArea::vertical().max_height(460.0);
                 if native {

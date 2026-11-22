@@ -1,5 +1,6 @@
 //! Application orchestration. Routing state is transient; capture lives on the service worker.
 use super::*;
+use crate::dialogs::FooterAction;
 use crate::midi_service::{Command, Message, Service};
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -444,13 +445,16 @@ impl DawUi {
         }
         if self.midi.recovery_running {
             dialogs::Dialog::<()>::new("Project recovery", "Recovering project…", &[])
-                .show_surface(ctx, surface, |_| {});
+                .show_message(ctx, surface);
             return;
         }
         if let Some(entry) = self.midi.recoveries.first().cloned() {
-            let mut choices = vec![("Recover", 0), ("Discard recovery", 2)];
+            let mut choices = vec![
+                FooterAction::accept("Recover", 0),
+                FooterAction::deny("Discard recovery", 2),
+            ];
             if entry.original_folder.is_some() {
-                choices.insert(1, ("Open last saved", 1));
+                choices.insert(1, FooterAction::cancel("Open last saved", 1));
             }
             let choice=dialogs::Dialog::new("Project recovery",&format!("Recover recent edits to {}?",entry.name),&choices).show_surface(ctx,surface,|ui|{
                 if let Some(warning)=&entry.warning {ui.label(warning);}

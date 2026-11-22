@@ -1,4 +1,5 @@
 //! Shared progress, cancellation, and diagnostics for offline audio jobs.
+use crate::dialogs::FooterAction;
 use std::{
     path::Path,
     sync::atomic::{AtomicBool, Ordering},
@@ -28,7 +29,12 @@ impl Report<'_> {
         let cancellable = running && self.cancel.is_some();
         const DETAILS_HEIGHT: f32 = 300.0;
         let native = surface.is_some();
-        let dialog = crate::dialogs::Dialog::<()>::new(self.title, "", &[]);
+        let actions = [if cancellable {
+            FooterAction::cancel("Cancel", ())
+        } else {
+            FooterAction::accept("Close", ()).enabled(!running)
+        }];
+        let dialog = crate::dialogs::Dialog::new(self.title, "", &actions);
         let content = |ui: &mut egui::Ui| {
             match self.state {
                 State::Running => {
@@ -85,14 +91,7 @@ impl Report<'_> {
                 }
             });
         };
-        let clicked = dialog
-            .show_with_footer(ctx, surface, content, |ui, ()| {
-                let label = if cancellable { "Cancel" } else { "Close" };
-                ui.add_enabled(!running || cancellable, egui::Button::new(label))
-                    .clicked()
-                    .then_some(())
-            })
-            .is_some();
+        let clicked = dialog.show_surface(ctx, surface, content).is_some();
         if running {
             if clicked && let Some(cancel) = self.cancel {
                 cancel.store(true, Ordering::Relaxed);

@@ -12,7 +12,9 @@ The standard application dialog contains a canonical dropdown for Sample peak,
 True peak and Integrated loudness, a finite numeric Target in −70..=0, and an
 Allow gain increase checkbox (default on). Peak modes default to −1 dBFS/dBTP;
 loudness defaults to −23 LUFS. Changing mode resets its target to that default.
-Disable Normalize for invalid input. Cancel/Escape closes without edits.
+Fill the Normalize footer button with the current accent color’s Material 400 shade and use
+white text. Disable Normalize for invalid input. Cancel/Escape closes
+without edits.
 
 On Normalize, close the dialog and run one worker. Report frame-weighted progress
 as a percentage in the status bar. Show Cancel there, retain the receiver until
