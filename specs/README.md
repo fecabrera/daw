@@ -95,6 +95,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Harmonic Lift](effects/harmonic-lift.md)
 - [Multiband Exciter](effects/exciter.md)
 - [Bitcrusher](effects/bitcrusher.md)
+- [Transient Shaper](effects/transient-shaper.md)
 - [Filter](effects/filter.md)
 - [Auto-filter](effects/auto-filter.md)
 - [Compressor](effects/compressor.md)

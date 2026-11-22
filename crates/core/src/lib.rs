@@ -70,6 +70,9 @@ pub use daw_unit_core::{
     SamplerMode, SamplerSettings, SamplerTrigger,
 };
 pub use daw_unit_core::{STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
+pub use daw_unit_core::{
+    TRANSIENT_SHAPER_TYPE_ID, TransientShaperClipMode, TransientShaperSettings,
+};
 mod beat;
 mod beat_merge;
 mod beat_project;

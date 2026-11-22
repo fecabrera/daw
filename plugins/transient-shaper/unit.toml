@@ -1,0 +1,105 @@
+schema_version = 2
+settings_version = 1
+state_version = 1
+type_id = "daw.transient-shaper"
+vendor = "Sie"
+version = "0.1.0"
+product = "Transient Shaper"
+clap_id = "io.github.fecabrera.daw.transient-shaper"
+processor_id = "ad3dfba2af6a453485c69757026c36b0"
+controller_id = "625c6ab2e99040838f4b29bc51636f05"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 102
+key = "attack"
+minimum = -12.0
+maximum = 12.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 103
+key = "pump"
+minimum = 0.0
+maximum = 12.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 104
+key = "sustain"
+minimum = -12.0
+maximum = 12.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 105
+key = "speed"
+minimum = 0.0
+maximum = 1.0
+default = 0.5
+scale = "linear"
+
+[[parameters]]
+id = 106
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 107
+key = "clip_mode"
+minimum = 0.0
+maximum = 3.0
+default = 0.0
+scale = "choice"
+
+[[strips]]
+footer = "Shape"
+controls = [
+    { parameter = "attack", control = "db" },
+    { parameter = "pump", control = "db" },
+    { parameter = "sustain", control = "db" },
+]
+
+[[strips]]
+footer = "Detector"
+controls = [
+    { parameter = "speed", control = "percent" },
+]
+
+[[strips]]
+footer = "Out"
+controls = [
+    { parameter = "level", control = "gain" },
+    { parameter = "dry_wet", control = "percent" },
+    { parameter = "clip_mode", control = "selector" },
+]
+
+[auv2]
+type = "aufx"
+subtype = "TrSh"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.transient-shaper.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieTransientShaperAUView"
+component_version = 256

@@ -15428,3 +15428,31 @@ atomic stem publication, and copying generated bounce audio.
 - The signed local macOS debug application built and passed strict
   signature verification. Physical MIDI and audio devices, Windows, Linux,
   and separation with a supplied model were outside this check.
+
+## Transient Shaper — 2026-11-22
+
+The portable tests cover neutral processing, positive and negative Attack, Pump during decay, Sustain during steady input, Speed, linked stereo, clip transfers, bypass, exact silence, bounded modulation, and detector reset at the supported rates. The renderer test routes an audio sidechain to Sustain, checks the effective value and rendered level, and compares live and offline processing without callback allocation. Project tests exercise inherited route validation and persistence through Save As, duplication, and a rate change.
+
+- Editor parity and gesture tests passed. They cover the shared body across themes and scales, control geometry, all four Clip Mode labels, and a balanced host edit when selecting Tube.
+- CLAP and VST3 native library host tests passed at all six rates. They cover parameter metadata, choice processing, in-place and irregular blocks, dense automation without callback heap work, and state recall. The plugin contract also checks frozen identities and default state.
+- All three macOS plugin archives built. The AUv2 archive passed the signature, binary integrity, and native host probe. The component registration step required running the temporary host outside the sandbox.
+- The focused CLAP, VST3, and AUv2 packaging suite passed all 25 tests. A wider packaging test run also reached an unrelated disk-image error from `hdiutil` in the sandbox.
+- The local macOS debug app was rebuilt with the pinned cached ONNX Runtime and passed strict signature verification.
+- The CLI smoke suite passed. A temporary demo copy with its source audio verified default audio transparency, persistent settings, and repeatable shaped float WAV export.
+- Workspace debug and release suites ran with `--offline --locked --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`. The later runs passed the processor, engine, project, and plugin tests. Two catalog tests needed updates for the expanded Dynamics list. The full UI suite passed in each profile on the final source with 1,103 passing checks and three ignored checks per profile.
+- Release doctests for project, separation, and UI encountered a dependency lookup error during overlapping builds with different ONNX Runtime settings. All three passed on the sequential rerun using the pinned cached library.
+- Formatting, strict workspace Clippy, documentation links, and `git diff --check` passed.
+
+Manual desktop interaction, live audio-device playback, and native Windows and Linux testing remain open.
+
+### Transient Shaper layout alignment
+
+An egui regression test rendered the Transient Shaper beside Auto-filter and Compressor. It verified 218-point strip height, shared knob bounds and row positions, aligned footer text, and contiguous strip bounds. The focused shared-body and standalone-editor tests passed, including the Clip Mode menu gesture.
+
+The debug and release workspace suites passed with `--offline --locked --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`. Formatting, strict workspace Clippy, and strict signature verification of the rebuilt local macOS debug app passed. Geometry was checked through egui. Manual native interaction was outside this check.
+
+### Transient Shaper preview scale
+
+The egui regression test compared the rendered axis labels and positions at neutral settings and at both shape gain extremes. It confirmed fixed 0–400 ms and −40 to +30 dB axes and verified that both extreme curves fit within the plot.
+
+The focused UI and editor tests, debug and release workspace suites, and strict workspace Clippy passed. The workspace suites skipped the existing native Audio Unit registration check. The rebuilt local macOS debug app passed strict signature verification.

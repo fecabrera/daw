@@ -1,4 +1,7 @@
 use super::*;
+
+// Each product binds its first shaping control to 102.
+const SHAPE_PARAMETER: P = P::ALL[2];
 fn choices() -> Vec<PluginState> {
     let mut states = vec![PluginState::default()];
     for p in P::ALL
@@ -63,7 +66,10 @@ fn native_metadata_latency_and_editor_geometry_follow_the_unit_contract() {
             &*((*plugin.pointer).get_extension.unwrap()(plugin.pointer, CLAP_EXT_TAIL.as_ptr())
                 .cast::<clap_plugin_tail>())
         };
-        assert_eq!(unsafe { tail.get.unwrap()(plugin.pointer) }, rate);
+        assert_eq!(
+            unsafe { tail.get.unwrap()(plugin.pointer) },
+            daw_drive_plugin::tail_frames(rate)
+        );
         plugin.deactivate();
     }
 }
@@ -137,8 +143,10 @@ fn all_parameters_and_dense_automation_follow_format_timing_without_callback_hea
                 .map(|i| {
                     (
                         i,
-                        P::Drive,
-                        P::Drive.denormalize(f64::from(i % 101) / 100.0).unwrap(),
+                        SHAPE_PARAMETER,
+                        SHAPE_PARAMETER
+                            .denormalize(f64::from(i % 101) / 100.0)
+                            .unwrap(),
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -165,7 +173,7 @@ fn state_roundtrips_reject_corruption_and_active_recall_keeps_latest_values() {
     let _serial = SERIAL.lock().unwrap();
     let mut plugin = Plugin::new();
     let mut state = PluginState::default();
-    state.set(P::Drive, 12.0).unwrap();
+    state.set(SHAPE_PARAMETER, 12.0).unwrap();
     state.set(P::DryWet, 0.37).unwrap();
     plugin.load(state);
     assert_eq!(

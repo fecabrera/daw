@@ -3932,7 +3932,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
         EffectInstance, EffectSettings, LfoInstance, Modulation, ModulationParameter,
         ModulationSourceId,
     };
-    for kind in 0..9 {
+    for kind in 0..10 {
         let fixture = Fixture::new();
         let mut session = Session::default();
         let track = session.project.add_midi_track().unwrap();
@@ -3953,6 +3953,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             EffectInstance::bitcrusher,
             EffectInstance::saturator,
             EffectInstance::chorus,
+            EffectInstance::transient_shaper,
         ][kind]();
         let (open, collapsed, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => {
@@ -3973,6 +3974,14 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
                 s.downsampling = 9;
                 s.level_db = -6.0;
                 s.dry_wet = 0.7;
+                (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
+            }
+            EffectSettings::TransientShaper(s) => {
+                s.attack_db = 6.0;
+                s.pump_db = 4.0;
+                s.sustain_db = -2.0;
+                s.speed = 0.62;
+                s.clip_mode = daw_core::TransientShaperClipMode::Tube;
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
             EffectSettings::Chorus(s) => {
@@ -4020,6 +4029,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             &ModulationParameter::BITCRUSHER[..],
             &ModulationParameter::SATURATOR[..],
             &ModulationParameter::CHORUS[..],
+            &ModulationParameter::TRANSIENT_SHAPER[..],
         ][kind]
             .iter()
             .copied()

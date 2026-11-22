@@ -1524,6 +1524,21 @@ impl DawUi {
                                         self.effects_bounds.bitcrusher_units.push(bounds);
                                         (header, power)
                                     }
+                                    daw_core::EffectSettings::TransientShaper(settings) => {
+                                        let (header, power) = crate::transient_shaper_panel::show(
+                                            ui,
+                                            settings,
+                                            (compact, height),
+                                            modulation_sources,
+                                            self.output.as_ref().and_then(|o| {
+                                                o.modulation_snapshot(
+                                                    daw_engine::ModulationTarget::Effect(effect.id),
+                                                )
+                                            }),
+                                            output_level,
+                                        );
+                                        (header, power)
+                                    }
                                     daw_core::EffectSettings::Chorus(settings) => {
                                         let (bounds, header) = crate::chorus_panel::show(
                                             ui,

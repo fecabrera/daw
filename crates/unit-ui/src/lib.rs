@@ -26,6 +26,7 @@ pub mod theme;
 pub mod bitcrusher;
 pub mod exciter;
 pub mod saturator;
+pub mod transient_shaper;
 
 pub mod compressor;
 pub mod compressor_curve;

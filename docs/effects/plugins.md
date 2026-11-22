@@ -8,6 +8,7 @@ The registered built-in effects have separate CLAP, VST3 and macOS AUv2 developm
 | [Drive v2](drive-v2-plugin.md) | `drive-v2` | Clip mode, Drive Gain, Drive Tone; Color power, Shape, Strength, Frequency; Input Gain, Output Level, Dry/Wet |
 | [Saturator](distortion-plugins.md) | `saturator` | Drive, Shape, Clip Mode, Level, Dry/Wet |
 | [Bitcrusher](distortion-plugins.md) | `bitcrusher` | Drive, Resolution, Downsampling, Level, Dry/Wet |
+| [Transient Shaper](transient-shaper.md) | `transient-shaper` | Attack, Pump, Sustain, Speed, Level, Dry/Wet, Clip Mode |
 | [3-band EQ](equalizer.md) | `equalizer` | Low/Mid/High gain and power; Low/High frequency and Q |
 | [Multiband EQ](multiband-eq.md) | `multiband-eq` | 64 band slots with power, mode, frequency, gain, Q; output Level |
 | [Filter](filter.md) | `filter` | Shape, Frequency, Q, Level, Dry/Wet |

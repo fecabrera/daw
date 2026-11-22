@@ -430,3 +430,50 @@ fn sidechain_delayed_midi_uses_its_own_loop_boundary_without_callback_allocation
     TRACK_ALLOCATIONS.with(|c| c.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn transient_shaper_inherits_audio_routes_in_live_and_offline_rendering() {
+    let (mut p, source, _, _) = setup(48_000);
+    let mut effect = EffectInstance::transient_shaper();
+    let effect_id = effect.id;
+    let EffectSettings::TransientShaper(settings) = &mut effect.unit else {
+        unreachable!()
+    };
+    let mut route = Modulation::new(ModulationParameter::TransientSustain);
+    route.amount = -12.0;
+    let mut tap = AudioSidechain::new(source);
+    tap.lower_db = -60.0;
+    tap.upper_db = -24.0;
+    route.sidechain = Some(tap);
+    settings.modulations.push(route);
+    p.project.tracks[1].effects = vec![effect];
+    p.project.validate().unwrap();
+
+    let mut baseline = p.clone();
+    baseline.project.tracks[1].effects[0].unit.modulations_mut()[0].amount = 0.0;
+    let mut dry = vec![[0.0; 2]; 4096];
+    Renderer::new(baseline).render_offline(&mut dry);
+
+    let mut wet = vec![[0.0; 2]; 4096];
+    let mut offline = Renderer::new(p.clone());
+    offline.render_offline(&mut wet);
+    let snapshot = offline
+        .modulation_snapshot(daw_engine::ModulationTarget::Effect(effect_id))
+        .unwrap();
+    assert!(snapshot[2] < -3.0);
+    let power = |samples: &[[f32; 2]]| samples[1024..].iter().map(|v| v[0] * v[0]).sum::<f32>();
+    assert!(power(&wet) < power(&dry) * 0.65);
+
+    let mut live = Renderer::new(p);
+    live.play();
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACK_ALLOCATIONS.with(|count| count.set(true));
+    for (frame, expected) in wet.into_iter().enumerate() {
+        let sample = live.next_sample();
+        if frame >= 240 {
+            assert_eq!(sample, expected);
+        }
+    }
+    TRACK_ALLOCATIONS.with(|count| count.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}

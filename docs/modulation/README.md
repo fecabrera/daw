@@ -52,6 +52,7 @@ shows the controls available on that instance.
 | [3-band EQ](../effects/equalizer.md) | Low/Mid/High Gain; Low/High Frequency and Q |
 | [Drive](../effects/drive.md) | Volume, Gain, Tone, Color strength, Color frequency |
 | [Bitcrusher](../effects/bitcrusher.md) | Drive, Resolution, Downsampling, Level, Dry/Wet; Resolution and Downsampling retain whole steps |
+| [Transient Shaper](../effects/transient-shaper.md) | Attack, Pump, Sustain, Speed, Level, Dry/Wet |
 | [Filter](../effects/filter.md), [Auto-filter](../effects/auto-filter.md) | Frequency, Resonance, Level, Dry/Wet |
 | [Compressor](../effects/compressor.md) | Threshold, Ratio, Attack, Release, Knee, Level, Dry/Wet |
 | [Limiter](../effects/limiter.md) | Input, Release, Lookahead, Ceiling |

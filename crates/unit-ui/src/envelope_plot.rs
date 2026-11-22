@@ -198,7 +198,7 @@ pub fn show(
                 let plot = chart.shrink2(if compact {
                     spectrum_graph::COMPACT_PLOT_INSET
                 } else {
-                    Vec2::new(24.0, 17.0)
+                    spectrum_graph::EXPANDED_PLOT_INSET
                 });
                 let mut selected = None;
                 if !compact {

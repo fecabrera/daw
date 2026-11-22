@@ -476,6 +476,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             Some(entries[5]),
             Some(entries[6]),
             Some(entries[19]),
+            Some(entries[21]),
             None,
             Some(entries[1]),
             Some(entries[9]),
@@ -5368,8 +5369,7 @@ fn bitcrusher_shared_controls_add_edit_reset_and_remove_on_every_target() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for target in ["track", "master", "instrument"] {
             let (mut app, ctx) = categorized_catalog_fixture(theme, target);
-            let point = app.effects_bounds.bitcrusher_entry.center();
-            assert!(app.effects_bounds.bitcrusher_entry.is_positive());
+            let point = reveal_catalog_row(&mut app, &ctx, |bounds| bounds.bitcrusher_entry);
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Enter, false);
             frame(&mut app, &ctx, vec![]);

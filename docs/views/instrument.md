@@ -95,7 +95,7 @@ The Effects catalog has the same seven folders in every view:
 | --- | --- |
 | EQ | [3-band EQ](../effects/equalizer.md), [Multiband EQ](../effects/multiband-eq.md) |
 | Filters | [Filter](../effects/filter.md), [Auto-filter](../effects/auto-filter.md), [Chorus](../effects/chorus.md) |
-| Dynamics | [Compressor](../effects/compressor.md), [OTT](../effects/ott.md), [Limiter](../effects/limiter.md), [Multiband Compressor](../effects/multiband-compressor.md) |
+| Dynamics | [Compressor](../effects/compressor.md), [OTT](../effects/ott.md), [Limiter](../effects/limiter.md), [Multiband Compressor](../effects/multiband-compressor.md), [Transient Shaper](../effects/transient-shaper.md) |
 | Distortion | [Drive](../effects/drive.md), [Drive v2](../effects/drive-v2.md), [Bitcrusher](../effects/bitcrusher.md), [Saturator](../effects/saturator.md), [Multiband Exciter](../effects/exciter.md), [Harmonic Lift](../effects/harmonic-lift.md) |
 | Imaging | [Direction Mixer](../effects/direction-mixer.md), [Stereo Spread](../effects/stereo-spread.md) |
 | Reverb | [Plate Reverb](../effects/plate-reverb.md), [Ambient Reverb](../effects/ambient-reverb.md), [Shimmer Reverb](../effects/shimmer-reverb.md) |

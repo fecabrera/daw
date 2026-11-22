@@ -1589,6 +1589,7 @@ fn worker_snapshots_preserve_every_effect_history_and_own_independent_state() {
         EffectInstance::stereo_spread(),
         EffectInstance::saturator(),
         EffectInstance::bitcrusher(),
+        EffectInstance::transient_shaper(),
     ] {
         let mut p = plan(48_000, false);
         p.project.tracks[0].effects.push(effect);

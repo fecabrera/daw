@@ -453,6 +453,9 @@ pub(super) fn fingerprint(plan: &RenderPlan) -> u64 {
                 daw_core::EffectSettings::Bitcrusher(_) => {
                     daw_unit_core::BITCRUSHER_TYPE_ID.hash(&mut hash)
                 }
+                daw_core::EffectSettings::TransientShaper(_) => {
+                    daw_unit_core::TRANSIENT_SHAPER_TYPE_ID.hash(&mut hash)
+                }
                 daw_core::EffectSettings::Chorus(_) => {
                     daw_unit_core::CHORUS_TYPE_ID.hash(&mut hash)
                 }
@@ -551,6 +554,7 @@ fn controls_changed(a: &EffectSettings, b: &EffectSettings) -> bool {
         (EffectSettings::StereoSpread(a), EffectSettings::StereoSpread(b)) => compare!(a, b),
         (EffectSettings::Saturator(a), EffectSettings::Saturator(b)) => compare!(a, b),
         (EffectSettings::Bitcrusher(a), EffectSettings::Bitcrusher(b)) => compare!(a, b),
+        (EffectSettings::TransientShaper(a), EffectSettings::TransientShaper(b)) => compare!(a, b),
         (EffectSettings::Chorus(a), EffectSettings::Chorus(b)) => compare!(a, b),
         (EffectSettings::AmbientReverb(a), EffectSettings::AmbientReverb(b)) => compare!(a, b),
         (EffectSettings::ShimmerReverb(a), EffectSettings::ShimmerReverb(b)) => compare!(a, b),

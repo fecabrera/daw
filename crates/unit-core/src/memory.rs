@@ -61,6 +61,7 @@ impl EffectSettings {
             Self::StereoSpread(s) => vec_bytes(&s.modulations),
             Self::Saturator(s) => vec_bytes(&s.modulations),
             Self::Bitcrusher(s) => vec_bytes(&s.modulations),
+            Self::TransientShaper(s) => vec_bytes(&s.modulations),
             Self::Chorus(s) => vec_bytes(&s.modulations),
             Self::AmbientReverb(s) => vec_bytes(&s.modulations),
             Self::ShimmerReverb(s) => vec_bytes(&s.modulations),

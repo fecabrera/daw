@@ -68,6 +68,8 @@ mod chorus;
 pub use chorus::*;
 mod compressor;
 pub use bitcrusher::{BITCRUSHER_STATE_VERSION, BITCRUSHER_TYPE_ID, BitcrusherSettings};
+mod transient_shaper;
+pub use transient_shaper::*;
 mod stereo_spread;
 pub use stereo_spread::{STEREO_SPREAD_STATE_VERSION, STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
 mod direction_mixer;

@@ -141,6 +141,7 @@ mod track_browser;
 mod track_overview;
 mod track_rows;
 mod track_selector;
+mod transient_shaper_panel;
 mod transport_controls;
 pub use mixer::ViewMode;
 mod arrangement;

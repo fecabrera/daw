@@ -121,7 +121,7 @@ pub fn show(
                 let plot = if compact {
                     chart.shrink2(spectrum_graph::COMPACT_PLOT_INSET)
                 } else {
-                    let mut plot = chart.shrink2(Vec2::new(24.0, 17.0));
+                    let mut plot = chart.shrink2(spectrum_graph::EXPANDED_PLOT_INSET);
                     plot.max.x -= 24.0;
                     plot
                 };

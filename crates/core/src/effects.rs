@@ -601,6 +601,19 @@ mod limiter_tests {
 #[cfg(test)]
 mod effect_modulation_tests {
     use crate::*;
+    const EFFECTS: [fn() -> EffectInstance; 10] = [
+        EffectInstance::equalizer,
+        EffectInstance::compressor,
+        EffectInstance::limiter,
+        EffectInstance::ott,
+        EffectInstance::direction_mixer,
+        EffectInstance::stereo_spread,
+        EffectInstance::bitcrusher,
+        EffectInstance::saturator,
+        EffectInstance::chorus,
+        EffectInstance::transient_shaper,
+    ];
+
     fn fixture(kind: usize) -> (Project, Id, EffectInstance) {
         let mut p = Project::default();
         let track = p.add_midi_track().unwrap();
@@ -611,17 +624,7 @@ mod effect_modulation_tests {
             layer: layer.id,
             unit: layer.envelopes[0].id,
         };
-        let mut effect = [
-            EffectInstance::equalizer,
-            EffectInstance::compressor,
-            EffectInstance::limiter,
-            EffectInstance::ott,
-            EffectInstance::direction_mixer,
-            EffectInstance::stereo_spread,
-            EffectInstance::bitcrusher,
-            EffectInstance::saturator,
-            EffectInstance::chorus,
-        ][kind]();
+        let mut effect = EFFECTS[kind]();
         let (open, routes) = match &mut effect.unit {
             EffectSettings::MultibandEq(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Eq3(s) => (&mut s.modulation_open, &mut s.modulations),
@@ -631,6 +634,7 @@ mod effect_modulation_tests {
             EffectSettings::DirectionMixer(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::StereoSpread(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Bitcrusher(s) => (&mut s.modulation_open, &mut s.modulations),
+            EffectSettings::TransientShaper(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Chorus(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::AmbientReverb(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::ShimmerReverb(s) => (&mut s.modulation_open, &mut s.modulations),
@@ -649,6 +653,7 @@ mod effect_modulation_tests {
             &ModulationParameter::BITCRUSHER[..],
             &ModulationParameter::SATURATOR[..],
             &ModulationParameter::CHORUS[..],
+            &ModulationParameter::TRANSIENT_SHAPER[..],
         ][kind]
             .iter()
             .copied()
@@ -676,7 +681,7 @@ mod effect_modulation_tests {
     }
     #[test]
     fn effect_modulation_defaults_roundtrip_and_invalid_edits_are_atomic() {
-        for kind in 0..9 {
+        for (kind, create) in EFFECTS.into_iter().enumerate() {
             let (mut p, track, effect) = fixture(kind);
             p.edit(Edit::SetEffects {
                 track_id: track,
@@ -712,18 +717,7 @@ mod effect_modulation_tests {
                 );
                 assert_eq!(serde_json::to_value(&p).unwrap(), saved);
             }
-            let expected = [
-                EffectInstance::equalizer,
-                EffectInstance::compressor,
-                EffectInstance::limiter,
-                EffectInstance::ott,
-                EffectInstance::direction_mixer,
-                EffectInstance::stereo_spread,
-                EffectInstance::bitcrusher,
-                EffectInstance::saturator,
-                EffectInstance::chorus,
-            ][kind]()
-            .unit;
+            let expected = create().unit;
             let mut legacy = serde_json::to_value(&expected).unwrap();
             legacy["state"]
                 .as_object_mut()
@@ -747,7 +741,7 @@ mod effect_modulation_tests {
 
     #[test]
     fn effect_modulation_uses_same_instrument_shared_sources_and_follows_provider_moves() {
-        for kind in 0..9 {
+        for kind in 0..EFFECTS.len() {
             let (mut p, track, effect) = fixture(kind);
             let source = effect.unit.modulations()[0].source.unwrap();
             let mut instrument = p.tracks[0].instrument.clone().unwrap();

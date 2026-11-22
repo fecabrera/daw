@@ -115,6 +115,7 @@ pub(super) fn channel_shape(input: bool, effects: &[daw_core::EffectInstance]) -
             | E::Limiter(_)
             | E::Saturator(_)
             | E::Bitcrusher(_)
+            | E::TransientShaper(_)
             | E::Missing { .. } => mono,
         })
 }

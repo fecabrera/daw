@@ -1,4 +1,7 @@
 use super::*;
+
+// Each product binds its first shaping control to 102.
+const SHAPE_PARAMETER: P = P::ALL[2];
 fn choices() -> Vec<PluginState> {
     let mut states = vec![PluginState::default()];
     for p in P::ALL
@@ -137,7 +140,7 @@ fn all_parameters_and_dense_automation_follow_format_timing_without_callback_hea
             );
         }
         let points = [(
-            P::Drive,
+            SHAPE_PARAMETER,
             (0..4096).map(|i| (i, f64::from(i % 101) / 100.0)).collect(),
         )];
         let expected = reference(&mut drive, &mut state, &mut values, &left, &right, &points);
@@ -160,7 +163,7 @@ fn state_roundtrips_reject_corruption_and_active_recall_keeps_latest_values() {
     let _serial = SERIAL.lock().unwrap();
     let mut plugin = Plugin::new();
     let mut state = PluginState::default();
-    state.set(P::Drive, 12.0).unwrap();
+    state.set(SHAPE_PARAMETER, 12.0).unwrap();
     state.set(P::DryWet, 0.37).unwrap();
     plugin.load(state);
     assert_eq!(plugin.save().unwrap(), state);

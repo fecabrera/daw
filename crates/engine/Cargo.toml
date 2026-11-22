@@ -19,6 +19,7 @@ daw-chorus.workspace = true
 serde.workspace = true
 daw-saturator.workspace = true
 daw-bitcrusher.workspace = true
+daw-transient-shaper.workspace = true
 daw-stereo-spread.workspace = true
 daw-direction-mixer.workspace = true
 daw-sampler.workspace = true

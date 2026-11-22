@@ -21,6 +21,7 @@ use crate::{PLATE_REVERB_STATE_VERSION, PLATE_REVERB_TYPE_ID, PlateReverbSetting
 use crate::{SATURATOR_STATE_VERSION, SATURATOR_TYPE_ID, SaturatorSettings};
 use crate::{SHIMMER_REVERB_STATE_VERSION, SHIMMER_REVERB_TYPE_ID, ShimmerReverbSettings};
 use crate::{STEREO_SPREAD_STATE_VERSION, STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
+use crate::{TRANSIENT_SHAPER_STATE_VERSION, TRANSIENT_SHAPER_TYPE_ID, TransientShaperSettings};
 use serde::{Deserialize, Serialize};
 
 pub const EQ_TYPE_ID: &str = "daw.eq3";
@@ -103,6 +104,7 @@ pub enum EffectSettings {
     StereoSpread(StereoSpreadSettings),
     Saturator(SaturatorSettings),
     Bitcrusher(BitcrusherSettings),
+    TransientShaper(TransientShaperSettings),
     Chorus(ChorusSettings),
     AmbientReverb(AmbientReverbSettings),
     ShimmerReverb(ShimmerReverbSettings),
@@ -150,6 +152,10 @@ impl Serialize for EffectSettings {
             },
             Self::Bitcrusher(settings) => StoredEffect {
                 type_id: BITCRUSHER_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::TransientShaper(settings) => StoredEffect {
+                type_id: TRANSIENT_SHAPER_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
             },
             Self::Chorus(settings) => StoredEffect {
@@ -288,6 +294,16 @@ impl<'de> Deserialize<'de> for EffectSettings {
         {
             serde_json::from_value(stored.state)
                 .map(Self::Bitcrusher)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == TRANSIENT_SHAPER_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|version| version <= u64::from(TRANSIENT_SHAPER_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::TransientShaper)
                 .map_err(serde::de::Error::custom)
         } else if stored.type_id == CHORUS_TYPE_ID
             && stored
@@ -468,6 +484,7 @@ impl EffectSettings {
             Self::StereoSpread(s) => Some(&mut s.enabled),
             Self::Saturator(s) => Some(&mut s.enabled),
             Self::Bitcrusher(s) => Some(&mut s.enabled),
+            Self::TransientShaper(s) => Some(&mut s.enabled),
             Self::Chorus(s) => Some(&mut s.enabled),
             Self::Loudness(s) => Some(&mut s.enabled),
             Self::AmbientReverb(s) => Some(&mut s.enabled),
@@ -498,6 +515,7 @@ impl EffectSettings {
             Self::StereoSpread(settings) => Some(&mut settings.collapsed),
             Self::Saturator(settings) => Some(&mut settings.collapsed),
             Self::Bitcrusher(settings) => Some(&mut settings.collapsed),
+            Self::TransientShaper(settings) => Some(&mut settings.collapsed),
             Self::Chorus(settings) => Some(&mut settings.collapsed),
             Self::AmbientReverb(settings) => Some(&mut settings.collapsed),
             Self::ShimmerReverb(settings) => Some(&mut settings.collapsed),
@@ -560,6 +578,7 @@ impl EffectSettings {
             Self::StereoSpread(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Saturator(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Bitcrusher(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::TransientShaper(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Chorus(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::AmbientReverb(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::ShimmerReverb(s) => crate::ModulationDestinationSettings::modulations(s),
@@ -593,6 +612,7 @@ impl EffectSettings {
             Self::StereoSpread(s) => Some(&mut s.modulations),
             Self::Saturator(s) => Some(&mut s.modulations),
             Self::Bitcrusher(s) => Some(&mut s.modulations),
+            Self::TransientShaper(s) => Some(&mut s.modulations),
             Self::Chorus(s) => Some(&mut s.modulations),
             Self::AmbientReverb(s) => Some(&mut s.modulations),
             Self::ShimmerReverb(s) => Some(&mut s.modulations),
@@ -622,6 +642,7 @@ impl EffectSettings {
             Self::StereoSpread(settings) => settings.valid(),
             Self::Saturator(settings) => settings.valid(),
             Self::Bitcrusher(settings) => settings.valid(),
+            Self::TransientShaper(settings) => settings.valid(),
             Self::Chorus(settings) => settings.valid(),
             Self::AmbientReverb(settings) => settings.valid(),
             Self::ShimmerReverb(settings) => settings.valid(),
@@ -776,6 +797,12 @@ impl EffectInstance {
         Self {
             id: uuid::Uuid::new_v4(),
             unit: EffectSettings::Bitcrusher(BitcrusherSettings::default()),
+        }
+    }
+    pub fn transient_shaper() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::TransientShaper(TransientShaperSettings::default()),
         }
     }
     pub fn chorus() -> Self {

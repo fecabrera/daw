@@ -18,6 +18,7 @@ use daw_plate_reverb::PlateReverb;
 use daw_saturator::Saturator;
 use daw_shimmer_reverb::ShimmerReverb;
 use daw_stereo_spread::StereoSpread;
+use daw_transient_shaper::TransientShaper;
 use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_modulation};
 use std::sync::Arc;
 
@@ -40,6 +41,7 @@ pub(super) enum RuntimeEffect {
     StereoSpread(Box<StereoSpread>, Vec<super::modulation::Route>),
     Saturator(Box<Saturator>, Vec<super::modulation::Route>),
     Bitcrusher(Box<Bitcrusher>, Vec<super::modulation::Route>),
+    TransientShaper(Box<TransientShaper>, Vec<super::modulation::Route>),
     Chorus(Box<Chorus>, Vec<super::modulation::Route>),
     AmbientReverb(Box<AmbientReverb>, Vec<super::modulation::Route>),
     ShimmerReverb(Box<ShimmerReverb>, Vec<super::modulation::Route>),
@@ -120,6 +122,11 @@ impl RuntimeEffect {
                     + unit.heap_bytes()
                     + daw_unit_core::memory::vec_bytes(routes)
             }
+            Self::TransientShaper(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
             Self::Chorus(unit, routes) => {
                 std::mem::size_of_val(unit.as_ref()) as u64
                     + unit.heap_bytes()
@@ -164,6 +171,7 @@ impl RuntimeEffect {
             Self::StereoSpread(unit, _) => unit.latency_frames(),
             Self::Saturator(unit, _) => unit.latency_frames(),
             Self::Bitcrusher(unit, _) => unit.latency_frames(),
+            Self::TransientShaper(unit, _) => unit.latency_frames(),
             Self::Chorus(unit, _) => unit.latency_frames(),
             Self::AmbientReverb(unit, _) => unit.latency_frames(),
             Self::ShimmerReverb(unit, _) => unit.latency_frames(),
@@ -382,6 +390,20 @@ impl RuntimeEffect {
                     ..Default::default()
                 },
             ),
+            Self::TransientShaper(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    musical,
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::Chorus(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -528,6 +550,12 @@ impl RuntimeEffect {
                     route.reset();
                 }
             }
+            Self::TransientShaper(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
             Self::Chorus(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -574,6 +602,7 @@ impl RuntimeEffect {
             | Self::StereoSpread(_, routes)
             | Self::Saturator(_, routes)
             | Self::Bitcrusher(_, routes)
+            | Self::TransientShaper(_, routes)
             | Self::Chorus(_, routes)
             | Self::AmbientReverb(_, routes)
             | Self::ShimmerReverb(_, routes)
@@ -609,6 +638,9 @@ impl RuntimeEffect {
                 unit.retarget(settings)
             }
             (Self::Bitcrusher(unit, _), EffectSettings::Bitcrusher(settings)) => {
+                unit.retarget(settings)
+            }
+            (Self::TransientShaper(unit, _), EffectSettings::TransientShaper(settings)) => {
                 unit.retarget(settings)
             }
             (Self::Chorus(unit, _), EffectSettings::Chorus(settings)) => unit.retarget(settings),
@@ -831,6 +863,16 @@ impl EffectChain {
                                         .collect(),
                                 ))
                             }
+                            EffectSettings::TransientShaper(settings) => {
+                                Some(RuntimeEffect::TransientShaper(
+                                    Box::new(TransientShaper::new(context, settings)),
+                                    settings
+                                        .modulations
+                                        .iter()
+                                        .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                        .collect(),
+                                ))
+                            }
                             EffectSettings::Chorus(settings) => Some(RuntimeEffect::Chorus(
                                 Box::new(Chorus::new(context, settings)),
                                 settings
@@ -983,6 +1025,10 @@ impl EffectChain {
             RuntimeEffect::Bitcrusher(_, old_routes),
             RuntimeEffect::Bitcrusher(_, new_routes),
         )
+        | (
+            RuntimeEffect::TransientShaper(_, old_routes),
+            RuntimeEffect::TransientShaper(_, new_routes),
+        )
         | (RuntimeEffect::Chorus(_, old_routes), RuntimeEffect::Chorus(_, new_routes))
         | (
             RuntimeEffect::AmbientReverb(_, old_routes),
@@ -1080,6 +1126,9 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Bitcrusher(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::TransientShaper(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Chorus(unit, _)))) => {
@@ -1230,6 +1279,9 @@ impl EffectChain {
                 unit.set_output_peak_meter(meter.clone());
             }
             Some((_, Some(RuntimeEffect::Bitcrusher(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::TransientShaper(unit, _)))) => {
                 unit.set_output_peak_meter(meter.clone());
             }
             Some((_, Some(RuntimeEffect::HarmonicLift(unit)))) => {

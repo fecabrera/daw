@@ -4,6 +4,7 @@ use daw_unit_core::{SpectrumCache, SpectrumMeter, SpectrumReading};
 use egui::{Id, Rect, Stroke, Ui, Vec2};
 pub const WIDTH: f32 = 3.0 * layout::UNIT_STRIP_WIDTH;
 pub(crate) const CURVE_STROKE_WIDTH: f32 = 1.5;
+pub(crate) const EXPANDED_PLOT_INSET: Vec2 = Vec2::new(24.0, 17.0);
 pub(crate) const COMPACT_PLOT_INSET: Vec2 = Vec2::new(9.0, 4.0);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -59,7 +60,7 @@ pub(crate) fn axes(ui: &Ui, chart: Rect, range: (f32, f32), ticks: &[f32], compa
     let plot = chart.shrink2(if compact {
         COMPACT_PLOT_INSET
     } else {
-        Vec2::new(24.0, 17.0)
+        EXPANDED_PLOT_INSET
     });
     let palette = theme::palette(ui.ctx());
     let (p, grid) = surface(ui, chart);

@@ -1920,6 +1920,7 @@ dependencies = [
  "daw-saturator",
  "daw-shimmer-reverb",
  "daw-stereo-spread",
+ "daw-transient-shaper",
  "daw-unit-core",
  "serde",
  "serde_json",
@@ -3017,6 +3018,79 @@ dependencies = [
  "daw-stereo-spread",
  "daw-stereo-spread-editor",
  "daw-stereo-spread-plugin",
+ "daw-unit-core",
+ "libloading 0.8.9",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-transient-shaper"
+version = "0.1.0"
+dependencies = [
+ "daw-saturator",
+ "daw-unit-core",
+]
+
+[[package]]
+name = "daw-transient-shaper-auv2"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "daw-plugin-auv2",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-transient-shaper-editor",
+ "daw-transient-shaper-plugin",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-transient-shaper-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-transient-shaper",
+ "daw-transient-shaper-editor",
+ "daw-transient-shaper-plugin",
+ "daw-unit-core",
+ "libloading 0.8.9",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-transient-shaper-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-transient-shaper-plugin",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-transient-shaper-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-support",
+ "daw-transient-shaper",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-transient-shaper-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-transient-shaper",
+ "daw-transient-shaper-editor",
+ "daw-transient-shaper-plugin",
  "daw-unit-core",
  "libloading 0.8.9",
  "serde_json",

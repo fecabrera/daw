@@ -65,6 +65,7 @@ need a selection retain their usual empty-selection prompts.
 - [Drive v2](effects/drive-v2.md)
 - [Drive v2 plugin development builds](effects/drive-v2-plugin.md)
 - [Bitcrusher](effects/bitcrusher.md)
+- [Transient Shaper](effects/transient-shaper.md)
 - [Saturator](effects/saturator.md)
 - [Harmonic Lift](effects/harmonic-lift.md)
 - [Multiband Exciter](effects/exciter.md)

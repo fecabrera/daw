@@ -747,6 +747,11 @@ pub(super) fn marker(
         ModulationParameter::ChorusRate => offsets.map(|o| (base * 2.0_f32.powf(o)).max(0.0)),
         ModulationParameter::ChorusPhase => offsets.map(|o| (base + o).clamp(-180.0, 180.0)),
         ModulationParameter::ChorusWidth => offsets.map(|o| (base + o).clamp(0.0, 2.0)),
+        ModulationParameter::TransientAttack | ModulationParameter::TransientSustain => {
+            offsets.map(|o| (base + o).clamp(-12.0, 12.0))
+        }
+        ModulationParameter::TransientPump => offsets.map(|o| (base + o).clamp(0.0, 12.0)),
+        ModulationParameter::TransientSpeed => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::BitcrusherDrive => offsets.map(|o| (base + o).clamp(0.0, 24.0)),
         ModulationParameter::BitcrusherResolution => {
             offsets.map(|o| (base + o).round().clamp(1.0, 24.0))

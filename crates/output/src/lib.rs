@@ -381,6 +381,7 @@ fn band_meters(
                     | daw_core::EffectSettings::Drive(_)
                     | daw_core::EffectSettings::DriveV2(_)
                     | daw_core::EffectSettings::Bitcrusher(_)
+                    | daw_core::EffectSettings::TransientShaper(_)
                     | daw_core::EffectSettings::Saturator(_)
                     | daw_core::EffectSettings::Filter(_)
                     | daw_core::EffectSettings::AutoFilter(_)
@@ -473,6 +474,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::StereoSpread(_)
                     | daw_core::EffectSettings::Saturator(_)
                     | daw_core::EffectSettings::Bitcrusher(_)
+                    | daw_core::EffectSettings::TransientShaper(_)
                     | daw_core::EffectSettings::PlateReverb(_)
                     | daw_core::EffectSettings::AmbientReverb(_)
                     | daw_core::EffectSettings::ShimmerReverb(_)
@@ -2945,6 +2947,7 @@ mod band_meter_tests {
                         daw_core::EffectSettings::Drive(s) => s.enabled = enabled,
                         daw_core::EffectSettings::DriveV2(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Bitcrusher(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::TransientShaper(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Saturator(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Exciter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Filter(s) => s.enabled = enabled,

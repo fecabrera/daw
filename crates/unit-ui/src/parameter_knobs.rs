@@ -257,6 +257,19 @@ pub fn destination(parameter: Parameter) -> KnobSpec {
             .value_label(|v| format!("{v:.1} dB"))
             .format(|v| format!("{v:.1} dB"))
             .endpoint_labels("−36", "+36"),
+        Parameter::TransientAttack | Parameter::TransientSustain => {
+            KnobSpec::new(parameter.label(), -12.0..=12.0, 0.0, 0.1)
+                .centered(0.0)
+                .bipolar()
+                .value_label(|v| format!("{v:+.1} dB"))
+                .format(|v| format!("{v:+.1} dB"))
+                .endpoint_labels("−12", "+12")
+        }
+        Parameter::TransientPump => KnobSpec::new("Pump", 0.0..=12.0, 0.0, 0.1)
+            .value_label(|v| format!("{v:.1} dB"))
+            .format(|v| format!("{v:.1} dB"))
+            .endpoint_labels("0", "+12"),
+        Parameter::TransientSpeed => percent("Speed", 0.5),
         Parameter::BitcrusherDrive => KnobSpec::new("Drive", 0.0..=24.0, 0.0, 0.1)
             .reference_step(6.0)
             .value_label(|v| format!("{v:.1} dB"))
@@ -600,6 +613,16 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−36", "+36"],
             ),
+            Parameter::TransientAttack | Parameter::TransientPump | Parameter::TransientSustain => {
+                (
+                    AmountMapping::Offset {
+                        origin: 0.0,
+                        direction: 1.0,
+                    },
+                    signed_db,
+                    ["−12", "+12"],
+                )
+            }
             Parameter::BitcrusherDrive => (
                 AmountMapping::Offset {
                     origin: 0.0,
@@ -842,6 +865,7 @@ pub fn amount(parameter: Parameter) -> KnobSpec {
             | Parameter::MacroValue
             | Parameter::LfoDepth
             | Parameter::DryWet
+            | Parameter::TransientSpeed
             | Parameter::DriveGain
             | Parameter::Tone
             | Parameter::ColorStrength => (

@@ -381,6 +381,11 @@ destination_settings!(
     &ModulationParameter::BITCRUSHER,
     Shared
 );
+destination_settings!(
+    crate::TransientShaperSettings,
+    &ModulationParameter::TRANSIENT_SHAPER,
+    Shared
+);
 
 impl ModulationDestinationSettings for EnvelopeInstance {
     const MODULATION_PARAMETERS: &'static [ModulationParameter] = &ModulationParameter::ENVELOPE;

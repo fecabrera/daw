@@ -60,7 +60,7 @@ impl EffectDescriptor {
     }
 }
 
-pub const BUILTIN_EFFECTS: [EffectDescriptor; 21] = [
+pub const BUILTIN_EFFECTS: [EffectDescriptor; 22] = [
     EffectDescriptor::new(
         "equalizer",
         EQ_TYPE_ID,
@@ -207,5 +207,12 @@ pub const BUILTIN_EFFECTS: [EffectDescriptor; 21] = [
         "Shimmer Reverb",
         EffectCategory::Reverb,
         EffectInstance::shimmer_reverb,
+    ),
+    EffectDescriptor::new(
+        "transient-shaper",
+        TRANSIENT_SHAPER_TYPE_ID,
+        "Transient Shaper",
+        EffectCategory::Dynamics,
+        EffectInstance::transient_shaper,
     ),
 ];

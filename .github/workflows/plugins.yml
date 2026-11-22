@@ -34,6 +34,7 @@ jobs:
           - { slug: auto-filter, name: Auto-filter, library: daw_auto_filter }
           - { slug: harmonic-lift, name: Harmonic Lift, library: daw_harmonic_lift }
           - { slug: compressor, name: Compressor, library: daw_compressor }
+          - { slug: transient-shaper, name: Transient Shaper, library: daw_transient_shaper }
           - { slug: limiter, name: Limiter, library: daw_limiter }
           - { slug: direction-mixer, name: Direction Mixer, library: daw_direction_mixer }
           - { slug: stereo-spread, name: Stereo Spread, library: daw_stereo_spread }

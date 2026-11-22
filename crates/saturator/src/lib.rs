@@ -45,7 +45,8 @@ pub fn shape(shape: SaturatorShape, x: f64) -> f64 {
         SaturatorShape::HardCurve => x.clamp(-1.2, 1.2),
     }
 }
-fn clip(mode: SaturatorClipMode, x: f64) -> f64 {
+/// Apply the Saturator clip transfer to one sample.
+pub fn clip(mode: SaturatorClipMode, x: f64) -> f64 {
     match mode {
         SaturatorClipMode::NoClip => x,
         SaturatorClipMode::SoftClip => knee(x, 0.5, 1.0),
