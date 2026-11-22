@@ -15456,3 +15456,7 @@ The debug and release workspace suites passed with `--offline --locked --no-fail
 The egui regression test compared the rendered axis labels and positions at neutral settings and at both shape gain extremes. It confirmed fixed 0–400 ms and −40 to +30 dB axes and verified that both extreme curves fit within the plot.
 
 The focused UI and editor tests, debug and release workspace suites, and strict workspace Clippy passed. The workspace suites skipped the existing native Audio Unit registration check. The rebuilt local macOS debug app passed strict signature verification.
+
+### Symmetric Transient Shaper preview scale
+
+The updated egui regression confirmed that the fixed −40 to +40 dB axis puts the neutral curve at the vertical midpoint. It also checked that the tick positions stay fixed and both extreme curves fit. The focused UI and editor tests, debug and release workspace suites, strict workspace Clippy, and strict signature verification of the rebuilt macOS debug app passed. The workspace suites skipped the existing native Audio Unit registration check.

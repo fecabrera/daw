@@ -168,26 +168,26 @@ fn gain_preview(ui: &Ui, chart: Rect, settings: &TransientShaperSettings) {
             })
             .sum()
     });
-    const GAIN_TICKS_DB: [f32; 8] = [-40.0, -30.0, -20.0, -10.0, 0.0, 10.0, 20.0, 30.0];
-    let [min, .., max] = GAIN_TICKS_DB;
-    let y = |db| egui::remap(db, min..=max, graph.bottom()..=graph.top());
-    for db in GAIN_TICKS_DB {
-        let label = if db > 0.0 {
-            format!("+{db:.0}")
+    const GAIN_LIMIT_DB: i32 = 40;
+    let limit = GAIN_LIMIT_DB as f32;
+    let y = |db| egui::remap(db, -limit..=limit, graph.bottom()..=graph.top());
+    for db in (-GAIN_LIMIT_DB..=GAIN_LIMIT_DB).step_by(10) {
+        let label = if db == 0 {
+            db.to_string()
         } else {
-            format!("{db:.0}")
+            format!("{db:+}")
         };
         painter.hline(
             graph.x_range(),
-            y(db),
-            if db == 0.0 {
+            y(db as f32),
+            if db == 0 {
                 Stroke::new(1.0, palette.secondary.gamma_multiply(0.5))
             } else {
                 grid
             },
         );
         painter.text(
-            pos2(graph.left() - 4.0, y(db)),
+            pos2(graph.left() - 4.0, y(db as f32)),
             Align2::RIGHT_CENTER,
             label,
             font.clone(),
@@ -245,9 +245,9 @@ mod tests {
         let ctx = egui::Context::default();
         crate::fonts::configure(&ctx);
         theme::configure(&ctx);
+        let chart = Rect::from_min_size(pos2(10.0, 10.0), Vec2::new(200.0, 172.0));
         let paint = |settings: TransientShaperSettings| {
             let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
-                let chart = Rect::from_min_size(pos2(10.0, 10.0), Vec2::new(200.0, 172.0));
                 gain_preview(ui, chart, &settings);
             });
             out.textures_delta.clear();
@@ -277,14 +277,19 @@ mod tests {
             (labels, curve)
         };
         let (neutral_labels, neutral_curve) = paint(TransientShaperSettings::default());
+        assert!(
+            neutral_curve
+                .iter()
+                .all(|point| point.y == chart.center().y)
+        );
         assert_eq!(
             neutral_labels
                 .iter()
                 .map(|(text, _)| text.as_str())
                 .collect::<Vec<_>>(),
             [
-                "-40", "-30", "-20", "-10", "0", "+10", "+20", "+30", "0", "100", "200", "300",
-                "400 ms", "dB"
+                "-40", "-30", "-20", "-10", "0", "+10", "+20", "+30", "+40", "0", "100", "200",
+                "300", "400 ms", "dB"
             ]
         );
         for (attack_db, pump_db, sustain_db) in [(-12.0, 12.0, -12.0), (12.0, 0.0, 12.0)] {
